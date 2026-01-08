@@ -21,6 +21,31 @@ const app = new Hono();
 // Global Middleware
 // ============================================
 
+// Security headers (XSS protection, clickjacking prevention, etc.)
+app.use("*", async (c, next) => {
+  await next();
+  
+  // Only add security headers for HTML responses (not API)
+  if (!c.req.path.startsWith("/api")) {
+    // Prevent XSS attacks
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("X-Frame-Options", "SAMEORIGIN");
+    c.header("X-XSS-Protection", "1; mode=block");
+    c.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    
+    // Content Security Policy - prevents inline script injection
+    c.header("Content-Security-Policy", [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Required for React/Vite
+      "style-src 'self' 'unsafe-inline'", // Required for styled components
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "connect-src 'self'", // Only allow API calls to same origin
+      "frame-ancestors 'self'",
+    ].join("; "));
+  }
+});
+
 // CORS
 app.use("*", corsMiddleware({
   origin: CORS_ORIGIN === "*" ? "*" : CORS_ORIGIN.split(","),
@@ -84,7 +109,7 @@ app.notFound(async (c) => {
 
 console.log(`
 ╔══════════════════════════════════════════════════╗
-║           ClickHouse Studio Server                    ║
+║           ClickHouse Studio Server               ║
 ╠══════════════════════════════════════════════════╣
 ║  Environment: ${NODE_ENV.padEnd(33)}║
 ║  Port: ${PORT.toString().padEnd(40)}║

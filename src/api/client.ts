@@ -95,6 +95,8 @@ class ApiClient {
 
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
+      // Required header to prove request comes from JavaScript, not direct browser navigation
+      'X-Requested-With': 'XMLHttpRequest',
       ...customHeaders,
     };
 
