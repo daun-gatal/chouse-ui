@@ -233,6 +233,10 @@ Apache-2.0
 
 ## Acknowledgments
 
+This project was inspired by [CH-UI](https://github.com/caioricciuti/ch-ui) by Caio Ricciuti — a fantastic open-source ClickHouse interface that paved the way for modern ClickHouse web tools. Thank you for the inspiration!
+
+### Built With
+
 - [ClickHouse](https://clickhouse.com/) - The database
 - [Vite](https://vitejs.dev/) - Frontend build tool
 - [Bun](https://bun.sh/) - JavaScript runtime
