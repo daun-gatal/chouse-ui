@@ -1,379 +1,227 @@
-// TreeNode.tsx
-import React, { useState, useCallback, useMemo } from "react";
-import {
-  ChevronRight,
-  ChevronDown,
-  Database,
-  Table,
-  FileSpreadsheet,
-  Eye,
-  Trash,
-  TerminalIcon,
-  MoreVertical,
-  FilePlus,
-  FolderPlus,
-} from "lucide-react";
+import React from "react";
+import { ChevronRight, ChevronDown, MoreVertical, Database, Table2, FilePlus, Info, FileUp, Trash2, TerminalIcon, FileType } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import ConfirmationDialog from "@/components/common/ConfirmationDialog";
-import { toast } from "sonner";
-import useAppStore from "@/store";
+import { useExplorerStore, useWorkspaceStore, genTabId } from "@/stores";
+import PermissionGuard from "@/components/common/PermissionGuard";
 
 export interface TreeNodeData {
   name: string;
-  type: "database" | "table" | "view" | "saved_query";
-  children?: TreeNodeData[];
-  query?: string;
+  type: "database" | "table";
+  children: TreeNodeData[];
 }
 
 interface TreeNodeProps {
   node: TreeNodeData;
-  level: number;
-  searchTerm: string;
+  level?: number;
+  searchTerm?: string;
   parentDatabaseName?: string;
-  refreshData: () => void;
+  refreshData?: () => void;
 }
 
 const TreeNode: React.FC<TreeNodeProps> = ({
   node,
-  level,
-  searchTerm,
-  parentDatabaseName,
+  level = 0,
+  searchTerm = "",
+  parentDatabaseName = "",
   refreshData,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<() => Promise<void>>(
-    () => async () => {}
-  );
-  const [confirmTitle, setConfirmTitle] = useState("");
-  const [confirmDescription, setConfirmDescription] = useState("");
+  const navigate = useNavigate();
   const {
-    addTab,
-    runQuery,
-    getTabById,
-    setActiveTab,
+    expandedNodes,
+    toggleNode,
     openCreateTableModal,
-    openCreateDatabaseModal,
-  } = useAppStore();
+    openUploadFileModal,
+  } = useExplorerStore();
+  const { addTab } = useWorkspaceStore();
 
-  const toggleOpen = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsOpen((prev) => !prev);
-  }, []);
+  const isExpanded = expandedNodes.has(node.name);
+  const hasChildren = node.children && node.children.length > 0;
+  const isDatabase = node.type === "database";
+  const databaseName = isDatabase ? node.name : parentDatabaseName;
 
-  const openInfoTab = (database: string, table: string) => {
-    const title = `${database}${table ? `.${table}` : ""}`;
-    const existingTab = getTabById(title);
+  const handleToggle = () => {
+    if (hasChildren) {
+      toggleNode(node.name);
+    }
+  };
 
-    if (existingTab) {
-      setActiveTab(existingTab.id);
+  const handleViewInfo = () => {
+    if (isDatabase) {
+      navigate(`/explorer?database=${node.name}`);
     } else {
-      addTab({
-        id: title,
-        title: title,
-        type: "information",
-        content: { database, table },
-      });
+      navigate(`/explorer?database=${databaseName}&table=${node.name}`);
     }
   };
 
-  const handleQueryData = useCallback(
-    (database: string, table: string) => async () => {
-      const query = `SELECT * FROM \`${database}\`.\`${table}\` LIMIT 1000`;
-      const title = `Query - ${table}`;
-      const existingTab = getTabById(title);
+  const handleNewQuery = () => {
+    const query = isDatabase
+      ? `SELECT * FROM ${node.name}. LIMIT 100`
+      : `SELECT * FROM ${databaseName}.${node.name} LIMIT 100`;
 
-      if (existingTab) {
-        toast.warning("A tab with this query is already open");
-      } else {
-        addTab({
-          id: `query-${table}`,
-          type: "sql",
-          title: title,
-          content: `-- ${title}\n${query}`,
-        });
-      }
-    },
-    [addTab, getTabById]
-  );
-
-  const getIcon = useMemo(() => {
-    switch (node.type) {
-      case "database":
-        return <Database className="w-4 h-4 mr-2" />;
-      case "table":
-        return <Table className="w-4 h-4 mr-2" />;
-      case "view":
-        return <FileSpreadsheet className="w-4 h-4 mr-2" />;
-      case "saved_query":
-        return <TerminalIcon className="w-4 h-4 mr-2" />;
-      default:
-        return null;
-    }
-  }, [node.type]);
-
-  const actionDropDatabase = async (database: string) => {
-    setConfirmTitle(`Drop Database ${database}`);
-    setConfirmDescription(
-      `Are you sure you want to drop the database ${database}? This action cannot be undone.`
-    );
-    setConfirmAction(() => async () => {
-      try {
-        const result = await runQuery(`DROP DATABASE ${database}`);
-        if (result.error) {
-          toast.error(result.error);
-        } else {
-          toast.success(`Dropped database ${database}`);
-          refreshData();
-        }
-      } catch (error) {
-        toast.error(`Failed to drop database ${database}`);
-      }
+    addTab({
+      id: genTabId(),
+      type: "sql",
+      title: `Query ${node.name}`,
+      content: query,
     });
-    setIsConfirmDialogOpen(true); // ✅ Corrected to open the dialog
   };
 
-  const actionDropTable = async (database: string, table: string) => {
-    setConfirmTitle(`Drop Table ${table}`);
-    setConfirmDescription(
-      `Are you sure you want to drop the table ${database}.${table}? This action cannot be undone.`
-    );
+  // Match search term
+  const matchesSearch = node.name.toLowerCase().includes(searchTerm.toLowerCase());
 
-    setConfirmAction(() => async () => {
-      try {
-        await runQuery(`DROP TABLE \`${database}\`.\`${table}\``);
-        toast.success(`Dropped table ${table}`);
-        refreshData();
-      } catch (error) {
-        toast.error(`Failed to drop table ${table}`);
-      }
-    });
-    setIsConfirmDialogOpen(true); // ✅ Corrected to open the dialog
-  };
+  if (searchTerm && !matchesSearch && !hasChildren) {
+    return null;
+  }
 
-  const actionDropView = async (database: string, view: string) => {
-    setConfirmTitle(`Drop View ${view}`);
-    setConfirmDescription(
-      `Are you sure you want to drop the view ${database}.${view}? This action cannot be undone.`
-    );
-
-    setConfirmAction(() => async () => {
-      try {
-        await runQuery(`DROP VIEW ${database}.${view}`);
-        toast.success(`Dropped view ${view}`);
-        refreshData();
-      } catch (error) {
-        toast.error(`Failed to drop view ${view}`);
-      }
-    });
-    setIsConfirmDialogOpen(true); // ✅ Opens the dialog for views
-  };
-
-  const contextMenuOptions = useMemo(
-    () => ({
-      database: [
-        {
-          label: "View Info",
-          icon: <Eye className="w-4 h-4 mr-2" />,
-          action: () => openInfoTab(node.name, ""),
-        },
-        {
-          label: "Create Table",
-          icon: <FilePlus className="w-4 h-4 mr-2" />,
-          action: () => openCreateTableModal(node.name),
-        },
-        {
-          label: "Create Database",
-          icon: <FolderPlus className="w-4 h-4 mr-2" />,
-          action: () => openCreateDatabaseModal(),
-        },
-        {
-          label: "Delete",
-          icon: <Trash className="w-4 h-4 mr-2" />,
-          action: () => actionDropDatabase(node.name),
-        },
-      ],
-      table: [
-        {
-          label: "Query Table",
-          icon: <TerminalIcon className="w-4 h-4 mr-2" />,
-          action: parentDatabaseName
-            ? handleQueryData(parentDatabaseName, node.name)
-            : () => {
-                toast.error("Parent database name is undefined.");
-              },
-        },
-        {
-          label: "Delete",
-          icon: <Trash className="w-4 h-4 mr-2" />,
-          action: parentDatabaseName
-            ? () => actionDropTable(parentDatabaseName, node.name)
-            : () => {
-                toast.error("Parent database name is undefined.");
-              },
-        },
-      ],
-      view: [
-        {
-          label: "Query View",
-          icon: <TerminalIcon className="w-4 h-4 mr-2" />,
-          action: parentDatabaseName
-            ? handleQueryData(parentDatabaseName, node.name)
-            : () => {
-                toast.error("Parent database name is undefined.");
-              },
-        },
-        {
-          label: "Delete",
-          icon: <Trash className="w-4 h-4 mr-2" />,
-          action: parentDatabaseName
-            ? () => actionDropView(parentDatabaseName, node.name)
-            : () => {
-                toast.error("Parent database name is undefined.");
-              },
-        },
-      ],
-    }),
-    [
-      parentDatabaseName,
-      node.name,
-      handleQueryData,
-      actionDropDatabase,
-      actionDropTable,
-      actionDropView,
-    ]
-  );
-
-  const matchesSearch = node.name
-    .toLowerCase()
-    .includes(searchTerm.toLowerCase());
-  const childrenMatchSearch = node.children?.some(
-    (child) =>
-      child.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      child.children?.some((grandchild) =>
-        grandchild.name.toLowerCase().includes(searchTerm.toLowerCase())
+  // Filter children by search term
+  const filteredChildren = hasChildren
+    ? node.children.filter(
+        (child) =>
+          !searchTerm ||
+          child.name.toLowerCase().includes(searchTerm.toLowerCase())
       )
-  );
+    : [];
 
-  const shouldRender = !searchTerm || matchesSearch || childrenMatchSearch;
+  if (searchTerm && !matchesSearch && filteredChildren.length === 0) {
+    return null;
+  }
 
-  return shouldRender ? (
-    <>
-      <ContextMenu>
-        <ContextMenuTrigger>
-          <div
-            className={`flex items-center py-1 px-2 hover:bg-secondary hover:rounded-md cursor-pointer truncate
-            ${level > 0 ? "ml-4" : ""}`}
-            onClick={toggleOpen}
-          >
-            <div className="flex-grow flex items-center">
-              {node.children ? (
-                isOpen ? (
-                  <ChevronDown className="w-4 h-4 mr-1" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 mr-1" />
-                )
-              ) : (
-                <div className="w-6 mr-1" />
-              )}
-              {getIcon}
-              <div
-                onClick={() => {
-                  if (node.type === "table" || node.type === "view") {
-                    // Using non-null assertion since parentDatabaseName should be defined for table/view
-                    if (parentDatabaseName) {
-                      openInfoTab(parentDatabaseName, node.name);
-                    } else {
-                      toast.error("Parent database name is undefined.");
-                    }
-                  }
-                }}
-                className="text-xs"
-              >
-                <p className="truncate"> {node.name}</p>
-              </div>
-            </div>
-            <div className="flex items-center">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-6 w-6">
-                    <MoreVertical className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {contextMenuOptions[
-                    node.type as keyof typeof contextMenuOptions
-                  ].map((option, index) => (
-                    <DropdownMenuItem key={index} onSelect={option.action}>
-                      {option.icon}
-                      {option.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          {contextMenuOptions[node.type as keyof typeof contextMenuOptions].map(
-            (option, index) => (
-              <ContextMenuItem key={index} onSelect={option.action}>
-                {option.icon}
-                {option.label}
-              </ContextMenuItem>
-            )
-          )}
-        </ContextMenuContent>
-        {(isOpen || searchTerm) && node.children && (
-          <div>
-            {node.children.length > 0 ? (
-              node.children.map((child, index) => (
-                <TreeNode
-                  key={index}
-                  node={child}
-                  level={level + 1}
-                  searchTerm={searchTerm}
-                  parentDatabaseName={
-                    node.type === "database" ? node.name : parentDatabaseName
-                  }
-                  refreshData={refreshData}
-                />
-              ))
+  return (
+    <div className="select-none">
+      <div
+        className={`flex items-center py-1 px-2 hover:bg-white/5 rounded-md cursor-pointer transition-colors group ${
+          matchesSearch && searchTerm ? "bg-yellow-500/10" : ""
+        }`}
+        style={{ paddingLeft: `${level * 16 + 8}px` }}
+      >
+        {/* Expand/Collapse */}
+        {hasChildren ? (
+          <button onClick={handleToggle} className="p-1 hover:bg-white/10 rounded">
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
             ) : (
-              <div className="ml-6 pl-4 text-xs italic text-muted-foreground">
-                Nothing to show
-              </div>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
             )}
-          </div>
+          </button>
+        ) : (
+          <span className="w-6" />
         )}
-      </ContextMenu>
-      <ConfirmationDialog
-        isOpen={isConfirmDialogOpen}
-        variant="danger"
-        onClose={() => setIsConfirmDialogOpen(false)}
-        onConfirm={async () => {
-          await confirmAction();
-          setIsConfirmDialogOpen(false);
-        }}
-        title={confirmTitle}
-        description={confirmDescription}
-        confirmText="Delete"
-        cancelText="Cancel"
-      />
-    </>
-  ) : null;
+
+        {/* Icon */}
+        {isDatabase ? (
+          <Database className="w-4 h-4 text-blue-400 mr-2" />
+        ) : (
+          <Table2 className="w-4 h-4 text-green-400 mr-2" />
+        )}
+
+        {/* Name */}
+        <span
+          className="flex-1 text-sm text-gray-200 truncate"
+          onClick={handleViewInfo}
+          title={node.name}
+        >
+          {node.name}
+        </span>
+
+        {/* Actions Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleViewInfo}>
+              <Info className="w-4 h-4 mr-2" />
+              View Information
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleNewQuery}>
+              <TerminalIcon className="w-4 h-4 mr-2" />
+              New Query
+            </DropdownMenuItem>
+            
+            {isDatabase && (
+              <>
+                <PermissionGuard requiredPermission="CREATE TABLE" showTooltip>
+                  <DropdownMenuItem onClick={() => openCreateTableModal(node.name)}>
+                    <FilePlus className="w-4 h-4 mr-2" />
+                    Create Table
+                  </DropdownMenuItem>
+                </PermissionGuard>
+                <PermissionGuard requiredPermission="INSERT" showTooltip>
+                  <DropdownMenuItem onClick={() => openUploadFileModal(node.name)}>
+                    <FileUp className="w-4 h-4 mr-2" />
+                    Upload File
+                  </DropdownMenuItem>
+                </PermissionGuard>
+              </>
+            )}
+
+            {!isDatabase && (
+              <>
+                <DropdownMenuItem
+                  onClick={() => {
+                    addTab({
+                      id: genTabId(),
+                      type: "sql",
+                      title: `Describe ${node.name}`,
+                      content: `DESCRIBE TABLE ${databaseName}.${node.name}`,
+                    });
+                  }}
+                >
+                  <FileType className="w-4 h-4 mr-2" />
+                  Describe Table
+                </DropdownMenuItem>
+                <PermissionGuard requiredPermission="DROP TABLE" showTooltip>
+                  <DropdownMenuItem
+                    className="text-red-500"
+                    onClick={() => {
+                      addTab({
+                        id: genTabId(),
+                        type: "sql",
+                        title: `Drop ${node.name}`,
+                        content: `-- WARNING: This will permanently delete the table!\nDROP TABLE ${databaseName}.${node.name}`,
+                      });
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Drop Table
+                  </DropdownMenuItem>
+                </PermissionGuard>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Children */}
+      {isExpanded && filteredChildren.length > 0 && (
+        <div>
+          {filteredChildren.map((child) => (
+            <TreeNode
+              key={`${databaseName}-${child.name}`}
+              node={child}
+              level={level + 1}
+              searchTerm={searchTerm}
+              parentDatabaseName={databaseName}
+              refreshData={refreshData}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default TreeNode;

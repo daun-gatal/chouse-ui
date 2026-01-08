@@ -1,0 +1,87 @@
+# Docker Compose for ClickHouse Studio
+# Includes both ClickHouse server and the UI
+
+version: '3.8'
+
+services:
+  # ============================================
+  # ClickHouse Database Server
+  # ============================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    container_name: clickhouse
+    hostname: clickhouse
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native TCP interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      # Optional: Mount custom config
+      # - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/custom.xml
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse123}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - clickhouse-network
+
+  # ============================================
+  # ClickHouse Studio Application
+  # ============================================
+  clickhouse-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-1.6.4}
+        COMMIT_SHA: ${COMMIT_SHA:-dev}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+    container_name: clickhouse-studio
+    ports:
+      - "5521:5521"
+    environment:
+      NODE_ENV: production
+      PORT: 5521
+      STATIC_PATH: /app/dist
+      # Session configuration
+      SESSION_TTL: ${SESSION_TTL:-3600000}
+      # CORS settings
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5521/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - clickhouse-network
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  clickhouse-network:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  clickhouse_data:
+    driver: local
+  clickhouse_logs:
+    driver: local
+

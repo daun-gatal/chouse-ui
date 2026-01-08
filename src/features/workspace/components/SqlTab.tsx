@@ -20,7 +20,8 @@ import EmptyQueryResult from "./EmptyQueryResult";
 import StatisticsDisplay from "./StatisticsDisplay";
 
 // Store
-import useAppStore from "@/store";
+import { useWorkspaceStore } from "@/stores";
+import { useDatabases } from "@/hooks";
 
 // Types
 interface SqlTabProps {
@@ -28,11 +29,11 @@ interface SqlTabProps {
 }
 
 interface IRow {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Format complex values for display in the grid
-const formatCellValue = (value: any): string => {
+const formatCellValue = (value: unknown): string => {
   if (value === null || value === undefined) {
     return "<em>null</em>";
   }
@@ -55,7 +56,8 @@ const CustomCellRenderer = (props: ICellRendererParams) => {
  * query results, metadata, and statistics tabs on the bottom.
  */
 const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
-  const { getTabById, runQuery, fetchDatabaseInfo } = useAppStore();
+  const { getTabById, runQuery } = useWorkspaceStore();
+  const { refetch: refetchDatabases } = useDatabases();
   const tab = getTabById(tabId);
   const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState<string>("results");
@@ -94,7 +96,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         const result = await runQuery(query, tabId);
 
         if (!result.error && shouldRefresh) {
-          await fetchDatabaseInfo();
+          await refetchDatabases();
           toast.success("Data Explorer refreshed due to schema change");
         }
       } catch (error) {
@@ -104,18 +106,18 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         );
       }
     },
-    [runQuery, tabId, fetchDatabaseInfo]
+    [runQuery, tabId, refetchDatabases]
   );
 
   // Process result data into grid-compatible format
   useMemo(() => {
     if (tab?.result?.data?.length && tab?.result?.meta?.length) {
-      const colDefs: ColDef<IRow>[] = tab.result.meta.map((col: any) => ({
+      const colDefs: ColDef<IRow>[] = tab.result.meta.map((col: { name: string; type: string }) => ({
         headerName: col.name,
-        valueGetter: (param: any) => param.data[col.name],
+        valueGetter: (param: { data: IRow }) => param.data[col.name],
       }));
 
-      setRowData(tab.result.data);
+      setRowData(tab.result.data as IRow[]);
       setColumnDefs(colDefs);
     } else {
       setColumnDefs([]);

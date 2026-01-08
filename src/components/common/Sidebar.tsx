@@ -19,7 +19,7 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip";
-import useAppStore from "@/store";
+import { useAuthStore } from "@/stores";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
@@ -77,22 +77,22 @@ const SidebarItem = ({ icon: Icon, label, to, isActive, isCollapsed }: SidebarIt
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { credential, clearCredentials, isAdmin } = useAppStore();
+  const { username, logout, isAdmin } = useAuthStore();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const Logo = withBasePath("logo.svg");
 
   const sidebarItems = [
-    ...(isAdmin ? [{ icon: LayoutDashboard, label: "Overview", to: "/" }] : []), // Admin Only
-    { icon: Database, label: "Explorer", to: "/explorer" }, // Everyone
-    ...(isAdmin ? [{ icon: Activity, label: "Metrics", to: "/metrics" }] : []), // Admin Only
-    { icon: FileText, label: "Logs", to: "/logs" }, // Everyone
-    ...(isAdmin ? [{ icon: Shield, label: "Admin", to: "/admin" }] : []), // Admin Only
-    { icon: Settings, label: "Settings", to: "/settings" }, // Everyone (with internal guards)
+    ...(isAdmin ? [{ icon: LayoutDashboard, label: "Overview", to: "/" }] : []),
+    { icon: Database, label: "Explorer", to: "/explorer" },
+    ...(isAdmin ? [{ icon: Activity, label: "Metrics", to: "/metrics" }] : []),
+    { icon: FileText, label: "Logs", to: "/logs" },
+    ...(isAdmin ? [{ icon: Shield, label: "Admin", to: "/admin" }] : []),
+    { icon: Settings, label: "Settings", to: "/settings" },
   ];
 
-  const handleLogout = () => {
-    clearCredentials();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 
@@ -118,7 +118,7 @@ export default function Sidebar() {
         {!isCollapsed && (
           <div className="flex flex-col overflow-hidden">
             <span className="font-bold text-lg bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent truncate">
-              ClickHouse UI
+              ClickHouse Studio
             </span>
             <span className="text-xs text-gray-500 font-medium truncate">
               ClickHouse Client
@@ -129,7 +129,6 @@ export default function Sidebar() {
 
       <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-hide">
         <nav className="flex flex-col gap-2">
-
           {!isCollapsed && <div className="px-2 mb-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">Menu</div>}
 
           {sidebarItems.map((item) => (
@@ -155,8 +154,8 @@ export default function Sidebar() {
                 <Server className="h-4 w-4 text-green-400" />
               </div>
               <div className="flex flex-col overflow-hidden">
-                <span className="text-sm font-medium text-white truncate w-32" title={credential?.username}>
-                  {credential?.username || "Connected"}
+                <span className="text-sm font-medium text-white truncate w-32" title={username || undefined}>
+                  {username || "Connected"}
                 </span>
                 <span className="text-xs text-green-400 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
@@ -173,7 +172,7 @@ export default function Sidebar() {
                     <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-green-400 border border-black" />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="right">Connected as {credential?.username}</TooltipContent>
+                <TooltipContent side="right">Connected as {username}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}

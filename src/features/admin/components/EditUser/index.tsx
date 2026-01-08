@@ -1,323 +1,418 @@
 import React, { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Check, Shield, Network } from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form } from "@/components/ui/form";
+import { motion } from "framer-motion";
+import { UserCog, ArrowLeft, Loader2, Shield, Key, Trash2, AlertTriangle } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useForm } from "react-hook-form";
-import useAppStore from "@/store";
-import DatabaseRolesSection from "../CreateUser/DatabaseRolesSection";
-import AccessControlSection from "../CreateUser/AccessControlSection";
-import useMetadata from "../CreateUser/hooks/useMetadata";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GlassCard, GlassCardContent } from "@/components/ui/glass-card";
+import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useExecuteQuery, useUserDetails } from "@/hooks";
 
-import { UserData } from "@/features/admin/types";
+// Predefined role templates (same as CreateUser)
+const ROLE_TEMPLATES = {
+  admin: {
+    name: "Admin",
+    description: "Full access to all databases and system operations",
+    icon: "🛡️",
+    color: "text-red-400",
+    bgColor: "bg-red-500/20",
+    borderColor: "border-red-500/50",
+  },
+  developer: {
+    name: "Developer",
+    description: "Read/write access with DDL capabilities",
+    icon: "👨‍💻",
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/20",
+    borderColor: "border-blue-500/50",
+  },
+  readWrite: {
+    name: "Read-Write",
+    description: "Read and write data, no schema changes",
+    icon: "📝",
+    color: "text-green-400",
+    bgColor: "bg-green-500/20",
+    borderColor: "border-green-500/50",
+  },
+  readOnly: {
+    name: "Read Only",
+    description: "Query data only, no modifications",
+    icon: "👁️",
+    color: "text-purple-400",
+    bgColor: "bg-purple-500/20",
+    borderColor: "border-purple-500/50",
+  },
+};
 
-interface EditUserProps {
-    user: UserData | null;
-    isOpen: boolean;
-    onClose: () => void;
-    onUserUpdated: () => void;
-}
+type RoleTemplate = keyof typeof ROLE_TEMPLATES;
 
-const STEPS = [
-    { id: 0, title: "Role & Scope", icon: Shield },
-    { id: 1, title: "Network", icon: Network },
-    { id: 2, title: "Review", icon: Check },
-];
+const EditUser: React.FC = () => {
+  const navigate = useNavigate();
+  const { username } = useParams<{ username: string }>();
+  const executeQuery = useExecuteQuery();
+  const { data: userDetails, isLoading: loadingDetails, refetch } = useUserDetails(username || "");
 
-const EditUser: React.FC<EditUserProps> = ({ user, isOpen, onClose, onUserUpdated }) => {
-    const [currentStep, setCurrentStep] = useState(0);
-    const [error, setError] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [accessPreset, setAccessPreset] = useState("read_only");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [currentGrants, setCurrentGrants] = useState<string[]>([]);
 
-    const form = useForm({
-        defaultValues: {
-            grantDatabases: [] as string[],
-            defaultRole: "",
-            defaultDatabase: "",
-            hostType: "ANY",
-            hostValue: "",
-            validUntil: undefined as Date | undefined,
-        },
-    });
+  // Fetch current grants for the user
+  useEffect(() => {
+    if (username) {
+      executeQuery.mutateAsync({
+        query: `SELECT access_type FROM system.grants WHERE user_name = '${username}'`,
+      }).then((result) => {
+        const grants = (result.data as { access_type: string }[]).map(g => g.access_type);
+        setCurrentGrants(grants);
+      }).catch(() => {
+        // Ignore errors
+      });
+    }
+  }, [username]);
 
-    // Safe Metadata Hook
-    const metadata = useMetadata(isOpen);
-    const { runQuery, credential } = useAppStore();
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    useEffect(() => {
-        if (isOpen && user) {
-            setCurrentStep(0);
+    if (!newPassword.trim()) {
+      toast.error("Please enter a new password");
+      return;
+    }
 
-            // Map Host Access
-            let hType = "ANY";
-            let hValue = "";
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
 
-            if (user.host_ip && user.host_ip.length > 0) {
-                hType = "IP";
-                hValue = user.host_ip.join(", ");
-            } else if (user.host_names && user.host_names.length > 0) {
-                hType = "NAME";
-                hValue = user.host_names.join(", ");
-            } else if (user.host_names_regexp && user.host_names_regexp.length > 0) {
-                hType = "REGEXP";
-                hValue = user.host_names_regexp.join(", ");
-            } else if (user.host_names_like && user.host_names_like.length > 0) {
-                hType = "LIKE";
-                hValue = user.host_names_like.join(", ");
-            }
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
 
-            form.reset({
-                grantDatabases: [],
-                defaultRole: "",
-                defaultDatabase: user.default_database || "",
-                hostType: hType,
-                hostValue: hValue,
-                validUntil: undefined, // TODO: Parse existing profile valid_until if needed, but complex
-            });
-            // Defer logic to avoid render loop
-            setTimeout(() => determinePresetFromGrants(user.grants || []), 0);
-        }
-    }, [isOpen, user]);
+    setIsUpdatingPassword(true);
 
-    const determinePresetFromGrants = (grants: string[]) => {
-        const grantsString = grants.join(" ").toUpperCase();
+    try {
+      const escapedPassword = newPassword.replace(/'/g, "\\'");
+      await executeQuery.mutateAsync({
+        query: `ALTER USER '${username}' IDENTIFIED BY '${escapedPassword}'`,
+      });
+      toast.success("Password updated successfully");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      console.error("Failed to update password:", error);
+      toast.error(`Failed to update password: ${(error as Error).message}`);
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
 
-        if (/GRANT\s+(ALL|ALL\s+PRIVILEGES)\s+ON\s+\*\.\*/.test(grantsString) ||
-            grantsString.includes("ROLE ADMIN") ||
-            (grantsString.includes("CREATE USER") && grantsString.includes("DROP USER"))) {
-            setAccessPreset("admin");
-            form.setValue("grantDatabases", []);
-        } else if (grantsString.includes("CREATE") && grantsString.includes("DROP")) {
-            setAccessPreset("developer");
-            extractDatabasesFromGrants(grants);
-        } else if (grantsString.includes("INSERT")) {
-            setAccessPreset("read_write");
-            extractDatabasesFromGrants(grants);
-        } else {
-            setAccessPreset("read_only");
-            extractDatabasesFromGrants(grants);
-        }
-    };
+  const handleDeleteUser = async () => {
+    setIsDeleting(true);
 
-    const extractDatabasesFromGrants = (grants: string[]) => {
-        const dbs = new Set<string>();
-        grants.forEach(g => {
-            const match = g.match(/ON\s+"?([a-zA-Z0-9_]+)"?\.(\*|\S+)/);
-            if (match && match[1] && match[1] !== '*') {
-                dbs.add(match[1]);
-            }
-        });
-        form.setValue("grantDatabases", Array.from(dbs));
-    };
+    try {
+      await executeQuery.mutateAsync({
+        query: `DROP USER IF EXISTS '${username}'`,
+      });
+      toast.success(`User "${username}" deleted successfully`);
+      navigate("/admin");
+    } catch (error) {
+      console.error("Failed to delete user:", error);
+      toast.error(`Failed to delete user: ${(error as Error).message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
-    const getHostQuery = (username: string, data: any) => {
-        const onClusterClause = credential?.isDistributed && credential?.clusterName ? ` ON CLUSTER '${credential.clusterName}'` : "";
-        const prefix = `ALTER USER ${username}${onClusterClause}`;
+  const handleApplyRole = async (role: RoleTemplate) => {
+    try {
+      // First revoke all existing grants
+      await executeQuery.mutateAsync({
+        query: `REVOKE ALL ON *.* FROM '${username}'`,
+      });
 
-        if (!data.hostType || data.hostType === "ANY") return `${prefix} HOST ANY`;
-        if (data.hostType === "LOCAL") return `${prefix} HOST LOCAL`;
+      // Then apply new grants based on role
+      switch (role) {
+        case "admin":
+          await executeQuery.mutateAsync({
+            query: `GRANT ALL ON *.* TO '${username}' WITH GRANT OPTION`,
+          });
+          break;
+        case "developer":
+          await executeQuery.mutateAsync({
+            query: `GRANT SELECT, INSERT, CREATE TABLE, DROP TABLE, ALTER TABLE ON *.* TO '${username}'`,
+          });
+          break;
+        case "readWrite":
+          await executeQuery.mutateAsync({
+            query: `GRANT SELECT, INSERT ON *.* TO '${username}'`,
+          });
+          break;
+        case "readOnly":
+          await executeQuery.mutateAsync({
+            query: `GRANT SELECT ON *.* TO '${username}'`,
+          });
+          break;
+      }
 
-        // Sanitize and split values
-        const values = data.hostValue.split(',').map((v: string) => `'${v.trim()}'`).join(", ");
+      toast.success(`Applied ${ROLE_TEMPLATES[role].name} role to ${username}`);
+      
+      // Refresh grants
+      const result = await executeQuery.mutateAsync({
+        query: `SELECT access_type FROM system.grants WHERE user_name = '${username}'`,
+      });
+      const grants = (result.data as { access_type: string }[]).map(g => g.access_type);
+      setCurrentGrants(grants);
+    } catch (error) {
+      console.error("Failed to apply role:", error);
+      toast.error(`Failed to apply role: ${(error as Error).message}`);
+    }
+  };
 
-        if (data.hostType === "IP") return `${prefix} HOST IP ${values}`;
-        if (data.hostType === "NAME") return `${prefix} HOST NAME ${values}`;
-        if (data.hostType === "REGEXP") return `${prefix} HOST REGEXP ${values}`;
-        if (data.hostType === "LIKE") return `${prefix} HOST LIKE ${values}`;
-
-        return `${prefix} HOST ANY`;
-    };
-
-    const onSubmit = async () => {
-        if (!user) return;
-        const data = form.getValues();
-
-        try {
-            setError("");
-            setLoading(true);
-
-            if (accessPreset !== "admin" && data.grantDatabases.length === 0) {
-                setError("Please select at least one database for this role.");
-                setLoading(false);
-                return;
-            }
-
-            // 1. Host Access
-            const hostQuery = getHostQuery(user.name, data);
-            await runQuery(hostQuery);
-
-            const onClusterClause = credential?.isDistributed && credential?.clusterName ? ` ON CLUSTER '${credential.clusterName}'` : "";
-
-            // 2. Refresh Grants (Revoke All + Re-Grant)
-            await runQuery(`REVOKE ON CLUSTER '${credential?.clusterName}' ALL ON *.* FROM ${user.name}`);
-            // Wait, logic above: if not distributed, empty string. But here I hardcoded it with check?
-            // Let's be consistent.
-            // Actually REVOKE grammar: REVOKE [ON CLUSTER cluster] privileges...
-
-            const revokeQuery = credential?.isDistributed && credential?.clusterName
-                ? `REVOKE ON CLUSTER '${credential.clusterName}' ALL ON *.* FROM ${user.name}`
-                : `REVOKE ALL ON *.* FROM ${user.name}`;
-
-            await runQuery(revokeQuery);
-
-            const grantQueries = buildGrantQueries(user.name, data, accessPreset);
-            for (const query of grantQueries) {
-                const result = await runQuery(query);
-                if (result.error) throw new Error(`Failed to grant privileges: ${result.error}`);
-            }
-
-            // 3. Settings
-            const isReadOnly = accessPreset === "read_only" ? 1 : 0;
-            const alterSettingsQuery = credential?.isDistributed && credential?.clusterName
-                ? `ALTER USER ${user.name} ON CLUSTER '${credential.clusterName}' SETTINGS READONLY=${isReadOnly}`
-                : `ALTER USER ${user.name} SETTINGS READONLY=${isReadOnly}`;
-
-            await runQuery(alterSettingsQuery);
-
-            toast.success(`User ${user.name} updated successfully`);
-            onUserUpdated();
-            onClose();
-        } catch (err: any) {
-            setError(err.message || "Failed to update user");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const buildGrantQueries = (username: string, data: any, preset: string) => {
-        const queries: string[] = [];
-        const onClusterClause = credential?.isDistributed && credential?.clusterName ? ` ON CLUSTER '${credential.clusterName}'` : "";
-
-        if (preset === "admin") {
-            queries.push(`GRANT${onClusterClause} ALL ON *.* TO ${username} WITH GRANT OPTION`);
-            return queries;
-        }
-        const dbs = data.grantDatabases as string[];
-        for (const db of dbs) {
-            if (preset === "developer") queries.push(`GRANT${onClusterClause} CREATE, DROP, ALTER, SELECT, INSERT, DELETE, TRUNCATE, OPTIMIZE ON ${db}.* TO ${username}`);
-            else if (preset === "read_write") queries.push(`GRANT${onClusterClause} SELECT, INSERT ON ${db}.* TO ${username}`);
-            else if (preset === "read_only") queries.push(`GRANT${onClusterClause} SELECT ON ${db}.* TO ${username}`);
-        }
-
-        // Default access to exceptions for everyone
-        queries.push(`GRANT${onClusterClause} SELECT ON system.query_log TO ${username}`);
-        return queries;
-    };
-
-    if (!user) return null;
-
+  if (loadingDetails) {
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-3xl bg-[#0f1115] border-white/10 text-white max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 shadow-2xl shadow-black/50">
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+      </div>
+    );
+  }
 
-                {/* Header */}
-                <DialogHeader className="p-6 pb-4 border-b border-white/5 bg-black/20">
-                    <div className="flex justify-between items-center mb-4">
-                        <DialogTitle className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-                            Edit User: {user.name}
-                        </DialogTitle>
-                    </div>
-                    <div className="flex items-center w-full max-w-md mx-auto relative">
-                        <div className="absolute top-1/2 left-0 w-full h-[2px] bg-white/10 -z-10" />
-                        <div className="absolute top-1/2 left-0 h-[2px] bg-purple-500 -z-10 transition-all duration-300" style={{ width: `${(currentStep / (STEPS.length - 1)) * 100}%` }} />
-                        {STEPS.map((s, idx) => {
-                            const Icon = s.icon;
-                            return (
-                                <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 bg-[#0f1115] ${idx === currentStep ? 'border-purple-500 text-purple-400' : idx < currentStep ? 'border-green-500 text-green-400' : 'border-white/10 text-gray-600'}`}>
-                                        {idx < currentStep ? <Check className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
-                                    </div>
-                                    <span className="text-xs font-medium text-gray-500">{s.title}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </DialogHeader>
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="container mx-auto p-6 space-y-6 max-w-4xl"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex items-center gap-3">
+            <UserCog className="h-6 w-6 text-blue-400" />
+            <div>
+              <h1 className="text-2xl font-bold text-white">Edit User</h1>
+              <p className="text-gray-400 text-sm">{username}</p>
+            </div>
+          </div>
+        </div>
 
-                <div className="flex-1 overflow-y-auto p-8 min-h-[400px]">
-                    <Form {...form}>
-                        <form className="space-y-6 h-full">
-                            {/* Step 0: Role & Scope */}
-                            {currentStep === 0 && (
-                                <div className="space-y-8">
-                                    <RadioGroup value={accessPreset} onValueChange={setAccessPreset} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        {['admin', 'developer', 'read_write', 'read_only'].map(preset => (
-                                            <Label key={preset} className={`relative flex flex-col gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 bg-white/5 hover:bg-white/10 ${accessPreset === preset ? 'border-purple-500 bg-purple-500/10' : 'border-white/5'}`}>
-                                                <RadioGroupItem value={preset} className="sr-only" />
-                                                <div className="capitalize font-bold text-white">{preset.replace('_', ' ')}</div>
-                                            </Label>
-                                        ))}
-                                    </RadioGroup>
-                                    {accessPreset !== 'admin' && (
-                                        <GlassCard>
-                                            <GlassCardContent>
-                                                <DatabaseRolesSection form={form} roles={[]} databases={metadata.databases} />
-                                            </GlassCardContent>
-                                        </GlassCard>
-                                    )}
-                                </div>
-                            )}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="sm" className="gap-2">
+              <Trash2 className="h-4 w-4" />
+              Delete User
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-500" />
+                Delete User
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete user <strong>{username}</strong>? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteUser}
+                className="bg-red-600 hover:bg-red-700"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
 
-                            {/* Step 1: Network */}
-                            {currentStep === 1 && (
-                                <div className="max-w-2xl mx-auto">
-                                    <GlassCard>
-                                        <GlassCardContent>
-                                            <AccessControlSection form={form} />
-                                        </GlassCardContent>
-                                    </GlassCard>
-                                </div>
-                            )}
+      {/* User Info Card */}
+      <GlassCard>
+        <GlassCardHeader>
+          <GlassCardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-purple-400" />
+            User Information
+          </GlassCardTitle>
+        </GlassCardHeader>
+        <GlassCardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-3 rounded-lg bg-white/5">
+              <div className="text-xs text-gray-400 mb-1">Username</div>
+              <div className="text-white font-medium">{username}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-white/5">
+              <div className="text-xs text-gray-400 mb-1">Host IP</div>
+              <div className="text-white font-medium">{userDetails?.host_ip || "Any"}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-white/5">
+              <div className="text-xs text-gray-400 mb-1">Roles</div>
+              <div className="text-white font-medium">
+                {userDetails?.default_roles_all ? "All Roles" : userDetails?.default_roles_list || "None"}
+              </div>
+            </div>
+            <div className="p-3 rounded-lg bg-white/5">
+              <div className="text-xs text-gray-400 mb-1">Current Grants</div>
+              <div className="text-white font-medium">{currentGrants.length} permissions</div>
+            </div>
+          </div>
 
-                            {/* Step 2: Review */}
-                            {currentStep === 2 && (
-                                <div className="max-w-2xl mx-auto space-y-8">
-                                    <div className="space-y-4">
-                                        <Label>Updates Preview (SQL)</Label>
-                                        <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black/50 shadow-inner">
-                                            <pre className="p-6 text-sm font-mono text-green-400 overflow-x-auto whitespace-pre-wrap leading-relaxed">
-                                                {getHostQuery(user.name, form.getValues())};
-                                                {'\n'}
-                                                REVOKE ALL ON *.* FROM {user.name};
-                                                {'\n'}
-                                                {buildGrantQueries(user.name, form.getValues(), accessPreset).join(';\n')};
-                                                {accessPreset === 'read_only' ? `\n\nALTER USER ${user.name} SETTINGS READONLY=1;` : `\n\nALTER USER ${user.name} SETTINGS READONLY=0;`}
-                                            </pre>
-                                        </div>
-                                    </div>
-                                    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-                                </div>
-                            )}
-                        </form>
-                    </Form>
+          {/* Current permissions */}
+          <div className="mt-4">
+            <div className="text-sm text-gray-400 mb-2">Current Permissions:</div>
+            <div className="flex flex-wrap gap-2">
+              {currentGrants.length === 0 ? (
+                <span className="text-gray-500 text-sm italic">No permissions granted</span>
+              ) : (
+                currentGrants.slice(0, 10).map((grant, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-1 rounded text-xs bg-white/10 text-gray-300 border border-white/10"
+                  >
+                    {grant}
+                  </span>
+                ))
+              )}
+              {currentGrants.length > 10 && (
+                <span className="px-2 py-1 rounded text-xs bg-white/10 text-gray-400">
+                  +{currentGrants.length - 10} more
+                </span>
+              )}
+            </div>
+          </div>
+        </GlassCardContent>
+      </GlassCard>
+
+      {/* Tabs */}
+      <Tabs defaultValue="role" className="space-y-4">
+        <TabsList className="bg-white/5 border border-white/10 p-1">
+          <TabsTrigger value="role" className="data-[state=active]:bg-purple-500/20">
+            <Shield className="h-4 w-4 mr-2" />
+            Change Role
+          </TabsTrigger>
+          <TabsTrigger value="password" className="data-[state=active]:bg-blue-500/20">
+            <Key className="h-4 w-4 mr-2" />
+            Change Password
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="role">
+          <GlassCard>
+            <GlassCardHeader>
+              <GlassCardTitle>Apply Role Template</GlassCardTitle>
+            </GlassCardHeader>
+            <GlassCardContent>
+              <p className="text-sm text-gray-400 mb-4">
+                Select a role template to apply. This will revoke existing permissions and apply new ones.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {(Object.entries(ROLE_TEMPLATES) as [RoleTemplate, typeof ROLE_TEMPLATES.admin][]).map(
+                  ([key, role]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleApplyRole(key)}
+                      className={`p-4 rounded-lg border-2 transition-all text-left hover:scale-105 ${role.bgColor} ${role.borderColor}`}
+                    >
+                      <div className="text-2xl mb-2">{role.icon}</div>
+                      <div className={`font-semibold ${role.color}`}>{role.name}</div>
+                      <div className="text-xs text-gray-400 mt-1">{role.description}</div>
+                    </button>
+                  )
+                )}
+              </div>
+            </GlassCardContent>
+          </GlassCard>
+        </TabsContent>
+
+        <TabsContent value="password">
+          <GlassCard>
+            <GlassCardHeader>
+              <GlassCardTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5 text-yellow-400" />
+                Change Password
+              </GlassCardTitle>
+            </GlassCardHeader>
+            <GlassCardContent>
+              <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-md">
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">New Password</Label>
+                  <Input
+                    id="new-password"
+                    type={showPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="bg-white/5 border-white/10"
+                  />
                 </div>
 
-                <DialogFooter className="p-6 border-t border-white/10 bg-white/5 flex gap-3">
-                    <Button variant="ghost" onClick={() => setCurrentStep(prev => Math.max(prev - 1, 0))} disabled={currentStep === 0 || loading} className="text-gray-400 hover:text-white">Back</Button>
-                    {currentStep < 2 ? (
-                        <Button onClick={() => setCurrentStep(prev => Math.min(prev + 1, STEPS.length - 1))} className="bg-white text-black hover:bg-gray-200">Next</Button>
-                    ) : (
-                        <Button onClick={form.handleSubmit(onSubmit)} disabled={loading} className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                            {loading ? "Updating..." : "Update User"}
-                        </Button>
-                    )}
-                </DialogFooter>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">Confirm New Password</Label>
+                  <Input
+                    id="confirm-password"
+                    type={showPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="bg-white/5 border-white/10"
+                  />
+                </div>
 
-            </DialogContent>
-        </Dialog>
-    );
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="show-password"
+                    checked={showPassword}
+                    onChange={(e) => setShowPassword(e.target.checked)}
+                    className="rounded"
+                  />
+                  <Label htmlFor="show-password" className="text-sm text-gray-400 cursor-pointer">
+                    Show password
+                  </Label>
+                </div>
+
+                <Button type="submit" disabled={isUpdatingPassword}>
+                  {isUpdatingPassword ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    "Update Password"
+                  )}
+                </Button>
+              </form>
+            </GlassCardContent>
+          </GlassCard>
+        </TabsContent>
+      </Tabs>
+    </motion.div>
+  );
 };
 
 export default EditUser;

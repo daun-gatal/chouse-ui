@@ -1,377 +1,267 @@
-// components/CreateTable/CreateTable.tsx
-import { useState, useEffect } from "react";
-import { z } from "zod";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import React, { useState } from "react";
 import { toast } from "sonner";
-import useAppStore from "@/store";
+import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useExplorerStore } from "@/stores";
+import { useDatabases, useExecuteQuery } from "@/hooks";
 
-import ConfirmationDialog from "@/components/common/ConfirmationDialog";
-import ManualCreationForm from "./ManualCreationForm";
-import { Field } from "./FieldManagement";
+interface Column {
+  name: string;
+  type: string;
+}
 
-const TIME_FIELDS = ["Date", "DateTime"] as const;
+const COMMON_TYPES = [
+  "String",
+  "Int32",
+  "Int64",
+  "UInt32",
+  "UInt64",
+  "Float32",
+  "Float64",
+  "DateTime",
+  "Date",
+  "Bool",
+  "UUID",
+  "Array(String)",
+  "Nullable(String)",
+];
 
-// Schema for field validation
-const fieldSchema = z.object({
-  name: z.string().min(1, "Name is required").refine(
-    (val) => !/\s/.test(val),
-    "Name cannot contain spaces"
-  ),
-  type: z.string().min(1, "Type is required"),
-  nullable: z.boolean(),
-  description: z.string(),
-  isPrimaryKey: z.boolean(),
-  isOrderBy: z.boolean(),
-  isPartitionBy: z.boolean(),
-  customType: z.string().optional(),
-}).refine((data) => {
-  if (data.type === "Other") {
-    return !!data.customType?.trim();
-  }
-  return true;
-}, {
-  message: "Custom type is required when 'Other' is selected",
-  path: ["customType"],
-});
+const CreateTable: React.FC = () => {
+  const { createTableModalOpen, closeCreateTableModal, selectedDatabase } = useExplorerStore();
+  const { data: databases = [], refetch: refetchDatabases } = useDatabases();
+  const executeQuery = useExecuteQuery();
 
-const CreateTable = () => {
-  const {
-    isCreateTableModalOpen,
-    selectedDatabaseForCreateTable,
-    closeCreateTableModal,
-    fetchDatabaseInfo,
-    dataBaseExplorer,
-    runQuery,
-    addTab,
-    credential,
-  } = useAppStore();
-
-  // State management
-  const [database, setDatabase] = useState("");
+  const [database, setDatabase] = useState(selectedDatabase || "");
   const [tableName, setTableName] = useState("");
   const [engine, setEngine] = useState("MergeTree");
-  const [fields, setFields] = useState<Field[]>([]);
-  const [primaryKeyFields, setPrimaryKeyFields] = useState<string[]>([]);
-  const [orderByFields, setOrderByFields] = useState<string[]>([]);
-  const [partitionByField, setPartitionByField] = useState<string | null>(null);
-  const [comment, setComment] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [createTableError, setCreateTableError] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
-  const [onCluster, setOnCluster] = useState(false);
-  const [clusterName, setClusterName] = useState("");
+  const [columns, setColumns] = useState<Column[]>([{ name: "", type: "String" }]);
+  const [orderByColumn, setOrderByColumn] = useState("");
 
-  // Effect to set default database
-  useEffect(() => {
-    if (selectedDatabaseForCreateTable) {
-      setDatabase(selectedDatabaseForCreateTable);
-    }
-  }, [selectedDatabaseForCreateTable]);
-
-  // Effect to set cluster settings from credentials
-  useEffect(() => {
-    if (credential?.isDistributed && credential?.clusterName) {
-      setOnCluster(true);
-      setClusterName(credential.clusterName);
-    }
-  }, [credential]);
-
-  // Effect to update derived states when fields change
-  useEffect(() => {
-    setPrimaryKeyFields(
-      fields.filter((field) => field.isPrimaryKey && field.name)
-        .map((field) => field.name)
-    );
-
-    setOrderByFields(
-      fields.filter((field) => field.isOrderBy && field.name)
-        .map((field) => field.name)
-    );
-
-    const pbField = fields.find((field) => field.isPartitionBy && field.name)?.name || null;
-    setPartitionByField(pbField);
-  }, [fields]);
-
-  // Field management handlers
-  const addField = () => {
-    setFields([
-      ...fields,
-      {
-        name: "",
-        type: "String",
-        nullable: false,
-        description: "",
-        isPrimaryKey: false,
-        isOrderBy: false,
-        isPartitionBy: false,
-      },
-    ]);
+  const handleAddColumn = () => {
+    setColumns([...columns, { name: "", type: "String" }]);
   };
 
-  const removeField = (index: number) => {
-    setFields(fields.filter((_, i) => i !== index));
-    // Clean up any errors related to this field
-    setErrors((prev) => {
-      const newErrors = { ...prev };
-      Object.keys(newErrors)
-        .filter(key => key.startsWith(`fields.${index}`))
-        .forEach(key => delete newErrors[key]);
-      return newErrors;
-    });
-  };
-
-  const updateField = (index: number, key: keyof Field, value: any) => {
-    const updatedFields = [...fields];
-    updatedFields[index] = { ...updatedFields[index], [key]: value };
-
-    // Handle partition by field exclusivity
-    if (key === "isPartitionBy" && value === true) {
-      updatedFields.forEach((field, i) => {
-        if (i !== index && field.isPartitionBy) {
-          updatedFields[i] = { ...field, isPartitionBy: false };
-        }
-      });
-    }
-
-    setFields(updatedFields);
-    
-    // Clear field-specific errors when the field is updated
-    if (errors[`fields.${index}.${key}`]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[`fields.${index}.${key}`];
-        return newErrors;
-      });
+  const handleRemoveColumn = (index: number) => {
+    if (columns.length > 1) {
+      setColumns(columns.filter((_, i) => i !== index));
     }
   };
 
-  // Validation helpers
-  const validateTableName = (name: string): boolean => {
-    const selectedDb = dataBaseExplorer.find(db => db.name === database);
-    return !selectedDb?.children?.some(
-      table => table.name.toLowerCase() === name.toLowerCase()
-    );
+  const handleColumnChange = (
+    index: number,
+    field: keyof Column,
+    value: string
+  ) => {
+    const newColumns = [...columns];
+    newColumns[index][field] = value;
+    setColumns(newColumns);
   };
 
-  // Schema for table validation
-  const tableSchema = z.object({
-    database: z.string().min(1, "Database is required"),
-    tableName: z.string().min(1, "Table name is required")
-      .refine(validateTableName, "Table name already exists in this database"),
-    fields: z.array(fieldSchema)
-      .min(1, "At least one field is required"),
-  });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  // SQL Generation
-  const validateAndGenerateSQL = (): string | null => {
+    if (!database) {
+      toast.error("Please select a database");
+      return;
+    }
+
+    if (!tableName.trim()) {
+      toast.error("Please enter a table name");
+      return;
+    }
+
+    const validColumns = columns.filter((col) => col.name.trim());
+    if (validColumns.length === 0) {
+      toast.error("Please add at least one column");
+      return;
+    }
+
+    if (engine === "MergeTree" && !orderByColumn) {
+      toast.error("MergeTree engine requires an ORDER BY column");
+      return;
+    }
+
+    const columnDefs = validColumns
+      .map((col) => `${col.name} ${col.type}`)
+      .join(", ");
+
+    let query = `CREATE TABLE ${database}.${tableName} (${columnDefs}) ENGINE = ${engine}`;
+    if (engine === "MergeTree" && orderByColumn) {
+      query += ` ORDER BY ${orderByColumn}`;
+    }
+
     try {
-      // Validate the form data
-      tableSchema.parse({ database, tableName, fields });
-      
-      // Generate SQL
-      const fieldDefinitions = fields.map(field => {
-        const typeStr = field.type === "Other" ? field.customType : field.type;
-        const nullableStr = field.nullable ? "NULL" : "NOT NULL";
-        const commentStr = field.description ? ` COMMENT '${field.description}'` : '';
-        return `${field.name} ${typeStr} ${nullableStr}${commentStr}`;
-      }).join(",\n    ");
-
-      let sql = `CREATE TABLE ${database}.${tableName}`;
-      
-      if (onCluster && clusterName) {
-        sql += ` ON CLUSTER ${clusterName}`;
-      }
-      
-      sql += `\n(\n    ${fieldDefinitions}\n) ENGINE = ${engine}`;
-
-      if (primaryKeyFields.length > 0) {
-        sql += `\nPRIMARY KEY (${primaryKeyFields.join(", ")})`;
-      }
-
-      if (orderByFields.length > 0) {
-        sql += `\nORDER BY (${orderByFields.join(", ")})`;
-      }
-
-      if (partitionByField) {
-        const partitionField = fields.find(f => f.name === partitionByField);
-        if (partitionField && TIME_FIELDS.includes(partitionField.type as any)) {
-          sql += `\nPARTITION BY toYYYYMM(${partitionByField})`;
-        } else {
-          sql += `\nPARTITION BY ${partitionByField}`;
-        }
-      }
-
-      if (comment) {
-        sql += `\nCOMMENT '${comment}'`;
-      }
-
-      setErrors({});
-      return sql;
+      await executeQuery.mutateAsync({ query });
+      toast.success(`Table "${tableName}" created successfully`);
+      await refetchDatabases();
+      handleClose();
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        const newErrors: Record<string, string> = {};
-        error.issues.forEach((err: any) => {
-          newErrors[err.path.join(".")] = err.message;
-        });
-        setErrors(newErrors);
-      } else {
-        toast.error("Validation failed");
-      }
-      return null;
+      console.error("Failed to create table:", error);
+      toast.error(`Failed to create table: ${(error as Error).message}`);
     }
   };
 
-  // Table Creation
-  const handleCreateManual = async () => {
-    const sql = validateAndGenerateSQL();
-    if (!sql) return;
-
-    setIsLoading(true);
-    setCreateTableError("");
-
-    try {
-      const response = await runQuery(sql);
-      if (response.error) {
-        setCreateTableError(response.error);
-        return;
-      }
-
-      await fetchDatabaseInfo();
-      toast.success("Table created successfully!");
-
-      // Add new tab for the created table
-      addTab({
-        id: `${database}.${tableName}`,
-        type: "information",
-        title: `${database}.${tableName}`,
-        content: { database, table: tableName },
-      });
-
-      resetForm();
-      closeCreateTableModal();
-    } catch (error: any) {
-      setCreateTableError(error.toString());
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Form reset and closing
-  const resetForm = () => {
-    setDatabase("");
+  const handleClose = () => {
+    setDatabase(selectedDatabase || "");
     setTableName("");
     setEngine("MergeTree");
-    setFields([]);
-    setPrimaryKeyFields([]);
-    setOrderByFields([]);
-    setPartitionByField(null);
-    setComment("");
-    setErrors({});
-    setCreateTableError("");
-  };
-
-  const handleCloseSheet = () => {
-    const hasChanges = database || 
-      tableName || 
-      fields.length > 0 || 
-      comment || 
-      engine !== "MergeTree";
-
-    if (hasChanges) {
-      setIsConfirmDialogOpen(true);
-    } else {
-      closeCreateTableModal();
-    }
-  };
-
-  const handleConfirmClose = () => {
-    resetForm();
-    setIsConfirmDialogOpen(false);
+    setColumns([{ name: "", type: "String" }]);
+    setOrderByColumn("");
     closeCreateTableModal();
   };
 
   return (
-    <>
-      <ConfirmationDialog
-        isOpen={isConfirmDialogOpen}
-        onClose={() => setIsConfirmDialogOpen(false)}
-        onConfirm={handleConfirmClose}
-        title="Confirm Close"
-        description="Are you sure you want to close? All your changes will be lost."
-      />
+    <Dialog open={createTableModalOpen} onOpenChange={handleClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create Table</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Database</Label>
+                <Select value={database} onValueChange={setDatabase}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select database" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {databases.map((db) => (
+                      <SelectItem key={db.name} value={db.name}>
+                        {db.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Table Name</Label>
+                <Input
+                  value={tableName}
+                  onChange={(e) => setTableName(e.target.value)}
+                  placeholder="my_table"
+                />
+              </div>
+            </div>
 
-      <Sheet open={isCreateTableModalOpen} onOpenChange={handleCloseSheet}>
-        <SheetContent
-          className="xl:w-[1200px] sm:w-full sm:max-w-full overflow-y-auto"
-          onOpenAutoFocus={(e) => {
-            e.preventDefault();
-            const firstInput = document.querySelector('input');
-            firstInput?.focus();
-          }}
-        >
-          <SheetHeader>
-            <SheetTitle>
-              Create Table
-              {database && tableName && (
-                <span className="text-muted-foreground ml-2">
-                  {`${database}.${tableName}`}
-                </span>
+            <div className="space-y-2">
+              <Label>Engine</Label>
+              <Select value={engine} onValueChange={setEngine}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MergeTree">MergeTree</SelectItem>
+                  <SelectItem value="Log">Log</SelectItem>
+                  <SelectItem value="Memory">Memory</SelectItem>
+                  <SelectItem value="TinyLog">TinyLog</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Columns</Label>
+                <Button type="button" size="sm" variant="outline" onClick={handleAddColumn}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Column
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {columns.map((column, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Column name"
+                      value={column.name}
+                      onChange={(e) =>
+                        handleColumnChange(index, "name", e.target.value)
+                      }
+                      className="flex-1"
+                    />
+                    <Select
+                      value={column.type}
+                      onValueChange={(value) =>
+                        handleColumnChange(index, "type", value)
+                      }
+                    >
+                      <SelectTrigger className="w-40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {COMMON_TYPES.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => handleRemoveColumn(index)}
+                      disabled={columns.length === 1}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-400" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {engine === "MergeTree" && (
+              <div className="space-y-2">
+                <Label>ORDER BY Column</Label>
+                <Select value={orderByColumn} onValueChange={setOrderByColumn}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select order by column" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {columns
+                      .filter((col) => col.name.trim())
+                      .map((col) => (
+                        <SelectItem key={col.name} value={col.name}>
+                          {col.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={executeQuery.isPending}>
+              {executeQuery.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Table"
               )}
-            </SheetTitle>
-          </SheetHeader>
-
-          <ManualCreationForm
-            database={database}
-            tableName={tableName}
-            engine={engine}
-            fields={fields}
-            primaryKeyFields={primaryKeyFields}
-            orderByFields={orderByFields}
-            partitionByField={partitionByField}
-            comment={comment}
-            onCluster={onCluster}
-            clusterName={clusterName}
-            errors={errors}
-            onChange={(field, value) => {
-              switch (field) {
-                case "database":
-                  setDatabase(value);
-                  break;
-                case "tableName":
-                  setTableName(value);
-                  break;
-                case "engine":
-                  setEngine(value);
-                  break;
-                case "comment":
-                  setComment(value);
-                  break;
-                case "onCluster":
-                  setOnCluster(value as boolean);
-                  break;
-                case "clusterName":
-                  setClusterName(value);
-                  break;
-              }
-            }}
-            onAddField={addField}
-            onRemoveField={removeField}
-            onUpdateField={updateField}
-            onValidateAndGenerateSQL={validateAndGenerateSQL}
-            onCreateManual={handleCreateManual}
-            createTableError={createTableError}
-            isLoading={isLoading}
-            databaseData={dataBaseExplorer}
-          />
-        </SheetContent>
-      </Sheet>
-    </>
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 

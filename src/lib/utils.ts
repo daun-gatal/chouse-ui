@@ -5,10 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function genTabId() {
-  return `tab-${Math.random().toString(36).substring(2, 15)}`;
-}
-
 export function formatBytes(bytes: number) {
   if (!bytes) return "";
   if (bytes === 0) return "0 Bytes";

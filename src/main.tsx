@@ -5,6 +5,8 @@ import "./index.css";
 import "uplot/dist/uPlot.min.css";
 import "./features/metrics/components/uplot.css";
 import { Toaster } from "@/components/ui/sonner";
+import { QueryProvider } from "@/providers/QueryProvider";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 
 // Polyfill for crypto.randomUUID if not available
 if (typeof crypto.randomUUID !== "function") {
@@ -22,7 +24,6 @@ if (typeof crypto.randomUUID !== "function") {
 // Development helper: Inject window.env from Vite env vars if not present
 if (import.meta.env.DEV && !window.env) {
   window.env = {
-
     VITE_CLICKHOUSE_URLS: (import.meta.env.VITE_CLICKHOUSE_URLS || "")
       .split(",")
       .filter((url: string) => url.trim() !== ""),
@@ -32,11 +33,15 @@ if (import.meta.env.DEV && !window.env) {
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <Toaster
-      richColors
-      toastOptions={{ duration: 2000, closeButton: true }}
-      expand={true}
-    />
-    <App />
+    <ErrorBoundary>
+      <QueryProvider>
+        <Toaster
+          richColors
+          toastOptions={{ duration: 2000, closeButton: true }}
+          expand={true}
+        />
+        <App />
+      </QueryProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );

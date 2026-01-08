@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import * as monaco from "monaco-editor";
 import { useTheme } from "@/components/common/theme-provider";
-import useAppStore from "@/store";
+import { useWorkspaceStore, useAuthStore } from "@/stores";
+import { useSavedQueriesStatus } from "@/hooks";
 import {
   initializeMonacoGlobally,
   createMonacoEditor,
@@ -28,8 +29,10 @@ interface SQLEditorProps {
 }
 
 const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
-  const { getTabById, updateTab, saveQuery, updateSavedQuery, checkSavedQueriesStatus, isAdmin } =
-    useAppStore();
+  const { getTabById, updateTab, saveQuery, updateSavedQuery } = useWorkspaceStore();
+  const { isAdmin } = useAuthStore();
+  const { data: isSavedQueriesEnabled = false, refetch: checkSavedQueriesStatus } = useSavedQueriesStatus();
+
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const tab = getTabById(tabId);
@@ -68,7 +71,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
         editor.dispose();
       };
     }
-  }, [tabId, updateTab, editorTheme]);
+  }, [tabId, editorTheme]);
 
   const handleTitleEdit = () => {
     setEditedTitle(tab?.title || "");
@@ -116,11 +119,12 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
     }
   }, [onRunQuery, getCurrentQuery]);
 
-  const hanldeSaveOpenDialog = async () => {
-    const isSavedQueryEnabled = await checkSavedQueriesStatus();
-    if (!isSavedQueryEnabled) {
-      isAdmin &&
-        toast.warning(`Saved queries are not enable.`, {
+  const handleSaveOpenDialog = async () => {
+    await checkSavedQueriesStatus();
+
+    if (!isSavedQueriesEnabled) {
+      if (isAdmin) {
+        toast.warning(`Saved queries are not enabled.`, {
           action: {
             label: "Enable",
             onClick: () => {
@@ -128,12 +132,11 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
             },
           },
         });
-
-      !isAdmin &&
+      } else {
         toast.warning(
-          `Saved queries are not enable. Contact your admin to enable it.`
+          `Saved queries are not enabled. Contact your admin to enable it.`
         );
-
+      }
       return;
     }
     setIsSaveDialogOpen(true);
@@ -153,18 +156,13 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
 
     try {
       if (tab?.isSaved) {
-        // Update existing saved query
-        await updateSavedQuery(tabId, query, queryName);
-        toast.success("Query updated successfully!");
+        await updateSavedQuery(tabId, query);
       } else {
-        // Save new query
         await saveQuery(tabId, queryName, query);
-        toast.success("Query saved successfully!");
       }
       setIsSaveDialogOpen(false);
     } catch (error) {
       console.error("Error saving query:", error);
-      toast.error(tab?.isSaved ? "Failed to update query." : "Failed to save query.");
     }
   };
 
@@ -204,7 +202,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
           </Button>
           <Button
             variant="link"
-            onClick={hanldeSaveOpenDialog}
+            onClick={handleSaveOpenDialog}
             className="gap-2"
             disabled={tab.type === "home" || tab.type === "information"}
           >

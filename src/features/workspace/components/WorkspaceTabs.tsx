@@ -30,10 +30,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import HomeTab from "@/features/workspace/components/HomeTab";
-import useAppStore from "@/store";
-import SqlTab from "@/features/workspace/components//SqlTab";
+import { useWorkspaceStore, genTabId, Tab } from "@/stores";
+import SqlTab from "@/features/workspace/components/SqlTab";
 import InformationTab from "@/features/workspace/components/infoTab/InfoTab";
-import { genTabId } from "@/lib/utils";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -42,14 +41,6 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useSearchParams } from "react-router-dom";
-
-interface Tab {
-  id: string;
-  title: string;
-  type: "sql" | "home" | "information";
-  content: string | { database?: string; table?: string };
-  isSaved?: boolean;
-}
 
 interface SortableTabProps {
   tab: Tab;
@@ -60,7 +51,7 @@ interface SortableTabProps {
 function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: tab.id });
-  const { removeTab, duplicateTab } = useAppStore();
+  const { removeTab, duplicateTab } = useWorkspaceStore();
   const [isHovering, setIsHovering] = useState(false);
 
   const style = {
@@ -78,7 +69,6 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
       onMouseLeave={() => setIsHovering(false)}
       onAuxClick={(e) => {
         if (e.button === 1) {
-          // Only handle middle mouse button
           e.preventDefault();
           removeTab(tab.id);
         }
@@ -156,7 +146,7 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
 
 function WorkspaceTabs() {
   const { tabs, activeTab, addTab, setActiveTab, moveTab, closeAllTabs } =
-    useAppStore();
+    useWorkspaceStore();
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -171,7 +161,6 @@ function WorkspaceTabs() {
     const database = searchParams.get("database") || "";
     const table = searchParams.get("table") || "";
     if (database || table) {
-      // look if the tab already exists
       const existingTab = tabs.find(
         (tab) =>
           tab.type === "information" &&
@@ -190,10 +179,9 @@ function WorkspaceTabs() {
         });
       }
 
-      // Clean up URL parameters
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, tabs]);
+  }, [searchParams, tabs, addTab, setActiveTab, setSearchParams]);
 
   const addNewCodeTab = useCallback(() => {
     addTab({

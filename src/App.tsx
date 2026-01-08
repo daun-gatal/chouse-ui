@@ -13,6 +13,8 @@ import LogsPage from "@/pages/Logs";
 import Login from "@/pages/Login";
 import ExplorerPage from "@/pages/Explorer";
 import { AdminRoute } from "@/features/admin/routes/adminRoute";
+import CreateUser from "@/features/admin/components/CreateUser";
+import EditUser from "@/features/admin/components/EditUser";
 
 // Layout for the main application (authenticated routes)
 const MainLayout = () => {
@@ -80,6 +82,22 @@ export default function App() {
                 element={
                   <AdminRoute>
                     <Admin />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/users/create"
+                element={
+                  <AdminRoute>
+                    <CreateUser />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/users/edit/:username"
+                element={
+                  <AdminRoute>
+                    <EditUser />
                   </AdminRoute>
                 }
               />

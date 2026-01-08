@@ -1,0 +1,613 @@
+import { createClient, ClickHouseClient, ClickHouseSettings } from "@clickhouse/client";
+import type { 
+  ConnectionConfig, 
+  QueryResult, 
+  DatabaseInfo, 
+  TableDetails,
+  SystemStats,
+  RecentQuery,
+  ColumnInfo,
+  SavedQuery,
+} from "../types";
+import { AppError } from "../types";
+
+// ============================================
+// Types for ClickHouse JSON Response
+// ============================================
+
+// JSON format returns { data: T[], meta: [...], statistics: {...}, rows: number }
+interface JsonResponse<T> {
+  data: T[];
+  meta?: { name: string; type: string }[];
+  statistics?: { elapsed: number; rows_read: number; bytes_read: number };
+  rows?: number;
+}
+
+// Helper to extract data from JSON response
+function extractData<T>(response: JsonResponse<T>): T[] {
+  return response.data;
+}
+
+// ============================================
+// ClickHouse Service
+// ============================================
+
+export class ClickHouseService {
+  private client: ClickHouseClient;
+  private config: ConnectionConfig;
+
+  constructor(config: ConnectionConfig) {
+    this.config = config;
+    this.client = createClient({
+      url: config.url,
+      username: config.username,
+      password: config.password || "",
+      database: config.database,
+      request_timeout: 300000,
+      clickhouse_settings: {
+        max_result_rows: "10000",
+        max_result_bytes: "10000000",
+        result_overflow_mode: "break",
+      } as ClickHouseSettings,
+    });
+  }
+
+  async close(): Promise<void> {
+    await this.client.close();
+  }
+
+  // ============================================
+  // Connection & Health
+  // ============================================
+
+  async ping(): Promise<boolean> {
+    try {
+      const result = await this.client.ping();
+      return result.success;
+    } catch (error) {
+      throw this.handleError(error, "Failed to ping ClickHouse server");
+    }
+  }
+
+  async getVersion(): Promise<string> {
+    try {
+      const result = await this.client.query({ query: "SELECT version()" });
+      const response = await result.json() as JsonResponse<{ "version()": string }>;
+      return response.data[0]?.["version()"] || "unknown";
+    } catch (error) {
+      throw this.handleError(error, "Failed to get version");
+    }
+  }
+
+  async checkIsAdmin(): Promise<{ isAdmin: boolean; permissions: string[] }> {
+    try {
+      const result = await this.client.query({
+        query: `SELECT access_type, database, table FROM system.grants WHERE user_name = currentUser()`,
+        format: "JSONEachRow",
+      });
+      // JSONEachRow format returns an array directly
+      const grants = await result.json() as { access_type: string; database?: string | null; table?: string | null }[];
+      
+      const permissions = grants.map(g => g.access_type);
+      
+      const isAdmin = grants.some(g => {
+        const isGlobal = (!g.database || g.database === "") && (!g.table || g.table === "");
+        if (g.access_type === "ALL" && isGlobal) return true;
+        if (g.access_type.includes("ALL") && isGlobal) return true;
+        if (g.access_type === "CREATE USER") return true;
+        if (g.access_type === "ACCESS MANAGEMENT") return true;
+        return false;
+      });
+
+      return { isAdmin, permissions };
+    } catch (error) {
+      console.error("Failed to check admin status:", error);
+      return { isAdmin: false, permissions: [] };
+    }
+  }
+
+  // ============================================
+  // Query Execution
+  // ============================================
+
+  async executeQuery<T = Record<string, unknown>>(
+    query: string,
+    format: string = "JSON"
+  ): Promise<QueryResult<T>> {
+    try {
+      const trimmedQuery = query.trim();
+      
+      // Check if it's a command (CREATE, INSERT, ALTER, DROP, etc.)
+      if (this.isCommand(trimmedQuery)) {
+        await this.client.command({ query: trimmedQuery });
+        return {
+          meta: [],
+          data: [],
+          statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
+          rows: 0,
+          error: null,
+        };
+      }
+
+      const result = await this.client.query({
+        query: trimmedQuery,
+        format: format as "JSON" | "JSONEachRow",
+      });
+
+      const jsonResult = await result.json() as {
+        meta?: { name: string; type: string }[];
+        data?: T[];
+        statistics?: { elapsed: number; rows_read: number; bytes_read: number };
+        rows?: number;
+      };
+
+      return {
+        meta: jsonResult.meta || [],
+        data: jsonResult.data || [],
+        statistics: jsonResult.statistics || { elapsed: 0, rows_read: 0, bytes_read: 0 },
+        rows: jsonResult.rows || (jsonResult.data?.length ?? 0),
+        error: null,
+      };
+    } catch (error) {
+      throw this.handleError(error, "Query execution failed");
+    }
+  }
+
+  private isCommand(query: string): boolean {
+    const commandPatterns = [
+      /^\s*CREATE\s+/i,
+      /^\s*INSERT\s+/i,
+      /^\s*ALTER\s+/i,
+      /^\s*DROP\s+/i,
+      /^\s*TRUNCATE\s+/i,
+      /^\s*RENAME\s+/i,
+      /^\s*OPTIMIZE\s+/i,
+      /^\s*ATTACH\s+/i,
+      /^\s*DETACH\s+/i,
+      /^\s*GRANT\s+/i,
+      /^\s*REVOKE\s+/i,
+    ];
+    return commandPatterns.some(pattern => pattern.test(query));
+  }
+
+  // ============================================
+  // Database Explorer
+  // ============================================
+
+  async getDatabasesAndTables(): Promise<DatabaseInfo[]> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT
+            databases.name AS database_name,
+            tables.name AS table_name,
+            tables.engine AS table_type
+          FROM system.databases AS databases
+          LEFT JOIN system.tables AS tables
+            ON databases.name = tables.database
+          ORDER BY database_name, table_name
+        `,
+      });
+
+      const response = await result.json() as JsonResponse<{
+        database_name: string;
+        table_name?: string;
+        table_type?: string;
+      }>;
+
+      const databases: Record<string, DatabaseInfo> = {};
+
+      for (const row of response.data) {
+        const { database_name, table_name, table_type } = row;
+        
+        if (!databases[database_name]) {
+          databases[database_name] = {
+            name: database_name,
+            type: "database",
+            children: [],
+          };
+        }
+
+        if (table_name) {
+          databases[database_name].children.push({
+            name: table_name,
+            type: table_type?.toLowerCase() === "view" ? "view" : "table",
+          });
+        }
+      }
+
+      return Object.values(databases);
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch databases");
+    }
+  }
+
+  async getTableDetails(database: string, table: string): Promise<TableDetails> {
+    try {
+      // Get table info
+      const tableInfoResult = await this.client.query({
+        query: `
+          SELECT 
+            database,
+            name as table,
+            engine,
+            formatReadableQuantity(total_rows) as total_rows,
+            formatReadableSize(total_bytes) as total_bytes,
+            create_table_query
+          FROM system.tables 
+          WHERE database = '${database}' AND name = '${table}'
+        `,
+      });
+      const tableInfoResponse = await tableInfoResult.json() as JsonResponse<{
+        database: string;
+        table: string;
+        engine: string;
+        total_rows: string;
+        total_bytes: string;
+        create_table_query: string;
+      }>;
+
+      // Get columns
+      const columnsResult = await this.client.query({
+        query: `
+          SELECT 
+            name,
+            type,
+            default_kind,
+            default_expression,
+            comment
+          FROM system.columns 
+          WHERE database = '${database}' AND table = '${table}'
+          ORDER BY position
+        `,
+      });
+      const columnsResponse = await columnsResult.json() as JsonResponse<ColumnInfo>;
+
+      const info = tableInfoResponse.data[0];
+      return {
+        database: info?.database || database,
+        table: info?.table || table,
+        engine: info?.engine || "",
+        total_rows: info?.total_rows || "0",
+        total_bytes: info?.total_bytes || "0 B",
+        columns: columnsResponse.data,
+        create_table_query: info?.create_table_query || "",
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch table details");
+    }
+  }
+
+  async getTableSample(database: string, table: string, limit: number = 100): Promise<QueryResult> {
+    return this.executeQuery(`SELECT * FROM ${database}.${table} LIMIT ${limit}`);
+  }
+
+  // ============================================
+  // System Stats & Metrics
+  // ============================================
+
+  async getSystemStats(): Promise<SystemStats> {
+    try {
+      const [
+        versionRes,
+        uptimeRes,
+        dbCountRes,
+        tableCountRes,
+        sizeRes,
+        memRes,
+        cpuRes,
+        connRes,
+        activeQueriesRes,
+      ] = await Promise.all([
+        this.client.query({ query: "SELECT version()" }),
+        this.client.query({ query: "SELECT uptime()" }),
+        this.client.query({ query: "SELECT count() FROM system.databases" }),
+        this.client.query({ query: "SELECT count() FROM system.tables WHERE database NOT IN ('system', 'information_schema')" }),
+        this.client.query({ query: "SELECT formatReadableSize(sum(bytes_on_disk)) as size, sum(rows) as rows FROM system.parts WHERE active" }),
+        this.client.query({ query: "SELECT formatReadableSize(value) as mem FROM system.metrics WHERE metric = 'MemoryTracking'" }),
+        this.client.query({ query: "SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSCPULoad' LIMIT 1" }),
+        this.client.query({ query: "SELECT value FROM system.metrics WHERE metric = 'TCPConnection'" }),
+        this.client.query({ query: "SELECT count() as cnt FROM system.processes" }),
+      ]);
+
+      // Note: .json() returns { data: [...], meta: [...], ... }, extract the data array
+      const version = await versionRes.json() as JsonResponse<{ "version()": string }>;
+      const uptime = await uptimeRes.json() as JsonResponse<{ "uptime()": number }>;
+      const dbCount = await dbCountRes.json() as JsonResponse<{ "count()": number }>;
+      const tableCount = await tableCountRes.json() as JsonResponse<{ "count()": number }>;
+      const sizeData = await sizeRes.json() as JsonResponse<{ size: string; rows: string }>;
+      const memData = await memRes.json() as JsonResponse<{ mem: string }>;
+      const cpuData = await cpuRes.json() as JsonResponse<{ value: number }>;
+      const connData = await connRes.json() as JsonResponse<{ value: number }>;
+      const activeQueriesData = await activeQueriesRes.json() as JsonResponse<{ cnt: number }>;
+
+      return {
+        version: version.data[0]?.["version()"] || "-",
+        uptime: uptime.data[0]?.["uptime()"] || 0,
+        databaseCount: Number(dbCount.data[0]?.["count()"] || 0),
+        tableCount: Number(tableCount.data[0]?.["count()"] || 0),
+        totalRows: Number(sizeData.data[0]?.rows || 0).toLocaleString(),
+        totalSize: sizeData.data[0]?.size || "0 B",
+        memoryUsage: memData.data[0]?.mem || "0 B",
+        cpuLoad: Number(cpuData.data[0]?.value || 0),
+        activeConnections: Number(connData.data[0]?.value || 0),
+        activeQueries: Number(activeQueriesData.data[0]?.cnt || 0),
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch system stats");
+    }
+  }
+
+  async getRecentQueries(limit: number = 10): Promise<RecentQuery[]> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT 
+            query, 
+            query_duration_ms, 
+            type, 
+            event_time 
+          FROM system.query_log 
+          WHERE type IN ('QueryFinish', 'ExceptionWhileProcessing') 
+          ORDER BY event_time DESC 
+          LIMIT ${limit}
+        `,
+        format: "JSONEachRow",
+      });
+
+      // JSONEachRow format returns an array directly
+      const queries = await result.json() as {
+        query: string;
+        query_duration_ms: number;
+        type: string;
+        event_time: string;
+      }[];
+
+      return queries.map(q => ({
+        query: q.query,
+        duration: q.query_duration_ms,
+        status: q.type === "QueryFinish" ? "Success" : "Error",
+        time: q.event_time,
+      }));
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch recent queries");
+    }
+  }
+
+  // ============================================
+  // Saved Queries
+  // ============================================
+
+  async checkSavedQueriesEnabled(): Promise<boolean> {
+    try {
+      const result = await this.executeQuery<{ exists: number }>(`
+        SELECT COUNT(*) as exists 
+        FROM system.tables 
+        WHERE database = 'CH_UI' 
+        AND name = 'saved_queries'
+      `);
+      return (result.data[0]?.exists ?? 0) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async activateSavedQueries(): Promise<void> {
+    await this.client.command({ query: "CREATE DATABASE IF NOT EXISTS CH_UI" });
+    await this.client.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS CH_UI.saved_queries (
+          id String,
+          name String,
+          query String,
+          created_at DateTime64(3),
+          updated_at DateTime64(3),
+          owner String,
+          is_public Boolean DEFAULT false,
+          PRIMARY KEY (id)
+        ) ENGINE = MergeTree()
+        ORDER BY (id, created_at)
+        SETTINGS index_granularity = 8192
+      `,
+    });
+  }
+
+  async deactivateSavedQueries(): Promise<void> {
+    await this.client.command({ query: "DROP TABLE IF EXISTS CH_UI.saved_queries" });
+  }
+
+  async getSavedQueries(): Promise<SavedQuery[]> {
+    const result = await this.executeQuery<SavedQuery>(
+      "SELECT * FROM CH_UI.saved_queries ORDER BY updated_at DESC"
+    );
+    return result.data;
+  }
+
+  async saveQuery(id: string, name: string, query: string, isPublic: boolean = false): Promise<void> {
+    const safeName = this.escapeString(name);
+    const safeQuery = this.escapeString(query);
+
+    await this.client.command({
+      query: `
+        INSERT INTO CH_UI.saved_queries (id, name, query, created_at, updated_at, owner, is_public)
+        VALUES (
+          '${id}',
+          '${safeName}',
+          '${safeQuery}',
+          now(),
+          now(),
+          currentUser(),
+          ${isPublic}
+        )
+      `,
+    });
+  }
+
+  async updateSavedQuery(id: string, name: string, query: string): Promise<void> {
+    const safeName = this.escapeString(name);
+    const safeQuery = this.escapeString(query);
+
+    await this.client.command({
+      query: `
+        ALTER TABLE CH_UI.saved_queries
+        UPDATE
+          name = '${safeName}',
+          query = '${safeQuery}',
+          updated_at = now()
+        WHERE id = '${id}'
+      `,
+    });
+  }
+
+  async deleteSavedQuery(id: string): Promise<void> {
+    await this.client.command({
+      query: `ALTER TABLE CH_UI.saved_queries DELETE WHERE id = '${id}'`,
+    });
+  }
+
+  // ============================================
+  // Intellisense
+  // ============================================
+
+  async getIntellisenseData(): Promise<{
+    columns: { database: string; table: string; column_name: string; column_type: string }[];
+    functions: string[];
+    keywords: string[];
+  }> {
+    try {
+      const [columnsRes, functionsRes, keywordsRes] = await Promise.all([
+        this.client.query({
+          query: `
+            SELECT database, table, name AS column_name, type AS column_type
+            FROM system.columns
+            ORDER BY database, table, column_name
+          `,
+        }),
+        this.client.query({ query: "SELECT name FROM system.functions" }),
+        this.client.query({ query: "SELECT keyword FROM system.keywords" }),
+      ]);
+
+      const columnsData = await columnsRes.json() as JsonResponse<{ database: string; table: string; column_name: string; column_type: string }>;
+      const functionsData = await functionsRes.json() as JsonResponse<{ name: string }>;
+      const keywordsData = await keywordsRes.json() as JsonResponse<{ keyword: string }>;
+
+      return {
+        columns: columnsData.data,
+        functions: functionsData.data.map(f => f.name),
+        keywords: keywordsData.data.map(k => k.keyword),
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch intellisense data");
+    }
+  }
+
+  // ============================================
+  // Helpers
+  // ============================================
+
+  private escapeString(value: string): string {
+    return value
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "''")
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r");
+  }
+
+  private handleError(error: unknown, defaultMessage: string): AppError {
+    const err = error as Error & { response?: { status?: number } };
+    const message = err?.message || defaultMessage;
+    const statusCode = err?.response?.status;
+
+    if (statusCode === 401 || statusCode === 403 || message.includes("Authentication")) {
+      return AppError.unauthorized("Authentication failed. Please check your credentials.");
+    }
+
+    if (statusCode === 404) {
+      return new AppError(
+        "Server not found at the specified URL",
+        "CONNECTION_ERROR",
+        "connection",
+        404
+      );
+    }
+
+    if (statusCode === 502 || statusCode === 504) {
+      return new AppError(
+        "Cannot reach the ClickHouse server",
+        "NETWORK_ERROR",
+        "network",
+        502
+      );
+    }
+
+    if (message.includes("timeout")) {
+      return new AppError(
+        "Connection timed out",
+        "TIMEOUT_ERROR",
+        "timeout",
+        408
+      );
+    }
+
+    return AppError.internal(message, error);
+  }
+}
+
+// ============================================
+// Connection Pool (Session Management)
+// ============================================
+
+const sessions = new Map<string, { service: ClickHouseService; session: import("../types").Session }>();
+
+export function createSession(
+  sessionId: string,
+  config: ConnectionConfig,
+  sessionData: Omit<import("../types").Session, "id" | "connectionConfig">
+): ClickHouseService {
+  const service = new ClickHouseService(config);
+  sessions.set(sessionId, {
+    service,
+    session: {
+      id: sessionId,
+      connectionConfig: config,
+      ...sessionData,
+    },
+  });
+  return service;
+}
+
+export function getSession(sessionId: string): { service: ClickHouseService; session: import("../types").Session } | undefined {
+  const entry = sessions.get(sessionId);
+  if (entry) {
+    entry.session.lastUsedAt = new Date();
+  }
+  return entry;
+}
+
+export async function destroySession(sessionId: string): Promise<void> {
+  const entry = sessions.get(sessionId);
+  if (entry) {
+    await entry.service.close();
+    sessions.delete(sessionId);
+  }
+}
+
+export function getSessionCount(): number {
+  return sessions.size;
+}
+
+// Cleanup expired sessions (run periodically)
+export async function cleanupExpiredSessions(maxAge: number = 3600000): Promise<number> {
+  const now = Date.now();
+  let cleaned = 0;
+
+  for (const [id, entry] of sessions.entries()) {
+    if (now - entry.session.lastUsedAt.getTime() > maxAge) {
+      await destroySession(id);
+      cleaned++;
+    }
+  }
+
+  return cleaned;
+}
+

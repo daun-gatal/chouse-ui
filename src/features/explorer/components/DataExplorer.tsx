@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,18 +12,15 @@ import {
   TerminalIcon,
   FileUp,
 } from "lucide-react";
-import useAppStore from "@/store";
-import TreeNode, {
-  TreeNodeData,
-} from "@/features/explorer/components/TreeNode";
+import { useExplorerStore, useWorkspaceStore, genTabId } from "@/stores";
+import { useDatabases, useSavedQueries, useSavedQueriesStatus } from "@/hooks";
+import TreeNode, { TreeNodeData } from "@/features/explorer/components/TreeNode";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { genTabId } from "@/lib/utils";
-import { SavedQuery } from "@/types/common";
 import {
   Accordion,
   AccordionContent,
@@ -31,38 +28,31 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import PermissionGuard from "@/components/common/PermissionGuard";
+import type { SavedQuery } from "@/api";
 
 const DatabaseExplorer: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [searchQueryValue, setSearchQueryValue] = useState("");
-  const {
-    dataBaseExplorer,
-    tabError,
-    fetchDatabaseInfo,
-    isLoadingDatabase,
-    addTab,
-    openCreateDatabaseModal,
-    openCreateTableModal,
-    openUploadFileModal,
-    checkSavedQueriesStatus,
-    fetchSavedQueries,
-  } = useAppStore();
 
-  const updatedSavedQueriesTrigger = useAppStore(state => state.updatedSavedQueriesTrigger);
+  // Use new stores and hooks
+  const { openCreateDatabaseModal, openCreateTableModal, openUploadFileModal } = useExplorerStore();
+  const { addTab } = useWorkspaceStore();
 
-  const [isQueriesEnabled, setIsQueriesEnabled] = useState(false);
-  const [savedQueriesList, setSavedQueriesList] = useState<SavedQuery[]>([]);
+  // Use React Query for data fetching
+  const { data: databases = [], isLoading: isLoadingDatabase, refetch: refreshDatabases, error: tabError } = useDatabases();
+  const { data: isQueriesEnabled = false } = useSavedQueriesStatus();
+  const { data: savedQueriesList = [], refetch: refreshSavedQueries } = useSavedQueries();
 
   const filteredData = useMemo(() => {
-    if (!searchTerm) return dataBaseExplorer;
-    return dataBaseExplorer.filter(
+    if (!searchTerm) return databases;
+    return databases.filter(
       (node) =>
         node.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         node.children.some((child) =>
           child.name.toLowerCase().includes(searchTerm.toLowerCase())
         )
     );
-  }, [dataBaseExplorer, searchTerm]);
+  }, [databases, searchTerm]);
 
   const filteredQueries = useMemo(() => {
     if (!searchQueryValue) return savedQueriesList;
@@ -70,47 +60,6 @@ const DatabaseExplorer: React.FC = () => {
       query.name.toLowerCase().includes(searchQueryValue.toLowerCase())
     );
   }, [savedQueriesList, searchQueryValue]);
-
-  const refreshDatabases = useCallback(() => {
-    fetchDatabaseInfo();
-  }, [fetchDatabaseInfo]);
-
-  const loadSavedQueries = useCallback(async () => {
-    try {
-      const result = await fetchSavedQueries();
-      if (result) {
-        setSavedQueriesList(result);
-      } else {
-        console.warn("No saved queries found or invalid response.");
-        setSavedQueriesList([]);
-      }
-    } catch (error) {
-      console.error("Error fetching saved queries:", error);
-      setSavedQueriesList([]);
-    }
-  }, [fetchSavedQueries]);
-
-  useEffect(() => {
-    fetchDatabaseInfo();
-
-    const checkQueriesEnabled = async () => {
-      const enabled = await checkSavedQueriesStatus();
-      setIsQueriesEnabled(enabled);
-      return enabled;
-    };
-
-    checkQueriesEnabled().then((enabled) => {
-      if (enabled) {
-        loadSavedQueries();
-      }
-    });
-  }, [fetchDatabaseInfo, checkSavedQueriesStatus, loadSavedQueries]);
-
-  useEffect(() => {
-    if (isQueriesEnabled) {
-      loadSavedQueries();
-    }
-  }, [isQueriesEnabled, loadSavedQueries, updatedSavedQueriesTrigger]);
 
   const handleSavedQueryOpen = (query: SavedQuery) => {
     addTab({
@@ -171,13 +120,12 @@ const DatabaseExplorer: React.FC = () => {
           <Button
             size="sm"
             variant="outline"
-            onClick={refreshDatabases}
+            onClick={() => refreshDatabases()}
             className="flex items-center"
             disabled={isLoadingDatabase}
           >
             <RefreshCcw
-              className={`w-4 h-4 ml-1 ${isLoadingDatabase ? "animate-spin" : ""
-                }`}
+              className={`w-4 h-4 ml-1 ${isLoadingDatabase ? "animate-spin" : ""}`}
             />
           </Button>
         </div>
@@ -214,9 +162,9 @@ const DatabaseExplorer: React.FC = () => {
               </div>
             ) : tabError ? (
               <div className="p-4 text-red-400 w-full flex flex-col items-center justify-center">
-                <p className="text-center mt-2">{tabError}</p>
+                <p className="text-center mt-2">{tabError.message}</p>
                 <Button
-                  onClick={refreshDatabases}
+                  onClick={() => refreshDatabases()}
                   variant="outline"
                   className="mt-4 border-red-500/50 hover:bg-red-500/10"
                 >
@@ -230,7 +178,7 @@ const DatabaseExplorer: React.FC = () => {
                   level={0}
                   searchTerm={searchTerm}
                   parentDatabaseName={node.name}
-                  refreshData={refreshDatabases}
+                  refreshData={() => refreshDatabases()}
                   key={node.name}
                 />
               ))
@@ -252,12 +200,9 @@ const DatabaseExplorer: React.FC = () => {
           </div>
         </ScrollArea>
 
-        {/* Saved Queries Section - Limited to 30% height with scroll */}
+        {/* Saved Queries Section */}
         {isQueriesEnabled && savedQueriesList && (
-          <div
-            className="flex-none border-t max-h-[30%]"
-            data-testid="saved-queries"
-          >
+          <div className="flex-none border-t max-h-[30%]" data-testid="saved-queries">
             <Accordion type="single" collapsible>
               <AccordionItem value="saved-queries">
                 <div className="flex items-center justify-between px-1">
@@ -269,7 +214,7 @@ const DatabaseExplorer: React.FC = () => {
                   <Button
                     size="icon"
                     variant="ghost"
-                    onClick={loadSavedQueries}
+                    onClick={() => refreshSavedQueries()}
                   >
                     <RefreshCcw className="w-4 h-4" />
                   </Button>
@@ -297,7 +242,7 @@ const DatabaseExplorer: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  <ScrollArea className="h-full h-64">
+                  <ScrollArea className="h-64">
                     <div className="px-2">
                       {filteredQueries.length > 0 ? (
                         filteredQueries.map((query) => (

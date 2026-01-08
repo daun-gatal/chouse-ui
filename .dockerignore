@@ -1,23 +1,50 @@
-# Ignore node_modules (local dependencies)
+# Dependencies
 node_modules
+packages/*/node_modules
 
-# Ignore build artifacts
+# Build outputs (we rebuild in Docker)
 dist
+packages/*/dist
+*.tsbuildinfo
 
-# Ignore configuration files that shouldn't be shared
-.env
-.vscode
-.idea
-
-# Ignore miscellaneous system files and logs
-.DS_Store
-npm-debug.log
-yarn-debug.log
-yarn-error.log
-
-# Ignore Git-specific files
+# Development files
 .git
 .gitignore
+.env
+.env.local
+.env.*.local
 
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+.cursor
 
-.clickhouse_local_data
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+coverage
+
+# Documentation
+*.md
+!README.md
+
+# Docker files (prevent recursive copy)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Misc
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local development
+.bun
+*.local

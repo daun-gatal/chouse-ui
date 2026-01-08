@@ -1,136 +1,17 @@
-import { useEffect, useState } from "react";
-import useAppStore from "@/store";
-import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
 import { motion } from "framer-motion";
 import { Activity, Database, HardDrive, Clock, Server, Terminal, CheckCircle, XCircle, Cpu, Zap, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-interface SystemStats {
-  version: string;
-  uptime: number;
-  databaseCount: number;
-  tableCount: number;
-  totalRows: string;
-  totalSize: string;
-  // Health Metrics
-  memoryUsage: string;
-  cpuLoad: number;
-  activeConnections: number;
-  activeQueries: number;
-}
-
-interface RecentQuery {
-  query: string;
-  duration: number;
-  status: string;
-  time: string;
-}
+import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
+import { useSystemStats, useRecentQueries } from "@/hooks";
 
 export default function HomePage() {
-  const { clickHouseClient, isServerAvailable, isAdmin } = useAppStore();
   const navigate = useNavigate();
-  const [stats, setStats] = useState<SystemStats>({
-    version: "-",
-    uptime: 0,
-    databaseCount: 0,
-    tableCount: 0,
-    totalRows: "0",
-    totalSize: "0 B",
-    memoryUsage: "0 B",
-    cpuLoad: 0,
-    activeConnections: 0,
-    activeQueries: 0,
-  });
-  const [recentQueries, setRecentQueries] = useState<RecentQuery[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!clickHouseClient || !isServerAvailable) return;
-      setLoading(true);
-
-      try {
-        // Fetch Basic Stats
-        const versionRes = await clickHouseClient.query({ query: "SELECT version()" });
-        const version = await versionRes.json() as any;
-
-        const uptimeRes = await clickHouseClient.query({ query: "SELECT uptime()" });
-        const uptime = await uptimeRes.json() as any;
-
-        const dbCountRes = await clickHouseClient.query({ query: "SELECT count() FROM system.databases" });
-        const dbCount = await dbCountRes.json() as any;
-
-        const tableCountRes = await clickHouseClient.query({ query: "SELECT count() FROM system.tables WHERE database NOT IN ('system', 'information_schema')" });
-        const tableCount = await tableCountRes.json() as any;
-
-        const sizeRes = await clickHouseClient.query({
-          query: "SELECT formatReadableSize(sum(bytes_on_disk)) as size, sum(rows) as rows FROM system.parts WHERE active"
-        });
-        const sizeData = await sizeRes.json() as any;
-
-        // Fetch Health Metrics
-        const memRes = await clickHouseClient.query({ query: "SELECT formatReadableSize(value) as mem FROM system.metrics WHERE metric = 'MemoryTracking'" });
-        const memData = await memRes.json() as any;
-
-        const cpuRes = await clickHouseClient.query({ query: "SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSCPULoad' LIMIT 1" });
-        const cpuData = await cpuRes.json() as any;
-
-        const connRes = await clickHouseClient.query({ query: "SELECT value FROM system.metrics WHERE metric = 'TCPConnection'" });
-        const connData = await connRes.json() as any;
-
-        const activeQueriesRes = await clickHouseClient.query({ query: "SELECT count() as cnt FROM system.processes" });
-        const activeQueriesData = await activeQueriesRes.json() as any;
-
-
-        setStats({
-          version: version.data[0]?.["version()"] || "-",
-          uptime: uptime.data[0]?.["uptime()"] || 0,
-          databaseCount: Number(dbCount.data[0]?.["count()"] || 0),
-          tableCount: Number(tableCount.data[0]?.["count()"] || 0),
-          totalRows: Number(sizeData.data[0]?.rows || 0).toLocaleString(),
-          totalSize: sizeData.data[0]?.size || "0 B",
-          memoryUsage: memData.data[0]?.mem || "0 B",
-          cpuLoad: Number(cpuData.data[0]?.value || 0),
-          activeConnections: Number(connData.data[0]?.value || 0),
-          activeQueries: Number(activeQueriesData.data[0]?.cnt || 0),
-        });
-
-        // Fetch Recent Queries
-        const queryLogRes = await clickHouseClient.query({
-          query: `
-                SELECT 
-                    query, 
-                    query_duration_ms, 
-                    type, 
-                    event_time 
-                FROM system.query_log 
-                WHERE type IN ('QueryFinish', 'ExceptionWhileProcessing') 
-                ORDER BY event_time DESC 
-                LIMIT 5
-            `,
-          format: "JSONEachRow"
-        });
-        const queries = await queryLogRes.json() as any[];
-        setRecentQueries(queries.map((q: any) => ({
-          query: q.query,
-          duration: q.query_duration_ms,
-          status: q.type === 'QueryFinish' ? 'Success' : 'Error',
-          time: q.event_time
-        })));
-
-      } catch (e) {
-        console.error("Failed to fetch dashboard data", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-    const interval = setInterval(fetchData, 5000); // Faster refresh for health metrics
-    return () => clearInterval(interval);
-  }, [clickHouseClient, isServerAvailable]);
+  
+  // Use React Query hooks for data fetching
+  const { data: stats, isLoading: statsLoading } = useSystemStats();
+  const { data: recentQueries = [], isLoading: queriesLoading } = useRecentQueries(5);
 
   const formatUptime = (seconds: number) => {
     const d = Math.floor(seconds / (3600 * 24));
@@ -154,6 +35,21 @@ export default function HomePage() {
     show: { opacity: 1, y: 0 }
   };
 
+  const defaultStats = {
+    version: "-",
+    uptime: 0,
+    databaseCount: 0,
+    tableCount: 0,
+    totalRows: "0",
+    totalSize: "0 B",
+    memoryUsage: "0 B",
+    cpuLoad: 0,
+    activeConnections: 0,
+    activeQueries: 0,
+  };
+
+  const displayStats = stats || defaultStats;
+
   return (
     <motion.div
       variants={container}
@@ -175,7 +71,9 @@ export default function HomePage() {
                 <p className="text-sm font-medium text-gray-400">Total Databases</p>
                 <Database className="h-4 w-4 text-purple-400" />
               </div>
-              <div className="text-2xl font-bold text-white">{stats.databaseCount}</div>
+              <div className="text-2xl font-bold text-white">
+                {statsLoading ? "-" : displayStats.databaseCount}
+              </div>
             </GlassCardContent>
           </GlassCard>
         </motion.div>
@@ -187,7 +85,9 @@ export default function HomePage() {
                 <p className="text-sm font-medium text-gray-400">Total Tables</p>
                 <Database className="h-4 w-4 text-blue-400" />
               </div>
-              <div className="text-2xl font-bold text-white">{stats.tableCount}</div>
+              <div className="text-2xl font-bold text-white">
+                {statsLoading ? "-" : displayStats.tableCount}
+              </div>
             </GlassCardContent>
           </GlassCard>
         </motion.div>
@@ -199,7 +99,9 @@ export default function HomePage() {
                 <p className="text-sm font-medium text-gray-400">Total Rows</p>
                 <Activity className="h-4 w-4 text-emerald-400" />
               </div>
-              <div className="text-2xl font-bold text-white">{stats.totalRows}</div>
+              <div className="text-2xl font-bold text-white">
+                {statsLoading ? "-" : displayStats.totalRows}
+              </div>
             </GlassCardContent>
           </GlassCard>
         </motion.div>
@@ -211,7 +113,9 @@ export default function HomePage() {
                 <p className="text-sm font-medium text-gray-400">Storage Used</p>
                 <HardDrive className="h-4 w-4 text-orange-400" />
               </div>
-              <div className="text-2xl font-bold text-white">{stats.totalSize}</div>
+              <div className="text-2xl font-bold text-white">
+                {statsLoading ? "-" : displayStats.totalSize}
+              </div>
             </GlassCardContent>
           </GlassCard>
         </motion.div>
@@ -227,7 +131,9 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-sm text-gray-400">CPU Load</p>
-                <p className="text-xl font-bold text-white font-mono">{stats.cpuLoad.toFixed(2)}</p>
+                <p className="text-xl font-bold text-white font-mono">
+                  {statsLoading ? "-" : displayStats.cpuLoad.toFixed(2)}
+                </p>
               </div>
             </div>
             <div className="p-6 flex flex-col items-center justify-center text-center gap-2">
@@ -236,7 +142,9 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-sm text-gray-400">Memory Usage</p>
-                <p className="text-xl font-bold text-white font-mono">{stats.memoryUsage}</p>
+                <p className="text-xl font-bold text-white font-mono">
+                  {statsLoading ? "-" : displayStats.memoryUsage}
+                </p>
               </div>
             </div>
             <div className="p-6 flex flex-col items-center justify-center text-center gap-2">
@@ -245,7 +153,9 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-sm text-gray-400">TCP Connections</p>
-                <p className="text-xl font-bold text-white font-mono">{stats.activeConnections}</p>
+                <p className="text-xl font-bold text-white font-mono">
+                  {statsLoading ? "-" : displayStats.activeConnections}
+                </p>
               </div>
             </div>
             <div className="p-6 flex flex-col items-center justify-center text-center gap-2">
@@ -254,7 +164,9 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-sm text-gray-400">Running Queries</p>
-                <p className="text-xl font-bold text-white font-mono">{stats.activeQueries}</p>
+                <p className="text-xl font-bold text-white font-mono">
+                  {statsLoading ? "-" : displayStats.activeQueries}
+                </p>
               </div>
             </div>
           </div>
@@ -273,29 +185,33 @@ export default function HomePage() {
             <GlassCardContent>
               <ScrollArea className="h-[300px] w-full pr-4">
                 <div className="space-y-4">
-                  {recentQueries.length > 0 ? recentQueries.map((q, i) => (
-                    <div key={i} className="flex items-start justify-between p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
-                      <div className="space-y-1 overflow-hidden">
-                        <p className="text-sm text-gray-300 font-mono truncate max-w-[400px]" title={q.query}>
-                          {q.query}
-                        </p>
-                        <div className="flex items-center gap-3 text-xs text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {q.duration}ms
-                          </span>
-                          <span>{new Date(q.time).toLocaleTimeString()}</span>
+                  {queriesLoading ? (
+                    <div className="text-center text-gray-500 py-10">Loading...</div>
+                  ) : recentQueries.length > 0 ? (
+                    recentQueries.map((q, i) => (
+                      <div key={i} className="flex items-start justify-between p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                        <div className="space-y-1 overflow-hidden">
+                          <p className="text-sm text-gray-300 font-mono truncate max-w-[400px]" title={q.query}>
+                            {q.query}
+                          </p>
+                          <div className="flex items-center gap-3 text-xs text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {q.duration}ms
+                            </span>
+                            <span>{new Date(q.time).toLocaleTimeString()}</span>
+                          </div>
+                        </div>
+                        <div>
+                          {q.status === 'Success' ? (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-500" />
+                          )}
                         </div>
                       </div>
-                      <div>
-                        {q.status === 'Success' ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </div>
-                    </div>
-                  )) : (
+                    ))
+                  ) : (
                     <div className="text-center text-gray-500 py-10">No recent queries found</div>
                   )}
                 </div>
@@ -315,11 +231,15 @@ export default function HomePage() {
             <GlassCardContent className="space-y-4">
               <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                 <span className="text-sm text-gray-400">Version</span>
-                <span className="font-mono text-white">{stats.version}</span>
+                <span className="font-mono text-white">
+                  {statsLoading ? "-" : displayStats.version}
+                </span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                 <span className="text-sm text-gray-400">Uptime</span>
-                <span className="font-mono text-white">{formatUptime(stats.uptime)}</span>
+                <span className="font-mono text-white">
+                  {statsLoading ? "-" : formatUptime(displayStats.uptime)}
+                </span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-white/5">
                 <span className="text-sm text-gray-400">Status</span>
@@ -336,11 +256,19 @@ export default function HomePage() {
               <GlassCardTitle>Quick Actions</GlassCardTitle>
             </GlassCardHeader>
             <GlassCardContent className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="h-auto py-4 flex flex-col gap-2 bg-white/5 border-white/10 hover:bg-purple-500/20 hover:text-purple-200 hover:border-purple-500/30 transition-all" onClick={() => navigate('/explorer')}>
+              <Button
+                variant="outline"
+                className="h-auto py-4 flex flex-col gap-2 bg-white/5 border-white/10 hover:bg-purple-500/20 hover:text-purple-200 hover:border-purple-500/30 transition-all"
+                onClick={() => navigate('/explorer')}
+              >
                 <Database className="h-6 w-6" />
                 Explore Data
               </Button>
-              <Button variant="outline" className="h-auto py-4 flex flex-col gap-2 bg-white/5 border-white/10 hover:bg-blue-500/20 hover:text-blue-200 hover:border-blue-500/30 transition-all" onClick={() => navigate('/metrics')}>
+              <Button
+                variant="outline"
+                className="h-auto py-4 flex flex-col gap-2 bg-white/5 border-white/10 hover:bg-blue-500/20 hover:text-blue-200 hover:border-blue-500/30 transition-all"
+                onClick={() => navigate('/metrics')}
+              >
                 <Activity className="h-6 w-6" />
                 View Metrics
               </Button>

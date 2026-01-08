@@ -13,7 +13,7 @@ import UploadFromFile from "@/features/explorer/components/UploadFile";
 
 const ExplorerPage = () => {
     useEffect(() => {
-        document.title = "ClickHouse UI | Explorer";
+        document.title = "ClickHouse Studio | Explorer";
     }, []);
 
     return (

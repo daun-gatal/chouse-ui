@@ -1,143 +1,194 @@
-import React, { useEffect } from "react";
-import { metrics } from "@/features/metrics/config/metricsConfig";
-import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
-import DashboardGrid from "@/features/metrics/components/DashboardGrid";
-import MetricsNavTabs from "@/features/metrics/components/MetricsNavTabs";
-import TimeRangeSelector from "@/features/metrics/components/TimeRangeSelector";
-import { TimeRangeProvider } from "@/features/metrics/context/TimeRangeContext";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-import useAppStore from "@/store";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
+import { Activity, RefreshCw, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
+import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
+import { useMetrics } from "@/hooks";
 
-function MetricsPage() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const scope = new URLSearchParams(location.search).get("scope") || "overview";
-  const { credential, isServerAvailable } = useAppStore();
-  const [isLocalHostInstance, setIsLocalHostInstance] = React.useState(false);
+export default function Metrics() {
+  const [refreshInterval, setRefreshInterval] = useState<number>(0);
+  const [timeRange, setTimeRange] = useState<string>("1h");
 
-  useEffect(() => {
-    document.title = "ClickHouse UI | Metrics";
-    if (!isServerAvailable) {
-      toast.error(
-        "No active connection. Please configure your connection in Settings."
-      );
-      navigate("/settings");
-      return;
+  const { data: metrics, isLoading, refetch, error } = useMetrics(timeRange);
+
+  const container = {
+    hidden: { opacity: 0 },
+    show: { opacity: 1, transition: { staggerChildren: 0.1 } }
+  };
+
+  const item = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 }
+  };
+
+  // Auto-refresh effect
+  React.useEffect(() => {
+    if (refreshInterval > 0) {
+      const interval = setInterval(() => refetch(), refreshInterval * 1000);
+      return () => clearInterval(interval);
     }
-
-    if (
-      credential?.url.includes("localhost") ||
-      credential?.url.includes("127.0.0.1")
-    ) {
-      setIsLocalHostInstance(true);
-    }
-
-    const metric = metrics.find((m) => m.scope === scope);
-    if (!metric) {
-      navigate("/metrics?scope=overview");
-      toast.error("Invalid metric scope");
-    }
-  }, [scope, navigate, credential, isServerAvailable]);
-
-  const currentMetric =
-    metrics.find((m) => m.scope === scope) ||
-    metrics.find((m) => m.scope === "overview");
-
-  if (!currentMetric) {
-    return (
-      <div className="container mx-auto mt-4 p-6">
-        <div>
-          <h1 className="text-3xl font-bold text-white/90">Metrics</h1>
-          <p className="text-gray-400">
-            You're trying to access an invalid metric scope...
-          </p>
-          <div className="grid grid-cols-4 mt-12 gap-4 border border-white/10 p-4 rounded-xl bg-white/5 backdrop-blur-sm">
-            {metrics.map((metric) => (
-              <div key={metric.title} className="mt-4 max-w-[250px]">
-                <Link
-                  to={`/metrics?scope=${metric.scope}`}
-                  className="text-purple-400 hover:text-purple-300 hover:underline"
-                >
-                  <div className="text-lg font-bold flex items-center">
-                    {metric.title}{" "}
-                    <span className="ml-4">
-                      {React.createElement(metric.icon)}
-                    </span>
-                  </div>
-                </Link>
-                <p className="text-gray-400">{metric.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  }, [refreshInterval, refetch]);
 
   return (
-    <TimeRangeProvider defaultPreset="1h">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="flex-1 w-full overflow-auto"
-      >
-        <main className="container mx-auto p-6 space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white/90">Metrics</h1>
-              <p className="text-gray-400">Real-time system performance monitoring</p>
-            </div>
-            <MetricsNavTabs />
+    <motion.div
+      variants={container}
+      initial="hidden"
+      animate="show"
+      className="container mx-auto p-6 space-y-6 h-full overflow-auto"
+    >
+      <motion.div variants={item} className="flex justify-between items-start flex-wrap gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-white/90 flex items-center gap-3">
+            <Activity className="h-8 w-8 text-emerald-400" />
+            Metrics
+          </h1>
+          <p className="text-gray-400">Monitor your ClickHouse server performance.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-gray-400" />
+            <Select value={timeRange} onValueChange={setTimeRange}>
+              <SelectTrigger className="w-[120px] bg-white/5">
+                <SelectValue placeholder="Time range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="15m">15 minutes</SelectItem>
+                <SelectItem value="1h">1 hour</SelectItem>
+                <SelectItem value="6h">6 hours</SelectItem>
+                <SelectItem value="24h">24 hours</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-
-          {isLocalHostInstance && (
-            <Alert className="my-2 bg-yellow-500/10 border-yellow-500/20 text-yellow-200" variant="default">
-              <AlertTitle className="text-sm font-semibold">Local Instance Detected</AlertTitle>
-              <AlertDescription className="text-xs opacity-90">
-                Some metrics may not be available on local ClickHouse instances.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Metric header with time selector */}
-          <div className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10 backdrop-blur-md">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-purple-500/20">
-                {React.createElement(currentMetric.icon, {
-                  className: "w-5 h-5 text-purple-400",
-                })}
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-white/90">
-                  {currentMetric.title}
-                </h2>
-                <p className="text-xs text-gray-400">{currentMetric.description}</p>
-              </div>
-            </div>
-            <TimeRangeSelector />
-          </div>
-
-          <div className="rounded-xl">
-            <DashboardGrid
-              scope={currentMetric.scope}
-              items={currentMetric.items || []}
-              renderItem={(it) => (
-                <div className="h-full w-full rounded-xl border border-white/10 bg-black/40 backdrop-blur-xl overflow-hidden shadow-lg hover:shadow-purple-500/5 transition-all duration-300">
-                  <div className="p-4 h-full">
-                    <UPlotMetricItemComponent item={it as any} />
-                  </div>
-                </div>
-              )}
-            />
-          </div>
-        </main>
+          <Select value={String(refreshInterval)} onValueChange={(v) => setRefreshInterval(Number(v))}>
+            <SelectTrigger className="w-[140px] bg-white/5">
+              <SelectValue placeholder="Auto refresh" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">Manual</SelectItem>
+              <SelectItem value="5">Every 5s</SelectItem>
+              <SelectItem value="10">Every 10s</SelectItem>
+              <SelectItem value="30">Every 30s</SelectItem>
+              <SelectItem value="60">Every 60s</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            onClick={() => refetch()}
+            disabled={isLoading}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </motion.div>
-    </TimeRangeProvider>
+
+      {error ? (
+        <motion.div variants={item}>
+          <GlassCard>
+            <GlassCardContent className="p-8 text-center">
+              <p className="text-red-400">{error.message}</p>
+              <Button variant="outline" onClick={() => refetch()} className="mt-4">
+                Retry
+              </Button>
+            </GlassCardContent>
+          </GlassCard>
+        </motion.div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Query Performance */}
+          <motion.div variants={item}>
+            <GlassCard className="h-[350px]">
+              <GlassCardHeader>
+                <GlassCardTitle>Queries per Second</GlassCardTitle>
+              </GlassCardHeader>
+              <GlassCardContent className="h-[280px]">
+                {metrics?.queriesPerSecond ? (
+                  <UPlotMetricItemComponent
+                    data={metrics.queriesPerSecond}
+                    title="Queries/s"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    {isLoading ? "Loading..." : "No data available"}
+                  </div>
+                )}
+              </GlassCardContent>
+            </GlassCard>
+          </motion.div>
+
+          {/* Memory Usage */}
+          <motion.div variants={item}>
+            <GlassCard className="h-[350px]">
+              <GlassCardHeader>
+                <GlassCardTitle>Memory Usage</GlassCardTitle>
+              </GlassCardHeader>
+              <GlassCardContent className="h-[280px]">
+                {metrics?.memoryUsage ? (
+                  <UPlotMetricItemComponent
+                    data={metrics.memoryUsage}
+                    title="Memory (GB)"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    {isLoading ? "Loading..." : "No data available"}
+                  </div>
+                )}
+              </GlassCardContent>
+            </GlassCard>
+          </motion.div>
+
+          {/* CPU Usage */}
+          <motion.div variants={item}>
+            <GlassCard className="h-[350px]">
+              <GlassCardHeader>
+                <GlassCardTitle>CPU Usage</GlassCardTitle>
+              </GlassCardHeader>
+              <GlassCardContent className="h-[280px]">
+                {metrics?.cpuUsage ? (
+                  <UPlotMetricItemComponent
+                    data={metrics.cpuUsage}
+                    title="CPU %"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    {isLoading ? "Loading..." : "No data available"}
+                  </div>
+                )}
+              </GlassCardContent>
+            </GlassCard>
+          </motion.div>
+
+          {/* Disk I/O */}
+          <motion.div variants={item}>
+            <GlassCard className="h-[350px]">
+              <GlassCardHeader>
+                <GlassCardTitle>Disk I/O</GlassCardTitle>
+              </GlassCardHeader>
+              <GlassCardContent className="h-[280px]">
+                {metrics?.diskIO ? (
+                  <UPlotMetricItemComponent
+                    data={metrics.diskIO}
+                    title="MB/s"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    {isLoading ? "Loading..." : "No data available"}
+                  </div>
+                )}
+              </GlassCardContent>
+            </GlassCard>
+          </motion.div>
+        </div>
+      )}
+    </motion.div>
   );
 }
-
-export default MetricsPage;
