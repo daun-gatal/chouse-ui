@@ -84,7 +84,8 @@ ENV NODE_ENV=production \
     STATIC_PATH=/app/dist \
     # Session configuration
     SESSION_TTL=3600000 \
-    # CORS settings (can be overridden at runtime)
+    # CORS settings - override with your domain in production
+    # Example: CORS_ORIGIN=https://your-domain.com
     CORS_ORIGIN=* \
     # ClickHouse connection settings (optional)
     # Default URL pre-filled in login form

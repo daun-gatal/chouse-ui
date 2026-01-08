@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { Context, Next } from "hono";
 import auth from "./auth";
 import query from "./query";
 import explorer from "./explorer";
@@ -7,6 +8,46 @@ import savedQueries from "./saved-queries";
 import config from "./config";
 
 const api = new Hono();
+
+/**
+ * API Request Protection Middleware
+ * 
+ * Ensures API calls come from JavaScript (XHR/fetch), not direct browser navigation.
+ * Direct URL access in browser will be blocked.
+ * 
+ * How it works:
+ * - Browser navigation: No X-Requested-With header → Blocked
+ * - JavaScript fetch: Has X-Requested-With header → Allowed
+ */
+const apiProtectionMiddleware = async (c: Context, next: Next) => {
+  const path = c.req.path;
+  
+  // Skip protection for:
+  // - Health checks (needed for load balancers)
+  // - Config endpoint (needed before app loads)
+  // - Login endpoint (needed for initial auth)
+  const publicPaths = ["/api/health", "/api/config", "/api/auth/login"];
+  if (publicPaths.some(p => path === p || path.startsWith(p + "/"))) {
+    await next();
+    return;
+  }
+
+  // Check for X-Requested-With header (set by frontend JavaScript)
+  const requestedWith = c.req.header("X-Requested-With");
+  
+  if (requestedWith !== "XMLHttpRequest") {
+    return c.json({
+      success: false,
+      error: "Direct API access is not allowed. Please use the application UI.",
+      code: "DIRECT_ACCESS_DENIED",
+    }, 403);
+  }
+
+  await next();
+};
+
+// Apply API protection to all routes
+api.use("*", apiProtectionMiddleware);
 
 // Public routes (no auth required)
 api.route("/config", config);
