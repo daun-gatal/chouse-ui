@@ -50,15 +50,33 @@ app.route("/api", api);
 // Serve static files from the dist directory
 app.use("*", serveStatic({ root: STATIC_PATH }));
 
-// SPA fallback - serve index.html for all non-API routes
-app.get("*", serveStatic({ path: `${STATIC_PATH}/index.html` }));
-
 // ============================================
 // Error Handling
 // ============================================
 
 app.onError(errorHandler);
-app.notFound(notFoundHandler);
+
+// SPA fallback - serve index.html for all non-API, non-file routes
+// This must come after serveStatic and handles client-side routing
+app.notFound(async (c) => {
+  // If it's an API route, return JSON 404
+  if (c.req.path.startsWith("/api")) {
+    return notFoundHandler(c);
+  }
+  
+  // For all other routes, serve index.html for SPA routing
+  try {
+    const indexPath = `${STATIC_PATH}/index.html`;
+    const file = Bun.file(indexPath);
+    if (await file.exists()) {
+      return c.html(await file.text());
+    }
+  } catch (e) {
+    // Fall through to 404
+  }
+  
+  return notFoundHandler(c);
+});
 
 // ============================================
 // Server Startup
