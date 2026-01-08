@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UserCog, ArrowLeft, Loader2, Shield, Key, Trash2, AlertTriangle, Server, Database, X, FileText } from "lucide-react";
+import { UserCog, ArrowLeft, Loader2, Shield, Key, Trash2, AlertTriangle, Server, Database, X, FileText, Check, Globe } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useExecuteQuery, useUserDetails, useClusterNames, useDatabases } from "@/hooks";
 
 // Predefined role templates (same as CreateUser)
@@ -67,6 +68,17 @@ const ROLE_TEMPLATES = {
 };
 
 type RoleTemplate = keyof typeof ROLE_TEMPLATES;
+type HostRestrictionType = "any" | "ip" | "name" | "local";
+
+// Password requirement indicator component
+const RequirementItem = ({ fulfilled, label }: { fulfilled: boolean; label: string }) => (
+  <div className={`flex items-center gap-2 text-xs transition-colors duration-200 ${fulfilled ? 'text-green-400' : 'text-gray-500'}`}>
+    <div className={`w-4 h-4 rounded-full flex items-center justify-center border ${fulfilled ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
+      {fulfilled ? <Check className="w-2.5 h-2.5" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+    </div>
+    <span>{label}</span>
+  </div>
+);
 
 const EditUser: React.FC = () => {
   const navigate = useNavigate();
@@ -87,8 +99,32 @@ const EditUser: React.FC = () => {
   const [selectedDatabases, setSelectedDatabases] = useState<string[]>([]);
   const [isApplyingRole, setIsApplyingRole] = useState(false);
   const [allowQueryLogs, setAllowQueryLogs] = useState(true); // Allow viewing own query logs
+  const [hostRestriction, setHostRestriction] = useState<HostRestrictionType>("any");
+  const [allowedHosts, setAllowedHosts] = useState<string[]>([]);
+  const [newHost, setNewHost] = useState("");
+  const [isUpdatingHost, setIsUpdatingHost] = useState(false);
 
   const databases = databasesData.map((db) => db.name);
+
+  // Initialize host restriction from user details
+  useEffect(() => {
+    if (userDetails) {
+      const hostIp = String(userDetails.host_ip || "");
+      const hostNames = String(userDetails.host_names || "");
+      
+      if (hostIp === "localhost" || hostIp === "127.0.0.1" || hostIp === "::1") {
+        setHostRestriction("local");
+      } else if (hostIp && hostIp !== "::/0" && hostIp !== "::") {
+        setHostRestriction("ip");
+        setAllowedHosts(hostIp.split(",").map((h) => h.trim()).filter(Boolean));
+      } else if (hostNames) {
+        setHostRestriction("name");
+        setAllowedHosts(hostNames.split(",").map((h) => h.trim()).filter(Boolean));
+      } else {
+        setHostRestriction("any");
+      }
+    }
+  }, [userDetails]);
 
   // Fetch current grants for the user
   useEffect(() => {
@@ -107,6 +143,62 @@ const EditUser: React.FC = () => {
   // Build cluster clause helper
   const getClusterClause = () => useCluster && selectedCluster ? ` ON CLUSTER '${selectedCluster}'` : "";
 
+  // Host management functions
+  const addHost = () => {
+    if (newHost.trim() && !allowedHosts.includes(newHost.trim())) {
+      setAllowedHosts([...allowedHosts, newHost.trim()]);
+      setNewHost("");
+    }
+  };
+
+  const removeHost = (host: string) => {
+    setAllowedHosts(allowedHosts.filter((h) => h !== host));
+  };
+
+  const handleUpdateHost = async () => {
+    setIsUpdatingHost(true);
+
+    try {
+      const clusterClause = getClusterClause();
+      
+      // Build host restriction clause
+      let hostClause = "";
+      if (hostRestriction === "local") {
+        hostClause = "HOST LOCAL";
+      } else if (hostRestriction === "ip" && allowedHosts.length > 0) {
+        hostClause = `HOST IP ${allowedHosts.map((ip) => `'${ip}'`).join(", ")}`;
+      } else if (hostRestriction === "name" && allowedHosts.length > 0) {
+        hostClause = `HOST NAME ${allowedHosts.map((name) => `'${name}'`).join(", ")}`;
+      } else {
+        hostClause = "HOST ANY";
+      }
+
+      await executeQuery.mutateAsync({
+        query: `ALTER USER '${username}'${clusterClause} ${hostClause}`,
+      });
+
+      const clusterMsg = clusterClause ? ` on cluster ${selectedCluster}` : "";
+      toast.success(`Host restriction updated successfully${clusterMsg}`);
+      refetch();
+    } catch (error) {
+      console.error("Failed to update host restriction:", error);
+      toast.error(`Failed to update host restriction: ${(error as Error).message}`);
+    } finally {
+      setIsUpdatingHost(false);
+    }
+  };
+
+  // Password validation requirements (same as CreateUser)
+  const passwordReqs = {
+    length: newPassword.length >= 12,
+    upper: /[A-Z]/.test(newPassword),
+    lower: /[a-z]/.test(newPassword),
+    number: /\d/.test(newPassword),
+    special: /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(newPassword),
+  };
+
+  const isPasswordValid = Object.values(passwordReqs).every(Boolean);
+
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -120,8 +212,8 @@ const EditUser: React.FC = () => {
       return;
     }
 
-    if (newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
+    if (!isPasswordValid) {
+      toast.error("Password does not meet all requirements");
       return;
     }
 
@@ -143,6 +235,22 @@ const EditUser: React.FC = () => {
     } finally {
       setIsUpdatingPassword(false);
     }
+  };
+
+  // Generate secure password (same as CreateUser)
+  const generatePassword = () => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let password = "";
+    password += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
+    password += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
+    password += "0123456789"[Math.floor(Math.random() * 10)];
+    password += "!@#$%^&*"[Math.floor(Math.random() * 8)];
+    for (let i = 0; i < 12; i++) {
+      password += chars[Math.floor(Math.random() * chars.length)];
+    }
+    password = password.split("").sort(() => Math.random() - 0.5).join("");
+    setNewPassword(password);
+    setConfirmPassword(password);
   };
 
   const handleDeleteUser = async () => {
@@ -313,20 +421,14 @@ const EditUser: React.FC = () => {
           </GlassCardTitle>
         </GlassCardHeader>
         <GlassCardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="p-3 rounded-lg bg-white/5">
               <div className="text-xs text-gray-400 mb-1">Username</div>
               <div className="text-white font-medium">{username}</div>
             </div>
             <div className="p-3 rounded-lg bg-white/5">
-              <div className="text-xs text-gray-400 mb-1">Host IP</div>
-              <div className="text-white font-medium">{userDetails?.host_ip || "Any"}</div>
-            </div>
-            <div className="p-3 rounded-lg bg-white/5">
-              <div className="text-xs text-gray-400 mb-1">Roles</div>
-              <div className="text-white font-medium">
-                {userDetails?.default_roles_all ? "All Roles" : userDetails?.default_roles_list || "None"}
-              </div>
+              <div className="text-xs text-gray-400 mb-1">Host Restriction</div>
+              <div className="text-white font-medium">{userDetails?.host_ip || userDetails?.host_names || "Any"}</div>
             </div>
             <div className="p-3 rounded-lg bg-white/5">
               <div className="text-xs text-gray-400 mb-1">Current Grants</div>
@@ -409,6 +511,10 @@ const EditUser: React.FC = () => {
           <TabsTrigger value="role" className="data-[state=active]:bg-purple-500/20">
             <Shield className="h-4 w-4 mr-2" />
             Change Role
+          </TabsTrigger>
+          <TabsTrigger value="host" className="data-[state=active]:bg-orange-500/20">
+            <Globe className="h-4 w-4 mr-2" />
+            Host Restriction
           </TabsTrigger>
           <TabsTrigger value="password" className="data-[state=active]:bg-blue-500/20">
             <Key className="h-4 w-4 mr-2" />
@@ -530,6 +636,121 @@ const EditUser: React.FC = () => {
           </GlassCard>
         </TabsContent>
 
+        <TabsContent value="host">
+          <GlassCard>
+            <GlassCardHeader>
+              <GlassCardTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-orange-400" />
+                Host Restriction
+              </GlassCardTitle>
+            </GlassCardHeader>
+            <GlassCardContent className="space-y-6">
+              <p className="text-sm text-gray-400">
+                Control which hosts this user can connect from. This adds an extra layer of security.
+              </p>
+
+              <RadioGroup
+                value={hostRestriction}
+                onValueChange={(value) => setHostRestriction(value as HostRestrictionType)}
+                className="space-y-3"
+              >
+                <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                  <RadioGroupItem value="any" id="host-any" />
+                  <Label htmlFor="host-any" className="flex-1 cursor-pointer">
+                    <div className="font-medium text-white">Any Host</div>
+                    <div className="text-xs text-gray-400">User can connect from any IP address</div>
+                  </Label>
+                </div>
+
+                <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                  <RadioGroupItem value="local" id="host-local" />
+                  <Label htmlFor="host-local" className="flex-1 cursor-pointer">
+                    <div className="font-medium text-white">Local Only</div>
+                    <div className="text-xs text-gray-400">User can only connect from localhost</div>
+                  </Label>
+                </div>
+
+                <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                  <RadioGroupItem value="ip" id="host-ip" />
+                  <Label htmlFor="host-ip" className="flex-1 cursor-pointer">
+                    <div className="font-medium text-white">Specific IP Addresses</div>
+                    <div className="text-xs text-gray-400">Restrict to specific IP addresses or CIDR ranges</div>
+                  </Label>
+                </div>
+
+                <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                  <RadioGroupItem value="name" id="host-name" />
+                  <Label htmlFor="host-name" className="flex-1 cursor-pointer">
+                    <div className="font-medium text-white">Specific Hostnames</div>
+                    <div className="text-xs text-gray-400">Restrict to specific hostnames (DNS resolved)</div>
+                  </Label>
+                </div>
+              </RadioGroup>
+
+              {/* Host input for IP or Name restriction */}
+              {(hostRestriction === "ip" || hostRestriction === "name") && (
+                <div className="space-y-3 pt-4 border-t border-white/10">
+                  <Label className="text-white">
+                    {hostRestriction === "ip" ? "Allowed IP Addresses" : "Allowed Hostnames"}
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newHost}
+                      onChange={(e) => setNewHost(e.target.value)}
+                      placeholder={hostRestriction === "ip" ? "e.g., 192.168.1.0/24" : "e.g., myserver.local"}
+                      className="bg-white/5 border-white/10"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addHost();
+                        }
+                      }}
+                    />
+                    <Button type="button" onClick={addHost} variant="outline">
+                      Add
+                    </Button>
+                  </div>
+
+                  {/* Display added hosts */}
+                  <div className="flex flex-wrap gap-2">
+                    {allowedHosts.length === 0 && (
+                      <p className="text-sm text-yellow-500/80 italic">
+                        No hosts added. User won't be able to connect until at least one is added.
+                      </p>
+                    )}
+                    {allowedHosts.map((host) => (
+                      <Badge
+                        key={host}
+                        variant="secondary"
+                        className="bg-orange-500/20 text-orange-200 border border-orange-500/30 cursor-pointer hover:bg-red-500/20 hover:text-red-200"
+                        onClick={() => removeHost(host)}
+                      >
+                        {host}
+                        <X className="ml-1 h-3 w-3" />
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Button 
+                onClick={handleUpdateHost} 
+                disabled={isUpdatingHost || ((hostRestriction === "ip" || hostRestriction === "name") && allowedHosts.length === 0)}
+                className="gap-2"
+              >
+                {isUpdatingHost ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update Host Restriction"
+                )}
+              </Button>
+            </GlassCardContent>
+          </GlassCard>
+        </TabsContent>
+
         <TabsContent value="password">
           <GlassCard>
             <GlassCardHeader>
@@ -539,17 +760,22 @@ const EditUser: React.FC = () => {
               </GlassCardTitle>
             </GlassCardHeader>
             <GlassCardContent>
-              <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-md">
+              <form onSubmit={handleUpdatePassword} className="space-y-6 max-w-md">
                 <div className="space-y-2">
                   <Label htmlFor="new-password">New Password</Label>
-                  <Input
-                    id="new-password"
-                    type={showPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password"
-                    className="bg-white/5 border-white/10"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="new-password"
+                      type={showPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      className="bg-white/5 border-white/10 font-mono"
+                    />
+                    <Button type="button" variant="outline" onClick={generatePassword} className="shrink-0">
+                      Generate
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -560,8 +786,23 @@ const EditUser: React.FC = () => {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Confirm new password"
-                    className="bg-white/5 border-white/10"
+                    className="bg-white/5 border-white/10 font-mono"
                   />
+                  {confirmPassword && newPassword !== confirmPassword && (
+                    <p className="text-xs text-red-400">Passwords do not match</p>
+                  )}
+                </div>
+
+                {/* Password Requirements */}
+                <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+                  <p className="text-xs text-gray-400 mb-3">Password Requirements:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <RequirementItem fulfilled={passwordReqs.length} label="At least 12 characters" />
+                    <RequirementItem fulfilled={passwordReqs.upper} label="Uppercase letter" />
+                    <RequirementItem fulfilled={passwordReqs.lower} label="Lowercase letter" />
+                    <RequirementItem fulfilled={passwordReqs.number} label="Number" />
+                    <RequirementItem fulfilled={passwordReqs.special} label="Special character" />
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -577,7 +818,10 @@ const EditUser: React.FC = () => {
                   </Label>
                 </div>
 
-                <Button type="submit" disabled={isUpdatingPassword}>
+                <Button 
+                  type="submit" 
+                  disabled={isUpdatingPassword || !isPasswordValid || newPassword !== confirmPassword}
+                >
                   {isUpdatingPassword ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -8,7 +8,6 @@ import {
   Edit,
   Shield,
   Search,
-  Key,
   MoreHorizontal,
   UserCheck,
   UserX,
@@ -35,15 +34,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { useUsers, useExecuteQuery } from "@/hooks";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -166,10 +156,7 @@ const UserManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [userGrants, setUserGrants] = useState<UserGrants>({});
   const [loadingGrants, setLoadingGrants] = useState(false);
 
@@ -232,35 +219,9 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (!selectedUser || !newPassword.trim()) return;
-    setIsUpdatingPassword(true);
-
-    try {
-      const escapedPassword = newPassword.replace(/'/g, "\\'");
-      await executeQuery.mutateAsync({
-        query: `ALTER USER '${selectedUser.name}' IDENTIFIED BY '${escapedPassword}'`,
-      });
-      toast.success(`Password updated for "${selectedUser.name}"`);
-      setShowPasswordDialog(false);
-      setNewPassword("");
-      setSelectedUser(null);
-    } catch (error) {
-      toast.error(`Failed to update password: ${(error as Error).message}`);
-    } finally {
-      setIsUpdatingPassword(false);
-    }
-  };
-
   const openDeleteDialog = (user: User) => {
     setSelectedUser(user);
     setShowDeleteDialog(true);
-  };
-
-  const openPasswordDialog = (user: User) => {
-    setSelectedUser(user);
-    setNewPassword("");
-    setShowPasswordDialog(true);
   };
 
   const container = {
@@ -438,10 +399,6 @@ const UserManagement: React.FC = () => {
                           <Edit className="h-4 w-4 mr-2" />
                           Edit User
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openPasswordDialog(user)}>
-                          <Key className="h-4 w-4 mr-2" />
-                          Change Password
-                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => openDeleteDialog(user)}
@@ -497,15 +454,6 @@ const UserManagement: React.FC = () => {
                     >
                       <Edit className="h-3 w-3 mr-1" />
                       Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="flex-1 text-xs"
-                      onClick={() => openPasswordDialog(user)}
-                    >
-                      <Key className="h-3 w-3 mr-1" />
-                      Password
                     </Button>
                     <Button
                       size="sm"
@@ -581,48 +529,6 @@ const UserManagement: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Change Password Dialog */}
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5 text-yellow-500" />
-              Change Password
-            </DialogTitle>
-            <DialogDescription>
-              Set a new password for user <strong>{selectedUser?.name}</strong>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="new-password">New Password</Label>
-              <Input
-                id="new-password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
-                className="bg-white/5 border-white/10"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPasswordDialog(false)} disabled={isUpdatingPassword}>
-              Cancel
-            </Button>
-            <Button onClick={handleChangePassword} disabled={isUpdatingPassword || !newPassword.trim()}>
-              {isUpdatingPassword ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Update Password"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </motion.div>
   );
 };
