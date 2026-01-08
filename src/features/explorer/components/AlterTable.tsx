@@ -118,7 +118,7 @@ const AlterTable: React.FC = () => {
       const result = await executeQuery.mutateAsync({
         query: `DESCRIBE TABLE ${tableName}`,
       });
-      setColumns(result.data as TableColumn[]);
+      setColumns(result.data as unknown as TableColumn[]);
     } catch (error) {
       console.error("Failed to fetch table structure:", error);
       toast.error("Failed to fetch table structure");

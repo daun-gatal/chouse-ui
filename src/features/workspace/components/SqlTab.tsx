@@ -111,10 +111,10 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
 
   // Process result data into grid-compatible format
   useMemo(() => {
-    if (tab?.result?.data?.length && tab?.result?.meta?.length) {
+    if (tab?.result?.data && tab.result.data.length > 0 && tab?.result?.meta && tab.result.meta.length > 0) {
       const colDefs: ColDef<IRow>[] = tab.result.meta.map((col: { name: string; type: string }) => ({
         headerName: col.name,
-        valueGetter: (param: { data: IRow }) => param.data[col.name],
+        valueGetter: (params) => params.data?.[col.name],
       }));
 
       setRowData(tab.result.data as IRow[]);
@@ -209,8 +209,10 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   };
 
   const renderResultTabs = () => {
-    const hasData = tab?.result?.data?.length > 0;
-    const hasMeta = tab?.result?.meta?.length > 0;
+    const resultData = tab?.result?.data ?? [];
+    const resultMeta = tab?.result?.meta ?? [];
+    const hasData = resultData.length > 0;
+    const hasMeta = resultMeta.length > 0;
 
     return (
       <Tabs
@@ -223,8 +225,8 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
             Results
             {hasData && (
               <div className="ml-2 text-muted-foreground items-center flex">
-                ({tab?.result.data.length} rows)
-                <DownloadDialog data={tab?.result.data} />
+                ({resultData.length} rows)
+                <DownloadDialog data={resultData} />
               </div>
             )}
           </TabsTrigger>
@@ -232,8 +234,8 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
             Metadata
             {hasMeta && (
               <div className="ml-2 text-muted-foreground items-center flex">
-                ({tab?.result.meta.length} columns)
-                <DownloadDialog data={tab?.result.meta} />
+                ({resultMeta.length} columns)
+                <DownloadDialog data={resultMeta} />
               </div>
             )}
           </TabsTrigger>

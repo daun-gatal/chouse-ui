@@ -5,6 +5,7 @@
     "": {
       "name": "ch-ui",
       "dependencies": {
+        "@clickhouse/client-web": "^1.8.1",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/sortable": "^10.0.0",
         "@dnd-kit/utilities": "^3.2.2",
@@ -135,6 +136,8 @@
     "@clickhouse/client": ["@clickhouse/client@1.16.0", "", { "dependencies": { "@clickhouse/client-common": "1.16.0" } }, "sha512-ThPhoRMsKsf/hmBEgWlUsGxFecsr3i+k3JI8JV0Od7UpH2BSmk9VKMGJoyPCrTL0vPUs5rJH+7o4iCqBF09Xvg=="],
 
     "@clickhouse/client-common": ["@clickhouse/client-common@1.16.0", "", {}, "sha512-qMzkI1NmV29ZjFkNpVSvGNfA0c7sCExlufAQMv+V+5xtNeYXnRfdqzmBLIQoq6Pf1ij0kw/wGLD3HQrl7pTFLA=="],
+
+    "@clickhouse/client-web": ["@clickhouse/client-web@1.16.0", "", { "dependencies": { "@clickhouse/client-common": "1.16.0" } }, "sha512-47+H8GsXXlultL3HFkTu94M7BGXJF8FOwiOUafPpvgCFoqra3o82I0YbWs3vTRqHIOuFjCvuOzrBNFvcT732eg=="],
 
     "@date-fns/tz": ["@date-fns/tz@1.4.1", "", {}, "sha512-P5LUNhtbj6YfI3iJjw5EL9eUAG6OitD0W3fWQcpQjDRc/QIsL0tRNuO1PcDvPccWL1fSTXXdE1ds+l95DV/OFA=="],
 

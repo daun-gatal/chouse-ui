@@ -80,7 +80,7 @@ const UploadFile: React.FC = () => {
       
       // Insert the data
       const query = `INSERT INTO ${database}.${tableName} FORMAT ${format}\n${content}`;
-      await queryApi.execute({ query });
+      await queryApi.executeQuery(query);
       
       toast.success(`Data uploaded successfully to ${database}.${tableName}`);
       await refetchDatabases();
