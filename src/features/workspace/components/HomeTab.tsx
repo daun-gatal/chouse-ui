@@ -1,265 +1,141 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
+import { useWorkspaceStore, genTabId } from "@/stores";
+import { useSavedQueries, useSavedQueriesStatus } from "@/hooks";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Github,
-  Terminal,
-  BookOpen,
-  Database,
-  ExternalLink,
-  UploadCloud,
-  Loader2,
-} from "lucide-react";
-import useAppStore from "@/store";
-import { motion } from "framer-motion";
-import { Skeleton } from "@/components/ui/skeleton";
-import { genTabId } from "@/lib/utils";
-
-const quickStartActions = [
-  {
-    title: "SQL QUERY",
-    icon: <Terminal className="w-5 h-5" />,
-    description: "Write and execute SQL queries",
-    action: "sql",
-  },
-];
-
-const resourceCards = [
-  {
-    title: "SQL Reference",
-    description: "Explore ClickHouse SQL documentation.",
-    Icon: BookOpen,
-    link: "https://clickhouse.com/docs/en/sql-reference",
-    action: "Read Docs",
-  },
-  {
-    title: "ClickHouse Docs",
-    description: "Learn more about ClickHouse features.",
-    Icon: ExternalLink,
-    link: "https://clickhouse.com/docs/en/intro",
-    action: "Docs",
-  },
-];
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { FilePlus, Save, Clock, ArrowRight } from "lucide-react";
 
 const HomeTab = () => {
-  const { addTab, runQuery, credential } = useAppStore();
-  const [recentItems, setRecentItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { addTab, tabs } = useWorkspaceStore();
+  const { data: isSavedQueriesEnabled = false } = useSavedQueriesStatus();
+  const { data: savedQueries = [] } = useSavedQueries();
 
-  useEffect(() => {
-    getUsersRecentItems();
-  }, [credential?.username]);
+  const recentTabs = useMemo(() => {
+    return tabs
+      .filter((tab) => tab.type === "sql")
+      .slice(-5)
+      .reverse();
+  }, [tabs]);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("en-US", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(date);
-  };
-
-  const handleNewAction = (type: string, query?: string) => {
+  const handleOpenSavedQuery = (query: { id: string; name: string; query: string }) => {
     addTab({
-      id: genTabId(),
+      id: query.id,
       type: "sql",
-      title: query
-        ? `Recent - ${type}`
-        : `New ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-      content: query || "",
+      title: query.name,
+      content: query.query,
+      isSaved: true,
     });
   };
 
-  const getUsersRecentItems = async () => {
-    if (!credential?.username) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const recentQueries = await runQuery(`
-        SELECT DISTINCT
-          replaceAll(query, 'FORMAT JSON', '') AS cleaned_query,
-        max(event_time) AS latest_event_time,
-        query_kind,
-        length(replaceAll(query, 'FORMAT JSON', '')) AS query_length
-      FROM
-        system.query_log
-      WHERE
-        user = '${credential.username}'
-        AND event_time >= (current_timestamp() - INTERVAL 2 DAY)
-        AND arrayExists(db -> db NOT LIKE '%system%', databases)
-        AND query NOT LIKE 'SELECT DISTINCT%'
-      GROUP BY
-        cleaned_query, query_kind
-      ORDER BY
-        latest_event_time DESC
-        LIMIT
-          6;
-      `);
-      setRecentItems(recentQueries.data);
-    } catch (err) {
-      setError("Failed to load recent queries");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const truncateQuery = (query: string, length: number = 50) => {
-    return query.length > length ? `${query.slice(0, length)}...` : query;
+  const handleNewQuery = () => {
+    addTab({
+      id: genTabId(),
+      type: "sql",
+      title: "New Query",
+      content: "",
+    });
   };
 
   return (
-    <div className="p-6 space-y-8 max-w-7xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="space-y-2"
-      >
-        <h1 className="text-2xl font-semibold">
-          Welcome {credential?.username}
-        </h1>
-        <p className="text-muted-foreground">Let's get busy...</p>
-      </motion.div>
+    <div className="h-full p-6">
+      <div className="max-w-4xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white/90 mb-2">
+            Query Workspace
+          </h1>
+          <p className="text-gray-400">
+            Create and manage your SQL queries
+          </p>
+        </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="grid grid-cols-1 md:grid-cols-2 gap-4"
-      >
-        {quickStartActions.map((action, index) => (
+        {/* Quick Actions */}
+        <div className="flex justify-center">
           <Button
-            key={index}
-            variant="outline"
-            className="h-auto p-4 flex flex-col items-start space-y-2 hover:bg-accent hover:text-accent-foreground group"
-            onClick={() => handleNewAction(action.action)}
+            onClick={handleNewQuery}
+            className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500"
           >
-            <div className="flex items-center space-x-2 text-primary">
-              <div className="p-2 rounded-full bg-primary/10 group-hover:bg-primary/20">
-                {action.icon}
-              </div>
-              <span className="font-semibold">{action.title}</span>
-            </div>
-            <span className="text-sm text-muted-foreground text-left">
-              {action.description}
-            </span>
+            <FilePlus className="h-4 w-4" />
+            New Query
           </Button>
-        ))}
-      </motion.div>
+        </div>
 
-      <Tabs defaultValue="recent" className="space-y-4">
-        <TabsList className="w-full justify-start">
-          <TabsTrigger value="recent" className="flex items-center gap-2">
-            Recently opened
-            {loading && <Loader2 className="w-3 h-3 animate-spin" />}
-          </TabsTrigger>
-          <TabsTrigger value="resources">Resources</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="recent" className="space-y-4">
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => (
-                <Card key={i} className="space-y-2">
-                  <CardHeader>
-                    <Skeleton className="h-4 w-[250px]" />
-                    <Skeleton className="h-4 w-[200px]" />
-                  </CardHeader>
-                  <CardFooter>
-                    <Skeleton className="h-4 w-[150px]" />
-                  </CardFooter>
-                </Card>
-              ))}
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Recent Queries */}
+          <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Clock className="h-5 w-5 text-purple-400" />
+              <h2 className="text-lg font-semibold text-white/90">
+                Recent Queries
+              </h2>
             </div>
-          ) : error ? (
-            <Card className="p-4 text-center text-muted-foreground">
-              {error}
-            </Card>
-          ) : recentItems.length === 0 ? (
-            <Card className="p-4 text-center text-muted-foreground">
-              No recent queries found
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recentItems.map((item, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <Card
-                    className="hover:bg-accent/50 cursor-pointer transition-colors"
-                    onClick={() =>
-                      handleNewAction(item.query_kind, item.cleaned_query)
-                    }
-                  >
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium flex items-center space-x-2">
-                        <Database className="w-4 h-4" />
-                        <span>{item.query_kind || "Query"}</span>
-                      </CardTitle>
-                      <CardDescription className="text-xs font-mono">
-                        {truncateQuery(item.cleaned_query)}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardFooter className="text-xs text-muted-foreground">
-                      {formatDate(item.latest_event_time)}
-                    </CardFooter>
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="resources">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {resourceCards.map((card, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Card className="hover:bg-accent/50 transition-colors">
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium flex items-center space-x-2">
-                      <div className="p-2 rounded-full bg-primary/10">
-                        <card.Icon className="w-4 h-4" />
-                      </div>
-                      <span>{card.title}</span>
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      {card.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardFooter>
-                    <Button
-                      variant="ghost"
-                      className="w-full"
-                      onClick={() => window.open(card.link, "_blank")}
+            <ScrollArea className="h-[200px]">
+              {recentTabs.length > 0 ? (
+                <div className="space-y-2">
+                  {recentTabs.map((tab) => (
+                    <div
+                      key={tab.id}
+                      className="p-3 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors flex items-center justify-between group"
+                      onClick={() =>
+                        addTab({
+                          ...tab,
+                          id: genTabId(),
+                          title: `${tab.title} (Copy)`,
+                        })
+                      }
                     >
-                      {card.action}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-            ))}
+                      <span className="text-sm text-gray-300 truncate flex-1">
+                        {tab.title}
+                      </span>
+                      <ArrowRight className="h-4 w-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-gray-500 py-8">
+                  No recent queries
+                </p>
+              )}
+            </ScrollArea>
           </div>
-        </TabsContent>
-      </Tabs>
+
+          {/* Saved Queries */}
+          <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Save className="h-5 w-5 text-blue-400" />
+              <h2 className="text-lg font-semibold text-white/90">
+                Saved Queries
+              </h2>
+            </div>
+            <ScrollArea className="h-[200px]">
+              {!isSavedQueriesEnabled ? (
+                <p className="text-center text-gray-500 py-8">
+                  Saved queries feature is not enabled
+                </p>
+              ) : savedQueries.length > 0 ? (
+                <div className="space-y-2">
+                  {savedQueries.slice(0, 5).map((query) => (
+                    <div
+                      key={query.id}
+                      className="p-3 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors flex items-center justify-between group"
+                      onClick={() => handleOpenSavedQuery(query)}
+                    >
+                      <span className="text-sm text-gray-300 truncate flex-1">
+                        {query.name}
+                      </span>
+                      <ArrowRight className="h-4 w-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-gray-500 py-8">
+                  No saved queries yet
+                </p>
+              )}
+            </ScrollArea>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

@@ -1,257 +1,242 @@
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { Settings, Loader2, Trash2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import React from "react";
+import { motion } from "framer-motion";
+import {
+  Settings as SettingsIcon,
+  Moon,
+  Server,
+  User,
+  Database,
+  CheckCircle2,
+  ExternalLink,
+  Palette,
+  Link2,
+  Info,
+  Heart,
+  LogOut,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
-import { useSearchParams } from "react-router-dom";
-import useAppStore from "@/store";
-import { retryInitialization } from "@/features/workspace/editor/monacoConfig";
-import ClickhouseDefaultConfiguration from "@/features/admin/components/ClickhouseDefaultConfiguration";
+import { useAuthStore } from "@/stores";
+import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
-const formSchema = z.object({
-  isDistributed: z.boolean().optional(),
-  clusterName: z.string().optional(),
-});
+interface SettingCardProps {
+  title: string;
+  description?: string;
+  icon: React.ElementType;
+  color: string;
+  children: React.ReactNode;
+}
 
-export default function SettingsPage() {
-  document.title = "ClickHouse UI | Settings";
-  const {
-    credential,
-    setCredential,
-    checkServerStatus,
-    isLoadingCredentials,
-    isServerAvailable,
-    setCredentialSource,
-    clearLocalData,
-    isAdmin,
-    updateDistributedSettings,
-  } = useAppStore();
+const SettingCard: React.FC<SettingCardProps> = ({
+  title,
+  description,
+  icon: Icon,
+  color,
+  children,
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden"
+  >
+    <div className="flex items-center gap-3 p-4 border-b border-white/10">
+      <div className={cn("p-2 rounded-lg", color)}>
+        <Icon className="h-4 w-4 text-white" />
+      </div>
+      <div>
+        <h3 className="font-semibold text-white">{title}</h3>
+        {description && <p className="text-xs text-gray-500">{description}</p>}
+      </div>
+    </div>
+    <div className="p-4">{children}</div>
+  </motion.div>
+);
 
-  const [showDistributedSettings, setShowDistributedSettings] = useState(
-    credential?.isDistributed || false
-  );
-  const [searchParams] = useSearchParams();
+interface InfoRowProps {
+  label: string;
+  value: string | React.ReactNode;
+  icon?: React.ElementType;
+}
 
-  const currentFormValues = {
-    isDistributed: credential?.isDistributed,
-    clusterName: credential?.clusterName,
-  };
+const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon: Icon }) => (
+  <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+    <div className="flex items-center gap-2">
+      {Icon && <Icon className="h-3.5 w-3.5 text-gray-500" />}
+      <span className="text-sm text-gray-400">{label}</span>
+    </div>
+    <span className="text-sm text-white font-medium">{value}</span>
+  </div>
+);
 
-  type FormData = {
-    isDistributed?: boolean;
-    clusterName?: string;
-  };
+export default function Settings() {
+  const navigate = useNavigate();
+  const { username, url, version, isAdmin, logout } = useAuthStore();
 
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      isDistributed:
-        searchParams.get("isDistributed") === "true" ||
-        credential?.isDistributed ||
-        false,
-      clusterName:
-        searchParams.get("clusterName") || credential?.clusterName || "",
-    },
-  });
-
-  useEffect(() => {
-    form.reset({
-      isDistributed:
-        searchParams.get("isDistributed") === "true" ||
-        credential?.isDistributed ||
-        false,
-      clusterName:
-        searchParams.get("clusterName") || credential?.clusterName || "",
-    });
-  }, [searchParams, credential, form.reset]);
-
-  const onSubmit = async (values: FormData) => {
-    try {
-      if (
-        values.isDistributed === currentFormValues.isDistributed &&
-        values.clusterName === currentFormValues.clusterName &&
-        isServerAvailable
-      ) {
-        toast.info("No changes detected.");
-        return;
-      }
-
-      // Check if ONLY distributed settings changed
-      // We can compare with the current store credentials, excluding distributed flags
-      // But simpler: since this form ONLY handles distributed settings when in this mode,
-      // and we don't have other inputs here except the hidden ones (which are not in this form schema anyway?)
-      // Wait, the form schema DOES NOT include url/user/pass. So we are ONLY changing distributed settings here.
-      // So we can ALWAYS use updateDistributedSettings if we are just toggling flags.
-
-      // However, we need to be careful. The original code was calling setCredential which reconnects.
-      // If we just update the store, we don't reconnect.
-      // The user wants "remove any connectivity when hit the save button".
-
-      updateDistributedSettings({
-        isDistributed: values.isDistributed || false,
-        clusterName: values.clusterName,
-      });
-
-      toast.success("Settings saved successfully");
-
-      // We do NOT call setCredential or checkServerStatus here.
-    } catch (error) {
-      toast.error("Error saving settings: " + (error as Error).message);
-    }
-  };
-
-  const handleClearLocal = () => {
-    const confirmed = window.confirm(
-      "This will clear tabs and metrics layouts saved locally. Credentials are kept. Continue?"
-    );
-    if (!confirmed) return;
-    clearLocalData();
-    toast.success("Local data cleared");
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
   };
 
   return (
-    <div className="max-h-screen w-full overflow-y-auto">
-      <div className="max-w-2xl mx-auto py-8">
-        <div className="space-y-8">
-          {isAdmin && (
-            <Card className="shadow-lg border-muted">
-              <CardHeader>
-                <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                  <Settings className="h-6 w-6 text-primary" />
-                  Cluster Configuration
-                </CardTitle>
-                <CardDescription>
-                  Configure distributed operations.
-                </CardDescription>
-              </CardHeader>
+    <div className="h-full overflow-auto">
+      <div className="container mx-auto p-6 space-y-6 max-w-4xl">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-4"
+        >
+          <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 shadow-lg shadow-purple-500/20">
+            <SettingsIcon className="h-7 w-7 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
+            <p className="text-gray-400 text-sm">Manage your application preferences</p>
+          </div>
+        </motion.div>
 
-              <CardContent>
-                <Form {...form}>
-                  <form
-                    onSubmit={form.handleSubmit(onSubmit)}
-                    className="space-y-6"
-                  >
-                    <div className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="isDistributed"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={(checked) => {
-                                  setShowDistributedSettings(
-                                    checked as boolean
-                                  );
-                                  field.onChange(checked);
-                                }}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 leading-none">
-                              <FormLabel>Distributed Mode</FormLabel>
-                              <FormDescription className="text-xs">
-                                Enable this if you're using a ClickHouse
-                                cluster
-                              </FormDescription>
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-
-                      {showDistributedSettings && (
-                        <FormField
-                          control={form.control}
-                          name="clusterName"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Cluster Name</FormLabel>
-                              <FormControl>
-                                <Input
-                                  className="font-mono"
-                                  disabled={isLoadingCredentials}
-                                  placeholder="my_cluster"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormDescription className="text-xs">
-                                The name of your ClickHouse cluster
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      )}
-                    </div>
-
-                    <div className="flex gap-4 pt-4">
-                      <Button
-                        type="submit"
-                        disabled={isLoadingCredentials}
-                        className="w-40"
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Connection Info */}
+          <SettingCard
+            title="Connection"
+            description="Current server connection details"
+            icon={Link2}
+            color="bg-blue-500"
+          >
+            <div className="space-y-2">
+              <InfoRow
+                label="Connected As"
+                icon={User}
+                value={
+                  <div className="flex items-center gap-2">
+                    <span>{username || "N/A"}</span>
+                    {isAdmin && (
+                      <Badge className="bg-amber-500/20 text-amber-400 text-[10px]">
+                        Admin
+                      </Badge>
+                    )}
+                  </div>
+                }
+              />
+              <InfoRow
+                label="Server URL"
+                icon={Server}
+                value={
+                  url ? (
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs truncate max-w-[200px]" title={url}>
+                        {url}
+                      </span>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-gray-500 hover:text-white transition-colors"
                       >
-                        {isLoadingCredentials ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          "Save Settings"
-                        )}
-                      </Button>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
                     </div>
-                  </form>
-                </Form>
-              </CardContent>
-            </Card>
-          )}
+                  ) : (
+                    <span className="text-gray-500 text-xs">Re-login to see URL</span>
+                  )
+                }
+              />
+              <InfoRow
+                label="ClickHouse Version"
+                icon={Database}
+                value={version || "N/A"}
+              />
+              <InfoRow
+                label="Status"
+                icon={CheckCircle2}
+                value={
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-green-400">Connected</span>
+                  </div>
+                }
+              />
+            </div>
+          </SettingCard>
 
-          <ClickhouseDefaultConfiguration />
-
-          {/* Local data management */}
-          <Card className="shadow-lg border-muted">
-            <CardHeader>
-              <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                <Trash2 className="h-6 w-6 text-primary" />
-                Interface Reset
-              </CardTitle>
-              <CardDescription>
-                Reset your workspace layout, including open tabs and dashboard customizations.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                This acts as a "Factory Reset" for the UI. It does not log you out or delete any data on the server.
+          {/* Appearance */}
+          <SettingCard
+            title="Appearance"
+            description="Application theme settings"
+            icon={Palette}
+            color="bg-purple-500"
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-purple-500/20">
+                    <Moon className="h-5 w-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-white">Dark Mode</p>
+                    <p className="text-xs text-gray-500">Optimized for low-light environments</p>
+                  </div>
+                </div>
+                <Badge className="bg-purple-500/20 text-purple-400">Active</Badge>
+              </div>
+              <p className="text-xs text-gray-500 text-center">
+                ClickHouse Studio is designed with a dark theme for optimal visibility of data and reduced eye strain.
               </p>
-            </CardContent>
-            <CardFooter className="border-t bg-muted/50 rounded-b-lg pt-4 flex justify-end">
-              <Button variant="destructive" onClick={handleClearLocal}>
-                <Trash2 className="mr-2 h-4 w-4" /> Clear Local Data
-              </Button>
-            </CardFooter>
-          </Card>
+            </div>
+          </SettingCard>
         </div>
+
+        {/* About Section */}
+        <SettingCard
+          title="About"
+          description="Application information"
+          icon={Info}
+          color="bg-emerald-500"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-white/10">
+              <div>
+                <h4 className="font-semibold text-white">ClickHouse Studio</h4>
+                <p className="text-sm text-gray-400">
+                  A modern web interface for ClickHouse databases
+                </p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-lg bg-white/5 text-center">
+                <p className="text-xs text-gray-500 mb-1">Built with</p>
+                <p className="text-sm text-gray-300">React + TypeScript</p>
+              </div>
+              <div className="p-3 rounded-lg bg-white/5 text-center">
+                <p className="text-xs text-gray-500 mb-1">UI Framework</p>
+                <p className="text-sm text-gray-300">Tailwind CSS</p>
+              </div>
+            </div>
+
+            <p className="text-center text-gray-500 text-sm flex items-center justify-center gap-1">
+              Made with <Heart className="h-4 w-4 text-red-400" /> for the ClickHouse community
+            </p>
+          </div>
+        </SettingCard>
+
+        {/* Session Actions */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="flex justify-center pt-4"
+        >
+          <Button
+            variant="outline"
+            onClick={handleLogout}
+            className="gap-2 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </Button>
+        </motion.div>
       </div>
     </div>
   );

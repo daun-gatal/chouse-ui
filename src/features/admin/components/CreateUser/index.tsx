@@ -1,468 +1,581 @@
-import React, { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Plus, ChevronLeft, ChevronRight, Check, User, Shield, Lock, Eye, Settings, Code, Database as DatabaseIcon, Edit3 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form } from "@/components/ui/form";
+import React, { useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { UserPlus, ArrowLeft, Loader2, Shield, Database, Key, Globe, X, Server, FileText } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { useForm } from "react-hook-form";
-import useAppStore from "@/store";
-import { format } from "date-fns";
-import { generateRandomPassword } from "@/lib/utils";
+import { useForm, FormProvider } from "react-hook-form";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useExecuteQuery, useDatabases, useClusterNames } from "@/hooks";
 import AuthenticationSection from "./AuthenticationSection";
 import DatabaseRolesSection from "./DatabaseRolesSection";
-import useMetadata from "./hooks/useMetadata";
-import { motion, AnimatePresence } from "framer-motion";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { GlassCard, GlassCardContent } from "@/components/ui/glass-card";
 
-interface CreateNewUserProps {
-  onUserCreated: () => void;
+// Predefined role templates
+const ROLE_TEMPLATES = {
+  admin: {
+    name: "Admin",
+    description: "Full access to all databases and system operations",
+    icon: "🛡️",
+    color: "text-red-400",
+    bgColor: "bg-red-500/20",
+    borderColor: "border-red-500/50",
+    privileges: {
+      isAdmin: true,
+      allowSelect: true,
+      allowInsert: true,
+      allowDDL: true,
+      allowSystem: true,
+    },
+  },
+  developer: {
+    name: "Developer",
+    description: "Read/write access with DDL capabilities",
+    icon: "👨‍💻",
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/20",
+    borderColor: "border-blue-500/50",
+    privileges: {
+      isAdmin: false,
+      allowSelect: true,
+      allowInsert: true,
+      allowDDL: true,
+      allowSystem: false,
+    },
+  },
+  readWrite: {
+    name: "Read-Write",
+    description: "Read and write data, no schema changes",
+    icon: "📝",
+    color: "text-green-400",
+    bgColor: "bg-green-500/20",
+    borderColor: "border-green-500/50",
+    privileges: {
+      isAdmin: false,
+      allowSelect: true,
+      allowInsert: true,
+      allowDDL: false,
+      allowSystem: false,
+    },
+  },
+  readOnly: {
+    name: "Read Only",
+    description: "Query data only, no modifications",
+    icon: "👁️",
+    color: "text-purple-400",
+    bgColor: "bg-purple-500/20",
+    borderColor: "border-purple-500/50",
+    privileges: {
+      isAdmin: false,
+      allowSelect: true,
+      allowInsert: false,
+      allowDDL: false,
+      allowSystem: false,
+    },
+  },
+};
+
+type RoleTemplate = keyof typeof ROLE_TEMPLATES;
+type HostRestrictionType = "any" | "ip" | "name" | "local";
+
+interface FormData {
+  username: string;
+  password: string;
+  roleTemplate: RoleTemplate;
+  grantDatabases: string[];
+  hostRestriction: HostRestrictionType;
+  allowedHosts: string[];
+  privileges: {
+    isAdmin: boolean;
+    allowSelect: boolean;
+    allowInsert: boolean;
+    allowDDL: boolean;
+    allowSystem: boolean;
+  };
 }
 
-const STEPS = [
-  { id: 0, title: "Identity", icon: User },
-  { id: 1, title: "Role & Scope", icon: Shield },
-  { id: 2, title: "Review", icon: Check },
-];
+const CreateUser: React.FC = () => {
+  const navigate = useNavigate();
+  const executeQuery = useExecuteQuery();
+  const { data: databasesData = [] } = useDatabases();
+  const { data: clusters = [] } = useClusterNames();
+  const [selectedRole, setSelectedRole] = useState<RoleTemplate>("readOnly");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hostRestriction, setHostRestriction] = useState<HostRestrictionType>("any");
+  const [newHost, setNewHost] = useState("");
+  const [allowedHosts, setAllowedHosts] = useState<string[]>([]);
+  const [useCluster, setUseCluster] = useState(false);
+  const [selectedCluster, setSelectedCluster] = useState("");
+  const [allowQueryLogs, setAllowQueryLogs] = useState(true); // Allow viewing own query logs
 
-const CreateNewUser: React.FC<CreateNewUserProps> = ({ onUserCreated }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [onCluster, setOnCluster] = useState(false);
-  const [clusterName, setClusterName] = useState("");
-  const [accessPreset, setAccessPreset] = useState("read_only"); // admin, developer, read_write, read_only
+  const databases = databasesData.map((db) => db.name);
+  const roles: string[] = [];
 
-  const form = useForm({
+  const form = useForm<FormData>({
     defaultValues: {
       username: "",
       password: "",
+      roleTemplate: "readOnly",
       grantDatabases: [],
-      // Keep simplified defaults
-      hostType: "ANY",
-      hostValue: "",
-      validUntil: undefined,
-      defaultRole: "",
-      defaultDatabase: "",
-      settings: {
-        profile: "",
-        readonly: false,
-      },
+      hostRestriction: "any",
+      allowedHosts: [],
+      privileges: ROLE_TEMPLATES.readOnly.privileges,
     },
   });
 
-  const metadata = useMetadata(isOpen);
-  const { runQuery, credential } = useAppStore();
+  const handleRoleSelect = (role: RoleTemplate) => {
+    setSelectedRole(role);
+    form.setValue("roleTemplate", role);
+    form.setValue("privileges", ROLE_TEMPLATES[role].privileges);
+  };
 
-  useEffect(() => {
-    if (credential?.isDistributed && credential?.clusterName) {
-      setOnCluster(true);
-      setClusterName(credential.clusterName);
+  const addHost = () => {
+    if (newHost.trim() && !allowedHosts.includes(newHost.trim())) {
+      setAllowedHosts([...allowedHosts, newHost.trim()]);
+      setNewHost("");
     }
-  }, [credential]);
+  };
 
-  // Reset form when closed
-  useEffect(() => {
-    if (!isOpen) {
-      setCurrentStep(0);
-      form.reset();
-      setAccessPreset("read_only");
+  const removeHost = (host: string) => {
+    setAllowedHosts(allowedHosts.filter((h) => h !== host));
+  };
+
+  const generatePassword = useCallback(() => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let password = "";
+    password += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
+    password += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
+    password += "0123456789"[Math.floor(Math.random() * 10)];
+    password += "!@#$%^&*"[Math.floor(Math.random() * 8)];
+    for (let i = 0; i < 12; i++) {
+      password += chars[Math.floor(Math.random() * chars.length)];
     }
-  }, [isOpen, form]);
+    password = password.split("").sort(() => Math.random() - 0.5).join("");
+    form.setValue("password", password);
+  }, [form]);
 
+  const onSubmit = async (data: FormData) => {
+    setIsSubmitting(true);
 
-  const onSubmit = async () => {
-    const data = form.getValues();
     try {
-      setError("");
-      setLoading(true);
+      const { username, password, privileges, grantDatabases } = data;
 
-      // Validation
-      if (accessPreset !== "admin" && data.grantDatabases.length === 0) {
-        setError("Please select at least one database for this role.");
-        setLoading(false);
-        return;
+      // Build cluster clause
+      const clusterClause = useCluster && selectedCluster ? ` ON CLUSTER '${selectedCluster}'` : "";
+
+      // Build host restriction clause
+      let hostClause = "";
+      if (hostRestriction === "local") {
+        hostClause = "HOST LOCAL";
+      } else if (hostRestriction === "ip" && allowedHosts.length > 0) {
+        hostClause = `HOST IP ${allowedHosts.map((ip) => `'${ip}'`).join(", ")}`;
+      } else if (hostRestriction === "name" && allowedHosts.length > 0) {
+        hostClause = `HOST NAME ${allowedHosts.map((name) => `'${name}'`).join(", ")}`;
+      } else {
+        hostClause = "HOST ANY";
       }
 
-      const createUserQuery = buildUserCreationQuery(data);
-      const grantQueries = buildGrantQueries(data.username, data, accessPreset);
+      // 1. Create user with host restriction and optional cluster
+      const escapedPassword = password.replace(/'/g, "\\'");
+      await executeQuery.mutateAsync({
+        query: `CREATE USER '${username}'${clusterClause} ${hostClause} IDENTIFIED BY '${escapedPassword}'`,
+      });
 
-      // Execute Create User
-      const createResult = await runQuery(createUserQuery);
-      if (createResult.error) {
-        throw new Error(createResult.error);
-      }
+      // 2. Grant privileges based on role
+      if (privileges.isAdmin) {
+        await executeQuery.mutateAsync({
+          query: `GRANT${clusterClause} ALL ON *.* TO '${username}' WITH GRANT OPTION`,
+        });
+      } else {
+        // If no databases selected, user won't have access to any database
+        // This is intentional - they must explicitly select databases
+        if (grantDatabases.length === 0) {
+          toast.warning("User created without database access. Add database permissions in Edit User.");
+        }
 
-      // Execute Grants
-      for (const query of grantQueries) {
-        const result = await runQuery(query);
-        if (result.error) {
-          // Rollback attempt (best effort)
-          await runQuery(`DROP USER IF EXISTS ${data.username}`);
-          throw new Error(`Failed to grant privileges: ${result.error}`);
+        for (const db of grantDatabases) {
+          const dbTarget = `\`${db}\`.*`;
+
+          if (privileges.allowSelect) {
+            await executeQuery.mutateAsync({
+              query: `GRANT${clusterClause} SELECT ON ${dbTarget} TO '${username}'`,
+            });
+          }
+
+          if (privileges.allowInsert) {
+            await executeQuery.mutateAsync({
+              query: `GRANT${clusterClause} INSERT ON ${dbTarget} TO '${username}'`,
+            });
+          }
+
+          if (privileges.allowDDL) {
+            await executeQuery.mutateAsync({
+              query: `GRANT${clusterClause} CREATE TABLE, DROP TABLE, ALTER TABLE ON ${dbTarget} TO '${username}'`,
+            });
+          }
+        }
+
+        if (privileges.allowSystem) {
+          await executeQuery.mutateAsync({
+            query: `GRANT${clusterClause} SYSTEM ON *.* TO '${username}'`,
+          });
+        }
+
+        // Grant access to view own query logs (system.query_log)
+        if (allowQueryLogs) {
+          await executeQuery.mutateAsync({
+            query: `GRANT${clusterClause} SELECT ON system.query_log TO '${username}'`,
+          });
         }
       }
 
-      // Apply Readonly Setting if needed (Though Profile is better, we'll use SETTINGS READONLY=1 for strict safety)
-      if (accessPreset === "read_only") {
-        await runQuery(`ALTER USER ${data.username} SETTINGS READONLY=1`);
-      }
-
-      toast.success(`User ${data.username} created successfully`);
-      onUserCreated();
-      setIsOpen(false);
-    } catch (err: any) {
-      setError(err.message || "Failed to create user");
+      const clusterMsg = useCluster && selectedCluster ? ` on cluster ${selectedCluster}` : "";
+      toast.success(`User "${username}" created successfully with ${ROLE_TEMPLATES[selectedRole].name} role${clusterMsg}`);
+      navigate("/admin");
+    } catch (error) {
+      console.error("Failed to create user:", error);
+      toast.error(`Failed to create user: ${(error as Error).message}`);
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
-
-  const handleGeneratePassword = () => {
-    const newPassword = generateRandomPassword();
-    form.setValue("password", newPassword);
-  };
-
-  const buildUserCreationQuery = (data: any) => {
-    let query = `CREATE USER IF NOT EXISTS ${data.username}`;
-    if (onCluster && clusterName) query += ` ON CLUSTER ${clusterName}`;
-    query += ` IDENTIFIED WITH sha256_password BY '${data.password}'`;
-    // Defaults for simplified flow
-    query += ` HOST ANY`;
-    return query;
-  };
-
-  const buildGrantQueries = (username: string, data: any, preset: string) => {
-    const queries: string[] = [];
-
-    if (preset === "admin") {
-      queries.push(`GRANT ALL ON *.* TO ${username} WITH GRANT OPTION`);
-      return queries;
-    }
-
-    const dbs = data.grantDatabases as string[];
-
-    for (const db of dbs) {
-      if (preset === "developer") {
-        // Developer: Full control over objects + Data
-        queries.push(`GRANT CREATE, DROP, ALTER, SELECT, INSERT, DELETE, TRUNCATE, OPTIMIZE ON ${db}.* TO ${username}`);
-      } else if (preset === "read_write") {
-        // Read-Write: Data manipulation only
-        queries.push(`GRANT SELECT, INSERT ON ${db}.* TO ${username}`);
-      } else if (preset === "read_only") {
-        // Read-Only: Select only
-        queries.push(`GRANT SELECT ON ${db}.* TO ${username}`);
-      }
-    }
-
-    // Default system access for exceptions dashboard
-    queries.push(`GRANT SELECT ON system.query_log TO ${username}`);
-
-    return queries;
-  };
-
-  const nextStep = async () => {
-    if (currentStep === 0) {
-      const valid = await form.trigger(['username', 'password']);
-      if (!valid) return;
-    }
-    setCurrentStep(prev => Math.min(prev + 1, STEPS.length - 1));
-  };
-
-  const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 0));
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-500/20 border border-white/10">
-          <Plus className="h-4 w-4" />
-          Create New User
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="container mx-auto p-6 space-y-6 max-w-4xl"
+    >
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
+          <ArrowLeft className="h-5 w-5" />
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-3xl bg-[#0f1115] border-white/10 text-white max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 shadow-2xl shadow-black/50">
-
-        {/* Header */}
-        <DialogHeader className="p-6 pb-4 border-b border-white/5 bg-black/20">
-          <div className="flex justify-between items-center mb-4">
-            <DialogTitle className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-              Create New User
-            </DialogTitle>
-          </div>
-
-          {/* Stepper */}
-          <div className="flex items-center w-full max-w-md mx-auto relative">
-            <div className="absolute top-1/2 left-0 w-full h-[2px] bg-white/10 -z-10" />
-            <div
-              className="absolute top-1/2 left-0 h-[2px] bg-purple-500 -z-10 transition-all duration-300"
-              style={{ width: `${(currentStep / (STEPS.length - 1)) * 100}%` }}
-            />
-            {STEPS.map((s, idx) => {
-              const Icon = s.icon;
-              const isActive = idx === currentStep;
-              const isCompleted = idx < currentStep;
-              return (
-                <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                  <div
-                    className={`
-                          w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 bg-[#0f1115]
-                          ${isActive ? 'border-purple-500 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.3)]' :
-                        isCompleted ? 'border-green-500 text-green-400 bg-green-500/10' : 'border-white/10 text-gray-600'}
-                      `}
-                  >
-                    {isCompleted ? <Check className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
-                  </div>
-                  <span className={`text-xs font-medium transition-colors duration-300 ${isActive ? 'text-white' : 'text-gray-500'}`}>
-                    {s.title}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </DialogHeader>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 min-h-[400px]">
-          <Form {...form}>
-            <form className="space-y-6 h-full">
-              <AnimatePresence mode="wait">
-
-                {/* STEP 0: IDENTITY */}
-                {currentStep === 0 && (
-                  <motion.div
-                    key="step0"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="max-w-md mx-auto space-y-6"
-                  >
-                    <div className="text-center space-y-2 mb-8">
-                      <h2 className="text-2xl font-bold text-white">Who is this user?</h2>
-                      <p className="text-gray-400">Set the login credentials for the new user.</p>
-                    </div>
-
-                    <AuthenticationSection form={form} handleGeneratePassword={handleGeneratePassword} />
-                  </motion.div>
-                )}
-
-                {/* STEP 1: ROLE & SCOPE */}
-                {currentStep === 1 && (
-                  <motion.div
-                    key="step1"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="space-y-8"
-                  >
-                    <div className="text-center space-y-2">
-                      <h2 className="text-2xl font-bold text-white">Assign a Role</h2>
-                      <p className="text-gray-400">Choose the level of access and permission scope.</p>
-                    </div>
-
-                    <RadioGroup value={accessPreset} onValueChange={setAccessPreset} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* Admin */}
-                      <Label
-                        className={`
-                            relative flex flex-col gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200
-                            bg-white/5 hover:bg-white/10
-                            ${accessPreset === 'admin' ? 'border-purple-500 bg-purple-500/10' : 'border-white/5'}
-                          `}
-                      >
-                        <RadioGroupItem value="admin" className="sr-only" />
-                        <div className={`p-3 rounded-lg w-fit ${accessPreset === 'admin' ? 'bg-purple-500 text-white' : 'bg-white/10 text-gray-400'}`}>
-                          <Shield className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-bold text-white mb-1">Administrator</h3>
-                          <p className="text-xs text-gray-400 leading-relaxed">
-                            Full access to all databases, users, and system settings.
-                          </p>
-                        </div>
-                      </Label>
-
-                      {/* Developer */}
-                      <Label
-                        className={`
-                            relative flex flex-col gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200
-                            bg-white/5 hover:bg-white/10
-                            ${accessPreset === 'developer' ? 'border-blue-500 bg-blue-500/10' : 'border-white/5'}
-                          `}
-                      >
-                        <RadioGroupItem value="developer" className="sr-only" />
-                        <div className={`p-3 rounded-lg w-fit ${accessPreset === 'developer' ? 'bg-blue-500 text-white' : 'bg-white/10 text-gray-400'}`}>
-                          <Code className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-bold text-white mb-1">Developer</h3>
-                          <p className="text-xs text-gray-400 leading-relaxed">
-                            Can create tables, drop objects, and manage data in specific databases.
-                          </p>
-                        </div>
-                      </Label>
-
-                      {/* Read-Write */}
-                      <Label
-                        className={`
-                            relative flex flex-col gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200
-                            bg-white/5 hover:bg-white/10
-                            ${accessPreset === 'read_write' ? 'border-orange-500 bg-orange-500/10' : 'border-white/5'}
-                          `}
-                      >
-                        <RadioGroupItem value="read_write" className="sr-only" />
-                        <div className={`p-3 rounded-lg w-fit ${accessPreset === 'read_write' ? 'bg-orange-500 text-white' : 'bg-white/10 text-gray-400'}`}>
-                          <Edit3 className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-bold text-white mb-1">Read-Write</h3>
-                          <p className="text-xs text-gray-400 leading-relaxed">
-                            Can insert and query data, but cannot modify table structure.
-                          </p>
-                        </div>
-                      </Label>
-
-                      {/* Read-Only */}
-                      <Label
-                        className={`
-                            relative flex flex-col gap-4 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200
-                            bg-white/5 hover:bg-white/10
-                            ${accessPreset === 'read_only' ? 'border-green-500 bg-green-500/10' : 'border-white/5'}
-                          `}
-                      >
-                        <RadioGroupItem value="read_only" className="sr-only" />
-                        <div className={`p-3 rounded-lg w-fit ${accessPreset === 'read_only' ? 'bg-green-500 text-white' : 'bg-white/10 text-gray-400'}`}>
-                          <Eye className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-bold text-white mb-1">Read-Only</h3>
-                          <p className="text-xs text-gray-400 leading-relaxed">
-                            Can only Select/Query data. No write access allowed.
-                          </p>
-                        </div>
-                      </Label>
-                    </RadioGroup>
-
-                    {/* Conditional Database Selection */}
-                    {accessPreset !== 'admin' && (
-                      <GlassCard className="animate-in fade-in slide-in-from-bottom-4">
-                        <GlassCardContent>
-                          <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 rounded-lg bg-white/10">
-                              <DatabaseIcon className="w-5 h-5 text-purple-400" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-white">Scope</h3>
-                              <p className="text-xs text-gray-400">Select which databases this user can access.</p>
-                            </div>
-                          </div>
-                          <DatabaseRolesSection form={form} roles={[]} databases={metadata.databases} />
-                        </GlassCardContent>
-                      </GlassCard>
-                    )}
-                  </motion.div>
-                )}
-
-                {/* STEP 2: REVIEW */}
-                {currentStep === 2 && (
-                  <motion.div
-                    key="step2"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="max-w-2xl mx-auto space-y-8"
-                  >
-                    <div className="text-center space-y-2">
-                      <h2 className="text-2xl font-bold text-white">Review & Create</h2>
-                      <p className="text-gray-400">Verify the details and the generated SQL before confirming.</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 rounded-xl bg-white/5 border border-white/5">
-                        <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Username</span>
-                        <div className="text-lg font-mono text-white mt-1">{form.getValues().username}</div>
-                      </div>
-                      <div className="p-4 rounded-xl bg-white/5 border border-white/5">
-                        <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Role</span>
-                        <div className="text-lg font-mono text-white mt-1 capitalize">{accessPreset.replace('_', ' ')}</div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-sm font-medium text-gray-400">Generated SQL Preview</Label>
-                      </div>
-                      <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black/50 shadow-inner">
-                        <pre className="p-6 text-sm font-mono text-green-400 overflow-x-auto whitespace-pre-wrap leading-relaxed">
-                          {buildUserCreationQuery(form.getValues())};
-                          {'\n\n'}
-                          {buildGrantQueries(form.getValues().username, form.getValues(), accessPreset).join(';\n')};
-                          {accessPreset === 'read_only' && `\n\nALTER USER ${form.getValues().username} SETTINGS READONLY=1;`}
-                        </pre>
-                      </div>
-                    </div>
-
-                    {error && (
-                      <Alert variant="destructive" className="animate-in zoom-in border-red-500/50 bg-red-900/20">
-                        <AlertDescription className="text-red-200 font-medium text-center">
-                          {error}
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </motion.div>
-                )}
-
-              </AnimatePresence>
-            </form>
-          </Form>
+        <div className="flex items-center gap-3">
+          <UserPlus className="h-6 w-6 text-green-400" />
+          <h1 className="text-2xl font-bold text-white">Create New User</h1>
         </div>
+      </div>
 
-        {/* Footer */}
-        <DialogFooter className="p-6 border-t border-white/10 bg-white/5 flex gap-3">
-          <Button
-            variant="ghost"
-            onClick={prevStep}
-            disabled={currentStep === 0 || loading}
-            className="text-gray-400 hover:text-white hover:bg-white/5"
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" /> Back
-          </Button>
+      <FormProvider {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          {/* Role Selection */}
+          <GlassCard>
+            <GlassCardHeader>
+              <GlassCardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-purple-400" />
+                Select Role Template
+              </GlassCardTitle>
+            </GlassCardHeader>
+            <GlassCardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {(Object.entries(ROLE_TEMPLATES) as [RoleTemplate, typeof ROLE_TEMPLATES.admin][]).map(
+                  ([key, role]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleRoleSelect(key)}
+                      className={`p-4 rounded-lg border-2 transition-all text-left ${
+                        selectedRole === key
+                          ? `${role.bgColor} ${role.borderColor}`
+                          : "bg-white/5 border-white/10 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="text-2xl mb-2">{role.icon}</div>
+                      <div className={`font-semibold ${selectedRole === key ? role.color : "text-white"}`}>
+                        {role.name}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">{role.description}</div>
+                    </button>
+                  )
+                )}
+              </div>
 
-          {currentStep < 2 ? (
-            <Button
-              onClick={nextStep}
-              className="bg-white text-black hover:bg-gray-200 min-w-[120px]"
-            >
-              Next <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          ) : (
-            <Button
-              onClick={form.handleSubmit(onSubmit)}
-              disabled={loading}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white min-w-[140px] shadow-lg shadow-purple-500/20"
-            >
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Creating...
+              {/* Show selected role privileges */}
+              <div className="mt-6 p-4 rounded-lg bg-white/5 border border-white/10">
+                <div className="text-sm font-medium text-gray-300 mb-2">
+                  Permissions for {ROLE_TEMPLATES[selectedRole].name}:
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  {ROLE_TEMPLATES[selectedRole].privileges.isAdmin && (
+                    <span className="px-2 py-1 rounded text-xs bg-red-500/20 text-red-300 border border-red-500/30">
+                      Full Admin
+                    </span>
+                  )}
+                  {ROLE_TEMPLATES[selectedRole].privileges.allowSelect && (
+                    <span className="px-2 py-1 rounded text-xs bg-green-500/20 text-green-300 border border-green-500/30">
+                      SELECT
+                    </span>
+                  )}
+                  {ROLE_TEMPLATES[selectedRole].privileges.allowInsert && (
+                    <span className="px-2 py-1 rounded text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      INSERT
+                    </span>
+                  )}
+                  {ROLE_TEMPLATES[selectedRole].privileges.allowDDL && (
+                    <span className="px-2 py-1 rounded text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                      DDL
+                    </span>
+                  )}
+                  {ROLE_TEMPLATES[selectedRole].privileges.allowSystem && (
+                    <span className="px-2 py-1 rounded text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      SYSTEM
+                    </span>
+                  )}
+                </div>
+              </div>
+            </GlassCardContent>
+          </GlassCard>
+
+          {/* Cluster Option */}
+          {clusters.length > 0 && (
+            <GlassCard>
+              <GlassCardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-orange-500/20">
+                      <Server className="h-5 w-5 text-orange-400" />
+                    </div>
+                    <div>
+                      <Label className="text-white font-medium">Create on Cluster</Label>
+                      <p className="text-xs text-gray-400">Replicate this user across all cluster nodes</p>
+                    </div>
+                  </div>
+                  <Switch checked={useCluster} onCheckedChange={setUseCluster} />
+                </div>
+                <AnimatePresence>
+                  {useCluster && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-4"
+                    >
+                      <Select value={selectedCluster} onValueChange={setSelectedCluster}>
+                        <SelectTrigger className="bg-white/5 border-white/10">
+                          <SelectValue placeholder="Select cluster" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clusters.map((cluster) => (
+                            <SelectItem key={cluster} value={cluster}>
+                              {cluster}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </GlassCardContent>
+            </GlassCard>
+          )}
+
+          {/* Tabs for detailed configuration */}
+          <Tabs defaultValue="auth" className="space-y-4">
+            <TabsList className="bg-white/5 border border-white/10 p-1">
+              <TabsTrigger value="auth" className="data-[state=active]:bg-purple-500/20">
+                <Key className="h-4 w-4 mr-2" />
+                Authentication
+              </TabsTrigger>
+              <TabsTrigger value="host" className="data-[state=active]:bg-orange-500/20">
+                <Globe className="h-4 w-4 mr-2" />
+                Host Restriction
+              </TabsTrigger>
+              {!ROLE_TEMPLATES[selectedRole].privileges.isAdmin && (
+                <TabsTrigger value="databases" className="data-[state=active]:bg-blue-500/20">
+                  <Database className="h-4 w-4 mr-2" />
+                  Database Access
+                </TabsTrigger>
+              )}
+            </TabsList>
+
+            <TabsContent value="auth">
+              <GlassCard>
+                <GlassCardHeader>
+                  <GlassCardTitle className="flex items-center gap-2">
+                    <Key className="h-5 w-5 text-yellow-400" />
+                    User Credentials
+                  </GlassCardTitle>
+                </GlassCardHeader>
+                <GlassCardContent>
+                  <AuthenticationSection form={form} handleGeneratePassword={generatePassword} />
+                </GlassCardContent>
+              </GlassCard>
+            </TabsContent>
+
+            <TabsContent value="host">
+              <GlassCard>
+                <GlassCardHeader>
+                  <GlassCardTitle className="flex items-center gap-2">
+                    <Globe className="h-5 w-5 text-orange-400" />
+                    Host Restriction
+                  </GlassCardTitle>
+                </GlassCardHeader>
+                <GlassCardContent className="space-y-6">
+                  <p className="text-sm text-gray-400">
+                    Control which hosts this user can connect from. This adds an extra layer of security.
+                  </p>
+
+                  <RadioGroup
+                    value={hostRestriction}
+                    onValueChange={(value) => setHostRestriction(value as HostRestrictionType)}
+                    className="space-y-3"
+                  >
+                    <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                      <RadioGroupItem value="any" id="host-any" />
+                      <Label htmlFor="host-any" className="flex-1 cursor-pointer">
+                        <div className="font-medium text-white">Any Host</div>
+                        <div className="text-xs text-gray-400">User can connect from any IP address</div>
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                      <RadioGroupItem value="local" id="host-local" />
+                      <Label htmlFor="host-local" className="flex-1 cursor-pointer">
+                        <div className="font-medium text-white">Local Only</div>
+                        <div className="text-xs text-gray-400">User can only connect from localhost</div>
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                      <RadioGroupItem value="ip" id="host-ip" />
+                      <Label htmlFor="host-ip" className="flex-1 cursor-pointer">
+                        <div className="font-medium text-white">Specific IP Addresses</div>
+                        <div className="text-xs text-gray-400">Restrict to specific IP addresses or CIDR ranges</div>
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                      <RadioGroupItem value="name" id="host-name" />
+                      <Label htmlFor="host-name" className="flex-1 cursor-pointer">
+                        <div className="font-medium text-white">Specific Hostnames</div>
+                        <div className="text-xs text-gray-400">Restrict to specific hostnames (DNS resolved)</div>
+                      </Label>
+                    </div>
+                  </RadioGroup>
+
+                  {/* Host input for IP or Name restriction */}
+                  {(hostRestriction === "ip" || hostRestriction === "name") && (
+                    <div className="space-y-3 pt-4 border-t border-white/10">
+                      <Label className="text-white">
+                        {hostRestriction === "ip" ? "Allowed IP Addresses" : "Allowed Hostnames"}
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={newHost}
+                          onChange={(e) => setNewHost(e.target.value)}
+                          placeholder={hostRestriction === "ip" ? "e.g., 192.168.1.0/24" : "e.g., myserver.local"}
+                          className="bg-white/5 border-white/10"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addHost();
+                            }
+                          }}
+                        />
+                        <Button type="button" onClick={addHost} variant="outline">
+                          Add
+                        </Button>
+                      </div>
+
+                      {/* Display added hosts */}
+                      <div className="flex flex-wrap gap-2">
+                        {allowedHosts.length === 0 && (
+                          <p className="text-sm text-yellow-500/80 italic">
+                            No hosts added. User won't be able to connect until at least one is added.
+                          </p>
+                        )}
+                        {allowedHosts.map((host) => (
+                          <Badge
+                            key={host}
+                            variant="secondary"
+                            className="bg-orange-500/20 text-orange-200 border border-orange-500/30 cursor-pointer hover:bg-red-500/20 hover:text-red-200"
+                            onClick={() => removeHost(host)}
+                          >
+                            {host}
+                            <X className="ml-1 h-3 w-3" />
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </GlassCardContent>
+              </GlassCard>
+            </TabsContent>
+
+            {!ROLE_TEMPLATES[selectedRole].privileges.isAdmin && (
+              <TabsContent value="databases">
+                <GlassCard>
+                  <GlassCardHeader>
+                    <GlassCardTitle className="flex items-center gap-2">
+                      <Database className="h-5 w-5 text-blue-400" />
+                      Database Access Control
+                    </GlassCardTitle>
+                  </GlassCardHeader>
+                  <GlassCardContent className="space-y-6">
+                    <DatabaseRolesSection form={form} roles={roles} databases={databases} />
+                    
+                    {/* Query Logs Access Toggle */}
+                    <div className="p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-cyan-500/20">
+                            <FileText className="h-4 w-4 text-cyan-400" />
+                          </div>
+                          <div>
+                            <Label className="text-white font-medium">Query Logs Access</Label>
+                            <p className="text-xs text-gray-400">
+                              Allow user to view their own query history in the Logs tab
+                            </p>
+                          </div>
+                        </div>
+                        <Switch checked={allowQueryLogs} onCheckedChange={setAllowQueryLogs} />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-3 pl-11">
+                        Grants SELECT on <code className="text-cyan-400">system.query_log</code> - users can only see queries they executed
+                      </p>
+                    </div>
+                  </GlassCardContent>
+                </GlassCard>
+              </TabsContent>
+            )}
+          </Tabs>
+
+          {/* Submit buttons */}
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="outline" onClick={() => navigate("/admin")}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="gap-2">
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating User...
+                </>
               ) : (
-                <>Create User <Check className="w-4 h-4 ml-2" /></>
+                <>
+                  <UserPlus className="h-4 w-4" />
+                  Create User
+                </>
               )}
             </Button>
-          )}
-        </DialogFooter>
-
-      </DialogContent>
-    </Dialog>
+          </div>
+        </form>
+      </FormProvider>
+    </motion.div>
   );
 };
 
-export default CreateNewUser;
+export default CreateUser;
