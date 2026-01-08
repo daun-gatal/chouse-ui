@@ -6,13 +6,11 @@ A modern, production-grade web interface for ClickHouse databases. Built with Re
 
 ## Features
 
-- **SQL Editor** with syntax highlighting, auto-completion, and query history
 - **Database Explorer** with tree view navigation
 - **Real-time Metrics** dashboard with system monitoring
 - **User Management** for admin users
 - **Saved Queries** with cloud persistence
 - **Data Export** in multiple formats (CSV, JSON, TSV)
-- **Dark/Light Theme** support
 - **Secure Session-based Authentication**
 
 ## Architecture
