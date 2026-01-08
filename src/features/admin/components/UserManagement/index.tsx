@@ -1,280 +1,536 @@
-// components/UserTable/index.tsx
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
+  Users,
+  RefreshCw,
+  Plus,
+  Trash2,
+  Edit,
+  Shield,
+  Search,
+  MoreHorizontal,
+  UserCheck,
+  UserX,
+  Loader2,
+  AlertTriangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RefreshCcw, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useUsers, useExecuteQuery } from "@/hooks";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import useAppStore from "@/store";
-import SearchBar from "./SearchBar";
-import UserTableComponent from "./UsersTable";
-import DeleteUserDialog from "./DeleteUserDialog";
-import ResetPasswordDialog from "./ResetPasswordDialog";
-import NewPasswordDialog from "./NewPasswordDialog";
-import { Skeleton } from "@/components/ui/skeleton";
-import { UserData } from "@/features/admin/types";
-import CreateNewUser from "../CreateUser/index";
-import EditUser from "../EditUser";
-import { generateRandomPassword } from "@/lib/utils";
 
-const UserTable: React.FC = () => {
-  const { runQuery, isAdmin, credential } = useAppStore(); // Get credential for cluster info
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [editingUser, setEditingUser] = useState<UserData | null>(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+interface User {
+  name: string;
+  id: string;
+  host_ip: string;
+  host_names: string;
+  default_roles_all: number;
+  default_roles_list: string;
+  default_roles_except: string;
+}
+
+interface UserGrants {
+  [username: string]: string[];
+}
+
+// Role detection based on actual grants
+function detectUserRoleFromGrants(
+  username: string,
+  grants: UserGrants
+): { role: string; color: string; bgColor: string; permissions: string[] } {
+  const userGrants = grants[username] || [];
+  const grantSet = new Set(userGrants.map((g) => g.toUpperCase()));
+
+  // Admin indicators - check for user/role management or system privileges
+  const adminIndicators = [
+    "ALL",
+    "GRANT OPTION",
+    "ACCESS MANAGEMENT",
+    "ROLE ADMIN",
+    "CREATE USER",
+    "DROP USER",
+    "ALTER USER",
+    "CREATE ROLE",
+    "DROP ROLE",
+    "SYSTEM",
+  ];
+  
+  const hasAdminPrivileges = adminIndicators.some((indicator) => grantSet.has(indicator));
+  
+  // Also check if user has a LOT of permissions (likely full admin)
+  const isLikelyAdmin = userGrants.length > 20;
+
+  if (hasAdminPrivileges || isLikelyAdmin) {
+    return {
+      role: "Admin",
+      color: "text-red-400",
+      bgColor: "bg-red-500/20 border-red-500/30",
+      permissions: userGrants,
+    };
+  }
+
+  // Check permissions
+  const hasSelect = grantSet.has("SELECT") || grantSet.has("READ");
+  const hasInsert = grantSet.has("INSERT") || grantSet.has("WRITE");
+  const hasDDL =
+    grantSet.has("CREATE") ||
+    grantSet.has("CREATE TABLE") ||
+    grantSet.has("DROP") ||
+    grantSet.has("DROP TABLE") ||
+    grantSet.has("ALTER") ||
+    grantSet.has("ALTER TABLE");
+
+  // Developer: SELECT + INSERT + DDL
+  if (hasSelect && hasInsert && hasDDL) {
+    return {
+      role: "Developer",
+      color: "text-blue-400",
+      bgColor: "bg-blue-500/20 border-blue-500/30",
+      permissions: userGrants,
+    };
+  }
+
+  // Read-Write: SELECT + INSERT (no DDL)
+  if (hasSelect && hasInsert && !hasDDL) {
+    return {
+      role: "Read-Write",
+      color: "text-green-400",
+      bgColor: "bg-green-500/20 border-green-500/30",
+      permissions: userGrants,
+    };
+  }
+
+  // Read Only: only SELECT
+  if (hasSelect && !hasInsert && !hasDDL) {
+    return {
+      role: "Read Only",
+      color: "text-purple-400",
+      bgColor: "bg-purple-500/20 border-purple-500/30",
+      permissions: userGrants,
+    };
+  }
+
+  // No grants
+  if (userGrants.length === 0) {
+    return {
+      role: "No Access",
+      color: "text-gray-500",
+      bgColor: "bg-gray-500/20 border-gray-500/30",
+      permissions: [],
+    };
+  }
+
+  // Custom (has some grants but doesn't match predefined roles)
+  return {
+    role: "Custom",
+    color: "text-orange-400",
+    bgColor: "bg-orange-500/20 border-orange-500/30",
+    permissions: userGrants,
+  };
+}
+
+const UserManagement: React.FC = () => {
+  const navigate = useNavigate();
+  const { data: users = [], isLoading, refetch, error } = useUsers();
+  const executeQuery = useExecuteQuery();
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [newPassword, setNewPassword] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [userGrants, setUserGrants] = useState<UserGrants>({});
+  const [loadingGrants, setLoadingGrants] = useState(false);
 
-  const fetchUserGrants = async (username: string) => {
-    try {
-      const grantsResult = await runQuery(`SHOW GRANTS FOR ${username}`);
-      // ClickHouse returns [{ grant: "GRANT ALL ON *.* TO user" }]
-      // Map it to a string array
-      if (grantsResult.data && Array.isArray(grantsResult.data)) {
-        return grantsResult.data.map((row: any) => Object.values(row)[0] as string);
-      }
-      return [];
-    } catch (error) {
-      console.error(`Failed to fetch grants for ${username}:`, error);
-      return [];
-    }
-  };
-
-  const fetchUserSettings = async (username: string) => {
-    try {
-      const settingsResult = await runQuery(`SHOW CREATE USER ${username}`);
-      const createStatement = settingsResult.data?.[0]?.statement || "";
-      return {
-        profile: (createStatement.match(/SETTINGS PROFILE '([^']+)'/) || [])[1],
-        readonly: createStatement.includes("READONLY=1"),
-      };
-    } catch (error) {
-      console.error(`Failed to fetch settings for ${username}:`, error);
-      return { profile: undefined, readonly: false };
-    }
-  };
-
-  const fetchUsers = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const usersResult = await runQuery(`
-        SELECT 
-          name, id, auth_type, host_ip, host_names,
-          host_names_regexp, host_names_like, default_roles_all,
-          default_roles_list, default_database, grantees_any, grantees_list
-        FROM system.users
-        ORDER BY name ASC
-      `);
-
-      if (usersResult.error) {
-        throw new Error(usersResult.error);
-      }
-
-      const enhancedUsers = await Promise.all(
-        usersResult.data.map(async (user: UserData) => {
-          const [grants, settings] = await Promise.all([
-            fetchUserGrants(user.name),
-            fetchUserSettings(user.name),
-          ]);
-
-          return {
-            ...user,
-            grants,
-            settings_profile: settings.profile,
-            readonly: settings.readonly,
-          };
-        })
-      );
-
-      setUsers(enhancedUsers);
-    } catch (err: any) {
-      const errorMessage = err.message || "Failed to load users";
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [runQuery]);
-
+  // Fetch grants for all users
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers, refreshTrigger]);
+    const fetchGrants = async () => {
+      if (users.length === 0) return;
+      setLoadingGrants(true);
+      try {
+        const result = await executeQuery.mutateAsync({
+          query: `SELECT user_name, access_type FROM system.grants WHERE user_name != ''`,
+        });
+        const grants: UserGrants = {};
+        (result.data as { user_name: string; access_type: string }[]).forEach((row) => {
+          if (!grants[row.user_name]) {
+            grants[row.user_name] = [];
+          }
+          if (!grants[row.user_name].includes(row.access_type)) {
+            grants[row.user_name].push(row.access_type);
+          }
+        });
+        setUserGrants(grants);
+      } catch (err) {
+        console.error("Failed to fetch grants:", err);
+      } finally {
+        setLoadingGrants(false);
+      }
+    };
+    fetchGrants();
+  }, [users]);
 
-  const handleDeleteUser = async (username: string) => {
-    if (!isAdmin) {
-      toast.error("You need administrator privileges to delete users");
-      return;
-    }
-
-    setDeleting(true);
-    try {
-      const onClusterClause =
-        credential?.isDistributed && credential?.clusterName
-          ? ` ON CLUSTER '${credential.clusterName}'`
-          : "";
-
-      await runQuery(
-        `REVOKE ALL PRIVILEGES ON *.* FROM ${username}${onClusterClause}`
-      );
-      await runQuery(`DROP USER IF EXISTS ${username}${onClusterClause}`);
-      toast.success(`User ${username} deleted successfully`);
-      setRefreshTrigger((prev) => prev + 1);
-    } catch (error: any) {
-      const errorMessage = error.message || "Failed to delete user";
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setDeleting(false);
-      setShowDeleteDialog(false);
-    }
-  };
-
-  const handleRefreshPassword = async (username: string) => {
-    const password = generateRandomPassword();
-    setNewPassword(password); // Store the new password
-    try {
-      const onClusterClause =
-        credential?.isDistributed && credential?.clusterName
-          ? ` ON CLUSTER '${credential.clusterName}'`
-          : "";
-
-      await runQuery(
-        `ALTER USER ${username}${onClusterClause} IDENTIFIED WITH sha256_password BY '${password}'`
-      );
-      toast.success(`Password reset for ${username}`);
-      setShowResetPasswordDialog(false);
-    } catch (error: any) {
-      const errorMessage = error.message || "Failed to reset password";
-      setError(errorMessage);
-      toast.error(errorMessage);
-    }
-  };
-
-  const handleEditUser = (user: UserData) => {
-    setEditingUser(user);
-    setShowEditDialog(true);
-  };
-
+  // Filter users based on search
   const filteredUsers = useMemo(() => {
+    if (!searchQuery.trim()) return users;
+    const query = searchQuery.toLowerCase();
     return users.filter(
       (user) =>
-        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.default_database
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        user.default_roles_list?.some((role) =>
-          role.toLowerCase().includes(searchQuery.toLowerCase())
-        )
+        user.name.toLowerCase().includes(query) ||
+        user.host_ip?.toLowerCase().includes(query) ||
+        user.default_roles_list?.toLowerCase().includes(query)
     );
   }, [users, searchQuery]);
 
-  const TableSkeletons = () => (
-    <div className="space-y-4 w-full h-[calc(100vh-300px)]">
-      <Skeleton className="h-[calc(15vh-30px)] w-full" />
-      <Skeleton className="h-[calc(15vh-30px)] w-full" />
-      <Skeleton className="h-[calc(15vh-30px)] w-full" />
-      <Skeleton className="h-[calc(15vh-30px)] w-full" />
-    </div>
-  );
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    setIsDeleting(true);
 
-  if (loading) {
-    return <TableSkeletons />;
-  }
+    try {
+      await executeQuery.mutateAsync({
+        query: `DROP USER IF EXISTS '${selectedUser.name}'`,
+      });
+      toast.success(`User "${selectedUser.name}" deleted successfully`);
+      setShowDeleteDialog(false);
+      setSelectedUser(null);
+      refetch();
+    } catch (error) {
+      toast.error(`Failed to delete user: ${(error as Error).message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const openDeleteDialog = (user: User) => {
+    setSelectedUser(user);
+    setShowDeleteDialog(true);
+  };
+
+  const container = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.05 },
+    },
+  };
+
+  const item = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 },
+  };
 
   return (
-    <Card className="border shadow-md">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-2xl font-bold">
-              User Management
-            </CardTitle>
-            <CardDescription>
-              Manage database users, roles, and permissions
-            </CardDescription>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="p-6 space-y-6"
+    >
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-blue-500/20">
+            <Users className="h-6 w-6 text-blue-400" />
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setRefreshTrigger((prev) => prev + 1)}
-              className={loading ? "animate-spin" : ""}
-            >
-              <RefreshCcw className="h-4 w-4" />
-            </Button>
-            {isAdmin && (
-              <CreateNewUser
-                onUserCreated={() => setRefreshTrigger((prev) => prev + 1)}
-              />
-            )}
+          <div>
+            <h2 className="text-xl font-semibold text-white">User Management</h2>
+            <p className="text-sm text-gray-400">
+              {users.length} user{users.length !== 1 ? "s" : ""} configured
+            </p>
           </div>
         </div>
-      </CardHeader>
 
-      <CardContent>
-        <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-
-        {error && (
-          <div className="flex items-center gap-2 bg-destructive/15 text-destructive px-4 py-2 rounded-md mb-4">
-            <AlertTriangle className="h-4 w-4" />
-            <span>{error}</span>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-white/5 border-white/10"
+            />
           </div>
-        )}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => refetch()}
+            disabled={isLoading}
+            className="shrink-0"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+          </Button>
+          <Button
+            onClick={() => navigate("/admin/users/create")}
+            className="gap-2 shrink-0"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Create User</span>
+          </Button>
+        </div>
+      </div>
 
-        <UserTableComponent
-          users={filteredUsers}
-          setSelectedUser={setSelectedUser}
-          setShowDeleteDialog={setShowDeleteDialog}
-          setShowResetPasswordDialog={setShowResetPasswordDialog}
-          onEditUser={handleEditUser}
-        />
-      </CardContent>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+            <Users className="h-4 w-4" />
+            Total Users
+          </div>
+          <div className="text-2xl font-bold text-white">{users.length}</div>
+        </div>
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+          <div className="flex items-center gap-2 text-red-400 text-sm mb-1">
+            <Shield className="h-4 w-4" />
+            Admins
+          </div>
+          <div className="text-2xl font-bold text-white">
+            {users.filter((u) => {
+              const grants = userGrants[u.name] || [];
+              const grantSet = new Set(grants.map((g) => g.toUpperCase()));
+              const adminIndicators = ["ALL", "GRANT OPTION", "ACCESS MANAGEMENT", "ROLE ADMIN", "CREATE USER", "DROP USER", "SYSTEM"];
+              return adminIndicators.some((ind) => grantSet.has(ind)) || grants.length > 20;
+            }).length}
+          </div>
+        </div>
+        <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+          <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
+            <UserCheck className="h-4 w-4" />
+            With Grants
+          </div>
+          <div className="text-2xl font-bold text-white">
+            {users.filter((u) => (userGrants[u.name] || []).length > 0).length}
+          </div>
+        </div>
+        <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
+          <div className="flex items-center gap-2 text-purple-400 text-sm mb-1">
+            <UserX className="h-4 w-4" />
+            No Grants
+          </div>
+          <div className="text-2xl font-bold text-white">
+            {users.filter((u) => (userGrants[u.name] || []).length === 0).length}
+          </div>
+        </div>
+      </div>
 
-      {/* Action Dialogs */}
-      <EditUser
-        isOpen={showEditDialog}
-        onClose={() => setShowEditDialog(false)}
-        user={editingUser}
-        onUserUpdated={() => setRefreshTrigger((prev) => prev + 1)}
-      />
+      {/* Error State */}
+      {error && (
+        <div className="p-6 rounded-xl bg-red-500/10 border border-red-500/30 text-center">
+          <AlertTriangle className="h-8 w-8 text-red-400 mx-auto mb-2" />
+          <p className="text-red-400">{error.message}</p>
+          <Button variant="outline" onClick={() => refetch()} className="mt-4">
+            Retry
+          </Button>
+        </div>
+      )}
 
-      <ResetPasswordDialog
-        open={showResetPasswordDialog}
-        onOpenChange={setShowResetPasswordDialog}
-        selectedUser={selectedUser}
-        onResetPassword={handleRefreshPassword}
-      />
+      {/* Loading State */}
+      {isLoading && !error && (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+        </div>
+      )}
 
-      <NewPasswordDialog
-        open={!!newPassword}
-        onOpenChange={() => setNewPassword(null)}
-        selectedUser={selectedUser}
-        newPassword={newPassword}
-      />
+      {/* User Cards */}
+      {!isLoading && !error && (
+        <motion.div
+          variants={container}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        >
+          <AnimatePresence mode="popLayout">
+            {filteredUsers.map((user) => {
+              const roleInfo = detectUserRoleFromGrants(user.name, userGrants);
+              return (
+                <motion.div
+                  key={user.id || user.name}
+                  variants={item}
+                  layout
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="group relative p-5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all duration-200"
+                >
+                  {/* User Avatar & Name */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-lg uppercase">
+                        {user.name.slice(0, 2)}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white text-lg">{user.name}</h3>
+                        <Badge
+                          variant="outline"
+                          className={`${roleInfo.bgColor} ${roleInfo.color} border text-xs`}
+                        >
+                          {loadingGrants ? "Loading..." : roleInfo.role}
+                        </Badge>
+                      </div>
+                    </div>
 
-      <DeleteUserDialog
-        open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
-        selectedUser={selectedUser}
-        onDeleteUser={handleDeleteUser}
-        deleting={deleting}
-      />
-    </Card>
+                    {/* Actions Dropdown */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => navigate(`/admin/users/edit/${user.name}`)}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit User
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => openDeleteDialog(user)}
+                          className="text-red-400 focus:text-red-400"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete User
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  {/* User Details */}
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Host</span>
+                      <span className="text-gray-200 font-mono text-xs">
+                        {user.host_ip || user.host_names || "Any"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Permissions</span>
+                      <span className="text-gray-200 text-xs">
+                        {roleInfo.permissions.length} grants
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Permission badges */}
+                  <div className="flex flex-wrap gap-1 mt-3">
+                    {roleInfo.permissions.slice(0, 4).map((perm, i) => (
+                      <span
+                        key={i}
+                        className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-gray-300"
+                      >
+                        {perm}
+                      </span>
+                    ))}
+                    {roleInfo.permissions.length > 4 && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-gray-400">
+                        +{roleInfo.permissions.length - 4}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="flex-1 text-xs"
+                      onClick={() => navigate(`/admin/users/edit/${user.name}`)}
+                    >
+                      <Edit className="h-3 w-3 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                      onClick={() => openDeleteDialog(user)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+
+          {/* Empty State */}
+          {filteredUsers.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="col-span-full py-20 text-center"
+            >
+              <Users className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-400 mb-2">
+                {searchQuery ? "No users found" : "No users configured"}
+              </h3>
+              <p className="text-gray-500 mb-4">
+                {searchQuery
+                  ? "Try adjusting your search query"
+                  : "Get started by creating your first user"}
+              </p>
+              {!searchQuery && (
+                <Button onClick={() => navigate("/admin/users/create")}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create User
+                </Button>
+              )}
+            </motion.div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Delete User
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete user <strong>{selectedUser?.name}</strong>?
+              This action cannot be undone. All grants and permissions will be revoked.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteUser}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete User"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+    </motion.div>
   );
 };
 
-export default UserTable;
+export default UserManagement;

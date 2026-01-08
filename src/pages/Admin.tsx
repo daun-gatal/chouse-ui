@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import UserTable from "@/features/admin/components/UserManagement/index";
-import { InfoIcon, ShieldCheck, Users, Database } from "lucide-react";
+import { InfoIcon, ShieldCheck, Users, Database, AlertTriangle } from "lucide-react";
 import InfoDialog from "@/components/common/InfoDialog";
 import ActivateSavedQueries from "@/features/admin/components/ActivateSavedQueries";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,19 +20,23 @@ export default function Admin() {
     >
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white/90 flex items-center gap-3">
-              <ShieldCheck className="w-8 h-8 text-purple-400" />
-              Administration
-              <span
-                onClick={() => setIsInfoOpen(true)}
-                className="text-xs bg-purple-500/20 border border-purple-500/50 text-purple-300 px-2 py-0.5 rounded-full cursor-pointer flex items-center gap-1 hover:bg-purple-500/30 transition-colors"
-              >
-                ALPHA <InfoIcon className="w-3 h-3" />
-              </span>
-            </h1>
-            <p className="text-gray-400 mt-2">Manage users, access controls, and system configurations.</p>
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 shadow-lg shadow-purple-500/20">
+              <ShieldCheck className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-white">Administration</h1>
+              <p className="text-gray-400 text-sm">Manage users, access controls, and system configurations</p>
+            </div>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsInfoOpen(true)}
+            className="text-gray-400 hover:text-white"
+          >
+            <InfoIcon className="w-5 h-5" />
+          </Button>
         </div>
 
         <Tabs defaultValue="users" className="space-y-6">
@@ -65,22 +69,26 @@ export default function Admin() {
         </Tabs>
 
         <InfoDialog
-          title="Administration Page"
+          title="Administration"
           isOpen={isInfoOpen}
           onClose={() => setIsInfoOpen(false)}
           variant="info"
         >
-          <div className="flex flex-col gap-2">
-            <ul className="list-disc list-inside space-y-1">
-              <li>Manage users, roles, and settings.</li>
-              <li className="text-sm">This page is only accessible to administrators.</li>
-              <li>
-                Actions run directly on ClickHouse system tables. Some are <strong className="text-red-400">irreversible</strong>.
-              </li>
-            </ul>
-            <p className="text-xs font-bold mt-2">
-              <span className="text-purple-400">ALPHA FEATURE</span> - Subject to change.
+          <div className="flex flex-col gap-3">
+            <p className="text-gray-300">
+              Manage ClickHouse users, roles, and system settings from this page.
             </p>
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-amber-200">
+                Actions run directly on ClickHouse system tables. Some operations like deleting users are <strong>irreversible</strong>.
+              </p>
+            </div>
+            <ul className="text-sm text-gray-400 space-y-1">
+              <li>• Create, edit, and delete users</li>
+              <li>• Manage user permissions and roles</li>
+              <li>• Configure saved queries feature</li>
+            </ul>
           </div>
         </InfoDialog>
       </div>

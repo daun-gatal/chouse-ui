@@ -1,122 +1,71 @@
 import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, RefreshCcw } from "lucide-react";
-import useAppStore from "@/store";
-import { Button } from "@/components/ui/button";
-import AgTable from "@/components/common/AgTable";
+import { AgGridReact } from "ag-grid-react";
+import { AllCommunityModule, themeBalham, colorSchemeDark, ColDef } from "ag-grid-community";
+import { Loader2 } from "lucide-react";
+import { useTheme } from "@/components/common/theme-provider";
+import { useTableSample } from "@/hooks";
 
 interface DataSampleSectionProps {
   database: string;
   tableName: string;
 }
 
-interface QueryResult {
-  meta?: any[];
-  data?: any[];
-  rows?: number;
-  statistics?: {
-    elapsed: number;
-    rows_read: number;
-    bytes_read: number;
-  };
-}
+const DataSampleSection: React.FC<DataSampleSectionProps> = ({ database, tableName }) => {
+  const { theme } = useTheme();
+  const { data: sample, isLoading, error } = useTableSample(database, tableName, 100);
 
-const DataSampleSection: React.FC<DataSampleSectionProps> = ({
-  database,
-  tableName,
-}) => {
-  const { runQuery } = useAppStore();
-  const [sampleData, setSampleData] = React.useState<QueryResult | null>(null);
-  const [sampleError, setSampleError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const gridTheme =
+    theme === "light" ? themeBalham : themeBalham.withPart(colorSchemeDark);
 
-  const fetchSampleData = async (isRefresh = false) => {
-    if (isRefresh) {
-      setIsRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setSampleError(null);
-
-    try {
-      const query = `
-        SELECT *
-        FROM \`${database}\`.\`${tableName}\`
-        LIMIT 10
-      `;
-
-      const response = await runQuery(query);
-
-      if (response && response.data && response.data.length > 0) {
-        setSampleData(response);
-      } else {
-        setSampleError("No sample data available for this table.");
-      }
-    } catch (error: any) {
-      setSampleError(error.message || "Failed to fetch sample data.");
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  };
-
-  React.useEffect(() => {
-    fetchSampleData();
-  }, [database, tableName]);
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <Card>
-        <CardContent className="min-h-[500px] flex items-center justify-center">
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">
-              Loading sample data...
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-center h-[300px]">
+        <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+        <span className="ml-2 text-gray-400">Loading sample data...</span>
+      </div>
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-[300px]">
+        <p className="text-red-400">{error.message}</p>
+      </div>
+    );
+  }
+
+  if (!sample || sample.data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[300px]">
+        <p className="text-gray-400">No data available in this table</p>
+      </div>
+    );
+  }
+
+  const columnDefs: ColDef[] = sample.meta.map((col) => ({
+    headerName: col.name,
+    field: col.name,
+    flex: 1,
+    minWidth: 100,
+  }));
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle>Data Sample</CardTitle>
-        <Button
-          onClick={() => fetchSampleData(true)}
-          variant="ghost"
-          className="flex items-center space-x-2 text-sm"
-          disabled={isRefreshing}
-        >
-          <RefreshCcw
-            className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-          />
-          <span>Refresh</span>
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {sampleError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{sampleError}</AlertDescription>
-          </Alert>
-        ) : sampleData ? (
-          <div className="rounded-md border overflow-hidden" style={{ height: "400px" }}>
-            <AgTable data={sampleData} />
-          </div>
-        ) : (
-          <Alert>
-            <AlertTitle>No Data</AlertTitle>
-            <AlertDescription>
-              No sample data available for this table.
-            </AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-    </Card>
+    <div className="h-[400px]">
+      <AgGridReact
+        rowData={sample.data}
+        columnDefs={columnDefs}
+        defaultColDef={{
+          sortable: true,
+          filter: true,
+          resizable: true,
+        }}
+        modules={[AllCommunityModule]}
+        theme={gridTheme}
+        pagination={true}
+        paginationPageSize={25}
+        enableCellTextSelection={true}
+      />
+    </div>
   );
 };
 

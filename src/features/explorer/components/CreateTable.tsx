@@ -1,377 +1,534 @@
-// components/CreateTable/CreateTable.tsx
-import { useState, useEffect } from "react";
-import { z } from "zod";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
-import useAppStore from "@/store";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Loader2,
+  Plus,
+  Trash2,
+  Table2,
+  Database,
+  Server,
+  Layers,
+  Settings2,
+  ChevronDown,
+  GripVertical,
+  Sparkles,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { useExplorerStore } from "@/stores";
+import { useDatabases, useExecuteQuery, useClusterNames } from "@/hooks";
 
-import ConfirmationDialog from "@/components/common/ConfirmationDialog";
-import ManualCreationForm from "./ManualCreationForm";
-import { Field } from "./FieldManagement";
+interface Column {
+  id: string;
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue: string;
+}
 
-const TIME_FIELDS = ["Date", "DateTime"] as const;
+const COMMON_TYPES = [
+  { value: "String", label: "String", icon: "📝" },
+  { value: "Int32", label: "Int32", icon: "🔢" },
+  { value: "Int64", label: "Int64", icon: "🔢" },
+  { value: "UInt32", label: "UInt32", icon: "🔢" },
+  { value: "UInt64", label: "UInt64", icon: "🔢" },
+  { value: "Float32", label: "Float32", icon: "📊" },
+  { value: "Float64", label: "Float64", icon: "📊" },
+  { value: "DateTime", label: "DateTime", icon: "📅" },
+  { value: "DateTime64(3)", label: "DateTime64", icon: "📅" },
+  { value: "Date", label: "Date", icon: "📆" },
+  { value: "Bool", label: "Boolean", icon: "✓" },
+  { value: "UUID", label: "UUID", icon: "🔑" },
+  { value: "JSON", label: "JSON", icon: "{ }" },
+  { value: "Array(String)", label: "Array(String)", icon: "[]" },
+  { value: "Map(String, String)", label: "Map", icon: "🗺️" },
+];
 
-// Schema for field validation
-const fieldSchema = z.object({
-  name: z.string().min(1, "Name is required").refine(
-    (val) => !/\s/.test(val),
-    "Name cannot contain spaces"
-  ),
-  type: z.string().min(1, "Type is required"),
-  nullable: z.boolean(),
-  description: z.string(),
-  isPrimaryKey: z.boolean(),
-  isOrderBy: z.boolean(),
-  isPartitionBy: z.boolean(),
-  customType: z.string().optional(),
-}).refine((data) => {
-  if (data.type === "Other") {
-    return !!data.customType?.trim();
-  }
-  return true;
-}, {
-  message: "Custom type is required when 'Other' is selected",
-  path: ["customType"],
-});
+const ENGINES = [
+  { value: "MergeTree", label: "MergeTree", description: "Default engine for analytics", requiresOrderBy: true },
+  { value: "ReplacingMergeTree", label: "ReplacingMergeTree", description: "Deduplicates by ORDER BY", requiresOrderBy: true },
+  { value: "SummingMergeTree", label: "SummingMergeTree", description: "Pre-aggregates numeric columns", requiresOrderBy: true },
+  { value: "AggregatingMergeTree", label: "AggregatingMergeTree", description: "Stores aggregate states", requiresOrderBy: true },
+  { value: "CollapsingMergeTree", label: "CollapsingMergeTree", description: "For collapsing rows", requiresOrderBy: true },
+  { value: "Log", label: "Log", description: "Simple append-only", requiresOrderBy: false },
+  { value: "TinyLog", label: "TinyLog", description: "Minimal storage", requiresOrderBy: false },
+  { value: "Memory", label: "Memory", description: "In-memory only", requiresOrderBy: false },
+];
 
-const CreateTable = () => {
-  const {
-    isCreateTableModalOpen,
-    selectedDatabaseForCreateTable,
-    closeCreateTableModal,
-    fetchDatabaseInfo,
-    dataBaseExplorer,
-    runQuery,
-    addTab,
-    credential,
-  } = useAppStore();
+const generateId = () => Math.random().toString(36).substring(2, 9);
 
-  // State management
-  const [database, setDatabase] = useState("");
+const CreateTable: React.FC = () => {
+  const { createTableModalOpen, closeCreateTableModal, selectedDatabase } = useExplorerStore();
+  const { data: databases = [], refetch: refetchDatabases } = useDatabases();
+  const { data: clusters = [] } = useClusterNames();
+  const executeQuery = useExecuteQuery();
+
+  const [database, setDatabase] = useState(selectedDatabase || "");
   const [tableName, setTableName] = useState("");
   const [engine, setEngine] = useState("MergeTree");
-  const [fields, setFields] = useState<Field[]>([]);
-  const [primaryKeyFields, setPrimaryKeyFields] = useState<string[]>([]);
-  const [orderByFields, setOrderByFields] = useState<string[]>([]);
-  const [partitionByField, setPartitionByField] = useState<string | null>(null);
+  const [columns, setColumns] = useState<Column[]>([
+    { id: generateId(), name: "", type: "String", nullable: false, defaultValue: "" },
+  ]);
+  const [orderByColumns, setOrderByColumns] = useState<string[]>([]);
+  const [partitionBy, setPartitionBy] = useState("");
+  const [useCluster, setUseCluster] = useState(false);
+  const [selectedCluster, setSelectedCluster] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [ttlExpression, setTtlExpression] = useState("");
   const [comment, setComment] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [createTableError, setCreateTableError] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
-  const [onCluster, setOnCluster] = useState(false);
-  const [clusterName, setClusterName] = useState("");
 
-  // Effect to set default database
+  // Update database when selectedDatabase changes
   useEffect(() => {
-    if (selectedDatabaseForCreateTable) {
-      setDatabase(selectedDatabaseForCreateTable);
+    if (selectedDatabase) {
+      setDatabase(selectedDatabase);
     }
-  }, [selectedDatabaseForCreateTable]);
+  }, [selectedDatabase]);
 
-  // Effect to set cluster settings from credentials
-  useEffect(() => {
-    if (credential?.isDistributed && credential?.clusterName) {
-      setOnCluster(true);
-      setClusterName(credential.clusterName);
-    }
-  }, [credential]);
+  const selectedEngine = ENGINES.find((e) => e.value === engine);
 
-  // Effect to update derived states when fields change
-  useEffect(() => {
-    setPrimaryKeyFields(
-      fields.filter((field) => field.isPrimaryKey && field.name)
-        .map((field) => field.name)
-    );
-
-    setOrderByFields(
-      fields.filter((field) => field.isOrderBy && field.name)
-        .map((field) => field.name)
-    );
-
-    const pbField = fields.find((field) => field.isPartitionBy && field.name)?.name || null;
-    setPartitionByField(pbField);
-  }, [fields]);
-
-  // Field management handlers
-  const addField = () => {
-    setFields([
-      ...fields,
-      {
-        name: "",
-        type: "String",
-        nullable: false,
-        description: "",
-        isPrimaryKey: false,
-        isOrderBy: false,
-        isPartitionBy: false,
-      },
+  const handleAddColumn = () => {
+    setColumns([
+      ...columns,
+      { id: generateId(), name: "", type: "String", nullable: false, defaultValue: "" },
     ]);
   };
 
-  const removeField = (index: number) => {
-    setFields(fields.filter((_, i) => i !== index));
-    // Clean up any errors related to this field
-    setErrors((prev) => {
-      const newErrors = { ...prev };
-      Object.keys(newErrors)
-        .filter(key => key.startsWith(`fields.${index}`))
-        .forEach(key => delete newErrors[key]);
-      return newErrors;
-    });
+  const handleRemoveColumn = (id: string) => {
+    if (columns.length > 1) {
+      setColumns(columns.filter((col) => col.id !== id));
+      setOrderByColumns(orderByColumns.filter((name) => {
+        const col = columns.find((c) => c.id === id);
+        return col?.name !== name;
+      }));
+    }
   };
 
-  const updateField = (index: number, key: keyof Field, value: any) => {
-    const updatedFields = [...fields];
-    updatedFields[index] = { ...updatedFields[index], [key]: value };
+  const handleColumnChange = (id: string, field: keyof Column, value: string | boolean) => {
+    setColumns(columns.map((col) => (col.id === id ? { ...col, [field]: value } : col)));
+  };
 
-    // Handle partition by field exclusivity
-    if (key === "isPartitionBy" && value === true) {
-      updatedFields.forEach((field, i) => {
-        if (i !== index && field.isPartitionBy) {
-          updatedFields[i] = { ...field, isPartitionBy: false };
+  const toggleOrderByColumn = (columnName: string) => {
+    if (orderByColumns.includes(columnName)) {
+      setOrderByColumns(orderByColumns.filter((c) => c !== columnName));
+    } else {
+      setOrderByColumns([...orderByColumns, columnName]);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!database) {
+      toast.error("Please select a database");
+      return;
+    }
+
+    if (!tableName.trim()) {
+      toast.error("Please enter a table name");
+      return;
+    }
+
+    const validColumns = columns.filter((col) => col.name.trim());
+    if (validColumns.length === 0) {
+      toast.error("Please add at least one column with a name");
+      return;
+    }
+
+    if (selectedEngine?.requiresOrderBy && orderByColumns.length === 0) {
+      toast.error(`${engine} engine requires at least one ORDER BY column`);
+      return;
+    }
+
+    if (useCluster && !selectedCluster) {
+      toast.error("Please select a cluster");
+      return;
+    }
+
+    // Build column definitions
+    const columnDefs = validColumns
+      .map((col) => {
+        let def = `\`${col.name}\` `;
+        def += col.nullable ? `Nullable(${col.type})` : col.type;
+        if (col.defaultValue) {
+          def += ` DEFAULT ${col.defaultValue}`;
         }
-      });
+        return def;
+      })
+      .join(",\n    ");
+
+    // Build query
+    let query = `CREATE TABLE ${database}.\`${tableName}\``;
+    if (useCluster && selectedCluster) {
+      query += ` ON CLUSTER '${selectedCluster}'`;
+    }
+    query += ` (\n    ${columnDefs}\n)`;
+    query += `\nENGINE = ${engine}`;
+
+    if (selectedEngine?.requiresOrderBy && orderByColumns.length > 0) {
+      query += `\nORDER BY (${orderByColumns.map((c) => `\`${c}\``).join(", ")})`;
     }
 
-    setFields(updatedFields);
-    
-    // Clear field-specific errors when the field is updated
-    if (errors[`fields.${index}.${key}`]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[`fields.${index}.${key}`];
-        return newErrors;
-      });
+    if (partitionBy) {
+      query += `\nPARTITION BY ${partitionBy}`;
     }
-  };
 
-  // Validation helpers
-  const validateTableName = (name: string): boolean => {
-    const selectedDb = dataBaseExplorer.find(db => db.name === database);
-    return !selectedDb?.children?.some(
-      table => table.name.toLowerCase() === name.toLowerCase()
-    );
-  };
+    if (ttlExpression) {
+      query += `\nTTL ${ttlExpression}`;
+    }
 
-  // Schema for table validation
-  const tableSchema = z.object({
-    database: z.string().min(1, "Database is required"),
-    tableName: z.string().min(1, "Table name is required")
-      .refine(validateTableName, "Table name already exists in this database"),
-    fields: z.array(fieldSchema)
-      .min(1, "At least one field is required"),
-  });
+    if (comment) {
+      query += `\nCOMMENT '${comment.replace(/'/g, "\\'")}'`;
+    }
 
-  // SQL Generation
-  const validateAndGenerateSQL = (): string | null => {
     try {
-      // Validate the form data
-      tableSchema.parse({ database, tableName, fields });
-      
-      // Generate SQL
-      const fieldDefinitions = fields.map(field => {
-        const typeStr = field.type === "Other" ? field.customType : field.type;
-        const nullableStr = field.nullable ? "NULL" : "NOT NULL";
-        const commentStr = field.description ? ` COMMENT '${field.description}'` : '';
-        return `${field.name} ${typeStr} ${nullableStr}${commentStr}`;
-      }).join(",\n    ");
-
-      let sql = `CREATE TABLE ${database}.${tableName}`;
-      
-      if (onCluster && clusterName) {
-        sql += ` ON CLUSTER ${clusterName}`;
-      }
-      
-      sql += `\n(\n    ${fieldDefinitions}\n) ENGINE = ${engine}`;
-
-      if (primaryKeyFields.length > 0) {
-        sql += `\nPRIMARY KEY (${primaryKeyFields.join(", ")})`;
-      }
-
-      if (orderByFields.length > 0) {
-        sql += `\nORDER BY (${orderByFields.join(", ")})`;
-      }
-
-      if (partitionByField) {
-        const partitionField = fields.find(f => f.name === partitionByField);
-        if (partitionField && TIME_FIELDS.includes(partitionField.type as any)) {
-          sql += `\nPARTITION BY toYYYYMM(${partitionByField})`;
-        } else {
-          sql += `\nPARTITION BY ${partitionByField}`;
-        }
-      }
-
-      if (comment) {
-        sql += `\nCOMMENT '${comment}'`;
-      }
-
-      setErrors({});
-      return sql;
+      await executeQuery.mutateAsync({ query });
+      toast.success(`Table "${tableName}" created successfully${useCluster ? ` on cluster ${selectedCluster}` : ""}`);
+      await refetchDatabases();
+      handleClose();
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        const newErrors: Record<string, string> = {};
-        error.issues.forEach((err: any) => {
-          newErrors[err.path.join(".")] = err.message;
-        });
-        setErrors(newErrors);
-      } else {
-        toast.error("Validation failed");
-      }
-      return null;
+      console.error("Failed to create table:", error);
+      toast.error(`Failed to create table: ${(error as Error).message}`);
     }
   };
 
-  // Table Creation
-  const handleCreateManual = async () => {
-    const sql = validateAndGenerateSQL();
-    if (!sql) return;
-
-    setIsLoading(true);
-    setCreateTableError("");
-
-    try {
-      const response = await runQuery(sql);
-      if (response.error) {
-        setCreateTableError(response.error);
-        return;
-      }
-
-      await fetchDatabaseInfo();
-      toast.success("Table created successfully!");
-
-      // Add new tab for the created table
-      addTab({
-        id: `${database}.${tableName}`,
-        type: "information",
-        title: `${database}.${tableName}`,
-        content: { database, table: tableName },
-      });
-
-      resetForm();
-      closeCreateTableModal();
-    } catch (error: any) {
-      setCreateTableError(error.toString());
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Form reset and closing
-  const resetForm = () => {
-    setDatabase("");
+  const handleClose = () => {
+    setDatabase(selectedDatabase || "");
     setTableName("");
     setEngine("MergeTree");
-    setFields([]);
-    setPrimaryKeyFields([]);
-    setOrderByFields([]);
-    setPartitionByField(null);
+    setColumns([{ id: generateId(), name: "", type: "String", nullable: false, defaultValue: "" }]);
+    setOrderByColumns([]);
+    setPartitionBy("");
+    setUseCluster(false);
+    setSelectedCluster("");
+    setAdvancedOpen(false);
+    setTtlExpression("");
     setComment("");
-    setErrors({});
-    setCreateTableError("");
-  };
-
-  const handleCloseSheet = () => {
-    const hasChanges = database || 
-      tableName || 
-      fields.length > 0 || 
-      comment || 
-      engine !== "MergeTree";
-
-    if (hasChanges) {
-      setIsConfirmDialogOpen(true);
-    } else {
-      closeCreateTableModal();
-    }
-  };
-
-  const handleConfirmClose = () => {
-    resetForm();
-    setIsConfirmDialogOpen(false);
     closeCreateTableModal();
   };
 
+  const validColumnNames = columns.filter((col) => col.name.trim()).map((col) => col.name);
+
   return (
-    <>
-      <ConfirmationDialog
-        isOpen={isConfirmDialogOpen}
-        onClose={() => setIsConfirmDialogOpen(false)}
-        onConfirm={handleConfirmClose}
-        title="Confirm Close"
-        description="Are you sure you want to close? All your changes will be lost."
-      />
+    <Dialog open={createTableModalOpen} onOpenChange={handleClose}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col bg-gradient-to-br from-gray-900 to-gray-950 border-white/10">
+        <DialogHeader className="flex-none pb-4 border-b border-white/10">
+          <DialogTitle className="flex items-center gap-3 text-xl">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+              <Table2 className="h-5 w-5 text-white" />
+            </div>
+            Create New Table
+          </DialogTitle>
+        </DialogHeader>
 
-      <Sheet open={isCreateTableModalOpen} onOpenChange={handleCloseSheet}>
-        <SheetContent
-          className="xl:w-[1200px] sm:w-full sm:max-w-full overflow-y-auto"
-          onOpenAutoFocus={(e) => {
-            e.preventDefault();
-            const firstInput = document.querySelector('input');
-            firstInput?.focus();
-          }}
-        >
-          <SheetHeader>
-            <SheetTitle>
-              Create Table
-              {database && tableName && (
-                <span className="text-muted-foreground ml-2">
-                  {`${database}.${tableName}`}
-                </span>
+        <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col">
+          <div className="flex-1 overflow-y-auto py-4 space-y-6 px-1">
+            {/* Basic Settings */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-gray-300">
+                  <Database className="h-4 w-4 text-blue-400" />
+                  Database
+                </Label>
+                <Select value={database} onValueChange={setDatabase}>
+                  <SelectTrigger className="bg-white/5 border-white/10">
+                    <SelectValue placeholder="Select database" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {databases.map((db) => (
+                      <SelectItem key={db.name} value={db.name}>
+                        {db.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-gray-300">
+                  <Table2 className="h-4 w-4 text-green-400" />
+                  Table Name
+                </Label>
+                <Input
+                  value={tableName}
+                  onChange={(e) => setTableName(e.target.value)}
+                  placeholder="my_table"
+                  className="bg-white/5 border-white/10"
+                />
+              </div>
+            </div>
+
+            {/* Cluster Option */}
+            {clusters.length > 0 && (
+              <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Server className="h-4 w-4 text-orange-400" />
+                    <Label className="text-gray-300">Create on Cluster</Label>
+                  </div>
+                  <Switch checked={useCluster} onCheckedChange={setUseCluster} />
+                </div>
+                <AnimatePresence>
+                  {useCluster && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      <Select value={selectedCluster} onValueChange={setSelectedCluster}>
+                        <SelectTrigger className="bg-white/5 border-white/10">
+                          <SelectValue placeholder="Select cluster" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clusters.map((cluster) => (
+                            <SelectItem key={cluster} value={cluster}>
+                              {cluster}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Engine Selection */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2 text-gray-300">
+                <Layers className="h-4 w-4 text-purple-400" />
+                Table Engine
+              </Label>
+              <Select value={engine} onValueChange={setEngine}>
+                <SelectTrigger className="bg-white/5 border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ENGINES.map((eng) => (
+                    <SelectItem key={eng.value} value={eng.value}>
+                      <div className="flex flex-col">
+                        <span>{eng.label}</span>
+                        <span className="text-xs text-gray-400">{eng.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Columns */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2 text-gray-300">
+                  <GripVertical className="h-4 w-4 text-gray-400" />
+                  Columns
+                </Label>
+                <Button type="button" size="sm" variant="outline" onClick={handleAddColumn} className="gap-1">
+                  <Plus className="h-4 w-4" /> Add Column
+                </Button>
+              </div>
+
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                <AnimatePresence>
+                  {columns.map((column, index) => (
+                    <motion.div
+                      key={column.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      className="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10"
+                    >
+                      <span className="text-xs text-gray-500 w-6">{index + 1}</span>
+                      <Input
+                        placeholder="Column name"
+                        value={column.name}
+                        onChange={(e) => handleColumnChange(column.id, "name", e.target.value)}
+                        className="flex-1 bg-white/5 border-white/10 h-9"
+                      />
+                      <Select
+                        value={column.type}
+                        onValueChange={(value) => handleColumnChange(column.id, "type", value)}
+                      >
+                        <SelectTrigger className="w-44 bg-white/5 border-white/10 h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {COMMON_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              <span className="flex items-center gap-2">
+                                <span>{type.icon}</span>
+                                <span>{type.label}</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedEngine?.requiresOrderBy && column.name && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={orderByColumns.includes(column.name) ? "default" : "outline"}
+                          className={`text-xs h-9 ${orderByColumns.includes(column.name) ? "bg-blue-600" : ""}`}
+                          onClick={() => toggleOrderByColumn(column.name)}
+                        >
+                          {orderByColumns.includes(column.name) ? `#${orderByColumns.indexOf(column.name) + 1}` : "PK"}
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleRemoveColumn(column.id)}
+                        disabled={columns.length === 1}
+                        className="h-9 w-9 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+
+              {selectedEngine?.requiresOrderBy && orderByColumns.length > 0 && (
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <span>ORDER BY:</span>
+                  {orderByColumns.map((col, i) => (
+                    <Badge key={col} variant="secondary" className="bg-blue-500/20 text-blue-300">
+                      {i + 1}. {col}
+                    </Badge>
+                  ))}
+                </div>
               )}
-            </SheetTitle>
-          </SheetHeader>
+            </div>
 
-          <ManualCreationForm
-            database={database}
-            tableName={tableName}
-            engine={engine}
-            fields={fields}
-            primaryKeyFields={primaryKeyFields}
-            orderByFields={orderByFields}
-            partitionByField={partitionByField}
-            comment={comment}
-            onCluster={onCluster}
-            clusterName={clusterName}
-            errors={errors}
-            onChange={(field, value) => {
-              switch (field) {
-                case "database":
-                  setDatabase(value);
-                  break;
-                case "tableName":
-                  setTableName(value);
-                  break;
-                case "engine":
-                  setEngine(value);
-                  break;
-                case "comment":
-                  setComment(value);
-                  break;
-                case "onCluster":
-                  setOnCluster(value as boolean);
-                  break;
-                case "clusterName":
-                  setClusterName(value);
-                  break;
-              }
-            }}
-            onAddField={addField}
-            onRemoveField={removeField}
-            onUpdateField={updateField}
-            onValidateAndGenerateSQL={validateAndGenerateSQL}
-            onCreateManual={handleCreateManual}
-            createTableError={createTableError}
-            isLoading={isLoading}
-            databaseData={dataBaseExplorer}
-          />
-        </SheetContent>
-      </Sheet>
-    </>
+            {/* Advanced Settings */}
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+              <CollapsibleTrigger className="w-full">
+                <div className="flex items-center justify-between w-full p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
+                  <span className="flex items-center gap-2">
+                    <Settings2 className="h-4 w-4" />
+                    Advanced Settings
+                  </span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label className="text-gray-300">Partition By</Label>
+                  <Input
+                    value={partitionBy}
+                    onChange={(e) => setPartitionBy(e.target.value)}
+                    placeholder="e.g., toYYYYMM(created_at) or leave empty for none"
+                    className="bg-white/5 border-white/10"
+                  />
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <span className="text-xs text-gray-500">Quick:</span>
+                    {validColumnNames.map((col) => (
+                      <button
+                        key={col}
+                        type="button"
+                        onClick={() => setPartitionBy(col)}
+                        className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 text-gray-300 transition-colors"
+                      >
+                        {col}
+                      </button>
+                    ))}
+                    {validColumnNames
+                      .filter(c => {
+                        const colType = columns.find(col => col.name === c)?.type.toLowerCase() || "";
+                        return colType.includes('date') || colType.includes('time');
+                      })
+                      .flatMap(col => [
+                        <button
+                          key={`${col}-yyyymm`}
+                          type="button"
+                          onClick={() => setPartitionBy(`toYYYYMM(${col})`)}
+                          className="px-2 py-1 text-xs rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors"
+                        >
+                          toYYYYMM({col})
+                        </button>,
+                        <button
+                          key={`${col}-yyyymmdd`}
+                          type="button"
+                          onClick={() => setPartitionBy(`toYYYYMMDD(${col})`)}
+                          className="px-2 py-1 text-xs rounded bg-green-500/20 hover:bg-green-500/30 text-green-300 transition-colors"
+                        >
+                          toYYYYMMDD({col})
+                        </button>,
+                      ])
+                    }
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-gray-300">TTL Expression</Label>
+                    <Input
+                      value={ttlExpression}
+                      onChange={(e) => setTtlExpression(e.target.value)}
+                      placeholder="e.g., created_at + INTERVAL 30 DAY"
+                      className="bg-white/5 border-white/10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-gray-300">Table Comment</Label>
+                    <Input
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      placeholder="Description of this table"
+                      className="bg-white/5 border-white/10"
+                    />
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+
+          <DialogFooter className="flex-none pt-4 border-t border-white/10">
+            <Button type="button" variant="outline" onClick={handleClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={executeQuery.isPending}
+              className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500"
+            >
+              {executeQuery.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  Create Table
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 

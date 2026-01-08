@@ -1,337 +1,190 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  CopyIcon,
-  InfoIcon,
-  EllipsisVertical,
-  DownloadCloud,
-  Braces,
-  RefreshCw,
-  Zap,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import ErrorCard from "./ErrorCard";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import useAppStore from "@/store";
-import AgTable from "@/components/common/AgTable";
-import { useTimeRange } from "../context/TimeRangeContext";
-import { interpolateQuery, previewQuery } from "../utils/queryInterpolation";
-import UPlotMetricChart from "./UPlotMetricChart";
-import { MetricItem } from "../config/metricsConfig";
+import React, { useRef, useEffect, useState } from "react";
+import uPlot from "uplot";
 
-// removed inline statistics badges for cleaner UI
-
-interface Props {
-  item: MetricItem;
+interface MetricData {
+  timestamps: number[];
+  values: number[];
 }
 
-interface TableMeta {
-  name: string;
-  type: string;
+interface UPlotMetricItemComponentProps {
+  data: MetricData;
+  title: string;
+  color?: string;
 }
 
-interface QueryResult {
-  data: Record<string, any>[];
-  error?: string | null;
-  meta?: TableMeta[];
-  statistics?: {
-    elapsed: number;
-    rows_read: number;
-    bytes_read: number;
-  };
-}
+const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
+  data,
+  title,
+  color = "#a855f7",
+}) => {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const uplotRef = useRef<uPlot | null>(null);
+  const [hoveredValue, setHoveredValue] = useState<{ time: string; value: string } | null>(null);
 
-function UPlotMetricItemComponent({ item }: Props) {
-  const { runQuery } = useAppStore();
-  const { timeRange } = useTimeRange();
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [errorMessage, setErrorMessage] = useState<string>("");
-  const [queryPreview, setQueryPreview] = useState<string>("");
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const [chartHeight, setChartHeight] = useState<number>(250);
+  useEffect(() => {
+    if (!chartRef.current || !data.timestamps.length) return;
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
+    // Get gradient colors based on main color
+    const getGradientFill = (u: uPlot) => {
+      const gradient = u.ctx.createLinearGradient(0, 0, 0, u.height);
+      gradient.addColorStop(0, `${color}40`);
+      gradient.addColorStop(1, `${color}05`);
+      return gradient;
+    };
 
-      // Interpolate query with current time range
-      const interpolatedQuery = interpolateQuery(item.query, timeRange);
-      setQueryPreview(interpolatedQuery);
-
-      const result = await runQuery(interpolatedQuery);
-
-      if (result.error) {
-        setQueryResult({ data: [], error: result.error });
-        setErrorMessage(result.error);
-      } else if (result.data && result.data.length > 0) {
-        const transformedResult: QueryResult = {
-          data: result.data,
-          meta: result.meta as TableMeta[],
-          statistics: {
-            elapsed: result.statistics?.elapsed || 0,
-            rows_read: result.statistics?.rows_read || 0,
-            bytes_read: result.statistics?.bytes_read || 0,
+    const opts: uPlot.Options = {
+      width: chartRef.current.clientWidth,
+      height: chartRef.current.clientHeight - 10,
+      title: "",
+      padding: [10, 10, 0, 0],
+      cursor: {
+        show: true,
+        x: true,
+        y: true,
+        points: {
+          show: true,
+          size: 8,
+          fill: color,
+          stroke: "#fff",
+          width: 2,
+        },
+        drag: {
+          x: false,
+          y: false,
+        },
+      },
+      legend: {
+        show: false,
+      },
+      focus: {
+        alpha: 0.3,
+      },
+      scales: {
+        x: {
+          time: true,
+        },
+        y: {
+          auto: true,
+          range: (u, min, max) => {
+            const pad = (max - min) * 0.1;
+            return [Math.max(0, min - pad), max + pad];
           },
-        };
-        setQueryResult(transformedResult);
-        setErrorMessage("");
-      } else {
-        setQueryResult({ data: [] });
-        setErrorMessage("No data returned from the query.");
-      }
-    } catch (err: any) {
-      console.error(err);
-      setQueryResult({ data: [] });
-      setErrorMessage(err.message || "An unexpected error occurred.");
-    } finally {
-      setLoading(false);
+        },
+      },
+      axes: [
+        {
+          stroke: "rgba(255,255,255,0.3)",
+          grid: {
+            stroke: "rgba(255,255,255,0.05)",
+            width: 1,
+          },
+          ticks: {
+            stroke: "rgba(255,255,255,0.1)",
+            width: 1,
+            size: 5,
+          },
+          font: "11px Inter, system-ui, sans-serif",
+          labelFont: "11px Inter, system-ui, sans-serif",
+          values: (u, vals) => vals.map(v => {
+            const date = new Date(v * 1000);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }),
+        },
+        {
+          stroke: "rgba(255,255,255,0.3)",
+          grid: {
+            stroke: "rgba(255,255,255,0.05)",
+            width: 1,
+          },
+          ticks: {
+            stroke: "rgba(255,255,255,0.1)",
+            width: 1,
+            size: 5,
+          },
+          font: "11px Inter, system-ui, sans-serif",
+          labelFont: "11px Inter, system-ui, sans-serif",
+          size: 50,
+        },
+      ],
+      series: [
+        {},
+        {
+          label: title,
+          stroke: color,
+          fill: (u) => getGradientFill(u),
+          width: 2,
+          points: {
+            show: false,
+          },
+          spanGaps: true,
+        },
+      ],
+      hooks: {
+        setCursor: [
+          (u) => {
+            const idx = u.cursor.idx;
+            if (idx !== null && idx !== undefined && data.timestamps[idx]) {
+              const time = new Date(data.timestamps[idx] * 1000).toLocaleTimeString();
+              const value = data.values[idx]?.toFixed(2) || "0";
+              setHoveredValue({ time, value });
+            } else {
+              setHoveredValue(null);
+            }
+          },
+        ],
+      },
+    };
+
+    const plotData: uPlot.AlignedData = [
+      data.timestamps,
+      data.values,
+    ];
+
+    if (uplotRef.current) {
+      uplotRef.current.destroy();
     }
-  }, [item.query, runQuery, timeRange]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    uplotRef.current = new uPlot(opts, plotData, chartRef.current);
 
-  // Observe container size for charts
-  useEffect(() => {
-    if (!chartContainerRef.current || item.type !== 'chart') return;
-
-    const updateChartHeight = () => {
-      if (chartContainerRef.current) {
-        const rect = chartContainerRef.current.getBoundingClientRect();
-        // Account for card header (~40px) and minimal padding
-        const availableHeight = Math.max(200, rect.height - 50);
-        setChartHeight(availableHeight);
+    const handleResize = () => {
+      if (uplotRef.current && chartRef.current) {
+        uplotRef.current.setSize({
+          width: chartRef.current.clientWidth,
+          height: chartRef.current.clientHeight - 10,
+        });
       }
     };
 
-    const resizeObserver = new ResizeObserver(updateChartHeight);
-    resizeObserver.observe(chartContainerRef.current);
-    updateChartHeight(); // Initial calculation
+    window.addEventListener("resize", handleResize);
 
     return () => {
-      resizeObserver.disconnect();
+      window.removeEventListener("resize", handleResize);
+      if (uplotRef.current) {
+        uplotRef.current.destroy();
+      }
     };
-  }, [item.type]);
+  }, [data, title, color]);
 
-  const handleDownloadData = useCallback((data: QueryResult) => {
-    if (!data) return;
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
-    const fileName = `${item.title.replace(/\s+/g, "_").toLowerCase()}.json`;
-    const link = document.createElement("a");
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", fileName);
-      link.style.visibility = "hidden";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }
-  }, [item.title]);
-
-  const handleCopyQuery = useCallback(() => {
-    const preview = previewQuery(item.query, timeRange);
-    navigator.clipboard.writeText(preview.interpolated);
-    toast.success("Interpolated query copied to clipboard");
-  }, [item.query, timeRange]);
-
-  if (loading) {
+  if (!data.timestamps.length) {
     return (
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-6 w-3/4" />
-            <div className="flex items-center gap-1">
-              <Skeleton className="h-6 w-6" />
-              <Skeleton className="h-6 w-6" />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-[250px] w-full" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (errorMessage) {
-    return (
-      <ErrorCard
-        item={item}
-        errorMessage={errorMessage}
-        fetchData={fetchData}
-        queryPreview={queryPreview}
-      />
-    );
-  }
-
-  const renderCardContent = () => {
-    if (!queryResult || !queryResult.data || queryResult.data.length === 0) {
-      return <div className="text-muted-foreground font-bold">No data</div>;
-    }
-
-    return queryResult.data.map((item: any, index: number) => (
-      <div key={index} className="mb-2">
-        {Object.entries(item).map(([key, value]) => (
-          <div key={key} className="space-y-1">
-            <span className="font-semibold text-xl">{value?.toString()}</span>
-            <div className="text-[10px] text-muted-foreground capitalize">{key.replace(/_/g, ' ')}</div>
-          </div>
-        ))}
+      <div className="flex items-center justify-center h-full text-gray-500">
+        No data available
       </div>
-    ));
-  };
-
-  const renderChart = () => {
-    if (!queryResult || !queryResult.data || queryResult.data.length === 0) {
-      return <div className="text-muted-foreground font-bold">No data</div>;
-    }
-
-    if (!item.chartConfig || !item.chartConfig.indexBy) {
-      return <div className="text-muted-foreground font-bold">Invalid chart configuration</div>;
-    }
-
-    return (
-      <UPlotMetricChart
-        data={queryResult.data}
-        chartType={(item.chartType as 'line' | 'area' | 'bar') || 'line'}
-        chartConfig={item.chartConfig}
-        height={250}
-      />
     );
-  };
-
-  const renderTable = () => {
-    if (!queryResult || !queryResult.data || queryResult.data.length === 0) {
-      return <div className="text-muted-foreground font-bold">No data</div>;
-    }
-    return (
-      <AgTable
-        data={queryResult}
-        height="100%"
-        showMetadata={item.showTableMetadata}
-        showStatistics={item.showTableStatistics}
-        showHeader={!item.hideTableHeader}
-      />
-    );
-  };
-
-  const renderContent = () => {
-    switch (item.type) {
-      case "card":
-        return renderCardContent();
-      case "chart":
-        return renderChart();
-      case "table":
-        return renderTable();
-      default:
-        return null;
-    }
-  };
-
-  // Statistics badges removed (elapsed/rows/bytes) per design feedback
+  }
 
   return (
-    <Card className={cn("h-full flex flex-col", item.type === 'chart' && "overflow-hidden")} ref={item.type === 'chart' ? chartContainerRef : undefined}>
-      <CardHeader className={cn("shrink-0", item.type === 'chart' ? "pb-1 pt-3" : "pb-2")}>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg truncate flex items-center gap-2">
-            {item.title}
-            {item.type === 'chart' && <Zap className="h-4 w-4 text-primary" />}
-          </CardTitle>
-          <div className="flex items-center space-x-1">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <InfoIcon className="w-4 h-4 text-muted-foreground cursor-pointer" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div className="p-2 max-w-[350px]">
-                    <p className="text-sm text-muted-foreground mb-0">
-                      {item.description}
-                    </p>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <EllipsisVertical className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleCopyQuery}>
-                  <CopyIcon className="w-4 h-4 mr-2" />
-                  Copy Query
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => fetchData()}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh Data
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleDownloadData(queryResult!)}
-                >
-                  <DownloadCloud className="w-4 h-4 mr-2" />
-                  Download Data
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    const jsonString = JSON.stringify(queryResult!.data, null, 2);
-                    navigator.clipboard
-                      .writeText(jsonString)
-                      .then(() => toast.success("Data copied to clipboard"))
-                      .catch(() => toast.error("Failed to copy data to clipboard"));
-                  }}
-                >
-                  <Braces className="w-4 h-4 mr-2" />
-                  Copy Data
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+    <div className="relative w-full h-full">
+      {/* Hover tooltip */}
+      {hoveredValue && (
+        <div className="absolute top-2 right-2 z-10 px-3 py-1.5 rounded-lg bg-black/80 border border-white/10 backdrop-blur-md">
+          <div className="text-xs text-gray-400">{hoveredValue.time}</div>
+          <div className="text-sm font-medium text-white">{hoveredValue.value} {title}</div>
         </div>
-        {/* Removed noisy inline statistics badges */}
-      </CardHeader>
-      <CardContent className={cn(
-        "flex-1 min-h-0",
-        item.type === 'chart' ? "p-2 pt-0 pb-3" : "pt-0 overflow-auto"
-      )}>
-        <div className={cn("h-full", item.type === 'chart' && "flex flex-col")}>
-          {item.type === 'chart' ? (
-            <UPlotMetricChart
-              data={queryResult?.data || []}
-              chartType={(item.chartType as 'line' | 'area' | 'bar') || 'line'}
-              chartConfig={item.chartConfig!}
-              height={chartHeight}
-            />
-          ) : (
-            renderContent()
-          )}
-        </div>
-      </CardContent>
-    </Card>
+      )}
+      <div ref={chartRef} className="w-full h-full" />
+    </div>
   );
-}
+};
 
 export default UPlotMetricItemComponent;

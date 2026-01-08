@@ -1,53 +1,26 @@
-// hooks/useMetadata.ts
-import { useState, useEffect } from "react";
-import useAppStore from "@/store";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { queryApi } from "@/api";
 
-interface Metadata {
-  roles: string[];
-  databases: string[];
-  profiles: string[];
+export function useRoles() {
+  return useQuery({
+    queryKey: ["roles"],
+    queryFn: async () => {
+      const result = await queryApi.executeQuery<{ name: string }>(
+        "SELECT name FROM system.roles"
+      );
+      return result.data;
+    },
+  });
 }
 
-const useMetadata = (isOpen: boolean): Metadata => {
-  const { runQuery } = useAppStore();
-  const [metadata, setMetadata] = useState<Metadata>({
-    roles: [],
-    databases: [],
-    profiles: [],
+export function useGrants() {
+  return useQuery({
+    queryKey: ["grants"],
+    queryFn: async () => {
+      const result = await queryApi.executeQuery<{ access_type: string }>(
+        "SELECT DISTINCT access_type FROM system.grants"
+      );
+      return result.data;
+    },
   });
-
-  useEffect(() => {
-    const fetchMetadata = async () => {
-      try {
-        const rolesResult = await runQuery("SHOW ROLES");
-        const roles = !rolesResult.error && rolesResult.data
-          ? rolesResult.data.map((row: any) => row.name)
-          : [];
-        
-        const dbResult = await runQuery("SHOW DATABASES");
-        const databases = !dbResult.error && dbResult.data
-          ? dbResult.data.map((row: any) => row.name)
-          : [];
-
-        const profilesResult = await runQuery("SHOW SETTINGS PROFILES");
-        const profiles = !profilesResult.error && profilesResult.data
-          ? profilesResult.data.map((row: any) => row.name)
-          : [];
-
-        setMetadata({ roles, databases, profiles });
-      } catch (err) {
-        console.error("Failed to fetch metadata:", err);
-        toast.error("Failed to fetch metadata.");
-      }
-    };
-
-    if (isOpen) {
-      fetchMetadata();
-    }
-  }, [isOpen, runQuery]);
-
-  return metadata;
-};
-
-export default useMetadata;
+}

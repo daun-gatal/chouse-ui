@@ -1,295 +1,120 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  RefreshCcw,
-  Database,
-  FileText,
-  Code,
-  ChevronRight,
-  Table,
-  AlertCircle,
-  Share,
-  Share2,
-} from "lucide-react";
-import useAppStore from "@/store";
-import LoadingOverlay from "./LoadingOverlay";
-import OverviewCards from "./OverviewCards";
-import DetailsContent from "./DetailsContent";
-import CreateQuerySection from "./CreateQuerySection";
-import DataSampleSection from "./DataSampleSection";
+import { Loader2, Database, Table } from "lucide-react";
+import { useTableInfo, useDatabaseInfo } from "@/hooks";
 import SchemaSection from "./SchemaSection";
-import { useSearchParams } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { getBasePath } from "@/lib/basePath";
+import DataSampleSection from "./DataSampleSection";
 
 interface InfoTabProps {
   database: string;
   tableName?: string;
 }
 
-interface DatabaseData {
-  name: string;
-  engine: string;
-  table_count: number;
-  total_rows: number;
-  total_bytes: number;
-  last_modified: number;
-}
-
-interface TableData {
-  database: string;
-  name: string;
-  engine: string;
-  total_rows: number;
-  total_bytes: number;
-  metadata_modification_time: number;
-  create_table_query: string;
-  partition_count: number;
-  last_modified_partition: Date;
-}
-
 const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
-  const [searchParams] = useSearchParams();
-  const { runQuery } = useAppStore();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<DatabaseData | TableData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [isRefreshing, setIsRefreshing] = useState(false);
- 
+  // Use appropriate hook based on whether we're viewing a database or table
+  const {
+    data: tableInfo,
+    isLoading: tableLoading,
+    error: tableError,
+  } = useTableInfo(database, tableName || "");
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      let query: string;
+  const {
+    data: databaseInfo,
+    isLoading: dbLoading,
+    error: dbError,
+  } = useDatabaseInfo(database);
 
-      if (tableName) {
-        query = `
-          SELECT 
-            database,
-            name,
-            engine,
-            total_rows,
-            total_bytes,
-            metadata_modification_time,
-            create_table_query,
-            (
-              SELECT count()
-              FROM system.parts
-              WHERE database = '${database}'
-              AND table = '${tableName}'
-              AND active
-            ) AS partition_count,
-            (
-              SELECT max(modification_time)
-              FROM system.parts
-              WHERE database = '${database}'
-              AND table = '${tableName}'
-              AND active
-            ) AS last_modified_partition
-          FROM system.tables
-          WHERE database = '${database}'
-          AND name = '${tableName}'
-        `;
-      } else {
-        query = `
-          SELECT 
-            name,
-            engine,
-            (
-              SELECT count()
-              FROM system.tables
-              WHERE database = '${database}'
-            ) AS table_count,
-            (
-              SELECT sum(total_rows)
-              FROM system.tables
-              WHERE database = '${database}'
-            ) AS total_rows,
-            (
-              SELECT sum(total_bytes)
-              FROM system.tables
-              WHERE database = '${database}'
-            ) AS total_bytes,
-            (
-              SELECT max(metadata_modification_time)
-              FROM system.tables
-              WHERE database = '${database}'
-            ) AS last_modified
-          FROM system.databases
-          WHERE name = '${database}'
-        `;
-      }
+  const isLoading = tableName ? tableLoading : dbLoading;
+  const error = tableName ? tableError : dbError;
+  const info = tableName ? tableInfo : databaseInfo;
 
-      const response = await runQuery(query);
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+        <span className="ml-2 text-gray-400">Loading information...</span>
+      </div>
+    );
+  }
 
-      if (response.data?.[0]) {
-        setData(response.data[0]);
-      } else {
-        throw new Error(
-          `No data found for ${tableName ? "table" : "database"}.`
-        );
-      }
-    } catch (error: any) {
-      setError(error.message || "An unexpected error occurred.");
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [database, tableName, runQuery]);
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 mb-2">Failed to load information</p>
+          <p className="text-gray-500 text-sm">{error.message}</p>
+        </div>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    fetchData();
-    // if (searchParams.get("tab") use the value to set the internal tab
-
-    const internalTab = searchParams.get("tab") || "";
-    if (internalTab) {
-      setActiveTab(internalTab);
-    }
-  }, [fetchData]);
-
-  const refreshData = async () => {
-    if (isRefreshing) return;
-
-    setIsRefreshing(true);
-    try {
-      await fetchData();
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const renderHeader = () => (
-    <header className="flex items-center justify-between p-4">
-      <div className="flex items-center space-x-3">
-        <Database className="w-6 h-6 text-primary" />
+  return (
+    <div className="h-full flex flex-col p-4 overflow-auto">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        {tableName ? (
+          <Table className="h-6 w-6 text-green-400" />
+        ) : (
+          <Database className="h-6 w-6 text-blue-400" />
+        )}
         <div>
-          <h2 className="text-2xl font-bold">
-            {tableName ? tableName : database}
+          <h2 className="text-xl font-semibold text-white">
+            {tableName || database}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            {tableName ? `Database: ${database}` : "Database Information"}
+          <p className="text-sm text-gray-400">
+            {tableName ? `Table in ${database}` : "Database"}
           </p>
         </div>
       </div>
-      <button
-        onClick={refreshData}
-        className="flex items-center space-x-2 px-4 py-2 rounded-md bg-primary/10 hover:bg-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={isRefreshing || loading}
-      >
-        <RefreshCcw
-          className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`}
-        />
-        <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
-      </button>
-    </header>
-  );
 
-  const renderTabs = () => (
-    <Tabs
-      value={activeTab}
-      onValueChange={setActiveTab}
-      className="w-full space-y-6"
-    >
-      <TabsList className="grid w-full grid-cols-5 gap-1">
-        <TabsTrigger value="overview" className="flex items-center space-x-2">
-          <FileText className="w-4 h-4" />
-          <span>Overview</span>
-        </TabsTrigger>
-        <TabsTrigger value="details" className="flex items-center space-x-2">
-          <Code className="w-4 h-4" />
-          <span>Details</span>
-        </TabsTrigger>
+      {/* Content Tabs */}
+      <Tabs defaultValue="overview" className="flex-1">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          {tableName && (
+            <>
+              <TabsTrigger value="schema">Schema</TabsTrigger>
+              <TabsTrigger value="sample">Data Sample</TabsTrigger>
+            </>
+          )}
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-4">
+          <div className="space-y-4">
+            {info && (
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(info).map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="p-3 rounded-lg bg-white/5 border border-white/10"
+                  >
+                    <p className="text-xs text-gray-400 mb-1 capitalize">
+                      {key.replace(/_/g, " ")}
+                    </p>
+                    <p className="text-sm text-white font-mono truncate">
+                      {typeof value === "object"
+                        ? JSON.stringify(value)
+                        : String(value) || "-"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
         {tableName && (
           <>
-            <TabsTrigger value="query" className="flex items-center space-x-2">
-              <ChevronRight className="w-4 h-4" />
-              <span>Create Query</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="data_sample"
-              className="flex items-center space-x-2"
-            >
-              <Table className="w-4 h-4" />
-              <span>Data Sample</span>
-            </TabsTrigger>
-            <TabsTrigger value="schema" className="flex items-center space-x-2">
-              <Table className="w-4 h-4" />
-              <span>Schema</span>
-            </TabsTrigger>
+            <TabsContent value="schema" className="mt-4">
+              <SchemaSection database={database} tableName={tableName} />
+            </TabsContent>
+
+            <TabsContent value="sample" className="mt-4">
+              <DataSampleSection database={database} tableName={tableName} />
+            </TabsContent>
           </>
         )}
-      </TabsList>
-
-      <TabsContent value="overview" className="space-y-6">
-        {data && (
-          <OverviewCards
-            data={data as DatabaseData | TableData}
-            tableName={tableName}
-          />
-        )}
-      </TabsContent>
-
-      <TabsContent value="details" className="space-y-6">
-        {data && <DetailsContent data={data} tableName={tableName} />}
-      </TabsContent>
-
-      {tableName && (
-        <TabsContent value="schema">
-          <SchemaSection database={database} tableName={tableName} />
-        </TabsContent>
-      )}
-
-      {tableName && data && (
-        <>
-          <TabsContent value="query">
-            <CreateQuerySection data={data as TableData} />
-          </TabsContent>
-          <TabsContent value="data_sample">
-            <DataSampleSection database={database} tableName={tableName} />
-          </TabsContent>
-        </>
-      )}
-      <Button
-        size="icon"
-        variant="ghost"
-        onClick={() => {
-          // create the url to share e.g. /? ?info_tab=true&database=<current_db>&table=<current_Table>&tab=<current_tab>
-          const params = new URLSearchParams();
-          params.append("info_tab", "true");
-          params.append("database", database);
-          if (tableName) {
-            params.append("table", tableName);
-          }
-          params.append("tab", activeTab);
-          const url = `${window.location.origin}${getBasePath()}?${params.toString()}`;
-          navigator.clipboard.writeText(url);
-          toast.success("URL copied to clipboard");
-        }}
-      >
-        <Share2 className="w-4 h-4" />
-      </Button>
-    </Tabs>
-  );
-
-  return (
-    <div className="space-y-6 relative min-h-[400px] p-4">
-      {renderHeader()}
-
-      {loading && <LoadingOverlay />}
-
-      {error && !loading && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {data && !loading && renderTabs()}
+      </Tabs>
     </div>
   );
 };
