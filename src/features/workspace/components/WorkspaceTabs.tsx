@@ -1,4 +1,5 @@
 import { useCallback, useState, useMemo, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -12,6 +13,7 @@ import {
   XSquareIcon,
   Copy,
   Save,
+  Sparkles,
 } from "lucide-react";
 import {
   DndContext,
@@ -41,6 +43,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useSearchParams } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 interface SortableTabProps {
   tab: Tab;
@@ -57,14 +60,29 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    width: tab.type === "home" ? "100px" : "150px",
+  };
+
+  const getTabIcon = () => {
+    if (tab.type === "home") return <Home className="h-3.5 w-3.5" />;
+    if (tab.type === "sql" && tab.isSaved) return <Save className="h-3.5 w-3.5" />;
+    if (tab.type === "sql") return <Terminal className="h-3.5 w-3.5" />;
+    if (tab.type === "information") return <Info className="h-3.5 w-3.5" />;
+    return null;
+  };
+
+  const getTabColor = () => {
+    if (tab.type === "home") return "text-purple-400";
+    if (tab.type === "sql" && tab.isSaved) return "text-amber-400";
+    if (tab.type === "sql") return "text-emerald-400";
+    if (tab.type === "information") return "text-blue-400";
+    return "text-gray-400";
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center ${isActive ? "z-10" : "z-0"}`}
+      className={cn("flex items-center", isActive ? "z-10" : "z-0")}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
       onAuxClick={(e) => {
@@ -75,67 +93,77 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
       }}
     >
       <ContextMenu>
-        <ContextMenuTrigger className="flex h-[150px] w-[300px] items-center justify-center rounded-md border border-dashed text-sm">
+        <ContextMenuTrigger asChild>
           <TabsTrigger
             value={tab.id}
-            className={`data-[state=active]:bg-orange-500 h-8 data-[state=active]:text-primary flex items-center rounded-sm w-full`}
             onClick={onActivate}
+            className={cn(
+              "relative flex items-center gap-2 h-9 px-3 rounded-t-lg border-t border-x border-transparent",
+              "transition-all duration-200",
+              "data-[state=active]:bg-white/5 data-[state=active]:border-white/10",
+              "data-[state=active]:shadow-[0_2px_10px_rgba(0,0,0,0.3)]",
+              "hover:bg-white/5",
+              tab.type === "home" ? "min-w-[90px]" : "min-w-[120px] max-w-[180px]"
+            )}
           >
+            {/* Drag Handle */}
             {isActive && isHovering && tab.type !== "home" && (
-              <div {...attributes} {...listeners} className="cursor-move px-1">
-                <GripVertical className="cursor-move p-0" size={12} />
+              <div {...attributes} {...listeners} className="cursor-move">
+                <GripVertical className="h-3 w-3 text-gray-500" />
               </div>
             )}
-            {tab.type === "home" && (
-              <Home width={16} className="mr-2 min-w-4" />
-            )}
-            {tab.type === "sql" && !tab.isSaved && (
-              <Terminal width={16} className="mr-2 min-w-4" />
-            )}
-            {tab.type === "sql" && tab.isSaved && (
-              <Save width={16} className="mr-2 min-w-4" />
-            )}
-            {tab.type === "information" && (
-              <Info width={16} className="mr-2 min-w-4" />
-            )}
 
-            <div className="flex items-center overflow-hidden">
-              <span className="truncate max-w-16 text-xs">{tab.title}</span>
-            </div>
+            {/* Icon */}
+            <span className={getTabColor()}>{getTabIcon()}</span>
 
+            {/* Title */}
+            <span className="truncate text-xs font-medium">{tab.title}</span>
+
+            {/* Close Button */}
             {tab.id !== "home" && (
-              <span
-                className="ml-auto cursor-pointer"
+              <button
+                className={cn(
+                  "ml-auto p-0.5 rounded hover:bg-white/10 transition-colors",
+                  isHovering ? "opacity-100" : "opacity-0"
+                )}
                 onClick={(e) => {
                   e.stopPropagation();
                   removeTab(tab.id);
                 }}
               >
-                <X className="h-4 w-4" />
-              </span>
+                <X className="h-3 w-3 text-gray-400 hover:text-white" />
+              </button>
+            )}
+
+            {/* Active Indicator */}
+            {isActive && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-purple-500 to-blue-500"
+              />
             )}
           </TabsTrigger>
         </ContextMenuTrigger>
 
         <ContextMenuContent>
           {tab.type === "sql" && (
-            <ContextMenuItem onClick={() => duplicateTab(tab.id)}>
-              Duplicate Tab <Copy className="ml-4 h-4 w-4" />
+            <ContextMenuItem onClick={() => duplicateTab(tab.id)} className="gap-2">
+              <Copy className="h-4 w-4" />
+              Duplicate Tab
             </ContextMenuItem>
           )}
 
           {tab.type !== "home" && (
-            <ContextMenuItem
-              onClick={() => removeTab(tab.id)}
-              className="text-red-600"
-            >
-              Close Tab <XSquareIcon className="ml-4 h-4 w-4" />
+            <ContextMenuItem onClick={() => removeTab(tab.id)} className="gap-2 text-red-400">
+              <XSquareIcon className="h-4 w-4" />
+              Close Tab
             </ContextMenuItem>
           )}
 
           {tab.type === "home" && (
-            <ContextMenuItem>
-              Home Tab <Home className="ml-4 h-4 w-4" />
+            <ContextMenuItem className="gap-2">
+              <Home className="h-4 w-4" />
+              Home Tab
             </ContextMenuItem>
           )}
         </ContextMenuContent>
@@ -173,7 +201,7 @@ function WorkspaceTabs() {
       } else {
         addTab({
           id: genTabId(),
-          title: `Information: ${database || table}`,
+          title: `Info: ${table || database}`,
           type: "information",
           content: { database, table },
         });
@@ -184,13 +212,14 @@ function WorkspaceTabs() {
   }, [searchParams, tabs, addTab, setActiveTab, setSearchParams]);
 
   const addNewCodeTab = useCallback(() => {
+    const queryCount = tabs.filter((t) => t.type === "sql").length;
     addTab({
       id: genTabId(),
-      title: "Query " + tabs.length,
+      title: `Query ${queryCount + 1}`,
       type: "sql",
       content: "",
     });
-  }, [tabs.length, addTab]);
+  }, [tabs, addTab]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -214,17 +243,22 @@ function WorkspaceTabs() {
         onValueChange={setActiveTab}
         className="flex flex-col h-full"
       >
-        <div className="flex-shrink-0 flex items-center">
+        {/* Tab Bar */}
+        <div className="flex-shrink-0 flex items-center border-b border-white/10 bg-black/20">
+          {/* New Tab Button */}
           <Button
-            variant="link"
-            className="rounded-none hover:bg-gray-200 h-8 px-2 sticky left-0 z-10 bg-background"
+            variant="ghost"
+            size="sm"
+            className="h-9 px-3 rounded-none border-r border-white/10 hover:bg-white/5"
             onClick={addNewCodeTab}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 text-gray-400" />
           </Button>
+
+          {/* Scrollable Tabs */}
           <ScrollArea className="flex-grow">
             <ContextMenu>
-              <ContextMenuTrigger>
+              <ContextMenuTrigger asChild>
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -234,47 +268,42 @@ function WorkspaceTabs() {
                     items={sortedTabs.map((tab) => tab.id)}
                     strategy={horizontalListSortingStrategy}
                   >
-                    <div className="flex">
-                      <TabsList className="inline-flex h-10 items-center justify-start rounded-none w-full overflow-y-clip">
-                        {sortedTabs.map((tab) => (
-                          <SortableTab
-                            key={tab.id}
-                            tab={
-                              tab.id === "home"
-                                ? { ...tab, title: "Home" }
-                                : tab
-                            }
-                            isActive={activeTab === tab.id}
-                            onActivate={() => setActiveTab(tab.id)}
-                          />
-                        ))}
-                      </TabsList>
-                    </div>
+                    <TabsList className="inline-flex h-10 items-end bg-transparent rounded-none w-full gap-0.5 px-1">
+                      {sortedTabs.map((tab) => (
+                        <SortableTab
+                          key={tab.id}
+                          tab={tab.id === "home" ? { ...tab, title: "Home" } : tab}
+                          isActive={activeTab === tab.id}
+                          onActivate={() => setActiveTab(tab.id)}
+                        />
+                      ))}
+                    </TabsList>
                   </SortableContext>
                 </DndContext>
               </ContextMenuTrigger>
               <ContextMenuContent>
-                <ContextMenuItem onClick={addNewCodeTab}>
-                  New Tab <Plus className="ml-4 h-4 w-4" />
+                <ContextMenuItem onClick={addNewCodeTab} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  New Tab
                 </ContextMenuItem>
                 <ContextMenuSeparator />
-                <ContextMenuItem
-                  onClick={closeAllTabs}
-                  className="text-red-600"
-                >
-                  Close All Tabs <XSquareIcon className="ml-4 h-4 w-4" />
+                <ContextMenuItem onClick={closeAllTabs} className="gap-2 text-red-400">
+                  <XSquareIcon className="h-4 w-4" />
+                  Close All Tabs
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
         </div>
-        <div className="flex flex-col flex-1">
+
+        {/* Tab Content */}
+        <div className="flex-1 min-h-0">
           {sortedTabs.map((tab) => (
             <TabsContent
               key={tab.id}
               value={tab.id}
-              className="h-full p-0 outline-none data-[state=active]:block"
+              className="h-full p-0 m-0 outline-none data-[state=active]:block"
             >
               {tab.type === "home" ? (
                 <HomeTab />
@@ -288,9 +317,7 @@ function WorkspaceTabs() {
                       : ""
                   }
                   tableName={
-                    typeof tab.content === "object"
-                      ? tab.content.table
-                      : undefined
+                    typeof tab.content === "object" ? tab.content.table : undefined
                   }
                 />
               ) : null}

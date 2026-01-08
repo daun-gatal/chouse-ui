@@ -326,7 +326,7 @@ export class ClickHouseService {
         uptime: uptime.data[0]?.["uptime()"] || 0,
         databaseCount: Number(dbCount.data[0]?.["count()"] || 0),
         tableCount: Number(tableCount.data[0]?.["count()"] || 0),
-        totalRows: Number(sizeData.data[0]?.rows || 0).toLocaleString(),
+        totalRows: this.formatLargeNumber(Number(sizeData.data[0]?.rows || 0)),
         totalSize: sizeData.data[0]?.size || "0 B",
         memoryUsage: memData.data[0]?.mem || "0 B",
         cpuLoad: Number(cpuData.data[0]?.value || 0),
@@ -338,8 +338,16 @@ export class ClickHouseService {
     }
   }
 
-  async getRecentQueries(limit: number = 10): Promise<RecentQuery[]> {
+  /**
+   * Get recent queries from query log
+   * @param limit - Number of queries to fetch
+   * @param username - Optional username to filter by (for non-admin users)
+   */
+  async getRecentQueries(limit: number = 10, username?: string): Promise<RecentQuery[]> {
     try {
+      // Build user filter clause if username is provided
+      const userFilter = username ? `AND user = '${username.replace(/'/g, "''")}'` : '';
+      
       const result = await this.client.query({
         query: `
           SELECT 
@@ -349,6 +357,7 @@ export class ClickHouseService {
             event_time 
           FROM system.query_log 
           WHERE type IN ('QueryFinish', 'ExceptionWhileProcessing') 
+          ${userFilter}
           ORDER BY event_time DESC 
           LIMIT ${limit}
         `,
@@ -511,6 +520,15 @@ export class ClickHouseService {
       .replace(/'/g, "''")
       .replace(/\n/g, "\\n")
       .replace(/\r/g, "\\r");
+  }
+
+  private formatLargeNumber(num: number): string {
+    if (isNaN(num) || num === 0) return "0";
+    if (num >= 1e12) return `${(num / 1e12).toFixed(2)}T`;
+    if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
+    if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+    if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
+    return num.toLocaleString();
   }
 
   private handleError(error: unknown, defaultMessage: string): AppError {

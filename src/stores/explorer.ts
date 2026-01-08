@@ -31,12 +31,15 @@ export interface ExplorerState {
   isCreateTableModalOpen: boolean;
   isCreateDatabaseModalOpen: boolean;
   isUploadFileModalOpen: boolean;
+  isAlterTableModalOpen: boolean;
   createTableModalOpen: boolean;
   createDatabaseModalOpen: boolean;
   uploadFileModalOpen: boolean;
+  alterTableModalOpen: boolean;
   selectedDatabaseForCreateTable: string;
   selectedDatabaseForUpload: string;
   selectedDatabase: string;
+  selectedTableForAlter: string;
 
   // Actions
   fetchDatabases: () => Promise<void>;
@@ -55,6 +58,8 @@ export interface ExplorerState {
   closeCreateDatabaseModal: () => void;
   openUploadFileModal: (database: string) => void;
   closeUploadFileModal: () => void;
+  openAlterTableModal: (database: string, table: string) => void;
+  closeAlterTableModal: () => void;
 
   // Utility
   refreshAll: () => Promise<void>;
@@ -81,12 +86,15 @@ export const useExplorerStore = create<ExplorerState>()((set, get) => ({
   isCreateTableModalOpen: false,
   isCreateDatabaseModalOpen: false,
   isUploadFileModalOpen: false,
+  isAlterTableModalOpen: false,
   createTableModalOpen: false,
   createDatabaseModalOpen: false,
   uploadFileModalOpen: false,
+  alterTableModalOpen: false,
   selectedDatabaseForCreateTable: '',
   selectedDatabaseForUpload: '',
   selectedDatabase: '',
+  selectedTableForAlter: '',
 
   /**
    * Fetch all databases and tables
@@ -216,6 +224,23 @@ export const useExplorerStore = create<ExplorerState>()((set, get) => ({
       isUploadFileModalOpen: false,
       uploadFileModalOpen: false,
       selectedDatabaseForUpload: '',
+    });
+  },
+
+  openAlterTableModal: (database: string, table: string) => {
+    set({
+      isAlterTableModalOpen: true,
+      alterTableModalOpen: true,
+      selectedDatabase: database,
+      selectedTableForAlter: table,
+    });
+  },
+
+  closeAlterTableModal: () => {
+    set({
+      isAlterTableModalOpen: false,
+      alterTableModalOpen: false,
+      selectedTableForAlter: '',
     });
   },
 

@@ -41,10 +41,12 @@ export async function getSystemStats(): Promise<SystemStats> {
 
 /**
  * Get recent queries from query log
+ * @param limit - Number of queries to fetch
+ * @param username - Optional username to filter by (for non-admin users)
  */
-export async function getRecentQueries(limit: number = 10): Promise<RecentQuery[]> {
+export async function getRecentQueries(limit: number = 10, username?: string): Promise<RecentQuery[]> {
   return api.get<RecentQuery[]>('/metrics/recent-queries', {
-    params: { limit },
+    params: { limit, username },
   });
 }
 

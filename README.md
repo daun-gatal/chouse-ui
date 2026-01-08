@@ -114,6 +114,10 @@ docker-compose up -d
 | `STATIC_PATH` | Path to static files | `./dist` |
 | `NODE_ENV` | Environment mode | `development` |
 | `CORS_ORIGIN` | Allowed CORS origins | `*` |
+| `SESSION_TTL` | Session timeout in ms | `3600000` (1 hour) |
+| `CLICKHOUSE_DEFAULT_URL` | Default ClickHouse URL (pre-filled in login) | `` |
+| `CLICKHOUSE_PRESET_URLS` | Comma-separated preset URLs for dropdown | `` |
+| `CLICKHOUSE_DEFAULT_USER` | Default username for login form | `` |
 
 ### Frontend Configuration
 

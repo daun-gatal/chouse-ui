@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
-import { motion } from "framer-motion";
-import { UserPlus, ArrowLeft, Loader2, Shield, Database, Key, Globe, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { UserPlus, ArrowLeft, Loader2, Shield, Database, Key, Globe, X, Server, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useForm, FormProvider } from "react-hook-form";
@@ -8,10 +8,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useExecuteQuery, useDatabases } from "@/hooks";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useExecuteQuery, useDatabases, useClusterNames } from "@/hooks";
 import AuthenticationSection from "./AuthenticationSection";
 import DatabaseRolesSection from "./DatabaseRolesSection";
 
@@ -102,11 +110,15 @@ const CreateUser: React.FC = () => {
   const navigate = useNavigate();
   const executeQuery = useExecuteQuery();
   const { data: databasesData = [] } = useDatabases();
+  const { data: clusters = [] } = useClusterNames();
   const [selectedRole, setSelectedRole] = useState<RoleTemplate>("readOnly");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hostRestriction, setHostRestriction] = useState<HostRestrictionType>("any");
   const [newHost, setNewHost] = useState("");
   const [allowedHosts, setAllowedHosts] = useState<string[]>([]);
+  const [useCluster, setUseCluster] = useState(false);
+  const [selectedCluster, setSelectedCluster] = useState("");
+  const [allowQueryLogs, setAllowQueryLogs] = useState(true); // Allow viewing own query logs
 
   const databases = databasesData.map((db) => db.name);
   const roles: string[] = [];
@@ -160,6 +172,9 @@ const CreateUser: React.FC = () => {
     try {
       const { username, password, privileges, grantDatabases } = data;
 
+      // Build cluster clause
+      const clusterClause = useCluster && selectedCluster ? ` ON CLUSTER '${selectedCluster}'` : "";
+
       // Build host restriction clause
       let hostClause = "";
       if (hostRestriction === "local") {
@@ -172,50 +187,62 @@ const CreateUser: React.FC = () => {
         hostClause = "HOST ANY";
       }
 
-      // 1. Create user with host restriction
+      // 1. Create user with host restriction and optional cluster
       const escapedPassword = password.replace(/'/g, "\\'");
       await executeQuery.mutateAsync({
-        query: `CREATE USER '${username}' ${hostClause} IDENTIFIED BY '${escapedPassword}'`,
+        query: `CREATE USER '${username}'${clusterClause} ${hostClause} IDENTIFIED BY '${escapedPassword}'`,
       });
 
       // 2. Grant privileges based on role
       if (privileges.isAdmin) {
         await executeQuery.mutateAsync({
-          query: `GRANT ALL ON *.* TO '${username}' WITH GRANT OPTION`,
+          query: `GRANT${clusterClause} ALL ON *.* TO '${username}' WITH GRANT OPTION`,
         });
       } else {
-        const targetDatabases = grantDatabases.length > 0 ? grantDatabases : ["*"];
+        // If no databases selected, user won't have access to any database
+        // This is intentional - they must explicitly select databases
+        if (grantDatabases.length === 0) {
+          toast.warning("User created without database access. Add database permissions in Edit User.");
+        }
 
-        for (const db of targetDatabases) {
-          const dbTarget = db === "*" ? "*.*" : `${db}.*`;
+        for (const db of grantDatabases) {
+          const dbTarget = `\`${db}\`.*`;
 
           if (privileges.allowSelect) {
             await executeQuery.mutateAsync({
-              query: `GRANT SELECT ON ${dbTarget} TO '${username}'`,
+              query: `GRANT${clusterClause} SELECT ON ${dbTarget} TO '${username}'`,
             });
           }
 
           if (privileges.allowInsert) {
             await executeQuery.mutateAsync({
-              query: `GRANT INSERT ON ${dbTarget} TO '${username}'`,
+              query: `GRANT${clusterClause} INSERT ON ${dbTarget} TO '${username}'`,
             });
           }
 
           if (privileges.allowDDL) {
             await executeQuery.mutateAsync({
-              query: `GRANT CREATE TABLE, DROP TABLE, ALTER TABLE ON ${dbTarget} TO '${username}'`,
+              query: `GRANT${clusterClause} CREATE TABLE, DROP TABLE, ALTER TABLE ON ${dbTarget} TO '${username}'`,
             });
           }
         }
 
         if (privileges.allowSystem) {
           await executeQuery.mutateAsync({
-            query: `GRANT SYSTEM ON *.* TO '${username}'`,
+            query: `GRANT${clusterClause} SYSTEM ON *.* TO '${username}'`,
+          });
+        }
+
+        // Grant access to view own query logs (system.query_log)
+        if (allowQueryLogs) {
+          await executeQuery.mutateAsync({
+            query: `GRANT${clusterClause} SELECT ON system.query_log TO '${username}'`,
           });
         }
       }
 
-      toast.success(`User "${username}" created successfully with ${ROLE_TEMPLATES[selectedRole].name} role`);
+      const clusterMsg = useCluster && selectedCluster ? ` on cluster ${selectedCluster}` : "";
+      toast.success(`User "${username}" created successfully with ${ROLE_TEMPLATES[selectedRole].name} role${clusterMsg}`);
       navigate("/admin");
     } catch (error) {
       console.error("Failed to create user:", error);
@@ -311,6 +338,49 @@ const CreateUser: React.FC = () => {
               </div>
             </GlassCardContent>
           </GlassCard>
+
+          {/* Cluster Option */}
+          {clusters.length > 0 && (
+            <GlassCard>
+              <GlassCardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-orange-500/20">
+                      <Server className="h-5 w-5 text-orange-400" />
+                    </div>
+                    <div>
+                      <Label className="text-white font-medium">Create on Cluster</Label>
+                      <p className="text-xs text-gray-400">Replicate this user across all cluster nodes</p>
+                    </div>
+                  </div>
+                  <Switch checked={useCluster} onCheckedChange={setUseCluster} />
+                </div>
+                <AnimatePresence>
+                  {useCluster && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-4"
+                    >
+                      <Select value={selectedCluster} onValueChange={setSelectedCluster}>
+                        <SelectTrigger className="bg-white/5 border-white/10">
+                          <SelectValue placeholder="Select cluster" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clusters.map((cluster) => (
+                            <SelectItem key={cluster} value={cluster}>
+                              {cluster}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </GlassCardContent>
+            </GlassCard>
+          )}
 
           {/* Tabs for detailed configuration */}
           <Tabs defaultValue="auth" className="space-y-4">
@@ -454,8 +524,29 @@ const CreateUser: React.FC = () => {
                       Database Access Control
                     </GlassCardTitle>
                   </GlassCardHeader>
-                  <GlassCardContent>
+                  <GlassCardContent className="space-y-6">
                     <DatabaseRolesSection form={form} roles={roles} databases={databases} />
+                    
+                    {/* Query Logs Access Toggle */}
+                    <div className="p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-cyan-500/20">
+                            <FileText className="h-4 w-4 text-cyan-400" />
+                          </div>
+                          <div>
+                            <Label className="text-white font-medium">Query Logs Access</Label>
+                            <p className="text-xs text-gray-400">
+                              Allow user to view their own query history in the Logs tab
+                            </p>
+                          </div>
+                        </div>
+                        <Switch checked={allowQueryLogs} onCheckedChange={setAllowQueryLogs} />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-3 pl-11">
+                        Grants SELECT on <code className="text-cyan-400">system.query_log</code> - users can only see queries they executed
+                      </p>
+                    </div>
                   </GlassCardContent>
                 </GlassCard>
               </TabsContent>

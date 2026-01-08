@@ -20,9 +20,12 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/stores";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
+
+// Persist sidebar state in localStorage
+const SIDEBAR_COLLAPSED_KEY = "clickhouse-studio-sidebar-collapsed";
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -40,7 +43,7 @@ const SidebarItem = ({ icon: Icon, label, to, isActive, isCollapsed }: SidebarIt
           <Link
             to={to}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-300 group relative overflow-hidden",
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-300 group relative",
               isActive
                 ? "bg-white/10 text-white shadow-lg shadow-purple-500/10 ring-1 ring-white/10"
                 : "text-gray-400 hover:text-white hover:bg-white/5",
@@ -48,9 +51,9 @@ const SidebarItem = ({ icon: Icon, label, to, isActive, isCollapsed }: SidebarIt
             )}
           >
             {isActive && (
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10 opacity-50" />
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10 opacity-50 rounded-lg" />
             )}
-            <Icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", isActive && "text-purple-400")} />
+            <Icon className={cn("h-5 w-5 shrink-0 transition-transform group-hover:scale-110 z-10", isActive && "text-purple-400")} />
             {!isCollapsed && (
               <span className={cn("font-medium z-10", isActive && "text-white")}>{label}</span>
             )}
@@ -78,12 +81,30 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { username, logout, isAdmin } = useAuthStore();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Load initial state from localStorage
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  // Persist collapse state to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [isCollapsed]);
 
   const Logo = withBasePath("logo.svg");
 
   const sidebarItems = [
-    ...(isAdmin ? [{ icon: LayoutDashboard, label: "Overview", to: "/" }] : []),
+    ...(isAdmin ? [{ icon: LayoutDashboard, label: "Overview", to: "/overview" }] : []),
     { icon: Database, label: "Explorer", to: "/explorer" },
     ...(isAdmin ? [{ icon: Activity, label: "Metrics", to: "/metrics" }] : []),
     { icon: FileText, label: "Logs", to: "/logs" },
@@ -98,8 +119,9 @@ export default function Sidebar() {
 
   return (
     <motion.div
-      animate={{ width: isCollapsed ? 80 : 256 }}
-      className="relative z-20 flex flex-col border-r border-white/10 bg-black/20 backdrop-blur-xl h-full transition-all duration-300 ease-in-out"
+      animate={{ width: isCollapsed ? 80 : 280 }}
+      className="relative z-20 flex flex-col border-r border-white/10 bg-black/20 backdrop-blur-xl h-full"
+      transition={{ duration: 0.3, ease: "easeInOut" }}
     >
       {/* Toggle Button */}
       <Button
@@ -116,14 +138,19 @@ export default function Sidebar() {
           <img src={Logo} alt="Logo" className="w-8 h-8 object-contain drop-shadow-[0_0_10px_rgba(255,200,0,0.2)]" />
         </div>
         {!isCollapsed && (
-          <div className="flex flex-col overflow-hidden">
-            <span className="font-bold text-lg bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent truncate">
+          <motion.div 
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex flex-col"
+          >
+            <span className="font-bold text-lg bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
               ClickHouse Studio
             </span>
-            <span className="text-xs text-gray-500 font-medium truncate">
-              ClickHouse Client
+            <span className="text-xs text-gray-500 font-medium">
+              Database Management
             </span>
-          </div>
+          </motion.div>
         )}
       </div>
 

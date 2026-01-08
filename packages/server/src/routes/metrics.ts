@@ -25,12 +25,15 @@ metrics.get("/stats", async (c) => {
 /**
  * GET /metrics/recent-queries
  * Get recent queries from query log
+ * @param limit - Number of queries to fetch
+ * @param username - Optional username to filter by (for non-admin users)
  */
 metrics.get("/recent-queries", async (c) => {
   const limit = parseInt(c.req.query("limit") || "10", 10);
+  const username = c.req.query("username");
   const service = c.get("service") as ClickHouseService;
 
-  const queries = await service.getRecentQueries(Math.min(limit, 100));
+  const queries = await service.getRecentQueries(Math.min(limit, 100), username);
 
   return c.json({
     success: true,

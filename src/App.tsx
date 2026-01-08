@@ -4,6 +4,7 @@ import HomePage from "@/pages/Home";
 import MetricsPage from "@/pages/Metrics";
 import SettingsPage from "@/pages/Settings";
 import { RestrictedRoute } from "@/components/common/RestrictedRoute";
+import { DefaultRedirect } from "@/components/common/DefaultRedirect";
 import { ThemeProvider } from "@/components/common/theme-provider";
 import AppInitializer from "@/components/common/AppInit";
 import NotFound from "./pages/NotFound";
@@ -45,8 +46,12 @@ export default function App() {
 
             {/* Authenticated Application Routes */}
             <Route element={<MainLayout />}>
+              {/* Default redirect based on user role */}
+              <Route path="/" element={<DefaultRedirect />} />
+              
+              {/* Overview - Admin default landing page */}
               <Route
-                path="/"
+                path="/overview"
                 element={
                   <RestrictedRoute>
                     <HomePage />

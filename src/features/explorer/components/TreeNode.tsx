@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronRight, ChevronDown, MoreVertical, Database, Table2, FilePlus, Info, FileUp, Trash2, TerminalIcon, FileType } from "lucide-react";
+import { ChevronRight, ChevronDown, MoreVertical, Database, Table2, FilePlus, Info, FileUp, Trash2, TerminalIcon, FileType, Settings2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +38,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
     toggleNode,
     openCreateTableModal,
     openUploadFileModal,
+    openAlterTableModal,
   } = useExplorerStore();
   const { addTab } = useWorkspaceStore();
 
@@ -183,6 +184,12 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                   <FileType className="w-4 h-4 mr-2" />
                   Describe Table
                 </DropdownMenuItem>
+                <PermissionGuard requiredPermission="ALTER TABLE" showTooltip>
+                  <DropdownMenuItem onClick={() => openAlterTableModal(databaseName, node.name)}>
+                    <Settings2 className="w-4 h-4 mr-2" />
+                    Alter Table
+                  </DropdownMenuItem>
+                </PermissionGuard>
                 <PermissionGuard requiredPermission="DROP TABLE" showTooltip>
                   <DropdownMenuItem
                     className="text-red-500"

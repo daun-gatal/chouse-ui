@@ -12,7 +12,7 @@ import {
   UseQueryOptions,
   UseMutationOptions,
 } from '@tanstack/react-query';
-import { explorerApi, metricsApi, savedQueriesApi, queryApi } from '@/api';
+import { explorerApi, metricsApi, savedQueriesApi, queryApi, configApi } from '@/api';
 import type {
   DatabaseInfo,
   TableDetails,
@@ -21,6 +21,7 @@ import type {
   SavedQuery,
   IntellisenseData,
   QueryResult,
+  AppConfig,
 } from '@/api';
 
 // ============================================
@@ -28,6 +29,9 @@ import type {
 // ============================================
 
 export const queryKeys = {
+  // Config
+  config: ['config'] as const,
+
   // Explorer
   databases: ['databases'] as const,
   tableDetails: (database: string, table: string) => ['tableDetails', database, table] as const,
@@ -45,6 +49,25 @@ export const queryKeys = {
   // Intellisense
   intellisense: ['intellisense'] as const,
 } as const;
+
+// ============================================
+// Config Hooks
+// ============================================
+
+/**
+ * Hook to fetch public app configuration
+ * This fetches server-side environment variables for use in the frontend
+ */
+export function useConfig(options?: Partial<UseQueryOptions<AppConfig, Error>>) {
+  return useQuery({
+    queryKey: queryKeys.config,
+    queryFn: configApi.getConfig,
+    staleTime: Infinity, // Config doesn't change during session
+    gcTime: Infinity,
+    retry: 1,
+    ...options,
+  });
+}
 
 // ============================================
 // Explorer Hooks
@@ -175,14 +198,17 @@ export function useSystemStats(
 
 /**
  * Hook to fetch recent queries
+ * @param limit - Number of queries to fetch
+ * @param username - Optional username to filter by (for non-admin users)
  */
 export function useRecentQueries(
   limit: number = 10,
+  username?: string,
   options?: Partial<UseQueryOptions<RecentQuery[], Error>>
 ) {
   return useQuery({
-    queryKey: queryKeys.recentQueries(limit),
-    queryFn: () => metricsApi.getRecentQueries(limit),
+    queryKey: ['recentQueries', limit, username] as const,
+    queryFn: () => metricsApi.getRecentQueries(limit, username),
     refetchInterval: 10000, // Refetch every 10 seconds
     staleTime: 5000,
     ...options,
@@ -460,8 +486,14 @@ export function useTableSchema(
 /**
  * Hook to fetch query logs
  */
+/**
+ * Hook to fetch query logs
+ * @param limit - Number of logs to fetch
+ * @param username - Optional username to filter by (for non-admin users)
+ */
 export function useQueryLogs(
   limit: number = 100,
+  username?: string,
   options?: Partial<UseQueryOptions<Array<{
     type: string;
     event_date: string;
@@ -476,8 +508,11 @@ export function useQueryLogs(
     exception?: string;
   }>, Error>>
 ) {
+  // Build user filter clause
+  const userFilter = username ? `AND user = '${username}'` : '';
+  
   return useQuery({
-    queryKey: ['queryLogs', limit] as const,
+    queryKey: ['queryLogs', limit, username] as const,
     queryFn: async () => {
       const result = await queryApi.executeQuery(`
           SELECT 
@@ -494,6 +529,7 @@ export function useQueryLogs(
             exception
           FROM system.query_log
           WHERE event_date >= today() - 1
+          ${userFilter}
           ORDER BY event_time DESC
           LIMIT ${limit}
         `);
@@ -519,108 +555,188 @@ export function useQueryLogs(
 
 /**
  * Hook to fetch metrics data
+ * Uses simple, stable queries that work across ClickHouse versions
  */
 export function useMetrics(
   timeRange: string = "1h",
   options?: Partial<UseQueryOptions<{
+    // Time series data
     queriesPerSecond?: { timestamps: number[]; values: number[] };
-    memoryUsage?: { timestamps: number[]; values: number[] };
-    cpuUsage?: { timestamps: number[]; values: number[] };
-    diskIO?: { timestamps: number[]; values: number[] };
+    selectQueries?: { timestamps: number[]; values: number[] };
+    insertQueries?: { timestamps: number[]; values: number[] };
+    failedQueries?: { timestamps: number[]; values: number[] };
+    // Current values
+    currentStats?: {
+      memoryUsage: number;
+      activeQueries: number;
+      connections: number;
+      uptime: number;
+      totalQueries: number;
+      failedQueries: number;
+      partsCount: number;
+      databasesCount: number;
+      tablesCount: number;
+      replicasOk: number;
+      replicasTotal: number;
+    };
   }, Error>>
 ) {
   return useQuery({
     queryKey: ['metrics', timeRange] as const,
     queryFn: async () => {
-      // Convert timeRange to interval and sampling for query
-      const config: Record<string, { interval: string; sample: number }> = {
-        '15m': { interval: '15 MINUTE', sample: 10 },
-        '1h': { interval: '1 HOUR', sample: 30 },
-        '6h': { interval: '6 HOUR', sample: 60 },
-        '24h': { interval: '24 HOUR', sample: 300 },
+      // Convert timeRange to interval for query
+      const config: Record<string, { interval: string; limit: number }> = {
+        '15m': { interval: '15 MINUTE', limit: 15 },
+        '1h': { interval: '1 HOUR', limit: 60 },
+        '6h': { interval: '6 HOUR', limit: 100 },
+        '24h': { interval: '24 HOUR', limit: 100 },
       };
-      const { interval, sample } = config[timeRange] || config['1h'];
+      const { interval, limit } = config[timeRange] || config['1h'];
       
-      // Fetch queries per second from query_log
-      const queriesResult = await queryApi.executeQuery(`
+      // Helper to safely execute queries
+      const safeQuery = async (query: string): Promise<Record<string, unknown>[]> => {
+        try {
+          const result = await queryApi.executeQuery(query);
+          return (result.data as Record<string, unknown>[]) || [];
+        } catch (error) {
+          console.warn('Metrics query failed:', error);
+          return [];
+        }
+      };
+      
+      // Fetch query counts by type per minute
+      const queriesData = await safeQuery(`
         SELECT 
           toUnixTimestamp(toStartOfMinute(event_time)) as ts,
-          count() / 60 as qps
+          countIf(query_kind = 'Select') as select_count,
+          countIf(query_kind = 'Insert') as insert_count,
+          countIf(exception_code != 0) as failed_count,
+          count() as total_count
         FROM system.query_log
         WHERE event_time >= now() - INTERVAL ${interval}
           AND type = 'QueryFinish'
         GROUP BY ts
-        ORDER BY ts
+        ORDER BY ts DESC
+        LIMIT ${limit}
       `);
       
-      // Fetch memory usage - sample every N seconds to reduce data points
-      let memoryResult;
-      try {
-        memoryResult = await queryApi.executeQuery(`
-          SELECT 
-            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${sample} SECOND)) as ts,
-            avg(value) / 1073741824 as memory_gb
-          FROM system.asynchronous_metric_log
-          WHERE event_time >= now() - INTERVAL ${interval}
-            AND metric = 'MemoryResident'
-          GROUP BY ts
-          ORDER BY ts
-        `);
-      } catch {
-        memoryResult = { data: [] };
-      }
+      // Reverse to get chronological order
+      const sortedData = [...queriesData].reverse();
       
-      // Fetch CPU usage - use OSUserTimeNormalized which is 0-1 scale
-      let cpuResult;
-      try {
-        cpuResult = await queryApi.executeQuery(`
-          SELECT 
-            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${sample} SECOND)) as ts,
-            avg(value) * 100 as cpu_percent
-          FROM system.asynchronous_metric_log
-          WHERE event_time >= now() - INTERVAL ${interval}
-            AND metric = 'OSUserTimeNormalized'
-          GROUP BY ts
-          ORDER BY ts
-        `);
-      } catch {
-        cpuResult = { data: [] };
-      }
+      // Transform to individual metrics
+      const qpsData = sortedData.map((d) => ({
+        ts: Number((d as { ts: number }).ts),
+        qps: Number((d as { total_count: number }).total_count) / 60,
+      }));
       
-      // Fetch disk I/O wait time
-      let diskResult;
+      const selectData = sortedData.map((d) => ({
+        ts: Number((d as { ts: number }).ts),
+        count: Number((d as { select_count: number }).select_count) / 60,
+      }));
+      
+      const insertData = sortedData.map((d) => ({
+        ts: Number((d as { ts: number }).ts),
+        count: Number((d as { insert_count: number }).insert_count) / 60,
+      }));
+      
+      const failedData = sortedData.map((d) => ({
+        ts: Number((d as { ts: number }).ts),
+        count: Number((d as { failed_count: number }).failed_count),
+      }));
+      
+      // Fetch current server stats (single values, very lightweight)
+      let currentStats = {
+        memoryUsage: 0,
+        activeQueries: 0,
+        connections: 0,
+        uptime: 0,
+        totalQueries: 0,
+        failedQueries: 0,
+        partsCount: 0,
+        databasesCount: 0,
+        tablesCount: 0,
+        replicasOk: 0,
+        replicasTotal: 0,
+      };
+      
       try {
-        diskResult = await queryApi.executeQuery(`
-          SELECT 
-            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${sample} SECOND)) as ts,
-            avg(value) / 1000000 as io_wait_sec
-          FROM system.asynchronous_metric_log
-          WHERE event_time >= now() - INTERVAL ${interval}
-            AND metric = 'OSIOWaitTime'
-          GROUP BY ts
-          ORDER BY ts
+        // Memory from asynchronous_metrics
+        const memResult = await safeQuery(`
+          SELECT value / 1073741824 as val
+          FROM system.asynchronous_metrics
+          WHERE metric = 'MemoryResident'
+          LIMIT 1
         `);
+        if (memResult.length > 0) {
+          currentStats.memoryUsage = Number((memResult[0] as { val: number }).val) || 0;
+        }
+        
+        // Active queries from system.processes
+        const activeResult = await safeQuery(`SELECT count() as cnt FROM system.processes`);
+        if (activeResult.length > 0) {
+          currentStats.activeQueries = Number((activeResult[0] as { cnt: number }).cnt) || 0;
+        }
+        
+        // Connections from system.metrics
+        const connResult = await safeQuery(`
+          SELECT value as val FROM system.metrics WHERE metric = 'TCPConnection' LIMIT 1
+        `);
+        if (connResult.length > 0) {
+          currentStats.connections = Number((connResult[0] as { val: number }).val) || 0;
+        }
+        
+        // Uptime from system.uptime
+        const uptimeResult = await safeQuery(`SELECT value as val FROM system.asynchronous_metrics WHERE metric = 'Uptime' LIMIT 1`);
+        if (uptimeResult.length > 0) {
+          currentStats.uptime = Number((uptimeResult[0] as { val: number }).val) || 0;
+        }
+        
+        // Database and table counts
+        const dbResult = await safeQuery(`SELECT count() as cnt FROM system.databases WHERE name NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')`);
+        if (dbResult.length > 0) {
+          currentStats.databasesCount = Number((dbResult[0] as { cnt: number }).cnt) || 0;
+        }
+        
+        const tableResult = await safeQuery(`SELECT count() as cnt FROM system.tables WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')`);
+        if (tableResult.length > 0) {
+          currentStats.tablesCount = Number((tableResult[0] as { cnt: number }).cnt) || 0;
+        }
+        
+        // Parts count (for MergeTree health)
+        const partsResult = await safeQuery(`SELECT count() as cnt FROM system.parts WHERE active`);
+        if (partsResult.length > 0) {
+          currentStats.partsCount = Number((partsResult[0] as { cnt: number }).cnt) || 0;
+        }
+        
+        // Calculate totals from time series
+        currentStats.totalQueries = sortedData.reduce((sum, d) => sum + Number((d as { total_count: number }).total_count), 0);
+        currentStats.failedQueries = sortedData.reduce((sum, d) => sum + Number((d as { failed_count: number }).failed_count), 0);
+        
       } catch {
-        diskResult = { data: [] };
+        // Ignore - will use defaults
       }
       
       // Transform results to chart format
       const transformData = (data: Array<{ ts: number; [key: string]: number }>, valueKey: string) => {
         if (!data || data.length === 0) return undefined;
         return {
-          timestamps: data.map(d => d.ts * 1000), // Convert to milliseconds
-          values: data.map(d => d[valueKey] || 0),
+          timestamps: data.map(d => Number(d.ts)),
+          values: data.map(d => Number(d[valueKey]) || 0),
         };
       };
       
       return {
-        queriesPerSecond: transformData(queriesResult.data as Array<{ ts: number; qps: number }>, 'qps'),
-        memoryUsage: transformData(memoryResult.data as Array<{ ts: number; memory_gb: number }>, 'memory_gb'),
-        cpuUsage: transformData(cpuResult.data as Array<{ ts: number; cpu_percent: number }>, 'cpu_percent'),
-        diskIO: transformData(diskResult.data as Array<{ ts: number; io_wait_sec: number }>, 'io_wait_sec'),
+        queriesPerSecond: transformData(qpsData, 'qps'),
+        selectQueries: transformData(selectData, 'count'),
+        insertQueries: transformData(insertData, 'count'),
+        failedQueries: transformData(failedData, 'count'),
+        currentStats,
       };
     },
-    staleTime: 5000,
+    staleTime: 30000,
+    gcTime: 60000,
+    retry: false,
+    refetchOnWindowFocus: false,
     ...options,
   });
 }
@@ -740,6 +856,66 @@ export function useSettings(
         description: string;
         type: string;
       }>;
+    },
+    staleTime: 60000,
+    ...options,
+  });
+}
+
+/**
+ * Hook to fetch available clusters
+ */
+export function useClusters(
+  options?: Partial<UseQueryOptions<Array<{
+    cluster: string;
+    shard_num: number;
+    replica_num: number;
+    host_name: string;
+    host_address: string;
+    port: number;
+  }>, Error>>
+) {
+  return useQuery({
+    queryKey: ['clusters'] as const,
+    queryFn: async () => {
+      const result = await queryApi.executeQuery(`
+          SELECT DISTINCT
+            cluster,
+            shard_num,
+            replica_num,
+            host_name,
+            host_address,
+            port
+          FROM system.clusters
+          ORDER BY cluster, shard_num, replica_num
+        `);
+      return result.data as Array<{
+        cluster: string;
+        shard_num: number;
+        replica_num: number;
+        host_name: string;
+        host_address: string;
+        port: number;
+      }>;
+    },
+    staleTime: 60000,
+    ...options,
+  });
+}
+
+/**
+ * Hook to fetch unique cluster names
+ */
+export function useClusterNames(
+  options?: Partial<UseQueryOptions<string[], Error>>
+) {
+  return useQuery({
+    queryKey: ['clusterNames'] as const,
+    queryFn: async () => {
+      const result = await queryApi.executeQuery(`
+          SELECT DISTINCT cluster FROM system.clusters ORDER BY cluster
+        `);
+      return (result.data as Array<{ cluster: string }>).map((row) => row.cluster);
     },
     staleTime: 60000,
     ...options,

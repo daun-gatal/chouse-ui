@@ -51,7 +51,9 @@ const DatabaseRolesSection: React.FC<DatabaseRolesSectionProps> = ({ form, roles
             </Select>
             <div className="flex flex-wrap gap-2 mt-3">
               {grantDatabases.length === 0 && (
-                <div className="text-sm text-yellow-500/80 italic">No databases selected. User may not be able to query data unless they are Admin.</div>
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-400">
+                  ⚠️ No databases selected. User will NOT have access to any database data. Select at least one database to grant access.
+                </div>
               )}
               {grantDatabases.map((db: string) => (
                 <Badge

@@ -16,7 +16,6 @@ WORKDIR /app
 # Copy package files first for better caching
 COPY package.json bun.lock ./
 COPY packages/server/package.json ./packages/server/
-COPY packages/web/package.json ./packages/web/
 
 # Install all dependencies (including dev for build)
 RUN bun install --frozen-lockfile
@@ -77,7 +76,7 @@ LABEL org.opencontainers.image.title="ClickHouse Studio" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT_SHA}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.source="https://github.com/your-org/clickhouse-studio"
+      org.opencontainers.image.source="https://github.com/daun-gatal/clickhouse-studio"
 
 # Environment variables with sensible defaults
 ENV NODE_ENV=production \
@@ -86,7 +85,14 @@ ENV NODE_ENV=production \
     # Session configuration
     SESSION_TTL=3600000 \
     # CORS settings (can be overridden at runtime)
-    CORS_ORIGIN=*
+    CORS_ORIGIN=* \
+    # ClickHouse connection settings (optional)
+    # Default URL pre-filled in login form
+    CLICKHOUSE_DEFAULT_URL="" \
+    # Comma-separated list of preset URLs for dropdown
+    CLICKHOUSE_PRESET_URLS="" \
+    # Default username (optional, for convenience)
+    CLICKHOUSE_DEFAULT_USER=""
 
 # Expose port
 EXPOSE 5521

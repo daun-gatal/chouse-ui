@@ -7,6 +7,7 @@
 // React Query hooks
 export {
   queryKeys,
+  useConfig,
   useDatabases,
   useTableDetails,
   useTableSample,
@@ -35,6 +36,8 @@ export {
   useUsers,
   useUserDetails,
   useSettings,
+  useClusters,
+  useClusterNames,
 } from './useQuery';
 
 // Auth hooks

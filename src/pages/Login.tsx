@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, Database, ChevronRight, Server } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores";
+import { useConfig } from "@/hooks";
 import { motion } from "framer-motion";
 
 import {
@@ -48,20 +49,50 @@ const Logo = withBasePath("logo.svg");
 export default function Login() {
   const navigate = useNavigate();
   const { login, isLoading, error, isAuthenticated, clearError } = useAuthStore();
+  
+  // Fetch server config (for Docker env vars)
+  const { data: serverConfig } = useConfig();
 
-  // Get defaults from environment
-  const envUrls = window.env?.VITE_CLICKHOUSE_URLS || [];
-  const availableUrls = envUrls;
-  const defaultUrl = availableUrls.length > 0 ? availableUrls[0] : "";
+  // Merge URLs from multiple sources:
+  // 1. Server config (Docker env vars) - CLICKHOUSE_PRESET_URLS
+  // 2. Vite env vars (local dev) - VITE_CLICKHOUSE_URLS
+  const { availableUrls, defaultUrl, defaultUser } = useMemo(() => {
+    const viteUrls = window.env?.VITE_CLICKHOUSE_URLS || [];
+    const serverUrls = serverConfig?.clickhouse?.presetUrls || [];
+    const serverDefaultUrl = serverConfig?.clickhouse?.defaultUrl || "";
+    const serverDefaultUser = serverConfig?.clickhouse?.defaultUser || "default";
+    
+    // Combine URLs (server takes priority, then vite)
+    const allUrls = [...new Set([...serverUrls, ...viteUrls])].filter(Boolean);
+    
+    // If we have preset URLs, use first one as default; otherwise use server's default
+    const defaultUrlValue = allUrls.length > 0 ? allUrls[0] : serverDefaultUrl;
+    
+    return {
+      availableUrls: allUrls,
+      defaultUrl: defaultUrlValue,
+      defaultUser: serverDefaultUser,
+    };
+  }, [serverConfig]);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
       url: defaultUrl,
-      username: "default",
+      username: defaultUser,
       password: "",
     },
   });
+
+  // Update form when config loads
+  useEffect(() => {
+    if (defaultUrl && !form.getValues("url")) {
+      form.setValue("url", defaultUrl);
+    }
+    if (defaultUser) {
+      form.setValue("username", defaultUser);
+    }
+  }, [defaultUrl, defaultUser, form]);
 
   const onSubmit = async (values: LoginFormData) => {
     clearError();

@@ -24,6 +24,7 @@ export interface AuthState {
   // Session info
   sessionId: string | null;
   username: string | null;
+  url: string | null;
   isAdmin: boolean;
   permissions: string[];
   version: string | null;
@@ -50,6 +51,7 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       sessionId: null,
       username: null,
+      url: null,
       isAdmin: false,
       permissions: [],
       version: null,
@@ -68,6 +70,7 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             sessionId: response.sessionId,
             username: response.username,
+            url: credentials.url,
             isAdmin: response.isAdmin,
             permissions: response.permissions,
             version: response.version,
@@ -81,6 +84,7 @@ export const useAuthStore = create<AuthState>()(
             error: message,
             sessionId: null,
             username: null,
+            url: null,
             isAdmin: false,
             permissions: [],
             version: null,
@@ -107,6 +111,7 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             sessionId: null,
             username: null,
+            url: null,
             isAdmin: false,
             permissions: [],
             version: null,
@@ -147,12 +152,15 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const session = await authApi.getSession();
+          // Keep the persisted URL since the API doesn't return it
+          const currentUrl = get().url;
           set({
             isAuthenticated: true,
             isLoading: false,
             isInitialized: true,
             sessionId: session.sessionId,
             username: session.username,
+            url: currentUrl, // Preserve the stored URL
             isAdmin: session.isAdmin,
             permissions: session.permissions,
             version: session.version,
@@ -166,6 +174,7 @@ export const useAuthStore = create<AuthState>()(
             isInitialized: true,
             sessionId: null,
             username: null,
+            url: null,
             isAdmin: false,
             permissions: [],
             version: null,
@@ -185,6 +194,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         sessionId: state.sessionId,
         username: state.username,
+        url: state.url,
         isAdmin: state.isAdmin,
         version: state.version,
       }),

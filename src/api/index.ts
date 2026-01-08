@@ -37,3 +37,7 @@ export type { SystemStats, RecentQuery } from './metrics';
 export * as savedQueriesApi from './saved-queries';
 export type { SavedQuery, SaveQueryInput, UpdateQueryInput } from './saved-queries';
 
+// Configuration
+export * as configApi from './config';
+export type { AppConfig } from './config';
+

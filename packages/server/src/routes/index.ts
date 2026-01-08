@@ -4,8 +4,12 @@ import query from "./query";
 import explorer from "./explorer";
 import metrics from "./metrics";
 import savedQueries from "./saved-queries";
+import config from "./config";
 
 const api = new Hono();
+
+// Public routes (no auth required)
+api.route("/config", config);
 
 // Mount route modules
 api.route("/auth", auth);
