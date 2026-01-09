@@ -2,6 +2,13 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { authMiddleware, requirePermission } from "../middleware/auth";
+import { 
+  optionalRbacMiddleware, 
+  filterDatabases, 
+  filterTables,
+  checkDatabaseAccess,
+  checkTableAccess 
+} from "../middleware/dataAccess";
 import type { ClickHouseService } from "../services/clickhouse";
 import type { Session } from "../types";
 
@@ -9,35 +16,92 @@ type Variables = {
   sessionId: string;
   service: ClickHouseService;
   session: Session;
+  rbacUserId?: string;
+  rbacRoles?: string[];
+  rbacPermissions?: string[];
+  isRbacAdmin?: boolean;
 };
 
 const explorer = new Hono<{ Variables: Variables }>();
 
-// All routes require authentication
+// All routes require authentication + optional RBAC context for data access filtering
 explorer.use("*", authMiddleware);
+explorer.use("*", optionalRbacMiddleware);
 
 /**
  * GET /explorer/databases
- * Get all databases and tables
+ * Get all databases and tables (filtered by user access)
  */
 explorer.get("/databases", async (c) => {
   const service = c.get("service");
+  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const isRbacAdmin = c.get("isRbacAdmin");
+  
+  // Get the RBAC connection ID from the session (if session was created from RBAC connection)
+  const connectionId = session?.rbacConnectionId;
 
-  const databases = await service.getDatabasesAndTables();
+  // Debug logging
+  console.log('[Explorer] Data access context:', {
+    rbacUserId,
+    isRbacAdmin,
+    connectionId,
+    hasSession: !!session,
+  });
 
+  // Get all databases and tables from ClickHouse
+  const allDatabases = await service.getDatabasesAndTables();
+
+  // Filter based on data access rules
+  const databaseNames = allDatabases.map((db: { name: string }) => db.name);
+  console.log('[Explorer] All databases:', databaseNames);
+  const allowedDatabases = await filterDatabases(rbacUserId, isRbacAdmin, databaseNames, connectionId);
+  console.log('[Explorer] Allowed databases:', allowedDatabases);
+
+  // Filter the database list and their tables
+  const filteredDatabases = await Promise.all(
+    allDatabases
+      .filter((db: { name: string }) => allowedDatabases.includes(db.name))
+      .map(async (db: { name: string; children: { name: string }[] }) => {
+        // Filter tables within each database
+        const tableNames = db.children.map((t) => t.name);
+        const allowedTables = await filterTables(rbacUserId, isRbacAdmin, db.name, tableNames, connectionId);
+        
+        return {
+          ...db,
+          children: db.children.filter((t) => allowedTables.includes(t.name)),
+        };
+      })
+  );
+
+  console.log('[Explorer] Returning databases:', filteredDatabases.map((db: any) => db.name));
+  
   return c.json({
     success: true,
-    data: databases,
+    data: filteredDatabases,
   });
 });
 
 /**
  * GET /explorer/table/:database/:table
- * Get table details
+ * Get table details (with access check)
  */
 explorer.get("/table/:database/:table", async (c) => {
   const { database, table } = c.req.param();
   const service = c.get("service");
+  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const isRbacAdmin = c.get("isRbacAdmin");
+  const connectionId = session?.rbacConnectionId;
+
+  // Check access
+  const hasAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId);
+  if (!hasAccess) {
+    return c.json({
+      success: false,
+      error: { code: "FORBIDDEN", message: `Access denied to ${database}.${table}` },
+    }, 403);
+  }
 
   const details = await service.getTableDetails(database, table);
 
@@ -49,12 +113,25 @@ explorer.get("/table/:database/:table", async (c) => {
 
 /**
  * GET /explorer/table/:database/:table/sample
- * Get table data sample
+ * Get table data sample (with access check)
  */
 explorer.get("/table/:database/:table/sample", async (c) => {
   const { database, table } = c.req.param();
   const limit = parseInt(c.req.query("limit") || "100", 10);
   const service = c.get("service");
+  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const isRbacAdmin = c.get("isRbacAdmin");
+  const connectionId = session?.rbacConnectionId;
+
+  // Check access
+  const hasAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId);
+  if (!hasAccess) {
+    return c.json({
+      success: false,
+      error: { code: "FORBIDDEN", message: `Access denied to ${database}.${table}` },
+    }, 403);
+  }
 
   const sample = await service.getTableSample(database, table, Math.min(limit, 1000));
 

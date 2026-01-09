@@ -41,3 +41,27 @@ export type { SavedQuery, SaveQueryInput, UpdateQueryInput } from './saved-queri
 export * as configApi from './config';
 export type { AppConfig } from './config';
 
+// RBAC (Role-Based Access Control)
+export {
+  rbacAuthApi,
+  rbacUsersApi,
+  rbacRolesApi,
+  rbacAuditApi,
+  checkRbacHealth,
+  setRbacTokens,
+  getRbacAccessToken,
+  getRbacRefreshToken,
+  clearRbacTokens,
+} from './rbac';
+export type {
+  RbacUser,
+  RbacRole,
+  RbacPermission,
+  RbacTokens,
+  RbacLoginResponse,
+  RbacAuditLog,
+  CreateUserInput as RbacCreateUserInput,
+  UpdateUserInput as RbacUpdateUserInput,
+  CreateRoleInput as RbacCreateRoleInput,
+  UpdateRoleInput as RbacUpdateRoleInput,
+} from './rbac';

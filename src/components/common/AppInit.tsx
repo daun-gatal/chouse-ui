@@ -1,6 +1,6 @@
 import { useEffect, useState, ReactNode } from "react";
 import { MultiStepLoader as Loader } from "@/components/ui/multi-step-loader";
-import { useAuthStore } from "@/stores";
+import { useRbacStore } from "@/stores";
 import { toast } from "sonner";
 
 const AppInitializer = ({ children }: { children: ReactNode }) => {
@@ -11,13 +11,13 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
     { text: "Preparing workspace..." },
   ];
 
-  const { checkSession, error, isInitialized } = useAuthStore();
+  const { checkAuth, error, isInitialized } = useRbacStore();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const init = async () => {
       try {
-        await checkSession();
+        await checkAuth();
       } catch (err) {
         console.error("Initialization failed:", err);
       } finally {
@@ -26,7 +26,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
     };
 
     init();
-  }, [checkSession]);
+  }, [checkAuth]);
 
   useEffect(() => {
     if (error) {
