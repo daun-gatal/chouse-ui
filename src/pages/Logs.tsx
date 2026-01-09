@@ -187,7 +187,7 @@ export default function Logs() {
 
   // Non-admin users only see their own queries
   const usernameFilter = isAdmin ? undefined : username || undefined;
-  const { data: logs = [], isLoading, refetch, error, dataUpdatedAt } = useQueryLogs(limit, usernameFilter);
+  const { data: logs = [], isLoading, isFetching, refetch, error, dataUpdatedAt } = useQueryLogs(limit, usernameFilter);
 
   // Auto refresh
   React.useEffect(() => {
@@ -307,10 +307,10 @@ export default function Logs() {
               variant="outline"
               size="sm"
               onClick={() => refetch()}
-              disabled={isLoading}
+              disabled={isFetching}
               className="gap-2 bg-white/5 border-white/10"
             >
-              <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+              <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
               Refresh
             </Button>
           </div>

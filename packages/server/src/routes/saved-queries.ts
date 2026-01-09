@@ -3,8 +3,15 @@ import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { authMiddleware, adminMiddleware } from "../middleware/auth";
 import type { ClickHouseService } from "../services/clickhouse";
+import type { Session } from "../types";
 
-const savedQueries = new Hono();
+type Variables = {
+  sessionId: string;
+  service: ClickHouseService;
+  session: Session;
+};
+
+const savedQueries = new Hono<{ Variables: Variables }>();
 
 // All routes require authentication
 savedQueries.use("*", authMiddleware);
@@ -14,7 +21,7 @@ savedQueries.use("*", authMiddleware);
  * Check if saved queries feature is enabled
  */
 savedQueries.get("/status", async (c) => {
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   const isEnabled = await service.checkSavedQueriesEnabled();
 
@@ -29,7 +36,7 @@ savedQueries.get("/status", async (c) => {
  * Activate saved queries feature (admin only)
  */
 savedQueries.post("/activate", adminMiddleware, async (c) => {
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   await service.activateSavedQueries();
 
@@ -44,7 +51,7 @@ savedQueries.post("/activate", adminMiddleware, async (c) => {
  * Deactivate saved queries feature (admin only)
  */
 savedQueries.post("/deactivate", adminMiddleware, async (c) => {
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   await service.deactivateSavedQueries();
 
@@ -59,7 +66,7 @@ savedQueries.post("/deactivate", adminMiddleware, async (c) => {
  * Get all saved queries
  */
 savedQueries.get("/", async (c) => {
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   const isEnabled = await service.checkSavedQueriesEnabled();
   if (!isEnabled) {
@@ -90,7 +97,7 @@ const saveQuerySchema = z.object({
 
 savedQueries.post("/", zValidator("json", saveQuerySchema), async (c) => {
   const { id, name, query, isPublic } = c.req.valid("json");
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   await service.saveQuery(id, name, query, isPublic);
 
@@ -112,7 +119,7 @@ const updateQuerySchema = z.object({
 savedQueries.put("/:id", zValidator("json", updateQuerySchema), async (c) => {
   const { id } = c.req.param();
   const { name, query } = c.req.valid("json");
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   await service.updateSavedQuery(id, name, query);
 
@@ -128,7 +135,7 @@ savedQueries.put("/:id", zValidator("json", updateQuerySchema), async (c) => {
  */
 savedQueries.delete("/:id", async (c) => {
   const { id } = c.req.param();
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   await service.deleteSavedQuery(id);
 

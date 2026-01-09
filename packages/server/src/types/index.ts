@@ -142,6 +142,106 @@ export interface RecentQuery {
 }
 
 // ============================================
+// Production Metrics Types
+// ============================================
+
+export interface QueryLatencyMetrics {
+  p50_ms: number;
+  p95_ms: number;
+  p99_ms: number;
+  max_ms: number;
+  avg_ms: number;
+  slow_queries_count: number;
+}
+
+export interface DiskMetrics {
+  name: string;
+  path: string;
+  free_space: number;
+  total_space: number;
+  used_space: number;
+  used_percent: number;
+}
+
+export interface MergeMetrics {
+  active_merges: number;
+  merge_queue_size: number;
+  pending_mutations: number;
+  parts_to_merge: number;
+  max_parts_per_partition: number;
+}
+
+export interface ReplicationMetrics {
+  database: string;
+  table: string;
+  absolute_delay: number;
+  queue_size: number;
+  is_leader: boolean;
+  is_readonly: boolean;
+  total_replicas: number;
+  active_replicas: number;
+}
+
+export interface CacheMetrics {
+  mark_cache_hits: number;
+  mark_cache_misses: number;
+  mark_cache_hit_ratio: number;
+  uncompressed_cache_hits: number;
+  uncompressed_cache_misses: number;
+  uncompressed_cache_hit_ratio: number;
+  compiled_expression_cache_count: number;
+}
+
+export interface ResourceMetrics {
+  cpu_load: number;
+  memory_resident: number;
+  memory_tracking: number;
+  background_pool_tasks: number;
+  background_schedule_pool_tasks: number;
+  background_merges_mutations_pool_tasks: number;
+  global_threads: number;
+  local_threads: number;
+  file_descriptors_used: number;
+  file_descriptors_max: number;
+}
+
+export interface ErrorMetrics {
+  exception_code: number;
+  exception_name: string;
+  count: number;
+  sample_error: string;
+  last_occurred: string;
+}
+
+export interface InsertThroughputMetrics {
+  timestamp: number;
+  rows_per_second: number;
+  bytes_per_second: number;
+  inserts_per_second: number;
+}
+
+export interface TopTableBySize {
+  database: string;
+  table: string;
+  rows: number;
+  bytes_on_disk: number;
+  compressed_size: string;
+  parts_count: number;
+}
+
+export interface ProductionMetrics {
+  latency: QueryLatencyMetrics;
+  disks: DiskMetrics[];
+  merges: MergeMetrics;
+  replication: ReplicationMetrics[];
+  cache: CacheMetrics;
+  resources: ResourceMetrics;
+  errors: ErrorMetrics[];
+  insertThroughput: InsertThroughputMetrics[];
+  topTables: TopTableBySize[];
+}
+
+// ============================================
 // API Response Types
 // ============================================
 
