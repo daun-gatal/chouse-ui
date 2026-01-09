@@ -3,8 +3,15 @@ import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { authMiddleware, requirePermission } from "../middleware/auth";
 import type { ClickHouseService } from "../services/clickhouse";
+import type { Session } from "../types";
 
-const explorer = new Hono();
+type Variables = {
+  sessionId: string;
+  service: ClickHouseService;
+  session: Session;
+};
+
+const explorer = new Hono<{ Variables: Variables }>();
 
 // All routes require authentication
 explorer.use("*", authMiddleware);
@@ -14,7 +21,7 @@ explorer.use("*", authMiddleware);
  * Get all databases and tables
  */
 explorer.get("/databases", async (c) => {
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   const databases = await service.getDatabasesAndTables();
 
@@ -30,7 +37,7 @@ explorer.get("/databases", async (c) => {
  */
 explorer.get("/table/:database/:table", async (c) => {
   const { database, table } = c.req.param();
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   const details = await service.getTableDetails(database, table);
 
@@ -47,7 +54,7 @@ explorer.get("/table/:database/:table", async (c) => {
 explorer.get("/table/:database/:table/sample", async (c) => {
   const { database, table } = c.req.param();
   const limit = parseInt(c.req.query("limit") || "100", 10);
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   const sample = await service.getTableSample(database, table, Math.min(limit, 1000));
 
@@ -73,8 +80,8 @@ explorer.post(
   zValidator("json", createDatabaseSchema),
   async (c) => {
     const { name, engine, cluster } = c.req.valid("json");
-    const service = c.get("service") as ClickHouseService;
-    const session = c.get("session") as import("../types").Session;
+    const service = c.get("service");
+    const session = c.get("session");
 
     let query = `CREATE DATABASE IF NOT EXISTS ${name}`;
     
@@ -104,7 +111,7 @@ explorer.delete(
   requirePermission("DROP DATABASE"),
   async (c) => {
     const { name } = c.req.param();
-    const service = c.get("service") as ClickHouseService;
+    const service = c.get("service");
 
     await service.executeQuery(`DROP DATABASE IF EXISTS ${name}`);
 
@@ -141,7 +148,7 @@ explorer.post(
   zValidator("json", createTableSchema),
   async (c) => {
     const { database, name, columns, engine, orderBy, partitionBy, primaryKey, cluster } = c.req.valid("json");
-    const service = c.get("service") as ClickHouseService;
+    const service = c.get("service");
 
     const columnDefs = columns
       .map((col) => {
@@ -182,7 +189,7 @@ explorer.delete(
   requirePermission("DROP TABLE"),
   async (c) => {
     const { database, table } = c.req.param();
-    const service = c.get("service") as ClickHouseService;
+    const service = c.get("service");
 
     await service.executeQuery(`DROP TABLE IF EXISTS ${database}.${table}`);
 

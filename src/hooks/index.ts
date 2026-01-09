@@ -33,6 +33,7 @@ export {
   useTableSchema,
   useQueryLogs,
   useMetrics,
+  useProductionMetrics,
   useUsers,
   useUserDetails,
   useSettings,

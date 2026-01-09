@@ -41,6 +41,7 @@ export const queryKeys = {
   // Metrics
   systemStats: ['systemStats'] as const,
   recentQueries: (limit?: number) => ['recentQueries', limit] as const,
+  productionMetrics: (interval: number) => ['productionMetrics', interval] as const,
 
   // Saved Queries
   savedQueriesStatus: ['savedQueriesStatus'] as const,
@@ -733,6 +734,25 @@ export function useMetrics(
         currentStats,
       };
     },
+    staleTime: 30000,
+    gcTime: 60000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    ...options,
+  });
+}
+
+/**
+ * Hook to fetch production-grade metrics
+ * Fetches all production metrics in one optimized API call
+ */
+export function useProductionMetrics(
+  intervalMinutes: number = 60,
+  options?: Partial<UseQueryOptions<metricsApi.ProductionMetrics, Error>>
+) {
+  return useQuery({
+    queryKey: queryKeys.productionMetrics(intervalMinutes),
+    queryFn: () => metricsApi.getProductionMetrics(intervalMinutes),
     staleTime: 30000,
     gcTime: 60000,
     retry: false,

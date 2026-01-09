@@ -45,9 +45,9 @@ const DatabaseExplorer: React.FC = () => {
   const { openCreateDatabaseModal, openCreateTableModal, openUploadFileModal } = useExplorerStore();
   const { addTab } = useWorkspaceStore();
 
-  const { data: databases = [], isLoading: isLoadingDatabase, refetch: refreshDatabases, error: tabError } = useDatabases();
+  const { data: databases = [], isLoading: isLoadingDatabase, isFetching: isFetchingDatabases, refetch: refreshDatabases, error: tabError } = useDatabases();
   const { data: isQueriesEnabled = false } = useSavedQueriesStatus();
-  const { data: savedQueriesList = [], refetch: refreshSavedQueries } = useSavedQueries();
+  const { data: savedQueriesList = [], refetch: refreshSavedQueries, isFetching: isRefreshingSavedQueries } = useSavedQueries();
 
   const filteredData = useMemo(() => {
     if (!searchTerm) return databases;
@@ -141,9 +141,9 @@ const DatabaseExplorer: React.FC = () => {
               variant="ghost"
               onClick={() => refreshDatabases()}
               className="h-7 w-7 hover:bg-white/10"
-              disabled={isLoadingDatabase}
+              disabled={isFetchingDatabases}
             >
-              <RefreshCcw className={cn("w-3.5 h-3.5", isLoadingDatabase && "animate-spin")} />
+              <RefreshCcw className={cn("w-3.5 h-3.5", isFetchingDatabases && "animate-spin")} />
             </Button>
           </div>
         </div>
@@ -273,9 +273,10 @@ const DatabaseExplorer: React.FC = () => {
                       e.stopPropagation();
                       refreshSavedQueries();
                     }}
+                    disabled={isRefreshingSavedQueries}
                     className="h-6 w-6 hover:bg-white/10"
                   >
-                    <RefreshCcw className="w-3 h-3" />
+                    <RefreshCcw className={cn("w-3 h-3", isRefreshingSavedQueries && "animate-spin")} />
                   </Button>
                 </div>
 

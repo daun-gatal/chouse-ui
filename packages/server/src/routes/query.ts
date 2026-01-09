@@ -1,10 +1,16 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { QueryRequestSchema } from "../types";
+import { QueryRequestSchema, Session } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import type { ClickHouseService } from "../services/clickhouse";
 
-const query = new Hono();
+type Variables = {
+  sessionId: string;
+  service: ClickHouseService;
+  session: Session;
+};
+
+const query = new Hono<{ Variables: Variables }>();
 
 // All routes require authentication
 query.use("*", authMiddleware);
@@ -15,7 +21,7 @@ query.use("*", authMiddleware);
  */
 query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
   const { query: sql, format } = c.req.valid("json");
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   const result = await service.executeQuery(sql, format);
 
@@ -30,7 +36,7 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
  * Get intellisense data (columns, functions, keywords)
  */
 query.get("/intellisense", async (c) => {
-  const service = c.get("service") as ClickHouseService;
+  const service = c.get("service");
 
   const data = await service.getIntellisenseData();
 

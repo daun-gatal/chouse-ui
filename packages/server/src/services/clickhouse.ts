@@ -384,6 +384,487 @@ export class ClickHouseService {
   }
 
   // ============================================
+  // Production Metrics
+  // ============================================
+
+  /**
+   * Get query latency percentiles (p50, p95, p99)
+   */
+  async getQueryLatencyMetrics(intervalMinutes: number = 60): Promise<import("../types").QueryLatencyMetrics> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT 
+            quantile(0.50)(query_duration_ms) as p50_ms,
+            quantile(0.95)(query_duration_ms) as p95_ms,
+            quantile(0.99)(query_duration_ms) as p99_ms,
+            max(query_duration_ms) as max_ms,
+            avg(query_duration_ms) as avg_ms,
+            countIf(query_duration_ms > 1000) as slow_queries_count
+          FROM system.query_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+            AND type = 'QueryFinish'
+            AND query_kind IN ('Select', 'Insert')
+        `,
+      });
+      const response = await result.json() as JsonResponse<{
+        p50_ms: number;
+        p95_ms: number;
+        p99_ms: number;
+        max_ms: number;
+        avg_ms: number;
+        slow_queries_count: number;
+      }>;
+      
+      const data = response.data[0] || {};
+      return {
+        p50_ms: Number(data.p50_ms) || 0,
+        p95_ms: Number(data.p95_ms) || 0,
+        p99_ms: Number(data.p99_ms) || 0,
+        max_ms: Number(data.max_ms) || 0,
+        avg_ms: Number(data.avg_ms) || 0,
+        slow_queries_count: Number(data.slow_queries_count) || 0,
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch query latency metrics");
+    }
+  }
+
+  /**
+   * Get disk space usage metrics
+   */
+  async getDiskMetrics(): Promise<import("../types").DiskMetrics[]> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT 
+            name,
+            path,
+            free_space,
+            total_space,
+            total_space - free_space as used_space,
+            round((1 - free_space / total_space) * 100, 2) as used_percent
+          FROM system.disks
+        `,
+      });
+      const response = await result.json() as JsonResponse<{
+        name: string;
+        path: string;
+        free_space: string;
+        total_space: string;
+        used_space: string;
+        used_percent: number;
+      }>;
+      
+      return response.data.map(d => ({
+        name: d.name,
+        path: d.path,
+        free_space: Number(d.free_space),
+        total_space: Number(d.total_space),
+        used_space: Number(d.used_space),
+        used_percent: Number(d.used_percent),
+      }));
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch disk metrics");
+    }
+  }
+
+  /**
+   * Get merge and mutation metrics
+   */
+  async getMergeMetrics(): Promise<import("../types").MergeMetrics> {
+    try {
+      // Run queries with individual error handling for compatibility
+      const safeQuery = async <T>(query: string, defaultValue: T): Promise<T> => {
+        try {
+          const result = await this.client.query({ query });
+          const response = await result.json() as JsonResponse<T>;
+          return response.data[0] || defaultValue;
+        } catch {
+          return defaultValue;
+        }
+      };
+
+      const [activeMerges, mergeQueue, mutations, parts, maxParts] = await Promise.all([
+        safeQuery<{ value: number }>("SELECT value FROM system.metrics WHERE metric = 'Merge'", { value: 0 }),
+        safeQuery<{ cnt: number }>("SELECT count() as cnt FROM system.merges", { cnt: 0 }),
+        safeQuery<{ cnt: number }>("SELECT count() as cnt FROM system.mutations WHERE is_done = 0", { cnt: 0 }),
+        safeQuery<{ cnt: number }>("SELECT count() as cnt FROM system.parts WHERE active AND level = 0", { cnt: 0 }),
+        safeQuery<{ val: number }>("SELECT max(num_parts) as val FROM system.merges", { val: 0 }),
+      ]);
+
+      return {
+        active_merges: Number(activeMerges.value) || 0,
+        merge_queue_size: Number(mergeQueue.cnt) || 0,
+        pending_mutations: Number(mutations.cnt) || 0,
+        parts_to_merge: Number(parts.cnt) || 0,
+        max_parts_per_partition: Number(maxParts.val) || 0,
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch merge metrics");
+    }
+  }
+
+  /**
+   * Get replication status metrics (if using ReplicatedMergeTree)
+   */
+  async getReplicationMetrics(): Promise<import("../types").ReplicationMetrics[]> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT 
+            database,
+            table,
+            absolute_delay,
+            queue_size,
+            is_leader,
+            is_readonly,
+            total_replicas,
+            active_replicas
+          FROM system.replicas
+          ORDER BY absolute_delay DESC
+          LIMIT 20
+        `,
+      });
+      const response = await result.json() as JsonResponse<{
+        database: string;
+        table: string;
+        absolute_delay: number;
+        queue_size: number;
+        is_leader: number;
+        is_readonly: number;
+        total_replicas: number;
+        active_replicas: number;
+      }>;
+      
+      return response.data.map(r => ({
+        database: r.database,
+        table: r.table,
+        absolute_delay: Number(r.absolute_delay),
+        queue_size: Number(r.queue_size),
+        is_leader: Boolean(r.is_leader),
+        is_readonly: Boolean(r.is_readonly),
+        total_replicas: Number(r.total_replicas),
+        active_replicas: Number(r.active_replicas),
+      }));
+    } catch {
+      // Replicated tables may not exist
+      return [];
+    }
+  }
+
+  /**
+   * Get cache hit ratio metrics
+   */
+  async getCacheMetrics(): Promise<import("../types").CacheMetrics> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT 
+            sumIf(value, metric = 'MarkCacheHits') as mark_hits,
+            sumIf(value, metric = 'MarkCacheMisses') as mark_misses,
+            sumIf(value, metric = 'UncompressedCacheHits') as uncomp_hits,
+            sumIf(value, metric = 'UncompressedCacheMisses') as uncomp_misses,
+            sumIf(value, metric = 'CompiledExpressionCacheCount') as compiled_cache
+          FROM system.events
+        `,
+      });
+      const response = await result.json() as JsonResponse<{
+        mark_hits: number;
+        mark_misses: number;
+        uncomp_hits: number;
+        uncomp_misses: number;
+        compiled_cache: number;
+      }>;
+      
+      const data = response.data[0] || {};
+      const markHits = Number(data.mark_hits) || 0;
+      const markMisses = Number(data.mark_misses) || 0;
+      const uncompHits = Number(data.uncomp_hits) || 0;
+      const uncompMisses = Number(data.uncomp_misses) || 0;
+      
+      return {
+        mark_cache_hits: markHits,
+        mark_cache_misses: markMisses,
+        mark_cache_hit_ratio: markHits + markMisses > 0 
+          ? Math.round((markHits / (markHits + markMisses)) * 100 * 100) / 100 
+          : 0,
+        uncompressed_cache_hits: uncompHits,
+        uncompressed_cache_misses: uncompMisses,
+        uncompressed_cache_hit_ratio: uncompHits + uncompMisses > 0 
+          ? Math.round((uncompHits / (uncompHits + uncompMisses)) * 100 * 100) / 100 
+          : 0,
+        compiled_expression_cache_count: Number(data.compiled_cache) || 0,
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch cache metrics");
+    }
+  }
+
+  /**
+   * Get resource usage metrics (CPU, memory, threads)
+   */
+  async getResourceMetrics(): Promise<import("../types").ResourceMetrics> {
+    try {
+      const [asyncMetrics, metrics] = await Promise.all([
+        this.client.query({
+          query: `
+            SELECT metric, value FROM system.asynchronous_metrics 
+            WHERE metric IN ('OSCPULoad', 'MemoryResident', 'MaxPartCountForPartition')
+          `,
+        }),
+        this.client.query({
+          query: `
+            SELECT metric, value FROM system.metrics 
+            WHERE metric IN (
+              'MemoryTracking', 'BackgroundPoolTask', 'BackgroundSchedulePoolTask',
+              'BackgroundMergesAndMutationsPoolTask', 'GlobalThread', 'LocalThread',
+              'OpenFileForRead', 'OpenFileForWrite'
+            )
+          `,
+        }),
+      ]);
+
+      const asyncData = await asyncMetrics.json() as JsonResponse<{ metric: string; value: number }>;
+      const metricsData = await metrics.json() as JsonResponse<{ metric: string; value: number }>;
+      
+      const asyncMap = Object.fromEntries(asyncData.data.map(d => [d.metric, Number(d.value)]));
+      const metricsMap = Object.fromEntries(metricsData.data.map(d => [d.metric, Number(d.value)]));
+
+      return {
+        cpu_load: asyncMap.OSCPULoad || 0,
+        memory_resident: (asyncMap.MemoryResident || 0) / (1024 * 1024 * 1024), // Convert to GB
+        memory_tracking: (metricsMap.MemoryTracking || 0) / (1024 * 1024 * 1024), // Convert to GB
+        background_pool_tasks: metricsMap.BackgroundPoolTask || 0,
+        background_schedule_pool_tasks: metricsMap.BackgroundSchedulePoolTask || 0,
+        background_merges_mutations_pool_tasks: metricsMap.BackgroundMergesAndMutationsPoolTask || 0,
+        global_threads: metricsMap.GlobalThread || 0,
+        local_threads: metricsMap.LocalThread || 0,
+        file_descriptors_used: (metricsMap.OpenFileForRead || 0) + (metricsMap.OpenFileForWrite || 0),
+        file_descriptors_max: 0, // Will be populated if available
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch resource metrics");
+    }
+  }
+
+  /**
+   * Get error breakdown by exception code
+   */
+  async getErrorMetrics(intervalMinutes: number = 60): Promise<import("../types").ErrorMetrics[]> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT 
+            exception_code,
+            any(exception) as sample_error,
+            count() as count,
+            max(event_time) as last_occurred
+          FROM system.query_log 
+          WHERE exception_code != 0 
+            AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY exception_code 
+          ORDER BY count DESC
+          LIMIT 15
+        `,
+      });
+      const response = await result.json() as JsonResponse<{
+        exception_code: number;
+        sample_error: string;
+        count: number;
+        last_occurred: string;
+      }>;
+      
+      return response.data.map(e => ({
+        exception_code: Number(e.exception_code),
+        exception_name: this.getExceptionName(Number(e.exception_code)),
+        count: Number(e.count),
+        sample_error: e.sample_error?.substring(0, 200) || '',
+        last_occurred: e.last_occurred,
+      }));
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch error metrics");
+    }
+  }
+
+  /**
+   * Get insert throughput time series
+   */
+  async getInsertThroughput(intervalMinutes: number = 60): Promise<import("../types").InsertThroughputMetrics[]> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT 
+            toUnixTimestamp(toStartOfMinute(event_time)) as ts,
+            sum(written_rows) / 60 as rows_per_second,
+            sum(written_bytes) / 60 as bytes_per_second,
+            count() / 60 as inserts_per_second
+          FROM system.query_log
+          WHERE query_kind = 'Insert' 
+            AND type = 'QueryFinish'
+            AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts 
+          ORDER BY ts
+        `,
+      });
+      const response = await result.json() as JsonResponse<{
+        ts: number;
+        rows_per_second: number;
+        bytes_per_second: number;
+        inserts_per_second: number;
+      }>;
+      
+      return response.data.map(d => ({
+        timestamp: Number(d.ts),
+        rows_per_second: Number(d.rows_per_second) || 0,
+        bytes_per_second: Number(d.bytes_per_second) || 0,
+        inserts_per_second: Number(d.inserts_per_second) || 0,
+      }));
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch insert throughput metrics");
+    }
+  }
+
+  /**
+   * Get top tables by size
+   */
+  async getTopTablesBySize(limit: number = 10): Promise<import("../types").TopTableBySize[]> {
+    try {
+      const result = await this.client.query({
+        query: `
+          SELECT 
+            database,
+            table,
+            sum(rows) as rows,
+            sum(bytes_on_disk) as bytes_on_disk,
+            formatReadableSize(sum(bytes_on_disk)) as compressed_size,
+            count() as parts_count
+          FROM system.parts
+          WHERE active
+            AND database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+          GROUP BY database, table
+          ORDER BY bytes_on_disk DESC
+          LIMIT ${limit}
+        `,
+      });
+      const response = await result.json() as JsonResponse<{
+        database: string;
+        table: string;
+        rows: string;
+        bytes_on_disk: string;
+        compressed_size: string;
+        parts_count: number;
+      }>;
+      
+      return response.data.map(t => ({
+        database: t.database,
+        table: t.table,
+        rows: Number(t.rows),
+        bytes_on_disk: Number(t.bytes_on_disk),
+        compressed_size: t.compressed_size,
+        parts_count: Number(t.parts_count),
+      }));
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch top tables");
+    }
+  }
+
+  /**
+   * Get all production metrics in one call (optimized)
+   * Each metric is fetched independently so failures don't affect others
+   */
+  async getProductionMetrics(intervalMinutes: number = 60): Promise<import("../types").ProductionMetrics> {
+    // Default values for when individual metrics fail
+    const defaultLatency: import("../types").QueryLatencyMetrics = {
+      p50_ms: 0, p95_ms: 0, p99_ms: 0, max_ms: 0, avg_ms: 0, slow_queries_count: 0
+    };
+    const defaultMerges: import("../types").MergeMetrics = {
+      active_merges: 0, merge_queue_size: 0, pending_mutations: 0, parts_to_merge: 0, max_parts_per_partition: 0
+    };
+    const defaultCache: import("../types").CacheMetrics = {
+      mark_cache_hits: 0, mark_cache_misses: 0, mark_cache_hit_ratio: 0,
+      uncompressed_cache_hits: 0, uncompressed_cache_misses: 0, uncompressed_cache_hit_ratio: 0,
+      compiled_expression_cache_count: 0
+    };
+    const defaultResources: import("../types").ResourceMetrics = {
+      cpu_load: 0, memory_resident: 0, memory_tracking: 0, background_pool_tasks: 0,
+      background_schedule_pool_tasks: 0, background_merges_mutations_pool_tasks: 0,
+      global_threads: 0, local_threads: 0, file_descriptors_used: 0, file_descriptors_max: 0
+    };
+
+    // Fetch all metrics with individual error handling
+    const [
+      latency,
+      disks,
+      merges,
+      replication,
+      cache,
+      resources,
+      errors,
+      insertThroughput,
+      topTables,
+    ] = await Promise.all([
+      this.getQueryLatencyMetrics(intervalMinutes).catch(() => defaultLatency),
+      this.getDiskMetrics().catch(() => []),
+      this.getMergeMetrics().catch(() => defaultMerges),
+      this.getReplicationMetrics().catch(() => []),
+      this.getCacheMetrics().catch(() => defaultCache),
+      this.getResourceMetrics().catch(() => defaultResources),
+      this.getErrorMetrics(intervalMinutes).catch(() => []),
+      this.getInsertThroughput(intervalMinutes).catch(() => []),
+      this.getTopTablesBySize(10).catch(() => []),
+    ]);
+
+    return {
+      latency,
+      disks,
+      merges,
+      replication,
+      cache,
+      resources,
+      errors,
+      insertThroughput,
+      topTables,
+    };
+  }
+
+  /**
+   * Map exception codes to human-readable names
+   */
+  private getExceptionName(code: number): string {
+    const exceptionNames: Record<number, string> = {
+      1: 'UNSUPPORTED_METHOD',
+      2: 'UNSUPPORTED_PARAMETER',
+      3: 'UNEXPECTED_END_OF_FILE',
+      4: 'EXPECTED_END_OF_FILE',
+      6: 'CANNOT_PARSE_TEXT',
+      10: 'CANNOT_OPEN_FILE',
+      27: 'INCORRECT_DATA',
+      36: 'BAD_TYPE_OF_FIELD',
+      47: 'UNKNOWN_PACKET_FROM_CLIENT',
+      48: 'UNKNOWN_PACKET_FROM_SERVER',
+      53: 'ATTEMPT_TO_READ_AFTER_EOF',
+      57: 'DEADLOCK_AVOIDED',
+      60: 'UNKNOWN_TABLE',
+      62: 'SYNTAX_ERROR',
+      73: 'UNKNOWN_USER',
+      76: 'UNKNOWN_TYPE',
+      81: 'UNKNOWN_DATABASE',
+      159: 'TIMEOUT_EXCEEDED',
+      160: 'TOO_SLOW',
+      164: 'READONLY',
+      202: 'TOO_MANY_SIMULTANEOUS_QUERIES',
+      241: 'MEMORY_LIMIT_EXCEEDED',
+      252: 'TOO_MANY_PARTS',
+      306: 'INVALID_JOIN_ON_EXPRESSION',
+      349: 'QUERY_WAS_CANCELLED',
+      394: 'QUERY_WAS_CANCELLED_BY_CLIENT',
+      497: 'ACCESS_DENIED',
+    };
+    return exceptionNames[code] || `ERROR_${code}`;
+  }
+
+  // ============================================
   // Saved Queries
   // ============================================
 

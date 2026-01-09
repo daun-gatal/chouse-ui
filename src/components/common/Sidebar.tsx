@@ -214,7 +214,7 @@ export default function Sidebar() {
           onClick={handleLogout}
         >
           <LogOut className="h-4 w-4" />
-          {!isCollapsed && "Disconnect"}
+          {!isCollapsed && "Log Out"}
         </Button>
       </div>
     </motion.div>
