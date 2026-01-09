@@ -1,5 +1,5 @@
-import { Navigate } from "react-router-dom";
-import { useAuthStore } from "@/stores";
+import { Navigate, useLocation } from "react-router-dom";
+import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { Loader2 } from "lucide-react";
 
 interface RestrictedRouteProps {
@@ -17,7 +17,8 @@ export const RestrictedRoute = ({
   redirectTo = "/login",
   requireAdmin = false,
 }: RestrictedRouteProps) => {
-  const { isAuthenticated, isInitialized, isLoading, isAdmin } = useAuthStore();
+  const location = useLocation();
+  const { isAuthenticated, isInitialized, isLoading, isAdmin } = useRbacStore();
 
   // Show loading while checking authentication
   if (!isInitialized || isLoading) {
@@ -30,11 +31,12 @@ export const RestrictedRoute = ({
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
-    return <Navigate to={redirectTo} replace />;
+    const loginUrl = `${redirectTo}?redirect=${encodeURIComponent(location.pathname)}`;
+    return <Navigate to={loginUrl} replace />;
   }
 
   // If admin is required but user is not admin, redirect to home
-  if (requireAdmin && !isAdmin) {
+  if (requireAdmin && !isAdmin()) {
     return <Navigate to="/" replace />;
   }
 

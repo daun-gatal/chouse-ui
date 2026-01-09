@@ -19,10 +19,11 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip";
-import { useAuthStore } from "@/stores";
+import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
+import ConnectionSelector from "./ConnectionSelector";
 
 // Persist sidebar state in localStorage
 const SIDEBAR_COLLAPSED_KEY = "clickhouse-studio-sidebar-collapsed";
@@ -80,7 +81,30 @@ const SidebarItem = ({ icon: Icon, label, to, isActive, isCollapsed }: SidebarIt
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { username, logout, isAdmin } = useAuthStore();
+  
+  // Use RBAC store for all authentication
+  const { 
+    user, 
+    logout, 
+    isAdmin, 
+    hasPermission,
+    hasAnyPermission,
+  } = useRbacStore();
+  
+  // Check permissions for various sections
+  const canViewMetrics = hasAnyPermission([
+    RBAC_PERMISSIONS.METRICS_VIEW,
+    RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
+  ]);
+  
+  const canViewAdmin = hasAnyPermission([
+    RBAC_PERMISSIONS.USERS_VIEW,
+    RBAC_PERMISSIONS.USERS_CREATE,
+    RBAC_PERMISSIONS.ROLES_VIEW,
+    RBAC_PERMISSIONS.AUDIT_VIEW,
+  ]);
+  
+  const canViewOverview = isAdmin();
   
   // Load initial state from localStorage
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -104,11 +128,11 @@ export default function Sidebar() {
   const Logo = withBasePath("logo.svg");
 
   const sidebarItems = [
-    ...(isAdmin ? [{ icon: LayoutDashboard, label: "Overview", to: "/overview" }] : []),
+    ...(canViewOverview ? [{ icon: LayoutDashboard, label: "Overview", to: "/overview" }] : []),
     { icon: Database, label: "Explorer", to: "/explorer" },
-    ...(isAdmin ? [{ icon: Activity, label: "Metrics", to: "/metrics" }] : []),
+    ...(canViewMetrics ? [{ icon: Activity, label: "Metrics", to: "/metrics" }] : []),
     { icon: FileText, label: "Logs", to: "/logs" },
-    ...(isAdmin ? [{ icon: Shield, label: "Admin", to: "/admin" }] : []),
+    ...(canViewAdmin ? [{ icon: Shield, label: "Administration", to: "/admin" }] : []),
     { icon: Settings, label: "Settings", to: "/settings" },
   ];
 
@@ -116,6 +140,10 @@ export default function Sidebar() {
     await logout();
     navigate("/login");
   };
+
+  // Get display name
+  const displayName = user?.displayName || user?.username || "User";
+  const userInitials = displayName.slice(0, 2).toUpperCase();
 
   return (
     <motion.div
@@ -154,6 +182,13 @@ export default function Sidebar() {
         )}
       </div>
 
+      {/* Connection Selector */}
+      <div className={cn("px-4 pb-4", isCollapsed && "px-2")}>
+        <TooltipProvider>
+          <ConnectionSelector isCollapsed={isCollapsed} />
+        </TooltipProvider>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-hide">
         <nav className="flex flex-col gap-2">
           {!isCollapsed && <div className="px-2 mb-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">Menu</div>}
@@ -164,7 +199,7 @@ export default function Sidebar() {
               icon={item.icon}
               label={item.label}
               to={item.to}
-              isActive={location.pathname === item.to}
+              isActive={location.pathname.startsWith(item.to)}
               isCollapsed={isCollapsed}
             />
           ))}
@@ -172,21 +207,20 @@ export default function Sidebar() {
       </div>
 
       <div className="p-4 mt-auto border-t border-white/5 bg-black/20">
-        {!isCollapsed && <div className="px-2 mb-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">Connection</div>}
+        {!isCollapsed && <div className="px-2 mb-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">Account</div>}
 
         <div className={cn("flex items-center gap-3 rounded-xl bg-white/5 p-3 mb-3 border border-white/5", isCollapsed && "justify-center bg-transparent border-0 p-0 mb-4")}>
           {!isCollapsed ? (
             <>
-              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center ring-1 ring-white/10">
-                <Server className="h-4 w-4 text-green-400" />
+              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500/30 to-blue-500/30 flex items-center justify-center ring-1 ring-white/10 font-semibold text-sm text-white">
+                {userInitials}
               </div>
               <div className="flex flex-col overflow-hidden">
-                <span className="text-sm font-medium text-white truncate w-32" title={username || undefined}>
-                  {username || "Connected"}
+                <span className="text-sm font-medium text-white truncate w-32" title={displayName}>
+                  {displayName}
                 </span>
-                <span className="text-xs text-green-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  Online
+                <span className="text-xs text-gray-400 truncate w-32">
+                  @{user?.username}
                 </span>
               </div>
             </>
@@ -194,12 +228,12 @@ export default function Sidebar() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center ring-1 ring-white/10 relative">
-                    <Server className="h-4 w-4 text-green-400" />
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500/30 to-blue-500/30 flex items-center justify-center ring-1 ring-white/10 font-semibold text-sm text-white relative">
+                    {userInitials}
                     <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-green-400 border border-black" />
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="right">Connected as {username}</TooltipContent>
+                <TooltipContent side="right">{displayName}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}

@@ -1,5 +1,5 @@
-import { Navigate } from "react-router-dom";
-import { useAuthStore } from "@/stores";
+import { Navigate, useLocation } from "react-router-dom";
+import { useRbacStore } from "@/stores";
 import { Loader2 } from "lucide-react";
 
 interface PrivateRouteProps {
@@ -8,7 +8,8 @@ interface PrivateRouteProps {
 }
 
 export const PrivateRoute = ({ children, redirectTo = "/login" }: PrivateRouteProps) => {
-  const { isAuthenticated, isInitialized, isLoading } = useAuthStore();
+  const location = useLocation();
+  const { isAuthenticated, isInitialized, isLoading } = useRbacStore();
 
   // Show loading while checking authentication
   if (!isInitialized || isLoading) {
@@ -21,7 +22,8 @@ export const PrivateRoute = ({ children, redirectTo = "/login" }: PrivateRoutePr
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
-    return <Navigate to={redirectTo} replace />;
+    const redirectUrl = `${redirectTo}?redirect=${encodeURIComponent(location.pathname)}`;
+    return <Navigate to={redirectUrl} replace />;
   }
 
   return <>{children}</>;

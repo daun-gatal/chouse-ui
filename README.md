@@ -1,246 +1,614 @@
-# ClickHouse Studio
+<p align="center">
+  <img src="public/logo.svg" alt="ClickHouse Studio" width="120" />
+</p>
 
-A modern, production-grade web interface for ClickHouse databases. Built with React, TypeScript, and Bun.
+<h1 align="center">ClickHouse Studio</h1>
 
-![ClickHouse Studio](public/logo.svg)
+<p align="center">
+  <strong>A production-grade web interface for ClickHouse with built-in RBAC</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#deployment">Deployment</a> •
+  <a href="#configuration">Configuration</a> •
+  <a href="#api-reference">API</a>
+</p>
+
+---
+
+## Overview
+
+ClickHouse Studio is a modern, secure web interface for managing ClickHouse databases. Unlike traditional tools that expose credentials in the browser, ClickHouse Studio implements a proper **Role-Based Access Control (RBAC)** system with encrypted credential storage.
+
+### Why ClickHouse Studio?
+
+| Traditional Tools | ClickHouse Studio |
+|-------------------|-------------------|
+| Credentials in browser localStorage | Encrypted server-side storage |
+| Direct browser-to-ClickHouse | Secure backend proxy |
+| No access control | Full RBAC with permissions |
+| Single connection | Multi-connection management |
+| No audit logging | Complete audit trail |
+
+---
 
 ## Features
 
-- **Database Explorer** with tree view navigation
-- **Real-time Metrics** dashboard with system monitoring
-- **User Management** for admin users
-- **Saved Queries** with cloud persistence
-- **Data Export** in multiple formats (CSV, JSON, TSV)
-- **Secure Session-based Authentication**
+### 🔐 Security & Access Control
+- **RBAC System** - Role-based permissions (Super Admin, Admin, Developer, Analyst, Viewer)
+- **Encrypted Credentials** - AES-256-GCM encryption for stored passwords
+- **JWT Authentication** - Secure token-based sessions
+- **Data Access Rules** - Granular database/table permissions per user
+- **Audit Logging** - Track all user actions
+
+### 🗄️ Database Management
+- **Multi-Connection Support** - Manage multiple ClickHouse servers
+- **Database Explorer** - Tree view with schema inspection
+- **Table Management** - Create, alter, and drop tables
+- **Data Preview** - Sample data with pagination
+
+### 📊 Query & Analytics
+- **SQL Editor** - Monaco editor with syntax highlighting
+- **Query Execution** - Run queries with statistics
+- **Saved Queries** - Persist frequently used queries
+- **Data Export** - CSV, JSON, TSV formats
+- **Real-time Metrics** - System monitoring dashboard
+
+### 🎨 User Experience
+- **Modern UI** - Glassmorphism design with dark theme
+- **Responsive** - Works on desktop and tablet
+- **Connection Selector** - Quick server switching
+- **Keyboard Shortcuts** - Power user support
+
+---
 
 ## Architecture
 
-This project follows a production-grade architecture with proper separation of concerns:
-
 ```
-clickhouse-studio/
-├── packages/
-│   └── server/           # Backend API (Bun/Hono)
-│       ├── src/
-│       │   ├── routes/   # API endpoints
-│       │   ├── services/ # Business logic
-│       │   ├── middleware/ # Auth, CORS, error handling
-│       │   └── types/    # TypeScript types
-│       └── index.ts
-├── src/                  # Frontend (React/Vite)
-│   ├── api/              # API client
-│   ├── components/       # UI components
-│   ├── features/         # Feature modules
-│   ├── hooks/            # React Query hooks
-│   ├── providers/        # Context providers
-│   └── stores/           # Zustand stores
-└── ...
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND                                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
+│  │   Login     │  │  Explorer   │  │   Query     │  │   Admin     │    │
+│  │   Page      │  │   View      │  │  Workspace  │  │   Panel     │    │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘    │
+│         │                │                │                │            │
+│         └────────────────┴────────────────┴────────────────┘            │
+│                                   │                                      │
+│                          ┌────────▼────────┐                            │
+│                          │   API Client    │                            │
+│                          │  (with JWT)     │                            │
+│                          └────────┬────────┘                            │
+└───────────────────────────────────┼─────────────────────────────────────┘
+                                    │ HTTPS
+                                    ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│                              BACKEND                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │                         Hono API Server                              │  │
+│  │  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────────────┐ │  │
+│  │  │   Auth    │  │  Query    │  │  Explorer │  │   RBAC Routes     │ │  │
+│  │  │  Routes   │  │  Routes   │  │  Routes   │  │  (users/roles/    │ │  │
+│  │  │           │  │           │  │           │  │   connections)    │ │  │
+│  │  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────────┬─────────┘ │  │
+│  │        │              │              │                  │           │  │
+│  │        └──────────────┴──────────────┴──────────────────┘           │  │
+│  │                               │                                      │  │
+│  │                    ┌──────────▼──────────┐                          │  │
+│  │                    │    Middleware       │                          │  │
+│  │                    │  ┌──────────────┐   │                          │  │
+│  │                    │  │ JWT Auth     │   │                          │  │
+│  │                    │  │ Data Access  │   │                          │  │
+│  │                    │  │ CORS/Error   │   │                          │  │
+│  │                    │  └──────────────┘   │                          │  │
+│  │                    └──────────┬──────────┘                          │  │
+│  └───────────────────────────────┼──────────────────────────────────────┘  │
+│                                  │                                         │
+│     ┌────────────────────────────┼────────────────────────────┐           │
+│     │                            │                            │           │
+│     ▼                            ▼                            ▼           │
+│ ┌─────────┐              ┌─────────────┐              ┌─────────────┐     │
+│ │  RBAC   │              │  ClickHouse │              │  Session    │     │
+│ │Database │              │   Service   │              │   Store     │     │
+│ │(SQLite/ │              │             │              │             │     │
+│ │Postgres)│              └──────┬──────┘              └─────────────┘     │
+│ └─────────┘                     │                                         │
+│                                 ▼                                         │
+└─────────────────────────────────┼─────────────────────────────────────────┘
+                                  │
+                                  ▼
+                         ┌─────────────────┐
+                         │   ClickHouse    │
+                         │    Server(s)    │
+                         └─────────────────┘
 ```
 
-### Key Design Decisions
+### Data Flow
 
-1. **Backend API Layer**: All ClickHouse interactions go through a secure backend API, eliminating credential exposure in the browser.
+1. **Authentication**: User logs in → JWT tokens issued → Stored in memory (access) + HTTP-only cookie (refresh)
+2. **API Requests**: Frontend sends request with JWT → Backend validates → Checks permissions → Executes
+3. **ClickHouse Access**: Backend retrieves encrypted credentials → Decrypts → Creates ClickHouse session
+4. **Data Access Control**: Query validated against user's data access rules → Filtered results returned
 
-2. **Session-based Auth**: Credentials are never stored in localStorage. Sessions are managed server-side with secure HTTP-only cookies.
+---
 
-3. **Modular Store Architecture**: State management is split into domain-based slices (auth, workspace, explorer) for better maintainability.
-
-4. **React Query Integration**: Data fetching with automatic caching, refetching, and error handling.
-
-5. **Type-safe API Client**: Fully typed API client with proper error handling and request/response transformation.
-
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) v1.0 or later
-- A ClickHouse server to connect to
+- [Bun](https://bun.sh/) v1.0+ (or Node.js 18+)
+- A ClickHouse server (or use Docker Compose)
 
-### Installation
+### Development Setup
 
 ```bash
+# Clone the repository
+git clone https://github.com/daun-gatal/clickhouse-studio.git
+cd clickhouse-studio
+
 # Install dependencies
 bun install
 
-# Install server dependencies
-cd packages/server && bun install && cd ../..
-```
-
-### Development
-
-```bash
-# Start both frontend and backend in development mode
+# Start development servers
 bun run dev
-
-# Or run them separately:
-bun run dev:web      # Frontend on http://localhost:5173
-bun run dev:server   # Backend on http://localhost:5521
 ```
 
-### Production Build
+This starts:
+- **Frontend**: http://localhost:5173
+- **Backend**: http://localhost:5521
+
+### Default Login
+
+On first run, an admin user is created:
+- **Email**: `admin@localhost`
+- **Password**: `Admin123!@#`
+
+> ⚠️ **Change this password immediately in production!**
+
+---
+
+## Deployment
+
+### Docker (Recommended)
+
+#### Quick Start with SQLite
 
 ```bash
-# Build both frontend and backend
-bun run build
-
-# Start production server
-bun run start
-```
-
-### Docker
-
-```bash
-# Build Docker image
-docker build -t clickhouse-studio .
-
-# Run container
-docker run -p 5521:5521 \
-  -e CLICKHOUSE_URL=http://your-clickhouse:8123 \
-  clickhouse-studio
-
-# Or use Docker Compose (includes ClickHouse)
+# Clone and run
+git clone https://github.com/daun-gatal/clickhouse-studio.git
+cd clickhouse-studio
 docker-compose up -d
 ```
+
+Access at http://localhost:5521
+
+#### Production with PostgreSQL
+
+```bash
+# Use the PostgreSQL compose file
+docker-compose -f docker-compose.postgres.yml up -d
+```
+
+#### Custom Docker Run
+
+```bash
+# Build image
+docker build -t clickhouse-studio .
+
+# Run with environment variables
+docker run -d \
+  -p 5521:5521 \
+  -v clickhouse-studio-data:/app/data \
+  -e RBAC_JWT_SECRET=$(openssl rand -base64 32) \
+  -e ENCRYPTION_KEY=$(openssl rand -hex 32) \
+  -e RBAC_ADMIN_PASSWORD="YourSecurePassword123!" \
+  clickhouse-studio
+```
+
+### Manual Deployment
+
+```bash
+# Build frontend
+bun run build:web
+
+# Start production server
+NODE_ENV=production \
+RBAC_JWT_SECRET=your-secret \
+ENCRYPTION_KEY=your-key \
+bun run packages/server/src/index.ts
+```
+
+### Kubernetes
+
+Example deployment manifest:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse-studio
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: clickhouse-studio
+  template:
+    metadata:
+      labels:
+        app: clickhouse-studio
+    spec:
+      containers:
+      - name: clickhouse-studio
+        image: clickhouse-studio:latest
+        ports:
+        - containerPort: 5521
+        env:
+        - name: RBAC_DB_TYPE
+          value: "postgres"
+        - name: RBAC_POSTGRES_URL
+          valueFrom:
+            secretKeyRef:
+              name: clickhouse-studio-secrets
+              key: postgres-url
+        - name: RBAC_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: clickhouse-studio-secrets
+              key: jwt-secret
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: clickhouse-studio-secrets
+              key: encryption-key
+```
+
+---
 
 ## Configuration
 
 ### Environment Variables
 
+#### Core Settings
+
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Server port | `5521` |
-| `STATIC_PATH` | Path to static files | `./dist` |
-| `NODE_ENV` | Environment mode | `development` |
+| `NODE_ENV` | Environment (`development`/`production`) | `development` |
 | `CORS_ORIGIN` | Allowed CORS origins | `*` |
-| `SESSION_TTL` | Session timeout in ms | `3600000` (1 hour) |
-| `CLICKHOUSE_DEFAULT_URL` | Default ClickHouse URL (pre-filled in login) | `` |
-| `CLICKHOUSE_PRESET_URLS` | Comma-separated preset URLs for dropdown | `` |
-| `CLICKHOUSE_DEFAULT_USER` | Default username for login form | `` |
+| `STATIC_PATH` | Path to frontend build | `./dist` |
 
-### Frontend Configuration
+#### RBAC Database
 
-Frontend configuration is managed through Vite environment variables:
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `RBAC_DB_TYPE` | Database type (`sqlite`/`postgres`) | `sqlite` |
+| `RBAC_SQLITE_PATH` | SQLite file path | `./data/rbac.db` |
+| `RBAC_POSTGRES_URL` | PostgreSQL connection URL | - |
+| `RBAC_POSTGRES_POOL_SIZE` | Connection pool size | `10` |
 
-| Variable | Description |
-|----------|-------------|
-| `VITE_API_URL` | Backend API URL (default: `/api`) |
+#### Authentication
 
-## API Endpoints
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `RBAC_JWT_SECRET` | JWT signing secret | **Required in production** |
+| `RBAC_JWT_ACCESS_EXPIRY` | Access token expiry | `15m` |
+| `RBAC_JWT_REFRESH_EXPIRY` | Refresh token expiry | `7d` |
+| `RBAC_ADMIN_PASSWORD` | Initial admin password | `Admin123!@#` |
+
+#### Security
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ENCRYPTION_KEY` | AES-256 key for passwords | **Required in production** |
+| `SESSION_TTL` | Session timeout (ms) | `3600000` |
+
+### Generating Secrets
+
+```bash
+# Generate JWT secret
+openssl rand -base64 32
+
+# Generate encryption key
+openssl rand -hex 32
+
+# Generate strong password
+openssl rand -base64 16
+```
+
+---
+
+## RBAC System
+
+### Role Hierarchy
+
+| Role | Description | Key Permissions |
+|------|-------------|-----------------|
+| **Super Admin** | Full system access | All permissions |
+| **Admin** | Server management | Users, roles, connections |
+| **Developer** | Write access | Insert, update, DDL |
+| **Analyst** | Read access | Select, export |
+| **Viewer** | Read-only | Select only |
+
+### Data Access Rules
+
+Control access to specific databases and tables:
+
+```
+Rule: Allow "analyst" role to access "analytics.*"
+Rule: Deny "viewer" role from "system.*"
+Rule: Allow user "john" to access "sales.orders"
+```
+
+Features:
+- **Wildcards**: `*` matches any database/table
+- **Patterns**: Regex support for complex rules
+- **Deny Rules**: Explicit denials take precedence
+- **Priority**: Higher priority rules evaluated first
+
+### Permission Categories
+
+- **User Management**: Create, update, delete users
+- **Role Management**: Manage roles and permissions
+- **Connection Management**: Add/edit ClickHouse connections
+- **Query Operations**: Execute queries, DML, DDL
+- **Table Operations**: Select, insert, update, delete
+- **System**: Audit logs, settings
+
+---
+
+## API Reference
 
 ### Authentication
-- `POST /api/auth/login` - Login with credentials
-- `POST /api/auth/logout` - Logout and destroy session
-- `GET /api/auth/session` - Get current session info
-- `POST /api/auth/refresh` - Refresh session
+
+```http
+POST /api/rbac/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "admin@localhost",
+  "password": "Admin123!@#"
+}
+```
+
+```http
+POST /api/rbac/auth/logout
+Authorization: Bearer <access_token>
+```
+
+```http
+GET /api/rbac/auth/me
+Authorization: Bearer <access_token>
+```
+
+### Connections
+
+```http
+GET /api/rbac/connections
+Authorization: Bearer <access_token>
+
+POST /api/rbac/connections
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "name": "Production",
+  "host": "clickhouse.example.com",
+  "port": 8123,
+  "username": "default",
+  "password": "secret",
+  "database": "default"
+}
+```
 
 ### Query Execution
-- `POST /api/query/execute` - Execute SQL query
-- `GET /api/query/intellisense` - Get autocomplete data
+
+```http
+POST /api/query/execute
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "query": "SELECT * FROM system.tables LIMIT 10"
+}
+```
 
 ### Database Explorer
-- `GET /api/explorer/databases` - List all databases/tables
-- `GET /api/explorer/table/:db/:table` - Get table details
-- `GET /api/explorer/table/:db/:table/sample` - Get data sample
-- `POST /api/explorer/database` - Create database
-- `DELETE /api/explorer/database/:name` - Drop database
-- `POST /api/explorer/table` - Create table
-- `DELETE /api/explorer/table/:db/:table` - Drop table
 
-### Metrics
-- `GET /api/metrics/stats` - Get system statistics
-- `GET /api/metrics/recent-queries` - Get query log
+```http
+GET /api/explorer/databases
+GET /api/explorer/table/:database/:table
+GET /api/explorer/table/:database/:table/sample
+```
 
-### Saved Queries
-- `GET /api/saved-queries/status` - Check feature status
-- `POST /api/saved-queries/activate` - Enable feature (admin)
-- `GET /api/saved-queries` - List saved queries
-- `POST /api/saved-queries` - Save new query
-- `PUT /api/saved-queries/:id` - Update query
-- `DELETE /api/saved-queries/:id` - Delete query
+### User Management
 
-## Security
+```http
+GET /api/rbac/users
+POST /api/rbac/users
+PUT /api/rbac/users/:id
+DELETE /api/rbac/users/:id
+```
 
-### Authentication Flow
+---
 
-1. User submits credentials via login form
-2. Backend validates credentials against ClickHouse
-3. Session is created server-side with encrypted session ID
-4. Session ID is stored in HTTP-only cookie
-5. All subsequent requests include session ID
-6. Backend looks up session and ClickHouse client
+## Project Structure
+
+```
+clickhouse-studio/
+├── packages/
+│   └── server/                 # Backend (Bun + Hono)
+│       ├── src/
+│       │   ├── index.ts        # Server entry point
+│       │   ├── routes/         # API route handlers
+│       │   ├── middleware/     # Auth, CORS, error handling
+│       │   ├── services/       # Business logic
+│       │   ├── rbac/           # RBAC system
+│       │   │   ├── db/         # Database (Drizzle ORM)
+│       │   │   ├── routes/     # RBAC API routes
+│       │   │   ├── services/   # RBAC services
+│       │   │   └── schema/     # DB schemas (SQLite/Postgres)
+│       │   └── types/          # TypeScript types
+│       └── package.json
+├── src/                        # Frontend (React + Vite)
+│   ├── api/                    # API client
+│   ├── components/             # UI components
+│   │   ├── common/             # Shared components
+│   │   └── ui/                 # shadcn/ui components
+│   ├── features/               # Feature modules
+│   │   ├── admin/              # Admin panel
+│   │   ├── explorer/           # Database explorer
+│   │   ├── metrics/            # Metrics dashboard
+│   │   ├── rbac/               # RBAC components
+│   │   └── workspace/          # Query workspace
+│   ├── hooks/                  # Custom React hooks
+│   ├── stores/                 # Zustand state stores
+│   └── pages/                  # Page components
+├── Dockerfile                  # Production Docker image
+├── docker-compose.yml          # SQLite deployment
+├── docker-compose.postgres.yml # PostgreSQL deployment
+└── package.json
+```
+
+---
+
+## Security Best Practices
+
+### Production Checklist
+
+- [ ] Generate unique `RBAC_JWT_SECRET` (min 32 bytes)
+- [ ] Generate unique `ENCRYPTION_KEY` (32 bytes hex)
+- [ ] Change default admin password
+- [ ] Set `CORS_ORIGIN` to your domain
+- [ ] Use PostgreSQL for multi-instance deployments
+- [ ] Enable HTTPS via reverse proxy
+- [ ] Configure firewall rules
+- [ ] Set up regular backups
 
 ### Security Features
 
-- **No Client-Side Credentials**: Passwords never stored in browser
-- **HTTP-Only Cookies**: Session tokens not accessible via JavaScript
-- **Session Expiration**: Auto-cleanup of inactive sessions
-- **Permission Checking**: API validates user permissions
-- **Input Validation**: Zod schema validation on all endpoints
+| Feature | Description |
+|---------|-------------|
+| **No Browser Credentials** | Passwords never reach the frontend |
+| **Encrypted Storage** | AES-256-GCM for ClickHouse passwords |
+| **JWT Tokens** | Short-lived access, long-lived refresh |
+| **RBAC Enforcement** | Every request checked against permissions |
+| **Query Validation** | SQL parsed and validated against access rules |
+| **Audit Logging** | All actions logged with user context |
 
-## Development
+---
 
-### Project Structure
+## Database Migrations
+
+### Automatic Migrations
+
+**Migrations run automatically on server startup.** No manual intervention required.
 
 ```
-src/
-├── api/              # API client and type definitions
-│   ├── client.ts     # Base HTTP client
-│   ├── auth.ts       # Auth API functions
-│   ├── query.ts      # Query API functions
-│   └── ...
-├── components/
-│   ├── common/       # Shared components
-│   └── ui/           # shadcn/ui components
-├── features/         # Feature modules
-│   ├── admin/        # Admin panel
-│   ├── explorer/     # Database explorer
-│   ├── metrics/      # Metrics dashboard
-│   └── workspace/    # Query workspace
-├── hooks/            # Custom React hooks
-├── providers/        # Context providers
-├── stores/           # Zustand stores
-└── types/            # TypeScript types
+Server Start
+    │
+    ▼
+initializeRbac()
+    │
+    ├── Check current DB version
+    ├── Run pending migrations (if any)
+    └── Seed defaults (first run only)
 ```
 
-### Adding New Features
+| Scenario | What Happens |
+|----------|--------------|
+| **Fresh install** | Creates full schema → Seeds roles, permissions, admin user |
+| **Version upgrade** | Detects version diff → Applies only pending migrations |
+| **Normal restart** | Version matches → No migrations needed |
 
-1. Create feature module in `src/features/`
-2. Add API functions in `src/api/`
-3. Add React Query hooks in `src/hooks/`
-4. Add backend routes in `packages/server/src/routes/`
+### Manual Migration (Optional)
 
-### Testing
+For advanced scenarios (pre-flight checks, debugging), use CLI tools:
 
 ```bash
-# Run tests
-bun test
+cd packages/server
 
-# Run tests with coverage
-bun test --coverage
+# Check current status and pending migrations
+bun run rbac:status
+
+# Output example:
+# Current version: 1.1.0
+# Target version: 1.2.0
+# Pending migrations:
+#   - 1.2.0: user_data_access_rules
+
+# Run migrations manually
+bun run rbac:migrate
+
+# Check version only
+bun run rbac:version
+
+# Seed default data (if missing)
+bun run rbac:seed
+
+# Reset database (⚠️ DESTRUCTIVE - deletes all data!)
+CONFIRM_RESET=yes bun run rbac:reset
 ```
+
+### Upgrading ClickHouse Studio
+
+```bash
+# 1. Pull latest version
+docker pull ghcr.io/daun-gatal/clickhouse-studio:latest
+
+# 2. Restart container - migrations run automatically
+docker-compose up -d
+
+# 3. Check logs for migration status
+docker logs clickhouse-studio | grep RBAC
+```
+
+Expected output on upgrade:
+```
+[RBAC] ========================================
+[RBAC] Initializing RBAC system...
+[RBAC] Database type: sqlite
+[RBAC] App version: 1.2.0
+[RBAC] ========================================
+[RBAC] Current DB version: 1.1.0
+[RBAC] Running migration: 1.2.0 - user_data_access_rules
+[RBAC] Migration complete
+RBAC system ready
+```
+
+### Troubleshooting Migrations
+
+| Issue | Solution |
+|-------|----------|
+| Migration fails | Check logs, ensure DB is accessible |
+| Wrong permissions | Ensure volume/file ownership matches container user |
+| PostgreSQL connection | Verify `RBAC_POSTGRES_URL` is correct |
+| Reset needed | Use `CONFIRM_RESET=yes bun run rbac:reset` |
+
+---
 
 ## Contributing
 
+We welcome contributions! Please see our contributing guidelines.
+
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/amazing`)
 3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
+4. Run tests (`bun test`)
+5. Commit (`git commit -m 'Add amazing feature'`)
+6. Push (`git push origin feature/amazing`)
+7. Open a Pull Request
+
+---
 
 ## License
 
-Apache-2.0
+Apache-2.0 © [Daun Gatal](https://github.com/daun-gatal)
+
+---
 
 ## Acknowledgments
 
-This project was inspired by [CH-UI](https://github.com/caioricciuti/ch-ui) by Caio Ricciuti — a fantastic open-source ClickHouse interface that paved the way for modern ClickHouse web tools. Thank you for the inspiration!
-
-### Built With
-
-- [ClickHouse](https://clickhouse.com/) - The database
-- [Vite](https://vitejs.dev/) - Frontend build tool
-- [Bun](https://bun.sh/) - JavaScript runtime
-- [Hono](https://hono.dev/) - Web framework
-- [shadcn/ui](https://ui.shadcn.com/) - UI components
-- [TanStack Query](https://tanstack.com/query) - Data fetching
-
+- Inspired by [CH-UI](https://github.com/caioricciuti/ch-ui) by Caio Ricciuti
+- Built with [ClickHouse](https://clickhouse.com/), [Bun](https://bun.sh/), [Hono](https://hono.dev/), [React](https://react.dev/), [shadcn/ui](https://ui.shadcn.com/)

@@ -1,19 +1,40 @@
-import React, { useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { UserPlus, ArrowLeft, Loader2, Shield, Database, Key, Globe, X, Server, FileText, Code, Copy, ChevronDown, ChevronRight, Table2, Layers } from "lucide-react";
+/**
+ * RBAC Create User Component
+ * 
+ * Creates users through the RBAC system with role assignment.
+ * No ClickHouse DDL is executed - user management is done through RBAC.
+ */
+
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import {
+  UserPlus,
+  ArrowLeft,
+  Loader2,
+  Shield,
+  Key,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Sparkles,
+  Database,
+  Table2,
+  Plus,
+  Trash2,
+  Info,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -21,222 +42,211 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useExecuteQuery, useDatabases, useClusterNames } from "@/hooks";
-import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
+import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
+import { rbacUsersApi, rbacRolesApi, rbacConnectionsApi, rbacDataAccessApi, type RbacRole, type CreateUserInput, type ClickHouseConnection } from "@/api/rbac";
+import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
-// Database-table access structure
-interface DatabaseTableAccess {
-  database: string;
-  allTables: boolean;
-  tables: string[];
-}
-
-// Predefined role templates
-const ROLE_TEMPLATES = {
-  admin: {
-    name: "Admin",
-    description: "Full access to all databases and system operations",
-    icon: "🛡️",
+// Role colors for display
+const ROLE_COLORS: Record<string, { icon: string; color: string; bgColor: string; borderColor: string }> = {
+  super_admin: {
+    icon: "👑",
     color: "text-red-400",
     bgColor: "bg-red-500/20",
     borderColor: "border-red-500/50",
-    privileges: {
-      isAdmin: true,
-      allowSelect: true,
-      allowInsert: true,
-      allowDDL: true,
-      allowSystem: true,
-    },
+  },
+  admin: {
+    icon: "🛡️",
+    color: "text-orange-400",
+    bgColor: "bg-orange-500/20",
+    borderColor: "border-orange-500/50",
   },
   developer: {
-    name: "Developer",
-    description: "Read/write access with DDL capabilities",
     icon: "👨‍💻",
     color: "text-blue-400",
     bgColor: "bg-blue-500/20",
     borderColor: "border-blue-500/50",
-    privileges: {
-      isAdmin: false,
-      allowSelect: true,
-      allowInsert: true,
-      allowDDL: true,
-      allowSystem: false,
-    },
   },
-  readWrite: {
-    name: "Read-Write",
-    description: "Read and write data, no schema changes",
-    icon: "📝",
+  analyst: {
+    icon: "📊",
     color: "text-green-400",
     bgColor: "bg-green-500/20",
     borderColor: "border-green-500/50",
-    privileges: {
-      isAdmin: false,
-      allowSelect: true,
-      allowInsert: true,
-      allowDDL: false,
-      allowSystem: false,
-    },
   },
-  readOnly: {
-    name: "Read Only",
-    description: "Query data only, no modifications",
+  viewer: {
     icon: "👁️",
     color: "text-purple-400",
     bgColor: "bg-purple-500/20",
     borderColor: "border-purple-500/50",
-    privileges: {
-      isAdmin: false,
-      allowSelect: true,
-      allowInsert: false,
-      allowDDL: false,
-      allowSystem: false,
-    },
   },
 };
 
-type RoleTemplate = keyof typeof ROLE_TEMPLATES;
-type HostRestrictionType = "any" | "ip" | "name" | "local";
+// Password requirement indicator component
+const RequirementItem = ({ fulfilled, label }: { fulfilled: boolean; label: string }) => (
+  <div className={`flex items-center gap-2 text-xs transition-colors duration-200 ${fulfilled ? "text-green-400" : "text-gray-500"}`}>
+    <div className={`w-4 h-4 rounded-full flex items-center justify-center border ${fulfilled ? "bg-green-500/10 border-green-500/50" : "border-gray-700 bg-gray-800"}`}>
+      {fulfilled ? <Check className="w-2.5 h-2.5" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+    </div>
+    <span>{label}</span>
+  </div>
+);
+
+// Data access rule type for local state (before user is created)
+interface PendingDataAccessRule {
+  id: string;
+  connectionId: string | null;
+  databasePattern: string;
+  tablePattern: string;
+  isAllowed: boolean;
+  priority: number;
+  description: string;
+}
+
+interface DataAccessFormData {
+  connectionId: string | null;
+  databasePattern: string;
+  tablePattern: string;
+  isAllowed: boolean;
+  priority: number;
+  description: string;
+}
+
+const defaultDataAccessForm: DataAccessFormData = {
+  connectionId: null,
+  databasePattern: '*',
+  tablePattern: '*',
+  isAllowed: true,
+  priority: 0,
+  description: '',
+};
 
 const CreateUser: React.FC = () => {
   const navigate = useNavigate();
-  const executeQuery = useExecuteQuery();
-  const { data: databasesData = [] } = useDatabases();
-  const { data: clusters = [] } = useClusterNames();
-  
-  // Form state - using regular React state like EditUser
+  const { hasPermission, isSuperAdmin } = useRbacStore();
+
+  // Permission checks
+  const canAssignRoles = hasPermission(RBAC_PERMISSIONS.ROLES_ASSIGN);
+
+  // Form state
+  const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [generatePassword, setGeneratePassword] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<RoleTemplate>("readOnly");
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hostRestriction, setHostRestriction] = useState<HostRestrictionType>("any");
-  const [newHost, setNewHost] = useState("");
-  const [allowedHosts, setAllowedHosts] = useState<string[]>([]);
-  const [useCluster, setUseCluster] = useState(false);
-  const [selectedCluster, setSelectedCluster] = useState("");
-  const [allowQueryLogs, setAllowQueryLogs] = useState(true);
-  
-  // Database access state
-  const [databaseAccess, setDatabaseAccess] = useState<DatabaseTableAccess[]>([]);
-  const [expandedDatabases, setExpandedDatabases] = useState<Set<string>>(new Set());
-  
-  // DDL state
-  const [useCustomDdl, setUseCustomDdl] = useState(false);
-  const [customDdl, setCustomDdl] = useState("");
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
 
-  // Build cluster clause helper
-  const getClusterClause = () => useCluster && selectedCluster ? ` ON CLUSTER '${selectedCluster}'` : "";
+  // Roles data
+  const [roles, setRoles] = useState<RbacRole[]>([]);
+  const [loadingRoles, setLoadingRoles] = useState(true);
 
-  // Generate DDL statements
-  const generatedDdl = useMemo(() => {
-    const statements: string[] = [];
-    const clusterClause = getClusterClause();
-    const privileges = ROLE_TEMPLATES[selectedRole].privileges;
-    
-    if (!username.trim()) {
-      return ["-- Enter a username to see DDL preview"];
-    }
+  // Data access state
+  const [dataAccessRules, setDataAccessRules] = useState<PendingDataAccessRule[]>([]);
+  const [connections, setConnections] = useState<ClickHouseConnection[]>([]);
+  const [showDataAccessDialog, setShowDataAccessDialog] = useState(false);
+  const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
+  const [dataAccessForm, setDataAccessForm] = useState<DataAccessFormData>(defaultDataAccessForm);
+  const [showDataAccessSection, setShowDataAccessSection] = useState(false);
 
-    const escapedUsername = username.trim();
-    
-    // Build host restriction clause
-    let hostClause = "";
-    if (hostRestriction === "local") {
-      hostClause = "HOST LOCAL";
-    } else if (hostRestriction === "ip" && allowedHosts.length > 0) {
-      hostClause = `HOST IP ${allowedHosts.map((ip) => `'${ip}'`).join(", ")}`;
-    } else if (hostRestriction === "name" && allowedHosts.length > 0) {
-      hostClause = `HOST NAME ${allowedHosts.map((name) => `'${name}'`).join(", ")}`;
-    } else {
-      hostClause = "HOST ANY";
-    }
-    
-    // CREATE USER statement
-    statements.push(`-- Create user '${escapedUsername}'`);
-    if (password) {
-      const escapedPassword = password.replace(/'/g, "''");
-      statements.push(`CREATE USER '${escapedUsername}'${clusterClause} ${hostClause} IDENTIFIED WITH sha256_password BY '${escapedPassword}';`);
-    } else {
-      statements.push(`-- (Password not set yet)`);
-      statements.push(`CREATE USER '${escapedUsername}'${clusterClause} ${hostClause} IDENTIFIED WITH sha256_password BY '<PASSWORD>';`);
-    }
-    statements.push('');
-    
-    // GRANT statements
-    if (privileges.isAdmin) {
-      statements.push(`-- Grant admin privileges`);
-      statements.push(`GRANT${clusterClause} ALL ON *.* TO '${escapedUsername}' WITH GRANT OPTION;`);
-    } else {
-      statements.push(`-- Grant ${ROLE_TEMPLATES[selectedRole].name} privileges`);
-      
-      if (databaseAccess.length === 0) {
-        statements.push(`-- (No databases selected - user will have no data access)`);
-      } else {
-        for (const access of databaseAccess) {
-          const { database, allTables, tables } = access;
-          const targets: string[] = allTables 
-            ? [`\`${database}\`.*`]
-            : tables.map(t => `\`${database}\`.\`${t}\``);
-          
-          if (!allTables && tables.length === 0) continue;
-          
-          for (const target of targets) {
-            if (privileges.allowSelect) {
-              statements.push(`GRANT${clusterClause} SELECT ON ${target} TO '${escapedUsername}';`);
-            }
-            if (privileges.allowInsert) {
-              statements.push(`GRANT${clusterClause} INSERT ON ${target} TO '${escapedUsername}';`);
-            }
-            if (privileges.allowDDL) {
-              if (allTables) {
-                statements.push(`GRANT${clusterClause} CREATE TABLE, DROP TABLE, ALTER TABLE ON ${target} TO '${escapedUsername}';`);
-              } else {
-                statements.push(`GRANT${clusterClause} ALTER TABLE ON ${target} TO '${escapedUsername}';`);
-              }
-            }
-          }
+  // Fetch available roles and connections
+  useEffect(() => {
+    // Fetch roles
+    rbacRolesApi
+      .list()
+      .then((result) => {
+        // Filter out super_admin if current user is not super_admin
+        const filteredRoles = isSuperAdmin()
+          ? result
+          : result.filter((r) => r.name !== "super_admin");
+        setRoles(filteredRoles);
+
+        // Select default role if exists
+        const defaultRole = filteredRoles.find((r) => r.isDefault);
+        if (defaultRole) {
+          setSelectedRoles([defaultRole.id]);
         }
-      }
-      
-      if (privileges.allowSystem) {
-        statements.push('');
-        statements.push(`GRANT${clusterClause} SYSTEM ON *.* TO '${escapedUsername}';`);
-      }
-      
-      if (allowQueryLogs) {
-        statements.push('');
-        statements.push(`-- Grant query log access`);
-        statements.push(`GRANT${clusterClause} SELECT ON system.query_log TO '${escapedUsername}';`);
-      }
-    }
+      })
+      .catch((err) => {
+        toast.error(`Failed to load roles: ${err.message}`);
+      })
+      .finally(() => {
+        setLoadingRoles(false);
+      });
+
+    // Fetch connections for data access rules
+    rbacConnectionsApi
+      .list()
+      .then((result) => {
+        setConnections(result.connections);
+      })
+      .catch((err) => {
+        console.error('Failed to load connections:', err);
+      });
+  }, [isSuperAdmin]);
+
+  // Auto-expand data access section when required
+  useEffect(() => {
+    const ADMIN_ROLES = ['super_admin', 'admin'];
+    const selectedRoleNames = selectedRoles.map(roleId => roles.find(r => r.id === roleId)?.name || '');
+    const hasAdminRole = selectedRoleNames.some(name => ADMIN_ROLES.includes(name));
+    const needsDataAccess = !hasAdminRole && selectedRoles.length > 0;
     
-    return statements;
-  }, [username, password, databaseAccess, selectedRole, hostRestriction, allowedHosts, useCluster, selectedCluster, allowQueryLogs]);
-
-  const ddlText = useCustomDdl ? customDdl : generatedDdl.join('\n');
-
-  const copyDdlToClipboard = () => {
-    navigator.clipboard.writeText(ddlText);
-    toast.success("DDL copied to clipboard");
-  };
-
-  const handleRoleSelect = (role: RoleTemplate) => {
-    setSelectedRole(role);
-  };
-
-  const addHost = () => {
-    if (newHost.trim() && !allowedHosts.includes(newHost.trim())) {
-      setAllowedHosts([...allowedHosts, newHost.trim()]);
-      setNewHost("");
+    if (needsDataAccess && dataAccessRules.length === 0) {
+      setShowDataAccessSection(true);
     }
+  }, [selectedRoles, roles, dataAccessRules.length]);
+
+  // Password validation requirements
+  const passwordReqs = {
+    length: password.length >= 12,
+    upper: /[A-Z]/.test(password),
+    lower: /[a-z]/.test(password),
+    number: /\d/.test(password),
+    special: /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(password),
   };
 
-  const removeHost = (host: string) => {
-    setAllowedHosts(allowedHosts.filter((h) => h !== host));
+  const isPasswordValid = generatePassword || Object.values(passwordReqs).every(Boolean);
+  const passwordsMatch = generatePassword || password === confirmPassword;
+
+  // Check if selected roles require data access rules (non-admin roles)
+  const ADMIN_ROLES = ['super_admin', 'admin'];
+  const selectedRoleNames = selectedRoles.map(roleId => roles.find(r => r.id === roleId)?.name || '');
+  const hasAdminRole = selectedRoleNames.some(name => ADMIN_ROLES.includes(name));
+  const requiresDataAccess = !hasAdminRole && selectedRoles.length > 0;
+  const dataAccessValid = !requiresDataAccess || dataAccessRules.length > 0;
+
+  // Form validation
+  const isFormValid =
+    email.trim() !== "" &&
+    username.trim() !== "" &&
+    selectedRoles.length > 0 &&
+    isPasswordValid &&
+    passwordsMatch &&
+    dataAccessValid;
+
+  const toggleRole = (roleId: string) => {
+    setSelectedRoles((prev) =>
+      prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId]
+    );
   };
 
-  const generatePassword = () => {
+  const handleGeneratePasswordManually = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
     let pwd = "";
     pwd += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
@@ -248,100 +258,114 @@ const CreateUser: React.FC = () => {
     }
     pwd = pwd.split("").sort(() => Math.random() - 0.5).join("");
     setPassword(pwd);
+    setConfirmPassword(pwd);
+  };
+
+  const copyGeneratedPassword = () => {
+    if (generatedPassword) {
+      navigator.clipboard.writeText(generatedPassword);
+      toast.success("Password copied to clipboard");
+    }
+  };
+
+  // Data access helper functions
+  const getConnectionName = (connectionId: string | null) => {
+    if (!connectionId) return 'All Connections';
+    const conn = connections.find(c => c.id === connectionId);
+    return conn ? conn.name : 'Unknown';
+  };
+
+  const openAddDataAccessDialog = () => {
+    setEditingRuleIndex(null);
+    setDataAccessForm(defaultDataAccessForm);
+    setShowDataAccessDialog(true);
+  };
+
+  const openEditDataAccessDialog = (index: number) => {
+    const rule = dataAccessRules[index];
+    setEditingRuleIndex(index);
+    setDataAccessForm({
+      connectionId: rule.connectionId,
+      databasePattern: rule.databasePattern,
+      tablePattern: rule.tablePattern,
+      isAllowed: rule.isAllowed,
+      priority: rule.priority,
+      description: rule.description,
+    });
+    setShowDataAccessDialog(true);
+  };
+
+  const handleSaveDataAccessRule = () => {
+    const newRule: PendingDataAccessRule = {
+      id: editingRuleIndex !== null ? dataAccessRules[editingRuleIndex].id : `temp-${Date.now()}`,
+      connectionId: dataAccessForm.connectionId,
+      databasePattern: dataAccessForm.databasePattern || '*',
+      tablePattern: dataAccessForm.tablePattern || '*',
+      isAllowed: dataAccessForm.isAllowed,
+      priority: dataAccessForm.priority,
+      description: dataAccessForm.description,
+    };
+
+    if (editingRuleIndex !== null) {
+      const updated = [...dataAccessRules];
+      updated[editingRuleIndex] = newRule;
+      setDataAccessRules(updated);
+    } else {
+      setDataAccessRules([...dataAccessRules, newRule]);
+    }
+
+    setShowDataAccessDialog(false);
+  };
+
+  const handleDeleteDataAccessRule = (index: number) => {
+    setDataAccessRules(dataAccessRules.filter((_, i) => i !== index));
   };
 
   const onSubmit = async () => {
-    if (!username.trim()) {
-      toast.error("Username is required");
-      return;
-    }
-    if (!password) {
-      toast.error("Password is required");
+    if (!isFormValid) {
+      toast.error("Please fill in all required fields correctly");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const privileges = ROLE_TEMPLATES[selectedRole].privileges;
-      const clusterClause = getClusterClause();
+      const input: CreateUserInput = {
+        email: email.trim(),
+        username: username.trim(),
+        displayName: displayName.trim() || undefined,
+        roleIds: selectedRoles,
+        generatePassword,
+        password: generatePassword ? undefined : password,
+      };
 
-      // Build host restriction clause
-      let hostClause = "";
-      if (hostRestriction === "local") {
-        hostClause = "HOST LOCAL";
-      } else if (hostRestriction === "ip" && allowedHosts.length > 0) {
-        hostClause = `HOST IP ${allowedHosts.map((ip) => `'${ip}'`).join(", ")}`;
-      } else if (hostRestriction === "name" && allowedHosts.length > 0) {
-        hostClause = `HOST NAME ${allowedHosts.map((name) => `'${name}'`).join(", ")}`;
-      } else {
-        hostClause = "HOST ANY";
-      }
+      const result = await rbacUsersApi.create(input);
 
-      // Create user
-      const escapedPassword = password.replace(/'/g, "''");
-      await executeQuery.mutateAsync({
-        query: `CREATE USER '${username}'${clusterClause} ${hostClause} IDENTIFIED WITH sha256_password BY '${escapedPassword}'`,
-      });
-
-      // Grant privileges
-      if (privileges.isAdmin) {
-        await executeQuery.mutateAsync({
-          query: `GRANT${clusterClause} ALL ON *.* TO '${username}' WITH GRANT OPTION`,
-        });
-      } else {
-        if (databaseAccess.length === 0) {
-          toast.warning("User created without database access. Add database permissions in Edit User.");
-        }
-
-        for (const access of databaseAccess) {
-          const { database, allTables, tables } = access;
-          const targets: string[] = allTables 
-            ? [`\`${database}\`.*`]
-            : tables.map(t => `\`${database}\`.\`${t}\``);
-          
-          if (!allTables && tables.length === 0) continue;
-
-          for (const target of targets) {
-            if (privileges.allowSelect) {
-              await executeQuery.mutateAsync({
-                query: `GRANT${clusterClause} SELECT ON ${target} TO '${username}'`,
-              });
-            }
-            if (privileges.allowInsert) {
-              await executeQuery.mutateAsync({
-                query: `GRANT${clusterClause} INSERT ON ${target} TO '${username}'`,
-              });
-            }
-            if (privileges.allowDDL) {
-              if (allTables) {
-                await executeQuery.mutateAsync({
-                  query: `GRANT${clusterClause} CREATE TABLE, DROP TABLE, ALTER TABLE ON ${target} TO '${username}'`,
-                });
-              } else {
-                await executeQuery.mutateAsync({
-                  query: `GRANT${clusterClause} ALTER TABLE ON ${target} TO '${username}'`,
-                });
-              }
-            }
-          }
-        }
-
-        if (privileges.allowSystem) {
-          await executeQuery.mutateAsync({
-            query: `GRANT${clusterClause} SYSTEM ON *.* TO '${username}'`,
-          });
-        }
-
-        if (allowQueryLogs) {
-          await executeQuery.mutateAsync({
-            query: `GRANT${clusterClause} SELECT ON system.query_log TO '${username}'`,
-          });
+      // Save data access rules if any
+      if (dataAccessRules.length > 0 && result.user?.id) {
+        try {
+          const rulesToSave = dataAccessRules.map(rule => ({
+            connectionId: rule.connectionId,
+            databasePattern: rule.databasePattern,
+            tablePattern: rule.tablePattern,
+            isAllowed: rule.isAllowed,
+            priority: rule.priority,
+            description: rule.description || undefined,
+          }));
+          await rbacDataAccessApi.bulkSetForUser(result.user.id, rulesToSave);
+        } catch (err) {
+          console.error('Failed to save data access rules:', err);
+          toast.warning('User created but failed to save data access rules');
         }
       }
 
-      toast.success(`User "${username}" created successfully with ${ROLE_TEMPLATES[selectedRole].name} role`);
-      navigate("/admin");
+      if (result.generatedPassword) {
+        setGeneratedPassword(result.generatedPassword);
+        toast.success(`User "${username}" created successfully!`);
+      } else {
+        toast.success(`User "${username}" created successfully!`);
+        navigate("/admin");
+      }
     } catch (error) {
       console.error("Failed to create user:", error);
       toast.error(`Failed to create user: ${(error as Error).message}`);
@@ -349,6 +373,80 @@ const CreateUser: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  // Show generated password dialog
+  if (generatedPassword) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="container mx-auto p-6 max-w-lg"
+      >
+        <GlassCard>
+          <GlassCardHeader>
+            <GlassCardTitle className="flex items-center gap-2 text-green-400">
+              <Check className="h-5 w-5" />
+              User Created Successfully
+            </GlassCardTitle>
+          </GlassCardHeader>
+          <GlassCardContent className="space-y-6">
+            <p className="text-gray-300">
+              User <strong className="text-white">{username}</strong> has been created with the
+              following credentials:
+            </p>
+
+            <div className="space-y-3">
+              <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                <div className="text-xs text-gray-400 mb-1">Username</div>
+                <div className="text-white font-medium">{username}</div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                <div className="text-xs text-gray-400 mb-1">Email</div>
+                <div className="text-white font-medium">{email}</div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                <div className="text-xs text-yellow-400 mb-1">Generated Password</div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm break-all">
+                    {generatedPassword}
+                  </code>
+                  <Button size="sm" variant="outline" onClick={copyGeneratedPassword}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-yellow-400/80 mt-2 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Save this password securely. It won't be shown again.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => navigate("/admin")} className="flex-1">
+                Back to Users
+              </Button>
+              <Button
+                onClick={() => {
+                  setGeneratedPassword(null);
+                  setEmail("");
+                  setUsername("");
+                  setDisplayName("");
+                  setPassword("");
+                  setConfirmPassword("");
+                }}
+                className="flex-1"
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Create Another
+              </Button>
+            </div>
+          </GlassCardContent>
+        </GlassCard>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -367,560 +465,417 @@ const CreateUser: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-6">
-        {/* Role Selection */}
-        <GlassCard>
-          <GlassCardHeader>
-            <GlassCardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-purple-400" />
-              Select Role Template
-            </GlassCardTitle>
-          </GlassCardHeader>
-          <GlassCardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {(Object.entries(ROLE_TEMPLATES) as [RoleTemplate, typeof ROLE_TEMPLATES.admin][]).map(
-                ([key, role]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => handleRoleSelect(key)}
-                    className={`p-4 rounded-lg border-2 transition-all text-left ${
-                      selectedRole === key
-                        ? `${role.bgColor} ${role.borderColor}`
-                        : "bg-white/5 border-white/10 hover:bg-white/10"
-                    }`}
-                  >
-                    <div className="text-2xl mb-2">{role.icon}</div>
-                    <div className={`font-semibold ${selectedRole === key ? role.color : "text-white"}`}>
-                      {role.name}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">{role.description}</div>
-                  </button>
-                )
-              )}
-            </div>
-
-            {/* Show selected role privileges */}
-            <div className="mt-6 p-4 rounded-lg bg-white/5 border border-white/10">
-              <div className="text-sm font-medium text-gray-300 mb-2">
-                Permissions for {ROLE_TEMPLATES[selectedRole].name}:
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {ROLE_TEMPLATES[selectedRole].privileges.isAdmin && (
-                  <span className="px-2 py-1 rounded text-xs bg-red-500/20 text-red-300 border border-red-500/30">
-                    Full Admin
-                  </span>
-                )}
-                {ROLE_TEMPLATES[selectedRole].privileges.allowSelect && (
-                  <span className="px-2 py-1 rounded text-xs bg-green-500/20 text-green-300 border border-green-500/30">
-                    SELECT
-                  </span>
-                )}
-                {ROLE_TEMPLATES[selectedRole].privileges.allowInsert && (
-                  <span className="px-2 py-1 rounded text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    INSERT
-                  </span>
-                )}
-                {ROLE_TEMPLATES[selectedRole].privileges.allowDDL && (
-                  <span className="px-2 py-1 rounded text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
-                    DDL
-                  </span>
-                )}
-                {ROLE_TEMPLATES[selectedRole].privileges.allowSystem && (
-                  <span className="px-2 py-1 rounded text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    SYSTEM
-                  </span>
-                )}
-              </div>
-            </div>
-          </GlassCardContent>
-        </GlassCard>
-
-        {/* Cluster Option */}
-        {clusters.length > 0 && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column - User Details */}
+        <div className="space-y-6">
+          {/* Basic Information */}
           <GlassCard>
-            <GlassCardContent className="py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-orange-500/20">
-                    <Server className="h-5 w-5 text-orange-400" />
-                  </div>
-                  <div>
-                    <Label className="text-white font-medium">Create on Cluster</Label>
-                    <p className="text-xs text-gray-400">Replicate this user across all cluster nodes</p>
-                  </div>
-                </div>
-                <Switch checked={useCluster} onCheckedChange={setUseCluster} />
+            <GlassCardHeader>
+              <GlassCardTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-blue-400" />
+                User Information
+              </GlassCardTitle>
+            </GlassCardHeader>
+            <GlassCardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-white">
+                  Email <span className="text-red-400">*</span>
+                </Label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="user@example.com"
+                  className="bg-white/5 border-white/10"
+                />
               </div>
-              <AnimatePresence>
-                {useCluster && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mt-4"
-                  >
-                    <Select value={selectedCluster} onValueChange={setSelectedCluster}>
-                      <SelectTrigger className="bg-white/5 border-white/10">
-                        <SelectValue placeholder="Select cluster" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clusters.map((cluster) => (
-                          <SelectItem key={cluster} value={cluster}>
-                            {cluster}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+
+              <div className="space-y-2">
+                <Label className="text-white">
+                  Username <span className="text-red-400">*</span>
+                </Label>
+                <Input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+                  placeholder="username"
+                  className="bg-white/5 border-white/10"
+                />
+                <p className="text-xs text-gray-500">
+                  Lowercase letters, numbers, underscores, and hyphens only
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">Display Name</Label>
+                <Input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="John Doe"
+                  className="bg-white/5 border-white/10"
+                />
+              </div>
             </GlassCardContent>
           </GlassCard>
-        )}
 
-        {/* Tabs */}
-        <Tabs defaultValue="auth" className="space-y-4">
-          <TabsList className="bg-white/5 border border-white/10 p-1">
-            <TabsTrigger value="auth" className="data-[state=active]:bg-purple-500/20">
-              <Key className="h-4 w-4 mr-2" />
-              Authentication
-            </TabsTrigger>
-            <TabsTrigger value="host" className="data-[state=active]:bg-orange-500/20">
-              <Globe className="h-4 w-4 mr-2" />
-              Host Restriction
-            </TabsTrigger>
-            {!ROLE_TEMPLATES[selectedRole].privileges.isAdmin && (
-              <TabsTrigger value="databases" className="data-[state=active]:bg-blue-500/20">
-                <Database className="h-4 w-4 mr-2" />
-                Database Access
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="ddl" className="data-[state=active]:bg-cyan-500/20">
-              <Code className="h-4 w-4 mr-2" />
-              DDL Preview
-            </TabsTrigger>
-          </TabsList>
+          {/* Password Section */}
+          <GlassCard>
+            <GlassCardHeader>
+              <GlassCardTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5 text-yellow-400" />
+                Password
+              </GlassCardTitle>
+            </GlassCardHeader>
+            <GlassCardContent className="space-y-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                <Checkbox
+                  id="generate-password"
+                  checked={generatePassword}
+                  onCheckedChange={(checked) => setGeneratePassword(!!checked)}
+                />
+                <Label htmlFor="generate-password" className="text-white cursor-pointer flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-yellow-400" />
+                  Generate a secure password automatically
+                </Label>
+              </div>
 
-          {/* Authentication Tab */}
-          <TabsContent value="auth">
-            <GlassCard>
-              <GlassCardHeader>
-                <GlassCardTitle className="flex items-center gap-2">
-                  <Key className="h-5 w-5 text-yellow-400" />
-                  User Credentials
-                </GlassCardTitle>
-              </GlassCardHeader>
-              <GlassCardContent className="space-y-6">
-                <div className="space-y-2">
-                  <Label className="text-white">Username</Label>
-                  <Input
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Enter username"
-                    className="bg-white/5 border-white/10"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label className="text-white">Password</Label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Input
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter password"
-                        className="bg-white/5 border-white/10 pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                      >
-                        {showPassword ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                    <Button type="button" variant="outline" onClick={generatePassword}>
-                      Generate
-                    </Button>
-                  </div>
-                </div>
-              </GlassCardContent>
-            </GlassCard>
-          </TabsContent>
-
-          {/* Host Restriction Tab */}
-          <TabsContent value="host">
-            <GlassCard>
-              <GlassCardHeader>
-                <GlassCardTitle className="flex items-center gap-2">
-                  <Globe className="h-5 w-5 text-orange-400" />
-                  Host Restriction
-                </GlassCardTitle>
-              </GlassCardHeader>
-              <GlassCardContent className="space-y-6">
-                <p className="text-sm text-gray-400">
-                  Control which hosts this user can connect from.
-                </p>
-
-                <RadioGroup
-                  value={hostRestriction}
-                  onValueChange={(value) => setHostRestriction(value as HostRestrictionType)}
-                  className="space-y-3"
-                >
-                  <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10">
-                    <RadioGroupItem value="any" id="host-any" />
-                    <Label htmlFor="host-any" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-white">Any Host</div>
-                      <div className="text-xs text-gray-400">Connect from any IP</div>
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10">
-                    <RadioGroupItem value="local" id="host-local" />
-                    <Label htmlFor="host-local" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-white">Local Only</div>
-                      <div className="text-xs text-gray-400">Localhost only</div>
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10">
-                    <RadioGroupItem value="ip" id="host-ip" />
-                    <Label htmlFor="host-ip" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-white">Specific IPs</div>
-                      <div className="text-xs text-gray-400">Restrict to IPs/CIDR</div>
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10">
-                    <RadioGroupItem value="name" id="host-name" />
-                    <Label htmlFor="host-name" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-white">Specific Hostnames</div>
-                      <div className="text-xs text-gray-400">DNS resolved</div>
-                    </Label>
-                  </div>
-                </RadioGroup>
-
-                {(hostRestriction === "ip" || hostRestriction === "name") && (
-                  <div className="space-y-3 pt-4 border-t border-white/10">
-                    <Label className="text-white">
-                      {hostRestriction === "ip" ? "Allowed IPs" : "Allowed Hostnames"}
-                    </Label>
+              {!generatePassword && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-white">Password</Label>
                     <div className="flex gap-2">
-                      <Input
-                        value={newHost}
-                        onChange={(e) => setNewHost(e.target.value)}
-                        placeholder={hostRestriction === "ip" ? "192.168.1.0/24" : "myserver.local"}
-                        className="bg-white/5 border-white/10"
-                        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addHost())}
-                      />
-                      <Button type="button" onClick={addHost} variant="outline">Add</Button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {allowedHosts.map((host) => (
-                        <Badge
-                          key={host}
-                          variant="secondary"
-                          className="bg-orange-500/20 text-orange-200 cursor-pointer hover:bg-red-500/20"
-                          onClick={() => removeHost(host)}
+                      <div className="relative flex-1">
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="Enter password"
+                          className="bg-white/5 border-white/10 pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
                         >
-                          {host} <X className="ml-1 h-3 w-3" />
-                        </Badge>
-                      ))}
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <Button type="button" variant="outline" onClick={handleGeneratePasswordManually}>
+                        Generate
+                      </Button>
                     </div>
                   </div>
-                )}
-              </GlassCardContent>
-            </GlassCard>
-          </TabsContent>
 
-          {/* Database Access Tab */}
-          {!ROLE_TEMPLATES[selectedRole].privileges.isAdmin && (
-            <TabsContent value="databases">
-              <GlassCard>
-                <GlassCardHeader>
-                  <GlassCardTitle className="flex items-center gap-2">
-                    <Database className="h-5 w-5 text-blue-400" />
-                    Database Access Control
-                  </GlassCardTitle>
-                </GlassCardHeader>
-                <GlassCardContent className="space-y-6">
-                  <p className="text-sm text-gray-400">
-                    Select databases and optionally restrict access to specific tables.
-                  </p>
-
-                  {/* Database selector */}
-                  <Select
-                    onValueChange={(dbName: string) => {
-                      if (!databaseAccess.some(d => d.database === dbName)) {
-                        setDatabaseAccess([...databaseAccess, { database: dbName, allTables: true, tables: [] }]);
-                        setExpandedDatabases(prev => new Set([...prev, dbName]));
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="bg-white/5 border-white/10">
-                      <SelectValue placeholder="Add database access..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {databasesData.map((db) => (
-                        <SelectItem 
-                          key={db.name} 
-                          value={db.name} 
-                          disabled={databaseAccess.some(d => d.database === db.name)}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Database className="h-3 w-3" />
-                            {db.name}
-                            <span className="text-xs text-gray-400">({db.children.length} tables)</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {/* Selected databases */}
-                  <div className="space-y-3">
-                    {databaseAccess.length === 0 && (
-                      <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-400">
-                        ⚠️ No databases selected. User will NOT have access to any data.
-                      </div>
+                  <div className="space-y-2">
+                    <Label className="text-white">Confirm Password</Label>
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm password"
+                      className="bg-white/5 border-white/10"
+                    />
+                    {confirmPassword && !passwordsMatch && (
+                      <p className="text-xs text-red-400">Passwords do not match</p>
                     )}
+                  </div>
 
-                    {databaseAccess.map((access) => {
-                      const dbInfo = databasesData.find(d => d.name === access.database);
-                      const tables = dbInfo?.children || [];
-                      const isExpanded = expandedDatabases.has(access.database);
+                  {/* Password Requirements */}
+                  <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+                    <p className="text-xs text-gray-400 mb-3">Password Requirements:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <RequirementItem fulfilled={passwordReqs.length} label="At least 12 characters" />
+                      <RequirementItem fulfilled={passwordReqs.upper} label="Uppercase letter" />
+                      <RequirementItem fulfilled={passwordReqs.lower} label="Lowercase letter" />
+                      <RequirementItem fulfilled={passwordReqs.number} label="Number" />
+                      <RequirementItem fulfilled={passwordReqs.special} label="Special character" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </GlassCardContent>
+          </GlassCard>
+        </div>
 
-                      return (
-                        <div key={access.database} className="rounded-lg border border-white/10 bg-white/5 overflow-hidden">
-                          {/* Database header */}
-                          <div className="flex items-center justify-between p-3 bg-white/5">
+        {/* Right Column - Role Selection */}
+        <div className="space-y-6">
+          <GlassCard>
+            <GlassCardHeader>
+              <GlassCardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-purple-400" />
+                Assign Roles <span className="text-red-400">*</span>
+              </GlassCardTitle>
+            </GlassCardHeader>
+            <GlassCardContent className="space-y-4">
+              {!canAssignRoles && (
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-400">
+                  You don't have permission to assign roles. The default role will be used.
+                </div>
+              )}
+
+              {loadingRoles ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {roles.map((role) => {
+                    const colors = ROLE_COLORS[role.name] || {
+                      icon: "🔹",
+                      color: "text-gray-400",
+                      bgColor: "bg-gray-500/20",
+                      borderColor: "border-gray-500/50",
+                    };
+                    const isSelected = selectedRoles.includes(role.id);
+
+                    return (
+                      <button
+                        key={role.id}
+                        type="button"
+                        onClick={() => canAssignRoles && toggleRole(role.id)}
+                        disabled={!canAssignRoles}
+                        className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                          isSelected
+                            ? `${colors.bgColor} ${colors.borderColor}`
+                            : "bg-white/5 border-white/10 hover:bg-white/10"
+                        } ${!canAssignRoles && "opacity-50 cursor-not-allowed"}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="text-2xl">{colors.icon}</div>
+                          <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const newExpanded = new Set(expandedDatabases);
-                                  if (newExpanded.has(access.database)) {
-                                    newExpanded.delete(access.database);
-                                  } else {
-                                    newExpanded.add(access.database);
-                                  }
-                                  setExpandedDatabases(newExpanded);
-                                }}
-                                className="p-1 hover:bg-white/10 rounded"
-                              >
-                                {isExpanded ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
-                              </button>
-                              <Database className="h-4 w-4 text-blue-400" />
-                              <span className="font-medium text-white">{access.database}</span>
-                              <Badge variant="outline" className="text-xs bg-white/5">
-                                {access.allTables ? "All tables" : `${access.tables.length} tables`}
-                              </Badge>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setDatabaseAccess(databaseAccess.filter(d => d.database !== access.database))}
-                              className="h-7 w-7 p-0 text-gray-400 hover:text-red-400"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-
-                          {/* Expanded content */}
-                          {isExpanded && (
-                            <div className="p-3 border-t border-white/10 space-y-3">
-                              {/* All tables toggle */}
-                              <div className="flex items-center justify-between p-2 rounded bg-white/5">
-                                <div className="flex items-center gap-2">
-                                  <Checkbox
-                                    id={`all-${access.database}`}
-                                    checked={access.allTables}
-                                    onCheckedChange={(checked) => {
-                                      setDatabaseAccess(databaseAccess.map(d => 
-                                        d.database === access.database 
-                                          ? { ...d, allTables: !!checked, tables: checked ? [] : d.tables }
-                                          : d
-                                      ));
-                                    }}
-                                  />
-                                  <label htmlFor={`all-${access.database}`} className="text-sm font-medium text-white cursor-pointer flex items-center gap-2">
-                                    <Layers className="h-4 w-4 text-purple-400" />
-                                    All Tables (*.*)
-                                  </label>
-                                </div>
-                              </div>
-
-                              {/* Specific tables */}
-                              {!access.allTables && (
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs text-gray-400">Select tables:</span>
-                                    <div className="flex gap-2">
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => {
-                                          setDatabaseAccess(databaseAccess.map(d => 
-                                            d.database === access.database 
-                                              ? { ...d, tables: tables.map(t => t.name) }
-                                              : d
-                                          ));
-                                        }}
-                                        className="h-6 text-xs"
-                                      >
-                                        Select All
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => {
-                                          setDatabaseAccess(databaseAccess.map(d => 
-                                            d.database === access.database 
-                                              ? { ...d, tables: [] }
-                                              : d
-                                          ));
-                                        }}
-                                        className="h-6 text-xs"
-                                      >
-                                        Clear
-                                      </Button>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 rounded bg-black/20">
-                                    {tables.map((table) => (
-                                      <div 
-                                        key={table.name}
-                                        className={cn(
-                                          "flex items-center gap-2 p-2 rounded cursor-pointer transition-colors",
-                                          access.tables.includes(table.name)
-                                            ? "bg-blue-500/20 border border-blue-500/30"
-                                            : "bg-white/5 border border-transparent hover:bg-white/10"
-                                        )}
-                                        onClick={() => {
-                                          const hasTable = access.tables.includes(table.name);
-                                          setDatabaseAccess(databaseAccess.map(d => 
-                                            d.database === access.database 
-                                              ? { 
-                                                  ...d, 
-                                                  tables: hasTable 
-                                                    ? d.tables.filter(t => t !== table.name)
-                                                    : [...d.tables, table.name]
-                                                }
-                                              : d
-                                          ));
-                                        }}
-                                      >
-                                        <Checkbox checked={access.tables.includes(table.name)} />
-                                        <Table2 className="h-3 w-3 text-gray-400" />
-                                        <span className="text-xs text-white truncate">{table.name}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
+                              <span className={`font-semibold ${isSelected ? colors.color : "text-white"}`}>
+                                {role.displayName}
+                              </span>
+                              {role.isDefault && (
+                                <span className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                  Default
+                                </span>
+                              )}
+                              {role.isSystem && (
+                                <span className="px-2 py-0.5 rounded text-xs bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                                  System
+                                </span>
                               )}
                             </div>
-                          )}
+                            <p className="text-xs text-gray-400 mt-1">{role.description}</p>
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {role.permissions.slice(0, 4).map((perm) => (
+                                <span
+                                  key={perm}
+                                  className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-gray-300"
+                                >
+                                  {perm}
+                                </span>
+                              ))}
+                              {role.permissions.length > 4 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-gray-400">
+                                  +{role.permissions.length - 4} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="shrink-0">
+                            <Checkbox checked={isSelected} disabled={!canAssignRoles} />
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
-                  {/* Query Logs Access */}
-                  <div className="p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-cyan-500/20">
-                          <FileText className="h-4 w-4 text-cyan-400" />
-                        </div>
-                        <div>
-                          <Label className="text-white font-medium">Query Logs Access</Label>
-                          <p className="text-xs text-gray-400">View own query history</p>
-                        </div>
-                      </div>
-                      <Switch checked={allowQueryLogs} onCheckedChange={setAllowQueryLogs} />
+              {selectedRoles.length === 0 && (
+                <p className="text-sm text-amber-400">⚠️ Please select at least one role</p>
+              )}
+            </GlassCardContent>
+          </GlassCard>
+
+          {/* Data Access Section */}
+          <GlassCard className={requiresDataAccess && dataAccessRules.length === 0 ? "border-red-500/50" : ""}>
+            <GlassCardHeader>
+              <button
+                type="button"
+                onClick={() => setShowDataAccessSection(!showDataAccessSection)}
+                className="flex items-center justify-between w-full"
+              >
+                <GlassCardTitle className="flex items-center gap-2">
+                  <Database className={`h-5 w-5 ${requiresDataAccess && dataAccessRules.length === 0 ? "text-red-400" : "text-cyan-400"}`} />
+                  Data Access Rules
+                  {requiresDataAccess && (
+                    <span className="text-red-400 text-xs">*</span>
+                  )}
+                  {dataAccessRules.length > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {dataAccessRules.length}
+                    </Badge>
+                  )}
+                  {requiresDataAccess && dataAccessRules.length === 0 && (
+                    <Badge variant="destructive" className="ml-2 text-xs">
+                      Required
+                    </Badge>
+                  )}
+                </GlassCardTitle>
+                {showDataAccessSection ? (
+                  <ChevronUp className="h-5 w-5 text-gray-400" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 text-gray-400" />
+                )}
+              </button>
+            </GlassCardHeader>
+            {showDataAccessSection && (
+              <GlassCardContent className="space-y-4">
+                {requiresDataAccess && dataAccessRules.length === 0 ? (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">Data access rules required</p>
+                      <p className="text-xs text-red-400/80 mt-1">
+                        Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access.
+                      </p>
                     </div>
                   </div>
-                </GlassCardContent>
-              </GlassCard>
-            </TabsContent>
-          )}
-
-          {/* DDL Preview Tab */}
-          <TabsContent value="ddl">
-            <GlassCard>
-              <GlassCardHeader>
-                <GlassCardTitle className="flex items-center gap-2">
-                  <Code className="h-5 w-5 text-cyan-400" />
-                  DDL Preview
-                </GlassCardTitle>
-              </GlassCardHeader>
-              <GlassCardContent className="space-y-4">
-                <p className="text-sm text-gray-400">
-                  Review the SQL statements that will be executed.
-                </p>
-
-                {/* Toggle for manual editing */}
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="custom-ddl"
-                    checked={useCustomDdl}
-                    onCheckedChange={(checked) => {
-                      setUseCustomDdl(!!checked);
-                      if (checked) {
-                        setCustomDdl(generatedDdl.join('\n'));
-                      }
-                    }}
-                  />
-                  <Label htmlFor="custom-ddl" className="text-sm text-gray-400 cursor-pointer">
-                    Edit manually
-                  </Label>
-                </div>
-
-                {/* DDL Display */}
-                {useCustomDdl ? (
-                  <Textarea
-                    value={customDdl}
-                    onChange={(e) => setCustomDdl(e.target.value)}
-                    className="min-h-[200px] font-mono text-sm bg-black/30 border-white/10 text-gray-300"
-                  />
                 ) : (
-                  <ScrollArea className="h-[200px] rounded-lg bg-black/30 border border-white/10">
-                    <pre className="p-4 font-mono text-sm text-gray-300 whitespace-pre-wrap">
-                      {generatedDdl.join('\n')}
-                    </pre>
-                  </ScrollArea>
+                  <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-sm text-cyan-300 flex items-start gap-2">
+                    <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p>Configure which databases and tables this user can access.</p>
+                      <p className="text-xs text-cyan-400/80 mt-1">
+                        Access type (read/write/admin) is determined by the user's role permissions.
+                      </p>
+                    </div>
+                  </div>
                 )}
 
-                {/* Action buttons */}
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={copyDdlToClipboard}
-                    className="gap-2"
-                  >
-                    <Copy className="h-4 w-4" />
-                    Copy DDL
-                  </Button>
-                </div>
-              </GlassCardContent>
-            </GlassCard>
-          </TabsContent>
-        </Tabs>
+                {dataAccessRules.length > 0 ? (
+                  <div className="space-y-2">
+                    {dataAccessRules.map((rule, index) => (
+                      <div
+                        key={rule.id}
+                        className="p-3 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant={rule.isAllowed ? "default" : "destructive"} className="text-xs">
+                              {rule.isAllowed ? "Allow" : "Deny"}
+                            </Badge>
+                            <span className="text-sm text-white font-mono truncate">
+                              {rule.databasePattern}.{rule.tablePattern}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {getConnectionName(rule.connectionId)}
+                            {rule.description && ` • ${rule.description}`}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDataAccessDialog(index)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-400 hover:text-red-300"
+                            onClick={() => handleDeleteDataAccessRule(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-400">
+                    <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No data access rules configured</p>
+                    <p className="text-xs text-gray-500 mt-1">User will have access based on role permissions only</p>
+                  </div>
+                )}
 
-        {/* Submit buttons */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={openAddDataAccessDialog}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Data Access Rule
+                </Button>
+              </GlassCardContent>
+            )}
+          </GlassCard>
+
+          {/* Summary Card */}
+          <GlassCard>
+            <GlassCardContent className="py-4">
+              <h3 className="text-sm font-medium text-gray-400 mb-3">Summary</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Email</span>
+                  <span className="text-white">{email || "-"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Username</span>
+                  <span className="text-white">{username || "-"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Password</span>
+                  <span className="text-white">{generatePassword ? "Auto-generated" : "Custom"}</span>
+                </div>
+                <div className="flex justify-between items-start">
+                  <span className="text-gray-400">Roles</span>
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {selectedRoles.length > 0
+                      ? selectedRoles.map((roleId) => {
+                          const role = roles.find((r) => r.id === roleId);
+                          return (
+                            <span
+                              key={roleId}
+                              className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300"
+                            >
+                              {role?.displayName || roleId}
+                            </span>
+                          );
+                        })
+                      : "-"}
+                  </div>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Data Access Rules</span>
+                  <span className="text-white">
+                    {dataAccessRules.length > 0 ? (
+                      <span className="text-cyan-400">{dataAccessRules.length} rule(s)</span>
+                    ) : requiresDataAccess ? (
+                      <span className="text-red-400">⚠️ Required</span>
+                    ) : (
+                      "None (admin bypass)"
+                    )}
+                  </span>
+                </div>
+              </div>
+            </GlassCardContent>
+          </GlassCard>
+        </div>
+      </div>
+
+      {/* Submit buttons */}
+      <div className="flex flex-col gap-3 pt-6 border-t border-white/10">
+        {requiresDataAccess && dataAccessRules.length === 0 && (
+          <div className="flex items-center justify-end gap-2 text-red-400 text-sm">
+            <AlertCircle className="h-4 w-4" />
+            Data access rules are required for non-admin roles
+          </div>
+        )}
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" onClick={() => navigate("/admin")}>
             Cancel
           </Button>
-          <Button onClick={onSubmit} disabled={isSubmitting} className="gap-2">
+          <Button onClick={onSubmit} disabled={isSubmitting || !isFormValid} className="gap-2">
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -935,6 +890,169 @@ const CreateUser: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Data Access Rule Dialog */}
+      <Dialog open={showDataAccessDialog} onOpenChange={setShowDataAccessDialog}>
+        <DialogContent className="bg-gray-900 border border-white/10">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-cyan-400" />
+              {editingRuleIndex !== null ? 'Edit' : 'Add'} Data Access Rule
+            </DialogTitle>
+            <DialogDescription>
+              Configure access to specific databases and tables.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Connection Selection */}
+            <div className="space-y-2">
+              <Label>Connection</Label>
+              <Select
+                value={dataAccessForm.connectionId || 'all'}
+                onValueChange={(value) =>
+                  setDataAccessForm({ ...dataAccessForm, connectionId: value === 'all' ? null : value })
+                }
+              >
+                <SelectTrigger className="bg-white/5 border-white/10">
+                  <SelectValue placeholder="Select connection" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Connections</SelectItem>
+                  {connections.map((conn) => (
+                    <SelectItem key={conn.id} value={conn.id}>
+                      {conn.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                Apply rule to a specific connection or all connections
+              </p>
+            </div>
+
+            {/* Database Pattern */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-blue-400" />
+                Database Pattern
+              </Label>
+              <Input
+                value={dataAccessForm.databasePattern}
+                onChange={(e) =>
+                  setDataAccessForm({ ...dataAccessForm, databasePattern: e.target.value })
+                }
+                placeholder="* (all databases) or specific_db"
+                className="bg-white/5 border-white/10 font-mono"
+              />
+              <p className="text-xs text-gray-500">
+                Use * for all databases, or specify a name/pattern
+              </p>
+            </div>
+
+            {/* Table Pattern */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Table2 className="h-4 w-4 text-green-400" />
+                Table Pattern
+              </Label>
+              <Input
+                value={dataAccessForm.tablePattern}
+                onChange={(e) =>
+                  setDataAccessForm({ ...dataAccessForm, tablePattern: e.target.value })
+                }
+                placeholder="* (all tables) or specific_table"
+                className="bg-white/5 border-white/10 font-mono"
+              />
+              <p className="text-xs text-gray-500">
+                Use * for all tables, or specify a name/pattern
+              </p>
+            </div>
+
+            {/* Allow/Deny Toggle */}
+            <TooltipProvider>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
+                <div className="flex items-center gap-2">
+                  <Label>Access Permission</Label>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="h-4 w-4 text-gray-400" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        Allow grants access, Deny blocks access even if other rules allow it
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm ${!dataAccessForm.isAllowed ? 'text-red-400' : 'text-gray-500'}`}>
+                    Deny
+                  </span>
+                  <Switch
+                    checked={dataAccessForm.isAllowed}
+                    onCheckedChange={(checked) =>
+                      setDataAccessForm({ ...dataAccessForm, isAllowed: checked })
+                    }
+                  />
+                  <span className={`text-sm ${dataAccessForm.isAllowed ? 'text-green-400' : 'text-gray-500'}`}>
+                    Allow
+                  </span>
+                </div>
+              </div>
+            </TooltipProvider>
+
+            {/* Priority */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                Priority
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="h-4 w-4 text-gray-400" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        Higher priority rules are evaluated first. Use this to override more general rules.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </Label>
+              <Input
+                type="number"
+                value={dataAccessForm.priority}
+                onChange={(e) =>
+                  setDataAccessForm({ ...dataAccessForm, priority: parseInt(e.target.value) || 0 })
+                }
+                className="bg-white/5 border-white/10"
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label>Description (Optional)</Label>
+              <Input
+                value={dataAccessForm.description}
+                onChange={(e) =>
+                  setDataAccessForm({ ...dataAccessForm, description: e.target.value })
+                }
+                placeholder="e.g., Production read access"
+                className="bg-white/5 border-white/10"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDataAccessDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveDataAccessRule}>
+              {editingRuleIndex !== null ? 'Update' : 'Add'} Rule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 };

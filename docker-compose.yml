@@ -1,5 +1,5 @@
 # Docker Compose for ClickHouse Studio
-# Includes both ClickHouse server and the UI
+# Includes both ClickHouse server and the UI with RBAC
 
 version: '3.8'
 
@@ -42,12 +42,15 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VERSION: ${VERSION:-1.6.4}
+        VERSION: ${VERSION:-2.0.0}
         COMMIT_SHA: ${COMMIT_SHA:-dev}
         BUILD_DATE: ${BUILD_DATE:-unknown}
     container_name: clickhouse-studio
     ports:
       - "5521:5521"
+    volumes:
+      # Persist RBAC SQLite database
+      - rbac_data:/app/data
     environment:
       NODE_ENV: production
       PORT: 5521
@@ -56,13 +59,30 @@ services:
       SESSION_TTL: ${SESSION_TTL:-3600000}
       # CORS settings
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      # ClickHouse connection settings
-      # Default URL pre-filled in login form (uses internal Docker network)
-      CLICKHOUSE_DEFAULT_URL: ${CLICKHOUSE_DEFAULT_URL:-http://clickhouse:8123}
-      # Comma-separated preset URLs for dropdown selection
-      CLICKHOUSE_PRESET_URLS: ${CLICKHOUSE_PRESET_URLS:-http://clickhouse:8123}
-      # Default username for convenience
-      CLICKHOUSE_DEFAULT_USER: ${CLICKHOUSE_DEFAULT_USER:-default}
+      # ============================================
+      # RBAC Configuration
+      # ============================================
+      # Database type: 'sqlite' (default) or 'postgres'
+      RBAC_DB_TYPE: ${RBAC_DB_TYPE:-sqlite}
+      # SQLite database path
+      RBAC_SQLITE_PATH: /app/data/rbac.db
+      # PostgreSQL connection (if using postgres)
+      RBAC_POSTGRES_URL: ${RBAC_POSTGRES_URL:-}
+      RBAC_POSTGRES_POOL_SIZE: ${RBAC_POSTGRES_POOL_SIZE:-10}
+      # JWT secret for authentication (CHANGE IN PRODUCTION!)
+      RBAC_JWT_SECRET: ${RBAC_JWT_SECRET:-change-me-in-production}
+      RBAC_JWT_ACCESS_EXPIRY: ${RBAC_JWT_ACCESS_EXPIRY:-15m}
+      RBAC_JWT_REFRESH_EXPIRY: ${RBAC_JWT_REFRESH_EXPIRY:-7d}
+      # Encryption key for connection passwords (CHANGE IN PRODUCTION!)
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-change-me-in-production}
+      # Default admin password (only used on first run)
+      RBAC_ADMIN_PASSWORD: ${RBAC_ADMIN_PASSWORD:-}
+      # ============================================
+      # Legacy ClickHouse settings (deprecated - use RBAC connections)
+      # ============================================
+      CLICKHOUSE_DEFAULT_URL: ${CLICKHOUSE_DEFAULT_URL:-}
+      CLICKHOUSE_PRESET_URLS: ${CLICKHOUSE_PRESET_URLS:-}
+      CLICKHOUSE_DEFAULT_USER: ${CLICKHOUSE_DEFAULT_USER:-}
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -91,4 +111,5 @@ volumes:
     driver: local
   clickhouse_logs:
     driver: local
-
+  rbac_data:
+    driver: local

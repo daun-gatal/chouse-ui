@@ -14,17 +14,22 @@ const ActivateSavedQueries: React.FC = () => {
   const handleActivate = async () => {
     setIsActivating(true);
     try {
-      // Create the saved_queries table
+      // Create the CH_UI database first
+      await executeQuery.mutateAsync({ query: "CREATE DATABASE IF NOT EXISTS CH_UI" });
+      
+      // Create the saved_queries table (matching backend schema)
       const createTableQuery = `
-        CREATE TABLE IF NOT EXISTS default.saved_queries (
+        CREATE TABLE IF NOT EXISTS CH_UI.saved_queries (
           id String,
           name String,
           query String,
-          created_at DateTime DEFAULT now(),
-          updated_at DateTime DEFAULT now(),
-          user String DEFAULT currentUser()
+          created_at DateTime64(3) DEFAULT now64(),
+          updated_at DateTime64(3) DEFAULT now64(),
+          owner String DEFAULT currentUser(),
+          is_public Boolean DEFAULT false
         ) ENGINE = MergeTree()
         ORDER BY (id, created_at)
+        SETTINGS index_granularity = 8192
       `;
 
       await executeQuery.mutateAsync({ query: createTableQuery });
@@ -97,8 +102,8 @@ const ActivateSavedQueries: React.FC = () => {
 
           <div className="text-sm text-gray-400 space-y-2">
             <p>
-              When enabled, the saved queries feature creates a table in the default database
-              to store your SQL queries. This allows you to:
+              When enabled, the saved queries feature creates a <code className="text-cyan-400">CH_UI</code> database
+              with a <code className="text-cyan-400">saved_queries</code> table to store your SQL queries. This allows you to:
             </p>
             <ul className="list-disc list-inside space-y-1 ml-2">
               <li>Save frequently used queries</li>
