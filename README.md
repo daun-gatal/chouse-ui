@@ -201,8 +201,8 @@ docker build -t clickhouse-studio .
 docker run -d \
   -p 5521:5521 \
   -v clickhouse-studio-data:/app/data \
-  -e RBAC_JWT_SECRET=$(openssl rand -base64 32) \
-  -e ENCRYPTION_KEY=$(openssl rand -hex 32) \
+  -e JWT_SECRET=$(openssl rand -base64 32) \
+  -e RBAC_ENCRYPTION_KEY=$(openssl rand -hex 32) \
   -e RBAC_ADMIN_PASSWORD="YourSecurePassword123!" \
   clickhouse-studio
 ```
@@ -215,8 +215,8 @@ bun run build:web
 
 # Start production server
 NODE_ENV=production \
-RBAC_JWT_SECRET=your-secret \
-ENCRYPTION_KEY=your-key \
+JWT_SECRET=your-secret \
+RBAC_ENCRYPTION_KEY=your-key \
 bun run packages/server/src/index.ts
 ```
 
@@ -252,12 +252,12 @@ spec:
             secretKeyRef:
               name: clickhouse-studio-secrets
               key: postgres-url
-        - name: RBAC_JWT_SECRET
+        - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
               name: clickhouse-studio-secrets
               key: jwt-secret
-        - name: ENCRYPTION_KEY
+        - name: RBAC_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
               name: clickhouse-studio-secrets
@@ -292,16 +292,16 @@ spec:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RBAC_JWT_SECRET` | JWT signing secret | **Required in production** |
-| `RBAC_JWT_ACCESS_EXPIRY` | Access token expiry | `15m` |
-| `RBAC_JWT_REFRESH_EXPIRY` | Refresh token expiry | `7d` |
+| `JWT_SECRET` | JWT signing secret | **Required in production** |
+| `JWT_ACCESS_EXPIRY` | Access token expiry | `15m` |
+| `JWT_REFRESH_EXPIRY` | Refresh token expiry | `7d` |
 | `RBAC_ADMIN_PASSWORD` | Initial admin password | `Admin123!@#` |
 
 #### Security
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ENCRYPTION_KEY` | AES-256 key for passwords | **Required in production** |
+| `RBAC_ENCRYPTION_KEY` | AES-256 key for passwords | **Required in production** |
 | `SESSION_TTL` | Session timeout (ms) | `3600000` |
 
 ### Generating Secrets
@@ -477,8 +477,8 @@ clickhouse-studio/
 
 ### Production Checklist
 
-- [ ] Generate unique `RBAC_JWT_SECRET` (min 32 bytes)
-- [ ] Generate unique `ENCRYPTION_KEY` (32 bytes hex)
+- [ ] Generate unique `JWT_SECRET` (min 32 bytes)
+- [ ] Generate unique `RBAC_ENCRYPTION_KEY` (32 bytes hex)
 - [ ] Change default admin password
 - [ ] Set `CORS_ORIGIN` to your domain
 - [ ] Use PostgreSQL for multi-instance deployments

@@ -83,11 +83,11 @@ services:
       RBAC_POSTGRES_URL: postgres://${POSTGRES_USER:-chstudio}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-clickhouse_studio}
       RBAC_POSTGRES_POOL_SIZE: ${RBAC_POSTGRES_POOL_SIZE:-10}
       # JWT secret (CHANGE IN PRODUCTION!)
-      RBAC_JWT_SECRET: ${RBAC_JWT_SECRET:-change-me-in-production}
-      RBAC_JWT_ACCESS_EXPIRY: ${RBAC_JWT_ACCESS_EXPIRY:-15m}
-      RBAC_JWT_REFRESH_EXPIRY: ${RBAC_JWT_REFRESH_EXPIRY:-7d}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
+      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
       # Encryption key (CHANGE IN PRODUCTION!)
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-change-me-in-production}
+      RBAC_ENCRYPTION_KEY: ${RBAC_ENCRYPTION_KEY:-change-me-in-production}
       # Admin password (only used on first run)
       RBAC_ADMIN_PASSWORD: ${RBAC_ADMIN_PASSWORD:-}
     depends_on:
