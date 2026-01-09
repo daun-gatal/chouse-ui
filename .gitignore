@@ -23,6 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.*
 !.env.example
 
 
@@ -33,6 +34,3 @@ dist-ssr
 packages/server/data/*.db
 packages/server/data/*.db-shm
 packages/server/data/*.db-wal
-data/*.db
-data/*.db-shm
-data/*.db-wal

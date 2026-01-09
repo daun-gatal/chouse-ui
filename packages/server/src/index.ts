@@ -47,10 +47,14 @@ app.use("*", async (c, next) => {
   }
 });
 
-// CORS
+// CORS - In production, strict mode blocks requests from unauthorized origins
 app.use("*", corsMiddleware({
-  origin: CORS_ORIGIN === "*" ? "*" : CORS_ORIGIN.split(","),
+  origin: CORS_ORIGIN === "*" ? "*" : CORS_ORIGIN.split(",").map(o => o.trim()),
   credentials: true,
+  // Strict mode: reject requests from disallowed origins
+  // In development with CORS_ORIGIN=*, allow all origins
+  // In production, only allow specified origins
+  strictMode: NODE_ENV === "production" && CORS_ORIGIN !== "*",
 }));
 
 // Request logging in development
