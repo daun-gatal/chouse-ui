@@ -24,20 +24,17 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Dependencies (Root)
+      - name: Install Dependencies
         run: bun install
-
-      - name: Install Dependencies (Server)
-        run: cd packages/server && bun install
 
       - name: Lint Frontend
         run: bun run lint
 
       - name: Type Check Frontend
-        run: bun run tsc --noEmit
+        run: NODE_OPTIONS="--max-old-space-size=8192" bun run tsc --noEmit
 
       - name: Type Check Server
-        run: cd packages/server && bun run tsc --noEmit
+        run: cd packages/server && NODE_OPTIONS="--max-old-space-size=4096" bun run tsc --noEmit
 
   build:
     name: Build

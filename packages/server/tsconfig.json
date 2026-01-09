@@ -12,6 +12,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "incremental": true,
     "resolveJsonModule": true,
     "types": ["bun-types"],
     "paths": {
