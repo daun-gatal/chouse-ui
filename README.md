@@ -499,28 +499,92 @@ clickhouse-studio/
 
 ---
 
-## CLI Tools
+## Database Migrations
 
-Manage the RBAC database from command line:
+### Automatic Migrations
+
+**Migrations run automatically on server startup.** No manual intervention required.
+
+```
+Server Start
+    │
+    ▼
+initializeRbac()
+    │
+    ├── Check current DB version
+    ├── Run pending migrations (if any)
+    └── Seed defaults (first run only)
+```
+
+| Scenario | What Happens |
+|----------|--------------|
+| **Fresh install** | Creates full schema → Seeds roles, permissions, admin user |
+| **Version upgrade** | Detects version diff → Applies only pending migrations |
+| **Normal restart** | Version matches → No migrations needed |
+
+### Manual Migration (Optional)
+
+For advanced scenarios (pre-flight checks, debugging), use CLI tools:
 
 ```bash
 cd packages/server
 
-# Check migration status
+# Check current status and pending migrations
 bun run rbac:status
 
-# Run migrations
+# Output example:
+# Current version: 1.1.0
+# Target version: 1.2.0
+# Pending migrations:
+#   - 1.2.0: user_data_access_rules
+
+# Run migrations manually
 bun run rbac:migrate
 
-# Seed default data
-bun run rbac:seed
-
-# Check version
+# Check version only
 bun run rbac:version
 
-# Reset database (DANGEROUS!)
+# Seed default data (if missing)
+bun run rbac:seed
+
+# Reset database (⚠️ DESTRUCTIVE - deletes all data!)
 CONFIRM_RESET=yes bun run rbac:reset
 ```
+
+### Upgrading ClickHouse Studio
+
+```bash
+# 1. Pull latest version
+docker pull ghcr.io/daun-gatal/clickhouse-studio:latest
+
+# 2. Restart container - migrations run automatically
+docker-compose up -d
+
+# 3. Check logs for migration status
+docker logs clickhouse-studio | grep RBAC
+```
+
+Expected output on upgrade:
+```
+[RBAC] ========================================
+[RBAC] Initializing RBAC system...
+[RBAC] Database type: sqlite
+[RBAC] App version: 1.2.0
+[RBAC] ========================================
+[RBAC] Current DB version: 1.1.0
+[RBAC] Running migration: 1.2.0 - user_data_access_rules
+[RBAC] Migration complete
+RBAC system ready
+```
+
+### Troubleshooting Migrations
+
+| Issue | Solution |
+|-------|----------|
+| Migration fails | Check logs, ensure DB is accessible |
+| Wrong permissions | Ensure volume/file ownership matches container user |
+| PostgreSQL connection | Verify `RBAC_POSTGRES_URL` is correct |
+| Reset needed | Use `CONFIRM_RESET=yes bun run rbac:reset` |
 
 ---
 

@@ -7,10 +7,9 @@
 
 import { drizzle as drizzleSqlite } from 'drizzle-orm/bun-sqlite';
 import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js';
+import { sql } from 'drizzle-orm';
 import { Database } from 'bun:sqlite';
 import postgres from 'postgres';
-import { migrate as migrateSqlite } from 'drizzle-orm/bun-sqlite/migrator';
-import { migrate as migratePostgres } from 'drizzle-orm/postgres-js/migrator';
 
 import * as sqliteSchema from '../schema/sqlite';
 import * as postgresSchema from '../schema/postgres';
@@ -143,26 +142,6 @@ export function getSchema() {
 }
 
 /**
- * Run database migrations
- */
-export async function runMigrations(): Promise<void> {
-  const db = getDatabase();
-  const migrationsFolder = isSqlite() 
-    ? './src/rbac/migrations/sqlite'
-    : './src/rbac/migrations/postgres';
-
-  console.log(`[RBAC] Running migrations from ${migrationsFolder}`);
-
-  if (isSqlite()) {
-    await migrateSqlite(db as SqliteDb, { migrationsFolder });
-  } else {
-    await migratePostgres(db as PostgresDb, { migrationsFolder });
-  }
-
-  console.log('[RBAC] Migrations completed');
-}
-
-/**
  * Close database connection
  */
 export async function closeDatabase(): Promise<void> {
@@ -190,9 +169,9 @@ export async function checkDatabaseHealth(): Promise<{ healthy: boolean; type: D
     
     // Simple query to check connection
     if (isSqlite()) {
-      (db as SqliteDb).run(sqliteSchema.sql`SELECT 1`);
+      (db as SqliteDb).run(sql`SELECT 1`);
     } else {
-      await (db as PostgresDb).execute(postgresSchema.sql`SELECT 1`);
+      await (db as PostgresDb).execute(sql`SELECT 1`);
     }
     
     return { healthy: true, type };
@@ -205,8 +184,7 @@ export async function checkDatabaseHealth(): Promise<{ healthy: boolean; type: D
   }
 }
 
-// Import sql from drizzle for raw queries
-import { sql } from 'drizzle-orm';
+// Re-export sql for convenience
 export { sql };
 
 // Export migration utilities
