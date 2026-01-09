@@ -5,6 +5,7 @@ import api from "./routes";
 import { corsMiddleware } from "./middleware/cors";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { cleanupExpiredSessions, getSessionCount } from "./services/clickhouse";
+import { initializeRbac, shutdownRbac } from "./rbac";
 
 // Configuration
 const PORT = parseInt(process.env.PORT || "5521", 10);
@@ -46,10 +47,14 @@ app.use("*", async (c, next) => {
   }
 });
 
-// CORS
+// CORS - In production, strict mode blocks requests from unauthorized origins
 app.use("*", corsMiddleware({
-  origin: CORS_ORIGIN === "*" ? "*" : CORS_ORIGIN.split(","),
+  origin: CORS_ORIGIN === "*" ? "*" : CORS_ORIGIN.split(",").map(o => o.trim()),
   credentials: true,
+  // Strict mode: reject requests from disallowed origins
+  // In development with CORS_ORIGIN=*, allow all origins
+  // In production, only allow specified origins
+  strictMode: NODE_ENV === "production" && CORS_ORIGIN !== "*",
 }));
 
 // Request logging in development
@@ -118,6 +123,14 @@ console.log(`
 ╚══════════════════════════════════════════════════╝
 `);
 
+// Initialize RBAC system
+initializeRbac().then(() => {
+  console.log('RBAC system ready');
+}).catch((error) => {
+  console.error('Failed to initialize RBAC:', error);
+  // Continue without RBAC - it's optional for backward compatibility
+});
+
 // Start session cleanup interval
 const cleanupInterval = setInterval(async () => {
   const cleaned = await cleanupExpiredSessions(SESSION_MAX_AGE);
@@ -127,15 +140,17 @@ const cleanupInterval = setInterval(async () => {
 }, SESSION_CLEANUP_INTERVAL);
 
 // Handle graceful shutdown
-process.on("SIGINT", () => {
+process.on("SIGINT", async () => {
   console.log("\nShutting down...");
   clearInterval(cleanupInterval);
+  await shutdownRbac();
   process.exit(0);
 });
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   console.log("\nShutting down...");
   clearInterval(cleanupInterval);
+  await shutdownRbac();
   process.exit(0);
 });
 

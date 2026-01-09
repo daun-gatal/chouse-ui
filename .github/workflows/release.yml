@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'CHANGELOG.md'
+
+jobs:
+  tag-and-release:
+    name: Tag and Release from Changelog
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Latest Version
+        id: extract_version
+        run: |
+          # Extract the top-most version header (e.g., "## [v2.0.0]")
+          VERSION_HEADER=$(grep -m 1 "^## \[v" CHANGELOG.md)
+          
+          if [ -z "$VERSION_HEADER" ]; then
+            echo "No version header found in CHANGELOG.md"
+            exit 1
+          fi
+
+          # Extract "v2.0.0" from "## [v2.0.0] - 2026-01-09"
+          VERSION=$(echo "$VERSION_HEADER" | sed -n 's/^## \[\(v[^]]*\)\].*/\1/p')
+
+          if [ -z "$VERSION" ]; then
+            echo "Could not parse version from header: $VERSION_HEADER"
+            exit 1
+          fi
+
+          echo "Detected version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if Tag Exists
+        id: check_tag
+        env:
+          VERSION: ${{ steps.extract_version.outputs.version }}
+        run: |
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists. Skipping."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Tag $VERSION does not exist."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and Push Tag
+        if: steps.check_tag.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.extract_version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+          echo "Successfully pushed tag $VERSION"
+
+      - name: Extract Release Notes
+        if: steps.check_tag.outputs.exists == 'false'
+        id: release_notes
+        env:
+          VERSION: ${{ steps.extract_version.outputs.version }}
+        run: |
+          # Extract the section for this version from CHANGELOG.md
+          # Gets everything between the current version header and the next version header
+          awk -v tag="[$VERSION]" '
+            /^## \[v/ { 
+              if (found) exit
+              if (index($0, tag) > 0) { found=1; next }
+            }
+            found { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          
+          echo "Extracted Release Notes:"
+          cat RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.extract_version.outputs.version }}
+          name: ${{ steps.extract_version.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+
+  build-and-push:
+    name: Build and Push Docker Image
+    needs: tag-and-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Version
+        id: version
+        run: |
+          VERSION=$(grep -m 1 "^## \[v" CHANGELOG.md | sed -n 's/^## \[\(v[^]]*\)\].*/\1/p')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_number=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=${{ steps.version.outputs.version_number }}
+            type=sha,prefix=sha-
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version_number }}
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64

@@ -5,16 +5,28 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun"
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "rbac:status": "bun run src/rbac/cli.ts status",
+    "rbac:migrate": "bun run src/rbac/cli.ts migrate",
+    "rbac:seed": "bun run src/rbac/cli.ts seed",
+    "rbac:reset": "bun run src/rbac/cli.ts reset",
+    "rbac:version": "bun run src/rbac/cli.ts version"
   },
   "dependencies": {
     "@clickhouse/client": "^1.16.0",
     "@hono/zod-validator": "^0.7.6",
+    "drizzle-orm": "^0.38.3",
     "hono": "^4.11.3",
+    "jose": "^5.9.6",
+    "postgres": "^3.4.5",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "drizzle-kit": "^0.30.1",
     "typescript": "^5.9.0"
   }
 }

@@ -3,7 +3,6 @@ import Sidebar from "@/components/common/Sidebar";
 import HomePage from "@/pages/Home";
 import MetricsPage from "@/pages/Metrics";
 import SettingsPage from "@/pages/Settings";
-import { RestrictedRoute } from "@/components/common/RestrictedRoute";
 import { DefaultRedirect } from "@/components/common/DefaultRedirect";
 import { ThemeProvider } from "@/components/common/theme-provider";
 import AppInitializer from "@/components/common/AppInit";
@@ -16,6 +15,7 @@ import ExplorerPage from "@/pages/Explorer";
 import { AdminRoute } from "@/features/admin/routes/adminRoute";
 import CreateUser from "@/features/admin/components/CreateUser";
 import EditUser from "@/features/admin/components/EditUser";
+import { RBAC_PERMISSIONS } from "@/stores/rbac";
 
 // Layout for the main application (authenticated routes)
 const MainLayout = () => {
@@ -41,7 +41,7 @@ export default function App() {
       <Router basename={import.meta.env.BASE_URL}>
         <AppInitializer>
           <Routes>
-            {/* Public/Standalone Routes */}
+            {/* Public Routes */}
             <Route path="/login" element={<Login />} />
 
             {/* Authenticated Application Routes */}
@@ -53,19 +53,28 @@ export default function App() {
               <Route
                 path="/overview"
                 element={
-                  <RestrictedRoute>
+                  <PrivateRoute>
                     <HomePage />
-                  </RestrictedRoute>
+                  </PrivateRoute>
                 }
               />
+              
+              {/* Metrics */}
               <Route
                 path="/metrics"
                 element={
-                  <RestrictedRoute>
+                  <AdminRoute
+                    requiredPermission={[
+                      RBAC_PERMISSIONS.METRICS_VIEW,
+                      RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
+                    ]}
+                  >
                     <MetricsPage />
-                  </RestrictedRoute>
+                  </AdminRoute>
                 }
               />
+              
+              {/* Logs */}
               <Route
                 path="/logs"
                 element={
@@ -74,6 +83,8 @@ export default function App() {
                   </PrivateRoute>
                 }
               />
+              
+              {/* Explorer */}
               <Route
                 path="/explorer"
                 element={
@@ -82,31 +93,55 @@ export default function App() {
                   </PrivateRoute>
                 }
               />
+              
+              {/* Administration - RBAC User Management */}
               <Route
                 path="/admin"
                 element={
-                  <AdminRoute>
+                  <AdminRoute
+                    requiredPermission={[
+                      RBAC_PERMISSIONS.USERS_VIEW,
+                      RBAC_PERMISSIONS.USERS_CREATE,
+                      RBAC_PERMISSIONS.ROLES_VIEW,
+                      RBAC_PERMISSIONS.AUDIT_VIEW,
+                    ]}
+                  >
                     <Admin />
                   </AdminRoute>
                 }
               />
+              
+              {/* Create User */}
               <Route
                 path="/admin/users/create"
                 element={
-                  <AdminRoute>
+                  <AdminRoute requiredPermission={RBAC_PERMISSIONS.USERS_CREATE}>
                     <CreateUser />
                   </AdminRoute>
                 }
               />
+              
+              {/* Edit User - using userId */}
               <Route
-                path="/admin/users/edit/:username"
+                path="/admin/users/edit/:userId"
                 element={
-                  <AdminRoute>
+                  <AdminRoute requiredPermission={RBAC_PERMISSIONS.USERS_UPDATE}>
                     <EditUser />
                   </AdminRoute>
                 }
               />
-              <Route path="/settings" element={<SettingsPage />} />
+              
+              {/* Settings */}
+              <Route
+                path="/settings"
+                element={
+                  <PrivateRoute>
+                    <SettingsPage />
+                  </PrivateRoute>
+                }
+              />
+              
+              {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

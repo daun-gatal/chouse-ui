@@ -1,11 +1,17 @@
-import { useEffect, useMemo } from "react";
+/**
+ * Login Page
+ * 
+ * RBAC-based authentication for ClickHouse Studio.
+ * Users authenticate against the RBAC system, not directly to ClickHouse.
+ */
+
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Database, ChevronRight, Server } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { useAuthStore } from "@/stores";
-import { useConfig } from "@/hooks";
+import { Loader2, Shield, ChevronRight, User, Lock, Eye, EyeOff } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useRbacStore } from "@/stores";
 import { motion } from "framer-motion";
 
 import {
@@ -26,20 +32,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { withBasePath } from "@/lib/basePath";
 
 // Schema for the login form
 const loginSchema = z.object({
-  url: z.string().min(1, "ClickHouse URL is required"),
-  username: z.string().min(1, "Username is required"),
-  password: z.string().optional(),
+  identifier: z.string().min(1, "Email or username is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -48,60 +46,24 @@ const Logo = withBasePath("logo.svg");
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, isLoading, error, isAuthenticated, clearError } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/";
   
-  // Fetch server config (for Docker env vars)
-  const { data: serverConfig } = useConfig();
-
-  // Merge URLs from multiple sources:
-  // 1. Server config (Docker env vars) - CLICKHOUSE_PRESET_URLS
-  // 2. Vite env vars (local dev) - VITE_CLICKHOUSE_URLS
-  const { availableUrls, defaultUrl, defaultUser } = useMemo(() => {
-    const viteUrls = window.env?.VITE_CLICKHOUSE_URLS || [];
-    const serverUrls = serverConfig?.clickhouse?.presetUrls || [];
-    const serverDefaultUrl = serverConfig?.clickhouse?.defaultUrl || "";
-    const serverDefaultUser = serverConfig?.clickhouse?.defaultUser || "default";
-    
-    // Combine URLs (server takes priority, then vite)
-    const allUrls = [...new Set([...serverUrls, ...viteUrls])].filter(Boolean);
-    
-    // If we have preset URLs, use first one as default; otherwise use server's default
-    const defaultUrlValue = allUrls.length > 0 ? allUrls[0] : serverDefaultUrl;
-    
-    return {
-      availableUrls: allUrls,
-      defaultUrl: defaultUrlValue,
-      defaultUser: serverDefaultUser,
-    };
-  }, [serverConfig]);
+  const { login, isLoading, error, isAuthenticated, clearError } = useRbacStore();
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      url: defaultUrl,
-      username: defaultUser,
+      identifier: "",
       password: "",
     },
   });
 
-  // Update form when config loads
-  useEffect(() => {
-    if (defaultUrl && !form.getValues("url")) {
-      form.setValue("url", defaultUrl);
-    }
-    if (defaultUser) {
-      form.setValue("username", defaultUser);
-    }
-  }, [defaultUrl, defaultUser, form]);
-
   const onSubmit = async (values: LoginFormData) => {
     clearError();
     try {
-      await login({
-        url: values.url,
-        username: values.username,
-        password: values.password || "",
-      });
+      await login(values.identifier, values.password);
     } catch (err) {
       // Error is handled by the store
       console.error("Login failed:", err);
@@ -110,9 +72,9 @@ export default function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate("/");
+      navigate(redirectTo);
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, redirectTo]);
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-[#0a0a0a] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.3),rgba(255,255,255,0))] px-4 overflow-hidden relative">
@@ -147,7 +109,7 @@ export default function Login() {
                 ClickHouse Studio
               </CardTitle>
               <CardDescription className="text-base text-gray-400">
-                Connect to your ClickHouse server
+                Sign in to your account
               </CardDescription>
             </div>
           </CardHeader>
@@ -156,61 +118,19 @@ export default function Login() {
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
                 <FormField
                   control={form.control}
-                  name="url"
+                  name="identifier"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-gray-300">Server URL</FormLabel>
-                      {availableUrls.length > 0 ? (
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="bg-white/5 border-white/10 text-white placeholder:text-gray-500 hover:bg-white/10 transition-colors h-11 overflow-hidden justify-start">
-                              <div className="flex items-center gap-2 w-full overflow-x-auto whitespace-nowrap">
-                                <Database className="w-4 h-4 text-purple-400 shrink-0" />
-                                <SelectValue placeholder="Select a ClickHouse server" />
-                              </div>
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="bg-[#1a1a1a] border-white/10 text-white">
-                            {availableUrls.map((url, idx) => (
-                              <SelectItem
-                                key={`${url}-${idx}`}
-                                value={url}
-                                className="focus:bg-white/10 focus:text-white cursor-pointer"
-                              >
-                                {url}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <FormControl>
-                          <div className="relative">
-                            <Server className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
-                            <Input
-                              placeholder="http://localhost:8123"
-                              {...field}
-                              className="pl-9 bg-white/5 border-white/10 text-white h-11"
-                            />
-                          </div>
-                        </FormControl>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-gray-300">Username</FormLabel>
+                      <FormLabel className="text-gray-300">Email or Username</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="default"
-                          {...field}
-                          className="bg-white/5 border-white/10 text-white h-11"
-                        />
+                        <div className="relative">
+                          <User className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                          <Input
+                            placeholder="Enter your email or username"
+                            {...field}
+                            className="pl-9 bg-white/5 border-white/10 text-white h-11"
+                          />
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -224,12 +144,26 @@ export default function Login() {
                     <FormItem>
                       <FormLabel className="text-gray-300">Password</FormLabel>
                       <FormControl>
-                        <Input
-                          type="password"
-                          placeholder="••••••••"
-                          {...field}
-                          className="bg-white/5 border-white/10 text-white h-11"
-                        />
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                          <Input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="••••••••"
+                            {...field}
+                            className="pl-9 pr-10 bg-white/5 border-white/10 text-white h-11"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-3.5 text-gray-400 hover:text-white transition-colors"
+                          >
+                            {showPassword ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -254,11 +188,11 @@ export default function Login() {
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Connecting...
+                      Signing in...
                     </>
                   ) : (
                     <>
-                      Connect
+                      Sign In
                       <ChevronRight className="ml-2 h-4 w-4 opacity-70" />
                     </>
                   )}
@@ -266,10 +200,11 @@ export default function Login() {
               </form>
             </Form>
           </CardContent>
-          <CardFooter className="flex justify-center py-6">
-            <p className="text-xs text-gray-500">
-              Secure session-based authentication
-            </p>
+          <CardFooter className="flex flex-col items-center gap-2 py-6">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Shield className="w-3 h-3" />
+              Role-based access control
+            </div>
           </CardFooter>
         </Card>
       </motion.div>

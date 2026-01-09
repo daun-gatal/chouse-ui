@@ -21,6 +21,7 @@ export interface Session {
   isAdmin: boolean;
   permissions: string[];
   version: string;
+  rbacConnectionId?: string; // The RBAC connection ID this session is connected to
 }
 
 export interface SessionInfo {

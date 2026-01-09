@@ -26,9 +26,6 @@ COPY . .
 # Build frontend
 RUN bun run build:web
 
-# Build server (optional - can run from source with Bun)
-# RUN cd packages/server && bun run build
-
 # ============================================
 # Production Stage
 # ============================================
@@ -62,16 +59,19 @@ RUN bun install --production
 # Back to app root
 WORKDIR /app
 
+# Create data directory for RBAC SQLite database
+RUN mkdir -p /app/data
+
 # Create non-root user for security
 RUN addgroup -S ch-group -g 1001 && \
     adduser -S ch-user -u 1001 -G ch-group
 
-# Set ownership
+# Set ownership (including data directory)
 RUN chown -R ch-user:ch-group /app
 
 # Add metadata labels
 LABEL org.opencontainers.image.title="ClickHouse Studio" \
-      org.opencontainers.image.description="A modern web interface for ClickHouse databases" \
+      org.opencontainers.image.description="A modern web interface for ClickHouse databases with RBAC" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT_SHA}" \
@@ -87,13 +87,43 @@ ENV NODE_ENV=production \
     # CORS settings - override with your domain in production
     # Example: CORS_ORIGIN=https://your-domain.com
     CORS_ORIGIN=* \
-    # ClickHouse connection settings (optional)
-    # Default URL pre-filled in login form
+    # ============================================
+    # RBAC Configuration
+    # ============================================
+    # Database type: 'sqlite' (default) or 'postgres'
+    RBAC_DB_TYPE=sqlite \
+    # SQLite database path (used when RBAC_DB_TYPE=sqlite)
+    RBAC_SQLITE_PATH=/app/data/rbac.db \
+    # PostgreSQL connection URL (used when RBAC_DB_TYPE=postgres)
+    # Example: postgres://user:password@host:5432/dbname
+    RBAC_POSTGRES_URL="" \
+    # PostgreSQL connection pool size
+    RBAC_POSTGRES_POOL_SIZE=10 \
+    # JWT secret for RBAC authentication (CHANGE IN PRODUCTION!)
+    # Generate with: openssl rand -base64 32
+    RBAC_JWT_SECRET=change-me-in-production-use-openssl-rand-base64-32 \
+    # JWT access token expiry (default: 15 minutes)
+    RBAC_JWT_ACCESS_EXPIRY=15m \
+    # JWT refresh token expiry (default: 7 days)
+    RBAC_JWT_REFRESH_EXPIRY=7d \
+    # Encryption key for ClickHouse connection passwords (CHANGE IN PRODUCTION!)
+    # Generate with: openssl rand -hex 32
+    ENCRYPTION_KEY=change-me-in-production-use-openssl-rand-hex-32 \
+    # Default admin password (only used on first run)
+    # IMPORTANT: Change this or set a strong password via environment
+    RBAC_ADMIN_PASSWORD="" \
+    # ============================================
+    # Legacy ClickHouse settings (optional)
+    # ============================================
+    # Default URL pre-filled in login form (deprecated - use RBAC connections)
     CLICKHOUSE_DEFAULT_URL="" \
-    # Comma-separated list of preset URLs for dropdown
+    # Comma-separated list of preset URLs for dropdown (deprecated)
     CLICKHOUSE_PRESET_URLS="" \
-    # Default username (optional, for convenience)
+    # Default username (deprecated)
     CLICKHOUSE_DEFAULT_USER=""
+
+# Volume for persistent RBAC data (SQLite database)
+VOLUME ["/app/data"]
 
 # Expose port
 EXPOSE 5521
