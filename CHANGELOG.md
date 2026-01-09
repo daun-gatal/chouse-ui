@@ -87,8 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    ```bash
    # New required variables
    RBAC_DB_TYPE=sqlite|postgres
-   RBAC_JWT_SECRET=<your-secret-key>
-   ENCRYPTION_KEY=<32-char-key-for-aes>
+   JWT_SECRET=<your-secret-key>
+   RBAC_ENCRYPTION_KEY=<32-char-key-for-aes>
    
    # For SQLite
    RBAC_SQLITE_PATH=./data/rbac.db

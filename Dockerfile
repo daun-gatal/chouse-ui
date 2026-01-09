@@ -101,14 +101,14 @@ ENV NODE_ENV=production \
     RBAC_POSTGRES_POOL_SIZE=10 \
     # JWT secret for RBAC authentication (CHANGE IN PRODUCTION!)
     # Generate with: openssl rand -base64 32
-    RBAC_JWT_SECRET=change-me-in-production-use-openssl-rand-base64-32 \
+    JWT_SECRET=change-me-in-production-use-openssl-rand-base64-32 \
     # JWT access token expiry (default: 15 minutes)
-    RBAC_JWT_ACCESS_EXPIRY=15m \
+    JWT_ACCESS_EXPIRY=15m \
     # JWT refresh token expiry (default: 7 days)
-    RBAC_JWT_REFRESH_EXPIRY=7d \
+    JWT_REFRESH_EXPIRY=7d \
     # Encryption key for ClickHouse connection passwords (CHANGE IN PRODUCTION!)
     # Generate with: openssl rand -hex 32
-    ENCRYPTION_KEY=change-me-in-production-use-openssl-rand-hex-32 \
+    RBAC_ENCRYPTION_KEY=change-me-in-production-use-openssl-rand-hex-32 \
     # Default admin password (only used on first run)
     # IMPORTANT: Change this or set a strong password via environment
     RBAC_ADMIN_PASSWORD="" \
