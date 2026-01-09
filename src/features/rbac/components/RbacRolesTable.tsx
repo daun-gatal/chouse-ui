@@ -227,14 +227,12 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
                     {/* Role Header */}
                     <div className="flex items-center justify-between p-4">
                       <div className="flex items-center gap-4">
-                        <CollapsibleTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <CollapsibleTrigger className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md hover:bg-white/10 transition-colors">
                             {isExpanded ? (
                               <ChevronDown className="h-4 w-4" />
                             ) : (
                               <ChevronRight className="h-4 w-4" />
                             )}
-                          </Button>
                         </CollapsibleTrigger>
                         <div className="text-2xl">{style.icon}</div>
                         <div>
@@ -291,7 +289,7 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
                                 <DropdownMenuItem
                                   onClick={() => setDeleteRoleId(role.id)}
                                   className="text-red-400 focus:text-red-400"
-                                  disabled={role.userCount && role.userCount > 0}
+                                  disabled={(role.userCount ?? 0) > 0}
                                 >
                                   <Trash2 className="h-4 w-4 mr-2" />
                                   Delete Role

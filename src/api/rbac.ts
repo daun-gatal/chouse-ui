@@ -779,7 +779,6 @@ export interface CreateDataAccessRuleInput {
   connectionId?: string | null;
   databasePattern: string;
   tablePattern: string;
-  accessType: AccessType;
   isAllowed?: boolean;
   priority?: number;
   description?: string;
@@ -789,7 +788,6 @@ export interface UpdateDataAccessRuleInput {
   connectionId?: string | null;
   databasePattern?: string;
   tablePattern?: string;
-  accessType?: AccessType;
   isAllowed?: boolean;
   priority?: number;
   description?: string;
