@@ -430,14 +430,14 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
 async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   console.log('[Migration] Creating PostgreSQL schema from Drizzle definitions...');
   
-  // Users table
+  // Users table (using TEXT for IDs to match Drizzle schema)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_users (
-      id UUID PRIMARY KEY NOT NULL,
+      id TEXT PRIMARY KEY NOT NULL,
       email VARCHAR(255) NOT NULL UNIQUE,
-      username VARCHAR(50) NOT NULL UNIQUE,
-      password_hash VARCHAR(255) NOT NULL,
-      display_name VARCHAR(100),
+      username VARCHAR(100) NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      display_name VARCHAR(255),
       avatar_url TEXT,
       is_active BOOLEAN NOT NULL DEFAULT true,
       is_system_user BOOLEAN NOT NULL DEFAULT false,
@@ -445,7 +445,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       password_changed_at TIMESTAMP WITH TIME ZONE,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-      created_by UUID,
+      created_by TEXT,
       metadata JSONB
     )
   `);
@@ -453,9 +453,9 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // Roles table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_roles (
-      id UUID PRIMARY KEY NOT NULL,
-      name VARCHAR(50) NOT NULL UNIQUE,
-      display_name VARCHAR(100) NOT NULL,
+      id TEXT PRIMARY KEY NOT NULL,
+      name VARCHAR(100) NOT NULL UNIQUE,
+      display_name VARCHAR(255) NOT NULL,
       description TEXT,
       is_system BOOLEAN NOT NULL DEFAULT false,
       is_default BOOLEAN NOT NULL DEFAULT false,
@@ -469,9 +469,9 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // Permissions table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_permissions (
-      id UUID PRIMARY KEY NOT NULL,
+      id TEXT PRIMARY KEY NOT NULL,
       name VARCHAR(100) NOT NULL UNIQUE,
-      display_name VARCHAR(100) NOT NULL,
+      display_name VARCHAR(255) NOT NULL,
       description TEXT,
       category VARCHAR(50) NOT NULL,
       is_system BOOLEAN NOT NULL DEFAULT true,
@@ -482,11 +482,11 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // User-Role junction table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_roles (
-      id UUID PRIMARY KEY NOT NULL,
-      user_id UUID NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
-      role_id UUID NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      role_id TEXT NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
       assigned_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-      assigned_by UUID,
+      assigned_by TEXT,
       expires_at TIMESTAMP WITH TIME ZONE,
       UNIQUE(user_id, role_id)
     )
@@ -495,9 +495,9 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // Role-Permission junction table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_role_permissions (
-      id UUID PRIMARY KEY NOT NULL,
-      role_id UUID NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
-      permission_id UUID NOT NULL REFERENCES rbac_permissions(id) ON DELETE CASCADE,
+      id TEXT PRIMARY KEY NOT NULL,
+      role_id TEXT NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+      permission_id TEXT NOT NULL REFERENCES rbac_permissions(id) ON DELETE CASCADE,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       UNIQUE(role_id, permission_id)
     )
@@ -506,24 +506,24 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // Resource Permissions
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_resource_permissions (
-      id UUID PRIMARY KEY NOT NULL,
-      user_id UUID REFERENCES rbac_users(id) ON DELETE CASCADE,
-      role_id UUID REFERENCES rbac_roles(id) ON DELETE CASCADE,
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT REFERENCES rbac_users(id) ON DELETE CASCADE,
+      role_id TEXT REFERENCES rbac_roles(id) ON DELETE CASCADE,
       resource_type VARCHAR(50) NOT NULL,
       resource_id VARCHAR(255) NOT NULL,
-      permission_id UUID NOT NULL REFERENCES rbac_permissions(id) ON DELETE CASCADE,
+      permission_id TEXT NOT NULL REFERENCES rbac_permissions(id) ON DELETE CASCADE,
       granted BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-      created_by UUID
+      created_by TEXT
     )
   `);
   
   // Sessions table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_sessions (
-      id UUID PRIMARY KEY NOT NULL,
-      user_id UUID NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
-      refresh_token VARCHAR(255) NOT NULL UNIQUE,
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      refresh_token TEXT NOT NULL UNIQUE,
       user_agent TEXT,
       ip_address VARCHAR(45),
       expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -536,8 +536,8 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // Audit Logs table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_audit_logs (
-      id UUID PRIMARY KEY NOT NULL,
-      user_id UUID REFERENCES rbac_users(id) ON DELETE SET NULL,
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT REFERENCES rbac_users(id) ON DELETE SET NULL,
       action VARCHAR(100) NOT NULL,
       resource_type VARCHAR(50),
       resource_id VARCHAR(255),
@@ -553,8 +553,8 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // API Keys table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_api_keys (
-      id UUID PRIMARY KEY NOT NULL,
-      user_id UUID NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
       name VARCHAR(100) NOT NULL,
       key_hash VARCHAR(255) NOT NULL UNIQUE,
       key_prefix VARCHAR(20) NOT NULL,
@@ -569,7 +569,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // ClickHouse Connections table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_clickhouse_connections (
-      id UUID PRIMARY KEY NOT NULL,
+      id TEXT PRIMARY KEY NOT NULL,
       name VARCHAR(100) NOT NULL,
       host VARCHAR(255) NOT NULL,
       port INTEGER NOT NULL DEFAULT 8123,
@@ -579,7 +579,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       is_default BOOLEAN NOT NULL DEFAULT false,
       is_active BOOLEAN NOT NULL DEFAULT true,
       ssl_enabled BOOLEAN NOT NULL DEFAULT false,
-      created_by UUID REFERENCES rbac_users(id) ON DELETE SET NULL,
+      created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       metadata JSONB
@@ -589,9 +589,9 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   // User-Connection Access table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_connections (
-      id UUID PRIMARY KEY NOT NULL,
-      user_id UUID NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
-      connection_id UUID NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
       can_use BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       UNIQUE(user_id, connection_id)
