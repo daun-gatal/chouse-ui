@@ -34,7 +34,9 @@ jobs:
         run: NODE_OPTIONS="--max-old-space-size=8192" bun run tsc --noEmit
 
       - name: Type Check Server
-        run: cd packages/server && NODE_OPTIONS="--max-old-space-size=4096" bun run tsc --noEmit
+        env:
+          NODE_OPTIONS: "--max-old-space-size=16384"
+        run: cd packages/server && bun run tsc --noEmit
 
   build:
     name: Build

@@ -14,6 +14,7 @@
     "sourceMap": true,
     "incremental": true,
     "resolveJsonModule": true,
+    "maxNodeModuleJsDepth": 1,
     "types": ["bun-types"],
     "paths": {
       "@/*": ["./src/*"]
