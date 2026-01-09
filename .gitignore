@@ -29,4 +29,10 @@ dist-ssr
 # Remove some things for docker-compose
 .clickhouse_local_data
 
-
+# RBAC SQLite database files
+packages/server/data/*.db
+packages/server/data/*.db-shm
+packages/server/data/*.db-wal
+data/*.db
+data/*.db-shm
+data/*.db-wal

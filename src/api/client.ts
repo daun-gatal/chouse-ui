@@ -20,11 +20,27 @@ export interface ApiResponse<T> {
   };
 }
 
-export interface ApiError extends Error {
+export interface ApiErrorData {
   code: string;
   category: string;
   details?: unknown;
   statusCode: number;
+}
+
+export class ApiError extends Error implements ApiErrorData {
+  code: string;
+  category: string;
+  details?: unknown;
+  statusCode: number;
+
+  constructor(message: string, statusCode: number = 500, code: string = 'UNKNOWN_ERROR', category: string = 'unknown', details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.category = category;
+    this.statusCode = statusCode;
+    this.details = details;
+  }
 }
 
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
@@ -38,6 +54,7 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const SESSION_STORAGE_KEY = 'ch_session_id';
+const RBAC_ACCESS_TOKEN_KEY = 'rbac_access_token';
 
 // ============================================
 // Session Management
@@ -106,6 +123,12 @@ class ApiClient {
       (headers as Record<string, string>)['X-Session-ID'] = currentSessionId;
     }
 
+    // Add RBAC access token if available (for data access filtering)
+    const rbacToken = localStorage.getItem(RBAC_ACCESS_TOKEN_KEY);
+    if (rbacToken) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${rbacToken}`;
+    }
+
     const url = this.buildUrl(path, params);
 
     const response = await fetch(url, {
@@ -119,11 +142,13 @@ class ApiClient {
     const data: ApiResponse<T> = await response.json();
 
     if (!response.ok || !data.success) {
-      const error = new Error(data.error?.message || 'Request failed') as ApiError;
-      error.code = data.error?.code || 'UNKNOWN_ERROR';
-      error.category = data.error?.category || 'unknown';
-      error.details = data.error?.details;
-      error.statusCode = response.status;
+      const error = new ApiError(
+        data.error?.message || 'Request failed',
+        response.status,
+        data.error?.code || 'UNKNOWN_ERROR',
+        data.error?.category || 'unknown',
+        data.error?.details
+      );
 
       // Handle authentication errors
       if (response.status === 401) {

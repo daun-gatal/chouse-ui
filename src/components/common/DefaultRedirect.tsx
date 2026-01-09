@@ -1,5 +1,5 @@
 import { Navigate } from "react-router-dom";
-import { useAuthStore } from "@/stores";
+import { useRbacStore } from "@/stores";
 import { Loader2 } from "lucide-react";
 
 /**
@@ -8,7 +8,7 @@ import { Loader2 } from "lucide-react";
  * - Non-admin users: Explorer page
  */
 export const DefaultRedirect = () => {
-  const { isAuthenticated, isInitialized, isLoading, isAdmin } = useAuthStore();
+  const { isAuthenticated, isInitialized, isLoading, isAdmin } = useRbacStore();
 
   // Show loading while checking authentication
   if (!isInitialized || isLoading) {
@@ -25,7 +25,7 @@ export const DefaultRedirect = () => {
   }
 
   // Redirect based on role
-  if (isAdmin) {
+  if (isAdmin()) {
     return <Navigate to="/overview" replace />;
   } else {
     return <Navigate to="/explorer" replace />;
@@ -33,4 +33,3 @@ export const DefaultRedirect = () => {
 };
 
 export default DefaultRedirect;
-
