@@ -7,6 +7,10 @@ export interface CorsOptions {
   exposedHeaders?: string[];
   credentials?: boolean;
   maxAge?: number;
+  /** If true, reject requests from disallowed origins (default: true in production) */
+  strictMode?: boolean;
+  /** Paths that bypass origin check (e.g., health checks) */
+  bypassPaths?: string[];
 }
 
 const defaultOptions: CorsOptions = {
@@ -16,33 +20,92 @@ const defaultOptions: CorsOptions = {
   exposedHeaders: ["X-Session-ID"],
   credentials: true,
   maxAge: 86400,
+  strictMode: process.env.NODE_ENV === "production",
+  bypassPaths: ["/api/health", "/api/rbac/health", "/api/rbac/status"],
 };
 
 /**
- * CORS middleware
+ * Check if origin is allowed
+ */
+function isOriginAllowed(origin: string, allowedOrigins: CorsOptions["origin"]): boolean {
+  if (!allowedOrigins || allowedOrigins === "*") {
+    return true;
+  }
+
+  if (typeof allowedOrigins === "string") {
+    return origin === allowedOrigins;
+  }
+
+  if (Array.isArray(allowedOrigins)) {
+    return allowedOrigins.some(allowed => {
+      // Support wildcard subdomains (e.g., *.example.com)
+      if (allowed.startsWith("*.")) {
+        const domain = allowed.slice(2);
+        return origin.endsWith(domain) || origin.endsWith("." + domain);
+      }
+      return origin === allowed;
+    });
+  }
+
+  if (typeof allowedOrigins === "function") {
+    return allowedOrigins(origin);
+  }
+
+  return false;
+}
+
+/**
+ * CORS middleware with strict origin enforcement
+ * 
+ * In strict mode (production), requests from disallowed origins are rejected.
+ * This ensures the API can only be accessed by the UI, not by external websites.
  */
 export function corsMiddleware(options: CorsOptions = {}) {
   const opts = { ...defaultOptions, ...options };
 
   return async (c: Context, next: Next) => {
     const origin = c.req.header("Origin") || "";
+    const path = c.req.path;
 
-    // Determine allowed origin
-    let allowedOrigin = "";
-    if (typeof opts.origin === "string") {
-      allowedOrigin = opts.origin === "*" ? origin || "*" : opts.origin;
-    } else if (Array.isArray(opts.origin)) {
-      allowedOrigin = opts.origin.includes(origin) ? origin : "";
-    } else if (typeof opts.origin === "function") {
-      allowedOrigin = opts.origin(origin) ? origin : "";
+    // Allow requests without Origin header (same-origin, curl, server-to-server)
+    // These are typically:
+    // - Same-origin requests from the UI (browser doesn't send Origin)
+    // - Health checks from load balancers
+    // - Server-to-server API calls
+    const hasOrigin = !!origin;
+
+    // Check if path bypasses origin check (health endpoints)
+    const isBypassPath = opts.bypassPaths?.some(p => path.startsWith(p)) ?? false;
+
+    // Determine if origin is allowed
+    const isAllowed = !hasOrigin || isBypassPath || isOriginAllowed(origin, opts.origin);
+
+    // In strict mode, reject requests from disallowed origins
+    if (opts.strictMode && hasOrigin && !isAllowed) {
+      console.warn(`[CORS] Blocked request from unauthorized origin: ${origin} to ${path}`);
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: "CORS_BLOCKED",
+            message: "Cross-origin request blocked. This API is only accessible from the authorized UI.",
+          },
+        },
+        403
+      );
     }
 
-    // Set CORS headers
-    if (allowedOrigin) {
+    // Set CORS headers for allowed origins
+    if (hasOrigin && isAllowed) {
+      // For credentialed requests, must echo the specific origin (not *)
+      const allowedOrigin = opts.origin === "*" ? origin : origin;
       c.header("Access-Control-Allow-Origin", allowedOrigin);
+    } else if (!hasOrigin && opts.origin === "*") {
+      // For non-CORS requests with wildcard config, set * 
+      c.header("Access-Control-Allow-Origin", "*");
     }
 
-    if (opts.credentials) {
+    if (opts.credentials && isAllowed) {
       c.header("Access-Control-Allow-Credentials", "true");
     }
 
@@ -70,4 +133,3 @@ export function corsMiddleware(options: CorsOptions = {}) {
     await next();
   };
 }
-

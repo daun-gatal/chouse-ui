@@ -1,9 +1,33 @@
-# Docker Compose for ClickHouse Studio
-# Includes both ClickHouse server and the UI with RBAC
+# Docker Compose for ClickHouse Studio with PostgreSQL RBAC
+# Use this for production deployments with external PostgreSQL
 
 version: '3.8'
 
 services:
+  # ============================================
+  # PostgreSQL for RBAC (optional - can use external)
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: clickhouse-studio-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clickhouse_studio}
+      POSTGRES_USER: ${POSTGRES_USER:-chstudio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chstudio} -d ${POSTGRES_DB:-clickhouse_studio}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - clickhouse-network
+
   # ============================================
   # ClickHouse Database Server
   # ============================================
@@ -12,13 +36,11 @@ services:
     container_name: clickhouse
     hostname: clickhouse
     ports:
-      - "8123:8123"   # HTTP interface
-      - "9000:9000"   # Native TCP interface
+      - "8123:8123"
+      - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_logs:/var/log/clickhouse-server
-      # Optional: Mount custom config
-      # - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/custom.xml
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: default
@@ -48,42 +70,29 @@ services:
     container_name: clickhouse-studio
     ports:
       - "5521:5521"
-    volumes:
-      # Persist RBAC SQLite database
-      - rbac_data:/app/data
     environment:
       NODE_ENV: production
       PORT: 5521
       STATIC_PATH: /app/dist
-      # Session configuration
       SESSION_TTL: ${SESSION_TTL:-3600000}
-      # CORS settings
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       # ============================================
-      # RBAC Configuration
+      # RBAC with PostgreSQL
       # ============================================
-      # Database type: 'sqlite' (default) or 'postgres'
-      RBAC_DB_TYPE: ${RBAC_DB_TYPE:-sqlite}
-      # SQLite database path
-      RBAC_SQLITE_PATH: /app/data/rbac.db
-      # PostgreSQL connection (if using postgres)
-      RBAC_POSTGRES_URL: ${RBAC_POSTGRES_URL:-}
+      RBAC_DB_TYPE: postgres
+      RBAC_POSTGRES_URL: postgres://${POSTGRES_USER:-chstudio}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-clickhouse_studio}
       RBAC_POSTGRES_POOL_SIZE: ${RBAC_POSTGRES_POOL_SIZE:-10}
-      # JWT secret for authentication (CHANGE IN PRODUCTION!)
+      # JWT secret (CHANGE IN PRODUCTION!)
       RBAC_JWT_SECRET: ${RBAC_JWT_SECRET:-change-me-in-production}
       RBAC_JWT_ACCESS_EXPIRY: ${RBAC_JWT_ACCESS_EXPIRY:-15m}
       RBAC_JWT_REFRESH_EXPIRY: ${RBAC_JWT_REFRESH_EXPIRY:-7d}
-      # Encryption key for connection passwords (CHANGE IN PRODUCTION!)
+      # Encryption key (CHANGE IN PRODUCTION!)
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-change-me-in-production}
-      # Default admin password (only used on first run)
+      # Admin password (only used on first run)
       RBAC_ADMIN_PASSWORD: ${RBAC_ADMIN_PASSWORD:-}
-      # ============================================
-      # Legacy ClickHouse settings (deprecated - use RBAC connections)
-      # ============================================
-      CLICKHOUSE_DEFAULT_URL: ${CLICKHOUSE_DEFAULT_URL:-}
-      CLICKHOUSE_PRESET_URLS: ${CLICKHOUSE_PRESET_URLS:-}
-      CLICKHOUSE_DEFAULT_USER: ${CLICKHOUSE_DEFAULT_USER:-}
     depends_on:
+      postgres:
+        condition: service_healthy
       clickhouse:
         condition: service_healthy
     healthcheck:
@@ -107,9 +116,9 @@ networks:
 # Volumes
 # ============================================
 volumes:
+  postgres_data:
+    driver: local
   clickhouse_data:
     driver: local
   clickhouse_logs:
-    driver: local
-  rbac_data:
     driver: local
