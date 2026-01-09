@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.1] - 2026-01-10
+
+### Fixed
+
+- **Documentation**: Corrected environment variable names in migration guide (`JWT_SECRET`, `RBAC_ENCRYPTION_KEY`).
+- **Configuration**: Updated `.env.example`, `Dockerfile`, and docker-compose files to use correct environment variable names.
+- **README**: Fixed environment variable references in documentation.
+
 ## [v2.0.0] - 2026-01-09
 
 ### Added
@@ -87,8 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    ```bash
    # New required variables
    RBAC_DB_TYPE=sqlite|postgres
-   RBAC_JWT_SECRET=<your-secret-key>
-   ENCRYPTION_KEY=<32-char-key-for-aes>
+   JWT_SECRET=<your-secret-key>
+   RBAC_ENCRYPTION_KEY=<32-char-key-for-aes>
    
    # For SQLite
    RBAC_SQLITE_PATH=./data/rbac.db
