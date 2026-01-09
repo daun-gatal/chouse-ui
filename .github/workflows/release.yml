@@ -10,7 +10,7 @@ on:
 jobs:
   tag-and-release:
     name: Tag and Release from Changelog
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
       packages: write
@@ -102,7 +102,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     needs: tag-and-release
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: read
       packages: write
