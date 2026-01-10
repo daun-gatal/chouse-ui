@@ -653,12 +653,6 @@ We welcome contributions! Please see our contributing guidelines.
 
 ---
 
-## License
-
-Apache-2.0 © [Daun Gatal](https://github.com/daun-gatal)
-
----
-
 ## Acknowledgments
 
 ### Special Thanks
