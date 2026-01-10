@@ -1,0 +1,172 @@
+import { motion } from 'framer-motion';
+import { ExternalLink } from 'lucide-react';
+
+export default function Hero() {
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  return (
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      {/* Enhanced Animated Background */}
+      <div className="absolute inset-0 z-0">
+        <motion.div
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.3, 0.5, 0.3],
+            x: [0, 50, 0],
+            y: [0, 30, 0],
+          }}
+          transition={{ duration: 20, repeat: Infinity }}
+          className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"
+        />
+        <motion.div
+          animate={{
+            scale: [1, 1.3, 1],
+            opacity: [0.3, 0.5, 0.3],
+            x: [0, -40, 0],
+            y: [0, -20, 0],
+          }}
+          transition={{ duration: 25, repeat: Infinity, delay: 0.5 }}
+          className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl"
+        />
+        <motion.div
+          animate={{
+            scale: [1, 1.1, 1],
+            opacity: [0.2, 0.4, 0.2],
+            x: [0, 30, 0],
+            y: [0, -30, 0],
+          }}
+          transition={{ duration: 30, repeat: Infinity, delay: 1 }}
+          className="absolute top-1/2 right-1/3 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"
+        />
+      </div>
+
+      {/* Animated Grid Pattern */}
+      <div className="absolute inset-0 z-0 opacity-10">
+        <div className="absolute inset-0" style={{
+          backgroundImage: `linear-gradient(rgba(147, 51, 234, 0.1) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(147, 51, 234, 0.1) 1px, transparent 1px)`,
+          backgroundSize: '50px 50px',
+        }} />
+      </div>
+
+      <div className="relative z-10 max-w-5xl mx-auto px-4 text-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.5, rotate: -180 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          transition={{ duration: 0.8, type: "spring", bounce: 0.4 }}
+          className="mb-8 flex justify-center"
+        >
+          <motion.div
+            animate={{ rotate: [0, 5, -5, 0] }}
+            transition={{ duration: 6, repeat: Infinity, repeatDelay: 2 }}
+          >
+            <img
+              src="/logo.svg"
+              alt="ClickHouse Studio"
+              className="w-40 h-40 md:w-48 md:h-48 drop-shadow-[0_0_30px_rgba(255,200,0,0.6)]"
+            />
+          </motion.div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.6 }}
+        >
+          <motion.h1
+            className="text-6xl md:text-8xl font-bold mb-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+          >
+            <span className="bg-gradient-to-r from-white via-purple-200 to-blue-200 bg-clip-text text-transparent">
+              ClickHouse
+            </span>
+            <br />
+            <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+              Studio
+            </span>
+          </motion.h1>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 0.5 }}
+          className="mb-6"
+        >
+          <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-medium">
+            A web interface for ClickHouse with built-in RBAC
+          </p>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6, duration: 0.5 }}
+          className="mb-8 max-w-3xl mx-auto"
+        >
+          <p className="text-lg text-gray-400 mb-4 leading-relaxed">
+            Built from the ground up to solve real-world challenges in ClickHouse database management. 
+            This project combines modern web technologies with enterprise-grade security to deliver a 
+            powerful yet intuitive interface for teams.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-gray-500">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-purple-400 rounded-full" />
+              <span>Zero-trust architecture</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-blue-400 rounded-full" />
+              <span>Production-ready</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-pink-400 rounded-full" />
+              <span>Enterprise-grade security</span>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.65, duration: 0.5 }}
+          className="mb-10"
+        >
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-400/30 rounded-full">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+            <span className="text-sm text-gray-300">Live Demo Available</span>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.7, duration: 0.5 }}
+          className="flex justify-center"
+        >
+          <motion.a
+            href="https://clickhouse-studio-ext.kitty-barb.ts.net/"
+            target="_blank"
+            rel="noopener noreferrer"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="px-12 py-6 bg-gradient-to-r from-purple-600 via-blue-600 to-purple-600 bg-size-200 bg-pos-0 hover:bg-pos-100 text-white rounded-xl font-semibold shadow-2xl shadow-purple-900/30 transition-all duration-500 flex items-center justify-center gap-2 text-lg"
+            style={{
+              backgroundSize: '200% 100%',
+            }}
+          >
+            <span>Try Live Demo</span>
+            <ExternalLink className="w-5 h-5" />
+          </motion.a>
+        </motion.div>
+      </div>
+
+    </section>
+  );
+}
