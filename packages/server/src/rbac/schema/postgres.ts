@@ -266,6 +266,40 @@ export const dataAccessRules = pgTable('rbac_data_access_rules', {
 }));
 
 // ============================================
+// ClickHouse Users Metadata Table
+// Stores configuration for ClickHouse users managed through the UI
+// ============================================
+
+export const clickhouseUsersMetadata = pgTable('rbac_clickhouse_users_metadata', {
+  id: text('id').primaryKey(),
+  // The ClickHouse username (as it appears in system.users)
+  username: varchar('username', { length: 255 }).notNull(),
+  // Which ClickHouse connection this user belongs to
+  connectionId: text('connection_id').notNull().references(() => clickhouseConnections.id, { onDelete: 'cascade' }),
+  // Role: developer, analyst, or viewer
+  role: varchar('role', { length: 20 }).notNull(), // 'developer' | 'analyst' | 'viewer'
+  // Cluster name (optional, for ON CLUSTER operations)
+  cluster: varchar('cluster', { length: 255 }),
+  // Host restrictions (optional)
+  hostIp: varchar('host_ip', { length: 255 }),
+  hostNames: varchar('host_names', { length: 255 }),
+  // Authentication type (optional, defaults to sha256_password)
+  authType: varchar('auth_type', { length: 50 }),
+  // Allowed databases (JSON array of database names)
+  allowedDatabases: jsonb('allowed_databases').$type<string[]>().notNull().default([]),
+  // Allowed tables (JSON array of {database: string, table: string})
+  allowedTables: jsonb('allowed_tables').$type<Array<{ database: string; table: string }>>().notNull().default([]),
+  // Metadata
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+}, (table) => ({
+  usernameConnIdx: uniqueIndex('ch_users_meta_username_conn_idx').on(table.username, table.connectionId),
+  usernameIdx: index('ch_users_meta_username_idx').on(table.username),
+  connectionIdx: index('ch_users_meta_connection_idx').on(table.connectionId),
+}));
+
+// ============================================
 // Type Exports
 // ============================================
 
@@ -282,3 +316,5 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type ClickHouseConnection = typeof clickhouseConnections.$inferSelect;
 export type DataAccessRule = typeof dataAccessRules.$inferSelect;
 export type NewDataAccessRule = typeof dataAccessRules.$inferInsert;
+export type ClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferSelect;
+export type NewClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferInsert;

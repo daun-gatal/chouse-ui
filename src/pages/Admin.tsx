@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import UserTable from "@/features/admin/components/UserManagement/index";
-import { InfoIcon, ShieldCheck, Users, Database, Shield, FileText, Server } from "lucide-react";
+import { InfoIcon, ShieldCheck, Users, Database, Shield, FileText, Server, UserCog } from "lucide-react";
 import InfoDialog from "@/components/common/InfoDialog";
 import ActivateSavedQueries from "@/features/admin/components/ActivateSavedQueries";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +9,7 @@ import { GlassCard, GlassCardContent } from "@/components/ui/glass-card";
 import { motion } from "framer-motion";
 import { RbacRolesTable, RbacAuditLogs } from "@/features/rbac/components";
 import ConnectionManagement from "@/features/admin/components/ConnectionManagement";
+import ClickHouseUsersManagement from "@/features/admin/components/ClickHouseUsers";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
 export default function Admin() {
@@ -20,6 +21,7 @@ export default function Admin() {
   const canViewRoles = hasPermission(RBAC_PERMISSIONS.ROLES_VIEW);
   const canViewAudit = hasPermission(RBAC_PERMISSIONS.AUDIT_VIEW);
   const canViewSettings = hasPermission(RBAC_PERMISSIONS.SETTINGS_VIEW);
+  const canViewClickHouseUsers = hasPermission(RBAC_PERMISSIONS.CH_USERS_VIEW);
   const canManageSavedQueries = hasAnyPermission([
     RBAC_PERMISSIONS.SAVED_QUERIES_CREATE,
     RBAC_PERMISSIONS.SAVED_QUERIES_UPDATE,
@@ -30,6 +32,7 @@ export default function Admin() {
     if (canViewUsers) return "users";
     if (canViewRoles) return "roles";
     if (canViewSettings) return "connections";
+    if (canViewClickHouseUsers) return "clickhouse-users";
     if (canViewAudit) return "audit";
     if (canManageSavedQueries) return "queries";
     return "users";
@@ -80,6 +83,11 @@ export default function Admin() {
                 <Server className="w-4 h-4 mr-2" /> Connections
               </TabsTrigger>
             )}
+            {canViewClickHouseUsers && (
+              <TabsTrigger value="clickhouse-users" className="data-[state=active]:bg-indigo-500/20 data-[state=active]:text-indigo-300">
+                <UserCog className="w-4 h-4 mr-2" /> ClickHouse Users
+              </TabsTrigger>
+            )}
             {canViewAudit && (
               <TabsTrigger value="audit" className="data-[state=active]:bg-green-500/20 data-[state=active]:text-green-300">
                 <FileText className="w-4 h-4 mr-2" /> Audit Logs
@@ -122,6 +130,16 @@ export default function Admin() {
             </TabsContent>
           )}
 
+          {canViewClickHouseUsers && (
+            <TabsContent value="clickhouse-users">
+              <GlassCard>
+                <GlassCardContent className="p-0">
+                  <ClickHouseUsersManagement />
+                </GlassCardContent>
+              </GlassCard>
+            </TabsContent>
+          )}
+
           {canViewAudit && (
             <TabsContent value="audit">
               <GlassCard>
@@ -156,9 +174,10 @@ export default function Admin() {
               Manage system users, roles, and permissions using role-based access control (RBAC).
             </p>
             <ul className="text-sm text-gray-400 space-y-1">
-              <li>• <strong>Users</strong> - Create, edit, and manage user accounts</li>
+              <li>• <strong>Users</strong> - Create, edit, and manage RBAC user accounts</li>
               <li>• <strong>Roles</strong> - View roles and their associated permissions</li>
               <li>• <strong>Connections</strong> - Manage ClickHouse server connections</li>
+              <li>• <strong>ClickHouse Users</strong> - Create and manage ClickHouse database users</li>
               <li>• <strong>Audit Logs</strong> - Track all system actions for compliance</li>
               <li>• <strong>Saved Queries</strong> - Configure the saved queries feature</li>
             </ul>

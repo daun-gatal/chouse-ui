@@ -11,6 +11,7 @@ import roleRoutes from './roles';
 import auditRoutes from './audit';
 import connectionsRoutes from './connections';
 import dataAccessRoutes from './dataAccess';
+import clickhouseUsersRoutes from './clickhouseUsers';
 
 const rbacRoutes = new Hono();
 
@@ -21,6 +22,7 @@ rbacRoutes.route('/roles', roleRoutes);
 rbacRoutes.route('/audit', auditRoutes);
 rbacRoutes.route('/connections', connectionsRoutes);
 rbacRoutes.route('/data-access', dataAccessRoutes);
+rbacRoutes.route('/clickhouse-users', clickhouseUsersRoutes);
 
 // Health check for RBAC system
 rbacRoutes.get('/health', async (c) => {

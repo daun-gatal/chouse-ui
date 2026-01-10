@@ -266,6 +266,40 @@ export const dataAccessRules = sqliteTable('rbac_data_access_rules', {
 }));
 
 // ============================================
+// ClickHouse Users Metadata Table
+// Stores configuration for ClickHouse users managed through the UI
+// ============================================
+
+export const clickhouseUsersMetadata = sqliteTable('rbac_clickhouse_users_metadata', {
+  id: text('id').primaryKey(),
+  // The ClickHouse username (as it appears in system.users)
+  username: text('username').notNull(),
+  // Which ClickHouse connection this user belongs to
+  connectionId: text('connection_id').notNull().references(() => clickhouseConnections.id, { onDelete: 'cascade' }),
+  // Role: developer, analyst, or viewer
+  role: text('role').notNull(), // 'developer' | 'analyst' | 'viewer'
+  // Cluster name (optional, for ON CLUSTER operations)
+  cluster: text('cluster'),
+  // Host restrictions (optional)
+  hostIp: text('host_ip'),
+  hostNames: text('host_names'),
+  // Authentication type (optional, defaults to sha256_password)
+  authType: text('auth_type'),
+  // Allowed databases (JSON array of database names)
+  allowedDatabases: text('allowed_databases', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  // Allowed tables (JSON array of {database: string, table: string})
+  allowedTables: text('allowed_tables', { mode: 'json' }).$type<Array<{ database: string; table: string }>>().notNull().default([]),
+  // Metadata
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+}, (table) => ({
+  usernameConnIdx: uniqueIndex('ch_users_meta_username_conn_idx').on(table.username, table.connectionId),
+  usernameIdx: index('ch_users_meta_username_idx').on(table.username),
+  connectionIdx: index('ch_users_meta_connection_idx').on(table.connectionId),
+}));
+
+// ============================================
 // Type Exports
 // ============================================
 
@@ -282,3 +316,5 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type ClickHouseConnection = typeof clickhouseConnections.$inferSelect;
 export type DataAccessRule = typeof dataAccessRules.$inferSelect;
 export type NewDataAccessRule = typeof dataAccessRules.$inferInsert;
+export type ClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferSelect;
+export type NewClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferInsert;

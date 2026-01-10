@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.1.0] - 2026-01-10
+
+### Added
+
+#### ClickHouse User Management
+- **Complete User Management UI**: New Admin tab for managing ClickHouse database users directly from the Studio interface.
+- **Role-Based User Creation**: Create ClickHouse users with predefined roles (Developer, Analyst, Viewer) with appropriate permissions.
+- **Interactive Wizard UI**: Multi-step wizard with animated transitions for creating and editing users.
+- **Database/Table Whitelisting**: Granular access control with database and table-level restrictions for users.
+- **Cluster Support**: Create and manage users with `ON CLUSTER` clauses for distributed ClickHouse setups.
+- **Host Restrictions**: Configure IP and hostname-based access restrictions for users.
+- **Authentication Types**: Support for multiple authentication methods (sha256_password, double_sha1_password, plaintext_password, no_password).
+- **Password Management**: 
+  - Password strength validation with real-time feedback
+  - Auto-generate secure passwords
+  - Password requirements display (length, character types, common patterns)
+- **DDL Generation**: Preview and copy generated SQL DDL statements before execution.
+- **User Metadata Storage**: Persistent metadata storage for user configurations (role, cluster, host restrictions, allowed databases/tables).
+- **Sync Unregistered Users**: Import existing ClickHouse users into metadata system for easier management.
+- **Edit User Functionality**: Update user roles, permissions, host restrictions, and passwords with pre-populated forms.
+- **User Listing**: View all ClickHouse users with host restrictions and authentication types.
+
+#### Connection Access Control
+- **User-Connection Access**: Restrict which RBAC users can access specific ClickHouse connections.
+- **Connection User Access Management**: UI for managing which users have access to each connection.
+
+### Fixed
+
+- **ClickHouse User Management**: Removed unnecessary readonly user detection code that was causing issues. The system now handles readonly errors naturally when operations fail, without attempting to proactively detect or track readonly status.
+
 ## [v2.0.2] - 2026-01-10
 
 ### Fixed
