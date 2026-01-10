@@ -428,16 +428,6 @@ export async function checkRoleAccess(
   return evaluateRules(rules, database, table, accessType);
 }
 
-// System tables that are always allowed for metadata access (read-only)
-const SYSTEM_METADATA_TABLES = [
-  'databases', 'tables', 'columns', 'parts', 'parts_columns',
-  'table_engines', 'data_type_families', 'settings', 'functions', 'formats',
-  'clusters', 'macros', 'dictionaries', 'users', 'roles', 'grants',
-  'query_log', 'processes', 'metrics', 'events', 'asynchronous_metrics',
-  'disks', 'storage_policies', 'merges', 'mutations', 'replicas',
-  'replication_queue', 'distribution_queue'
-];
-
 /**
  * Evaluate access rules for a database/table
  * Rules are evaluated in order of priority (highest first)
@@ -445,6 +435,8 @@ const SYSTEM_METADATA_TABLES = [
  * 
  * Note: accessType is now determined by role permissions, not by individual rules.
  * Data access rules only define WHICH databases/tables a user can access.
+ * 
+ * System databases are hidden from Explorer UI but queries are allowed by default.
  */
 function evaluateRules(
   rules: DataAccessRuleResponse[],
@@ -452,25 +444,16 @@ function evaluateRules(
   table: string | null,
   _accessType: AccessType // Kept for API compatibility but not used for matching
 ): AccessCheckResult {
-  // Always allow read access to system metadata tables (needed for Explorer)
-  if (database.toLowerCase() === 'system' && table !== null) {
-    if (SYSTEM_METADATA_TABLES.includes(table.toLowerCase())) {
-      return { 
-        allowed: true, 
-        reason: 'System metadata table access allowed by default' 
-      };
-    }
-  }
-  
-  // Also allow access to INFORMATION_SCHEMA for metadata
-  if (database.toLowerCase() === 'information_schema') {
-    return { 
-      allowed: true, 
-      reason: 'INFORMATION_SCHEMA access allowed by default' 
-    };
+  // System databases are hidden from Explorer UI but queries are allowed by default
+  // This allows users to query system tables even if they're hidden from the UI
+  const SYSTEM_DATABASES = ['system', 'information_schema', 'INFORMATION_SCHEMA'];
+  if (SYSTEM_DATABASES.includes(database)) {
+    // Allow access to system databases by default for queries
+    // (They're still hidden from Explorer UI via filterDatabases/filterTables)
+    return { allowed: true, reason: 'System database access allowed by default' };
   }
 
-  // No rules = no access (secure by default)
+  // For non-system databases, require explicit rules
   if (rules.length === 0) {
     return { allowed: false, reason: 'No access rules defined' };
   }
@@ -521,11 +504,12 @@ function accessTypeMatches(ruleType: AccessType, requestedType: AccessType): boo
   return ruleType === requestedType;
 }
 
-// System databases that are always visible for metadata access
+// System databases that should be hidden from non-admin users
 const SYSTEM_METADATA_DATABASES = ['system', 'information_schema', 'INFORMATION_SCHEMA'];
 
 /**
  * Filter databases based on user access rules
+ * System databases are excluded (will be filtered out by caller for non-admins)
  */
 export async function filterDatabasesForUser(
   userId: string,
@@ -549,16 +533,19 @@ export async function filterDatabasesForUser(
     })),
   });
   
-  // If no rules, return empty (secure by default) - but still include system databases
+  // If no rules, return empty (secure by default)
+  // System databases will be filtered out by the caller for non-admin users
   if (rules.length === 0) {
-    return databases.filter(db => SYSTEM_METADATA_DATABASES.includes(db));
+    return [];
   }
   
   // Check each database
+  // Note: System databases are not automatically included here
+  // They will be filtered out by the caller for non-admin users
   return databases.filter(db => {
-    // Always allow system databases for metadata access
+    // Skip system databases - they're handled separately
     if (SYSTEM_METADATA_DATABASES.includes(db)) {
-      return true;
+      return false;
     }
     const result = evaluateRules(rules, db, null, 'read');
     return result.allowed;

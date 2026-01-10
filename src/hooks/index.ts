@@ -48,3 +48,6 @@ export {
   useRequireAdmin,
   usePermission,
 } from './useAuth';
+
+// Utility hooks
+export { useDebounce } from './useDebounce';

@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Database, Table2, Terminal, Sparkles } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { Database, Table2, Terminal, Sparkles, ChevronRight, Home } from "lucide-react";
 import DatabaseExplorer from "@/features/explorer/components/DataExplorer";
 import WorkspaceTabs from "@/features/workspace/components/WorkspaceTabs";
 import {
@@ -8,6 +9,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { Button } from "@/components/ui/button";
 import CreateTable from "@/features/explorer/components/CreateTable";
 import CreateDatabase from "@/features/explorer/components/CreateDatabase";
 import UploadFromFile from "@/features/explorer/components/UploadFile";
@@ -17,14 +19,50 @@ import { cn } from "@/lib/utils";
 
 const ExplorerPage = () => {
   const { data: databases = [] } = useDatabases();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Get current database and table from URL
+  const currentDatabase = searchParams.get("database") || "";
+  const currentTable = searchParams.get("table") || "";
 
   // Calculate stats
   const databaseCount = databases.length;
   const tableCount = databases.reduce((acc, db) => acc + (db.children?.length || 0), 0);
 
+  // Breadcrumbs
+  const breadcrumbs = useMemo(() => {
+    const items: Array<{ label: string; path: string; type: 'home' | 'database' | 'table' }> = [
+      { label: 'Explorer', path: '/explorer', type: 'home' },
+    ];
+
+    if (currentDatabase) {
+      items.push({
+        label: currentDatabase,
+        path: `/explorer?database=${currentDatabase}`,
+        type: 'database',
+      });
+    }
+
+    if (currentTable) {
+      items.push({
+        label: currentTable,
+        path: `/explorer?database=${currentDatabase}&table=${currentTable}`,
+        type: 'table',
+      });
+    }
+
+    return items;
+  }, [currentDatabase, currentTable]);
+
   useEffect(() => {
-    document.title = "ClickHouse Studio | Explorer";
-  }, []);
+    const title = currentTable 
+      ? `ClickHouse Studio | ${currentDatabase}.${currentTable}`
+      : currentDatabase
+      ? `ClickHouse Studio | ${currentDatabase}`
+      : "ClickHouse Studio | Explorer";
+    document.title = title;
+  }, [currentDatabase, currentTable]);
 
   return (
     <motion.div
@@ -35,7 +73,7 @@ const ExplorerPage = () => {
     >
       {/* Header */}
       <div className="flex-none px-6 py-4 border-b border-white/10 bg-gradient-to-r from-purple-500/5 to-transparent">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-4">
             <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 shadow-lg shadow-purple-500/20">
               <Sparkles className="h-5 w-5 text-white" />
@@ -60,6 +98,35 @@ const ExplorerPage = () => {
             </div>
           </div>
         </div>
+
+        {/* Breadcrumbs */}
+        {breadcrumbs.length > 1 && (
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            {breadcrumbs.map((crumb, index) => (
+              <React.Fragment key={crumb.path}>
+                {index > 0 && <ChevronRight className="w-3 h-3 text-gray-600" />}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(crumb.path)}
+                  className={cn(
+                    "h-6 px-2 text-xs hover:text-white transition-colors",
+                    index === breadcrumbs.length - 1 && "text-white font-medium"
+                  )}
+                >
+                  {index === 0 ? (
+                    <Home className="w-3 h-3 mr-1" />
+                  ) : crumb.type === 'database' ? (
+                    <Database className="w-3 h-3 mr-1 text-blue-400" />
+                  ) : (
+                    <Table2 className="w-3 h-3 mr-1 text-green-400" />
+                  )}
+                  {crumb.label}
+                </Button>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Modals */}
