@@ -796,13 +796,14 @@ export interface ClickHouseUser {
 
 export interface CreateClickHouseUserInput {
   username: string;
-  password: string;
+  password?: string; // Optional when authType is 'no_password'
   role: ClickHouseUserRole;
   allowedDatabases?: string[];
   allowedTables?: Array<{ database: string; table: string }>;
   hostIp?: string;
   hostNames?: string;
   cluster?: string;
+  authType?: string; // e.g., 'sha256_password', 'double_sha1_password', 'plaintext_password', 'no_password'
 }
 
 export interface UpdateClickHouseUserInput {
