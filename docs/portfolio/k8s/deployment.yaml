@@ -14,6 +14,8 @@ spec:
       labels:
         app: clickhouse-studio-portfolio
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: portfolio
         image: ghcr.io/daun-gatal/clickhouse-studio-portfolio:latest
