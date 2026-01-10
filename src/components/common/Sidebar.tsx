@@ -24,6 +24,8 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
 import ConnectionSelector from "./ConnectionSelector";
+import { rbacConnectionsApi } from "@/api/rbac";
+import { getSessionId, clearSession } from "@/api/client";
 
 // Persist sidebar state in localStorage
 const SIDEBAR_COLLAPSED_KEY = "clickhouse-studio-sidebar-collapsed";
@@ -137,8 +139,30 @@ export default function Sidebar() {
   ];
 
   const handleLogout = async () => {
-    await logout();
-    navigate("/login");
+    try {
+      // Disconnect from ClickHouse connection if there's an active session
+      const sessionId = getSessionId();
+      if (sessionId) {
+        try {
+          await rbacConnectionsApi.disconnect(sessionId);
+        } catch (error) {
+          console.error('Failed to disconnect ClickHouse connection:', error);
+          // Continue with logout even if disconnect fails
+        }
+      }
+      
+      // Logout from RBAC
+      await logout();
+      
+      // Clear ClickHouse session
+      clearSession();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Clear local state anyway
+      clearSession();
+    } finally {
+      navigate("/login");
+    }
   };
 
   // Get display name

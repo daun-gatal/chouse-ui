@@ -16,9 +16,11 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAuthStore } from "@/stores";
+import { useAuthStore, useRbacStore } from "@/stores";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { rbacConnectionsApi } from "@/api/rbac";
+import { getSessionId, clearSession } from "@/api/client";
 
 interface SettingCardProps {
   title: string;
@@ -71,11 +73,36 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon: Icon }) => (
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { username, url, version, isAdmin, logout } = useAuthStore();
+  // Get connection info from auth store (populated by ConnectionSelector)
+  const { username, url, version, isAdmin } = useAuthStore();
+  // Get RBAC logout function
+  const { logout: rbacLogout } = useRbacStore();
 
   const handleLogout = async () => {
-    await logout();
-    navigate("/login");
+    try {
+      // Disconnect from ClickHouse connection if there's an active session
+      const sessionId = getSessionId();
+      if (sessionId) {
+        try {
+          await rbacConnectionsApi.disconnect(sessionId);
+        } catch (error) {
+          console.error('Failed to disconnect ClickHouse connection:', error);
+          // Continue with logout even if disconnect fails
+        }
+      }
+      
+      // Logout from RBAC
+      await rbacLogout();
+      
+      // Clear ClickHouse session
+      clearSession();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Clear local state anyway
+      clearSession();
+    } finally {
+      navigate("/login");
+    }
   };
 
   return (
