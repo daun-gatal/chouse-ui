@@ -2,10 +2,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: clickhouse-studio-portfolio
+  namespace: clickhouse
   labels:
     app: clickhouse-studio-portfolio
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: clickhouse-studio-portfolio
@@ -48,6 +49,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: clickhouse-studio-portfolio
+  namespace: clickhouse
   labels:
     app: clickhouse-studio-portfolio
 spec:
@@ -61,6 +63,26 @@ spec:
     app: clickhouse-studio-portfolio
 
 ---
-# Note: For Tailscale Funnel, you don't need an Ingress.
-# Instead, expose the service using Tailscale Funnel:
-# tailscale funnel --set-enabled=true --target=clickhouse-studio-portfolio:80
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: clickhouse-studio-portfolio-funnel
+  namespace: clickhouse
+  annotations:
+    tailscale.com/funnel: 'true'
+spec:
+  ingressClassName: tailscale
+  tls:
+    - hosts:
+        - clickhouse-studio-page
+  rules:
+    - host: clickhouse-studio-page
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: clickhouse-studio-portfolio
+                port:
+                  number: 80
