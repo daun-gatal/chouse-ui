@@ -46,6 +46,7 @@ export default function Footer() {
                 { label: 'Highlights', href: '#highlights' },
                 { label: 'Quick Start', href: '#quick-start' },
                 { label: 'Tech Stack', href: '#tech-stack' },
+                { label: 'Latest Release', href: '#changelog' },
               ].map((item) => (
                 <li key={item.href}>
                   <a

@@ -4,6 +4,7 @@ import Features from './components/Features';
 import Highlights from './components/Highlights';
 import DockerDeploy from './components/DockerDeploy';
 import TechStack from './components/TechStack';
+import Changelog from './components/Changelog';
 import Footer from './components/Footer';
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
       <Highlights />
       <DockerDeploy />
       <TechStack />
+      <Changelog />
       <Footer />
     </div>
   );
