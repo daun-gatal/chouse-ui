@@ -19,6 +19,7 @@ export default function Navbar() {
     { label: 'Highlights', href: '#highlights' },
     { label: 'Quick Start', href: '#quick-start' },
     { label: 'Tech Stack', href: '#tech-stack' },
+    { label: 'Latest Release', href: '#changelog' },
   ];
 
   const scrollTo = (href: string) => {

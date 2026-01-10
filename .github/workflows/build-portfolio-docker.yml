@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'docs/portfolio/**'
+      - 'CHANGELOG.md'
       - '.github/workflows/build-portfolio-docker.yml'
   workflow_dispatch:
     inputs:
@@ -36,6 +37,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync Changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            cp CHANGELOG.md docs/portfolio/public/CHANGELOG.md
+            echo "✓ Changelog synced to portfolio"
+          else
+            echo "⚠ CHANGELOG.md not found, skipping sync"
+          fi
 
       - name: Extract metadata
         id: meta
