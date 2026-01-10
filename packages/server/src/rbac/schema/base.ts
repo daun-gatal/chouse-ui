@@ -15,6 +15,7 @@ export const SYSTEM_ROLES = {
   DEVELOPER: 'developer',
   ANALYST: 'analyst',
   VIEWER: 'viewer',
+  GUEST: 'guest',
 } as const;
 
 export type SystemRole = typeof SYSTEM_ROLES[keyof typeof SYSTEM_ROLES];
@@ -25,6 +26,7 @@ export const ROLE_HIERARCHY: Record<SystemRole, number> = {
   [SYSTEM_ROLES.DEVELOPER]: 60,
   [SYSTEM_ROLES.ANALYST]: 40,
   [SYSTEM_ROLES.VIEWER]: 20,
+  [SYSTEM_ROLES.GUEST]: 10,
 };
 
 // ============================================
@@ -186,6 +188,32 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.QUERY_HISTORY_VIEW,
     PERMISSIONS.SAVED_QUERIES_VIEW,
     PERMISSIONS.METRICS_VIEW,
+  ],
+  
+  [SYSTEM_ROLES.GUEST]: [
+    // User Management - View only
+    PERMISSIONS.USERS_VIEW,
+    // Role Management - View only
+    PERMISSIONS.ROLES_VIEW,
+    // ClickHouse User Management - View only
+    PERMISSIONS.CH_USERS_VIEW,
+    // Database Operations - View only
+    PERMISSIONS.DB_VIEW,
+    // Table Operations - View and Select only
+    PERMISSIONS.TABLE_VIEW,
+    PERMISSIONS.TABLE_SELECT,
+    // Query Operations - Execute read-only queries only (no DDL/DML)
+    PERMISSIONS.QUERY_EXECUTE,
+    PERMISSIONS.QUERY_HISTORY_VIEW,
+    // Saved Queries - View only
+    PERMISSIONS.SAVED_QUERIES_VIEW,
+    // Metrics & Monitoring - View only
+    PERMISSIONS.METRICS_VIEW,
+    PERMISSIONS.METRICS_VIEW_ADVANCED,
+    // Settings - View only
+    PERMISSIONS.SETTINGS_VIEW,
+    // Audit Logs - View only
+    PERMISSIONS.AUDIT_VIEW,
   ],
 };
 

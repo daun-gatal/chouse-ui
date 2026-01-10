@@ -8,7 +8,11 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { getDatabase, getDatabaseType, isSqlite, type RbacDb, type SqliteDb, type PostgresDb } from './index';
+import { randomUUID } from 'crypto';
+import { eq } from 'drizzle-orm';
+import { getDatabase, getDatabaseType, isSqlite, getSchema, type RbacDb, type SqliteDb, type PostgresDb } from './index';
+import { SYSTEM_ROLES } from '../schema/base';
+import { hashPassword } from '../services/password';
 
 // ============================================
 // Types
@@ -39,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.2.1';
+export const APP_VERSION = '1.2.2';
 
 // ============================================
 // Migration Registry
@@ -235,6 +239,125 @@ const MIGRATIONS: Migration[] = [
           DROP COLUMN IF EXISTS auth_type
         `);
         console.log('[Migration 1.2.1] Removed auth_type column from PostgreSQL metadata table');
+      }
+    },
+  },
+  {
+    version: '1.2.2',
+    name: 'add_guest_role',
+    description: 'Add Guest role with read-only access to all tabs and system tables',
+    up: async (db) => {
+      // Use the existing seed function which is idempotent
+      // It will check if the role exists and only create it if it doesn't
+      const { seedRoles, seedPermissions } = await import('../services/seed');
+      
+      // First ensure all permissions exist
+      const permissionIdMap = await seedPermissions();
+      
+      // Then seed roles (which includes GUEST)
+      const roleIdMap = await seedRoles(permissionIdMap);
+      
+      console.log('[Migration 1.2.2] Ensured Guest role exists with permissions');
+      
+      // Create data access rule for GUEST role to allow read access to system tables
+      // This ensures guest users can query system tables for metrics and logs
+      const guestRoleId = roleIdMap.get(SYSTEM_ROLES.GUEST);
+      if (guestRoleId) {
+        const { createDataAccessRule } = await import('../services/dataAccess');
+        
+        try {
+          // Check if rule already exists (idempotent)
+          const { getRulesForRole } = await import('../services/dataAccess');
+          const existingRules = await getRulesForRole(guestRoleId);
+          const hasSystemRule = existingRules.some(
+            rule => rule.databasePattern === 'system' && 
+                    rule.tablePattern === '*' && 
+                    rule.accessType === 'read' &&
+                    rule.isAllowed === true
+          );
+          
+          if (!hasSystemRule) {
+            await createDataAccessRule({
+              roleId: guestRoleId,
+              connectionId: null, // Applies to all connections
+              databasePattern: 'system',
+              tablePattern: '*',
+              accessType: 'read',
+              isAllowed: true,
+              priority: 100, // High priority
+              description: 'Allow GUEST role to read system tables for metrics and logs',
+            });
+            console.log('[Migration 1.2.2] Created data access rule for system tables');
+          } else {
+            console.log('[Migration 1.2.2] System table access rule already exists');
+          }
+        } catch (error: any) {
+          // Rule might already exist (unique constraint), which is fine
+          if (error?.message?.includes('UNIQUE') || error?.message?.includes('unique')) {
+            console.log('[Migration 1.2.2] System table access rule already exists');
+          } else {
+            console.warn('[Migration 1.2.2] Could not create system table access rule:', error);
+            // Don't throw - migration should continue even if rule creation fails
+          }
+        }
+      }
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      const roleName = SYSTEM_ROLES.GUEST;
+
+      if (dbType === 'sqlite') {
+        // Get role ID
+        const roleResult = (db as SqliteDb).all(sql`
+          SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+        `) as Array<{ id: string }>;
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          // Remove data access rules for this role
+          (db as SqliteDb).run(sql`
+            DELETE FROM rbac_data_access_rules WHERE role_id = ${roleId}
+          `);
+
+          // Remove role permissions
+          (db as SqliteDb).run(sql`
+            DELETE FROM rbac_role_permissions WHERE role_id = ${roleId}
+          `);
+
+          // Remove the role
+          (db as SqliteDb).run(sql`
+            DELETE FROM rbac_roles WHERE id = ${roleId}
+          `);
+
+          console.log('[Migration 1.2.2] Removed Guest role and associated rules');
+        }
+      } else {
+        // PostgreSQL
+        const roleResult = await (db as PostgresDb).execute(sql`
+          SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+        `) as Array<{ id: string }>;
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          // Remove data access rules for this role
+          await (db as PostgresDb).execute(sql`
+            DELETE FROM rbac_data_access_rules WHERE role_id = ${roleId}
+          `);
+
+          // Remove role permissions
+          await (db as PostgresDb).execute(sql`
+            DELETE FROM rbac_role_permissions WHERE role_id = ${roleId}
+          `);
+
+          // Remove the role
+          await (db as PostgresDb).execute(sql`
+            DELETE FROM rbac_roles WHERE id = ${roleId}
+          `);
+
+          console.log('[Migration 1.2.2] Removed Guest role and associated rules');
+        }
       }
     },
   },

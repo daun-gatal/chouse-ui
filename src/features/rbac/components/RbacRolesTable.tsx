@@ -60,6 +60,7 @@ const ROLE_COLORS: Record<string, { bg: string; text: string; border: string; ic
   developer: { bg: 'bg-blue-500/20', text: 'text-blue-300', border: 'border-blue-500/30', icon: '👨‍💻' },
   analyst: { bg: 'bg-green-500/20', text: 'text-green-300', border: 'border-green-500/30', icon: '📊' },
   viewer: { bg: 'bg-purple-500/20', text: 'text-purple-300', border: 'border-purple-500/30', icon: '👁️' },
+  guest: { bg: 'bg-cyan-500/20', text: 'text-cyan-300', border: 'border-cyan-500/30', icon: '👋' },
 };
 
 const getRoleStyle = (role: string) => {

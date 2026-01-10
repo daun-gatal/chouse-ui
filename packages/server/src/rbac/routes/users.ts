@@ -39,7 +39,7 @@ const CreateUserSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50),
   password: z.string().min(8, 'Password must be at least 8 characters').optional(),
   displayName: z.string().max(100).optional(),
-  roleIds: z.array(z.string()).optional(),
+  roleIds: z.array(z.string()).max(1, 'Only one role can be assigned to a user').optional(),
   generatePassword: z.boolean().optional(),
 });
 
@@ -49,7 +49,7 @@ const UpdateUserSchema = z.object({
   displayName: z.string().max(100).optional(),
   avatarUrl: z.string().url().optional().nullable(),
   isActive: z.boolean().optional(),
-  roleIds: z.array(z.string()).optional(),
+  roleIds: z.array(z.string()).max(1, 'Only one role can be assigned to a user').optional(),
 });
 
 const ResetPasswordSchema = z.object({
@@ -337,7 +337,7 @@ userRoutes.post('/:id/reset-password', requirePermission(PERMISSIONS.USERS_UPDAT
  * Assign roles to user
  */
 userRoutes.post('/:id/assign-roles', requirePermission(PERMISSIONS.ROLES_ASSIGN), zValidator('json', z.object({
-  roleIds: z.array(z.string()).min(1, 'At least one role is required'),
+  roleIds: z.array(z.string()).length(1, 'Exactly one role must be assigned'),
 })), async (c) => {
   const id = c.req.param('id');
   const { roleIds } = c.req.valid('json');

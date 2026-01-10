@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.3.0] - 2026-01-11
+
+### Added
+
+#### RBAC Enhancements
+- **Guest Role**: New `guest` role with read-only access to all tabs and data, including system tables for metrics and logs viewing.
+- **System Tables Access**: Guest role can query system tables (e.g., `system.query_log`, `system.metrics`, `system.asynchronous_metrics`) for viewing metrics and logs.
+- **Documentation Updates**: Added guest user credentials (username: `guest`, password: `Guest123456!`) to documentation under Live Demo section.
+
+### Changed
+
+#### RBAC System
+- **Single Role Assignment**: Enforced that only one role can be assigned to a user (both frontend and backend validation).
+- **Data Access Rules UI**: Hidden data access rules configuration section for `super_admin`, `admin`, and `guest` roles in user creation/editing forms, as these roles have role-level access rules.
+- **Role Selection UI**: Changed role selection from checkboxes to radio buttons to reflect single role assignment policy.
+
+#### User Interface
+- **Settings Page**: Removed "Connected As" section from Settings page for all users.
+- **Documentation Navigation**: Updated "Try Live Demo" button in Hero and Footer to scroll to Live Demo section instead of opening external link.
+
+### Fixed
+
+#### SQL Parser
+- **System Table Detection**: Fixed fallback SQL parser to correctly identify system tables (e.g., `system.query_log`) even when database prefix is omitted or misparsed.
+- **Query Validation**: Improved system table query validation to handle cases where parser incorrectly identifies `system.tableName` as `default.system`.
+
 ## [v2.2.0] - 2026-01-11
 
 ### Added
