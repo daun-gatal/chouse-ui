@@ -173,7 +173,14 @@ export default function DockerDeploy() {
                 <span>Open Live Demo</span>
                 <ExternalLink className="w-5 h-5" />
               </motion.a>
-              <div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-400">
+              <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <p className="text-sm text-gray-300 mb-2 font-semibold">Guest Login:</p>
+                <div className="text-sm text-gray-400 space-y-1">
+                  <p>• Username: <code className="text-purple-400">guest</code></p>
+                  <p>• Password: <code className="text-purple-400">Guest123456!</code></p>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-400">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                 <span>Demo is live and ready to explore</span>
               </div>

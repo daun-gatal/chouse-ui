@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import { ExternalLink } from 'lucide-react';
 
 export default function Hero() {
   const scrollToSection = (id: string) => {
@@ -150,10 +149,8 @@ export default function Hero() {
           transition={{ delay: 0.7, duration: 0.5 }}
           className="flex justify-center"
         >
-          <motion.a
-            href="https://clickhouse-studio-ext.kitty-barb.ts.net/"
-            target="_blank"
-            rel="noopener noreferrer"
+          <motion.button
+            onClick={() => scrollToSection('quick-start')}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="px-12 py-6 bg-gradient-to-r from-purple-600 via-blue-600 to-purple-600 bg-size-200 bg-pos-0 hover:bg-pos-100 text-white rounded-xl font-semibold shadow-2xl shadow-purple-900/30 transition-all duration-500 flex items-center justify-center gap-2 text-lg"
@@ -162,8 +159,7 @@ export default function Hero() {
             }}
           >
             <span>Try Live Demo</span>
-            <ExternalLink className="w-5 h-5" />
-          </motion.a>
+          </motion.button>
         </motion.div>
       </div>
 

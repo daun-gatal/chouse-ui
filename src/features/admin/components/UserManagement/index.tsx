@@ -76,6 +76,7 @@ const ROLE_COLORS: Record<string, { color: string; bgColor: string }> = {
   developer: { color: "text-blue-400", bgColor: "bg-blue-500/20 border-blue-500/30" },
   analyst: { color: "text-green-400", bgColor: "bg-green-500/20 border-green-500/30" },
   viewer: { color: "text-purple-400", bgColor: "bg-purple-500/20 border-purple-500/30" },
+  guest: { color: "text-cyan-400", bgColor: "bg-cyan-500/20 border-cyan-500/30" },
 };
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];

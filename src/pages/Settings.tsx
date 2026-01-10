@@ -4,7 +4,6 @@ import {
   Settings as SettingsIcon,
   Moon,
   Server,
-  User,
   Database,
   CheckCircle2,
   ExternalLink,
@@ -132,20 +131,6 @@ export default function Settings() {
             color="bg-blue-500"
           >
             <div className="space-y-2">
-              <InfoRow
-                label="Connected As"
-                icon={User}
-                value={
-                  <div className="flex items-center gap-2">
-                    <span>{username || "N/A"}</span>
-                    {isAdmin && (
-                      <Badge className="bg-amber-500/20 text-amber-400 text-[10px]">
-                        Admin
-                      </Badge>
-                    )}
-                  </div>
-                }
-              />
               <InfoRow
                 label="Server URL"
                 icon={Server}

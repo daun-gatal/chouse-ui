@@ -278,13 +278,56 @@ async function validateSingleStatement(
     return { allowed: true };
   }
 
+  // Known system tables that should be checked against 'system' database
+  // even if parsed as being in another database
+  const SYSTEM_TABLES = [
+    // Log tables
+    'query_log', 'query_thread_log', 'part_log', 'metric_log', 'trace_log',
+    'text_log', 'asynchronous_metric_log', 'session_log', 'zookeeper_log',
+    'system_log', 'crash_log', 'asynchronous_insert_log', 'backup_log',
+    // Metrics tables (current metrics, not logs)
+    'metrics', 'asynchronous_metrics',
+    // System information tables
+    'processes', 'mutations', 'replicas', 'databases', 'tables', 'columns',
+    'functions', 'dictionaries', 'formats', 'table_functions', 'table_engines',
+    'settings', 'users', 'roles', 'quotas', 'row_policies', 'grants',
+    'clusters', 'macros', 'merges', 'parts', 'detached_parts', 'data_skipping_indices',
+    'distribution_queue', 'distributed_ddl_queue', 'replication_queue',
+    'zookeeper', 'disks', 'storage_policies', 'merge_tree_settings',
+    'build_options', 'licenses', 'server_settings', 'time_zones',
+  ];
+
   // Check each table against data access rules
   // Note: System databases are hidden from UI but queries are still allowed if user has permissions
   for (const { database, table } of tables) {
-    const db = database || defaultDatabase || 'default';
-    const tbl = table || '*';
+    let db = database || defaultDatabase || 'default';
+    let tbl = table || '*';
     
-    // System databases are hidden from Explorer UI but queries are allowed
+    // Fix for parser errors: If table is 'system' but we're checking against 'default' database,
+    // it's likely the parser incorrectly extracted 'system' as the table name from 'system.tableName'
+    // Try to extract the correct database.table from the statement
+    if (db !== 'system' && tbl === 'system') {
+      const systemTableMatch = statement.match(/FROM\s+system\.([`"]?[\w]+[`"]?)/i);
+      if (systemTableMatch) {
+        db = 'system';
+        tbl = systemTableMatch[1].replace(/[`"]/g, '');
+      }
+    }
+    
+    // If table is a known system table but database is not 'system', check against 'system' database
+    if (tbl !== '*' && SYSTEM_TABLES.includes(tbl.toLowerCase()) && db !== 'system') {
+      db = 'system';
+    }
+    
+    // Additional fix: If database is 'system' but table is still 'system' or '*', extract from statement
+    if (db === 'system' && (tbl === 'system' || tbl === '*')) {
+      const fallbackMatch = statement.match(/FROM\s+system\.([`"]?[\w]+[`"]?)/i);
+      if (fallbackMatch) {
+        tbl = fallbackMatch[1].replace(/[`"]/g, '');
+      }
+    }
+    
+    // System databases are hidden from Explorer UI but queries are still allowed
     // Check user access normally (don't block system database queries)
     const result = await checkUserAccess(userId, db, tbl, accessType, connectionId);
     
