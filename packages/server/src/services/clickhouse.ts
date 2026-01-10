@@ -176,12 +176,21 @@ export class ClickHouseService {
 
   async getDatabasesAndTables(): Promise<DatabaseInfo[]> {
     try {
+      // Enhanced query to include table metadata (rows, size, engine)
       const result = await this.client.query({
         query: `
           SELECT
             databases.name AS database_name,
             tables.name AS table_name,
-            tables.engine AS table_type
+            tables.engine AS table_engine,
+            CASE 
+              WHEN tables.total_rows > 0 THEN formatReadableQuantity(tables.total_rows)
+              ELSE '0'
+            END AS total_rows,
+            CASE 
+              WHEN tables.total_bytes > 0 THEN formatReadableSize(tables.total_bytes)
+              ELSE '0 B'
+            END AS total_bytes
           FROM system.databases AS databases
           LEFT JOIN system.tables AS tables
             ON databases.name = tables.database
@@ -192,13 +201,15 @@ export class ClickHouseService {
       const response = await result.json() as JsonResponse<{
         database_name: string;
         table_name?: string;
-        table_type?: string;
+        table_engine?: string;
+        total_rows?: string;
+        total_bytes?: string;
       }>;
 
       const databases: Record<string, DatabaseInfo> = {};
 
       for (const row of response.data) {
-        const { database_name, table_name, table_type } = row;
+        const { database_name, table_name, table_engine, total_rows, total_bytes } = row;
         
         if (!databases[database_name]) {
           databases[database_name] = {
@@ -209,9 +220,13 @@ export class ClickHouseService {
         }
 
         if (table_name) {
+          const isView = table_engine?.toLowerCase().includes('view') || false;
           databases[database_name].children.push({
             name: table_name,
-            type: table_type?.toLowerCase() === "view" ? "view" : "table",
+            type: isView ? "view" : "table",
+            engine: table_engine || undefined,
+            rows: total_rows || undefined,
+            size: total_bytes || undefined,
           });
         }
       }

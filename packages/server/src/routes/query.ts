@@ -37,8 +37,10 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
   const connectionId = session?.rbacConnectionId;
 
   // Validate access before execution
-  // 1. Checks role permissions for the operation type (read/write/admin)
-  // 2. Checks data access rules for the specific databases/tables
+  // Advanced validation: splits multi-statement queries and validates each statement individually
+  // 1. Checks role permissions for the operation type (read/write/admin) per statement
+  // 2. Checks data access rules for the specific databases/tables per statement
+  // This prevents security vulnerabilities like: SELECT * FROM table; DROP TABLE sensitive_data;
   const accessCheck = await validateQueryAccess(
     rbacUserId,
     isRbacAdmin,
@@ -49,16 +51,23 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
   );
 
   if (!accessCheck.allowed) {
+    const statementCount = sql.split(';').filter(s => s.trim().length > 0).length;
     console.log('[Query] Access denied:', {
       userId: rbacUserId,
-      sql: sql.substring(0, 100),
+      statementCount: statementCount > 1 ? statementCount : undefined,
+      statementIndex: accessCheck.statementIndex,
+      sql: sql.substring(0, 200),
       reason: accessCheck.reason,
     });
     return c.json({
       success: false,
       error: { 
         code: "FORBIDDEN", 
-        message: accessCheck.reason || "Access denied to one or more tables in query" 
+        message: accessCheck.reason || "Access denied to one or more tables in query",
+        ...(accessCheck.statementIndex !== undefined && { 
+          statementIndex: accessCheck.statementIndex,
+          hint: statementCount > 1 ? "Multi-statement queries require all statements to pass validation" : undefined
+        })
       },
     }, 403);
   }

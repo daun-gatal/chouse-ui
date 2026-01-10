@@ -69,6 +69,9 @@ export interface QueryResult<T = Record<string, unknown>> {
 export interface TableInfo {
   name: string;
   type: "table" | "view";
+  rows?: string; // Formatted row count (e.g., "1.2M")
+  size?: string; // Formatted size (e.g., "500 MB")
+  engine?: string; // Table engine type
 }
 
 export interface DatabaseInfo {
