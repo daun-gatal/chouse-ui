@@ -565,6 +565,141 @@ export async function revokeConnectionAccess(
 }
 
 /**
+ * Get users with access to a connection
+ */
+export async function getConnectionUsers(connectionId: string): Promise<Array<{
+  id: string;
+  email: string;
+  username: string;
+  displayName: string | null;
+  isActive: boolean;
+  roles: string[];
+  hasDirectAccess: boolean;
+  accessViaRoles: string[];
+}>> {
+  const db = getDatabase() as AnyDb;
+  const schema = getSchema();
+  
+  // Get users with direct access (userConnections table)
+  const userConnections = await db.select({
+    userId: schema.userConnections.userId,
+  })
+    .from(schema.userConnections)
+    .where(and(
+      eq(schema.userConnections.connectionId, connectionId),
+      eq(schema.userConnections.canUse, true)
+    ));
+  
+  const directAccessUserIds = new Set(userConnections.map((uc: any) => uc.userId));
+  
+  // Get all users who have direct access
+  const directAccessUsers = directAccessUserIds.size > 0
+    ? await db.select()
+        .from(schema.users)
+        .where(inArray(schema.users.id, Array.from(directAccessUserIds)))
+    : [];
+  
+  // Get users who have access via data access rules (user-specific or role-based)
+  const dataAccessRules = await db.select()
+    .from(schema.dataAccessRules)
+    .where(eq(schema.dataAccessRules.connectionId, connectionId));
+  
+  const userIdsFromRules = new Set<string>();
+  const roleIdsFromRules = new Set<string>();
+  
+  dataAccessRules.forEach((rule: any) => {
+    if (rule.userId) {
+      userIdsFromRules.add(rule.userId);
+    }
+    if (rule.roleId) {
+      roleIdsFromRules.add(rule.roleId);
+    }
+  });
+  
+  // Get users from role-based rules
+  const usersFromRoles: any[] = [];
+  if (roleIdsFromRules.size > 0) {
+    const userRoles = await db.select()
+      .from(schema.userRoles)
+      .where(inArray(schema.userRoles.roleId, Array.from(roleIdsFromRules)));
+    
+    const userIdsFromRoles = new Set(userRoles.map((ur: any) => ur.userId));
+    
+    if (userIdsFromRoles.size > 0) {
+      const users = await db.select()
+        .from(schema.users)
+        .where(inArray(schema.users.id, Array.from(userIdsFromRoles)));
+      usersFromRoles.push(...users);
+    }
+  }
+  
+  // Get users from user-specific rules
+  const usersFromRules: any[] = [];
+  if (userIdsFromRules.size > 0) {
+    const users = await db.select()
+      .from(schema.users)
+      .where(inArray(schema.users.id, Array.from(userIdsFromRules)));
+    usersFromRules.push(...users);
+  }
+  
+  // Combine all users and deduplicate
+  const allUserIds = new Set<string>();
+  const userMap = new Map<string, any>();
+  
+  [...directAccessUsers, ...usersFromRules, ...usersFromRoles].forEach((user: any) => {
+    if (!allUserIds.has(user.id)) {
+      allUserIds.add(user.id);
+      userMap.set(user.id, user);
+    }
+  });
+  
+  // Build response with access information
+  const result: Array<{
+    id: string;
+    email: string;
+    username: string;
+    displayName: string | null;
+    isActive: boolean;
+    roles: string[];
+    hasDirectAccess: boolean;
+    accessViaRoles: string[];
+  }> = [];
+  
+  for (const user of userMap.values()) {
+    const hasDirectAccess = directAccessUserIds.has(user.id);
+    
+    // Get user's roles
+    const userRoles = await db.select({
+      roleId: schema.userRoles.roleId,
+      roleName: schema.roles.name,
+    })
+      .from(schema.userRoles)
+      .innerJoin(schema.roles, eq(schema.userRoles.roleId, schema.roles.id))
+      .where(eq(schema.userRoles.userId, user.id));
+    
+    const roleNames = userRoles.map((ur: any) => ur.roleName);
+    
+    // Determine which roles grant access via data access rules
+    const accessViaRoles = userRoles
+      .filter((ur: any) => roleIdsFromRules.has(ur.roleId))
+      .map((ur: any) => ur.roleName);
+    
+    result.push({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+      isActive: user.isActive,
+      roles: roleNames,
+      hasDirectAccess,
+      accessViaRoles,
+    });
+  }
+  
+  return result;
+}
+
+/**
  * Get connections accessible by a user
  * Considers both userConnections table AND data access rules with specific connectionIds
  */
@@ -575,7 +710,15 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
   // Collect connection IDs from multiple sources
   const connectionIdSet = new Set<string>();
   
-  // 1. Get user's direct connection access (userConnections table)
+  // IMPORTANT: Connection access is ONLY controlled by the userConnections table.
+  // Data access rules control which databases/tables a user can access WITHIN a connection,
+  // but they do NOT grant access to the connection itself.
+  // 
+  // This separation ensures that:
+  // 1. Admins explicitly grant connection access via the "Manage Access" feature
+  // 2. Data access rules only apply to databases/tables within already-granted connections
+  
+  // Get user's direct connection access (userConnections table)
   const userConns = await db.select()
     .from(schema.userConnections)
     .where(and(
@@ -583,68 +726,18 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
       eq(schema.userConnections.canUse, true)
     ));
   
-  userConns.forEach((uc: any) => connectionIdSet.add(uc.connectionId));
+  console.log(`[getUserConnections] User ${userId} has ${userConns.length} direct connection access(es)`);
   
-  // 2. Get user's role IDs
-  const userRoles = await db.select()
-    .from(schema.userRoles)
-    .where(eq(schema.userRoles.userId, userId));
+  if (userConns.length === 0) {
+    console.log(`[getUserConnections] User ${userId} has NO connection access - returning empty array`);
+    return [];
+  }
   
-  // 3. Get connection IDs from user-specific data access rules
-  const userDataAccessRules = await db.select()
-    .from(schema.dataAccessRules)
-    .where(eq(schema.dataAccessRules.userId, userId));
-  
-  userDataAccessRules.forEach((rule: any) => {
-    if (rule.connectionId) {
-      connectionIdSet.add(rule.connectionId);
-    }
+  // User has explicit connection access - return only those connections
+  userConns.forEach((uc: any) => {
+    connectionIdSet.add(uc.connectionId);
+    console.log(`[getUserConnections] Direct access to connection: ${uc.connectionId}`);
   });
-  
-  // 4. Get connection IDs from role-based data access rules
-  if (userRoles.length > 0) {
-    const roleIds = userRoles.map((ur: any) => ur.roleId);
-    const roleDataAccessRules = await db.select()
-      .from(schema.dataAccessRules)
-      .where(inArray(schema.dataAccessRules.roleId, roleIds));
-    
-    roleDataAccessRules.forEach((rule: any) => {
-      if (rule.connectionId) {
-        connectionIdSet.add(rule.connectionId);
-      }
-    });
-  }
-  
-  // If no specific connections found, check if user has any data access rules at all
-  // If they have rules without connectionId (global rules), show all active connections
-  if (connectionIdSet.size === 0) {
-    const hasGlobalRules = userDataAccessRules.some((rule: any) => !rule.connectionId);
-    
-    if (!hasGlobalRules && userRoles.length > 0) {
-      const roleIds = userRoles.map((ur: any) => ur.roleId);
-      const roleDataAccessRules = await db.select()
-        .from(schema.dataAccessRules)
-        .where(inArray(schema.dataAccessRules.roleId, roleIds));
-      
-      const hasGlobalRoleRules = roleDataAccessRules.some((rule: any) => !rule.connectionId);
-      
-      if (hasGlobalRoleRules) {
-        // User has global rules, show all active connections
-        const result = await listConnections({ activeOnly: true });
-        return result.connections;
-      }
-    }
-    
-    if (hasGlobalRules) {
-      // User has global rules, show all active connections
-      const result = await listConnections({ activeOnly: true });
-      return result.connections;
-    }
-    
-    // No rules at all, return default connection only
-    const defaultConn = await getDefaultConnection();
-    return defaultConn ? [defaultConn] : [];
-  }
   
   // Get the filtered connections
   const connectionIds = Array.from(connectionIdSet);

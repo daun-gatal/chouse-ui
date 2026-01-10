@@ -4,7 +4,7 @@
  * Frontend API client for the Role-Based Access Control system.
  */
 
-import { ApiError } from './client';
+import { ApiError, getSessionId } from './client';
 
 // ============================================
 // Types
@@ -135,6 +135,7 @@ async function rbacFetch<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const accessToken = getRbacAccessToken();
+  const sessionId = getSessionId();
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -144,6 +145,12 @@ async function rbacFetch<T>(
   
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  
+  // Add session ID if available (for ClickHouse operations)
+  // Only add if not already provided in options.headers
+  if (sessionId && !headers['X-Session-ID']) {
+    headers['X-Session-ID'] = sessionId;
   }
   
   const response = await fetch(`/api/rbac${endpoint}`, {
@@ -699,6 +706,22 @@ export const rbacConnectionsApi = {
   },
   
   /**
+   * Get users with access to a connection
+   */
+  async getUsers(connectionId: string): Promise<Array<{
+    id: string;
+    email: string;
+    username: string;
+    displayName: string | null;
+    isActive: boolean;
+    roles: string[];
+    hasDirectAccess: boolean;
+    accessViaRoles: string[];
+  }>> {
+    return rbacFetch(`/connections/${connectionId}/users`);
+  },
+  
+  /**
    * Grant user access to a connection
    */
   async grantAccess(connectionId: string, userId: string): Promise<void> {
@@ -748,6 +771,135 @@ export const rbacConnectionsApi = {
       headers['X-Session-ID'] = sessionId;
     }
     return rbacFetch('/connections/session', { headers });
+  },
+};
+
+// ============================================
+// ClickHouse Users Types
+// ============================================
+
+export type ClickHouseUserRole = 'developer' | 'analyst' | 'viewer';
+
+export interface ClickHouseUser {
+  name: string;
+  host_ip?: string;
+  host_names?: string;
+  default_roles_all?: number;
+  default_roles_list?: string;
+  default_roles_except?: string;
+  auth_type?: string;
+  // Grants information (populated when fetching a single user)
+  role?: ClickHouseUserRole;
+  allowedDatabases?: string[];
+  allowedTables?: Array<{ database: string; table: string }>;
+}
+
+export interface CreateClickHouseUserInput {
+  username: string;
+  password?: string; // Optional when authType is 'no_password'
+  role: ClickHouseUserRole;
+  allowedDatabases?: string[];
+  allowedTables?: Array<{ database: string; table: string }>;
+  hostIp?: string;
+  hostNames?: string;
+  cluster?: string;
+  authType?: string; // e.g., 'sha256_password', 'double_sha1_password', 'plaintext_password', 'no_password'
+}
+
+export interface UpdateClickHouseUserInput {
+  password?: string;
+  role?: ClickHouseUserRole;
+  allowedDatabases?: string[];
+  allowedTables?: Array<{ database: string; table: string }>;
+  hostIp?: string;
+  hostNames?: string;
+  cluster?: string;
+}
+
+export interface ClickHouseUserDDL {
+  createUser: string;
+  grantStatements: string[];
+  fullDDL: string;
+}
+
+export const rbacClickHouseUsersApi = {
+  /**
+   * List all ClickHouse users
+   */
+  async list(): Promise<ClickHouseUser[]> {
+    return rbacFetch('/clickhouse-users');
+  },
+  
+  /**
+   * Get available clusters
+   */
+  async getClusters(): Promise<string[]> {
+    return rbacFetch('/clickhouse-users/clusters');
+  },
+  
+  /**
+   * Get ClickHouse user by username
+   */
+  async get(username: string): Promise<ClickHouseUser> {
+    return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}`);
+  },
+  
+  /**
+   * Generate DDL for creating a user (preview)
+   */
+  async generateDDL(input: CreateClickHouseUserInput): Promise<ClickHouseUserDDL> {
+    return rbacFetch('/clickhouse-users/generate-ddl', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  
+  /**
+   * Create a ClickHouse user
+   */
+  async create(input: CreateClickHouseUserInput): Promise<{ username: string }> {
+    return rbacFetch('/clickhouse-users', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  
+  /**
+   * Generate DDL for updating a user (preview)
+   */
+  async generateUpdateDDL(username: string, input: UpdateClickHouseUserInput): Promise<ClickHouseUserDDL> {
+    return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}/generate-ddl`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  
+  /**
+   * Update a ClickHouse user
+   */
+  async update(username: string, input: UpdateClickHouseUserInput): Promise<{ username: string }> {
+    return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+  
+  /**
+   * Delete a ClickHouse user
+   */
+  async delete(username: string): Promise<void> {
+    await rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+    });
+  },
+  
+  /**
+   * Sync unregistered ClickHouse users to metadata
+   */
+  async sync(): Promise<{ synced: number; errors: Array<{ username: string; error: string }> }> {
+    return rbacFetch('/clickhouse-users/sync', {
+      method: 'POST',
+    });
   },
 };
 
