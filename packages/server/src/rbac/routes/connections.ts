@@ -20,6 +20,7 @@ import {
   setDefaultConnection,
   getDefaultConnection,
   getUserConnections,
+  getConnectionUsers,
   grantConnectionAccess,
   revokeConnectionAccess,
 } from '../services/connections';
@@ -795,6 +796,46 @@ connectionsRoutes.delete(
         error: {
           code: 'REVOKE_FAILED',
           message: 'Failed to revoke connection access',
+        },
+      }, 500);
+    }
+  }
+);
+
+// Get users with access to a connection
+connectionsRoutes.get(
+  '/:id/users',
+  rbacAuthMiddleware,
+  requirePermission('settings:view'),
+  async (c) => {
+    try {
+      const connectionId = c.req.param('id');
+      
+      // Verify connection exists
+      const connection = await getConnectionById(connectionId);
+      if (!connection) {
+        return c.json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Connection not found',
+          },
+        }, 404);
+      }
+      
+      const users = await getConnectionUsers(connectionId);
+      
+      return c.json({
+        success: true,
+        data: users,
+      });
+    } catch (error) {
+      console.error('[Connections] Get users error:', error);
+      return c.json({
+        success: false,
+        error: {
+          code: 'FETCH_FAILED',
+          message: error instanceof Error ? error.message : 'Failed to fetch users',
         },
       }, 500);
     }
