@@ -376,54 +376,76 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
     
     setIsSubmitting(true);
     try {
-      // Build input object
-      const input: CreateClickHouseUserInput | UpdateClickHouseUserInput = {
-        role,
-        allowedDatabases: allowedDatabases,
-        allowedTables: allowedTables,
-      };
-      
-      // Only include password if it's provided and authType is not 'no_password'
-      // (for updates, empty means don't change)
-      if (password && authType !== 'no_password') {
-        // Validate password strength for updates too
-        if (!isPasswordValid) {
-          toast.error('Password does not meet security requirements');
-          setIsSubmitting(false);
-          return;
-        }
-        input.password = password;
-      }
-      
       // Only include optional fields if they have values (ensure they're strings, not arrays)
       const hostIpStr = Array.isArray(hostIp) ? (hostIp[0] || '') : (typeof hostIp === 'string' ? hostIp : '');
       const hostNamesStr = Array.isArray(hostNames) ? (hostNames[0] || '') : (typeof hostNames === 'string' ? hostNames : '');
       
-      if (hostIpStr && hostIpStr.trim()) {
-        input.hostIp = hostIpStr;
-      }
-      if (hostNamesStr && hostNamesStr.trim()) {
-        input.hostNames = hostNamesStr;
-      }
-      if (cluster) {
-        input.cluster = cluster;
-      }
-      // Note: authType is not included in update - it cannot be changed
-      
-      console.log('[ClickHouse Users] Submitting input:', input);
-      
       if (isEditing) {
+        // Build update input object
+        const input: UpdateClickHouseUserInput = {
+          role,
+          allowedDatabases: allowedDatabases,
+          allowedTables: allowedTables,
+        };
+        
+        // Only include password if it's provided and authType is not 'no_password'
+        if (password && authType !== 'no_password') {
+          // Validate password strength for updates too
+          if (!isPasswordValid) {
+            toast.error('Password does not meet security requirements');
+            setIsSubmitting(false);
+            return;
+          }
+          input.password = password;
+        }
+        
+        if (hostIpStr && hostIpStr.trim()) {
+          input.hostIp = hostIpStr;
+        }
+        if (hostNamesStr && hostNamesStr.trim()) {
+          input.hostNames = hostNamesStr;
+        }
+        if (cluster) {
+          input.cluster = cluster;
+        }
+        // Note: authType is not included in update - it cannot be changed
+        
+        console.log('[ClickHouse Users] Submitting input:', input);
         await rbacClickHouseUsersApi.update(username, input);
         toast.success('ClickHouse user updated successfully');
       } else {
+        // Build create payload with required fields
         const createPayload: CreateClickHouseUserInput = {
           username,
-          ...input,
+          role: role!, // role is required for create
+          allowedDatabases: allowedDatabases,
+          allowedTables: allowedTables,
+          authType: authType || 'sha256_password',
         };
+        
+        // Add optional fields
+        if (hostIpStr && hostIpStr.trim()) {
+          createPayload.hostIp = hostIpStr;
+        }
+        if (hostNamesStr && hostNamesStr.trim()) {
+          createPayload.hostNames = hostNamesStr;
+        }
+        if (cluster) {
+          createPayload.cluster = cluster;
+        }
+        
         // Only include password if authType is not 'no_password'
         if (authType !== 'no_password' && password) {
+          // Validate password strength
+          if (!isPasswordValid) {
+            toast.error('Password does not meet security requirements');
+            setIsSubmitting(false);
+            return;
+          }
           createPayload.password = password;
         }
+        
+        console.log('[ClickHouse Users] Submitting input:', createPayload);
         await rbacClickHouseUsersApi.create(createPayload);
         toast.success('ClickHouse user created successfully');
       }
