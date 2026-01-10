@@ -18,7 +18,7 @@ npm run dev
 
 Visit `http://localhost:5173`
 
-## Build for GitHub Pages
+## Build
 
 ```bash
 # Build the site
@@ -27,19 +27,50 @@ bun run build
 npm run build
 
 # The built files will be in ../dist/
-# Copy them to the docs folder root for GitHub Pages
-cp -r dist/* ../
-
-# Or use the deploy script
-./deploy.sh
 ```
 
-## GitHub Pages Setup
+## Docker Deployment
 
-1. Build the site: `bun run build`
-2. Copy `dist/*` to `docs/` folder root
-3. Commit and push
-4. GitHub Pages will automatically deploy from the `/docs` folder
+### Build Docker Image
+
+```bash
+docker build -t clickhouse-studio-portfolio:latest .
+```
+
+### Run Locally
+
+```bash
+docker run -d -p 8080:3000 clickhouse-studio-portfolio:latest
+```
+
+Visit `http://localhost:8080`
+
+### Push to GitHub Container Registry
+
+```bash
+# Login to GHCR
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+
+# Tag and push
+docker tag clickhouse-studio-portfolio:latest ghcr.io/daun-gatal/clickhouse-studio-portfolio:latest
+docker push ghcr.io/daun-gatal/clickhouse-studio-portfolio:latest
+```
+
+## Kubernetes Deployment
+
+See [k8s/README.md](./k8s/README.md) for detailed Kubernetes deployment instructions.
+
+Quick deploy:
+
+```bash
+# Deploy to Kubernetes
+kubectl apply -f k8s/deployment.yaml
+
+# Expose with Tailscale Funnel
+tailscale funnel --set-enabled=true --target=clickhouse-studio-portfolio:80
+```
+
+The GitHub Actions workflow will automatically build and push the Docker image when you push changes to the portfolio.
 
 ## Features
 

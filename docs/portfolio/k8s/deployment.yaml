@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse-studio-portfolio
+  labels:
+    app: clickhouse-studio-portfolio
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: clickhouse-studio-portfolio
+  template:
+    metadata:
+      labels:
+        app: clickhouse-studio-portfolio
+    spec:
+      containers:
+      - name: portfolio
+        image: ghcr.io/daun-gatal/clickhouse-studio-portfolio:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse-studio-portfolio
+  labels:
+    app: clickhouse-studio-portfolio
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: clickhouse-studio-portfolio
+
+---
+# Note: For Tailscale Funnel, you don't need an Ingress.
+# Instead, expose the service using Tailscale Funnel:
+# tailscale funnel --set-enabled=true --target=clickhouse-studio-portfolio:80
