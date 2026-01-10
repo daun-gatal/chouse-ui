@@ -42,7 +42,7 @@ import {
   type ConnectResult,
 } from '@/api/rbac';
 import { setSessionId, clearSession, getSessionId } from '@/api/client';
-import { useRbacStore } from '@/stores';
+import { useRbacStore, useAuthStore } from '@/stores';
 
 // Storage key for persisting selected connection
 const SELECTED_CONNECTION_KEY = 'clickhouse_selected_connection_id';
@@ -141,6 +141,20 @@ export default function ConnectionSelector({
       
       // Store session ID for API calls
       setSessionId(result.sessionId);
+      
+      // Build connection URL for display
+      const protocol = connection.sslEnabled ? 'https' : 'http';
+      const connectionUrl = `${protocol}://${connection.host}:${connection.port}`;
+      
+      // Update auth store with connection information
+      useAuthStore.setState({
+        username: result.username,
+        url: connectionUrl,
+        version: result.version,
+        isAdmin: result.isAdmin,
+        permissions: result.permissions,
+        sessionId: result.sessionId,
+      });
       
       // Persist the selected connection
       setStoredConnectionId(connection.id);
