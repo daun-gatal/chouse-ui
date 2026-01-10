@@ -5,6 +5,7 @@
  */
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { explorerApi, savedQueriesApi } from '@/api';
 import type { DatabaseInfo, SavedQuery } from '@/api';
 import { toast } from 'sonner';
@@ -12,6 +13,27 @@ import { toast } from 'sonner';
 // ============================================
 // Types
 // ============================================
+
+export interface FavoriteItem {
+  id: string; // Format: "database.table" or "database"
+  type: 'database' | 'table';
+  database: string;
+  table?: string;
+  name: string;
+  addedAt: number;
+}
+
+export interface RecentItem {
+  id: string; // Format: "database.table" or "database"
+  type: 'database' | 'table';
+  database: string;
+  table?: string;
+  name: string;
+  accessedAt: number;
+}
+
+export type SortOption = 'name' | 'size' | 'rows' | 'recent';
+export type ViewMode = 'tree' | 'list' | 'compact';
 
 export interface ExplorerState {
   // Database state
@@ -26,6 +48,15 @@ export interface ExplorerState {
   savedQueries: SavedQuery[];
   isSavedQueriesEnabled: boolean;
   isLoadingSavedQueries: boolean;
+
+  // Favorites & Recent
+  favorites: FavoriteItem[];
+  recentItems: RecentItem[];
+  
+  // View preferences
+  sortBy: SortOption;
+  viewMode: ViewMode;
+  showFavoritesOnly: boolean;
 
   // Modal state - with both naming conventions for compatibility
   isCreateTableModalOpen: boolean;
@@ -63,24 +94,56 @@ export interface ExplorerState {
 
   // Utility
   refreshAll: () => Promise<void>;
+
+  // Favorites actions
+  addFavorite: (database: string, table?: string) => void;
+  removeFavorite: (id: string) => void;
+  isFavorite: (database: string, table?: string) => boolean;
+  toggleFavorite: (database: string, table?: string) => void;
+
+  // Recent items actions
+  addRecentItem: (database: string, table?: string) => void;
+  clearRecentItems: () => void;
+  getRecentItems: (limit?: number) => RecentItem[];
+
+  // View preferences
+  setSortBy: (sortBy: SortOption) => void;
+  setViewMode: (mode: ViewMode) => void;
+  setShowFavoritesOnly: (show: boolean) => void;
 }
 
 // ============================================
 // Store
 // ============================================
 
-export const useExplorerStore = create<ExplorerState>()((set, get) => ({
-  // Initial state
-  databases: [],
-  isLoadingDatabases: false,
-  databaseError: null,
+// Helper function to generate item ID
+const getItemId = (database: string, table?: string): string => {
+  return table ? `${database}.${table}` : database;
+};
 
-  // Tree state
-  expandedNodes: new Set<string>(),
+export const useExplorerStore = create<ExplorerState>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      databases: [],
+      isLoadingDatabases: false,
+      databaseError: null,
 
-  savedQueries: [],
-  isSavedQueriesEnabled: false,
-  isLoadingSavedQueries: false,
+      // Tree state - restored from persisted array or new Set
+      expandedNodes: new Set<string>(),
+
+      savedQueries: [],
+      isSavedQueriesEnabled: false,
+      isLoadingSavedQueries: false,
+
+      // Favorites & Recent (persisted)
+      favorites: [],
+      recentItems: [],
+
+      // View preferences
+      sortBy: 'name',
+      viewMode: 'tree',
+      showFavoritesOnly: false,
 
   // Modal state - dual naming for compatibility
   isCreateTableModalOpen: false,
@@ -253,4 +316,114 @@ export const useExplorerStore = create<ExplorerState>()((set, get) => ({
       get().isSavedQueriesEnabled ? get().fetchSavedQueries() : Promise.resolve(),
     ]);
   },
-}));
+
+  // Favorites actions
+  addFavorite: (database: string, table?: string) => {
+    const id = getItemId(database, table);
+    const { favorites } = get();
+    
+    // Check if already favorited
+    if (favorites.some(f => f.id === id)) {
+      return;
+    }
+
+    const newFavorite: FavoriteItem = {
+      id,
+      type: table ? 'table' : 'database',
+      database,
+      table,
+      name: table || database,
+      addedAt: Date.now(),
+    };
+
+    set({ favorites: [...favorites, newFavorite] });
+    toast.success(`${table ? 'Table' : 'Database'} added to favorites`);
+  },
+
+  removeFavorite: (id: string) => {
+    const { favorites } = get();
+    const favorite = favorites.find(f => f.id === id);
+    set({ favorites: favorites.filter(f => f.id !== id) });
+    if (favorite) {
+      toast.success(`${favorite.type === 'table' ? 'Table' : 'Database'} removed from favorites`);
+    }
+  },
+
+  isFavorite: (database: string, table?: string) => {
+    const id = getItemId(database, table);
+    return get().favorites.some(f => f.id === id);
+  },
+
+  toggleFavorite: (database: string, table?: string) => {
+    const { isFavorite, addFavorite, removeFavorite } = get();
+    const id = getItemId(database, table);
+    
+    if (isFavorite(database, table)) {
+      removeFavorite(id);
+    } else {
+      addFavorite(database, table);
+    }
+  },
+
+  // Recent items actions
+  addRecentItem: (database: string, table?: string) => {
+    const id = getItemId(database, table);
+    const { recentItems } = get();
+    
+    // Remove existing if present
+    const filtered = recentItems.filter(item => item.id !== id);
+    
+    const newRecent: RecentItem = {
+      id,
+      type: table ? 'table' : 'database',
+      database,
+      table,
+      name: table || database,
+      accessedAt: Date.now(),
+    };
+
+    // Keep only last 20 items, most recent first
+    const updated = [newRecent, ...filtered].slice(0, 20);
+    set({ recentItems: updated });
+  },
+
+  clearRecentItems: () => {
+    set({ recentItems: [] });
+    toast.success('Recent items cleared');
+  },
+
+  getRecentItems: (limit: number = 10) => {
+    return get().recentItems.slice(0, limit);
+  },
+
+  // View preferences
+  setSortBy: (sortBy: SortOption) => {
+    set({ sortBy });
+  },
+
+  setViewMode: (mode: ViewMode) => {
+    set({ viewMode: mode });
+  },
+
+  setShowFavoritesOnly: (show: boolean) => {
+    set({ showFavoritesOnly: show });
+  },
+}),
+    {
+      name: 'explorer-storage',
+      partialize: (state) => ({
+        favorites: state.favorites,
+        recentItems: state.recentItems,
+        sortBy: state.sortBy,
+        viewMode: state.viewMode,
+        expandedNodes: Array.from(state.expandedNodes), // Convert Set to Array for persistence
+      }),
+      // Restore expandedNodes from persisted array
+      onRehydrateStorage: () => (state) => {
+        if (state && Array.isArray((state as any).expandedNodes)) {
+          state.expandedNodes = new Set((state as any).expandedNodes);
+        }
+      },
+    }
+  )
+);

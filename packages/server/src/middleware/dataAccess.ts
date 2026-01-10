@@ -14,6 +14,12 @@ import {
   type AccessType 
 } from '../rbac/services/dataAccess';
 import { AppError } from '../types';
+import { 
+  splitSqlStatements, 
+  parseStatement, 
+  getAccessTypeFromStatementType,
+  type ParsedStatement 
+} from './sqlParser';
 
 // ============================================
 // Context Extension
@@ -122,8 +128,12 @@ export async function checkTableAccess(
   return result.allowed;
 }
 
+// System databases that should be hidden from non-admin users
+const SYSTEM_DATABASES = ['system', 'information_schema', 'INFORMATION_SCHEMA'];
+
 /**
  * Filter databases based on user access
+ * System databases are hidden from non-admin users
  */
 export async function filterDatabases(
   userId: string | undefined,
@@ -132,17 +142,20 @@ export async function filterDatabases(
   connectionId?: string,
   _accessType: AccessType = 'read' // Access type is now determined by role permissions
 ): Promise<string[]> {
-  // Admins see all
+  // Admins see all (including system databases)
   if (isAdmin) return databases;
   
   // No RBAC user = no filtering (legacy mode)
   if (!userId) return databases;
 
-  return filterDatabasesForUser(userId, databases, connectionId);
+  // Filter out system databases for non-admin users
+  const filtered = await filterDatabasesForUser(userId, databases, connectionId);
+  return filtered.filter(db => !SYSTEM_DATABASES.includes(db));
 }
 
 /**
  * Filter tables based on user access
+ * System tables are hidden from non-admin users
  */
 export async function filterTables(
   userId: string | undefined,
@@ -152,78 +165,166 @@ export async function filterTables(
   connectionId?: string,
   _accessType: AccessType = 'read' // Access type is now determined by role permissions
 ): Promise<string[]> {
-  // Admins see all
+  // Admins see all (including system tables)
   if (isAdmin) return tables;
   
   // No RBAC user = no filtering (legacy mode)
   if (!userId) return tables;
 
+  // For system database, hide all tables from non-admin users
+  if (SYSTEM_DATABASES.includes(database)) {
+    return [];
+  }
+
   return filterTablesForUser(userId, database, tables, connectionId);
 }
 
 /**
- * Extract database and table from a SQL query (basic parser)
+ * Extract database and table from a SQL query using AST parser
+ * Falls back to regex if parsing fails
  */
 export function extractTablesFromQuery(sql: string): { database?: string; table?: string }[] {
-  const results: { database?: string; table?: string }[] = [];
-  const normalizedSql = sql.replace(/\s+/g, ' ').trim();
-  
-  // Match FROM/INTO/UPDATE/TABLE patterns
-  const patterns = [
-    /FROM\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
-    /FROM\s+([`"]?[\w]+[`"]?)/gi,
-    /INTO\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
-    /INTO\s+([`"]?[\w]+[`"]?)/gi,
-    /UPDATE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
-    /UPDATE\s+([`"]?[\w]+[`"]?)/gi,
-    /TABLE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
-    /TABLE\s+([`"]?[\w]+[`"]?)/gi,
-    /JOIN\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
-    /JOIN\s+([`"]?[\w]+[`"]?)/gi,
-  ];
-
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(normalizedSql)) !== null) {
-      const clean = (s: string) => s.replace(/[`"]/g, '');
-      if (match[2]) {
-        // database.table format
-        results.push({ database: clean(match[1]), table: clean(match[2]) });
-      } else {
-        // Just table name (uses default database)
-        results.push({ table: clean(match[1]) });
-      }
-    }
+  try {
+    const parsed = parseStatement(sql);
+    return parsed.tables;
+  } catch (error) {
+    // Fallback to empty array if parsing fails completely
+    console.warn('[DataAccess] Failed to extract tables from query:', error);
+    return [];
   }
-
-  return results;
 }
 
 /**
- * Determine access type needed for a query
+ * Determine access type needed for a query using AST parser
+ * Falls back to pattern matching if parsing fails
  */
 export function getQueryAccessType(sql: string): AccessType {
-  const normalizedSql = sql.trim().toUpperCase();
-  
-  if (normalizedSql.startsWith('SELECT') || normalizedSql.startsWith('SHOW') || normalizedSql.startsWith('DESCRIBE')) {
+  try {
+    const parsed = parseStatement(sql);
+    return getAccessTypeFromStatementType(parsed.type);
+  } catch (error) {
+    // Fallback to simple pattern matching
+    const normalizedSql = sql.trim().toUpperCase();
+    
+    if (normalizedSql.startsWith('SELECT') || normalizedSql.startsWith('SHOW') || normalizedSql.startsWith('DESCRIBE')) {
+      return 'read';
+    }
+    
+    if (normalizedSql.startsWith('INSERT') || normalizedSql.startsWith('UPDATE') || normalizedSql.startsWith('DELETE')) {
+      return 'write';
+    }
+    
+    // DDL operations
+    if (normalizedSql.startsWith('CREATE') || normalizedSql.startsWith('DROP') || 
+        normalizedSql.startsWith('ALTER') || normalizedSql.startsWith('TRUNCATE')) {
+      return 'admin';
+    }
+    
     return 'read';
   }
-  
-  if (normalizedSql.startsWith('INSERT') || normalizedSql.startsWith('UPDATE') || normalizedSql.startsWith('DELETE')) {
-    return 'write';
+}
+
+/**
+ * Validate a single SQL statement
+ * 
+ * Checks:
+ * 1. User has required permissions for the operation type (read/write/admin)
+ * 2. User has data access rules allowing access to all referenced tables
+ * 
+ * @param statement - Single SQL statement to validate
+ * @param statementIndex - Zero-based index of the statement (for error reporting)
+ * @param userId - RBAC user ID
+ * @param permissions - User's role permissions
+ * @param defaultDatabase - Default database context
+ * @param connectionId - Connection ID for data access rules
+ * @returns Validation result with detailed error message if denied
+ */
+async function validateSingleStatement(
+  statement: string,
+  statementIndex: number,
+  userId: string,
+  permissions: string[],
+  defaultDatabase: string | undefined,
+  connectionId: string | undefined
+): Promise<{ allowed: boolean; reason?: string; statementIndex?: number }> {
+  // Parse statement using AST parser for robust analysis
+  let parsed: ParsedStatement;
+  try {
+    parsed = parseStatement(statement);
+  } catch (error) {
+    // If parsing fails completely, deny access for security
+    return {
+      allowed: false,
+      reason: `Statement ${statementIndex + 1}: Failed to parse SQL statement`,
+      statementIndex,
+    };
   }
+
+  const accessType = getAccessTypeFromStatementType(parsed.type);
   
-  // DDL operations
-  if (normalizedSql.startsWith('CREATE') || normalizedSql.startsWith('DROP') || 
-      normalizedSql.startsWith('ALTER') || normalizedSql.startsWith('TRUNCATE')) {
-    return 'admin';
+  // Check if user has permission for this type of operation (based on role)
+  if (!hasPermissionForAccessType(permissions, accessType)) {
+    return {
+      allowed: false,
+      reason: `Statement ${statementIndex + 1}: No permission for ${accessType} operations (${parsed.type} statement)`,
+      statementIndex,
+    };
   }
+
+  const tables = parsed.tables;
   
-  return 'read';
+  // If no tables detected, allow (might be a system query)
+  if (tables.length === 0) {
+    return { allowed: true };
+  }
+
+  // Check each table against data access rules
+  // Note: System databases are hidden from UI but queries are still allowed if user has permissions
+  for (const { database, table } of tables) {
+    const db = database || defaultDatabase || 'default';
+    const tbl = table || '*';
+    
+    // System databases are hidden from Explorer UI but queries are allowed
+    // Check user access normally (don't block system database queries)
+    const result = await checkUserAccess(userId, db, tbl, accessType, connectionId);
+    
+    if (!result.allowed) {
+      return { 
+        allowed: false, 
+        reason: `Statement ${statementIndex + 1}: Access denied to ${db}.${tbl} (requires ${accessType} permission)`,
+        statementIndex,
+      };
+    }
+  }
+
+  return { allowed: true };
 }
 
 /**
  * Validate query access for a user
+ * 
+ * SECURITY: Advanced multi-statement validation
+ * - Splits SQL query into individual statements
+ * - Validates EACH statement separately for:
+ *   1. Operation type permissions (read/write/admin based on role)
+ *   2. Data access rules (which databases/tables user can access)
+ * 
+ * This prevents security vulnerabilities where users with limited permissions
+ * could execute dangerous operations by combining statements:
+ * 
+ * Example attack prevented:
+ *   SELECT * FROM safe_table; DROP TABLE sensitive_data;
+ * 
+ * The first statement would pass (read permission), but the second would be
+ * rejected (requires admin permission), preventing the entire query.
+ * 
+ * @param userId - RBAC user ID (undefined = legacy mode, no filtering)
+ * @param isAdmin - Whether user is admin (admins bypass all checks)
+ * @param permissions - User's role permissions array
+ * @param sql - SQL query string (may contain multiple statements separated by semicolons)
+ * @param defaultDatabase - Default database context for table references
+ * @param connectionId - Connection ID for connection-specific data access rules
+ * @returns Validation result with detailed error message including statement index if denied
  */
 export async function validateQueryAccess(
   userId: string | undefined,
@@ -232,65 +333,47 @@ export async function validateQueryAccess(
   sql: string,
   defaultDatabase?: string,
   connectionId?: string
-): Promise<{ allowed: boolean; reason?: string }> {
+): Promise<{ allowed: boolean; reason?: string; statementIndex?: number }> {
   // Admins have full access
   if (isAdmin) return { allowed: true };
   
   // No RBAC user = no filtering (legacy mode)
   if (!userId) return { allowed: true };
 
-  const accessType = getQueryAccessType(sql);
+  // Split SQL into individual statements
+  const statements = splitSqlStatements(sql);
   
-  // Check if user has permission for this type of operation (based on role)
-  if (permissions && !hasPermissionForAccessType(permissions, accessType)) {
+  // If no valid statements found, deny
+  if (statements.length === 0) {
     return {
       allowed: false,
-      reason: `No permission for ${accessType} operations`,
+      reason: 'No valid SQL statements found',
     };
   }
 
-  const tables = extractTablesFromQuery(sql);
-  
-  // If no tables detected, allow (might be a system query)
-  if (tables.length === 0) {
-    return { allowed: true };
-  }
+  // Validate each statement individually
+  for (let i = 0; i < statements.length; i++) {
+    const statement = statements[i];
+    const validation = await validateSingleStatement(
+      statement,
+      i,
+      userId,
+      permissions || [],
+      defaultDatabase,
+      connectionId
+    );
 
-  // System metadata tables that are always allowed for read operations
-  const SYSTEM_METADATA_TABLES = [
-    'databases', 'tables', 'columns', 'parts', 'parts_columns',
-    'table_engines', 'data_type_families', 'settings', 'functions', 'formats',
-    'clusters', 'macros', 'dictionaries', 'users', 'roles', 'grants',
-    'query_log', 'processes', 'metrics', 'events', 'asynchronous_metrics',
-    'disks', 'storage_policies', 'merges', 'mutations', 'replicas',
-    'replication_queue', 'distribution_queue'
-  ];
-
-  // Check each table against data access rules
-  for (const { database, table } of tables) {
-    const db = database || defaultDatabase || 'default';
-    const tbl = table || '*';
-    
-    // Always allow SELECT from system metadata tables
-    if (accessType === 'read' && db.toLowerCase() === 'system' && 
-        SYSTEM_METADATA_TABLES.includes(tbl.toLowerCase())) {
-      continue;
-    }
-    
-    // Always allow SELECT from INFORMATION_SCHEMA
-    if (accessType === 'read' && db.toLowerCase() === 'information_schema') {
-      continue;
-    }
-    
-    const result = await checkUserAccess(userId, db, tbl, accessType, connectionId);
-    
-    if (!result.allowed) {
-      return { 
-        allowed: false, 
-        reason: `Access denied to ${db}.${tbl}` 
+    if (!validation.allowed) {
+      // Provide detailed error message
+      const statementPreview = statement.substring(0, 50).replace(/\s+/g, ' ');
+      return {
+        allowed: false,
+        reason: `${validation.reason}${statements.length > 1 ? `\nStatement: ${statementPreview}...` : ''}`,
+        statementIndex: validation.statementIndex,
       };
     }
   }
 
+  // All statements passed validation
   return { allowed: true };
 }
