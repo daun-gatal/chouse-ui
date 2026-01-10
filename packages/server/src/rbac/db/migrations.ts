@@ -39,7 +39,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.1';
 
 // ============================================
 // Migration Registry
@@ -125,6 +125,117 @@ const MIGRATIONS: Migration[] = [
       }
       
       console.log('[Migration 1.1.0] Data access rules table dropped');
+    },
+  },
+  {
+    version: '1.2.0',
+    name: 'clickhouse_users_metadata',
+    description: 'Add ClickHouse users metadata table to store user configuration (role, cluster, allowed databases/tables)',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_clickhouse_users_metadata (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            cluster TEXT,
+            host_ip TEXT,
+            host_names TEXT,
+            allowed_databases TEXT NOT NULL DEFAULT '[]',
+            allowed_tables TEXT NOT NULL DEFAULT '[]',
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL,
+            UNIQUE(username, connection_id)
+          )
+        `);
+        
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_username_idx ON rbac_clickhouse_users_metadata(username)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_connection_idx ON rbac_clickhouse_users_metadata(connection_id)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_clickhouse_users_metadata (
+            id TEXT PRIMARY KEY,
+            username VARCHAR(255) NOT NULL,
+            connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+            role VARCHAR(20) NOT NULL,
+            cluster VARCHAR(255),
+            host_ip VARCHAR(255),
+            host_names VARCHAR(255),
+            allowed_databases JSONB NOT NULL DEFAULT '[]',
+            allowed_tables JSONB NOT NULL DEFAULT '[]',
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL,
+            UNIQUE(username, connection_id)
+          )
+        `);
+        
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_username_idx ON rbac_clickhouse_users_metadata(username)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_connection_idx ON rbac_clickhouse_users_metadata(connection_id)`);
+      }
+      
+      console.log('[Migration 1.2.0] ClickHouse users metadata table created');
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_clickhouse_users_metadata`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_clickhouse_users_metadata`);
+      }
+      
+      console.log('[Migration 1.2.0] ClickHouse users metadata table dropped');
+    },
+  },
+  {
+    version: '1.2.1',
+    name: 'add_auth_type_to_metadata',
+    description: 'Add auth_type column to ClickHouse users metadata table',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      
+      if (dbType === 'sqlite') {
+        // SQLite doesn't support ALTER TABLE ADD COLUMN IF NOT EXISTS, so we check first
+        try {
+          (db as SqliteDb).run(sql`
+            ALTER TABLE rbac_clickhouse_users_metadata 
+            ADD COLUMN auth_type TEXT
+          `);
+          console.log('[Migration 1.2.1] Added auth_type column to SQLite metadata table');
+        } catch (error: any) {
+          // Column might already exist, which is fine
+          if (error?.message?.includes('duplicate column')) {
+            console.log('[Migration 1.2.1] auth_type column already exists, skipping');
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_clickhouse_users_metadata 
+          ADD COLUMN IF NOT EXISTS auth_type VARCHAR(50)
+        `);
+        console.log('[Migration 1.2.1] Added auth_type column to PostgreSQL metadata table');
+      }
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      
+      if (dbType === 'sqlite') {
+        // SQLite doesn't support DROP COLUMN easily, would need to recreate table
+        console.log('[Migration 1.2.1] SQLite does not support DROP COLUMN, manual intervention required');
+      } else {
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_clickhouse_users_metadata 
+          DROP COLUMN IF EXISTS auth_type
+        `);
+        console.log('[Migration 1.2.1] Removed auth_type column from PostgreSQL metadata table');
+      }
     },
   },
 ];

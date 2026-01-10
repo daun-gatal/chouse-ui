@@ -229,6 +229,7 @@ export const AUDIT_ACTIONS = {
   CH_USER_CREATE: 'clickhouse.user_create',
   CH_USER_UPDATE: 'clickhouse.user_update',
   CH_USER_DELETE: 'clickhouse.user_delete',
+  CH_USER_SYNC: 'clickhouse.user_sync',
   CH_QUERY_EXECUTE: 'clickhouse.query_execute',
   CH_DATABASE_CREATE: 'clickhouse.database_create',
   CH_DATABASE_DROP: 'clickhouse.database_drop',
