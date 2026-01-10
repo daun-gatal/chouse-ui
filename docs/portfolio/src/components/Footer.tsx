@@ -44,7 +44,7 @@ export default function Footer() {
               {[
                 { label: 'Features', href: '#features' },
                 { label: 'Highlights', href: '#highlights' },
-                { label: 'Try It Out', href: '#quick-start' },
+                { label: 'Quick Start', href: '#quick-start' },
                 { label: 'Tech Stack', href: '#tech-stack' },
               ].map((item) => (
                 <li key={item.href}>
