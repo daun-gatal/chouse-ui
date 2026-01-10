@@ -2,7 +2,7 @@ import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Features from './components/Features';
 import Highlights from './components/Highlights';
-import QuickStart from './components/QuickStart';
+import DockerDeploy from './components/DockerDeploy';
 import TechStack from './components/TechStack';
 import Footer from './components/Footer';
 
@@ -13,7 +13,7 @@ function App() {
       <Hero />
       <Features />
       <Highlights />
-      <QuickStart />
+      <DockerDeploy />
       <TechStack />
       <Footer />
     </div>

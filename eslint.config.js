@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
-    { ignores: ['dist', '.eslintrc.cjs', '**/*.cjs', 'inject-env.cjs'] },
+    { ignores: ['dist', '.eslintrc.cjs', '**/*.cjs', 'inject-env.cjs', 'docs/portfolio/server.js'] },
     js.configs.recommended,
     {
         files: ['**/*.{js,jsx}'],
