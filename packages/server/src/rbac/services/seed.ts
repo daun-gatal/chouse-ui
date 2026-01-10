@@ -8,6 +8,10 @@ import { randomUUID } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { getDatabase, getSchema } from '../db';
 import { hashPassword } from './password';
+
+// Type helper to avoid TypeScript union type issues with RbacDb
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDb = any;
 import {
   SYSTEM_ROLES,
   PERMISSIONS,
@@ -149,6 +153,10 @@ const ROLE_DEFINITIONS: Record<SystemRole, { displayName: string; description: s
     displayName: 'Viewer',
     description: 'Read-only access to data',
   },
+  [SYSTEM_ROLES.GUEST]: {
+    displayName: 'Guest',
+    description: 'Read-only access to all tabs and data',
+  },
 };
 
 // ============================================
@@ -159,7 +167,7 @@ const ROLE_DEFINITIONS: Record<SystemRole, { displayName: string; description: s
  * Seed all permissions
  */
 export async function seedPermissions(): Promise<Map<string, string>> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const permissionIdMap = new Map<string, string>();
 
@@ -171,12 +179,14 @@ export async function seedPermissions(): Promise<Map<string, string>> {
       const displayName = PERMISSION_DISPLAY_NAMES[permName] || permName;
 
       // Check if permission already exists
+      // @ts-ignore - Union type issue with RbacDb, resolved at runtime
       const existing = await db.select()
         .from(schema.permissions)
         .where(eq(schema.permissions.name, permName))
         .limit(1);
 
       if (existing.length === 0) {
+        // @ts-ignore - Union type issue with RbacDb, resolved at runtime
         await db.insert(schema.permissions).values({
           id,
           name: permName,
@@ -201,7 +211,7 @@ export async function seedPermissions(): Promise<Map<string, string>> {
  * Seed system roles with their permissions
  */
 export async function seedRoles(permissionIdMap: Map<string, string>): Promise<Map<string, string>> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const roleIdMap = new Map<string, string>();
 
@@ -213,12 +223,14 @@ export async function seedRoles(permissionIdMap: Map<string, string>): Promise<M
     const priority = ROLE_HIERARCHY[roleName];
 
     // Check if role already exists
+    // @ts-ignore - Union type issue with RbacDb, resolved at runtime
     const existing = await db.select()
       .from(schema.roles)
       .where(eq(schema.roles.name, roleName))
       .limit(1);
 
     if (existing.length === 0) {
+      // @ts-ignore - Union type issue with RbacDb, resolved at runtime
       await db.insert(schema.roles).values({
         id,
         name: roleName,
@@ -237,6 +249,7 @@ export async function seedRoles(permissionIdMap: Map<string, string>): Promise<M
       for (const permName of rolePerms) {
         const permId = permissionIdMap.get(permName);
         if (permId) {
+          // @ts-ignore - Union type issue with RbacDb, resolved at runtime
           await db.insert(schema.rolePermissions).values({
             id: randomUUID(),
             roleId: id,
@@ -258,7 +271,7 @@ export async function seedRoles(permissionIdMap: Map<string, string>): Promise<M
  * Create default super admin user
  */
 export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<void> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const adminEmail = process.env.RBAC_ADMIN_EMAIL || 'admin@localhost';
@@ -268,6 +281,7 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
   console.log('[RBAC] Checking for super admin user...');
 
   // Check if super admin already exists
+  // @ts-ignore - Union type issue with RbacDb, resolved at runtime
   const existing = await db.select()
     .from(schema.users)
     .where(eq(schema.users.email, adminEmail))
@@ -277,6 +291,7 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
     const userId = randomUUID();
     const passwordHash = await hashPassword(adminPassword);
 
+    // @ts-ignore - Union type issue with RbacDb, resolved at runtime
     await db.insert(schema.users).values({
       id: userId,
       email: adminEmail,
@@ -292,6 +307,7 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
     // Assign super admin role
     const superAdminRoleId = roleIdMap.get(SYSTEM_ROLES.SUPER_ADMIN);
     if (superAdminRoleId) {
+      // @ts-ignore - Union type issue with RbacDb, resolved at runtime
       await db.insert(schema.userRoles).values({
         id: randomUUID(),
         userId,
@@ -333,10 +349,11 @@ export async function seedDatabase(): Promise<void> {
  * Check if database needs seeding
  */
 export async function needsSeeding(): Promise<boolean> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   try {
+    // @ts-ignore - Union type issue with RbacDb, resolved at runtime
     const roles = await db.select()
       .from(schema.roles)
       .limit(1);

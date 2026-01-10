@@ -70,9 +70,14 @@ export default function Footer() {
             <ul className="space-y-3">
               <li>
                 <a
-                  href="https://clickhouse-studio-ext.kitty-barb.ts.net/"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="#quick-start"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const element = document.getElementById('quick-start');
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }}
                   className="text-gray-400 hover:text-white transition-colors text-sm flex items-center gap-2 group"
                 >
                   <span className="w-0 group-hover:w-2 h-0.5 bg-gradient-to-r from-purple-400 to-blue-400 transition-all duration-300" />

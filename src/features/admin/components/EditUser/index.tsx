@@ -62,6 +62,8 @@ import { UserDataAccess } from "../UserDataAccess";
 
 // Admin roles that don't require data access rules
 const ADMIN_ROLES = ['super_admin', 'admin'];
+// Roles that have pre-defined role-level data access rules (don't require user-level rules)
+const ROLES_WITH_PREDEFINED_RULES = ['guest'];
 
 // Role colors for display
 const ROLE_COLORS: Record<string, { icon: string; color: string; bgColor: string; borderColor: string }> = {
@@ -94,6 +96,12 @@ const ROLE_COLORS: Record<string, { icon: string; color: string; bgColor: string
     color: "text-purple-400",
     bgColor: "bg-purple-500/20",
     borderColor: "border-purple-500/50",
+  },
+  guest: {
+    icon: "👋",
+    color: "text-cyan-400",
+    bgColor: "bg-cyan-500/20",
+    borderColor: "border-cyan-500/50",
   },
 };
 
@@ -150,10 +158,14 @@ const EditUser: React.FC = () => {
   const isCurrentUser = user?.id === currentUser?.id;
 
   // Check if selected roles require data access rules
+  // Note: GUEST role has pre-defined role-level data access rules, so it doesn't require user-level rules
   const selectedRoleNames = selectedRoles.map(roleId => roles.find(r => r.id === roleId)?.name || '');
   const hasAdminRole = selectedRoleNames.some(name => ADMIN_ROLES.includes(name));
-  const requiresDataAccess = !hasAdminRole && selectedRoles.length > 0;
+  const hasPredefinedRules = selectedRoleNames.some(name => ROLES_WITH_PREDEFINED_RULES.includes(name));
+  const requiresDataAccess = !hasAdminRole && !hasPredefinedRules && selectedRoles.length > 0;
   const dataAccessValid = !requiresDataAccess || dataAccessRulesCount > 0;
+  const ROLES_WITHOUT_DATA_ACCESS_UI = [...ADMIN_ROLES, ...ROLES_WITH_PREDEFINED_RULES]; // Roles that don't need data access UI
+  const showDataAccessUI = !selectedRoleNames.some(name => ROLES_WITHOUT_DATA_ACCESS_UI.includes(name));
 
   // Fetch user and roles
   useEffect(() => {
@@ -226,9 +238,8 @@ const EditUser: React.FC = () => {
 
   const toggleRole = (roleId: string) => {
     if (!canAssignRoles) return;
-    setSelectedRoles((prev) =>
-      prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId]
-    );
+    // Only allow one role to be selected at a time
+    setSelectedRoles(selectedRoles.includes(roleId) ? [] : [roleId]);
   };
 
   const handleGeneratePasswordManually = () => {
@@ -508,6 +519,7 @@ const EditUser: React.FC = () => {
             <Shield className="h-4 w-4 mr-2" />
             Roles
           </TabsTrigger>
+          {showDataAccessUI && (
           <TabsTrigger 
             value="data-access" 
             className={`data-[state=active]:bg-cyan-500/20 ${requiresDataAccess && !dataAccessValid ? "text-red-400" : ""}`}
@@ -518,6 +530,7 @@ const EditUser: React.FC = () => {
               <span className="ml-1 text-red-400">*</span>
             )}
           </TabsTrigger>
+          )}
           <TabsTrigger value="security" className="data-[state=active]:bg-yellow-500/20">
             <Key className="h-4 w-4 mr-2" />
             Security
@@ -660,7 +673,15 @@ const EditUser: React.FC = () => {
                           </div>
                         </div>
                         <div className="shrink-0">
-                          <Checkbox checked={isSelected} disabled={!canAssignRoles} />
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                            isSelected 
+                              ? 'border-cyan-400 bg-cyan-400' 
+                              : 'border-gray-500 bg-transparent'
+                          }`}>
+                            {isSelected && (
+                              <div className="w-2.5 h-2.5 rounded-full bg-white" />
+                            )}
+                          </div>
                         </div>
                       </div>
                     </button>
@@ -669,13 +690,14 @@ const EditUser: React.FC = () => {
               </div>
 
               {selectedRoles.length === 0 && (
-                <p className="text-sm text-amber-400">⚠️ User must have at least one role</p>
+                <p className="text-sm text-amber-400">⚠️ User must have a role</p>
               )}
             </GlassCardContent>
           </GlassCard>
         </TabsContent>
 
         {/* Data Access Tab */}
+        {showDataAccessUI && (
         <TabsContent value="data-access">
           <GlassCard className={requiresDataAccess && !dataAccessValid ? "border-red-500/50" : ""}>
             <GlassCardHeader>
@@ -704,7 +726,7 @@ const EditUser: React.FC = () => {
                   <div>
                     <p className="font-medium">Data access rules required</p>
                     <p className="text-xs text-red-400/80 mt-1">
-                      Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access.
+                      Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
                     </p>
                   </div>
                 </div>
@@ -725,6 +747,7 @@ const EditUser: React.FC = () => {
             </GlassCardContent>
           </GlassCard>
         </TabsContent>
+        )}
 
         {/* Security Tab */}
         <TabsContent value="security">
