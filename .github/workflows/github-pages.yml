@@ -68,9 +68,9 @@ jobs:
         working-directory: docs/portfolio
         env:
           NODE_ENV: production
-          VITE_BASE_PATH: /chouse-ui/
+          VITE_BASE_PATH: /
         run: |
-          echo "Building with base path: /chouse-ui/"
+          echo "Building with base path: / (for custom domain)"
           bun run build --mode production
 
       - name: Verify Build Output

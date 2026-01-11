@@ -4,9 +4,10 @@ import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // For GitHub Pages, always use /chouse-ui/ base path in production
-  // This ensures all assets are correctly prefixed
-  const base = process.env.VITE_BASE_PATH || (mode === 'production' ? '/chouse-ui/' : '/');
+  // For GitHub Pages with custom domain, use root base path (/)
+  // For GitHub Pages without custom domain (subpath), use /chouse-ui/
+  // Can be overridden with VITE_BASE_PATH environment variable
+  const base = process.env.VITE_BASE_PATH || (mode === 'production' ? '/' : '/');
   
   return {
     plugins: [react()],
