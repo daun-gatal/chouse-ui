@@ -4,3 +4,5 @@ module.exports = {
     autoprefixer: {},
   },
 }
+
+// Add comment to the file
