@@ -113,7 +113,45 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check for Code Changes
+        id: check_changes
+        run: |
+          # Get the base commit from the push event (before this push)
+          BASE_SHA="${{ github.event.before }}"
+          HEAD_SHA="${{ github.sha }}"
+          
+          # If base SHA is invalid, check since last tag
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LATEST_TAG" ]; then
+              BASE_SHA=$LATEST_TAG
+            else
+              # No tag, check last commit
+              BASE_SHA=$(git rev-parse HEAD~1)
+            fi
+          fi
+          
+          # Get all changed files in this push
+          CHANGED_FILES=$(git diff --name-only $BASE_SHA $HEAD_SHA 2>/dev/null || true)
+          
+          # Filter out non-code files
+          # Keep only: src/, packages/, Dockerfile, package.json, bun.lock, tsconfig.json, etc.
+          # Exclude: .rules/, docs/, CHANGELOG.md, README.md, LICENSE, NOTICE
+          CODE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(src/|packages/|Dockerfile|package\.json|bun\.lock|tsconfig\.json|vite\.config|\.env\.example)' || true)
+          
+          if [ -z "$CODE_CHANGES" ]; then
+            echo "No code changes detected. Only documentation/metadata files changed."
+            echo "Changed files were:"
+            echo "$CHANGED_FILES"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Code changes detected:"
+            echo "$CODE_CHANGES"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Extract Version
+        if: steps.check_changes.outputs.has_changes == 'true'
         id: version
         run: |
           VERSION=$(grep -m 1 "^## \[v" CHANGELOG.md | sed -n 's/^## \[\(v[^]]*\)\].*/\1/p')
@@ -121,9 +159,11 @@ jobs:
           echo "version_number=${VERSION#v}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
+        if: steps.check_changes.outputs.has_changes == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
+        if: steps.check_changes.outputs.has_changes == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -131,6 +171,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata for Docker
+        if: steps.check_changes.outputs.has_changes == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -142,6 +183,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build and Push Docker Image
+        if: steps.check_changes.outputs.has_changes == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
