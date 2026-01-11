@@ -79,47 +79,21 @@ LABEL org.opencontainers.image.title="CHouse UI" \
       org.opencontainers.image.source="https://github.com/daun-gatal/chouse-ui"
 
 # Environment variables with sensible defaults
+# NOTE: Sensitive values (JWT_SECRET, RBAC_ENCRYPTION_KEY, RBAC_ADMIN_PASSWORD)
+# should be set at runtime via docker run -e or docker-compose, not in Dockerfile
 ENV NODE_ENV=production \
     PORT=5521 \
     STATIC_PATH=/app/dist \
-    # Session configuration
     SESSION_TTL=3600000 \
-    # CORS settings - override with your domain in production
-    # Example: CORS_ORIGIN=https://your-domain.com
     CORS_ORIGIN=* \
-    # ============================================
-    # RBAC Configuration
-    # ============================================
-    # Database type: 'sqlite' (default) or 'postgres'
     RBAC_DB_TYPE=sqlite \
-    # SQLite database path (used when RBAC_DB_TYPE=sqlite)
     RBAC_SQLITE_PATH=/app/data/rbac.db \
-    # PostgreSQL connection URL (used when RBAC_DB_TYPE=postgres)
-    # Example: postgres://user:password@host:5432/dbname
     RBAC_POSTGRES_URL="" \
-    # PostgreSQL connection pool size
     RBAC_POSTGRES_POOL_SIZE=10 \
-    # JWT secret for RBAC authentication (CHANGE IN PRODUCTION!)
-    # Generate with: openssl rand -base64 32
-    JWT_SECRET=change-me-in-production-use-openssl-rand-base64-32 \
-    # JWT access token expiry (default: 15 minutes)
     JWT_ACCESS_EXPIRY=15m \
-    # JWT refresh token expiry (default: 7 days)
     JWT_REFRESH_EXPIRY=7d \
-    # Encryption key for ClickHouse connection passwords (CHANGE IN PRODUCTION!)
-    # Generate with: openssl rand -hex 32
-    RBAC_ENCRYPTION_KEY=change-me-in-production-use-openssl-rand-hex-32 \
-    # Default admin password (only used on first run)
-    # IMPORTANT: Change this or set a strong password via environment
-    RBAC_ADMIN_PASSWORD="" \
-    # ============================================
-    # Legacy ClickHouse settings (optional)
-    # ============================================
-    # Default URL pre-filled in login form (deprecated - use RBAC connections)
     CLICKHOUSE_DEFAULT_URL="" \
-    # Comma-separated list of preset URLs for dropdown (deprecated)
     CLICKHOUSE_PRESET_URLS="" \
-    # Default username (deprecated)
     CLICKHOUSE_DEFAULT_USER=""
 
 # Volume for persistent RBAC data (SQLite database)
