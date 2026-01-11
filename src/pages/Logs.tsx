@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { AgGridReact } from "ag-grid-react";
-import { AllCommunityModule, themeBalham, colorSchemeDark, ColDef } from "ag-grid-community";
+import { AllCommunityModule, themeBalham, colorSchemeDark, ColDef, ICellRendererParams, ValueGetterParams, ITooltipParams } from "ag-grid-community";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -296,8 +296,8 @@ export default function Logs() {
       headerName: "Status",
       field: "type",
       width: 100,
-      cellRenderer: (params: { value: string; data: LogEntry }) => {
-        const type = params.value;
+      cellRenderer: (params: ICellRendererParams<LogEntry>) => {
+        const type = params.value as string;
         const hasStatusChanged = statusChangedIds.has(params.data?.query_id || '');
         const statusText = type === "QueryFinish" ? "✅ Success" : type === "ExceptionWhileProcessing" ? "❌ Error" : "🔄 Running";
         
@@ -316,22 +316,25 @@ export default function Logs() {
       headerName: "User", 
       field: "user", 
       width: 150,
-      valueGetter: (params: { data: LogEntry }) => {
+      valueGetter: (params: ValueGetterParams<LogEntry>) => {
         // Prioritize RBAC user, fallback to ClickHouse user
-        return params.data?.rbacUser || params.data?.user || '-';
+        if (!params.data) return '-';
+        return params.data.rbacUser || params.data.user || '-';
       },
-      cellRenderer: (params: { data: LogEntry }) => {
+      cellRenderer: (params: ICellRendererParams<LogEntry>) => {
         // Show RBAC user if available, otherwise ClickHouse user
-        if (params.data?.rbacUser) {
+        if (!params.data) return '-';
+        if (params.data.rbacUser) {
           return params.data.rbacUser;
         }
-        return params.data?.user || '-';
+        return params.data.user || '-';
       },
-      tooltipValueGetter: (params: { data: LogEntry }) => {
-        if (params.data?.rbacUser) {
+      tooltipValueGetter: (params: ITooltipParams<LogEntry>) => {
+        if (!params.data) return 'No user information';
+        if (params.data.rbacUser) {
           return `RBAC User: ${params.data.rbacUser}${params.data.rbacUserId ? ` (${params.data.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${params.data.user}`;
         }
-        return `ClickHouse User: ${params.data?.user || '-'}`;
+        return `ClickHouse User: ${params.data.user || '-'}`;
       },
     },
     { headerName: "Query", field: "query", flex: 2, tooltipField: "query" },
