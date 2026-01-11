@@ -19,8 +19,10 @@ export default function Changelog() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch changelog from public folder
-    fetch('/CHANGELOG.md')
+    // Fetch changelog from public folder using base URL
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    const changelogPath = `${baseUrl}CHANGELOG.md`.replace(/\/+/g, '/'); // Normalize slashes
+    fetch(changelogPath)
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load changelog');
         return res.text();
