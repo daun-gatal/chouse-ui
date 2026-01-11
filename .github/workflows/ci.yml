@@ -96,7 +96,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
-          tags: clickstudio:test
+          tags: chouseui:test
           build-args: |
             VERSION=test
             COMMIT_SHA=${{ github.sha }}

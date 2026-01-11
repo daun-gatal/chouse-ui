@@ -66,7 +66,7 @@ export default function Hero() {
           >
             <img
               src="/logo.svg"
-              alt="ClickStudio"
+              alt="CHouse UI"
               className="w-40 h-40 md:w-48 md:h-48 drop-shadow-[0_0_30px_rgba(255,200,0,0.6)]"
             />
           </motion.div>
@@ -84,10 +84,10 @@ export default function Hero() {
             transition={{ delay: 0.4 }}
           >
             <span className="bg-gradient-to-r from-white via-purple-200 to-blue-200 bg-clip-text text-transparent">
-              Click
+              CHouse
             </span>
             <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-              Studio
+              UI
             </span>
           </motion.h1>
         </motion.div>

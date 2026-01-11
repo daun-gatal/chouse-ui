@@ -1,4 +1,4 @@
-# Production Dockerfile for ClickStudio
+# Production Dockerfile for CHouse UI
 # Uses Bun for both building and running
 
 # ============================================
@@ -70,13 +70,13 @@ RUN addgroup -S ch-group -g 1001 && \
 RUN chown -R ch-user:ch-group /app
 
 # Add metadata labels
-LABEL org.opencontainers.image.title="ClickStudio" \
+LABEL org.opencontainers.image.title="CHouse UI" \
       org.opencontainers.image.description="A modern web interface for ClickHouse databases with RBAC" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT_SHA}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.source="https://github.com/daun-gatal/clickstudio"
+      org.opencontainers.image.source="https://github.com/daun-gatal/chouse-ui"
 
 # Environment variables with sensible defaults
 ENV NODE_ENV=production \

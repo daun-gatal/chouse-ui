@@ -114,7 +114,7 @@ app.notFound(async (c) => {
 
 console.log(`
 ╔══════════════════════════════════════════════════╗
-║           ClickStudio Server               ║
+║           CHouse UI Server               ║
 ╠══════════════════════════════════════════════════╣
 ║  Environment: ${NODE_ENV.padEnd(33)}║
 ║  Port: ${PORT.toString().padEnd(40)}║

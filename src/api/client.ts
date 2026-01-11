@@ -1,5 +1,5 @@
 /**
- * API Client for ClickStudio Backend
+ * API Client for CHouse UI Backend
  * 
  * This module provides a type-safe API client for communicating with the backend server.
  * It handles authentication, error handling, and request/response transformation.

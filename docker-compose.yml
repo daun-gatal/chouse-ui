@@ -1,4 +1,4 @@
-# Docker Compose for ClickStudio
+# Docker Compose for CHouse UI
 # Includes both ClickHouse server and the UI with RBAC
 
 version: '3.8'
@@ -35,7 +35,7 @@ services:
       - clickhouse-network
 
   # ============================================
-  # ClickStudio Application
+  # CHouse UI Application
   # ============================================
   clickhouse-studio:
     build:
