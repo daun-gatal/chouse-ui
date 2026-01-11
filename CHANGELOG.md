@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.3.1] - 2026-01-12
+
+### Changed
+
+#### Rebranding
+- **Product Name**: Rebranded from "ClickHouse Studio" to "CHouse UI" for better brand distinction and uniqueness.
+- **Package Names**: Updated all package names to use `chouseui` (lowercase, no space) for technical identifiers.
+- **Repository**: Moved to new repository at `https://github.com/daun-gatal/chouse-ui`.
+
+### Fixed
+
+#### Build & Dependencies
+- **Docker Build**: Removed sensitive ENV variables (JWT_SECRET, RBAC_ENCRYPTION_KEY, RBAC_ADMIN_PASSWORD) from Dockerfile to follow security best practices.
+- **ESLint Configuration**: Added missing `@eslint/js` package required for ESLint 9 flat config format.
+- **Tailwind CSS**: Added missing `tailwindcss` dependency required by `@tailwindcss/vite` v4.
+- **Bun Lockfile**: Regenerated `bun.lock` with correct package name to fix build errors.
+
 ## [v2.3.0] - 2026-01-11
 
 ### Added
