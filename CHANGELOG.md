@@ -225,7 +225,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial release of ClickHouse Studio.
+- Initial release of ClickStudio.
 - SQL Editor with Monaco editor and syntax highlighting.
 - Data Explorer with database/table tree navigation.
 - Query execution with result grid (AG Grid).

@@ -14,8 +14,8 @@ import { randomUUID } from 'crypto';
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'your-super-secret-key-change-in-production-min-32-chars!'
 );
-const JWT_ISSUER = process.env.JWT_ISSUER || 'clickhouse-studio';
-const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'clickhouse-studio-client';
+const JWT_ISSUER = process.env.JWT_ISSUER || 'clickstudio';
+const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'clickstudio-client';
 
 // Token expiration times
 const ACCESS_TOKEN_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '15m';

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/logo.svg" alt="ClickHouse Studio" width="120" />
+  <img src="public/logo.svg" alt="ClickStudio" width="120" />
 </p>
 
-<h1 align="center">ClickHouse Studio</h1>
+<h1 align="center">ClickStudio</h1>
 
 <p align="center">
   <strong>A web interface for ClickHouse with built-in RBAC</strong>
@@ -20,13 +20,13 @@
 
 ## Overview
 
-ClickHouse Studio is a web interface for managing ClickHouse databases with server-side credential management and **Role-Based Access Control (RBAC)**. Credentials are stored encrypted on the server, and access is controlled through a permission system.
+ClickStudio is a web interface for managing ClickHouse databases with server-side credential management and **Role-Based Access Control (RBAC)**. Credentials are stored encrypted on the server, and access is controlled through a permission system.
 
-### Why ClickHouse Studio?
+### Why ClickStudio?
 
-ClickHouse Studio provides security and access control features for teams that need:
+ClickStudio provides security and access control features for teams that need:
 
-| Feature | ClickHouse Studio |
+| Feature | ClickStudio |
 |---------|-------------------|
 | **Credential Management** | Encrypted server-side storage (never in browser) |
 | **Architecture** | Secure backend proxy (no direct browser-to-ClickHouse) |
@@ -34,7 +34,7 @@ ClickHouse Studio provides security and access control features for teams that n
 | **Multi-Connection** | Manage multiple ClickHouse servers |
 | **Audit Trail** | Audit logging |
 
-> **Note**: Other ClickHouse tools serve different use cases well. ClickHouse Studio is designed specifically for teams requiring centralized credential management, role-based access control, and audit capabilities.
+> **Note**: Other ClickHouse tools serve different use cases well. ClickStudio is designed specifically for teams requiring centralized credential management, role-based access control, and audit capabilities.
 
 ---
 
@@ -270,8 +270,8 @@ Successfully tested with:
 
 ```bash
 # Clone the repository
-git clone https://github.com/daun-gatal/clickhouse-studio.git
-cd clickhouse-studio
+git clone https://github.com/daun-gatal/clickstudio.git
+cd clickstudio
 
 # Install dependencies
 bun install
@@ -302,8 +302,8 @@ On first run, an admin user is created:
 
 ```bash
 # Clone and run
-git clone https://github.com/daun-gatal/clickhouse-studio.git
-cd clickhouse-studio
+git clone https://github.com/daun-gatal/clickstudio.git
+cd clickstudio
 docker-compose up -d
 ```
 
@@ -320,16 +320,16 @@ docker-compose -f docker-compose.postgres.yml up -d
 
 ```bash
 # Build image
-docker build -t clickhouse-studio .
+docker build -t clickstudio .
 
 # Run with environment variables
 docker run -d \
   -p 5521:5521 \
-  -v clickhouse-studio-data:/app/data \
+  -v clickstudio-data:/app/data \
   -e JWT_SECRET=$(openssl rand -base64 32) \
   -e RBAC_ENCRYPTION_KEY=$(openssl rand -hex 32) \
   -e RBAC_ADMIN_PASSWORD="YourSecurePassword123!" \
-  clickhouse-studio
+  clickstudio
 ```
 
 ### Manual Deployment
@@ -353,20 +353,20 @@ Example deployment manifest:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: clickhouse-studio
+  name: clickstudio
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: clickhouse-studio
+      app: clickstudio
   template:
     metadata:
       labels:
-        app: clickhouse-studio
+        app: clickstudio
     spec:
       containers:
-      - name: clickhouse-studio
-        image: clickhouse-studio:latest
+      - name: clickstudio
+        image: clickstudio:latest
         ports:
         - containerPort: 5521
         env:
@@ -375,17 +375,17 @@ spec:
         - name: RBAC_POSTGRES_URL
           valueFrom:
             secretKeyRef:
-              name: clickhouse-studio-secrets
+              name: clickstudio-secrets
               key: postgres-url
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: clickhouse-studio-secrets
+              name: clickstudio-secrets
               key: jwt-secret
         - name: RBAC_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
-              name: clickhouse-studio-secrets
+              name: clickstudio-secrets
               key: encryption-key
 ```
 
@@ -486,7 +486,7 @@ Features:
 ## Project Structure
 
 ```
-clickhouse-studio/
+clickstudio/
 ├── packages/
 │   └── server/                 # Backend (Bun + Hono)
 │       ├── src/
@@ -602,17 +602,17 @@ bun run rbac:seed
 CONFIRM_RESET=yes bun run rbac:reset
 ```
 
-### Upgrading ClickHouse Studio
+### Upgrading ClickStudio
 
 ```bash
 # 1. Pull latest version
-docker pull ghcr.io/daun-gatal/clickhouse-studio:latest
+docker pull ghcr.io/daun-gatal/clickstudio:latest
 
 # 2. Restart container - migrations run automatically
 docker-compose up -d
 
 # 3. Check logs for migration status
-docker logs clickhouse-studio | grep RBAC
+docker logs clickstudio | grep RBAC
 ```
 
 Expected output on upgrade:

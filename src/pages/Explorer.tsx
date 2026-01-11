@@ -57,10 +57,10 @@ const ExplorerPage = () => {
 
   useEffect(() => {
     const title = currentTable 
-      ? `ClickHouse Studio | ${currentDatabase}.${currentTable}`
+      ? `ClickStudio | ${currentDatabase}.${currentTable}`
       : currentDatabase
-      ? `ClickHouse Studio | ${currentDatabase}`
-      : "ClickHouse Studio | Explorer";
+      ? `ClickStudio | ${currentDatabase}`
+      : "ClickStudio | Explorer";
     document.title = title;
   }, [currentDatabase, currentTable]);
 

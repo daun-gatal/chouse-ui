@@ -67,8 +67,8 @@ const AUTH_TAG_LENGTH = 16;
 const SALT_LENGTH = 32;
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.RBAC_ENCRYPTION_KEY || process.env.JWT_SECRET || 'clickhouse-studio-default-key';
-  const salt = process.env.RBAC_ENCRYPTION_SALT || 'clickhouse-studio-salt';
+  const secret = process.env.RBAC_ENCRYPTION_KEY || process.env.JWT_SECRET || 'clickstudio-default-key';
+  const salt = process.env.RBAC_ENCRYPTION_SALT || 'clickstudio-salt';
   return scryptSync(secret, salt, 32);
 }
 

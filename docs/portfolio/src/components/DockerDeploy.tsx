@@ -11,32 +11,32 @@ const prerequisites = [
 ];
 
 const quickStartCode = `# Pull the image
-docker pull ghcr.io/daun-gatal/clickhouse-studio:latest
+docker pull ghcr.io/daun-gatal/clickstudio:latest
 
 # Run with minimal configuration
 docker run -d \\
-  --name clickhouse-studio \\
+  --name clickstudio \\
   -p 5521:5521 \\
-  -v clickhouse-studio-data:/app/data \\
+  -v clickstudio-data:/app/data \\
   -e JWT_SECRET="$(openssl rand -base64 32)" \\
   -e RBAC_ENCRYPTION_KEY="$(openssl rand -hex 32)" \\
-  ghcr.io/daun-gatal/clickhouse-studio:latest`;
+  ghcr.io/daun-gatal/clickstudio:latest`;
 
 const quickStartNote = 'Access at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123! (or set RBAC_ADMIN_PASSWORD)';
 
 const productionCode = `# Pull the image
-docker pull ghcr.io/daun-gatal/clickhouse-studio:latest
+docker pull ghcr.io/daun-gatal/clickstudio:latest
 
 # Run with production settings
 docker run -d \\
-  --name clickhouse-studio \\
+  --name clickstudio \\
   -p 5521:5521 \\
-  -v clickhouse-studio-data:/app/data \\
+  -v clickstudio-data:/app/data \\
   -e JWT_SECRET="your-jwt-secret-here" \\
   -e RBAC_ENCRYPTION_KEY="your-encryption-key-here" \\
   -e CORS_ORIGIN="https://yourdomain.com" \\
   -e RBAC_ADMIN_PASSWORD="your-secure-password" \\
-  ghcr.io/daun-gatal/clickhouse-studio:latest`;
+  ghcr.io/daun-gatal/clickstudio:latest`;
 
 const productionNote = '⚠️ Change JWT_SECRET and RBAC_ENCRYPTION_KEY in production!\n\nGenerate secure keys:\n• JWT_SECRET: openssl rand -base64 32\n• RBAC_ENCRYPTION_KEY: openssl rand -hex 32';
 
@@ -235,7 +235,7 @@ export default function DockerDeploy() {
                     <div className="space-y-6">
                       <div className="prose prose-invert max-w-none">
                         <p className="text-gray-300 leading-relaxed text-lg mb-4">
-                          ClickHouse Studio is available as a Docker image from GitHub Container Registry (GHCR). 
+                          ClickStudio is available as a Docker image from GitHub Container Registry (GHCR). 
                           You can quickly deploy it using Docker with minimal configuration, or set it up for production 
                           with custom environment variables.
                         </p>
@@ -245,7 +245,7 @@ export default function DockerDeploy() {
                               <Package className="w-5 h-5 text-purple-400" />
                               Image Location
                             </h4>
-                            <code className="text-purple-400 text-sm block mb-2">ghcr.io/daun-gatal/clickhouse-studio:latest</code>
+                            <code className="text-purple-400 text-sm block mb-2">ghcr.io/daun-gatal/clickstudio:latest</code>
                             <p className="text-sm text-gray-400">
                               Pull directly from GitHub Container Registry. No authentication required for public images.
                             </p>
@@ -269,7 +269,7 @@ export default function DockerDeploy() {
                             Backend Metadata Storage
                           </h4>
                           <p className="text-sm text-gray-400 mb-4">
-                            ClickHouse Studio supports two backend options for storing RBAC metadata (users, roles, permissions, connections):
+                            ClickStudio supports two backend options for storing RBAC metadata (users, roles, permissions, connections):
                           </p>
                           <div className="grid md:grid-cols-2 gap-4 mt-4">
                             <div className="p-4 bg-white/5 rounded-lg border border-white/10">

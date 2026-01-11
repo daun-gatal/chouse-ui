@@ -1,7 +1,7 @@
 /**
  * RBAC Module
  * 
- * Role-Based Access Control system for ClickHouse Studio.
+ * Role-Based Access Control system for ClickStudio.
  * 
  * Features:
  * - User management with roles and permissions

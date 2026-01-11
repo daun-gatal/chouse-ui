@@ -33,7 +33,7 @@ export default function QuickStart() {
               Try It Out
             </span>
           </h2>
-          <p className="text-gray-400 text-xl mb-6">Experience ClickHouse Studio in action</p>
+          <p className="text-gray-400 text-xl mb-6">Experience ClickStudio in action</p>
         </motion.div>
 
         {/* Live Demo Card */}

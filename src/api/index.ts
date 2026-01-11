@@ -1,7 +1,7 @@
 /**
  * API Module
  * 
- * This module exports all API functions for ClickHouse Studio.
+ * This module exports all API functions for ClickStudio.
  * Use these functions instead of direct ClickHouse client calls.
  */
 
