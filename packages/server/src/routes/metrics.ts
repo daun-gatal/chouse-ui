@@ -1,18 +1,161 @@
-import { Hono } from "hono";
-import { authMiddleware } from "../middleware/auth";
-import type { ClickHouseService } from "../services/clickhouse";
+import { Hono, Context, Next } from "hono";
+import { authMiddleware, optionalAuthMiddleware } from "../middleware/auth";
+import { optionalRbacMiddleware } from "../middleware/dataAccess";
+import { getSession } from "../services/clickhouse";
+import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
+import { ClickHouseService } from "../services/clickhouse";
 import type { Session } from "../types";
+import { AppError } from "../types";
 
 type Variables = {
-  sessionId: string;
+  sessionId?: string;
   service: ClickHouseService;
-  session: Session;
+  session?: Session;
+  rbacUserId?: string;
+  rbacRoles?: string[];
+  rbacPermissions?: string[];
+  isRbacAdmin?: boolean;
+  rbacConnectionId?: string;
 };
 
 const metrics = new Hono<{ Variables: Variables }>();
 
-// All routes require authentication
-metrics.use("*", authMiddleware);
+/**
+ * Hybrid auth middleware for metrics
+ * Supports both ClickHouse session auth and RBAC auth
+ */
+async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next: Next) {
+  // First try ClickHouse session auth
+  const sessionId = c.req.header("X-Session-ID") || getCookie(c, "ch_session");
+  
+  if (sessionId) {
+    const sessionData = getSession(sessionId);
+    if (sessionData) {
+      c.set("sessionId", sessionId);
+      c.set("service", sessionData.service);
+      c.set("session", sessionData.session);
+      await next();
+      return;
+    }
+  }
+
+  // If no ClickHouse session, try RBAC auth
+  await optionalRbacMiddleware(c, async () => {});
+  
+  const rbacUserId = c.get("rbacUserId");
+  
+  if (rbacUserId) {
+    let service: ClickHouseService | null = null;
+    
+    try {
+      const connections = await getUserConnections(rbacUserId);
+      
+      if (connections.length === 0) {
+        throw AppError.unauthorized("No ClickHouse connection configured. Please contact an administrator to grant you access to a ClickHouse connection.");
+      }
+      
+      // Try to find default connection first, then any active connection
+      const defaultConnection = connections.find((conn) => conn.isDefault && conn.isActive);
+      const activeConnection = defaultConnection || connections.find((conn) => conn.isActive);
+      
+      if (!activeConnection) {
+        throw AppError.unauthorized("No active ClickHouse connection found. Please contact an administrator to activate a connection.");
+      }
+
+      // Get connection with password
+      const connection = await getConnectionWithPassword(activeConnection.id);
+      
+      if (!connection) {
+        throw AppError.unauthorized("Connection not found or access denied.");
+      }
+
+      // Build connection URL
+      const protocol = connection.sslEnabled ? 'https' : 'http';
+      const url = `${protocol}://${connection.host}:${connection.port}`;
+
+      // Create ClickHouse service from connection
+      service = new ClickHouseService({
+        url,
+        username: connection.username,
+        password: connection.password || "",
+        database: connection.database || undefined,
+      });
+
+      // Test connection
+      const isConnected = await service.ping();
+      if (!isConnected) {
+        await service.close();
+        throw AppError.unauthorized("Failed to connect to ClickHouse server.");
+      }
+
+      // Create a temporary session ID for this request
+      const tempSessionId = `rbac_${rbacUserId}_${Date.now()}`;
+      
+      // Create a temporary session-like object
+      const session: Session = {
+        id: tempSessionId,
+        connectionConfig: {
+          url,
+          username: connection.username,
+          password: connection.password || "",
+          database: connection.database || undefined,
+        },
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        isAdmin: false, // Will be determined by ClickHouse
+        permissions: [],
+        version: await service.getVersion(),
+        rbacConnectionId: connection.id,
+      };
+
+      const adminStatus = await service.checkIsAdmin();
+      session.isAdmin = adminStatus.isAdmin;
+      session.permissions = adminStatus.permissions;
+
+      c.set("service", service);
+      c.set("session", session);
+      c.set("rbacConnectionId", connection.id);
+      
+      try {
+        await next();
+      } finally {
+        // Cleanup: Always close service after request completes (success or error)
+        // Note: Service is used during the request, so we close it after next() completes
+        if (service) {
+          await service.close().catch((err) => {
+            console.error('[Metrics] Failed to close service:', err);
+          });
+        }
+      }
+      return;
+    } catch (error) {
+      // Ensure service is closed on error
+      if (service) {
+        await service.close().catch((err) => {
+          console.error('[Metrics] Failed to close service on error:', err);
+        });
+      }
+      
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw AppError.unauthorized("Failed to authenticate with ClickHouse. Please connect to a ClickHouse server first.");
+    }
+  }
+
+  // No authentication found
+  throw AppError.unauthorized("No session provided. Please login first.");
+}
+
+// Helper to get cookie value
+function getCookie(c: Context, name: string): string | undefined {
+  const cookies = c.req.header("Cookie") || "";
+  const match = cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+// All routes require authentication (hybrid: session or RBAC)
+metrics.use("*", metricsAuthMiddleware);
 
 /**
  * GET /metrics/stats

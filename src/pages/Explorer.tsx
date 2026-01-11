@@ -142,9 +142,9 @@ const ExplorerPage = () => {
             {/* Left Panel - Database Explorer */}
             <ResizablePanel 
               className="overflow-hidden flex flex-col" 
-              defaultSize={22} 
-              minSize={15}
-              maxSize={40}
+              defaultSize={45} 
+              minSize={30}
+              maxSize={85}
             >
               <DatabaseExplorer />
             </ResizablePanel>

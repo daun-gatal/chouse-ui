@@ -93,10 +93,35 @@ userRoutes.get('/', requirePermission(PERMISSIONS.USERS_VIEW), zValidator('query
 /**
  * GET /rbac/users/:id
  * Get user by ID
+ * 
+ * Permission rules:
+ * - Users with USERS_VIEW permission can view any user
+ * - Users without USERS_VIEW permission can only view their own profile
  */
-userRoutes.get('/:id', requirePermission(PERMISSIONS.USERS_VIEW), async (c) => {
+userRoutes.get('/:id', rbacAuthMiddleware, async (c) => {
   const id = c.req.param('id');
-  const user = await getUserById(id);
+  
+  // Validate user ID format (basic UUID validation)
+  if (!id || typeof id !== 'string' || id.trim().length === 0) {
+    throw AppError.badRequest('Invalid user ID format');
+  }
+  
+  const currentUser = getRbacUser(c);
+  const permissions = c.get('rbacPermissions');
+  const hasUsersView = permissions.includes(PERMISSIONS.USERS_VIEW);
+  
+  // If user doesn't have USERS_VIEW permission, they can only view their own profile
+  if (!hasUsersView && id !== currentUser.sub) {
+    throw AppError.forbidden(`Permission '${PERMISSIONS.USERS_VIEW}' required to view other users' profiles`);
+  }
+  
+  let user;
+  try {
+    user = await getUserById(id);
+  } catch (error) {
+    console.error('[Users] Failed to fetch user:', error);
+    throw AppError.internal('Failed to fetch user');
+  }
 
   if (!user) {
     throw AppError.notFound('User not found');

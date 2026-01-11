@@ -96,8 +96,19 @@ export default function Footer() {
           transition={{ duration: 0.5, delay: 0.3 }}
           className="border-t border-white/10 pt-8 text-center"
         >
-          <p className="text-gray-500 text-sm mb-3">
+          <p className="text-gray-500 text-sm mb-2">
             © 2025 CHouse UI
+          </p>
+          <p className="text-gray-500 text-xs mb-2">
+            Licensed under{' '}
+            <a
+              href="https://www.apache.org/licenses/LICENSE-2.0"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              Apache License 2.0
+            </a>
           </p>
           <p className="text-gray-500 text-sm">
             Inspired by{' '}

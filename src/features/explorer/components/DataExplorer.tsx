@@ -46,6 +46,12 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -59,6 +65,8 @@ import { cn } from "@/lib/utils";
 const DatabaseExplorer: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [searchQueryValue, setSearchQueryValue] = useState("");
+  const [isCompact, setIsCompact] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   
   // Debounce search terms to avoid excessive filtering
@@ -76,15 +84,19 @@ const DatabaseExplorer: React.FC = () => {
     showFavoritesOnly,
     setShowFavoritesOnly,
     addRecentItem,
+    clearRecentItems,
+    clearFavorites,
   } = useExplorerStore();
+  
+  // Get recent items directly from store to ensure reactivity when cleared
+  const allRecentItems = useExplorerStore((state) => state.recentItems);
+  const recentItems = useMemo(() => allRecentItems.slice(0, 5), [allRecentItems]);
+  
   const { addTab } = useWorkspaceStore();
 
   const { data: databases = [], isLoading: isLoadingDatabase, isFetching: isFetchingDatabases, refetch: refreshDatabases, error: tabError } = useDatabases();
   const { data: isQueriesEnabled = false } = useSavedQueriesStatus();
   const { data: savedQueriesList = [], refetch: refreshSavedQueries, isFetching: isRefreshingSavedQueries } = useSavedQueries();
-
-  // Get recent items
-  const recentItems = useMemo(() => getRecentItems(5), [getRecentItems]);
 
   // Memoized filtered and sorted data
   const filteredData = useMemo(() => {
@@ -192,198 +204,410 @@ const DatabaseExplorer: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+
+  // Detect compact mode based on container width
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        // Enable compact mode when width is less than 200px
+        setIsCompact(width < 200);
+      }
+    });
+
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
   return (
-    <div className="flex flex-col h-full bg-gradient-to-b from-white/[0.02] to-transparent">
+    <div ref={containerRef} className="flex flex-col h-full bg-gradient-to-b from-white/[0.02] to-transparent">
       {/* Header */}
-      <div className="flex-none p-3 border-b border-white/10">
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-purple-400" />
-            <h2 className="text-sm font-semibold text-white">Explorer</h2>
-            <Badge variant="secondary" className="text-[10px] bg-white/10 text-gray-400 px-1.5 py-0">
-              {databases.length}
-            </Badge>
-            {favorites.length > 0 && (
-              <Badge variant="secondary" className="text-[10px] bg-yellow-500/20 text-yellow-300 px-1.5 py-0 border-yellow-500/30">
-                <Star className="w-2.5 h-2.5 mr-0.5 fill-yellow-400" />
-                {favorites.length}
+      <div className="flex-none p-1.5 sm:p-2 md:p-3 border-b border-white/10">
+        {isCompact ? (
+          // Ultra-compact mode: icon-only header
+          <div className="flex items-center justify-between gap-1 mb-1.5">
+            <div className="flex items-center gap-1 min-w-0">
+              <Database className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
+              <Badge variant="secondary" className="text-[8px] bg-white/10 text-gray-400 px-0.5 py-0 flex-shrink-0">
+                {databases.length}
               </Badge>
-            )}
+            </div>
+            <div className="flex items-center gap-0.5">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" className="h-5 w-5 hover:bg-white/10">
+                    <MoreVertical className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => setSortBy(sortBy === 'name' ? 'recent' : 'name')} className="gap-2">
+                    <ArrowUpDown className="w-4 h-4" />
+                    Sort: {sortBy === 'name' ? 'Recent' : 'Name'}
+                  </DropdownMenuItem>
+                  {favorites.length > 0 && (
+                    <DropdownMenuItem onClick={() => setShowFavoritesOnly(!showFavoritesOnly)} className="gap-2">
+                      <Star className={cn("w-4 h-4", showFavoritesOnly && "fill-yellow-400")} />
+                      {showFavoritesOnly ? 'Show All' : 'Show Favorites Only'}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <PermissionGuard requiredPermission="CREATE DATABASE" showTooltip>
+                    <DropdownMenuItem onClick={() => openCreateDatabaseModal()} className="gap-2">
+                      <FolderPlus className="w-4 h-4 text-purple-400" />
+                      Create Database
+                    </DropdownMenuItem>
+                  </PermissionGuard>
+                  <PermissionGuard requiredPermission="CREATE TABLE" showTooltip>
+                    <DropdownMenuItem onClick={() => openCreateTableModal("")} className="gap-2">
+                      <FilePlus className="w-4 h-4 text-blue-400" />
+                      Create Table
+                    </DropdownMenuItem>
+                  </PermissionGuard>
+                  <PermissionGuard requiredPermission="INSERT" showTooltip>
+                    <DropdownMenuItem onClick={() => openUploadFileModal("")} className="gap-2">
+                      <FileUp className="w-4 h-4 text-emerald-400" />
+                      Upload File
+                    </DropdownMenuItem>
+                  </PermissionGuard>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      addTab({
+                        id: genTabId(),
+                        type: "sql",
+                        title: "Query",
+                        content: "",
+                      })
+                    }
+                    className="gap-2"
+                  >
+                    <TerminalIcon className="w-4 h-4 text-amber-400" />
+                    New Query
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => refreshDatabases()} disabled={isFetchingDatabases} className="gap-2">
+                    <RefreshCcw className={cn("w-4 h-4", isFetchingDatabases && "animate-spin")} />
+                    Refresh
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            {/* Sort & Filter Controls */}
-            <Select value={sortBy} onValueChange={(value) => setSortBy(value as any)}>
-              <SelectTrigger className="h-7 w-[100px] text-xs border-white/10 bg-white/5">
-                <ArrowUpDown className="w-3 h-3 mr-1" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="recent">Recent</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            {/* Favorites Filter Toggle */}
-            {favorites.length > 0 && (
-              <Button
-                size="sm"
-                variant={showFavoritesOnly ? "default" : "ghost"}
-                onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
-                className="h-7 px-2 text-xs"
-                title="Show favorites only"
-              >
-                <Star className={cn("w-3 h-3 mr-1", showFavoritesOnly && "fill-yellow-400")} />
-                Favorites
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-white/10">
-                  <MoreVertical className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <PermissionGuard requiredPermission="CREATE DATABASE" showTooltip>
-                  <DropdownMenuItem onClick={() => openCreateDatabaseModal()} className="gap-2">
-                    <FolderPlus className="w-4 h-4 text-purple-400" />
-                    Create Database
-                  </DropdownMenuItem>
-                </PermissionGuard>
-
-                <PermissionGuard requiredPermission="CREATE TABLE" showTooltip>
-                  <DropdownMenuItem onClick={() => openCreateTableModal("")} className="gap-2">
-                    <FilePlus className="w-4 h-4 text-blue-400" />
-                    Create Table
-                  </DropdownMenuItem>
-                </PermissionGuard>
-
-                <DropdownMenuSeparator />
-
-                <PermissionGuard requiredPermission="INSERT" showTooltip>
-                  <DropdownMenuItem onClick={() => openUploadFileModal("")} className="gap-2">
-                    <FileUp className="w-4 h-4 text-emerald-400" />
-                    Upload File
-                  </DropdownMenuItem>
-                </PermissionGuard>
-
-                <DropdownMenuItem
-                  onClick={() =>
-                    addTab({
-                      id: genTabId(),
-                      type: "sql",
-                      title: "Query",
-                      content: "",
-                    })
-                  }
-                  className="gap-2"
+        ) : (
+          // Normal mode
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2 sm:mb-3">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <Database className="h-4 w-4 text-purple-400 flex-shrink-0" />
+              <h2 className="text-xs sm:text-sm font-semibold text-white truncate">Explorer</h2>
+              <Badge variant="secondary" className="text-[9px] sm:text-[10px] bg-white/10 text-gray-400 px-1 sm:px-1.5 py-0 flex-shrink-0">
+                {databases.length}
+              </Badge>
+              {favorites.length > 0 && !isCompact && (
+                <Badge variant="secondary" className="text-[9px] sm:text-[10px] bg-yellow-500/20 text-yellow-300 px-1 sm:px-1.5 py-0 border-yellow-500/30 flex-shrink-0">
+                  <Star className="w-2 h-2 sm:w-2.5 sm:h-2.5 mr-0.5 fill-yellow-400" />
+                  {favorites.length}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
+              {/* Sort & Filter Controls */}
+              {!isCompact && (
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as any)}>
+                  <SelectTrigger className="h-6 sm:h-7 w-[70px] sm:w-[100px] text-[10px] sm:text-xs border-white/10 bg-white/5">
+                    <ArrowUpDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 sm:mr-1" />
+                    <SelectValue className="hidden sm:block" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">Name</SelectItem>
+                    <SelectItem value="recent">Recent</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              
+              {/* Favorites Filter Toggle */}
+              {favorites.length > 0 && !isCompact && (
+                <Button
+                  size="sm"
+                  variant={showFavoritesOnly ? "default" : "ghost"}
+                  onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                  className="h-6 sm:h-7 px-1.5 sm:px-2 text-xs"
+                  title="Show favorites only"
                 >
-                  <TerminalIcon className="w-4 h-4 text-amber-400" />
-                  New Query
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => refreshDatabases()}
-              className="h-7 w-7 hover:bg-white/10"
-              disabled={isFetchingDatabases}
-            >
-              <RefreshCcw className={cn("w-3.5 h-3.5", isFetchingDatabases && "animate-spin")} />
-            </Button>
+                  <Star className={cn("w-3 h-3", showFavoritesOnly && "fill-yellow-400", "sm:mr-1")} />
+                  <span className="hidden sm:inline">Favorites</span>
+                </Button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 sm:h-7 sm:w-7 hover:bg-white/10">
+                    <MoreVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <PermissionGuard requiredPermission="CREATE DATABASE" showTooltip>
+                    <DropdownMenuItem onClick={() => openCreateDatabaseModal()} className="gap-2">
+                      <FolderPlus className="w-4 h-4 text-purple-400" />
+                      Create Database
+                    </DropdownMenuItem>
+                  </PermissionGuard>
+                  <PermissionGuard requiredPermission="CREATE TABLE" showTooltip>
+                    <DropdownMenuItem onClick={() => openCreateTableModal("")} className="gap-2">
+                      <FilePlus className="w-4 h-4 text-blue-400" />
+                      Create Table
+                    </DropdownMenuItem>
+                  </PermissionGuard>
+                  <DropdownMenuSeparator />
+                  <PermissionGuard requiredPermission="INSERT" showTooltip>
+                    <DropdownMenuItem onClick={() => openUploadFileModal("")} className="gap-2">
+                      <FileUp className="w-4 h-4 text-emerald-400" />
+                      Upload File
+                    </DropdownMenuItem>
+                  </PermissionGuard>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      addTab({
+                        id: genTabId(),
+                        type: "sql",
+                        title: "Query",
+                        content: "",
+                      })
+                    }
+                    className="gap-2"
+                  >
+                    <TerminalIcon className="w-4 h-4 text-amber-400" />
+                    New Query
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {!isCompact && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => refreshDatabases()}
+                  className="h-6 w-6 sm:h-7 sm:w-7 hover:bg-white/10"
+                  disabled={isFetchingDatabases}
+                  title="Refresh databases"
+                >
+                  <RefreshCcw className={cn("w-3 h-3 sm:w-3.5 sm:h-3.5", isFetchingDatabases && "animate-spin")} />
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Search */}
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-500" />
-          <Input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search... (Ctrl+K)"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8 pr-8 h-8 text-sm bg-white/5 border-white/10 focus:border-purple-500/50"
-          />
-          {searchTerm && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setSearchTerm("")}
-              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6"
-            >
-              <SearchX className="w-3.5 h-3.5" />
-            </Button>
-          )}
-        </div>
+        {!isCompact && (
+          <div className="relative">
+            <Search className="w-3 h-3 sm:w-3.5 sm:h-3.5 absolute left-2 sm:left-2.5 top-1/2 transform -translate-y-1/2 text-gray-500" />
+            <Input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-7 sm:pl-8 pr-7 sm:pr-8 h-7 sm:h-8 text-xs sm:text-sm bg-white/5 border-white/10 focus:border-purple-500/50"
+            />
+            {searchTerm && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-0.5 sm:right-1 top-1/2 transform -translate-y-1/2 h-5 w-5 sm:h-6 sm:w-6"
+              >
+                <SearchX className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Favorites & Recent Quick Access */}
-      {(favorites.length > 0 || recentItems.length > 0) && (
-        <div className="flex-none border-b border-white/10 p-2 space-y-2 max-h-[120px] overflow-y-auto">
-          {/* Favorites */}
-          {favorites.length > 0 && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 px-2">
-                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                <span className="text-[10px] font-medium text-gray-400 uppercase">Favorites</span>
-              </div>
-              <div className="flex flex-wrap gap-1 px-2">
-                {favorites.slice(0, 5).map((fav) => (
+      {/* Favorites & Recent Quick Access - Hide in compact mode */}
+      {!isCompact && (favorites.length > 0 || recentItems.length > 0) && (
+        <div className="flex-none border-b border-white/10 p-2 sm:p-3 max-h-[160px] sm:max-h-[180px]">
+          {favorites.length > 0 && recentItems.length > 0 ? (
+            // Use tabs when both sections have content
+            <Tabs defaultValue="favorites" className="w-full">
+              <TabsList className="h-8 sm:h-9 bg-white/5 border border-white/10 p-1 mb-1.5 sm:mb-2">
+                <TabsTrigger 
+                  value="favorites" 
+                  className="text-xs sm:text-sm px-2 sm:px-3 py-1 data-[state=active]:bg-white/10 flex-1 whitespace-nowrap"
+                >
+                  <Star className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5 text-yellow-400 fill-yellow-400 flex-shrink-0" />
+                  <span>Favorites ({favorites.length})</span>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="recent" 
+                  className="text-xs sm:text-sm px-2 sm:px-3 py-1 data-[state=active]:bg-white/10 flex-1 whitespace-nowrap"
+                >
+                  <History className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5 text-blue-400 flex-shrink-0" />
+                  <span>Recent ({recentItems.length})</span>
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="favorites" className="mt-0 space-y-1 max-h-[100px] sm:max-h-[120px] overflow-y-auto">
+                <div className="flex items-center justify-between gap-1 px-0.5 sm:px-1 mb-0.5 sm:mb-1">
+                  <span className="text-[9px] sm:text-[10px] text-gray-500 hidden sm:inline">Quick access to your favorites</span>
+                  <span className="text-[9px] sm:text-[10px] text-gray-500 sm:hidden">Favorites</span>
                   <Button
-                    key={fav.id}
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      addRecentItem(fav.database, fav.table);
-                      if (fav.type === 'database') {
-                        navigate(`/explorer?database=${fav.database}`);
-                      } else {
-                        navigate(`/explorer?database=${fav.database}&table=${fav.table}`);
-                      }
-                    }}
-                    className="h-6 px-2 text-[10px] border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20"
-                  >
-                    <Star className="w-2.5 h-2.5 mr-1 fill-yellow-400 text-yellow-400" />
-                    {fav.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recent Items */}
-          {recentItems.length > 0 && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 px-2">
-                <History className="w-3 h-3 text-blue-400" />
-                <span className="text-[10px] font-medium text-gray-400 uppercase">Recent</span>
-              </div>
-              <div className="flex flex-wrap gap-1 px-2">
-                {recentItems.map((item) => (
-                  <Button
-                    key={item.id}
-                    size="sm"
+                    size="icon"
                     variant="ghost"
-                    onClick={() => {
-                      addRecentItem(item.database, item.table);
-                      if (item.type === 'database') {
-                        navigate(`/explorer?database=${item.database}`);
-                      } else {
-                        navigate(`/explorer?database=${item.database}&table=${item.table}`);
-                      }
-                    }}
-                    className="h-6 px-2 text-[10px] hover:bg-white/10"
+                    onClick={() => clearFavorites()}
+                    className="h-4 w-4 sm:h-5 sm:w-5 hover:bg-white/10 opacity-60 hover:opacity-100 flex-shrink-0"
+                    title="Clear all favorites"
                   >
-                    {item.type === 'table' ? (
-                      <Table2 className="w-2.5 h-2.5 mr-1 text-green-400" />
-                    ) : (
-                      <Database className="w-2.5 h-2.5 mr-1 text-blue-400" />
-                    )}
-                    {item.name}
+                    <X className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-400" />
                   </Button>
-                ))}
-              </div>
+                </div>
+                <div className="flex flex-wrap gap-1 sm:gap-1.5 px-0.5 sm:px-1">
+                  {favorites.map((fav) => (
+                    <Button
+                      key={fav.id}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        addRecentItem(fav.database, fav.table);
+                        if (fav.type === 'database') {
+                          navigate(`/explorer?database=${fav.database}`);
+                        } else {
+                          navigate(`/explorer?database=${fav.database}&table=${fav.table}`);
+                        }
+                      }}
+                      className="h-7 sm:h-8 px-2 sm:px-3 text-sm border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20"
+                    >
+                      <Star className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+                      <span className="truncate max-w-[80px] sm:max-w-none">{fav.name}</span>
+                    </Button>
+                  ))}
+                </div>
+              </TabsContent>
+              <TabsContent value="recent" className="mt-0 space-y-1 max-h-[100px] sm:max-h-[120px] overflow-y-auto">
+                <div className="flex items-center justify-between gap-1 px-0.5 sm:px-1 mb-0.5 sm:mb-1">
+                  <span className="text-[9px] sm:text-[10px] text-gray-500 hidden sm:inline">Recently accessed items</span>
+                  <span className="text-[9px] sm:text-[10px] text-gray-500 sm:hidden">Recent</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => clearRecentItems()}
+                    className="h-4 w-4 sm:h-5 sm:w-5 hover:bg-white/10 opacity-60 hover:opacity-100 flex-shrink-0"
+                    title="Clear recent items"
+                  >
+                    <X className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-400" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-1 sm:gap-1.5 px-0.5 sm:px-1">
+                  {recentItems.map((item) => (
+                    <Button
+                      key={item.id}
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        addRecentItem(item.database, item.table);
+                        if (item.type === 'database') {
+                          navigate(`/explorer?database=${item.database}`);
+                        } else {
+                          navigate(`/explorer?database=${item.database}&table=${item.table}`);
+                        }
+                      }}
+                      className="h-7 sm:h-8 px-2 sm:px-3 text-sm hover:bg-white/10"
+                    >
+                      {item.type === 'table' ? (
+                        <Table2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5 text-green-400 flex-shrink-0" />
+                      ) : (
+                        <Database className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5 text-blue-400 flex-shrink-0" />
+                      )}
+                      <span className="truncate max-w-[80px] sm:max-w-none">{item.name}</span>
+                    </Button>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          ) : (
+            // Show single section when only one has content
+            <div className="space-y-1 sm:space-y-1.5 max-h-[130px] sm:max-h-[150px] overflow-y-auto">
+              {favorites.length > 0 && (
+                <div className="space-y-1 sm:space-y-1.5">
+                  <div className="flex items-center justify-between gap-1 sm:gap-1.5 px-1 sm:px-2">
+                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                      <Star className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-yellow-400 fill-yellow-400 flex-shrink-0" />
+                      <span className="text-[10px] sm:text-[11px] font-medium text-gray-400 uppercase truncate">Favorites</span>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => clearFavorites()}
+                      className="h-4 w-4 sm:h-5 sm:w-5 hover:bg-white/10 opacity-60 hover:opacity-100 flex-shrink-0"
+                      title="Clear all favorites"
+                    >
+                      <X className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-400" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1 sm:gap-1.5 px-1 sm:px-2">
+                    {favorites.map((fav) => (
+                      <Button
+                        key={fav.id}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          addRecentItem(fav.database, fav.table);
+                          if (fav.type === 'database') {
+                            navigate(`/explorer?database=${fav.database}`);
+                          } else {
+                            navigate(`/explorer?database=${fav.database}&table=${fav.table}`);
+                          }
+                        }}
+                        className="h-7 sm:h-8 px-2 sm:px-3 text-sm border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20"
+                      >
+                        <Star className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+                        <span className="truncate max-w-[80px] sm:max-w-none">{fav.name}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {recentItems.length > 0 && (
+                <div className="space-y-1 sm:space-y-1.5">
+                  <div className="flex items-center justify-between gap-1 sm:gap-1.5 px-1 sm:px-2">
+                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                      <History className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400 flex-shrink-0" />
+                      <span className="text-[10px] sm:text-[11px] font-medium text-gray-400 uppercase truncate">Recent</span>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => clearRecentItems()}
+                      className="h-4 w-4 sm:h-5 sm:w-5 hover:bg-white/10 opacity-60 hover:opacity-100 flex-shrink-0"
+                      title="Clear recent items"
+                    >
+                      <X className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-400" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1 sm:gap-1.5 px-1 sm:px-2">
+                    {recentItems.map((item) => (
+                      <Button
+                        key={item.id}
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          addRecentItem(item.database, item.table);
+                          if (item.type === 'database') {
+                            navigate(`/explorer?database=${item.database}`);
+                          } else {
+                            navigate(`/explorer?database=${item.database}&table=${item.table}`);
+                          }
+                        }}
+                        className="h-7 sm:h-8 px-2 sm:px-3 text-sm hover:bg-white/10"
+                      >
+                        {item.type === 'table' ? (
+                          <Table2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5 text-green-400 flex-shrink-0" />
+                        ) : (
+                          <Database className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1.5 text-blue-400 flex-shrink-0" />
+                        )}
+                        <span className="truncate max-w-[80px] sm:max-w-none">{item.name}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
