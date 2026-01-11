@@ -53,6 +53,19 @@ jobs:
           VITE_BASE_PATH: /chouse-ui/
         run: bun run build
 
+      - name: Verify Build Output
+        working-directory: docs/portfolio
+        run: |
+          echo "Checking built index.html for base path..."
+          if [ -f dist/index.html ]; then
+            echo "✓ index.html exists"
+            grep -o 'src="[^"]*"' dist/index.html | head -5 || echo "No src attributes found"
+            grep -o 'href="[^"]*"' dist/index.html | head -5 || echo "No href attributes found"
+          else
+            echo "✗ index.html not found in dist/"
+            exit 1
+          fi
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
         with:
