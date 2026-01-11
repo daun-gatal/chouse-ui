@@ -20,11 +20,11 @@ export default function Footer() {
             <div className="flex items-center gap-3 mb-4">
               <img
                 src="/logo.svg"
-                alt="ClickHouse Studio"
+                alt="ClickStudio"
                 className="w-10 h-10 drop-shadow-[0_0_10px_rgba(255,200,0,0.3)]"
               />
               <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                ClickHouse Studio
+                ClickStudio
               </span>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">
@@ -97,7 +97,7 @@ export default function Footer() {
           className="border-t border-white/10 pt-8 text-center"
         >
           <p className="text-gray-500 text-sm mb-3">
-            © 2025 ClickHouse Studio
+            © 2025 ClickStudio
           </p>
           <p className="text-gray-500 text-sm">
             Inspired by{' '}

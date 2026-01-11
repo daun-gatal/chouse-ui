@@ -30,7 +30,7 @@ config.get("/", (c) => {
       },
       // App metadata
       app: {
-        name: "ClickHouse Studio",
+        name: "ClickStudio",
         version: process.env.VERSION || "dev",
       },
     },

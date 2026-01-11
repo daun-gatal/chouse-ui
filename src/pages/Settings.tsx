@@ -193,7 +193,7 @@ export default function Settings() {
                 <Badge className="bg-purple-500/20 text-purple-400">Active</Badge>
               </div>
               <p className="text-xs text-gray-500 text-center">
-                ClickHouse Studio is designed with a dark theme for optimal visibility of data and reduced eye strain.
+                ClickStudio is designed with a dark theme for optimal visibility of data and reduced eye strain.
               </p>
             </div>
           </SettingCard>
@@ -209,7 +209,7 @@ export default function Settings() {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-white/10">
               <div>
-                <h4 className="font-semibold text-white">ClickHouse Studio</h4>
+                <h4 className="font-semibold text-white">ClickStudio</h4>
                 <p className="text-sm text-gray-400">
                   A modern web interface for ClickHouse databases
                 </p>

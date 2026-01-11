@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: clickhouse-studio-portfolio
+  name: clickstudio-portfolio
   namespace: clickhouse
   labels:
-    app: clickhouse-studio-portfolio
+    app: clickstudio-portfolio
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: clickhouse-studio-portfolio
+      app: clickstudio-portfolio
   template:
     metadata:
       labels:
-        app: clickhouse-studio-portfolio
+        app: clickstudio-portfolio
     spec:
       imagePullSecrets:
       - name: ghcr-secret
       containers:
       - name: portfolio
-        image: ghcr.io/daun-gatal/clickhouse-studio-portfolio:latest
+        image: ghcr.io/daun-gatal/clickstudio-portfolio:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
@@ -48,10 +48,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: clickhouse-studio-portfolio
+  name: clickstudio-portfolio
   namespace: clickhouse
   labels:
-    app: clickhouse-studio-portfolio
+    app: clickstudio-portfolio
 spec:
   type: ClusterIP
   ports:
@@ -60,13 +60,13 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: clickhouse-studio-portfolio
+    app: clickstudio-portfolio
 
 ---
 kind: Ingress
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: clickhouse-studio-portfolio-funnel
+  name: clickstudio-portfolio-funnel
   namespace: clickhouse
   annotations:
     tailscale.com/funnel: 'true'
@@ -74,15 +74,15 @@ spec:
   ingressClassName: tailscale
   tls:
     - hosts:
-        - clickhouse-studio-page
+        - clickstudio-page
   rules:
-    - host: clickhouse-studio-page
+    - host: clickstudio-page
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: clickhouse-studio-portfolio
+                name: clickstudio-portfolio
                 port:
                   number: 80

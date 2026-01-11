@@ -1,4 +1,4 @@
-# Docker Compose for ClickHouse Studio with PostgreSQL RBAC
+# Docker Compose for ClickStudio with PostgreSQL RBAC
 # Use this for production deployments with external PostgreSQL
 
 version: '3.8'
@@ -57,7 +57,7 @@ services:
       - clickhouse-network
 
   # ============================================
-  # ClickHouse Studio Application
+  # ClickStudio Application
   # ============================================
   clickhouse-studio:
     build:

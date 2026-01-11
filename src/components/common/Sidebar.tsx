@@ -28,7 +28,7 @@ import { rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId, clearSession } from "@/api/client";
 
 // Persist sidebar state in localStorage
-const SIDEBAR_COLLAPSED_KEY = "clickhouse-studio-sidebar-collapsed";
+const SIDEBAR_COLLAPSED_KEY = "clickstudio-sidebar-collapsed";
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -197,7 +197,7 @@ export default function Sidebar() {
             className="flex flex-col"
           >
             <span className="font-bold text-lg bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-              ClickHouse Studio
+              ClickStudio
             </span>
             <span className="text-xs text-gray-500 font-medium">
               Database Management

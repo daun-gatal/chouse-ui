@@ -1,7 +1,7 @@
 /**
  * Login Page
  * 
- * RBAC-based authentication for ClickHouse Studio.
+ * RBAC-based authentication for ClickStudio.
  * Users authenticate against the RBAC system, not directly to ClickHouse.
  */
 
@@ -106,7 +106,7 @@ export default function Login() {
             </motion.div>
             <div className="text-center space-y-1">
               <CardTitle className="text-3xl font-bold tracking-tight bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">
-                ClickHouse Studio
+                ClickStudio
               </CardTitle>
               <CardDescription className="text-base text-gray-400">
                 Sign in to your account
