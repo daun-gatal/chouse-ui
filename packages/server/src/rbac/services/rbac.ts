@@ -4,7 +4,7 @@
  * Core service for managing users, roles, and permissions.
  */
 
-import { eq, and, inArray, sql, desc, asc, like, or } from 'drizzle-orm';
+import { eq, and, inArray, sql, desc, asc, like, or, gte, lte } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema, isSqlite, type RbacDb } from '../db';
 import { hashPassword, verifyPassword, needsRehash } from './password';
@@ -260,9 +260,69 @@ export async function listUsers(options: {
   const db = getDatabase();
   const schema = getSchema();
   const page = options.page || 1;
-  const limit = Math.min(options.limit || 20, 100);
+  const limit = Math.min(options.limit || 20, 1000); // Increased max limit to support role filtering
   const offset = (page - 1) * limit;
 
+  // If roleId is provided, we need to join with userRoles table
+  if (options.roleId) {
+    try {
+      // Get user IDs that have this role
+      const userRoles = await db.select({ userId: schema.userRoles.userId })
+        .from(schema.userRoles)
+        .where(eq(schema.userRoles.roleId, options.roleId));
+      
+      const userIds = userRoles.map(ur => ur.userId).filter(Boolean);
+      
+      if (userIds.length === 0) {
+        // No users have this role
+        return { users: [], total: 0 };
+      }
+
+      // Build conditions for filtering
+      const conditions = [inArray(schema.users.id, userIds)];
+    
+    if (options.search) {
+      const searchPattern = `%${options.search.toLowerCase()}%`;
+      conditions.push(
+        or(
+          like(schema.users.email, searchPattern),
+          like(schema.users.username, searchPattern),
+          like(schema.users.displayName, searchPattern)
+        )
+      );
+    }
+
+    if (options.isActive !== undefined) {
+      conditions.push(eq(schema.users.isActive, options.isActive));
+    }
+
+    // Query users with the role
+    const users = await db.select()
+      .from(schema.users)
+      .where(and(...conditions))
+      .orderBy(asc(schema.users.username))
+      .limit(limit)
+      .offset(offset);
+
+    // Get total count
+    const countResult = await db.select({ count: sql<number>`count(*)` })
+      .from(schema.users)
+      .where(and(...conditions));
+
+    const total = Number(countResult[0]?.count || 0);
+
+      // Expand user responses
+      const userResponses = await Promise.all(users.map(u => expandUserResponse(u)));
+
+      return { users: userResponses, total };
+    } catch (error) {
+      console.error('[listUsers] Error filtering by role:', error);
+      // Fall back to returning empty result if role filtering fails
+      return { users: [], total: 0 };
+    }
+  }
+
+  // Original logic when no roleId filter
   let query = db.select().from(schema.users);
 
   // Apply filters
@@ -829,20 +889,27 @@ export async function getAuditLogs(options: {
     conditions.push(eq(schema.auditLogs.action, options.action));
   }
 
-  let query = db.select().from(schema.auditLogs);
-
-  if (conditions.length > 0) {
-    query = query.where(and(...conditions)) as typeof query;
+  // Add date range filtering
+  if (options.startDate) {
+    conditions.push(gte(schema.auditLogs.createdAt, options.startDate));
   }
 
-  const logs = await query
+  if (options.endDate) {
+    conditions.push(lte(schema.auditLogs.createdAt, options.endDate));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const logs = await db.select()
+    .from(schema.auditLogs)
+    .where(whereClause)
     .orderBy(desc(schema.auditLogs.createdAt))
     .limit(limit)
     .offset(offset);
 
   const countResult = await db.select({ count: sql<number>`count(*)` })
     .from(schema.auditLogs)
-    .where(conditions.length > 0 ? and(...conditions) : undefined);
+    .where(whereClause);
 
   return {
     logs,

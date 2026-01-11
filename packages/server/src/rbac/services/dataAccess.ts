@@ -510,6 +510,12 @@ const SYSTEM_METADATA_DATABASES = ['system', 'information_schema', 'INFORMATION_
 /**
  * Filter databases based on user access rules
  * System databases are excluded (will be filtered out by caller for non-admins)
+ * 
+ * Note: Guest role should only have a rule for 'system.*' tables, which means:
+ * - filterDatabasesForUser will only return 'system' database for guest users
+ * - filterDatabases will then filter out 'system' database, so guest sees nothing
+ * - This is the expected behavior: guest role should not see any databases in Explorer UI
+ * - Guest can still query system tables via SQL editor (handled separately)
  */
 export async function filterDatabasesForUser(
   userId: string,

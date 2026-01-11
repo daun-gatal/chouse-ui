@@ -4,6 +4,9 @@ import { QueryRequestSchema, Session } from "../types";
 import { authMiddleware } from "../middleware/auth";
 import { optionalRbacMiddleware, validateQueryAccess } from "../middleware/dataAccess";
 import type { ClickHouseService } from "../services/clickhouse";
+import { createAuditLog } from "../rbac/services/rbac";
+import { AUDIT_ACTIONS } from "../rbac/schema/base";
+import { getClientIp } from "../rbac/middleware/rbacAuth";
 
 type Variables = {
   sessionId: string;
@@ -73,6 +76,39 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
   }
 
   const result = await service.executeQuery(sql, format);
+
+  // Create audit log for query execution
+  if (rbacUserId) {
+    try {
+      // Generate a timestamp-based identifier for matching with query_log
+      // We'll match by timestamp later since query_id from ClickHouse isn't immediately available
+      // Using timestamp + random suffix for uniqueness (not security-critical, just for matching)
+      const queryId = `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      
+      await createAuditLog(
+        AUDIT_ACTIONS.CH_QUERY_EXECUTE,
+        rbacUserId,
+        {
+          resourceType: 'query',
+          resourceId: queryId,
+          details: {
+            query: sql.substring(0, 500), // Store first 500 chars to avoid excessive storage
+            queryLength: sql.length,
+            format,
+            connectionId,
+            timestamp: Date.now(),
+          },
+          ipAddress: getClientIp(c),
+          userAgent: c.req.header('User-Agent'),
+          status: 'success',
+        }
+      );
+    } catch (error) {
+      // Don't fail the query if audit logging fails
+      // Log error for monitoring but continue with query execution
+      console.error('[Query] Failed to create audit log:', error instanceof Error ? error.message : String(error));
+    }
+  }
 
   return c.json({
     success: true,

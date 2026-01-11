@@ -98,6 +98,7 @@ export interface ExplorerState {
   // Favorites actions
   addFavorite: (database: string, table?: string) => void;
   removeFavorite: (id: string) => void;
+  clearFavorites: () => void;
   isFavorite: (database: string, table?: string) => boolean;
   toggleFavorite: (database: string, table?: string) => void;
 
@@ -363,6 +364,11 @@ export const useExplorerStore = create<ExplorerState>()(
     } else {
       addFavorite(database, table);
     }
+  },
+
+  clearFavorites: () => {
+    set({ favorites: [] });
+    toast.success('Favorites cleared');
   },
 
   // Recent items actions

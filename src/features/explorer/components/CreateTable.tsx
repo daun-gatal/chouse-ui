@@ -11,11 +11,14 @@ import {
   Layers,
   Settings2,
   ChevronDown,
+  ChevronUp,
   GripVertical,
   Sparkles,
+  Code,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +100,7 @@ const CreateTable: React.FC = () => {
   const [useCluster, setUseCluster] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [queryPreviewOpen, setQueryPreviewOpen] = useState(false);
   const [ttlExpression, setTtlExpression] = useState("");
   const [comment, setComment] = useState("");
 
@@ -209,8 +213,9 @@ const CreateTable: React.FC = () => {
       await refetchDatabases();
       handleClose();
     } catch (error) {
-      console.error("Failed to create table:", error);
-      toast.error(`Failed to create table: ${(error as Error).message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[CreateTable] Failed to create table:', errorMessage);
+      toast.error(`Failed to create table: ${errorMessage}`);
     }
   };
 
@@ -224,6 +229,7 @@ const CreateTable: React.FC = () => {
     setUseCluster(false);
     setSelectedCluster("");
     setAdvancedOpen(false);
+    setQueryPreviewOpen(false);
     setTtlExpression("");
     setComment("");
     closeCreateTableModal();
@@ -231,9 +237,59 @@ const CreateTable: React.FC = () => {
 
   const validColumnNames = columns.filter((col) => col.name.trim()).map((col) => col.name);
 
+  // Generate query preview
+  const generateQueryPreview = (): string => {
+    if (!database || !tableName.trim()) {
+      return "-- Fill in database and table name to see the query";
+    }
+
+    const validCols = columns.filter((col) => col.name.trim());
+    if (validCols.length === 0) {
+      return "-- Add at least one column to see the query";
+    }
+
+    const columnDefs = validCols
+      .map((col) => {
+        let def = `\`${col.name}\` `;
+        def += col.nullable ? `Nullable(${col.type})` : col.type;
+        if (col.defaultValue) {
+          def += ` DEFAULT ${col.defaultValue}`;
+        }
+        return def;
+      })
+      .join(",\n    ");
+
+    let query = `CREATE TABLE ${database}.\`${tableName}\``;
+    if (useCluster && selectedCluster) {
+      query += ` ON CLUSTER '${selectedCluster}'`;
+    }
+    query += ` (\n    ${columnDefs}\n)`;
+    query += `\nENGINE = ${engine}`;
+
+    if (selectedEngine?.requiresOrderBy && orderByColumns.length > 0) {
+      query += `\nORDER BY (${orderByColumns.map((c) => `\`${c}\``).join(", ")})`;
+    }
+
+    if (partitionBy) {
+      query += `\nPARTITION BY ${partitionBy}`;
+    }
+
+    if (ttlExpression) {
+      query += `\nTTL ${ttlExpression}`;
+    }
+
+    if (comment) {
+      query += `\nCOMMENT '${comment.replace(/'/g, "\\'")}'`;
+    }
+
+    return query;
+  };
+
+  const queryPreview = generateQueryPreview();
+
   return (
     <Dialog open={createTableModalOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col bg-gradient-to-br from-gray-900 to-gray-950 border-white/10">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col bg-gradient-to-br from-gray-900 to-gray-950 border-white/10">
         <DialogHeader className="flex-none pb-4 border-b border-white/10">
           <DialogTitle className="flex items-center gap-3 text-xl">
             <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
@@ -421,6 +477,31 @@ const CreateTable: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Query Preview */}
+            <Collapsible open={queryPreviewOpen} onOpenChange={setQueryPreviewOpen}>
+              <CollapsibleTrigger className="w-full">
+                <div className="flex items-center justify-between w-full p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
+                  <span className="flex items-center gap-2">
+                    <Code className="h-4 w-4" />
+                    CREATE TABLE Query
+                  </span>
+                  {queryPreviewOpen ? (
+                    <ChevronUp className="h-4 w-4 transition-transform" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 transition-transform" />
+                  )}
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-4">
+                <Textarea
+                  readOnly
+                  value={queryPreview}
+                  className="min-h-[100px] max-h-[300px] font-mono text-xs sm:text-sm text-gray-300 bg-black/40 border-white/10 resize-none overflow-auto"
+                  style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                />
+              </CollapsibleContent>
+            </Collapsible>
 
             {/* Advanced Settings */}
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>

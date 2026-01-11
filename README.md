@@ -41,7 +41,7 @@ CHouse UI provides security and access control features for teams that need:
 ## Features
 
 ### 🔐 Security & Access Control
-- **RBAC System** - Role-based permissions (Super Admin, Admin, Developer, Analyst, Viewer)
+- **RBAC System** - Role-based permissions (Super Admin, Admin, Developer, Analyst, Viewer, Guest)
 - **Encrypted Credentials** - AES-256-GCM encryption for ClickHouse connection passwords
 - **Password Hashing** - Argon2id for user passwords
 - **JWT Authentication** - Secure token-based sessions with access and refresh tokens
@@ -70,185 +70,6 @@ CHouse UI provides security and access control features for teams that need:
 - **Responsive** - Works on desktop and tablet
 - **Connection Selector** - Quick server switching
 - **Keyboard Shortcuts** - Power user support
-
----
-
-## Architecture
-
-```mermaid
-graph TB
-    subgraph Frontend["Frontend (React + Vite)"]
-        Login["Login Page"]
-        Overview["Overview Dashboard"]
-        Explorer["Explorer"]
-        Query["Query Workspace"]
-        Metrics["Metrics Dashboard"]
-        Logs["Query Logs"]
-        Admin["Admin Panel"]
-        Settings["Settings"]
-        
-        APIClient["API Client<br/>(X-Requested-With, JWT, Session-ID)"]
-        
-        Login --> APIClient
-        Overview --> APIClient
-        Explorer --> APIClient
-        Query --> APIClient
-        Metrics --> APIClient
-        Logs --> APIClient
-        Admin --> APIClient
-        Settings --> APIClient
-    end
-    
-    subgraph Backend["Backend (Bun + Hono)"]
-        subgraph GlobalMW["Global Middleware"]
-            Security["Security Headers"]
-            CORS["CORS Middleware"]
-            Logging["Request Logging"]
-            APIProtection["API Protection<br/>(X-Requested-With)"]
-        end
-        
-        subgraph Routes["API Routes"]
-            AuthRoute["/api/auth<br/>(Legacy)"]
-            QueryRoute["/api/query"]
-            ExplorerRoute["/api/explorer"]
-            MetricsRoute["/api/metrics"]
-            SavedQueriesRoute["/api/saved-queries"]
-            RBACRoutes["/api/rbac<br/>(auth, users, roles,<br/>connections, data-access, audit)"]
-        end
-        
-        subgraph RouteMW["Route Middleware"]
-            AuthMW["authMiddleware<br/>(ClickHouse Session)"]
-            RBACAuthMW["rbacAuthMiddleware<br/>(JWT Validation)"]
-            OptionalRBAC["optionalRbacMiddleware<br/>(Extract JWT if present)"]
-            PermissionMW["Permission Checks"]
-            DataAccessMW["Data Access Filtering"]
-        end
-        
-        subgraph Services["Services"]
-            ClickHouseService["ClickHouseService<br/>(Query Execution)"]
-            RBACService["RBAC Service<br/>(Users, Roles, Permissions)"]
-            DataAccessService["Data Access Service<br/>(Access Rules)"]
-            AuditService["Audit Service<br/>(Logging)"]
-        end
-        
-        subgraph DataStore["Data Stores"]
-            RBACDB["RBAC Database<br/>(SQLite/PostgreSQL)<br/>Users, Roles, Permissions,<br/>Connections, Sessions"]
-            SessionStore["Session Store<br/>(In-Memory)<br/>ClickHouse Sessions"]
-        end
-    end
-    
-    subgraph ClickHouse["ClickHouse Server(s)"]
-        CHServer["ClickHouse Database"]
-    end
-    
-    APIClient -->|HTTPS| Security
-    Security --> CORS
-    CORS --> Logging
-    Logging --> APIProtection
-    APIProtection --> Routes
-    
-    AuthRoute --> AuthMW
-    QueryRoute --> AuthMW
-    QueryRoute --> OptionalRBAC
-    QueryRoute --> DataAccessMW
-    ExplorerRoute --> AuthMW
-    ExplorerRoute --> OptionalRBAC
-    ExplorerRoute --> DataAccessMW
-    MetricsRoute --> RBACAuthMW
-    MetricsRoute --> PermissionMW
-    RBACRoutes --> RBACAuthMW
-    RBACRoutes --> PermissionMW
-    
-    AuthMW --> SessionStore
-    RBACAuthMW --> RBACDB
-    OptionalRBAC --> RBACDB
-    PermissionMW --> RBACService
-    DataAccessMW --> DataAccessService
-    
-    QueryRoute --> ClickHouseService
-    ExplorerRoute --> ClickHouseService
-    MetricsRoute --> ClickHouseService
-    
-    ClickHouseService --> SessionStore
-    ClickHouseService --> RBACDB
-    ClickHouseService --> CHServer
-    
-    RBACService --> RBACDB
-    DataAccessService --> RBACDB
-    AuditService --> RBACDB
-    
-    style Frontend fill:#1e1e2e,stroke:#89b4fa
-    style Backend fill:#313244,stroke:#f9e2af
-    style ClickHouse fill:#45475a,stroke:#a6e3a1
-    style RBACDB fill:#585b70,stroke:#fab387
-    style SessionStore fill:#585b70,stroke:#fab387
-```
-
-### Authentication Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant Backend
-    participant RBACDB
-    participant ClickHouse
-    
-    User->>Frontend: Login (email/password)
-    Frontend->>Backend: POST /api/rbac/auth/login
-    Backend->>RBACDB: Verify credentials (Argon2id)
-    RBACDB-->>Backend: User + Roles + Permissions
-    Backend->>Backend: Generate JWT tokens (access + refresh)
-    Backend->>RBACDB: Store session (refresh token)
-    Backend-->>Frontend: JWT tokens + User info
-    Frontend->>Frontend: Store access token (memory)<br/>Store refresh token (HTTP-only cookie)
-    
-    User->>Frontend: Connect to ClickHouse
-    Frontend->>Backend: POST /api/rbac/connections/connect
-    Backend->>RBACDB: Get encrypted connection credentials
-    Backend->>Backend: Decrypt credentials (AES-256-GCM)
-    Backend->>ClickHouse: Create connection
-    ClickHouse-->>Backend: Connection established
-    Backend->>SessionStore: Store ClickHouse session
-    Backend-->>Frontend: Session ID
-    Frontend->>Frontend: Store session ID
-```
-
-### Request Flow
-
-```mermaid
-sequenceDiagram
-    participant Frontend
-    participant Backend
-    participant Middleware
-    participant RBACDB
-    participant ClickHouse
-    
-    Frontend->>Backend: API Request<br/>(JWT + Session-ID)
-    Backend->>Middleware: API Protection Check
-    Middleware->>Middleware: Validate X-Requested-With header
-    
-    Backend->>Middleware: Optional RBAC Middleware
-    Middleware->>Middleware: Extract JWT from Authorization header
-    Middleware->>RBACDB: Verify JWT token
-    RBACDB-->>Middleware: User ID, Roles, Permissions
-    
-    Backend->>Middleware: Auth Middleware
-    Middleware->>SessionStore: Get ClickHouse session
-    SessionStore-->>Middleware: Session + Service
-    
-    Backend->>Middleware: Data Access Middleware
-    Middleware->>RBACDB: Check data access rules
-    RBACDB-->>Middleware: Access allowed/denied
-    
-    alt Access Allowed
-        Backend->>ClickHouse: Execute query
-        ClickHouse-->>Backend: Query results
-        Backend-->>Frontend: Success response
-    else Access Denied
-        Backend-->>Frontend: 403 Forbidden
-    end
-```
 
 ---
 
@@ -455,6 +276,7 @@ openssl rand -base64 16
 | **Developer** | Write access | Insert, update, DDL |
 | **Analyst** | Read access | Select, export |
 | **Viewer** | Read-only | Select only |
+| **Guest** | Read-only access | View all tabs, read-only queries, system tables access |
 
 ### Data Access Rules
 
@@ -652,6 +474,50 @@ We welcome contributions! Please see our contributing guidelines.
 7. Open a Pull Request
 
 ---
+
+## For AI Agents and Contributors
+
+### AI Agent Guidelines
+
+**All AI agents working on this repository MUST follow the established coding rules:**
+
+- **[CODE_CHANGES.md](.rules/CODE_CHANGES.md)** - Rules for making code changes
+  - TypeScript best practices (strict typing, no `any`)
+  - React best practices (hooks, performance, component structure)
+  - Error handling and resource cleanup
+  - Security and performance guidelines
+  - Code structure and documentation standards
+
+- **[CODE_REVIEWER.md](.rules/CODE_REVIEWER.md)** - Rules for reviewing code
+  - Review checklist and approval criteria
+  - Common issues to watch for
+  - Security and performance review guidelines
+  - Code quality standards
+
+**Before making any changes:**
+1. Read and understand the rules in `.rules/CODE_CHANGES.md`
+2. Follow TypeScript strict mode guidelines
+3. Ensure proper error handling and resource cleanup
+4. Follow React best practices for hooks and performance
+5. Maintain code consistency with existing patterns
+
+**Before submitting code:**
+1. Review your changes against `.rules/CODE_REVIEWER.md`
+2. Ensure all critical issues are resolved
+3. Verify security and performance considerations
+4. Check that code follows project structure and naming conventions
+
+These rules ensure production-grade code quality, consistency, and maintainability across the codebase.
+
+---
+
+## License
+
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
+
+### Third-Party Code
+
+This project was initially based on **[CH-UI](https://github.com/caioricciuti/ch-ui)** by [Caio Ricciuti](https://github.com/caioricciuti). While significant modifications and additions have been made, we acknowledge the original work and maintain attribution as required by the Apache License 2.0.
 
 ## Acknowledgments
 
