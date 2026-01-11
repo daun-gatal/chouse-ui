@@ -49,6 +49,7 @@ jobs:
       - name: Build Portfolio
         working-directory: docs/portfolio
         env:
+          NODE_ENV: production
           VITE_BASE_PATH: /chouse-ui/
         run: bun run build
 
