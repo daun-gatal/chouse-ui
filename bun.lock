@@ -57,6 +57,7 @@
         "zustand": "^5.0.9",
       },
       "devDependencies": {
+        "@eslint/js": "^9.39.2",
         "@testing-library/dom": "^10.0.0",
         "@testing-library/react": "^16.0.0",
         "@testing-library/user-event": "^14.5.0",
