@@ -7,13 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v2.3.1] - 2026-01-12
 
-### Changed
-
-#### Rebranding
-- **Product Name**: Rebranded from "ClickHouse Studio" to "CHouse UI" for better brand distinction and uniqueness.
-- **Package Names**: Updated all package names to use `chouseui` (lowercase, no space) for technical identifiers.
-- **Repository**: Moved to new repository at `https://github.com/daun-gatal/chouse-ui`.
-
 ### Fixed
 
 #### Build & Dependencies
