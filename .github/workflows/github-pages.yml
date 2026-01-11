@@ -51,7 +51,9 @@ jobs:
         env:
           NODE_ENV: production
           VITE_BASE_PATH: /chouse-ui/
-        run: bun run build
+        run: |
+          echo "Building with base path: /chouse-ui/"
+          bun run build --mode production
 
       - name: Verify Build Output
         working-directory: docs/portfolio
