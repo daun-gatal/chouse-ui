@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chouseui-portfolio
+  name: chouseui
   namespace: clickhouse
   labels:
-    app: chouseui-portfolio
+    app: chouseui
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: chouseui-portfolio
+      app: chouseui
   template:
     metadata:
       labels:
-        app: chouseui-portfolio
+        app: chouseui
     spec:
       imagePullSecrets:
       - name: ghcr-secret
       containers:
-      - name: portfolio
+      - name: chouseui
         image: ghcr.io/daun-gatal/chouseui-portfolio:latest
         imagePullPolicy: Always
         ports:
@@ -48,10 +48,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: chouseui-portfolio
+  name: chouseui
   namespace: clickhouse
   labels:
-    app: chouseui-portfolio
+    app: chouseui
 spec:
   type: ClusterIP
   ports:
@@ -60,13 +60,13 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: chouseui-portfolio
+    app: chouseui
 
 ---
 kind: Ingress
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: chouseui-portfolio-funnel
+  name: chouseui-funnel
   namespace: clickhouse
   annotations:
     tailscale.com/funnel: 'true'
@@ -74,15 +74,15 @@ spec:
   ingressClassName: tailscale
   tls:
     - hosts:
-        - chouseui-page
+        - chouseui
   rules:
-    - host: chouseui-page
+    - host: chouseui
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: chouseui-portfolio
+                name: chouseui
                 port:
                   number: 80
