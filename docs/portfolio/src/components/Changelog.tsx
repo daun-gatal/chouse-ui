@@ -1,9 +1,9 @@
-import { motion, useInView } from 'framer-motion';
+import { motion, useInView, AnimatePresence } from 'framer-motion';
 import { useRef, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { GlassCard, GlassCardContent } from './GlassCard';
-import { FileText, Calendar, Tag } from 'lucide-react';
+import { Calendar, Tag, ChevronDown } from 'lucide-react';
 
 interface ChangelogEntry {
   version: string;
@@ -17,6 +17,7 @@ export default function Changelog() {
   const [changelog, setChangelog] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Fetch changelog from public folder using base URL
@@ -71,11 +72,33 @@ export default function Changelog() {
       });
     }
 
-    // Return only the latest version (first entry)
-    return entries.length > 0 ? [entries[0]] : [];
+    // Return the last 3 releases (first 3 entries)
+    return entries.slice(0, 3);
   };
 
   const entries = changelog ? parseChangelog(changelog) : [];
+
+  // Initialize expanded state: expand only the latest release by default
+  useEffect(() => {
+    if (entries.length > 0 && expandedVersions.size === 0) {
+      setExpandedVersions(new Set([entries[0].version]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [changelog]);
+
+  const toggleExpand = (version: string) => {
+    setExpandedVersions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(version)) {
+        newSet.delete(version);
+      } else {
+        newSet.add(version);
+      }
+      return newSet;
+    });
+  };
+
+  const isExpanded = (version: string) => expandedVersions.has(version);
 
   return (
     <section id="changelog" className="py-24 px-4 relative overflow-hidden">
@@ -103,7 +126,7 @@ export default function Changelog() {
             </span>
           </motion.div>
           <p className="text-gray-400 text-xl max-w-2xl mx-auto mt-4">
-            See what's new in the latest version
+            See what's new in the latest releases
           </p>
         </motion.div>
 
@@ -141,7 +164,10 @@ export default function Changelog() {
               >
                 <GlassCard className="overflow-hidden">
                   <GlassCardContent className="p-8">
-                    <div className="flex items-center gap-4 mb-6 pb-6 border-b border-white/10">
+                    <div 
+                      className="flex items-center gap-4 mb-6 pb-6 border-b border-white/10 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => toggleExpand(entry.version)}
+                    >
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
                         <Tag className="w-6 h-6 text-white" />
                       </div>
@@ -158,30 +184,49 @@ export default function Changelog() {
                           })}</span>
                         </div>
                       </div>
+                      <motion.div
+                        animate={{ rotate: isExpanded(entry.version) ? 180 : 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="text-gray-400 hover:text-white transition-colors"
+                      >
+                        <ChevronDown className="w-6 h-6" />
+                      </motion.div>
                     </div>
                     
-                    <div className="prose prose-invert prose-purple max-w-none">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          h1: ({node, ...props}) => <h1 className="text-2xl font-bold text-white mt-6 mb-4" {...props} />,
-                          h2: ({node, ...props}) => <h2 className="text-xl font-bold text-white mt-5 mb-3" {...props} />,
-                          h3: ({node, ...props}) => <h3 className="text-lg font-semibold text-white mt-4 mb-2" {...props} />,
-                          h4: ({node, ...props}) => <h4 className="text-base font-semibold text-white mt-3 mb-2" {...props} />,
-                          p: ({node, ...props}) => <p className="text-gray-300 mb-3 leading-relaxed" {...props} />,
-                          ul: ({node, ...props}) => <ul className="list-disc list-inside text-gray-300 mb-4 space-y-2 ml-4" {...props} />,
-                          ol: ({node, ...props}) => <ol className="list-decimal list-inside text-gray-300 mb-4 space-y-2 ml-4" {...props} />,
-                          li: ({node, ...props}) => <li className="text-gray-300 leading-relaxed" {...props} />,
-                          strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
-                          code: ({node, ...props}) => <code className="bg-white/10 px-2 py-1 rounded text-purple-300 text-sm font-mono" {...props} />,
-                          pre: ({node, ...props}) => <pre className="bg-black/30 p-4 rounded-lg overflow-x-auto mb-4 border border-white/10" {...props} />,
-                          a: ({node, ...props}) => <a className="text-purple-400 hover:text-purple-300 underline" {...props} />,
-                          blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-purple-500 pl-4 italic text-gray-400 my-4" {...props} />,
-                        }}
-                      >
-                        {entry.content}
-                      </ReactMarkdown>
-                    </div>
+                    <AnimatePresence initial={false}>
+                      {isExpanded(entry.version) && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.3, ease: 'easeInOut' }}
+                          className="overflow-hidden"
+                        >
+                          <div className="prose prose-invert prose-purple max-w-none">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                h1: ({node, ...props}) => <h1 className="text-2xl font-bold text-white mt-6 mb-4" {...props} />,
+                                h2: ({node, ...props}) => <h2 className="text-xl font-bold text-white mt-5 mb-3" {...props} />,
+                                h3: ({node, ...props}) => <h3 className="text-lg font-semibold text-white mt-4 mb-2" {...props} />,
+                                h4: ({node, ...props}) => <h4 className="text-base font-semibold text-white mt-3 mb-2" {...props} />,
+                                p: ({node, ...props}) => <p className="text-gray-300 mb-3 leading-relaxed" {...props} />,
+                                ul: ({node, ...props}) => <ul className="list-disc list-inside text-gray-300 mb-4 space-y-2 ml-4" {...props} />,
+                                ol: ({node, ...props}) => <ol className="list-decimal list-inside text-gray-300 mb-4 space-y-2 ml-4" {...props} />,
+                                li: ({node, ...props}) => <li className="text-gray-300 leading-relaxed" {...props} />,
+                                strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
+                                code: ({node, ...props}) => <code className="bg-white/10 px-2 py-1 rounded text-purple-300 text-sm font-mono" {...props} />,
+                                pre: ({node, ...props}) => <pre className="bg-black/30 p-4 rounded-lg overflow-x-auto mb-4 border border-white/10" {...props} />,
+                                a: ({node, ...props}) => <a className="text-purple-400 hover:text-purple-300 underline" {...props} />,
+                                blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-purple-500 pl-4 italic text-gray-400 my-4" {...props} />,
+                              }}
+                            >
+                              {entry.content}
+                            </ReactMarkdown>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </GlassCardContent>
                 </GlassCard>
               </motion.div>
