@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Github } from 'lucide-react';
 
 export default function Footer() {
   return (
@@ -83,6 +84,29 @@ export default function Footer() {
                 >
                   <span className="w-0 group-hover:w-2 h-0.5 bg-gradient-to-r from-purple-400 to-blue-400 transition-all duration-300" />
                   <span>Try Live Demo</span>
+                </a>
+              </li>
+            </ul>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+          >
+            <h4 className="font-semibold text-white mb-6 text-lg">Repository</h4>
+            <ul className="space-y-3">
+              <li>
+                <a
+                  href="https://github.com/daun-gatal/chouse-ui"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-white transition-colors text-sm flex items-center gap-2 group"
+                >
+                  <Github className="w-4 h-4" />
+                  <span className="w-0 group-hover:w-2 h-0.5 bg-gradient-to-r from-purple-400 to-blue-400 transition-all duration-300" />
+                  <span>GitHub</span>
                 </a>
               </li>
             </ul>
