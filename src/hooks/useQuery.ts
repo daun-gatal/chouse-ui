@@ -490,11 +490,13 @@ export function useTableSchema(
 /**
  * Hook to fetch query logs
  * @param limit - Number of logs to fetch
- * @param username - Optional username to filter by (for non-admin users)
+ * @param username - Optional ClickHouse username to filter by (legacy, for backward compatibility)
+ * @param rbacUserId - Optional RBAC user ID to filter by (for non-super-admin users)
  */
 export function useQueryLogs(
   limit: number = 100,
   username?: string,
+  rbacUserId?: string,
   options?: Partial<UseQueryOptions<Array<{
     type: string;
     event_date: string;
@@ -506,20 +508,24 @@ export function useQueryLogs(
     read_bytes: number;
     memory_usage: number;
     user: string;
+    rbacUser?: string | null;
+    rbacUserId?: string | null;
     exception?: string;
   }>, Error>>
 ) {
-  // Build user filter clause
+  // Build user filter clause (legacy support for ClickHouse username)
   const userFilter = username ? `AND user = '${username}'` : '';
   
   return useQuery({
-    queryKey: ['queryLogs', limit, username] as const,
+    queryKey: ['queryLogs', limit, username, rbacUserId] as const,
     queryFn: async () => {
+      // Fetch query logs
       const result = await queryApi.executeQuery(`
           SELECT 
             type,
             event_date,
             formatDateTime(event_time, '%H:%i:%S') as event_time,
+            toUnixTimestamp(__table1.event_time) as event_timestamp,
             query_id,
             query,
             query_duration_ms,
@@ -528,16 +534,31 @@ export function useQueryLogs(
             memory_usage,
             user,
             exception
-          FROM system.query_log
+          FROM system.query_log AS __table1
           WHERE event_date >= today() - 1
           ${userFilter}
-          ORDER BY event_time DESC
+          ORDER BY __table1.event_time DESC
           LIMIT ${limit}
         `);
-      return result.data as Array<{
+      
+      const logs = result.data.map((log: any) => ({
+        type: log.type,
+        event_date: log.event_date,
+        event_time: log.event_time,
+        event_timestamp: Number(log.event_timestamp),
+        query_id: log.query_id,
+        query: log.query,
+        query_duration_ms: log.query_duration_ms,
+        read_rows: log.read_rows,
+        read_bytes: log.read_bytes,
+        memory_usage: log.memory_usage,
+        user: log.user,
+        exception: log.exception,
+      })) as Array<{
         type: string;
         event_date: string;
         event_time: string;
+        event_timestamp: number;
         query_id: string;
         query: string;
         query_duration_ms: number;
@@ -547,6 +568,148 @@ export function useQueryLogs(
         user: string;
         exception?: string;
       }>;
+
+      // Fetch audit logs for query execution to get RBAC users
+      try {
+        const { rbacAuditApi, rbacUsersApi } = await import('@/api/rbac');
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        
+        // If rbacUserId is provided, only fetch audit logs for that user
+        const auditResult = await rbacAuditApi.list({
+          page: 1,
+          limit: 1000, // Get enough to match
+          action: 'clickhouse.query_execute',
+          userId: rbacUserId, // Filter by RBAC user ID if provided
+          startDate: oneDayAgo.toISOString(),
+        });
+
+        // Create a map of timestamp -> RBAC user ID
+        // Match audit logs with query logs by timestamp (within 30 seconds for better matching)
+        // Use the timestamp from audit log details if available, otherwise use createdAt
+        const auditMap = new Map<number, string | null>();
+        for (const auditLog of auditResult.logs) {
+          if (auditLog.userId) {
+            // Prefer timestamp from details (stored when query was executed)
+            // Fall back to createdAt if details.timestamp is not available
+            const detailsTimestamp = auditLog.details?.timestamp as number | undefined;
+            const auditTime = detailsTimestamp 
+              ? Math.floor(detailsTimestamp / 1000) // Convert from milliseconds to seconds
+              : Math.floor(new Date(auditLog.createdAt).getTime() / 1000);
+            
+            // Store multiple timestamps around the audit time for better matching
+            // Use a wider range to account for query execution time
+            for (let offset = -30; offset <= 30; offset++) {
+              auditMap.set(auditTime + offset, auditLog.userId);
+            }
+          }
+        }
+        
+        // Debug logging (can be removed in production or made conditional)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[QueryLogs] Audit logs found:', auditResult.logs.length, 'Unique users:', new Set(auditResult.logs.map(l => l.userId).filter(Boolean)).size, rbacUserId ? `(filtered for user: ${rbacUserId})` : '(all users)');
+        }
+
+        // Get unique user IDs to fetch user details
+        const uniqueUserIds = Array.from(new Set(Array.from(auditMap.values()).filter(Boolean) as string[]));
+        const userMap = new Map<string, { username: string; email: string; displayName: string | null }>();
+        
+        // Fetch user details in parallel
+        await Promise.all(
+          uniqueUserIds.map(async (userId) => {
+            try {
+              const user = await rbacUsersApi.get(userId);
+              userMap.set(userId, {
+                username: user.username,
+                email: user.email,
+                displayName: user.displayName,
+              });
+            } catch (error) {
+              console.warn(`Failed to fetch user ${userId}:`, error);
+            }
+          })
+        );
+
+        // Match query logs with audit logs
+        let matchedCount = 0;
+        const matchedLogs = logs
+          .map(log => {
+            const queryTime = log.event_timestamp;
+            // Try to find matching audit log within 30 seconds
+            let rbacUserId: string | null | undefined = undefined;
+            let rbacUserInfo: { username: string; email: string; displayName: string | null } | undefined = undefined;
+            
+            for (let offset = -30; offset <= 30; offset++) {
+              const key = queryTime + offset;
+              if (auditMap.has(key)) {
+                rbacUserId = auditMap.get(key) || null;
+                if (rbacUserId && userMap.has(rbacUserId)) {
+                  rbacUserInfo = userMap.get(rbacUserId);
+                  matchedCount++;
+                }
+                break;
+              }
+            }
+
+          return {
+            type: log.type,
+            event_date: log.event_date,
+            event_time: log.event_time,
+            query_id: log.query_id,
+            query: log.query,
+            query_duration_ms: log.query_duration_ms,
+            read_rows: log.read_rows,
+            read_bytes: log.read_bytes,
+            memory_usage: log.memory_usage,
+            user: log.user,
+            rbacUser: rbacUserInfo ? (rbacUserInfo.displayName || rbacUserInfo.username || rbacUserInfo.email) : (rbacUserId || undefined),
+            rbacUserId: rbacUserId,
+            exception: log.exception,
+          };
+          })
+          .filter(log => {
+            // If rbacUserId filter is provided, only return logs that have a matching RBAC user
+            // This ensures non-super-admin users only see their own logs
+            if (rbacUserId) {
+              // Only show logs that have been successfully matched to this user's audit logs
+              // If a log doesn't have rbacUserId, it means it wasn't matched, so exclude it
+              return log.rbacUserId === rbacUserId;
+            }
+            // Super-admin sees all logs (including those without RBAC user match)
+            return true;
+          });
+        
+        const filteredCount = matchedLogs.length;
+        // Debug logging (can be removed in production or made conditional)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[QueryLogs] Matched', matchedCount, 'out of', logs.length, 'logs with RBAC users', rbacUserId ? `(filtered for user: ${rbacUserId}, showing ${filteredCount} logs)` : `(all users, showing ${filteredCount} logs)`);
+        }
+        return matchedLogs;
+      } catch (error) {
+        // If audit log fetch fails and rbacUserId is provided, return empty array
+        // (non-admin users should only see their own logs, which require audit log matching)
+        console.warn('Failed to fetch RBAC user info:', error);
+        if (rbacUserId) {
+          // For non-admin users, if we can't match audit logs, return empty array
+          // This ensures they don't see logs they shouldn't have access to
+          return [];
+        }
+        // For super-admin or when no rbacUserId filter, return logs without RBAC user
+        return logs.map(log => ({
+          type: log.type,
+          event_date: log.event_date,
+          event_time: log.event_time,
+          query_id: log.query_id,
+          query: log.query,
+          query_duration_ms: log.query_duration_ms,
+          read_rows: log.read_rows,
+          read_bytes: log.read_bytes,
+          memory_usage: log.memory_usage,
+          user: log.user,
+          rbacUser: undefined,
+          rbacUserId: undefined,
+          exception: log.exception,
+        }));
+      }
     },
     staleTime: 10000,
     refetchInterval: 30000,

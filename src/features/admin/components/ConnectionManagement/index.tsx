@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { cn } from "@/lib/utils";
 import {
   Server,
   Plus,
@@ -578,9 +579,9 @@ export default function ConnectionManagement() {
             size="sm"
             onClick={fetchConnections}
             disabled={isLoading}
-            className="border-gray-700"
+            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
             Refresh
           </Button>
           {canUpdate && (

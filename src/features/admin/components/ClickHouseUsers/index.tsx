@@ -94,6 +94,7 @@ import {
 import { getSessionId } from '@/api/client';
 import { getDatabases, type DatabaseInfo } from '@/api/explorer';
 import { useRbacStore, useAuthStore, RBAC_PERMISSIONS } from '@/stores';
+import { cn } from '@/lib/utils';
 
 // ============================================
 // User Form Dialog Component
@@ -1741,9 +1742,9 @@ export default function ClickHouseUsersManagement() {
             size="sm"
             onClick={checkSessionAndFetchUsers}
             disabled={isLoading || isCheckingSession}
-            className="border-gray-700"
+            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${(isLoading || isCheckingSession) ? 'animate-spin' : ''}`} />
+            <RefreshCw className={cn("h-4 w-4", (isLoading || isCheckingSession) && "animate-spin")} />
             Refresh
           </Button>
           {canCreate && (

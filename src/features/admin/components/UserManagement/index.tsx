@@ -6,6 +6,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import {
   Users,
   RefreshCw,
@@ -324,12 +325,13 @@ const UserManagement: React.FC = () => {
 
           <Button
             variant="outline"
-            size="icon"
+            size="sm"
             onClick={fetchUsers}
             disabled={isFetching}
-            className="shrink-0"
+            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
           >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            Refresh
           </Button>
 
           {canCreateUsers && (
