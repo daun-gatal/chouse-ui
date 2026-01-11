@@ -1,5 +1,5 @@
 /**
- * React Query Hooks for ClickStudio
+ * React Query Hooks for CHouse UI
  * 
  * These hooks provide data fetching with caching, automatic refetching,
  * and proper error handling using TanStack Query.

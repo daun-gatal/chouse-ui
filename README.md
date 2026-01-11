@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/logo.svg" alt="ClickStudio" width="120" />
+  <img src="public/logo.svg" alt="CHouse UI" width="120" />
 </p>
 
-<h1 align="center">ClickStudio</h1>
+<h1 align="center">CHouse UI</h1>
 
 <p align="center">
   <strong>A web interface for ClickHouse with built-in RBAC</strong>
@@ -20,13 +20,13 @@
 
 ## Overview
 
-ClickStudio is a web interface for managing ClickHouse databases with server-side credential management and **Role-Based Access Control (RBAC)**. Credentials are stored encrypted on the server, and access is controlled through a permission system.
+CHouse UI is a web interface for managing ClickHouse databases with server-side credential management and **Role-Based Access Control (RBAC)**. Credentials are stored encrypted on the server, and access is controlled through a permission system.
 
-### Why ClickStudio?
+### Why CHouse UI?
 
-ClickStudio provides security and access control features for teams that need:
+CHouse UI provides security and access control features for teams that need:
 
-| Feature | ClickStudio |
+| Feature | CHouse UI |
 |---------|-------------------|
 | **Credential Management** | Encrypted server-side storage (never in browser) |
 | **Architecture** | Secure backend proxy (no direct browser-to-ClickHouse) |
@@ -34,7 +34,7 @@ ClickStudio provides security and access control features for teams that need:
 | **Multi-Connection** | Manage multiple ClickHouse servers |
 | **Audit Trail** | Audit logging |
 
-> **Note**: Other ClickHouse tools serve different use cases well. ClickStudio is designed specifically for teams requiring centralized credential management, role-based access control, and audit capabilities.
+> **Note**: Other ClickHouse tools serve different use cases well. CHouse UI is designed specifically for teams requiring centralized credential management, role-based access control, and audit capabilities.
 
 ---
 
@@ -270,8 +270,8 @@ Successfully tested with:
 
 ```bash
 # Clone the repository
-git clone https://github.com/daun-gatal/clickstudio.git
-cd clickstudio
+git clone https://github.com/daun-gatal/chouse-ui.git
+cd chouse-ui
 
 # Install dependencies
 bun install
@@ -302,8 +302,8 @@ On first run, an admin user is created:
 
 ```bash
 # Clone and run
-git clone https://github.com/daun-gatal/clickstudio.git
-cd clickstudio
+git clone https://github.com/daun-gatal/chouse-ui.git
+cd chouse-ui
 docker-compose up -d
 ```
 
@@ -320,16 +320,16 @@ docker-compose -f docker-compose.postgres.yml up -d
 
 ```bash
 # Build image
-docker build -t clickstudio .
+docker build -t chouseui .
 
 # Run with environment variables
 docker run -d \
   -p 5521:5521 \
-  -v clickstudio-data:/app/data \
+  -v chouseui-data:/app/data \
   -e JWT_SECRET=$(openssl rand -base64 32) \
   -e RBAC_ENCRYPTION_KEY=$(openssl rand -hex 32) \
   -e RBAC_ADMIN_PASSWORD="YourSecurePassword123!" \
-  clickstudio
+  chouseui
 ```
 
 ### Manual Deployment
@@ -353,20 +353,20 @@ Example deployment manifest:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: clickstudio
+  name: chouseui
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: clickstudio
+      app: chouseui
   template:
     metadata:
       labels:
-        app: clickstudio
+        app: chouseui
     spec:
       containers:
-      - name: clickstudio
-        image: clickstudio:latest
+      - name: chouseui
+        image: chouseui:latest
         ports:
         - containerPort: 5521
         env:
@@ -375,17 +375,17 @@ spec:
         - name: RBAC_POSTGRES_URL
           valueFrom:
             secretKeyRef:
-              name: clickstudio-secrets
+              name: chouseui-secrets
               key: postgres-url
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: clickstudio-secrets
+              name: chouseui-secrets
               key: jwt-secret
         - name: RBAC_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
-              name: clickstudio-secrets
+              name: chouseui-secrets
               key: encryption-key
 ```
 
@@ -486,7 +486,7 @@ Features:
 ## Project Structure
 
 ```
-clickstudio/
+chouseui/
 ├── packages/
 │   └── server/                 # Backend (Bun + Hono)
 │       ├── src/
@@ -602,17 +602,17 @@ bun run rbac:seed
 CONFIRM_RESET=yes bun run rbac:reset
 ```
 
-### Upgrading ClickStudio
+### Upgrading CHouse UI
 
 ```bash
 # 1. Pull latest version
-docker pull ghcr.io/daun-gatal/clickstudio:latest
+docker pull ghcr.io/daun-gatal/chouseui:latest
 
 # 2. Restart container - migrations run automatically
 docker-compose up -d
 
 # 3. Check logs for migration status
-docker logs clickstudio | grep RBAC
+docker logs chouseui | grep RBAC
 ```
 
 Expected output on upgrade:

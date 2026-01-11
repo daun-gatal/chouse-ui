@@ -1,7 +1,7 @@
 /**
  * RBAC Module
  * 
- * Role-Based Access Control system for ClickStudio.
+ * Role-Based Access Control system for CHouse UI.
  * 
  * Features:
  * - User management with roles and permissions
