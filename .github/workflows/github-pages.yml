@@ -9,6 +9,17 @@ on:
       - 'CHANGELOG.md'
       - '.github/workflows/github-pages.yml'
   workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual deployment'
+        required: false
+        default: 'Manual trigger'
+        type: string
+      force_changelog_sync:
+        description: 'Force sync CHANGELOG even if unchanged'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -35,9 +46,16 @@ jobs:
 
       - name: Sync Changelog
         run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "Manual trigger: ${{ github.event.inputs.reason }}"
+          fi
           if [ -f CHANGELOG.md ]; then
             cp CHANGELOG.md docs/portfolio/public/CHANGELOG.md
             echo "✓ Changelog synced to portfolio"
+            echo "Verifying sync..."
+            head -10 docs/portfolio/public/CHANGELOG.md
+            echo "Latest version in synced file:"
+            grep -m 1 "^## \[" docs/portfolio/public/CHANGELOG.md || echo "No version found"
           else
             echo "⚠ CHANGELOG.md not found, skipping sync"
           fi
@@ -66,6 +84,15 @@ jobs:
           else
             echo "✗ index.html not found in dist/"
             exit 1
+          fi
+          echo ""
+          echo "Checking CHANGELOG.md in dist..."
+          if [ -f dist/CHANGELOG.md ]; then
+            echo "✓ CHANGELOG.md exists in dist"
+            echo "Latest version in built CHANGELOG:"
+            grep -m 1 "^## \[" dist/CHANGELOG.md || echo "No version found"
+          else
+            echo "⚠ CHANGELOG.md not found in dist/"
           fi
 
       - name: Setup Pages
