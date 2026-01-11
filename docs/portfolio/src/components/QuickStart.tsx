@@ -59,7 +59,7 @@ export default function QuickStart() {
                 </div>
               </div>
               <motion.a
-                href="https://clickhouse-studio-ext.kitty-barb.ts.net/"
+                href="https://chouse-ui-ext.kitty-barb.ts.net/"
                 target="_blank"
                 rel="noopener noreferrer"
                 whileHover={{ scale: 1.02 }}
