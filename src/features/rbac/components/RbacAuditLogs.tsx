@@ -81,7 +81,7 @@ export const RbacAuditLogs: React.FC = () => {
   const [dateRange, setDateRange] = useState<{ start?: Date; end?: Date }>({});
 
   // Queries
-  const { data: logsData, isLoading, refetch } = useQuery({
+  const { data: logsData, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['rbac-audit-logs', page, actionFilter, dateRange],
     queryFn: () => rbacAuditApi.list({
       page,
@@ -121,7 +121,7 @@ export const RbacAuditLogs: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -138,13 +138,19 @@ export const RbacAuditLogs: React.FC = () => {
             variant="outline"
             size="sm"
             onClick={() => refetch()}
-            className="gap-2"
+            disabled={isFetching}
+            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
             Refresh
           </Button>
           {canExport && (
-            <Button variant="outline" size="sm" onClick={handleExport} className="gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleExport} 
+              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+            >
               <Download className="h-4 w-4" />
               Export CSV
             </Button>

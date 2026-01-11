@@ -114,7 +114,7 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
   const [deleteRoleId, setDeleteRoleId] = useState<string | null>(null);
 
   // Query
-  const { data: roles = [], isLoading, refetch } = useQuery({
+  const { data: roles = [], isLoading, isFetching, refetch } = useQuery({
     queryKey: ['rbac-roles'],
     queryFn: () => rbacRolesApi.list(),
   });
@@ -164,7 +164,7 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -181,9 +181,10 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
             variant="outline"
             size="sm"
             onClick={() => refetch()}
-            className="gap-2"
+            disabled={isFetching}
+            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
             Refresh
           </Button>
           {canCreate && onCreateRole && (

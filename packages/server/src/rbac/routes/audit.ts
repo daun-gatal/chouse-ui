@@ -9,7 +9,8 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { getAuditLogs } from '../services/rbac';
 import { PERMISSIONS, AUDIT_ACTIONS } from '../schema/base';
-import { requirePermission, requireAnyPermission } from '../middleware/rbacAuth';
+import { requirePermission, requireAnyPermission, rbacAuthMiddleware } from '../middleware/rbacAuth';
+import { AppError } from '../../types';
 
 const auditRoutes = new Hono();
 
@@ -33,18 +34,52 @@ const ListAuditLogsSchema = z.object({
 /**
  * GET /rbac/audit
  * List audit logs with pagination and filters
+ * 
+ * Permission rules:
+ * - Users with AUDIT_VIEW permission can view all audit logs
+ * - Users without AUDIT_VIEW permission can only view their own audit logs (when userId matches their own ID)
  */
-auditRoutes.get('/', requirePermission(PERMISSIONS.AUDIT_VIEW), zValidator('query', ListAuditLogsSchema), async (c) => {
+auditRoutes.get('/', zValidator('query', ListAuditLogsSchema), async (c) => {
+  // First ensure user is authenticated
+  await rbacAuthMiddleware(c, async () => {});
+  
+  const userId = c.get('rbacUserId');
+  const permissions = c.get('rbacPermissions');
+  const hasAuditView = permissions.includes(PERMISSIONS.AUDIT_VIEW);
+  
   const query = c.req.valid('query');
   
-  const result = await getAuditLogs({
-    page: query.page || 1,
-    limit: query.limit || 50,
-    userId: query.userId,
-    action: query.action,
-    startDate: query.startDate ? new Date(query.startDate) : undefined,
-    endDate: query.endDate ? new Date(query.endDate) : undefined,
-  });
+  // If user doesn't have AUDIT_VIEW permission, they can only view their own logs
+  let effectiveUserId = query.userId;
+  if (!hasAuditView) {
+    // Check if they're trying to view another user's logs without permission
+    if (query.userId && query.userId !== userId) {
+      // Trying to view another user's logs without permission
+      throw AppError.forbidden(`Permission '${PERMISSIONS.AUDIT_VIEW}' required to view other users' audit logs`);
+    }
+    // Force userId to be the current user's ID
+    effectiveUserId = userId;
+  }
+  
+  // Validate userId format if provided
+  if (effectiveUserId && typeof effectiveUserId !== 'string') {
+    throw AppError.badRequest('Invalid userId format');
+  }
+  
+  let result;
+  try {
+    result = await getAuditLogs({
+      page: query.page || 1,
+      limit: query.limit || 50,
+      userId: effectiveUserId,
+      action: query.action,
+      startDate: query.startDate ? new Date(query.startDate) : undefined,
+      endDate: query.endDate ? new Date(query.endDate) : undefined,
+    });
+  } catch (error) {
+    console.error('[Audit] Failed to fetch audit logs:', error);
+    throw AppError.internal('Failed to fetch audit logs');
+  }
 
   return c.json({
     success: true,

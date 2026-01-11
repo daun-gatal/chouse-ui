@@ -5,6 +5,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.4.0] - 2026-01-13
+
+### Added
+
+#### Code Quality & Standards
+- **Agent Rules**: Created comprehensive coding rules for AI agents and contributors
+  - `.rules/CODE_CHANGES.md` - Rules for making code changes (TypeScript, React, error handling, security, performance)
+  - `.rules/CODE_REVIEWER.md` - Rules for reviewing code (checklist, common issues, approval criteria)
+- **AI Agent Guidelines**: Added section in README instructing AI agents to follow established coding rules
+
+#### Licensing & Legal
+- **Apache 2.0 License**: Added full Apache License 2.0 text in LICENSE file
+- **NOTICE File**: Created NOTICE file acknowledging original CH-UI project by Caio Ricciuti
+- **License Documentation**: Updated README with License section and Third-Party Code attribution
+- **Portfolio License**: Added license information to docs/portfolio (LICENSE file, footer attribution, package.json)
+
+#### Logs Page Enhancements
+- **Clear Filters Button**: Added clear button to reset all applied filters (search, logType, user, role)
+- **Filter Limit Fix**: Fixed limit filter inconsistency - increased fetch multiplier to 20x when filters are active (was 2x) to ensure correct number of unique queries after filtering and deduplication
+
+### Fixed
+
+#### Production-Grade Code Improvements
+
+##### Server-Side (RBAC/Server)
+- **Audit Route** (`packages/server/src/rbac/routes/audit.ts`):
+  - Fixed immutable query object handling (use `effectiveUserId` instead of mutating query)
+  - Added input validation for userId format
+  - Added error handling with try-catch around `getAuditLogs`
+  - Added missing date filtering support in `getAuditLogs` service (gte/lte operators)
+  
+- **Metrics Route** (`packages/server/src/routes/metrics.ts`):
+  - Fixed type safety: replaced `any` types with proper `Context<{ Variables: Variables }>` and `Next`
+  - Fixed service cleanup: ensure ClickHouse service is closed in `finally` block to prevent memory leaks
+  - Improved error handling with proper cleanup on errors
+  - Added `rbacConnectionId` to Variables type definition
+  
+- **Users Route** (`packages/server/src/rbac/routes/users.ts`):
+  - Added input validation for user ID format
+  - Added error handling with try-catch around `getUserById`
+  
+- **Query Route** (`packages/server/src/routes/query.ts`):
+  - Improved error message formatting in audit log failure handling
+  
+- **RBAC Service** (`packages/server/src/rbac/services/rbac.ts`):
+  - Fixed missing date filtering: added `gte` and `lte` operators for `startDate`/`endDate` in `getAuditLogs`
+  - Improved query structure using `whereClause` for consistency
+
+##### Client-Side
+- **Logs Page** (`src/pages/Logs.tsx`):
+  - Fixed memory leak: `setTimeout` in `useEffect` now properly cleaned up
+  - Improved error handling with better error message formatting
+  - Made debug logging conditional on `NODE_ENV === 'development'`
+  
+- **InfoTab Component** (`src/features/workspace/components/infoTab/InfoTab.tsx`):
+  - Fixed memory leak: `setTimeout` for copy feedback cleaned up with `useRef` and `useEffect`
+  - Fixed missing imports: added `useRef` and `useEffect` to React imports
+  - Improved error handling with better error message extraction and type checking
+  - Added proper timeout cleanup on component unmount
+  
+- **CreateTable Component** (`src/features/explorer/components/CreateTable.tsx`):
+  - Improved error handling with better error message extraction
+  
+- **useQuery Hook** (`src/hooks/useQuery.ts`):
+  - Made debug console.logs conditional on `NODE_ENV === 'development'`
+  - Improved error handling with better error messages and fallback behavior
+
+### Changed
+
+#### Code Quality
+- **Console Logging**: Made debug console.logs conditional on development environment across codebase
+- **Error Messages**: Improved error message formatting and context throughout
+- **Type Safety**: Enhanced TypeScript type safety across server and client code
+- **Resource Cleanup**: Improved cleanup of timers, connections, and other resources
+
+#### Documentation
+- **README Updates**: 
+  - Added "For AI Agents and Contributors" section with coding rules requirements
+  - Added "License" section with Apache 2.0 information
+  - Added "Third-Party Code" section acknowledging CH-UI project
+- **Portfolio Documentation**: Updated footer and metadata with license information
+
 ## [v2.3.1] - 2026-01-12
 
 ### Fixed
