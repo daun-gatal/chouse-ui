@@ -19,7 +19,7 @@ export default function Footer() {
           >
             <div className="flex items-center gap-3 mb-4">
               <img
-                src="/logo.svg"
+                src={`${import.meta.env.BASE_URL}logo.svg`}
                 alt="CHouse UI"
                 className="w-10 h-10 drop-shadow-[0_0_10px_rgba(255,200,0,0.3)]"
               />

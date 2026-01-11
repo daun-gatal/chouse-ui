@@ -44,7 +44,7 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-3">
             <img
-              src="/logo.svg"
+              src={`${import.meta.env.BASE_URL}logo.svg`}
               alt="CHouse UI"
               className="w-8 h-8 drop-shadow-[0_0_10px_rgba(255,200,0,0.3)]"
             />

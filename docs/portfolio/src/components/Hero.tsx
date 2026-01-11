@@ -65,7 +65,7 @@ export default function Hero() {
             transition={{ duration: 6, repeat: Infinity, repeatDelay: 2 }}
           >
             <img
-              src="/logo.svg"
+              src={`${import.meta.env.BASE_URL}logo.svg`}
               alt="CHouse UI"
               className="w-40 h-40 md:w-48 md:h-48 drop-shadow-[0_0_30px_rgba(255,200,0,0.6)]"
             />
