@@ -5,9 +5,13 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: process.env.NODE_ENV === 'production' && process.env.VITE_BASE_PATH ? process.env.VITE_BASE_PATH : '/',
+  base: process.env.NODE_ENV === 'production' && process.env.VITE_BASE_PATH 
+    ? process.env.VITE_BASE_PATH 
+    : process.env.NODE_ENV === 'production' 
+      ? '/chouse-ui/' 
+      : '/',
   build: {
-    outDir: '../dist',
+    outDir: 'dist',
     emptyOutDir: true,
   },
   resolve: {

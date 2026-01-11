@@ -1,0 +1,76 @@
+name: Deploy Portfolio to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/portfolio/**'
+      - 'CHANGELOG.md'
+      - '.github/workflows/github-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Portfolio
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Sync Changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            cp CHANGELOG.md docs/portfolio/public/CHANGELOG.md
+            echo "✓ Changelog synced to portfolio"
+          else
+            echo "⚠ CHANGELOG.md not found, skipping sync"
+          fi
+
+      - name: Install Dependencies
+        working-directory: docs/portfolio
+        run: bun install
+
+      - name: Build Portfolio
+        working-directory: docs/portfolio
+        env:
+          VITE_BASE_PATH: /chouse-ui/
+        run: bun run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/portfolio/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
