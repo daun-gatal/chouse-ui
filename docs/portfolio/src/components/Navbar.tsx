@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Github } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
@@ -64,6 +64,15 @@ export default function Navbar() {
                 {item.label}
               </button>
             ))}
+            <a
+              href="https://github.com/daun-gatal/chouse-ui"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-300 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg"
+              aria-label="GitHub Repository"
+            >
+              <Github className="w-5 h-5" />
+            </a>
           </div>
 
           {/* Mobile Menu Button */}
@@ -99,6 +108,15 @@ export default function Navbar() {
                   {item.label}
                 </button>
               ))}
+              <a
+                href="https://github.com/daun-gatal/chouse-ui"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors py-2"
+              >
+                <Github className="w-5 h-5" />
+                <span>GitHub</span>
+              </a>
             </div>
           </motion.div>
         )}
