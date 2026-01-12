@@ -134,18 +134,6 @@ export default function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.65, duration: 0.5 }}
-          className="mb-10"
-        >
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-400/30 rounded-full">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            <span className="text-sm text-gray-300">Live Demo Available</span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, duration: 0.5 }}
           className="flex justify-center"
         >
           <motion.button
@@ -157,7 +145,7 @@ export default function Hero() {
               backgroundSize: '200% 100%',
             }}
           >
-            <span>Try Live Demo</span>
+            <span>Get Started</span>
           </motion.button>
         </motion.div>
       </div>
