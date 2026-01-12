@@ -66,33 +66,6 @@ export default function Footer() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            <h4 className="font-semibold text-white mb-6 text-lg">Live Demo</h4>
-            <ul className="space-y-3">
-              <li>
-                <a
-                  href="#quick-start"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const element = document.getElementById('quick-start');
-                    if (element) {
-                      element.scrollIntoView({ behavior: 'smooth' });
-                    }
-                  }}
-                  className="text-gray-400 hover:text-white transition-colors text-sm flex items-center gap-2 group"
-                >
-                  <span className="w-0 group-hover:w-2 h-0.5 bg-gradient-to-r from-purple-400 to-blue-400 transition-all duration-300" />
-                  <span>Try Live Demo</span>
-                </a>
-              </li>
-            </ul>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.3 }}
           >
             <h4 className="font-semibold text-white mb-6 text-lg">Repository</h4>
