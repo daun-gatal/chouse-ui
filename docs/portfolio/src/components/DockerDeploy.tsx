@@ -10,112 +10,43 @@ const prerequisites = [
   { title: 'Memory', desc: 'Recommended: 2GB+ RAM for all services' },
 ];
 
-const dockerComposeCode = `# Docker Compose for CHouse UI
-# Complete stack with PostgreSQL, ClickHouse, and CHouse UI
-
-version: '3.8'
+const dockerComposeCode = `version: '3.8'
 
 services:
-  # PostgreSQL for RBAC
   postgres:
     image: postgres:16-alpine
-    container_name: clickhouse-studio-postgres
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: \${POSTGRES_DB:-clickhouse_studio}
-      POSTGRES_USER: \${POSTGRES_USER:-chstudio}
-      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-changeme}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER:-chstudio} -d \${POSTGRES_DB:-clickhouse_studio}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      POSTGRES_DB: clickhouse_studio
+      POSTGRES_USER: chstudio
+      POSTGRES_PASSWORD: changeme
     restart: unless-stopped
-    networks:
-      - clickhouse-network
 
-  # ClickHouse Database Server
-  clickhouse:
+  ch-server:
     image: clickhouse/clickhouse-server:24-alpine
-    container_name: clickhouse
-    hostname: clickhouse
     ports:
-      - "8123:8123"   # HTTP interface
-      - "9000:9000"   # Native TCP interface
-    volumes:
-      - clickhouse_data:/var/lib/clickhouse
-      - clickhouse_logs:/var/log/clickhouse-server
+      - "8123:8123"
+      - "9000:9000"
     environment:
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: \${CLICKHOUSE_PASSWORD:-clickhouse123}
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      CLICKHOUSE_PASSWORD: clickhouse123
     restart: unless-stopped
-    networks:
-      - clickhouse-network
 
-  # CHouse UI Application
-  clickhouse-studio:
+  chouse-ui:
     image: ghcr.io/daun-gatal/chouse-ui:latest
-    container_name: clickhouse-studio
     ports:
       - "5521:5521"
     environment:
-      NODE_ENV: production
-      PORT: 5521
-      STATIC_PATH: /app/dist
-      SESSION_TTL: \${SESSION_TTL:-3600000}
-      CORS_ORIGIN: \${CORS_ORIGIN:-*}
-      # RBAC with PostgreSQL
       RBAC_DB_TYPE: postgres
-      RBAC_POSTGRES_URL: postgres://\${POSTGRES_USER:-chstudio}:\${POSTGRES_PASSWORD:-changeme}@postgres:5432/\${POSTGRES_DB:-clickhouse_studio}
-      RBAC_POSTGRES_POOL_SIZE: \${RBAC_POSTGRES_POOL_SIZE:-10}
-      # JWT secret (CHANGE IN PRODUCTION!)
+      RBAC_POSTGRES_URL: postgres://chstudio:changeme@postgres:5432/clickhouse_studio
       JWT_SECRET: \${JWT_SECRET:-change-me-in-production}
-      JWT_ACCESS_EXPIRY: \${JWT_ACCESS_EXPIRY:-15m}
-      JWT_REFRESH_EXPIRY: \${JWT_REFRESH_EXPIRY:-7d}
-      # Encryption key (CHANGE IN PRODUCTION!)
       RBAC_ENCRYPTION_KEY: \${RBAC_ENCRYPTION_KEY:-change-me-in-production}
-      # Admin password (only used on first run)
-      RBAC_ADMIN_PASSWORD: \${RBAC_ADMIN_PASSWORD:-}
     depends_on:
-      postgres:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5521/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    networks:
-      - clickhouse-network
+      - postgres
+      - ch-server
+    restart: unless-stopped`;
 
-networks:
-  clickhouse-network:
-    driver: bridge
-
-volumes:
-  postgres_data:
-    driver: local
-  clickhouse_data:
-    driver: local
-  clickhouse_logs:
-    driver: local`;
-
-const dockerComposeNote = 'Save this as docker-compose.yml and run:\n\n  docker-compose up -d\n\nAccess at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123! (or set RBAC_ADMIN_PASSWORD)\n\n⚠️ IMPORTANT: Change these in production:\n• JWT_SECRET: openssl rand -base64 32\n• RBAC_ENCRYPTION_KEY: openssl rand -hex 32\n• POSTGRES_PASSWORD: Use a strong password\n• CORS_ORIGIN: Set to your domain';
+const dockerComposeNote = 'Save as docker-compose.yml and run:\n\n  docker-compose up -d\n\nAccess at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123!\n\n⚠️ Change JWT_SECRET and RBAC_ENCRYPTION_KEY in production!';
 
 const envVars = [
   {
