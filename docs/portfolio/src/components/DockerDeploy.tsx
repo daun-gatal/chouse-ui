@@ -4,41 +4,118 @@ import { Copy, Check, Terminal, Package, AlertCircle, Key, Settings, Info } from
 import { useState } from 'react';
 
 const prerequisites = [
-  { title: 'Docker', desc: 'Docker 20.10+ installed and running' },
-  { title: 'ClickHouse Server', desc: 'Accessible ClickHouse instance to manage (can be added after deployment)' },
-  { title: 'Port 5521', desc: 'Available port for the web interface' },
-  { title: 'PostgreSQL (Optional)', desc: 'For production: PostgreSQL 12+ if using postgres backend for RBAC metadata' },
+  { title: 'Docker & Docker Compose', desc: 'Docker 20.10+ and Docker Compose installed and running' },
+  { title: 'Ports Available', desc: 'Ports 5521 (UI), 8123/9000 (ClickHouse), 5432 (PostgreSQL)' },
+  { title: 'Disk Space', desc: 'Sufficient space for Docker volumes (data persistence)' },
+  { title: 'Memory', desc: 'Recommended: 2GB+ RAM for all services' },
 ];
 
-const quickStartCode = `# Pull the image
-docker pull ghcr.io/daun-gatal/chouse-ui:latest
+const dockerComposeCode = `# Docker Compose for CHouse UI
+# Complete stack with PostgreSQL, ClickHouse, and CHouse UI
 
-# Run with minimal configuration
-docker run -d \\
-  --name chouseui \\
-  -p 5521:5521 \\
-  -v chouseui-data:/app/data \\
-  -e JWT_SECRET="$(openssl rand -base64 32)" \\
-  -e RBAC_ENCRYPTION_KEY="$(openssl rand -hex 32)" \\
-  ghcr.io/daun-gatal/chouse-ui:latest`;
+version: '3.8'
 
-const quickStartNote = 'Access at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123! (or set RBAC_ADMIN_PASSWORD)';
+services:
+  # PostgreSQL for RBAC
+  postgres:
+    image: postgres:16-alpine
+    container_name: clickhouse-studio-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: \${POSTGRES_DB:-clickhouse_studio}
+      POSTGRES_USER: \${POSTGRES_USER:-chstudio}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-changeme}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER:-chstudio} -d \${POSTGRES_DB:-clickhouse_studio}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - clickhouse-network
 
-const productionCode = `# Pull the image
-docker pull ghcr.io/daun-gatal/chouse-ui:latest
+  # ClickHouse Database Server
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    container_name: clickhouse
+    hostname: clickhouse
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native TCP interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: \${CLICKHOUSE_PASSWORD:-clickhouse123}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - clickhouse-network
 
-# Run with production settings
-docker run -d \\
-  --name chouseui \\
-  -p 5521:5521 \\
-  -v chouseui-data:/app/data \\
-  -e JWT_SECRET="your-jwt-secret-here" \\
-  -e RBAC_ENCRYPTION_KEY="your-encryption-key-here" \\
-  -e CORS_ORIGIN="https://yourdomain.com" \\
-  -e RBAC_ADMIN_PASSWORD="your-secure-password" \\
-  ghcr.io/daun-gatal/chouse-ui:latest`;
+  # CHouse UI Application
+  clickhouse-studio:
+    image: ghcr.io/daun-gatal/chouse-ui:latest
+    container_name: clickhouse-studio
+    ports:
+      - "5521:5521"
+    environment:
+      NODE_ENV: production
+      PORT: 5521
+      STATIC_PATH: /app/dist
+      SESSION_TTL: \${SESSION_TTL:-3600000}
+      CORS_ORIGIN: \${CORS_ORIGIN:-*}
+      # RBAC with PostgreSQL
+      RBAC_DB_TYPE: postgres
+      RBAC_POSTGRES_URL: postgres://\${POSTGRES_USER:-chstudio}:\${POSTGRES_PASSWORD:-changeme}@postgres:5432/\${POSTGRES_DB:-clickhouse_studio}
+      RBAC_POSTGRES_POOL_SIZE: \${RBAC_POSTGRES_POOL_SIZE:-10}
+      # JWT secret (CHANGE IN PRODUCTION!)
+      JWT_SECRET: \${JWT_SECRET:-change-me-in-production}
+      JWT_ACCESS_EXPIRY: \${JWT_ACCESS_EXPIRY:-15m}
+      JWT_REFRESH_EXPIRY: \${JWT_REFRESH_EXPIRY:-7d}
+      # Encryption key (CHANGE IN PRODUCTION!)
+      RBAC_ENCRYPTION_KEY: \${RBAC_ENCRYPTION_KEY:-change-me-in-production}
+      # Admin password (only used on first run)
+      RBAC_ADMIN_PASSWORD: \${RBAC_ADMIN_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5521/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - clickhouse-network
 
-const productionNote = '⚠️ Change JWT_SECRET and RBAC_ENCRYPTION_KEY in production!\n\nGenerate secure keys:\n• JWT_SECRET: openssl rand -base64 32\n• RBAC_ENCRYPTION_KEY: openssl rand -hex 32';
+networks:
+  clickhouse-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  clickhouse_data:
+    driver: local
+  clickhouse_logs:
+    driver: local`;
+
+const dockerComposeNote = 'Save this as docker-compose.yml and run:\n\n  docker-compose up -d\n\nAccess at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123! (or set RBAC_ADMIN_PASSWORD)\n\n⚠️ IMPORTANT: Change these in production:\n• JWT_SECRET: openssl rand -base64 32\n• RBAC_ENCRYPTION_KEY: openssl rand -hex 32\n• POSTGRES_PASSWORD: Use a strong password\n• CORS_ORIGIN: Set to your domain';
 
 const envVars = [
   {
@@ -85,10 +162,10 @@ const envVars = [
   },
 ];
 
-type TabType = 'overview' | 'prerequisites' | 'quickstart' | 'production' | 'envvars';
+type TabType = 'overview' | 'prerequisites' | 'dockercompose' | 'envvars';
 
 export default function DockerDeploy() {
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>('dockercompose');
   const [copied, setCopied] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {
@@ -101,8 +178,7 @@ export default function DockerDeploy() {
   const tabs = [
     { id: 'overview' as TabType, label: 'Overview', icon: Info },
     { id: 'prerequisites' as TabType, label: 'Prerequisites', icon: AlertCircle },
-    { id: 'quickstart' as TabType, label: 'Docker', icon: Terminal },
-    { id: 'production' as TabType, label: 'Production', icon: Settings },
+    { id: 'dockercompose' as TabType, label: 'Docker Compose', icon: Terminal },
     { id: 'envvars' as TabType, label: 'Env Variables', icon: Key },
   ];
 
@@ -187,8 +263,8 @@ export default function DockerDeploy() {
                       <div className="prose prose-invert max-w-none">
                         <p className="text-gray-300 leading-relaxed text-lg mb-4">
                           CHouse UI is available as a Docker image from GitHub Container Registry (GHCR). 
-                          You can quickly deploy it using Docker with minimal configuration, or set it up for production 
-                          with custom environment variables.
+                          Deploy everything you need with Docker Compose - including ClickHouse database and PostgreSQL 
+                          for production-ready RBAC storage. All services are configured and ready to run with a single command.
                         </p>
                         <div className="grid md:grid-cols-2 gap-6 my-6">
                           <div className="p-5 bg-white/5 rounded-lg border border-white/10">
@@ -204,13 +280,13 @@ export default function DockerDeploy() {
                           <div className="p-5 bg-white/5 rounded-lg border border-white/10">
                             <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
                               <Terminal className="w-5 h-5 text-blue-400" />
-                              Quick Setup
+                              Complete Stack
                             </h4>
                             <p className="text-sm text-gray-400 mb-2">
-                              Get started in seconds with minimal configuration. Perfect for testing and development.
+                              Docker Compose includes ClickHouse, CHouse UI, and optional PostgreSQL. Everything runs with a single command.
                             </p>
                             <p className="text-xs text-gray-500">
-                              Default port: 5521
+                              Ports: 5521 (UI), 8123/9000 (ClickHouse), 5432 (PostgreSQL)
                             </p>
                           </div>
                         </div>
@@ -255,8 +331,7 @@ export default function DockerDeploy() {
                             </div>
                           </div>
                           <p className="text-sm text-gray-400 mt-4">
-                            Switch between backends using the <code className="text-purple-400">RBAC_DB_TYPE</code> environment variable. 
-                            Set to <code className="text-purple-400">sqlite</code> (default) or <code className="text-purple-400">postgres</code>.
+                            The docker-compose setup includes PostgreSQL for RBAC storage, providing production-ready scalability and high availability.
                           </p>
                         </div>
                         <div className="p-5 bg-blue-500/10 rounded-lg border border-blue-500/20 my-6">
@@ -264,11 +339,19 @@ export default function DockerDeploy() {
                           <ul className="space-y-2 text-gray-300 text-sm space-y-2">
                             <li className="flex items-start gap-2">
                               <span className="text-purple-400 mt-1">•</span>
+                              <span><strong>ClickHouse Server</strong> - Pre-configured ClickHouse database included in docker-compose</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-purple-400 mt-1">•</span>
                               <span><strong>Web Interface</strong> - Full-featured UI for ClickHouse management</span>
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-purple-400 mt-1">•</span>
-                              <span><strong>RBAC System</strong> - Built-in role-based access control with SQLite (default) or PostgreSQL</span>
+                              <span><strong>RBAC System</strong> - Built-in role-based access control with PostgreSQL backend</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-purple-400 mt-1">•</span>
+                              <span><strong>PostgreSQL</strong> - PostgreSQL database for RBAC metadata storage (production-ready)</span>
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-purple-400 mt-1">•</span>
@@ -276,7 +359,7 @@ export default function DockerDeploy() {
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-purple-400 mt-1">•</span>
-                              <span><strong>Multi-Connection</strong> - Manage multiple ClickHouse servers from one interface</span>
+                              <span><strong>Data Persistence</strong> - All data persisted in Docker volumes</span>
                             </li>
                           </ul>
                         </div>
@@ -296,7 +379,7 @@ export default function DockerDeploy() {
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-yellow-400 mt-1">⚠</span>
-                              <span>Use PostgreSQL for production if you need scalability and high availability</span>
+                              <span>PostgreSQL is included in the docker-compose setup for production-ready deployments</span>
                             </li>
                           </ul>
                         </div>
@@ -333,8 +416,8 @@ export default function DockerDeploy() {
                   </motion.div>
                 )}
 
-                {/* Quick Start Tab */}
-                {activeTab === 'quickstart' && (
+                {/* Docker Compose Tab */}
+                {activeTab === 'dockercompose' && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -342,18 +425,18 @@ export default function DockerDeploy() {
                   >
                     <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
                       <Terminal className="w-6 h-6 text-purple-400" />
-                      Quick Start
+                      Docker Compose Setup
                     </h3>
                     <div className="relative">
                       <div className="flex justify-between items-center mb-3">
-                        <span className="text-xs text-gray-500 uppercase font-semibold tracking-wider">bash</span>
+                        <span className="text-xs text-gray-500 uppercase font-semibold tracking-wider">yaml</span>
                         <motion.button
-                          onClick={() => copyToClipboard(quickStartCode, 'quickstart')}
+                          onClick={() => copyToClipboard(dockerComposeCode, 'dockercompose')}
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
                           className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 transition-colors"
                         >
-                          {copied === 'quickstart' ? (
+                          {copied === 'dockercompose' ? (
                             <>
                               <Check className="w-4 h-4 text-green-400" />
                               <span className="text-sm text-green-400">Copied!</span>
@@ -368,7 +451,7 @@ export default function DockerDeploy() {
                       </div>
                       <div className="bg-black/60 backdrop-blur-sm p-6 rounded-xl border border-white/10 overflow-x-auto">
                         <pre className="text-sm">
-                          <code className="text-gray-300 font-mono">{quickStartCode}</code>
+                          <code className="text-gray-300 font-mono">{dockerComposeCode}</code>
                         </pre>
                       </div>
                       <motion.div
@@ -377,57 +460,7 @@ export default function DockerDeploy() {
                         transition={{ delay: 0.2 }}
                         className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg"
                       >
-                        <p className="text-sm text-gray-300 whitespace-pre-line leading-relaxed">{quickStartNote}</p>
-                      </motion.div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Production Tab */}
-                {activeTab === 'production' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                      <Settings className="w-6 h-6 text-purple-400" />
-                      Production Setup
-                    </h3>
-                    <div className="relative">
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-xs text-gray-500 uppercase font-semibold tracking-wider">bash</span>
-                        <motion.button
-                          onClick={() => copyToClipboard(productionCode, 'production')}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 transition-colors"
-                        >
-                          {copied === 'production' ? (
-                            <>
-                              <Check className="w-4 h-4 text-green-400" />
-                              <span className="text-sm text-green-400">Copied!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-4 h-4" />
-                              <span className="text-sm">Copy</span>
-                            </>
-                          )}
-                        </motion.button>
-                      </div>
-                      <div className="bg-black/60 backdrop-blur-sm p-6 rounded-xl border border-white/10 overflow-x-auto">
-                        <pre className="text-sm">
-                          <code className="text-gray-300 font-mono">{productionCode}</code>
-                        </pre>
-                      </div>
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg"
-                      >
-                        <p className="text-sm text-gray-300 whitespace-pre-line leading-relaxed">{productionNote}</p>
+                        <p className="text-sm text-gray-300 whitespace-pre-line leading-relaxed">{dockerComposeNote}</p>
                       </motion.div>
                     </div>
                   </motion.div>
