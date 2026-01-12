@@ -428,7 +428,7 @@ CONFIRM_RESET=yes bun run rbac:reset
 
 ```bash
 # 1. Pull latest version
-docker pull ghcr.io/daun-gatal/chouseui:latest
+docker pull ghcr.io/daun-gatal/chouse-ui:latest
 
 # 2. Restart container - migrations run automatically
 docker-compose up -d

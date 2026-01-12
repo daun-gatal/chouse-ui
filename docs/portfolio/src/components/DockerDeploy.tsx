@@ -11,7 +11,7 @@ const prerequisites = [
 ];
 
 const quickStartCode = `# Pull the image
-docker pull ghcr.io/daun-gatal/chouseui:latest
+docker pull ghcr.io/daun-gatal/chouse-ui:latest
 
 # Run with minimal configuration
 docker run -d \\
@@ -20,12 +20,12 @@ docker run -d \\
   -v chouseui-data:/app/data \\
   -e JWT_SECRET="$(openssl rand -base64 32)" \\
   -e RBAC_ENCRYPTION_KEY="$(openssl rand -hex 32)" \\
-  ghcr.io/daun-gatal/chouseui:latest`;
+  ghcr.io/daun-gatal/chouse-ui:latest`;
 
 const quickStartNote = 'Access at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123! (or set RBAC_ADMIN_PASSWORD)';
 
 const productionCode = `# Pull the image
-docker pull ghcr.io/daun-gatal/chouseui:latest
+docker pull ghcr.io/daun-gatal/chouse-ui:latest
 
 # Run with production settings
 docker run -d \\
@@ -36,7 +36,7 @@ docker run -d \\
   -e RBAC_ENCRYPTION_KEY="your-encryption-key-here" \\
   -e CORS_ORIGIN="https://yourdomain.com" \\
   -e RBAC_ADMIN_PASSWORD="your-secure-password" \\
-  ghcr.io/daun-gatal/chouseui:latest`;
+  ghcr.io/daun-gatal/chouse-ui:latest`;
 
 const productionNote = '⚠️ Change JWT_SECRET and RBAC_ENCRYPTION_KEY in production!\n\nGenerate secure keys:\n• JWT_SECRET: openssl rand -base64 32\n• RBAC_ENCRYPTION_KEY: openssl rand -hex 32';
 
@@ -196,7 +196,7 @@ export default function DockerDeploy() {
                               <Package className="w-5 h-5 text-purple-400" />
                               Image Location
                             </h4>
-                            <code className="text-purple-400 text-sm block mb-2">ghcr.io/daun-gatal/chouseui:latest</code>
+                            <code className="text-purple-400 text-sm block mb-2">ghcr.io/daun-gatal/chouse-ui:latest</code>
                             <p className="text-sm text-gray-400">
                               Pull directly from GitHub Container Registry. No authentication required for public images.
                             </p>
