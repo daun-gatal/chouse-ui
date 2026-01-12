@@ -6,11 +6,48 @@ on:
       - main
     paths:
       - 'CHANGELOG.md'
+  workflow_dispatch:
+    # Manual trigger from GitHub Actions UI
+    # Go to Actions > Release > Run workflow to manually trigger Docker image build and push
+    # The version will be extracted from the latest entry in CHANGELOG.md
+  issue_comment:
+    # Trigger on issue/PR comments with /docker-push command
+    # Comment "/docker-push" on any issue or PR to trigger Docker image build and push
+    # The version will be extracted from the latest entry in CHANGELOG.md
+    types: [created]
 
 jobs:
+  check-trigger:
+    name: Check Trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should_trigger: ${{ steps.check.outputs.should_trigger }}
+    steps:
+      - name: Check if comment contains /docker-push
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            COMMENT_BODY="${{ github.event.comment.body }}"
+            if echo "$COMMENT_BODY" | grep -qiE '^\s*/docker-push\s*$'; then
+              echo "Docker push command detected"
+              echo "should_trigger=true" >> $GITHUB_OUTPUT
+            else
+              echo "No docker-push command found"
+              echo "should_trigger=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For push and workflow_dispatch, always trigger
+            echo "should_trigger=true" >> $GITHUB_OUTPUT
+          fi
+
   tag-and-release:
     name: Tag and Release from Changelog
     runs-on: ubuntu-latest
+    needs: [check-trigger]
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && needs.check-trigger.outputs.should_trigger == 'true')
     permissions:
       contents: write
       packages: write
@@ -101,7 +138,10 @@ jobs:
 
   build-and-push:
     name: Build and Push Docker Image
-    needs: tag-and-release
+    needs: [tag-and-release]
+    if: |
+      always() &&
+      (needs.tag-and-release.result == 'success' || needs.tag-and-release.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -116,6 +156,13 @@ jobs:
       - name: Check for Code Changes
         id: check_changes
         run: |
+          # For manual triggers (workflow_dispatch or issue_comment), always build
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "issue_comment" ]; then
+            echo "Manual trigger detected - will build Docker image"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
           # Get the base commit from the push event (before this push)
           BASE_SHA="${{ github.event.before }}"
           HEAD_SHA="${{ github.sha }}"

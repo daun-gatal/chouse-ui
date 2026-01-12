@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { GlassCard, GlassCardContent } from './GlassCard';
-import { Copy, Check, Terminal, Package, AlertCircle, Key, Settings, Info, ExternalLink, Globe } from 'lucide-react';
+import { Copy, Check, Terminal, Package, AlertCircle, Key, Settings, Info } from 'lucide-react';
 import { useState } from 'react';
 
 const prerequisites = [
@@ -136,56 +136,7 @@ export default function DockerDeploy() {
               Quick Start
             </span>
           </h2>
-          <p className="text-gray-400 text-xl mb-6">Try the live demo or deploy with Docker</p>
-        </motion.div>
-
-        {/* Live Demo Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="mb-12"
-        >
-          <GlassCard className="bg-gradient-to-br from-purple-500/20 via-blue-500/20 to-purple-500/20 border-purple-400/40 hover:border-purple-300/60 transition-all duration-300">
-            <GlassCardContent className="p-10">
-              <div className="flex items-center gap-4 mb-8">
-                <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
-                  <Globe className="w-8 h-8 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-3xl font-bold mb-3 text-white">Live Demo</h3>
-                  <p className="text-gray-400 text-base leading-relaxed">
-                    Explore the full application with a live instance. No installation required! 
-                    Experience all features including SQL editor, database explorer, query execution, 
-                    and the complete RBAC system.
-                  </p>
-                </div>
-              </div>
-              <motion.a
-                href="https://chouse-ui-ext.kitty-barb.ts.net/"
-                target="_blank"
-                rel="noopener noreferrer"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="block w-full px-8 py-5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-lg font-semibold shadow-lg shadow-purple-900/20 transition-all duration-300 flex items-center justify-center gap-2 text-lg"
-              >
-                <span>Open Live Demo</span>
-                <ExternalLink className="w-5 h-5" />
-              </motion.a>
-              <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <p className="text-sm text-gray-300 mb-2 font-semibold">Guest Login:</p>
-                <div className="text-sm text-gray-400 space-y-1">
-                  <p>• Username: <code className="text-purple-400">guest</code></p>
-                  <p>• Password: <code className="text-purple-400">Guest123456!</code></p>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-400">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                <span>Demo is live and ready to explore</span>
-              </div>
-            </GlassCardContent>
-          </GlassCard>
+          <p className="text-gray-400 text-xl mb-6">Deploy with Docker</p>
         </motion.div>
 
         {/* Tabs */}
