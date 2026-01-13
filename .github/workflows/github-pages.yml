@@ -4,10 +4,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'docs/portfolio/**'
-      - 'CHANGELOG.md'
-      - '.github/workflows/github-pages.yml'
+    # Deploy on any merge to main (removed path restrictions)
   workflow_dispatch:
     inputs:
       reason:
@@ -49,6 +46,7 @@ jobs:
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "Manual trigger: ${{ github.event.inputs.reason }}"
           fi
+          echo "Always syncing CHANGELOG.md on merge to main..."
           if [ -f CHANGELOG.md ]; then
             cp CHANGELOG.md docs/portfolio/public/CHANGELOG.md
             echo "✓ Changelog synced to portfolio"
@@ -58,6 +56,7 @@ jobs:
             grep -m 1 "^## \[" docs/portfolio/public/CHANGELOG.md || echo "No version found"
           else
             echo "⚠ CHANGELOG.md not found, skipping sync"
+            exit 1
           fi
 
       - name: Install Dependencies
