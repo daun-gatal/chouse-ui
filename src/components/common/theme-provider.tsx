@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react"
+import { rbacUserPreferencesApi } from "@/api"
+import { useRbacStore } from "@/stores/rbac"
 
 type Theme = "dark" | "light" | "system"
 
@@ -26,10 +28,42 @@ export function ThemeProvider({
   storageKey = "vite-ui-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
+  // Initialize from localStorage as fallback (for non-authenticated users or first load)
+  const [theme, setThemeState] = useState<Theme>(
     () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
   )
+  const { isAuthenticated } = useRbacStore()
 
+  // Fetch theme from database when authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return
+    }
+
+    const fetchTheme = async (): Promise<void> => {
+      try {
+        const preferences = await rbacUserPreferencesApi.getPreferences()
+        const savedTheme = preferences.workspacePreferences?.theme as Theme | undefined
+        
+        if (savedTheme && (savedTheme === "dark" || savedTheme === "light" || savedTheme === "system")) {
+          setThemeState(savedTheme)
+          // Also update localStorage for fallback
+          localStorage.setItem(storageKey, savedTheme)
+        }
+      } catch (error) {
+        console.error('[ThemeProvider] Failed to fetch theme preference:', error)
+        // Fallback to localStorage if API fails
+        const fallbackTheme = (localStorage.getItem(storageKey) as Theme) || defaultTheme
+        setThemeState(fallbackTheme)
+      }
+    }
+
+    fetchTheme().catch((error) => {
+      console.error('[ThemeProvider] Error fetching theme:', error)
+    })
+  }, [isAuthenticated, storageKey, defaultTheme])
+
+  // Apply theme to DOM
   useEffect(() => {
     const root = window.document.documentElement
 
@@ -48,12 +82,32 @@ export function ThemeProvider({
     root.classList.add(theme)
   }, [theme])
 
+  const setTheme = async (newTheme: Theme): Promise<void> => {
+    // Update local state immediately
+    setThemeState(newTheme)
+    localStorage.setItem(storageKey, newTheme)
+
+    // Sync to database if authenticated
+    if (isAuthenticated) {
+      try {
+        // Get current preferences and merge theme
+        const currentPreferences = await rbacUserPreferencesApi.getPreferences()
+        await rbacUserPreferencesApi.updatePreferences({
+          workspacePreferences: {
+            ...currentPreferences.workspacePreferences,
+            theme: newTheme,
+          },
+        })
+      } catch (error) {
+        console.error('[ThemeProvider] Failed to sync theme preference:', error)
+        // Continue anyway - theme is already set locally
+      }
+    }
+  }
+
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme)
-      setTheme(theme)
-    },
+    setTheme,
   }
 
   return (

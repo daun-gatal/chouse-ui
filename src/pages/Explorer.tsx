@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Database, Table2, Terminal, Sparkles, ChevronRight, Home } from "lucide-react";
@@ -9,6 +9,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import type { PanelGroupStorage } from "react-resizable-panels";
 import { Button } from "@/components/ui/button";
 import CreateTable from "@/features/explorer/components/CreateTable";
 import CreateDatabase from "@/features/explorer/components/CreateDatabase";
@@ -16,11 +17,22 @@ import UploadFromFile from "@/features/explorer/components/UploadFile";
 import AlterTable from "@/features/explorer/components/AlterTable";
 import { useDatabases } from "@/hooks";
 import { cn } from "@/lib/utils";
+import { useExplorerStore } from "@/stores/explorer";
+import { useRbacStore } from "@/stores/rbac";
+import { rbacUserPreferencesApi } from "@/api/rbac";
 
 const ExplorerPage = () => {
   const { data: databases = [] } = useDatabases();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { fetchFavorites, fetchRecentItems, fetchPreferences } = useExplorerStore();
+  const { isAuthenticated } = useRbacStore();
+  
+  // Panel sizes state (defaults)
+  const [leftPanelSize, setLeftPanelSize] = useState(45);
+  const [rightPanelSize, setRightPanelSize] = useState(78);
+  const [hasFetchedPanelSizes, setHasFetchedPanelSizes] = useState(false);
+  const panelGroupRef = useRef<{ getPanelGroup: () => PanelGroupStorage | null } | null>(null);
 
   // Get current database and table from URL
   const currentDatabase = searchParams.get("database") || "";
@@ -63,6 +75,104 @@ const ExplorerPage = () => {
       : "CHouse UI | Explorer";
     document.title = title;
   }, [currentDatabase, currentTable]);
+
+  // Fetch favorites, recent items, and preferences when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchFavorites().catch(console.error);
+      fetchRecentItems().catch(console.error);
+      fetchPreferences().catch(console.error);
+    }
+  }, [isAuthenticated, fetchFavorites, fetchRecentItems, fetchPreferences]);
+
+  // Fetch panel sizes from database when authenticated
+  useEffect(() => {
+    if (!isAuthenticated || hasFetchedPanelSizes) {
+      return;
+    }
+
+    const fetchPanelSizes = async (): Promise<void> => {
+      try {
+        const preferences = await rbacUserPreferencesApi.getPreferences();
+        const panelSizes = preferences.workspacePreferences?.panelSizes as 
+          | { explorer?: { left?: number; right?: number } }
+          | undefined;
+        
+        if (panelSizes?.explorer) {
+          // Validate and set left panel size (33-70% range)
+          if (typeof panelSizes.explorer.left === 'number' && panelSizes.explorer.left >= 33 && panelSizes.explorer.left <= 70) {
+            setLeftPanelSize(panelSizes.explorer.left);
+          }
+          // Validate and set right panel size (minimum 30%)
+          if (typeof panelSizes.explorer.right === 'number' && panelSizes.explorer.right >= 30) {
+            setRightPanelSize(panelSizes.explorer.right);
+          }
+        }
+        setHasFetchedPanelSizes(true);
+      } catch (error) {
+        console.error('[ExplorerPage] Failed to fetch panel sizes:', error);
+        setHasFetchedPanelSizes(true);
+      }
+    };
+
+    fetchPanelSizes().catch((error) => {
+      console.error('[ExplorerPage] Error fetching panel sizes:', error);
+      setHasFetchedPanelSizes(true);
+    });
+  }, [isAuthenticated, hasFetchedPanelSizes]);
+
+  // Debounce timer ref for panel size sync
+  const panelSizeSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle panel layout changes (debounced)
+  const handlePanelLayout = useCallback((sizes: number[]): void => {
+    if (sizes.length >= 2) {
+      const [left, right] = sizes;
+      // Clamp values to valid ranges
+      const clampedLeft = Math.max(33, Math.min(70, left));
+      const clampedRight = Math.max(30, right);
+      setLeftPanelSize(clampedLeft);
+      setRightPanelSize(clampedRight);
+
+      // Clear existing timeout
+      if (panelSizeSyncTimeoutRef.current) {
+        clearTimeout(panelSizeSyncTimeoutRef.current);
+      }
+
+      // Debounce database sync to avoid excessive API calls
+      if (isAuthenticated && hasFetchedPanelSizes) {
+        panelSizeSyncTimeoutRef.current = setTimeout(async () => {
+          try {
+            const currentPreferences = await rbacUserPreferencesApi.getPreferences();
+            await rbacUserPreferencesApi.updatePreferences({
+              workspacePreferences: {
+                ...currentPreferences.workspacePreferences,
+                panelSizes: {
+                  ...((currentPreferences.workspacePreferences?.panelSizes as Record<string, unknown>) || {}),
+                  explorer: {
+                    left: clampedLeft,
+                    right: clampedRight,
+                  },
+                },
+              },
+            });
+          } catch (error) {
+            console.error('[ExplorerPage] Failed to sync panel sizes:', error);
+          }
+          panelSizeSyncTimeoutRef.current = null;
+        }, 1000); // Debounce by 1 second
+      }
+    }
+  }, [isAuthenticated, hasFetchedPanelSizes]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (panelSizeSyncTimeoutRef.current) {
+        clearTimeout(panelSizeSyncTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <motion.div
@@ -138,13 +248,16 @@ const ExplorerPage = () => {
       {/* Main Content */}
       <div className="flex-1 min-h-0 p-4">
         <div className="h-full rounded-xl border border-white/10 bg-black/40 backdrop-blur-xl overflow-hidden shadow-2xl">
-          <ResizablePanelGroup direction="horizontal">
+          <ResizablePanelGroup 
+            direction="horizontal"
+            onLayout={handlePanelLayout}
+          >
             {/* Left Panel - Database Explorer */}
             <ResizablePanel 
               className="overflow-hidden flex flex-col" 
-              defaultSize={45} 
-              minSize={30}
-              maxSize={85}
+              defaultSize={leftPanelSize}
+              minSize={33}
+              maxSize={70}
             >
               <DatabaseExplorer />
             </ResizablePanel>
@@ -161,8 +274,8 @@ const ExplorerPage = () => {
             {/* Right Panel - Workspace Tabs */}
             <ResizablePanel
               className="overflow-hidden flex flex-col"
-              defaultSize={78}
-              minSize={50}
+              defaultSize={rightPanelSize}
+              minSize={30}
             >
               <div className="h-full w-full bg-black/20">
                 <WorkspaceTabs />

@@ -14,13 +14,14 @@ import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
 export default function Admin() {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
-  const { hasPermission, hasAnyPermission } = useRbacStore();
+  const { hasPermission, hasAnyPermission, isSuperAdmin } = useRbacStore();
 
   // Permission checks for tabs
   const canViewUsers = hasPermission(RBAC_PERMISSIONS.USERS_VIEW);
   const canViewRoles = hasPermission(RBAC_PERMISSIONS.ROLES_VIEW);
   const canViewAudit = hasPermission(RBAC_PERMISSIONS.AUDIT_VIEW);
-  const canViewSettings = hasPermission(RBAC_PERMISSIONS.SETTINGS_VIEW);
+  // Connections tab is restricted to super admins only
+  const canViewConnections = isSuperAdmin();
   const canViewClickHouseUsers = hasPermission(RBAC_PERMISSIONS.CH_USERS_VIEW);
   const canManageSavedQueries = hasAnyPermission([
     RBAC_PERMISSIONS.SAVED_QUERIES_CREATE,
@@ -31,7 +32,7 @@ export default function Admin() {
   const getDefaultTab = () => {
     if (canViewUsers) return "users";
     if (canViewRoles) return "roles";
-    if (canViewSettings) return "connections";
+    if (canViewConnections) return "connections";
     if (canViewClickHouseUsers) return "clickhouse-users";
     if (canViewAudit) return "audit";
     if (canManageSavedQueries) return "queries";
@@ -78,7 +79,7 @@ export default function Admin() {
                 <Shield className="w-4 h-4 mr-2" /> Roles
               </TabsTrigger>
             )}
-            {canViewSettings && (
+            {canViewConnections && (
               <TabsTrigger value="connections" className="data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-300">
                 <Server className="w-4 h-4 mr-2" /> Connections
               </TabsTrigger>
@@ -120,7 +121,7 @@ export default function Admin() {
             </TabsContent>
           )}
 
-          {canViewSettings && (
+          {canViewConnections && (
             <TabsContent value="connections">
               <GlassCard>
                 <GlassCardContent className="p-0">

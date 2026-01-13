@@ -45,33 +45,66 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
 
   const editorTheme = theme === "light" ? "vs-light" : "vs-dark";
 
-  useEffect(() => {
-    initializeMonacoGlobally();
-    if (editorRef.current) {
-      const editor = createMonacoEditor(editorRef.current, editorTheme);
-      monacoRef.current = editor;
+  const getCurrentQuery = useCallback(() => {
+    if (monacoRef.current) {
+      const selection = monacoRef.current.getSelection();
+      const model = monacoRef.current.getModel();
 
-      if (tab?.content) {
-        const content = typeof tab.content === "string" ? tab.content : "";
-        editor.setValue(content);
+      if (selection && model && !selection.isEmpty()) {
+        return model.getValueInRange(selection);
       }
-
-      const changeListener = editor.onDidChangeModelContent(() => {
-        const newContent = editor.getValue();
-        updateTab(tabId, { content: newContent });
-      });
-
-      editor.addCommand(
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-        handleRunQuery
-      );
-
-      return () => {
-        changeListener.dispose();
-        editor.dispose();
-      };
+      return monacoRef.current.getValue();
     }
-  }, [tabId, editorTheme]);
+    return "";
+  }, []);
+
+  const handleRunQuery = useCallback(() => {
+    const content = getCurrentQuery();
+    if (content.trim()) {
+      onRunQuery(content);
+    } else {
+      toast.error("Please enter a query to run");
+    }
+  }, [onRunQuery, getCurrentQuery]);
+
+  useEffect(() => {
+    let editor: monaco.editor.IStandaloneCodeEditor | null = null;
+    let changeListener: monaco.IDisposable | null = null;
+
+    const initEditor = async () => {
+      await initializeMonacoGlobally();
+      if (editorRef.current) {
+        editor = await createMonacoEditor(editorRef.current, editorTheme);
+        monacoRef.current = editor;
+
+        if (tab?.content) {
+          const content = typeof tab.content === "string" ? tab.content : "";
+          editor.setValue(content);
+        }
+
+        changeListener = editor.onDidChangeModelContent(() => {
+          const newContent = editor?.getValue() || "";
+          updateTab(tabId, { content: newContent });
+        });
+
+        editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+          handleRunQuery
+        );
+      }
+    };
+
+    initEditor();
+
+    return () => {
+      if (changeListener) {
+        changeListener.dispose();
+      }
+      if (editor) {
+        editor.dispose();
+      }
+    };
+  }, [tabId, editorTheme, handleRunQuery]);
 
   const handleTitleEdit = () => {
     setEditedTitle(tab?.title || "");
@@ -96,28 +129,6 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
       setIsEditing(false);
     }
   };
-
-  const getCurrentQuery = useCallback(() => {
-    if (monacoRef.current) {
-      const selection = monacoRef.current.getSelection();
-      const model = monacoRef.current.getModel();
-
-      if (selection && model && !selection.isEmpty()) {
-        return model.getValueInRange(selection);
-      }
-      return monacoRef.current.getValue();
-    }
-    return "";
-  }, []);
-
-  const handleRunQuery = useCallback(() => {
-    const content = getCurrentQuery();
-    if (content.trim()) {
-      onRunQuery(content);
-    } else {
-      toast.error("Please enter a query to run");
-    }
-  }, [onRunQuery, getCurrentQuery]);
 
   const handleSaveOpenDialog = async () => {
     await checkSavedQueriesStatus();

@@ -22,6 +22,7 @@ export interface Session {
   permissions: string[];
   version: string;
   rbacConnectionId?: string; // The RBAC connection ID this session is connected to
+  rbacUserId?: string; // The RBAC user ID that owns this session (for session ownership validation)
 }
 
 export interface SessionInfo {

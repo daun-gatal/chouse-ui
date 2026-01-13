@@ -464,8 +464,8 @@ const DatabaseExplorer: React.FC = () => {
                       key={fav.id}
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        addRecentItem(fav.database, fav.table);
+                      onClick={async () => {
+                        await addRecentItem(fav.database, fav.table);
                         if (fav.type === 'database') {
                           navigate(`/explorer?database=${fav.database}`);
                         } else {
@@ -500,8 +500,8 @@ const DatabaseExplorer: React.FC = () => {
                       key={item.id}
                       size="sm"
                       variant="ghost"
-                      onClick={() => {
-                        addRecentItem(item.database, item.table);
+                      onClick={async () => {
+                        await addRecentItem(item.database, item.table);
                         if (item.type === 'database') {
                           navigate(`/explorer?database=${item.database}`);
                         } else {
@@ -547,8 +547,8 @@ const DatabaseExplorer: React.FC = () => {
                         key={fav.id}
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          addRecentItem(fav.database, fav.table);
+                        onClick={async () => {
+                          await addRecentItem(fav.database, fav.table);
                           if (fav.type === 'database') {
                             navigate(`/explorer?database=${fav.database}`);
                           } else {
@@ -587,8 +587,8 @@ const DatabaseExplorer: React.FC = () => {
                         key={item.id}
                         size="sm"
                         variant="ghost"
-                        onClick={() => {
-                          addRecentItem(item.database, item.table);
+                        onClick={async () => {
+                          await addRecentItem(item.database, item.table);
                           if (item.type === 'database') {
                             navigate(`/explorer?database=${item.database}`);
                           } else {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText,
@@ -37,7 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTheme } from "@/components/common/theme-provider";
-import { useQueryLogs } from "@/hooks";
+import { useQueryLogs, usePaginationPreference, useLogsPreferences } from "@/hooks";
 import { useRbacStore } from "@/stores/rbac";
 import { cn } from "@/lib/utils";
 import {
@@ -65,6 +65,242 @@ interface LogEntry {
   exception?: string;
 }
 
+interface LogFilterParams {
+  searchTerm: string;
+  logType: string;
+  selectedRoleId: string;
+  usersByRoleData?: { users: Array<{ id: string }> } | null;
+}
+
+interface ProcessedLogsResult {
+  logs: LogEntry[];
+  stats: {
+    total: number;
+    success: number;
+    failed: number;
+    running: number;
+    avgDuration: number;
+  };
+  exceptionQueryIds: Set<string>; // Track query_ids that have ExceptionWhileProcessing entries
+}
+
+/**
+ * Shared function to filter, deduplicate, and calculate stats for logs
+ * This ensures consistency between display and stats calculation
+ */
+function processLogs(
+  logs: LogEntry[],
+  filters: LogFilterParams,
+  limit: number
+): ProcessedLogsResult {
+  const { searchTerm, logType, selectedRoleId, usersByRoleData } = filters;
+
+  // Get user IDs for role filter
+  const hasRoleFilter = selectedRoleId !== "all";
+  const roleUserIds = hasRoleFilter && usersByRoleData?.users && usersByRoleData.users.length > 0
+    ? new Set(usersByRoleData.users.map(u => u.id))
+    : null;
+
+  // First, identify all query_ids that have reached final states
+  // This helps us exclude them when filtering by "Running" and for stats calculation
+  // Note: QueryStart with exception should also be considered a final (failed) state
+  const finalStateQueryIds = new Set<string>();
+  // Also track which query_ids have ExceptionWhileProcessing entries (even if filtered out)
+  const exceptionQueryIds = new Set<string>();
+  logs.forEach((log) => {
+    const hasException = log.exception && log.exception.trim().length > 0;
+    if (log.type === 'QueryFinish' || log.type === 'ExceptionWhileProcessing' || log.type === 'ExceptionBeforeStart' || (log.type === 'QueryStart' && hasException)) {
+      finalStateQueryIds.add(log.query_id);
+    }
+    // Track queries that have ExceptionWhileProcessing or ExceptionBeforeStart entries
+    if (log.type === 'ExceptionWhileProcessing' || log.type === 'ExceptionBeforeStart') {
+      exceptionQueryIds.add(log.query_id);
+    }
+  });
+  
+  // Also track final states in the filtered set (for accurate stats)
+  const filteredFinalStateQueryIds = new Set<string>();
+
+  // If searching by query_id, find all logs with that query_id first
+  // This ensures we include the query even if it's in a different state
+  const searchByQueryId = searchTerm && searchTerm.trim().length > 0;
+  const matchingQueryIds = new Set<string>();
+  if (searchByQueryId) {
+    const searchLower = searchTerm.toLowerCase().trim();
+    logs.forEach((log) => {
+      if (log.query_id) {
+        const logQueryIdLower = log.query_id.toLowerCase();
+        // Exact match or contains match
+        if (logQueryIdLower === searchLower || logQueryIdLower.includes(searchLower)) {
+          matchingQueryIds.add(log.query_id);
+        }
+      }
+    });
+  }
+
+  // Apply all filters
+  const filtered = logs.filter((log) => {
+    // If searching by query_id and this log's query_id matches, include it
+    // This takes priority to ensure we find the query even if other filters would exclude it
+    const matchesQueryIdSearch = searchByQueryId && matchingQueryIds.has(log.query_id);
+    
+    // If we have a query_id match, bypass other search filters
+    const matchesSearch = matchesQueryIdSearch || (
+      !searchTerm ||
+      log.query?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.query_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.user?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.rbacUser?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    const matchesType = logType === "all" || log.type === logType;
+    
+    // Filter by role if role is selected
+    let matchesRole = true;
+    if (hasRoleFilter) {
+      if (roleUserIds && roleUserIds.size > 0) {
+        // When filtering by role, only include logs that have a rbacUserId
+        // and that rbacUserId is in the set of users with the selected role
+        if (log.rbacUserId) {
+          matchesRole = roleUserIds.has(log.rbacUserId);
+        } else {
+          // If log doesn't have rbacUserId, exclude it when filtering by role
+          // (we can't determine which user ran it, so we can't filter by role)
+          matchesRole = false;
+        }
+      } else {
+        // If role is selected but no users found with that role, show no logs
+        matchesRole = false;
+      }
+    }
+    
+    const matches = matchesSearch && matchesType && matchesRole;
+    
+    // Track final states in filtered set
+    // QueryStart with exception should also be considered a final (failed) state
+    const hasException = log.exception && log.exception.trim().length > 0;
+    if (matches && (log.type === 'QueryFinish' || log.type === 'ExceptionWhileProcessing' || log.type === 'ExceptionBeforeStart' || (log.type === 'QueryStart' && hasException))) {
+      filteredFinalStateQueryIds.add(log.query_id);
+    }
+    
+    return matches;
+  });
+
+  // Deduplicate by query_id - keep only one entry per query_id
+  // Priority: ExceptionWhileProcessing > QueryStart with exception > QueryFinish > QueryStart (or most recent if same type)
+  const queryMap = new Map<string, LogEntry>();
+  
+  for (const log of filtered) {
+    // If filtering by "Running" and this query_id has a final state, skip it
+    if (logType === "QueryStart" && finalStateQueryIds.has(log.query_id)) {
+      continue;
+    }
+
+    const existing = queryMap.get(log.query_id);
+    
+    if (!existing) {
+      // First occurrence of this query_id
+      queryMap.set(log.query_id, log);
+    } else {
+      // Determine which log to keep based on status priority and timestamp
+      // QueryStart with exception should be treated as failed (high priority)
+      // Also check if there's an ExceptionWhileProcessing or ExceptionBeforeStart entry for this query_id
+      const getPriority = (logEntry: LogEntry): number => {
+        if (logEntry.type === 'ExceptionWhileProcessing' || logEntry.type === 'ExceptionBeforeStart') return 4; // Highest priority (failed states)
+        const hasException = logEntry.exception && logEntry.exception.trim().length > 0;
+        const hasExceptionEntry = exceptionQueryIds.has(logEntry.query_id);
+        if (logEntry.type === 'QueryStart' && (hasException || hasExceptionEntry)) return 3; // QueryStart with exception or exception entry = failed
+        if (logEntry.type === 'QueryFinish') return 2; // Success
+        if (logEntry.type === 'QueryStart') return 1; // Running
+        return 0;
+      };
+      
+      const existingPriority = getPriority(existing);
+      const currentPriority = getPriority(log);
+      
+      if (currentPriority > existingPriority) {
+        // Current log has higher priority status
+        queryMap.set(log.query_id, log);
+      } else if (currentPriority === existingPriority && currentPriority > 0) {
+        // Same priority status, keep the most recent one
+        // Compare by event_date first, then event_time
+        const existingDate = existing.event_date;
+        const currentDate = log.event_date;
+        if (currentDate > existingDate) {
+          queryMap.set(log.query_id, log);
+        } else if (currentDate === existingDate) {
+          // Same date, compare by time
+          if (log.event_time > existing.event_time) {
+            queryMap.set(log.query_id, log);
+          }
+        }
+      }
+      // Otherwise keep the existing one
+    }
+  }
+  
+  // Convert map back to array and sort by timestamp (most recent first)
+  const deduplicated = Array.from(queryMap.values()).sort((a, b) => {
+    // Compare by date first, then time
+    if (b.event_date !== a.event_date) {
+      return b.event_date.localeCompare(a.event_date);
+    }
+    return b.event_time.localeCompare(a.event_time);
+  });
+  
+  // Apply the requested limit AFTER deduplication
+  const limitedLogs = deduplicated.slice(0, limit);
+
+  // Calculate stats from the limited, deduplicated logs
+  let success = 0;
+  let failed = 0;
+  let running = 0;
+  const durations: number[] = [];
+
+  limitedLogs.forEach((log) => {
+    // Check if QueryStart has exception - treat as failed
+    // Check for truthy and non-empty exception string
+    // Also check if there's an ExceptionWhileProcessing entry for this query_id (even if filtered out)
+    const hasException = log.exception && log.exception.trim().length > 0;
+    const hasExceptionEntry = exceptionQueryIds.has(log.query_id);
+    const isFailedQueryStart = log.type === "QueryStart" && (hasException || hasExceptionEntry);
+    
+    if (log.type === "QueryFinish") {
+      success++;
+      if (log.query_duration_ms) {
+        durations.push(log.query_duration_ms);
+      }
+    } else if (log.type === "ExceptionWhileProcessing" || log.type === "ExceptionBeforeStart" || isFailedQueryStart) {
+      failed++;
+      if (log.query_duration_ms) {
+        durations.push(log.query_duration_ms);
+      }
+    } else if (log.type === "QueryStart") {
+      // Only count as running if it doesn't have a final state in the filtered set
+      // This ensures we only count queries that are truly still running (no final state after filtering)
+      if (!filteredFinalStateQueryIds.has(log.query_id)) {
+        running++;
+      }
+    }
+  });
+
+  const total = limitedLogs.length;
+  const avgDuration = durations.length > 0
+    ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
+    : 0;
+
+  return {
+    logs: limitedLogs,
+    stats: {
+      total,
+      success,
+      failed,
+      running,
+      avgDuration,
+    },
+    exceptionQueryIds,
+  };
+}
+
 // Summary stat component
 interface LogStatProps {
   title: string;
@@ -90,10 +326,19 @@ interface QueryDetailProps {
   onClose: () => void;
 }
 
-const QueryDetail: React.FC<QueryDetailProps> = ({ log, onClose }) => {
+const QueryDetail: React.FC<QueryDetailProps & { isFailed?: boolean; exceptionQueryIds?: Set<string> }> = ({ log, onClose, isFailed, exceptionQueryIds }) => {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
+  
+  // Determine if this log is failed (use provided isFailed or calculate)
+  const logIsFailed = isFailed !== undefined ? isFailed : (
+    log.type === "ExceptionWhileProcessing" || log.type === "ExceptionBeforeStart" ||
+    (log.type === "QueryStart" && (
+      (log.exception && log.exception.trim().length > 0) ||
+      (exceptionQueryIds?.has(log.query_id) || false)
+    ))
+  );
 
   return (
     <motion.div
@@ -106,7 +351,7 @@ const QueryDetail: React.FC<QueryDetailProps> = ({ log, onClose }) => {
         <div className="flex items-center gap-2">
           {log.type === "QueryFinish" ? (
             <CheckCircle2 className="h-5 w-5 text-green-500" />
-          ) : log.type === "ExceptionWhileProcessing" ? (
+          ) : logIsFailed ? (
             <XCircle className="h-5 w-5 text-red-500" />
           ) : (
             <Play className="h-5 w-5 text-blue-500" />
@@ -212,16 +457,58 @@ const QueryDetail: React.FC<QueryDetailProps> = ({ log, onClose }) => {
 export default function Logs() {
   const { theme } = useTheme();
   const { isSuperAdmin, user } = useRbacStore();
-  const [limit, setLimit] = useState(100);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [logType, setLogType] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const { pageSize: defaultLimit, setPageSize: setLimitPreference } = usePaginationPreference('logs');
+  const { preferences: logsPrefs, updatePreferences: updateLogsPrefs } = useLogsPreferences();
+  
+  const [limit, setLimit] = useState(defaultLimit);
+  
+  // Sync limit state when preference changes
+  useEffect(() => {
+    setLimit(defaultLimit);
+  }, [defaultLimit]);
+  
+  // Initialize state from preferences
+  const [searchTerm, setSearchTerm] = useState(logsPrefs.defaultSearchQuery || "");
+  const [logType, setLogType] = useState<string>(logsPrefs.defaultLogType || "all");
+  const [viewMode, setViewMode] = useState<"grid" | "table">(logsPrefs.defaultViewMode || "grid");
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState<string>("all");
-  const [selectedRoleId, setSelectedRoleId] = useState<string>("all");
+  const [autoRefresh, setAutoRefresh] = useState(logsPrefs.autoRefresh || false);
+  const [selectedUserId, setSelectedUserId] = useState<string>(logsPrefs.defaultSelectedUserId || "all");
+  const [selectedRoleId, setSelectedRoleId] = useState<string>(logsPrefs.defaultSelectedRoleId || "all");
   const previousLogStatesRef = useRef<Map<string, string>>(new Map());
   const [statusChangedIds, setStatusChangedIds] = useState<Set<string>>(new Set());
+  
+  // Sync state from preferences when they load
+  useEffect(() => {
+    if (!logsPrefs) return;
+    if (logsPrefs.defaultViewMode) setViewMode(logsPrefs.defaultViewMode);
+    if (logsPrefs.defaultLogType) setLogType(logsPrefs.defaultLogType);
+    if (logsPrefs.autoRefresh !== undefined) setAutoRefresh(logsPrefs.autoRefresh);
+    if (logsPrefs.defaultSelectedUserId) setSelectedUserId(logsPrefs.defaultSelectedUserId);
+    if (logsPrefs.defaultSelectedRoleId) setSelectedRoleId(logsPrefs.defaultSelectedRoleId);
+  }, [logsPrefs]);
+  
+  // Update preferences when state changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      updateLogsPrefs({
+        defaultViewMode: viewMode,
+        defaultLogType: logType,
+        autoRefresh: autoRefresh,
+        defaultSelectedUserId: selectedUserId,
+        defaultSelectedRoleId: selectedRoleId,
+      });
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [viewMode, logType, autoRefresh, selectedUserId, selectedRoleId, updateLogsPrefs]);
+  
+  // Update limit preference when limit changes
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setLimitPreference(limit);
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [limit, setLimitPreference]);
 
   // Clear all filters
   const clearFilters = () => {
@@ -299,7 +586,10 @@ export default function Logs() {
       cellRenderer: (params: ICellRendererParams<LogEntry>) => {
         const type = params.value as string;
         const hasStatusChanged = statusChangedIds.has(params.data?.query_id || '');
-        const statusText = type === "QueryFinish" ? "✅ Success" : type === "ExceptionWhileProcessing" ? "❌ Error" : "🔄 Running";
+        const logData = params.data as LogEntry | undefined;
+        const hasException = logData?.exception && logData.exception.trim().length > 0;
+        const isFailed = type === "ExceptionWhileProcessing" || type === "ExceptionBeforeStart" || (type === "QueryStart" && hasException);
+        const statusText = type === "QueryFinish" ? "✅ Success" : isFailed ? "❌ Error" : "🔄 Running";
         
         return (
           <div className={cn(
@@ -355,147 +645,33 @@ export default function Logs() {
     { headerName: "Exception", field: "exception", flex: 1 },
   ], [statusChangedIds]);
 
-  const filteredLogs = useMemo(() => {
-    // Get user IDs for role filter
-    const hasRoleFilter = selectedRoleId !== "all";
-    const roleUserIds = hasRoleFilter && usersByRoleData?.users && usersByRoleData.users.length > 0
-      ? new Set(usersByRoleData.users.map(u => u.id))
-      : null;
-
-    // First, identify all query_ids that have reached final states
-    // This helps us exclude them when filtering by "Running"
-    const finalStateQueryIds = new Set<string>();
-    logs.forEach((log) => {
-      if (log.type === 'QueryFinish' || log.type === 'ExceptionWhileProcessing') {
-        finalStateQueryIds.add(log.query_id);
-      }
-    });
-
-    // If searching by query_id, find all logs with that query_id first
-    // This ensures we include the query even if it's in a different state
-    const searchByQueryId = searchTerm && searchTerm.trim().length > 0;
-    const matchingQueryIds = new Set<string>();
-    if (searchByQueryId) {
-      const searchLower = searchTerm.toLowerCase().trim();
-      // Check for exact match first (most common case)
-      logs.forEach((log) => {
-        if (log.query_id) {
-          const logQueryIdLower = log.query_id.toLowerCase();
-          // Exact match or contains match
-          if (logQueryIdLower === searchLower || logQueryIdLower.includes(searchLower)) {
-            matchingQueryIds.add(log.query_id);
-          }
-        }
-      });
-      
-      // Debug logging (only in development)
-      if (process.env.NODE_ENV === 'development') {
-        if (matchingQueryIds.size > 0) {
-          console.log(`[Logs] Found ${matchingQueryIds.size} query_id(s) matching search:`, Array.from(matchingQueryIds));
-        } else {
-          console.log(`[Logs] No query_id found matching search: "${searchTerm}"`);
-          console.log(`[Logs] Available query_ids (first 10):`, logs.slice(0, 10).map(l => l.query_id));
-        }
-      }
-    }
-
-    // First, apply all filters
-    const filtered = logs.filter((log) => {
-      // If searching by query_id and this log's query_id matches, include it
-      // This takes priority to ensure we find the query even if other filters would exclude it
-      const matchesQueryIdSearch = searchByQueryId && matchingQueryIds.has(log.query_id);
-      
-      // If we have a query_id match, bypass other search filters
-      const matchesSearch = matchesQueryIdSearch || (
-        !searchTerm ||
-        log.query?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.query_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.user?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.rbacUser?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      const matchesType = logType === "all" || log.type === logType;
-      
-      // Filter by role if role is selected
-      let matchesRole = true;
-      if (hasRoleFilter) {
-        if (roleUserIds && roleUserIds.size > 0) {
-          // When filtering by role, only include logs that have a rbacUserId
-          // and that rbacUserId is in the set of users with the selected role
-          if (log.rbacUserId) {
-            matchesRole = roleUserIds.has(log.rbacUserId);
-          } else {
-            // If log doesn't have rbacUserId, exclude it when filtering by role
-            // (we can't determine which user ran it, so we can't filter by role)
-            matchesRole = false;
-          }
-        } else {
-          // If role is selected but no users found with that role, show no logs
-          matchesRole = false;
-        }
-      }
-      
-      return matchesSearch && matchesType && matchesRole;
-    });
-
-    // Deduplicate by query_id - keep only one entry per query_id
-    // Priority: ExceptionWhileProcessing > QueryFinish > QueryStart (or most recent if same type)
-    const queryMap = new Map<string, LogEntry>();
-    
-    for (const log of filtered) {
-      // If filtering by "Running" and this query_id has a final state, skip it
-      if (logType === "QueryStart" && finalStateQueryIds.has(log.query_id)) {
-        continue;
-      }
-
-      const existing = queryMap.get(log.query_id);
-      
-      if (!existing) {
-        // First occurrence of this query_id
-        queryMap.set(log.query_id, log);
-      } else {
-        // Determine which log to keep based on status priority and timestamp
-        const statusPriority: Record<string, number> = {
-          'ExceptionWhileProcessing': 3, // Highest priority (final error state)
-          'QueryFinish': 2,              // Second priority (final success state)
-          'QueryStart': 1,                // Lowest priority (initial state)
-        };
-        
-        const existingPriority = statusPriority[existing.type] || 0;
-        const currentPriority = statusPriority[log.type] || 0;
-        
-        if (currentPriority > existingPriority) {
-          // Current log has higher priority status
-          queryMap.set(log.query_id, log);
-        } else if (currentPriority === existingPriority && currentPriority > 0) {
-          // Same priority status, keep the most recent one
-          // Compare by event_date first, then event_time
-          const existingDate = existing.event_date;
-          const currentDate = log.event_date;
-          if (currentDate > existingDate) {
-            queryMap.set(log.query_id, log);
-          } else if (currentDate === existingDate) {
-            // Same date, compare by time
-            if (log.event_time > existing.event_time) {
-              queryMap.set(log.query_id, log);
-            }
-          }
-        }
-        // Otherwise keep the existing one
-      }
-    }
-    
-    // Convert map back to array and sort by timestamp (most recent first)
-    const deduplicated = Array.from(queryMap.values()).sort((a, b) => {
-      // Compare by date first, then time
-      if (b.event_date !== a.event_date) {
-        return b.event_date.localeCompare(a.event_date);
-      }
-      return b.event_time.localeCompare(a.event_time);
-    });
-    
-    // Apply the requested limit AFTER deduplication to ensure we show exactly the requested number of unique queries
-    return deduplicated.slice(0, limit);
+  // Use shared function to process logs - ensures consistency between display and stats
+  const processedLogs = useMemo(() => {
+    return processLogs(
+      logs,
+      {
+        searchTerm,
+        logType,
+        selectedRoleId,
+        usersByRoleData: usersByRoleData || null,
+      },
+      limit
+    );
   }, [logs, searchTerm, logType, selectedRoleId, usersByRoleData, limit]);
+
+  const filteredLogs = processedLogs.logs;
+  const exceptionQueryIds = processedLogs.exceptionQueryIds;
+
+  // Helper function to check if a log entry represents a failed query
+  const isFailedLog = useCallback((log: LogEntry): boolean => {
+    if (log.type === "ExceptionWhileProcessing" || log.type === "ExceptionBeforeStart") return true;
+    if (log.type === "QueryStart") {
+      const hasException = log.exception && log.exception.trim().length > 0;
+      const hasExceptionEntry = exceptionQueryIds.has(log.query_id);
+      return hasException || hasExceptionEntry;
+    }
+    return false;
+  }, [exceptionQueryIds]);
 
   // Track status changes for animation
   useEffect(() => {
@@ -508,7 +684,10 @@ export default function Logs() {
       newStates.set(log.query_id, log.type);
 
       // Check if status changed from QueryStart to a final state
-      if (previousState === 'QueryStart' && (log.type === 'QueryFinish' || log.type === 'ExceptionWhileProcessing')) {
+      // Also handle QueryStart with exception (should be treated as failed)
+      const hasException = log.exception && log.exception.trim().length > 0;
+      const isFinalState = log.type === 'QueryFinish' || log.type === 'ExceptionWhileProcessing' || log.type === 'ExceptionBeforeStart' || (log.type === 'QueryStart' && hasException);
+      if (previousState === 'QueryStart' && isFinalState) {
         changedIds.add(log.query_id);
       }
     });
@@ -530,18 +709,8 @@ export default function Logs() {
     previousLogStatesRef.current = newStates;
   }, [filteredLogs]);
 
-  // Summary stats
-  const stats = useMemo(() => {
-    const total = filteredLogs.length;
-    const success = filteredLogs.filter((l) => l.type === "QueryFinish").length;
-    const failed = filteredLogs.filter((l) => l.type === "ExceptionWhileProcessing").length;
-    const running = filteredLogs.filter((l) => l.type === "QueryStart").length;
-    const avgDuration =
-      total > 0
-        ? Math.round(filteredLogs.reduce((sum, l) => sum + (l.query_duration_ms || 0), 0) / total)
-        : 0;
-    return { total, success, failed, running, avgDuration };
-  }, [filteredLogs]);
+  // Stats are calculated by the shared processLogs function - guaranteed consistency
+  const stats = processedLogs.stats;
 
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : "--:--:--";
 
@@ -675,6 +844,7 @@ export default function Logs() {
                 <SelectItem value="QueryFinish">Success</SelectItem>
                 <SelectItem value="QueryStart">Running</SelectItem>
                 <SelectItem value="ExceptionWhileProcessing">Failed</SelectItem>
+                <SelectItem value="ExceptionBeforeStart">Failed (Before Start)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -740,6 +910,7 @@ export default function Logs() {
               const newLimit = Number(v);
               if (!isNaN(newLimit) && newLimit > 0) {
                 setLimit(newLimit);
+                setLimitPreference(newLimit);
               }
             }}
           >
@@ -913,7 +1084,7 @@ export default function Logs() {
                             y: 0,
                             scale: hasStatusChanged ? [1, 1.02, 1] : 1,
                             backgroundColor: hasStatusChanged 
-                              ? (log.type === "QueryFinish" ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.1)")
+                              ? (log.type === "QueryFinish" ? "rgba(34, 197, 94, 0.1)" : (isFailedLog(log) ? "rgba(239, 68, 68, 0.1)" : "rgba(255, 255, 255, 0.05)"))
                               : "rgba(255, 255, 255, 0.05)"
                           }}
                           transition={{ 
@@ -929,7 +1100,7 @@ export default function Logs() {
                             expandedLog === log.query_id && "border-white/20 bg-white/10",
                             hasStatusChanged && "ring-2 ring-offset-2 ring-offset-[#0a0a0a]",
                             hasStatusChanged && log.type === "QueryFinish" && "ring-green-500/50",
-                            hasStatusChanged && log.type === "ExceptionWhileProcessing" && "ring-red-500/50"
+                            hasStatusChanged && isFailedLog(log) && "ring-red-500/50"
                           )}
                         >
                           {/* Status Icon */}
@@ -945,7 +1116,7 @@ export default function Logs() {
                           >
                             {log.type === "QueryFinish" ? (
                               <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            ) : log.type === "ExceptionWhileProcessing" ? (
+                            ) : isFailedLog(log) ? (
                               <XCircle className="h-4 w-4 text-red-500" />
                             ) : (
                               <Zap className="h-4 w-4 text-amber-500 animate-pulse" />
@@ -986,7 +1157,7 @@ export default function Logs() {
 
                       <AnimatePresence>
                         {expandedLog === log.query_id && (
-                          <QueryDetail log={log} onClose={() => setExpandedLog(null)} />
+                          <QueryDetail log={log} onClose={() => setExpandedLog(null)} isFailed={isFailedLog(log)} exceptionQueryIds={exceptionQueryIds} />
                         )}
                       </AnimatePresence>
                     </React.Fragment>

@@ -572,22 +572,27 @@ export function useQueryLogs(
       // Fetch audit logs for query execution to get RBAC users
       try {
         const { rbacAuditApi, rbacUsersApi } = await import('@/api/rbac');
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        // Fetch audit logs from the last 2 days to ensure we catch all queries
+        const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
         
+        // Fetch audit logs - optimize by fetching in larger batches
         // If rbacUserId is provided, only fetch audit logs for that user
+        // Use a single large fetch instead of pagination to reduce API calls
         const auditResult = await rbacAuditApi.list({
           page: 1,
-          limit: 1000, // Get enough to match
+          limit: 5000, // Fetch up to 5k logs in one call (covers most use cases)
           action: 'clickhouse.query_execute',
           userId: rbacUserId, // Filter by RBAC user ID if provided
-          startDate: oneDayAgo.toISOString(),
+          startDate: twoDaysAgo.toISOString(),
         });
+        
+        const allAuditLogs = auditResult.logs;
 
         // Create a map of timestamp -> RBAC user ID
-        // Match audit logs with query logs by timestamp (within 30 seconds for better matching)
+        // Match audit logs with query logs by timestamp (within 60 seconds for better matching)
         // Use the timestamp from audit log details if available, otherwise use createdAt
         const auditMap = new Map<number, string | null>();
-        for (const auditLog of auditResult.logs) {
+        for (const auditLog of allAuditLogs) {
           if (auditLog.userId) {
             // Prefer timestamp from details (stored when query was executed)
             // Fall back to createdAt if details.timestamp is not available
@@ -597,16 +602,20 @@ export function useQueryLogs(
               : Math.floor(new Date(auditLog.createdAt).getTime() / 1000);
             
             // Store multiple timestamps around the audit time for better matching
-            // Use a wider range to account for query execution time
-            for (let offset = -30; offset <= 30; offset++) {
+            // Use a wider range (60 seconds) to account for query execution time and clock skew
+            // Optimize: Only store every 5 seconds to reduce memory usage while maintaining accuracy
+            // This reduces map entries from 121 to ~25 per audit log
+            for (let offset = -60; offset <= 60; offset += 5) {
               auditMap.set(auditTime + offset, auditLog.userId);
             }
+            // Also store exact timestamp for precise matching
+            auditMap.set(auditTime, auditLog.userId);
           }
         }
         
         // Debug logging (can be removed in production or made conditional)
         if (process.env.NODE_ENV === 'development') {
-          console.log('[QueryLogs] Audit logs found:', auditResult.logs.length, 'Unique users:', new Set(auditResult.logs.map(l => l.userId).filter(Boolean)).size, rbacUserId ? `(filtered for user: ${rbacUserId})` : '(all users)');
+          console.log('[QueryLogs] Audit logs found:', allAuditLogs.length, 'Unique users:', new Set(allAuditLogs.map(l => l.userId).filter(Boolean)).size, rbacUserId ? `(filtered for user: ${rbacUserId})` : '(all users)');
         }
 
         // Get unique user IDs to fetch user details
@@ -631,22 +640,45 @@ export function useQueryLogs(
 
         // Match query logs with audit logs
         let matchedCount = 0;
+        let unmatchedCount = 0;
         const matchedLogs = logs
           .map(log => {
             const queryTime = log.event_timestamp;
-            // Try to find matching audit log within 30 seconds
+            // Try to find matching audit log within 60 seconds (wider window for better matching)
+            // Optimize: Check exact match first, then check ±5 second intervals
             let rbacUserId: string | null | undefined = undefined;
             let rbacUserInfo: { username: string; email: string; displayName: string | null } | undefined = undefined;
             
-            for (let offset = -30; offset <= 30; offset++) {
-              const key = queryTime + offset;
-              if (auditMap.has(key)) {
-                rbacUserId = auditMap.get(key) || null;
-                if (rbacUserId && userMap.has(rbacUserId)) {
-                  rbacUserInfo = userMap.get(rbacUserId);
-                  matchedCount++;
+            // First try exact match (most common case)
+            if (auditMap.has(queryTime)) {
+              rbacUserId = auditMap.get(queryTime) || null;
+            } else {
+              // Then try ±5 second intervals (matches our optimized storage)
+              for (let offset = -60; offset <= 60; offset += 5) {
+                const key = queryTime + offset;
+                if (auditMap.has(key)) {
+                  rbacUserId = auditMap.get(key) || null;
+                  break;
                 }
-                break;
+              }
+            }
+            
+            if (rbacUserId && userMap.has(rbacUserId)) {
+              rbacUserInfo = userMap.get(rbacUserId);
+              matchedCount++;
+            }
+            
+            // Track unmatched queries for debugging
+            if (!rbacUserId) {
+              unmatchedCount++;
+              if (process.env.NODE_ENV === 'development' && unmatchedCount <= 5) {
+                console.warn('[QueryLogs] Unmatched query:', {
+                  query_id: log.query_id,
+                  queryTime,
+                  user: log.user,
+                  event_time: log.event_time,
+                  query_preview: log.query?.substring(0, 100),
+                });
               }
             }
 
@@ -681,7 +713,7 @@ export function useQueryLogs(
         const filteredCount = matchedLogs.length;
         // Debug logging (can be removed in production or made conditional)
         if (process.env.NODE_ENV === 'development') {
-          console.log('[QueryLogs] Matched', matchedCount, 'out of', logs.length, 'logs with RBAC users', rbacUserId ? `(filtered for user: ${rbacUserId}, showing ${filteredCount} logs)` : `(all users, showing ${filteredCount} logs)`);
+          console.log('[QueryLogs] Matched', matchedCount, 'out of', logs.length, 'logs with RBAC users', unmatchedCount > 0 ? `(${unmatchedCount} unmatched)` : '', rbacUserId ? `(filtered for user: ${rbacUserId}, showing ${filteredCount} logs)` : `(all users, showing ${filteredCount} logs)`);
         }
         return matchedLogs;
       } catch (error) {
@@ -769,16 +801,27 @@ export function useMetrics(
       };
       
       // Fetch query counts by type per minute
+      // For failed queries, we count:
+      // 1. ExceptionWhileProcessing entries
+      // 2. ExceptionBeforeStart entries
+      // 3. QueryFinish entries with exception_code != 0
+      // 4. QueryStart entries with exception field (non-empty)
+      // This matches the logic used in the Logs page
       const queriesData = await safeQuery(`
         SELECT 
           toUnixTimestamp(toStartOfMinute(event_time)) as ts,
-          countIf(query_kind = 'Select') as select_count,
-          countIf(query_kind = 'Insert') as insert_count,
-          countIf(exception_code != 0) as failed_count,
-          count() as total_count
+          countIf(query_kind = 'Select' AND type = 'QueryFinish') as select_count,
+          countIf(query_kind = 'Insert' AND type = 'QueryFinish') as insert_count,
+          countIf(
+            type = 'ExceptionWhileProcessing'
+            OR type = 'ExceptionBeforeStart'
+            OR (type = 'QueryFinish' AND exception_code != 0)
+            OR (type = 'QueryStart' AND length(exception) > 0)
+          ) as failed_count,
+          countIf(type = 'QueryFinish') as total_count
         FROM system.query_log
         WHERE event_time >= now() - INTERVAL ${interval}
-          AND type = 'QueryFinish'
+          AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart', 'QueryStart')
         GROUP BY ts
         ORDER BY ts DESC
         LIMIT ${limit}
@@ -805,7 +848,7 @@ export function useMetrics(
       
       const failedData = sortedData.map((d) => ({
         ts: Number((d as { ts: number }).ts),
-        count: Number((d as { failed_count: number }).failed_count),
+        count: Number((d as { failed_count: number }).failed_count) || 0,
       }));
       
       // Fetch current server stats (single values, very lightweight)

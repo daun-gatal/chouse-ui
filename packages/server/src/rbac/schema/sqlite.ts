@@ -300,6 +300,61 @@ export const clickhouseUsersMetadata = sqliteTable('rbac_clickhouse_users_metada
 }));
 
 // ============================================
+// User Preferences Tables
+// Stores user-specific UI preferences, favorites, and recent items
+// ============================================
+
+/**
+ * User Favorites Table
+ * Stores favorite databases and tables for each user
+ */
+export const userFavorites = sqliteTable('rbac_user_favorites', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  database: text('database').notNull(),
+  table: text('table'), // null means favorite database, not table
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  userDbTableIdx: uniqueIndex('user_favorites_user_db_table_idx').on(table.userId, table.database, table.table),
+  userIdIdx: index('user_favorites_user_id_idx').on(table.userId),
+}));
+
+/**
+ * User Recent Items Table
+ * Stores recently accessed databases and tables for each user
+ */
+export const userRecentItems = sqliteTable('rbac_user_recent_items', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  database: text('database').notNull(),
+  table: text('table'), // null means recent database, not table
+  accessedAt: integer('accessed_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  userDbTableIdx: uniqueIndex('user_recent_user_db_table_idx').on(table.userId, table.database, table.table),
+  userIdIdx: index('user_recent_user_id_idx').on(table.userId),
+  accessedAtIdx: index('user_recent_accessed_at_idx').on(table.accessedAt),
+}));
+
+/**
+ * User Preferences Table
+ * Stores user-specific UI preferences (view mode, sort order, etc.)
+ */
+export const userPreferences = sqliteTable('rbac_user_preferences', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  // Explorer preferences
+  explorerSortBy: text('explorer_sort_by'), // 'name' | 'date' | 'size'
+  explorerViewMode: text('explorer_view_mode'), // 'tree' | 'list' | 'compact'
+  explorerShowFavoritesOnly: integer('explorer_show_favorites_only', { mode: 'boolean' }).default(false),
+  // Workspace preferences
+  workspacePreferences: text('workspace_preferences', { mode: 'json' }).$type<Record<string, unknown>>(),
+  // Other preferences can be added here
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  userIdIdx: uniqueIndex('user_preferences_user_id_idx').on(table.userId),
+}));
+
+// ============================================
 // Type Exports
 // ============================================
 
@@ -307,6 +362,12 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Role = typeof roles.$inferSelect;
 export type NewRole = typeof roles.$inferInsert;
+export type UserFavorite = typeof userFavorites.$inferSelect;
+export type NewUserFavorite = typeof userFavorites.$inferInsert;
+export type UserRecentItem = typeof userRecentItems.$inferSelect;
+export type NewUserRecentItem = typeof userRecentItems.$inferInsert;
+export type UserPreference = typeof userPreferences.$inferSelect;
+export type NewUserPreference = typeof userPreferences.$inferInsert;
 export type Permission = typeof permissions.$inferSelect;
 export type UserRole = typeof userRoles.$inferSelect;
 export type RolePermission = typeof rolePermissions.$inferSelect;

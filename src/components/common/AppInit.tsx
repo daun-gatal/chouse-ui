@@ -2,6 +2,7 @@ import { useEffect, useState, ReactNode } from "react";
 import { MultiStepLoader as Loader } from "@/components/ui/multi-step-loader";
 import { useRbacStore } from "@/stores";
 import { toast } from "sonner";
+import { listenForUserChanges } from "@/utils/sessionCleanup";
 
 const AppInitializer = ({ children }: { children: ReactNode }) => {
   const loadingStates = [
@@ -11,7 +12,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
     { text: "Preparing workspace..." },
   ];
 
-  const { checkAuth, error, isInitialized } = useRbacStore();
+  const { checkAuth, error, isInitialized, logout } = useRbacStore();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -27,6 +28,20 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
 
     init();
   }, [checkAuth]);
+
+  // Listen for user changes from other tabs
+  useEffect(() => {
+    const cleanup = listenForUserChanges((newUserId) => {
+      // If user changed in another tab, logout current session
+      if (newUserId === null) {
+        logout().catch((err) => {
+          console.error("[AppInit] Failed to logout on user change:", err);
+        });
+      }
+    });
+
+    return cleanup;
+  }, [logout]);
 
   useEffect(() => {
     if (error) {

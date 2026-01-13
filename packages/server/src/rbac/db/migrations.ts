@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.2.2';
+export const APP_VERSION = '1.3.0';
 
 // ============================================
 // Migration Registry
@@ -361,6 +361,121 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: '1.3.0',
+    name: 'user_preferences_tables',
+    description: 'Add user preferences tables for favorites, recent items, and UI preferences',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      
+      if (dbType === 'sqlite') {
+        // User Favorites table
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_favorites (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            database TEXT NOT NULL,
+            table TEXT,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            UNIQUE(user_id, database, table)
+          )
+        `);
+        
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
+        
+        // User Recent Items table
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            database TEXT NOT NULL,
+            table TEXT,
+            accessed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            UNIQUE(user_id, database, table)
+          )
+        `);
+        
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
+        
+        // User Preferences table
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_preferences (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL UNIQUE REFERENCES rbac_users(id) ON DELETE CASCADE,
+            explorer_sort_by TEXT,
+            explorer_view_mode TEXT,
+            explorer_show_favorites_only INTEGER DEFAULT 0,
+            workspace_preferences TEXT,
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+        
+        (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
+      } else {
+        // User Favorites table
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_favorites (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            database VARCHAR(255) NOT NULL,
+            "table" VARCHAR(255),
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            UNIQUE(user_id, database, "table")
+          )
+        `);
+        
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
+        
+        // User Recent Items table
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            database VARCHAR(255) NOT NULL,
+            "table" VARCHAR(255),
+            accessed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            UNIQUE(user_id, database, "table")
+          )
+        `);
+        
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
+        
+        // User Preferences table
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_preferences (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL UNIQUE REFERENCES rbac_users(id) ON DELETE CASCADE,
+            explorer_sort_by VARCHAR(50),
+            explorer_view_mode VARCHAR(50),
+            explorer_show_favorites_only BOOLEAN DEFAULT false,
+            workspace_preferences JSONB,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+        
+        await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
+      }
+      
+      console.log('[Migration 1.3.0] User preferences tables created');
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_user_preferences`);
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_user_recent_items`);
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_user_favorites`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_user_preferences`);
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_user_recent_items`);
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_user_favorites`);
+      }
+      
+      console.log('[Migration 1.3.0] User preferences tables dropped');
+    },
+  },
 ];
 
 // ============================================
@@ -658,6 +773,50 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
   db.run(sql`CREATE INDEX IF NOT EXISTS api_keys_user_idx ON rbac_api_keys(user_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
   
+  // User Favorites table
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS rbac_user_favorites (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      database TEXT NOT NULL,
+      table TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(user_id, database, table)
+    )
+  `);
+  
+  db.run(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
+  
+  // User Recent Items table
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      database TEXT NOT NULL,
+      table TEXT,
+      accessed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(user_id, database, table)
+    )
+  `);
+  
+  db.run(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
+  
+  // User Preferences table
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS rbac_user_preferences (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL UNIQUE REFERENCES rbac_users(id) ON DELETE CASCADE,
+      explorer_sort_by TEXT,
+      explorer_view_mode TEXT,
+      explorer_show_favorites_only INTEGER DEFAULT 0,
+      workspace_preferences TEXT,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+  
+  db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
+  
   console.log('[Migration] SQLite schema created');
 }
 
@@ -850,6 +1009,50 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS audit_created_at_idx ON rbac_audit_logs(created_at)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS api_keys_user_idx ON rbac_api_keys(user_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
+  
+  // User Favorites table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rbac_user_favorites (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      database VARCHAR(255) NOT NULL,
+      table VARCHAR(255),
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, database, table)
+    )
+  `);
+  
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
+  
+  // User Recent Items table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      database VARCHAR(255) NOT NULL,
+      table VARCHAR(255),
+      accessed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, database, table)
+    )
+  `);
+  
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
+  
+  // User Preferences table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rbac_user_preferences (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL UNIQUE REFERENCES rbac_users(id) ON DELETE CASCADE,
+      explorer_sort_by VARCHAR(50),
+      explorer_view_mode VARCHAR(50),
+      explorer_show_favorites_only BOOLEAN DEFAULT false,
+      workspace_preferences JSONB,
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+  
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
   
   console.log('[Migration] PostgreSQL schema created');
 }

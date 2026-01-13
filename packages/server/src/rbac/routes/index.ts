@@ -12,6 +12,7 @@ import auditRoutes from './audit';
 import connectionsRoutes from './connections';
 import dataAccessRoutes from './dataAccess';
 import clickhouseUsersRoutes from './clickhouseUsers';
+import userPreferencesRoutes from './userPreferences';
 
 const rbacRoutes = new Hono();
 
@@ -23,6 +24,7 @@ rbacRoutes.route('/audit', auditRoutes);
 rbacRoutes.route('/connections', connectionsRoutes);
 rbacRoutes.route('/data-access', dataAccessRoutes);
 rbacRoutes.route('/clickhouse-users', clickhouseUsersRoutes);
+rbacRoutes.route('/user-preferences', userPreferencesRoutes);
 
 // Health check for RBAC system
 rbacRoutes.get('/health', async (c) => {

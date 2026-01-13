@@ -5,6 +5,7 @@
  */
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { usePaginationPreference, useUserManagementPreferences } from "@/hooks";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
@@ -84,7 +85,7 @@ const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 const UserManagement: React.FC = () => {
   const navigate = useNavigate();
-  const { hasPermission, user: currentUser } = useRbacStore();
+  const { hasPermission, user: currentUser, isSuperAdmin } = useRbacStore();
 
   // Data state
   const [users, setUsers] = useState<RbacUser[]>([]);
@@ -94,14 +95,51 @@ const UserManagement: React.FC = () => {
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Search and filter state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Preferences
+  const { pageSize: defaultPageSize, setPageSize: setPageSizePreference } = usePaginationPreference('userManagement');
+  const { preferences: userMgmtPrefs, updatePreferences: updateUserMgmtPrefs } = useUserManagementPreferences();
+
+  // Search and filter state - initialize from preferences
+  const [searchQuery, setSearchQuery] = useState(userMgmtPrefs.defaultSearchQuery || "");
+  const [roleFilter, setRoleFilter] = useState<string>(userMgmtPrefs.defaultRoleFilter || "all");
+  const [statusFilter, setStatusFilter] = useState<string>(userMgmtPrefs.defaultStatusFilter || "all");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  
+  // Sync pageSize state when preference changes
+  useEffect(() => {
+    setPageSize(defaultPageSize);
+  }, [defaultPageSize]);
+  
+  // Sync state from preferences when they load
+  useEffect(() => {
+    if (!userMgmtPrefs) return;
+    if (userMgmtPrefs.defaultSearchQuery !== undefined) setSearchQuery(userMgmtPrefs.defaultSearchQuery);
+    if (userMgmtPrefs.defaultRoleFilter) setRoleFilter(userMgmtPrefs.defaultRoleFilter);
+    if (userMgmtPrefs.defaultStatusFilter) setStatusFilter(userMgmtPrefs.defaultStatusFilter);
+  }, [userMgmtPrefs]);
+  
+  // Update preferences when state changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      updateUserMgmtPrefs({
+        defaultSearchQuery: searchQuery,
+        defaultRoleFilter: roleFilter,
+        defaultStatusFilter: statusFilter,
+      });
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, roleFilter, statusFilter, updateUserMgmtPrefs]);
+  
+  // Update page size preference when pageSize changes
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setPageSizePreference(pageSize);
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [pageSize, setPageSizePreference]);
 
   // User management state
   const [selectedUser, setSelectedUser] = useState<RbacUser | null>(null);
@@ -197,10 +235,15 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const copyPassword = () => {
+  const copyPassword = async () => {
     if (generatedPassword) {
-      navigator.clipboard.writeText(generatedPassword);
-      toast.success("Password copied to clipboard");
+      try {
+        await navigator.clipboard.writeText(generatedPassword);
+        toast.success("Password copied to clipboard");
+      } catch (error) {
+        console.error('Failed to copy password:', error);
+        toast.error("Failed to copy password to clipboard");
+      }
     }
   };
 
@@ -426,6 +469,9 @@ const UserManagement: React.FC = () => {
               const primaryRole = user.roles[0] || "viewer";
               const roleDisplay = getRoleDisplay(primaryRole);
               const isCurrentUser = user.id === currentUser?.id;
+              const userIsSuperAdmin = user.roles.includes('super_admin');
+              // Basic admins cannot edit super admins
+              const canEditThisUser = canUpdateUsers && (isSuperAdmin() || !userIsSuperAdmin);
 
               return (
                 <div
@@ -490,7 +536,7 @@ const UserManagement: React.FC = () => {
 
                   {/* Quick Actions */}
                   <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
-                    {canUpdateUsers && (
+                    {canEditThisUser && (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -508,14 +554,14 @@ const UserManagement: React.FC = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        {canUpdateUsers && (
+                        {canEditThisUser && (
                           <DropdownMenuItem onClick={() => openResetPasswordDialog(user)}>
                             <Key className="h-4 w-4 mr-2" />
                             Reset Password
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
-                        {canDeleteUsers && !isCurrentUser && (
+                        {canDeleteUsers && !isCurrentUser && (isSuperAdmin() || !userIsSuperAdmin) && (
                           <DropdownMenuItem
                             className="text-red-400 focus:text-red-400"
                             onClick={() => openDeleteDialog(user)}
@@ -565,7 +611,11 @@ const UserManagement: React.FC = () => {
               {/* Page Size Selector */}
               <div className="flex items-center gap-2 text-sm text-gray-400">
                 <span>Show</span>
-                <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                <Select value={String(pageSize)} onValueChange={(v) => {
+                  const newPageSize = Number(v);
+                  setPageSize(newPageSize);
+                  setPageSizePreference(newPageSize);
+                }}>
                   <SelectTrigger className="w-[70px] h-8 bg-white/5 border-white/10">
                     <SelectValue />
                   </SelectTrigger>
@@ -711,7 +761,12 @@ const UserManagement: React.FC = () => {
                   <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm">
                     {generatedPassword}
                   </code>
-                  <Button size="sm" variant="outline" onClick={copyPassword}>
+                  <Button 
+                    type="button"
+                    size="sm" 
+                    variant="outline" 
+                    onClick={copyPassword}
+                  >
                     Copy
                   </Button>
                 </div>
