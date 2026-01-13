@@ -172,9 +172,16 @@ export default function Changelog() {
                         <Tag className="w-6 h-6 text-white" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-2xl font-bold text-white mb-1">
-                          {entry.version}
-                        </h3>
+                        <div className="flex items-center gap-3 mb-1">
+                          <h3 className="text-2xl font-bold text-white">
+                            {entry.version}
+                          </h3>
+                          {index === 0 && (
+                            <span className="px-3 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 text-green-400 animate-pulse">
+                              Latest
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-gray-400 text-sm">
                           <Calendar className="w-4 h-4" />
                           <span>{new Date(entry.date).toLocaleDateString('en-US', { 
