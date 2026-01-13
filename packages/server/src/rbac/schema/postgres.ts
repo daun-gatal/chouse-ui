@@ -300,6 +300,61 @@ export const clickhouseUsersMetadata = pgTable('rbac_clickhouse_users_metadata',
 }));
 
 // ============================================
+// User Preferences Tables
+// Stores user-specific UI preferences, favorites, and recent items
+// ============================================
+
+/**
+ * User Favorites Table
+ * Stores favorite databases and tables for each user
+ */
+export const userFavorites = pgTable('rbac_user_favorites', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  database: varchar('database', { length: 255 }).notNull(),
+  table: varchar('table', { length: 255 }), // null means favorite database, not table
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userDbTableIdx: uniqueIndex('user_favorites_user_db_table_idx').on(table.userId, table.database, table.table),
+  userIdIdx: index('user_favorites_user_id_idx').on(table.userId),
+}));
+
+/**
+ * User Recent Items Table
+ * Stores recently accessed databases and tables for each user
+ */
+export const userRecentItems = pgTable('rbac_user_recent_items', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  database: varchar('database', { length: 255 }).notNull(),
+  table: varchar('table', { length: 255 }), // null means recent database, not table
+  accessedAt: timestamp('accessed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userDbTableIdx: uniqueIndex('user_recent_user_db_table_idx').on(table.userId, table.database, table.table),
+  userIdIdx: index('user_recent_user_id_idx').on(table.userId),
+  accessedAtIdx: index('user_recent_accessed_at_idx').on(table.accessedAt),
+}));
+
+/**
+ * User Preferences Table
+ * Stores user-specific UI preferences (view mode, sort order, etc.)
+ */
+export const userPreferences = pgTable('rbac_user_preferences', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  // Explorer preferences
+  explorerSortBy: varchar('explorer_sort_by', { length: 50 }), // 'name' | 'date' | 'size'
+  explorerViewMode: varchar('explorer_view_mode', { length: 50 }), // 'tree' | 'list' | 'compact'
+  explorerShowFavoritesOnly: boolean('explorer_show_favorites_only').default(false),
+  // Workspace preferences
+  workspacePreferences: jsonb('workspace_preferences').$type<Record<string, unknown>>(),
+  // Other preferences can be added here
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: uniqueIndex('user_preferences_user_id_idx').on(table.userId),
+}));
+
+// ============================================
 // Type Exports
 // ============================================
 
@@ -307,6 +362,12 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Role = typeof roles.$inferSelect;
 export type NewRole = typeof roles.$inferInsert;
+export type UserFavorite = typeof userFavorites.$inferSelect;
+export type NewUserFavorite = typeof userFavorites.$inferInsert;
+export type UserRecentItem = typeof userRecentItems.$inferSelect;
+export type NewUserRecentItem = typeof userRecentItems.$inferInsert;
+export type UserPreference = typeof userPreferences.$inferSelect;
+export type NewUserPreference = typeof userPreferences.$inferInsert;
 export type Permission = typeof permissions.$inferSelect;
 export type UserRole = typeof userRoles.$inferSelect;
 export type RolePermission = typeof rolePermissions.$inferSelect;

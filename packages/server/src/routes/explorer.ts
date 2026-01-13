@@ -49,6 +49,31 @@ explorer.get("/databases", async (c) => {
     hasSession: !!session,
   });
 
+  // For RBAC users, check if they have a connection assigned
+  // If no connection is assigned, return empty array (don't show any databases)
+  if (rbacUserId && !isRbacAdmin) {
+    const { getUserConnections } = await import('../rbac/services/connections');
+    const userConnections = await getUserConnections(rbacUserId);
+    
+    // If user has no connections assigned, return empty
+    if (userConnections.length === 0) {
+      console.log(`[Explorer] User ${rbacUserId} has no connections assigned - returning empty`);
+      return c.json({
+        success: true,
+        data: [],
+      });
+    }
+    
+    // If connectionId is set but user doesn't have access to it, return empty
+    if (connectionId && !userConnections.some(conn => conn.id === connectionId)) {
+      console.log(`[Explorer] User ${rbacUserId} doesn't have access to connection ${connectionId} - returning empty`);
+      return c.json({
+        success: true,
+        data: [],
+      });
+    }
+  }
+
   // Get all databases and tables from ClickHouse
   const allDatabases = await service.getDatabasesAndTables();
 

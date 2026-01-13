@@ -165,7 +165,12 @@ const EditUser: React.FC = () => {
   const requiresDataAccess = !hasAdminRole && !hasPredefinedRules && selectedRoles.length > 0;
   const dataAccessValid = !requiresDataAccess || dataAccessRulesCount > 0;
   const ROLES_WITHOUT_DATA_ACCESS_UI = [...ADMIN_ROLES, ...ROLES_WITH_PREDEFINED_RULES]; // Roles that don't need data access UI
-  const showDataAccessUI = !selectedRoleNames.some(name => ROLES_WITHOUT_DATA_ACCESS_UI.includes(name));
+  
+  // Hide Data Access tab if:
+  // 1. Selected roles include admin roles or roles with predefined rules, OR
+  // 2. The user being edited has super_admin role (even if basic admin is editing)
+  const userHasSuperAdminRole = user?.roles.includes('super_admin');
+  const showDataAccessUI = !selectedRoleNames.some(name => ROLES_WITHOUT_DATA_ACCESS_UI.includes(name)) && !userHasSuperAdminRole;
 
   // Fetch user and roles
   useEffect(() => {
@@ -181,6 +186,14 @@ const EditUser: React.FC = () => {
       rbacDataAccessApi.getRulesForUser(userId)
     ])
       .then(([userData, rolesData, userRules]) => {
+        // Check if basic admin is trying to edit super admin
+        const userIsSuperAdmin = userData.roles.includes('super_admin');
+        if (!isSuperAdmin() && userIsSuperAdmin) {
+          toast.error("You do not have permission to edit super admin users");
+          navigate("/admin");
+          return;
+        }
+
         setUser(userData);
         setEmail(userData.email);
         setUsername(userData.username);
@@ -206,7 +219,7 @@ const EditUser: React.FC = () => {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [userId, isSuperAdmin]);
+  }, [userId, isSuperAdmin, navigate]);
 
   // Track changes
   useEffect(() => {
@@ -257,10 +270,15 @@ const EditUser: React.FC = () => {
     setConfirmPassword(pwd);
   };
 
-  const copyPassword = () => {
+  const copyPassword = async () => {
     if (generatedPassword) {
-      navigator.clipboard.writeText(generatedPassword);
-      toast.success("Password copied to clipboard");
+      try {
+        await navigator.clipboard.writeText(generatedPassword);
+        toast.success("Password copied to clipboard");
+      } catch (error) {
+        console.error('Failed to copy password:', error);
+        toast.error("Failed to copy password to clipboard");
+      }
     }
   };
 
@@ -866,7 +884,12 @@ const EditUser: React.FC = () => {
                   <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm break-all">
                     {generatedPassword}
                   </code>
-                  <Button size="sm" variant="outline" onClick={copyPassword}>
+                  <Button 
+                    type="button"
+                    size="sm" 
+                    variant="outline" 
+                    onClick={copyPassword}
+                  >
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>

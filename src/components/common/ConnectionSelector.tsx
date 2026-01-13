@@ -42,12 +42,13 @@ import {
   type ConnectResult,
 } from '@/api/rbac';
 import { setSessionId, clearSession, getSessionId } from '@/api/client';
+import { rbacUserPreferencesApi } from '@/api';
 import { useRbacStore, useAuthStore } from '@/stores';
 
-// Storage key for persisting selected connection
+// Storage key for persisting selected connection (fallback for non-authenticated users)
 const SELECTED_CONNECTION_KEY = 'clickhouse_selected_connection_id';
 
-// Helper to get/set selected connection from localStorage
+// Helper to get/set selected connection from localStorage (fallback)
 function getStoredConnectionId(): string | null {
   try {
     return localStorage.getItem(SELECTED_CONNECTION_KEY);
@@ -69,6 +70,39 @@ function clearStoredConnectionId(): void {
     localStorage.removeItem(SELECTED_CONNECTION_KEY);
   } catch {
     // Ignore storage errors
+  }
+}
+
+// Get connection ID from database preferences
+async function getStoredConnectionIdFromDb(): Promise<string | null> {
+  try {
+    const preferences = await rbacUserPreferencesApi.getPreferences();
+    const lastConnectionId = preferences.workspacePreferences?.lastConnectionId as string | undefined;
+    return lastConnectionId || null;
+  } catch (error) {
+    console.error('[ConnectionSelector] Failed to fetch connection preference:', error);
+    // Fallback to localStorage
+    return getStoredConnectionId();
+  }
+}
+
+// Save connection ID to database preferences
+async function setStoredConnectionIdToDb(id: string): Promise<void> {
+  try {
+    // Get current preferences and merge lastConnectionId
+    const currentPreferences = await rbacUserPreferencesApi.getPreferences();
+    await rbacUserPreferencesApi.updatePreferences({
+      workspacePreferences: {
+        ...currentPreferences.workspacePreferences,
+        lastConnectionId: id,
+      },
+    });
+    // Also update localStorage as fallback
+    setStoredConnectionId(id);
+  } catch (error) {
+    console.error('[ConnectionSelector] Failed to save connection preference:', error);
+    // Fallback to localStorage
+    setStoredConnectionId(id);
   }
 }
 
@@ -98,33 +132,58 @@ export default function ConnectionSelector({
     setIsLoading(true);
     try {
       const myConnections = await rbacConnectionsApi.getMyConnections();
+      const previousConnectionsCount = connections.length;
       setConnections(myConnections);
       
-      // Skip auto-connect if we've already initialized
-      if (hasInitialized.current) {
-        setIsLoading(false);
-        return;
-      }
-      hasInitialized.current = true;
-      
-      // Try to restore previously selected connection
-      const storedConnectionId = getStoredConnectionId();
-      let connectionToUse: ClickHouseConnection | undefined;
-      
-      if (storedConnectionId) {
-        // Find the stored connection
-        connectionToUse = myConnections.find(c => c.id === storedConnectionId);
-      }
-      
-      // Fall back to default connection, then first available
-      if (!connectionToUse) {
-        connectionToUse = myConnections.find(c => c.isDefault) || myConnections[0];
-      }
-      
-      if (connectionToUse) {
-        setActiveConnection(connectionToUse);
-        // Auto-connect to selected connection
-        await connectToClickHouse(connectionToUse);
+      // If this is the first time initializing, try to auto-connect
+      if (!hasInitialized.current) {
+        hasInitialized.current = true;
+        
+        // Try to restore previously selected connection from database
+        let storedConnectionId: string | null = null;
+        try {
+          storedConnectionId = await getStoredConnectionIdFromDb();
+        } catch (error) {
+          console.error('[ConnectionSelector] Failed to fetch connection preference:', error);
+          // Fallback to localStorage
+          storedConnectionId = getStoredConnectionId();
+        }
+        
+        let connectionToUse: ClickHouseConnection | undefined;
+        
+        if (storedConnectionId) {
+          // Find the stored connection
+          connectionToUse = myConnections.find(c => c.id === storedConnectionId);
+        }
+        
+        // Fall back to default connection, then first available
+        if (!connectionToUse) {
+          connectionToUse = myConnections.find(c => c.isDefault) || myConnections[0];
+        }
+        
+        if (connectionToUse) {
+          setActiveConnection(connectionToUse);
+          // Auto-connect to selected connection
+          await connectToClickHouse(connectionToUse);
+        }
+      } else {
+        // Already initialized - check if we should auto-connect to a new first connection
+        // This handles the case where the first connection is created after the component has loaded
+        if (!isConnected && !activeConnection && myConnections.length > 0) {
+          // We have connections but no active connection - auto-connect to first/default
+          const connectionToUse = myConnections.find(c => c.isDefault) || myConnections[0];
+          if (connectionToUse) {
+            setActiveConnection(connectionToUse);
+            await connectToClickHouse(connectionToUse);
+          }
+        } else if (previousConnectionsCount === 0 && myConnections.length > 0 && !isConnected) {
+          // First connection was just added - auto-connect to it
+          const connectionToUse = myConnections.find(c => c.isDefault) || myConnections[0];
+          if (connectionToUse) {
+            setActiveConnection(connectionToUse);
+            await connectToClickHouse(connectionToUse);
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to fetch connections:', error);
@@ -156,8 +215,8 @@ export default function ConnectionSelector({
         sessionId: result.sessionId,
       });
       
-      // Persist the selected connection
-      setStoredConnectionId(connection.id);
+      // Persist the selected connection to database (and localStorage as fallback)
+      await setStoredConnectionIdToDb(connection.id);
       
       setIsConnected(true);
       onConnectionChange?.(connection, result);
@@ -204,6 +263,23 @@ export default function ConnectionSelector({
       setIsConnected(true);
     }
   }, [isAuthenticated]);
+
+  // Listen for connection changes (e.g., when a new connection is created)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Poll for connection updates periodically (every 3 seconds) when not connected
+    // This ensures we detect when a new connection is added and auto-connect to it
+    const interval = setInterval(() => {
+      // Only refresh if we're not connected and have no active connection
+      // This prevents unnecessary refreshes when already connected
+      if (!isConnected && !activeConnection) {
+        fetchConnections();
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, isConnected, activeConnection]);
 
   const handleSelectConnection = async (connection: ClickHouseConnection) => {
     // Don't re-connect if already connected to this connection

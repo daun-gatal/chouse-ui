@@ -3,7 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, themeBalham, colorSchemeDark, ColDef } from "ag-grid-community";
 import { Loader2 } from "lucide-react";
 import { useTheme } from "@/components/common/theme-provider";
-import { useTableSample } from "@/hooks";
+import { useTableSample, usePaginationPreference } from "@/hooks";
 
 interface DataSampleSectionProps {
   database: string;
@@ -12,6 +12,7 @@ interface DataSampleSectionProps {
 
 const DataSampleSection: React.FC<DataSampleSectionProps> = ({ database, tableName }) => {
   const { theme } = useTheme();
+  const { pageSize: paginationPageSize } = usePaginationPreference('dataSample');
   const { data: sample, isLoading, error } = useTableSample(database, tableName, 100);
 
   const gridTheme =
@@ -62,7 +63,7 @@ const DataSampleSection: React.FC<DataSampleSectionProps> = ({ database, tableNa
         modules={[AllCommunityModule]}
         theme={gridTheme}
         pagination={true}
-        paginationPageSize={25}
+        paginationPageSize={paginationPageSize}
         enableCellTextSelection={true}
       />
     </div>
