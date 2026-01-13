@@ -12,6 +12,7 @@ export interface AuthContext {
 
 /**
  * Authentication middleware that validates session from cookie
+ * Also validates session ownership if RBAC user is present
  */
 export async function authMiddleware(c: Context, next: Next) {
   const sessionId = c.req.header("X-Session-ID") || getCookie(c, SESSION_COOKIE_NAME);
@@ -26,6 +27,20 @@ export async function authMiddleware(c: Context, next: Next) {
     throw AppError.unauthorized("Invalid or expired session. Please login again.");
   }
 
+  // Validate session ownership if RBAC user is present
+  // This prevents users from accessing sessions created by other users
+  const rbacUserId = c.get("rbacUserId");
+  if (rbacUserId && sessionData.session.rbacUserId) {
+    if (sessionData.session.rbacUserId !== rbacUserId) {
+      // Session belongs to a different user - destroy it and reject
+      const { destroySession } = await import("../services/clickhouse");
+      await destroySession(sessionId).catch((err) => {
+        console.error("[Auth] Failed to destroy invalid session:", err);
+      });
+      throw AppError.forbidden("Session does not belong to current user. Please reconnect.");
+    }
+  }
+
   // Attach session data to context
   c.set("sessionId", sessionId);
   c.set("service", sessionData.service);
@@ -36,6 +51,7 @@ export async function authMiddleware(c: Context, next: Next) {
 
 /**
  * Optional auth middleware - doesn't fail if no session, just sets null
+ * Also validates session ownership if RBAC user is present
  */
 export async function optionalAuthMiddleware(c: Context, next: Next) {
   const sessionId = c.req.header("X-Session-ID") || getCookie(c, SESSION_COOKIE_NAME);
@@ -43,9 +59,28 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
   if (sessionId) {
     const sessionData = getSession(sessionId);
     if (sessionData) {
-      c.set("sessionId", sessionId);
-      c.set("service", sessionData.service);
-      c.set("session", sessionData.session);
+      // Validate session ownership if RBAC user is present
+      const rbacUserId = c.get("rbacUserId");
+      if (rbacUserId && sessionData.session.rbacUserId) {
+        if (sessionData.session.rbacUserId !== rbacUserId) {
+          // Session belongs to a different user - destroy it silently
+          const { destroySession } = await import("../services/clickhouse");
+          await destroySession(sessionId).catch((err) => {
+            console.error("[Auth] Failed to destroy invalid session:", err);
+          });
+          // Don't set session - continue without it
+        } else {
+          // Session is valid - attach to context
+          c.set("sessionId", sessionId);
+          c.set("service", sessionData.service);
+          c.set("session", sessionData.session);
+        }
+      } else {
+        // No RBAC user or session has no userId - allow legacy behavior
+        c.set("sessionId", sessionId);
+        c.set("service", sessionData.service);
+        c.set("session", sessionData.session);
+      }
     }
   }
 

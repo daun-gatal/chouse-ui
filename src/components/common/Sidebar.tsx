@@ -24,7 +24,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
 import ConnectionSelector from "./ConnectionSelector";
-import { rbacConnectionsApi } from "@/api/rbac";
+import { rbacConnectionsApi, rbacUserPreferencesApi } from "@/api/rbac";
 import { getSessionId, clearSession } from "@/api/client";
 
 // Persist sidebar state in localStorage
@@ -108,7 +108,10 @@ export default function Sidebar() {
   
   const canViewOverview = isAdmin();
   
-  // Load initial state from localStorage
+  const { isAuthenticated } = useRbacStore();
+  const [hasFetchedPreference, setHasFetchedPreference] = useState(false);
+  
+  // Load initial state from localStorage (fallback for non-authenticated users)
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -118,14 +121,79 @@ export default function Sidebar() {
     }
   });
 
-  // Persist collapse state to localStorage
+  // Fetch sidebar preference from database when authenticated
   useEffect(() => {
+    if (!isAuthenticated || hasFetchedPreference) {
+      return;
+    }
+
+    const fetchSidebarPreference = async (): Promise<void> => {
+      try {
+        const preferences = await rbacUserPreferencesApi.getPreferences();
+        const savedCollapsed = preferences.workspacePreferences?.sidebarCollapsed as boolean | undefined;
+        
+        if (typeof savedCollapsed === 'boolean') {
+          setIsCollapsed(savedCollapsed);
+          // Also update localStorage for fallback
+          localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(savedCollapsed));
+        }
+        setHasFetchedPreference(true);
+      } catch (error) {
+        console.error('[Sidebar] Failed to fetch sidebar preference:', error);
+        // Fallback to localStorage if API fails
+        try {
+          const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+          if (saved !== null) {
+            setIsCollapsed(saved === "true");
+          }
+        } catch {
+          // Ignore localStorage errors
+        }
+        setHasFetchedPreference(true);
+      }
+    };
+
+    fetchSidebarPreference().catch((error) => {
+      console.error('[Sidebar] Error fetching sidebar preference:', error);
+      setHasFetchedPreference(true);
+    });
+  }, [isAuthenticated, hasFetchedPreference]);
+
+  // Sync sidebar state to database when it changes (debounced)
+  useEffect(() => {
+    // Don't sync on initial load or if not authenticated
+    if (!isAuthenticated || !hasFetchedPreference) {
+      return;
+    }
+
+    // Persist to localStorage immediately (fallback)
     try {
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed));
     } catch {
       // Ignore localStorage errors
     }
-  }, [isCollapsed]);
+
+    // Debounce database sync to avoid excessive API calls
+    const timeoutId = setTimeout(async () => {
+      try {
+        // Get current preferences and merge sidebarCollapsed
+        const currentPreferences = await rbacUserPreferencesApi.getPreferences();
+        await rbacUserPreferencesApi.updatePreferences({
+          workspacePreferences: {
+            ...currentPreferences.workspacePreferences,
+            sidebarCollapsed: isCollapsed,
+          },
+        });
+      } catch (error) {
+        console.error('[Sidebar] Failed to sync sidebar preference:', error);
+        // Continue anyway - state is already set locally
+      }
+    }, 500); // Debounce by 500ms
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isCollapsed, isAuthenticated, hasFetchedPreference]);
 
   const Logo = withBasePath("logo.svg");
 

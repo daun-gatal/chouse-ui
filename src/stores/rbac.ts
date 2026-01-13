@@ -68,13 +68,27 @@ export const useRbacStore = create<RbacState>()(
 
       /**
        * Login with identifier (email or username) and password
+       * Cleans up previous user session before setting new user state
        */
       login: async (identifier: string, password: string) => {
         set({ isLoading: true, error: null });
 
         try {
+          // Get current user ID before login (for cleanup)
+          const currentUserId = get().user?.id || null;
+
+          // Cleanup previous user session BEFORE login
+          // This ensures no data leakage between users
+          const { cleanupUserSession, broadcastUserChange } = await import('@/utils/sessionCleanup');
+          await cleanupUserSession(currentUserId);
+
+          // Perform login
           const response = await rbacAuthApi.login(identifier, password);
 
+          // Broadcast user change to all tabs
+          broadcastUserChange(response.user.id);
+
+          // Set new user state AFTER cleanup
           set({
             isAuthenticated: true,
             isLoading: false,
@@ -99,11 +113,23 @@ export const useRbacStore = create<RbacState>()(
 
       /**
        * Logout current session
+       * Cleans up all user-related state and sessions
        */
       logout: async () => {
         set({ isLoading: true });
 
         try {
+          // Get current user ID before logout (for cleanup)
+          const currentUserId = get().user?.id || null;
+
+          // Cleanup user session
+          const { cleanupUserSession, broadcastUserChange } = await import('@/utils/sessionCleanup');
+          await cleanupUserSession(currentUserId);
+
+          // Broadcast logout to all tabs
+          broadcastUserChange(null);
+
+          // Logout from server
           await rbacAuthApi.logout();
         } catch (error) {
           console.error('Logout error:', error);

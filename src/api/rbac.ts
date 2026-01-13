@@ -132,7 +132,7 @@ export function clearRbacTokens(): void {
 
 async function rbacFetch<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}
 ): Promise<T> {
   const accessToken = getRbacAccessToken();
   const sessionId = getSessionId();
@@ -140,7 +140,7 @@ async function rbacFetch<T>(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
-    ...(options.headers as Record<string, string> || {}),
+    ...(options.headers || {}),
   };
   
   if (accessToken) {
@@ -153,10 +153,19 @@ async function rbacFetch<T>(
     headers['X-Session-ID'] = sessionId;
   }
   
-  const response = await fetch(`/api/rbac${endpoint}`, {
-    ...options,
+  const fetchOptions: RequestInit = {
+    method: options.method || 'GET',
     headers,
-  });
+  };
+  
+  // Handle body - stringify if it's an object
+  if (options.body !== undefined) {
+    fetchOptions.body = typeof options.body === 'string' 
+      ? options.body 
+      : JSON.stringify(options.body);
+  }
+  
+  const response = await fetch(`/api/rbac${endpoint}`, fetchOptions);
   
   const data = await response.json();
   
@@ -954,6 +963,307 @@ export interface AccessCheckResult {
 // ============================================
 // Data Access API
 // ============================================
+
+// ============================================
+// User Preferences API
+// ============================================
+
+export interface UserFavorite {
+  id: string;
+  database: string;
+  table?: string;
+  createdAt: string;
+}
+
+export interface UserRecentItem {
+  id: string;
+  database: string;
+  table?: string;
+  accessedAt: string;
+}
+
+export interface UserPreferences {
+  explorerSortBy?: 'name' | 'date' | 'size';
+  explorerViewMode?: 'tree' | 'list' | 'compact';
+  explorerShowFavoritesOnly?: boolean;
+  workspacePreferences?: Record<string, unknown>;
+}
+
+export const rbacUserPreferencesApi = {
+  /**
+   * Get all favorites for the authenticated user
+   */
+  async getFavorites(): Promise<UserFavorite[]> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const response = await fetch('/api/rbac/user-preferences/favorites', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new ApiError(data.error?.message || 'Failed to fetch favorites', response.status);
+    }
+    return data.favorites || [];
+  },
+
+  /**
+   * Add a favorite for the authenticated user
+   */
+  async addFavorite(database: string, table?: string): Promise<UserFavorite> {
+    let accessToken = getRbacAccessToken();
+    if (!accessToken) {
+      console.error('[UserPreferences] No access token found');
+      throw new ApiError('Not authenticated', 401);
+    }
+
+    let response = await fetch('/api/rbac/user-preferences/favorites', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ database, table }),
+    });
+
+    // If 401, try to refresh token and retry
+    if (response.status === 401) {
+      const refreshed = await refreshTokens();
+      if (refreshed) {
+        accessToken = getRbacAccessToken();
+        if (accessToken) {
+          response = await fetch('/api/rbac/user-preferences/favorites', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+              'Authorization': `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ database, table }),
+          });
+        }
+      }
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      console.error('[UserPreferences] Failed to parse response:', e);
+      const text = await response.text();
+      console.error('[UserPreferences] Response text:', text);
+      throw new ApiError('Invalid response from server', response.status);
+    }
+    
+    if (!response.ok) {
+      console.error('[UserPreferences] Failed to add favorite:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: data.error,
+        hasToken: !!accessToken,
+        tokenLength: accessToken?.length,
+        tokenPreview: accessToken ? `${accessToken.substring(0, 20)}...` : null,
+        responseData: data,
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+      throw new ApiError(data.error?.message || `Failed to add favorite (${response.status})`, response.status);
+    }
+    return data.favorite;
+  },
+
+  /**
+   * Remove a favorite for the authenticated user
+   */
+  async removeFavorite(favoriteId: string): Promise<void> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const response = await fetch(`/api/rbac/user-preferences/favorites/${favoriteId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new ApiError(data.error?.message || 'Failed to remove favorite', response.status);
+    }
+  },
+
+  /**
+   * Clear all favorites for the authenticated user
+   */
+  async clearFavorites(): Promise<void> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const response = await fetch('/api/rbac/user-preferences/favorites', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new ApiError(data.error?.message || 'Failed to clear favorites', response.status);
+    }
+  },
+
+  /**
+   * Check if a database/table is favorited
+   */
+  async isFavorite(database: string, table?: string): Promise<boolean> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const params = new URLSearchParams({ database });
+    if (table) params.append('table', table);
+    
+    const response = await fetch(`/api/rbac/user-preferences/favorites/check?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new ApiError(data.error?.message || 'Failed to check favorite', response.status);
+    }
+    return data.isFavorite || false;
+  },
+
+  /**
+   * Get recent items for the authenticated user
+   */
+  async getRecentItems(limit: number = 10): Promise<UserRecentItem[]> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const response = await fetch(`/api/rbac/user-preferences/recent?limit=${limit}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new ApiError(data.error?.message || 'Failed to fetch recent items', response.status);
+    }
+    return data.recentItems || [];
+  },
+
+  /**
+   * Add a recent item for the authenticated user
+   */
+  async addRecentItem(database: string, table?: string): Promise<UserRecentItem> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const response = await fetch('/api/rbac/user-preferences/recent', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ database, table }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new ApiError(data.error?.message || 'Failed to add recent item', response.status);
+    }
+    return data.recentItem;
+  },
+
+  /**
+   * Clear all recent items for the authenticated user
+   */
+  async clearRecentItems(): Promise<void> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const response = await fetch('/api/rbac/user-preferences/recent', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new ApiError(data.error?.message || 'Failed to clear recent items', response.status);
+    }
+  },
+
+  /**
+   * Get user preferences
+   */
+  async getPreferences(): Promise<UserPreferences> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const response = await fetch('/api/rbac/user-preferences/preferences', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new ApiError(data.error?.message || 'Failed to fetch preferences', response.status);
+    }
+    return data.preferences || {};
+  },
+
+  /**
+   * Update user preferences
+   */
+  async updatePreferences(preferences: Partial<UserPreferences>): Promise<UserPreferences> {
+    const accessToken = getRbacAccessToken();
+    if (!accessToken) throw new ApiError('Not authenticated', 401);
+
+    const response = await fetch('/api/rbac/user-preferences/preferences', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(preferences),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new ApiError(data.error?.message || 'Failed to update preferences', response.status);
+    }
+    return data.preferences || {};
+  },
+};
 
 export const rbacDataAccessApi = {
   /**

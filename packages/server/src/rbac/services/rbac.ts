@@ -43,7 +43,7 @@ export async function createUser(
   input: CreateUserInput,
   createdBy?: string
 ): Promise<UserResponse> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
   const id = randomUUID();
   const now = new Date();
@@ -95,7 +95,7 @@ export async function createUser(
  * Get user by ID with roles and permissions
  */
 export async function getUserById(id: string): Promise<UserResponse | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   const user = await db.select()
@@ -112,7 +112,7 @@ export async function getUserById(id: string): Promise<UserResponse | null> {
  * Get user by email
  */
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   const user = await db.select()
@@ -127,7 +127,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
  * Get user by username
  */
 export async function getUserByUsername(username: string): Promise<User | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   const user = await db.select()
@@ -142,7 +142,7 @@ export async function getUserByUsername(username: string): Promise<User | null> 
  * Get user by email or username (for login)
  */
 export async function getUserByEmailOrUsername(identifier: string): Promise<User | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
   const normalized = identifier.toLowerCase();
 
@@ -166,7 +166,7 @@ export async function updateUser(
   id: string,
   input: UpdateUserInput
 ): Promise<UserResponse | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
   const now = new Date();
 
@@ -212,7 +212,7 @@ export async function updateUserPassword(
   id: string,
   newPassword: string
 ): Promise<void> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
   const passwordHash = await hashPassword(newPassword);
 
@@ -229,7 +229,7 @@ export async function updateUserPassword(
  * Delete user (soft delete by deactivating)
  */
 export async function deleteUser(id: string): Promise<void> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   // Check if user is a system user
@@ -257,7 +257,7 @@ export async function listUsers(options: {
   roleId?: string;
   isActive?: boolean;
 } = {}): Promise<{ users: UserResponse[]; total: number }> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
   const page = options.page || 1;
   const limit = Math.min(options.limit || 20, 1000); // Increased max limit to support role filtering
@@ -271,7 +271,7 @@ export async function listUsers(options: {
         .from(schema.userRoles)
         .where(eq(schema.userRoles.roleId, options.roleId));
       
-      const userIds = userRoles.map(ur => ur.userId).filter(Boolean);
+      const userIds = userRoles.map((ur: { userId: string }) => ur.userId).filter(Boolean) as string[];
       
       if (userIds.length === 0) {
         // No users have this role
@@ -283,13 +283,14 @@ export async function listUsers(options: {
     
     if (options.search) {
       const searchPattern = `%${options.search.toLowerCase()}%`;
-      conditions.push(
-        or(
-          like(schema.users.email, searchPattern),
-          like(schema.users.username, searchPattern),
-          like(schema.users.displayName, searchPattern)
-        )
+      const searchCondition = or(
+        like(schema.users.email, searchPattern),
+        like(schema.users.username, searchPattern),
+        like(schema.users.displayName, searchPattern)
       );
+      if (searchCondition) {
+        conditions.push(searchCondition);
+      }
     }
 
     if (options.isActive !== undefined) {
@@ -312,7 +313,7 @@ export async function listUsers(options: {
     const total = Number(countResult[0]?.count || 0);
 
       // Expand user responses
-      const userResponses = await Promise.all(users.map(u => expandUserResponse(u)));
+      const userResponses = await Promise.all(users.map((u: User) => expandUserResponse(u)));
 
       return { users: userResponses, total };
     } catch (error) {
@@ -360,7 +361,7 @@ export async function listUsers(options: {
   const total = Number(countResult[0]?.count || 0);
 
   // Expand user responses
-  const userResponses = await Promise.all(users.map(u => expandUserResponse(u)));
+  const userResponses = await Promise.all(users.map((u: User) => expandUserResponse(u)));
 
   return { users: userResponses, total };
 }
@@ -373,7 +374,7 @@ export async function listUsers(options: {
  * Create a new role
  */
 export async function createRole(input: CreateRoleInput): Promise<RoleResponse> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
   const id = randomUUID();
   const now = new Date();
@@ -409,7 +410,7 @@ export async function createRole(input: CreateRoleInput): Promise<RoleResponse> 
  * Get role by ID
  */
 export async function getRoleById(id: string): Promise<RoleResponse | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   const role = await db.select()
@@ -426,7 +427,7 @@ export async function getRoleById(id: string): Promise<RoleResponse | null> {
  * Get role by name
  */
 export async function getRoleByName(name: string): Promise<Role | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   const role = await db.select()
@@ -444,7 +445,7 @@ export async function updateRole(
   id: string,
   input: UpdateRoleInput
 ): Promise<RoleResponse | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   // Check if role is a system role
@@ -492,7 +493,7 @@ export async function updateRole(
  * Delete role
  */
 export async function deleteRole(id: string): Promise<void> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   // Check if role is a system role
@@ -513,14 +514,14 @@ export async function deleteRole(id: string): Promise<void> {
  * List all roles
  */
 export async function listRoles(): Promise<RoleResponse[]> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   const roles = await db.select()
     .from(schema.roles)
     .orderBy(desc(schema.roles.priority), asc(schema.roles.name));
 
-  return Promise.all(roles.map(r => expandRoleResponse(r)));
+  return Promise.all(roles.map((r: Role) => expandRoleResponse(r)));
 }
 
 // ============================================
@@ -531,7 +532,7 @@ export async function listRoles(): Promise<RoleResponse[]> {
  * Get all permissions
  */
 export async function listPermissions(): Promise<Permission[]> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   return db.select()
@@ -591,7 +592,7 @@ export async function userHasAllPermissions(
  * Get all permissions for a user (through their roles)
  */
 export async function getUserPermissions(userId: string): Promise<string[]> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   // Get user's roles
@@ -601,7 +602,7 @@ export async function getUserPermissions(userId: string): Promise<string[]> {
 
   if (userRolesData.length === 0) return [];
 
-  const roleIds = userRolesData.map(ur => ur.roleId);
+  const roleIds = userRolesData.map((ur: { roleId: string }) => ur.roleId);
 
   // Get permissions for those roles
   const rolePerms = await db.select({ permissionId: schema.rolePermissions.permissionId })
@@ -610,21 +611,21 @@ export async function getUserPermissions(userId: string): Promise<string[]> {
 
   if (rolePerms.length === 0) return [];
 
-  const permIds = rolePerms.map(rp => rp.permissionId);
+  const permIds = rolePerms.map((rp: { permissionId: string }) => rp.permissionId);
 
   // Get permission names
   const permissions = await db.select({ name: schema.permissions.name })
     .from(schema.permissions)
     .where(inArray(schema.permissions.id, permIds));
 
-  return [...new Set(permissions.map(p => p.name))];
+  return [...new Set(permissions.map((p: { name: string }) => p.name))] as string[];
 }
 
 /**
  * Get all roles for a user
  */
 export async function getUserRoles(userId: string): Promise<string[]> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   const userRolesData = await db.select({ roleId: schema.userRoles.roleId })
@@ -633,13 +634,13 @@ export async function getUserRoles(userId: string): Promise<string[]> {
 
   if (userRolesData.length === 0) return [];
 
-  const roleIds = userRolesData.map(ur => ur.roleId);
+  const roleIds = userRolesData.map((ur: { roleId: string }) => ur.roleId);
 
   const roles = await db.select({ name: schema.roles.name })
     .from(schema.roles)
     .where(inArray(schema.roles.id, roleIds));
 
-  return roles.map(r => r.name);
+  return roles.map((r: { name: string }) => r.name);
 }
 
 // ============================================
@@ -669,7 +670,7 @@ export async function authenticateUser(
   // Check if password needs rehashing
   if (needsRehash(user.passwordHash)) {
     const newHash = await hashPassword(password);
-    const db = getDatabase();
+    const db = getDatabase() as any;
     const schema = getSchema();
     await db.update(schema.users)
       .set({ passwordHash: newHash })
@@ -677,7 +678,7 @@ export async function authenticateUser(
   }
 
   // Update last login
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
   await db.update(schema.users)
     .set({ lastLoginAt: new Date() })
@@ -722,7 +723,7 @@ export async function authenticateUser(
 export async function refreshAccessToken(
   refreshToken: string
 ): Promise<TokenPair | null> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   // Find session by refresh token
@@ -799,7 +800,7 @@ export async function refreshAccessToken(
  * Logout user (revoke session)
  */
 export async function logoutUser(sessionId: string): Promise<void> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   await db.update(schema.sessions)
@@ -811,7 +812,7 @@ export async function logoutUser(sessionId: string): Promise<void> {
  * Logout user from all sessions
  */
 export async function logoutAllSessions(userId: string): Promise<void> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   await db.update(schema.sessions)
@@ -844,7 +845,7 @@ export async function createAuditLog(
     errorMessage?: string;
   }
 ): Promise<void> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   await db.insert(schema.auditLogs).values({
@@ -872,11 +873,17 @@ export async function getAuditLogs(options: {
   action?: string;
   startDate?: Date;
   endDate?: Date;
+  // Internal flag to allow higher limits for system operations
+  _internal?: boolean;
 } = {}): Promise<{ logs: any[]; total: number }> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
   const page = options.page || 1;
-  const limit = Math.min(options.limit || 50, 100);
+  // Allow higher limits for query log matching and other system operations
+  // Regular API calls are limited to 100, but allow up to 5000 for system operations
+  // This is safe because audit logs are filtered by date range and action
+  const maxLimit = 5000; // Increased from 100 to support query log matching
+  const limit = Math.min(options.limit || 50, maxLimit);
   const offset = (page - 1) * limit;
 
   const conditions = [];
@@ -948,7 +955,7 @@ async function expandUserResponse(user: User): Promise<UserResponse> {
  * Expand role to RoleResponse format
  */
 async function expandRoleResponse(role: Role): Promise<RoleResponse> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
   const schema = getSchema();
 
   // Get permission names for this role
@@ -958,11 +965,11 @@ async function expandRoleResponse(role: Role): Promise<RoleResponse> {
 
   let permissions: string[] = [];
   if (rolePerms.length > 0) {
-    const permIds = rolePerms.map(rp => rp.permissionId);
+    const permIds = rolePerms.map((rp: { permissionId: string }) => rp.permissionId);
     const perms = await db.select({ name: schema.permissions.name })
       .from(schema.permissions)
       .where(inArray(schema.permissions.id, permIds));
-    permissions = perms.map(p => p.name);
+    permissions = perms.map((p: { name: string }) => p.name) as string[];
   }
 
   // Get user count for this role

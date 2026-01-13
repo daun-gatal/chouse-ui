@@ -273,10 +273,15 @@ const CreateUser: React.FC = () => {
     setConfirmPassword(pwd);
   };
 
-  const copyGeneratedPassword = () => {
+  const copyGeneratedPassword = async () => {
     if (generatedPassword) {
-      navigator.clipboard.writeText(generatedPassword);
-      toast.success("Password copied to clipboard");
+      try {
+        await navigator.clipboard.writeText(generatedPassword);
+        toast.success("Password copied to clipboard");
+      } catch (error) {
+        console.error('Failed to copy password:', error);
+        toast.error("Failed to copy password to clipboard");
+      }
     }
   };
 
@@ -424,7 +429,12 @@ const CreateUser: React.FC = () => {
                   <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm break-all">
                     {generatedPassword}
                   </code>
-                  <Button size="sm" variant="outline" onClick={copyGeneratedPassword}>
+                  <Button 
+                    type="button"
+                    size="sm" 
+                    variant="outline" 
+                    onClick={copyGeneratedPassword}
+                  >
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>

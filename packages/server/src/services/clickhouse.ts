@@ -570,17 +570,18 @@ export class ClickHouseService {
 
   /**
    * Get cache hit ratio metrics
+   * Note: system.events uses 'event' column, not 'metric'
    */
   async getCacheMetrics(): Promise<import("../types").CacheMetrics> {
     try {
       const result = await this.client.query({
         query: `
           SELECT 
-            sumIf(value, metric = 'MarkCacheHits') as mark_hits,
-            sumIf(value, metric = 'MarkCacheMisses') as mark_misses,
-            sumIf(value, metric = 'UncompressedCacheHits') as uncomp_hits,
-            sumIf(value, metric = 'UncompressedCacheMisses') as uncomp_misses,
-            sumIf(value, metric = 'CompiledExpressionCacheCount') as compiled_cache
+            sumIf(value, event = 'MarkCacheHits') as mark_hits,
+            sumIf(value, event = 'MarkCacheMisses') as mark_misses,
+            sumIf(value, event = 'UncompressedCacheHits') as uncomp_hits,
+            sumIf(value, event = 'UncompressedCacheMisses') as uncomp_misses,
+            sumIf(value, event = 'CompiledExpressionCacheCount') as compiled_cache
           FROM system.events
         `,
       });
@@ -665,6 +666,13 @@ export class ClickHouseService {
 
   /**
    * Get error breakdown by exception code
+   * Counts errors from:
+   * 1. ExceptionWhileProcessing entries (with exception_code != 0)
+   * 2. ExceptionBeforeStart entries (with exception_code != 0)
+   * 3. QueryFinish entries with exception_code != 0
+   * 4. QueryStart entries with exception field (non-empty) and exception_code != 0
+   * This matches the logic used in the Logs page and Metrics page
+   * Note: We only count entries with exception_code != 0 to group by error type
    */
   async getErrorMetrics(intervalMinutes: number = 60): Promise<import("../types").ErrorMetrics[]> {
     try {
@@ -676,8 +684,14 @@ export class ClickHouseService {
             count() as count,
             max(event_time) as last_occurred
           FROM system.query_log 
-          WHERE exception_code != 0 
-            AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+            AND exception_code != 0
+            AND (
+              type = 'ExceptionWhileProcessing'
+              OR type = 'ExceptionBeforeStart'
+              OR type = 'QueryFinish'
+              OR (type = 'QueryStart' AND length(exception) > 0)
+            )
           GROUP BY exception_code 
           ORDER BY count DESC
           LIMIT 15
@@ -752,7 +766,6 @@ export class ClickHouseService {
             table,
             sum(rows) as rows,
             sum(bytes_on_disk) as bytes_on_disk,
-            formatReadableSize(sum(bytes_on_disk)) as compressed_size,
             count() as parts_count
           FROM system.parts
           WHERE active
@@ -767,18 +780,29 @@ export class ClickHouseService {
         table: string;
         rows: string;
         bytes_on_disk: string;
-        compressed_size: string;
         parts_count: number;
       }>;
       
-      return response.data.map(t => ({
-        database: t.database,
-        table: t.table,
-        rows: Number(t.rows),
-        bytes_on_disk: Number(t.bytes_on_disk),
-        compressed_size: t.compressed_size,
-        parts_count: Number(t.parts_count),
-      }));
+      // Helper function to format bytes to readable size
+      const formatReadableSize = (bytes: number): string => {
+        if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(2)} TiB`;
+        if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GiB`;
+        if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(2)} MiB`;
+        if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(2)} KiB`;
+        return `${bytes} B`;
+      };
+      
+      return response.data.map(t => {
+        const bytesOnDisk = Number(t.bytes_on_disk) || 0;
+        return {
+          database: t.database,
+          table: t.table,
+          rows: Number(t.rows),
+          bytes_on_disk: bytesOnDisk,
+          compressed_size: formatReadableSize(bytesOnDisk),
+          parts_count: Number(t.parts_count),
+        };
+      });
     } catch (error) {
       throw this.handleError(error, "Failed to fetch top tables");
     }
@@ -1104,6 +1128,34 @@ export async function destroySession(sessionId: string): Promise<void> {
     await entry.service.close();
     sessions.delete(sessionId);
   }
+}
+
+/**
+ * Destroy all sessions owned by a specific RBAC user
+ * Used when user logs out or switches accounts
+ */
+export async function destroyUserSessions(rbacUserId: string): Promise<number> {
+  let destroyed = 0;
+  const sessionsToDestroy: string[] = [];
+
+  // Collect all session IDs owned by this user
+  for (const [sessionId, entry] of sessions.entries()) {
+    if (entry.session.rbacUserId === rbacUserId) {
+      sessionsToDestroy.push(sessionId);
+    }
+  }
+
+  // Destroy all collected sessions
+  for (const sessionId of sessionsToDestroy) {
+    try {
+      await destroySession(sessionId);
+      destroyed++;
+    } catch (error) {
+      console.error(`[ClickHouse] Failed to destroy session ${sessionId}:`, error);
+    }
+  }
+
+  return destroyed;
 }
 
 export function getSessionCount(): number {

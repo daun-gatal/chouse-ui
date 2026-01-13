@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.5.0] - 2026-01-15
+
+### Added
+
+- **User Preferences System**: Migrated user preferences from `localStorage` to database-backed storage for cross-device persistence
+  - Explorer preferences (favorites, recent tables, panel sizes, view modes)
+  - Monaco editor settings (font size, word wrap, minimap, etc.)
+  - Logs page preferences (filters, view mode, auto-refresh, pagination)
+  - User Management preferences (page size, search, filters)
+  - New REST API endpoints (`/api/rbac/user-preferences`)
+
+### Fixed
+
+- **Session Isolation**: Fixed users seeing other users' favorites, recent tables, and unauthorized data
+- **Query Status Detection**: Fixed failed queries (`QueryStart` with exceptions, `ExceptionBeforeStart`) incorrectly showing as "running"
+- **Logs Page Stats**: Fixed inconsistent statistics by using shared processing logic for filtering, deduplication, and stats calculation
+- **Metrics Page Alignment**: Unified failed query counting logic between Logs and Metrics pages
+- **RBAC User Mapping**: Improved query log to RBAC user mapping with optimized audit log fetching and wider timestamp matching
+- **Cache Metrics Query**: Fixed `getCacheMetrics` to use `event` column instead of `metric` when querying `system.events`
+- **Top Tables Query**: Fixed "ILLEGAL_AGGREGATION" error by removing nested aggregate functions and moving size formatting to application code
+- **Connection Access Control**: Fixed basic admins seeing connections they're not assigned to
+- **Tab Persistence**: Fixed table tabs persisting after role change or logout
+
+### Changed
+
+- **Logs Page**: Added "Failed (Before Start)" filter option, enhanced status detection for all failed query types
+- **Metrics Page**: Unified failed query definition to include all exception types (`ExceptionWhileProcessing`, `ExceptionBeforeStart`, `QueryFinish`/`QueryStart` with exceptions)
+- **Explorer Sidebar**: Set minimum width to 33% to prevent messy structure when resizing
+- **Database Schema**: Added `rbac_user_preferences` table with migration support
+- **Performance**: Optimized audit log fetching and implemented debouncing for preference updates
+
 ## [v2.4.1] - 2026-01-11
 
 ### Changed

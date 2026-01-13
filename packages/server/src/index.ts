@@ -139,25 +139,60 @@ const cleanupInterval = setInterval(async () => {
   }
 }, SESSION_CLEANUP_INTERVAL);
 
-// Handle graceful shutdown
-process.on("SIGINT", async () => {
-  console.log("\nShutting down...");
-  clearInterval(cleanupInterval);
-  await shutdownRbac();
-  process.exit(0);
-});
-
-process.on("SIGTERM", async () => {
-  console.log("\nShutting down...");
-  clearInterval(cleanupInterval);
-  await shutdownRbac();
-  process.exit(0);
-});
-
 // Start server - bind app.fetch to preserve context
 const server = serve({
   port: PORT,
   fetch: app.fetch.bind(app),
+});
+
+// Graceful shutdown handler
+async function gracefulShutdown(signal: string): Promise<void> {
+  console.log(`\nReceived ${signal}, shutting down gracefully...`);
+  
+  try {
+    // 1. Stop accepting new connections
+    server.stop();
+    console.log('[Shutdown] Server stopped accepting new connections');
+    
+    // 2. Clear cleanup interval
+    clearInterval(cleanupInterval);
+    console.log('[Shutdown] Cleanup interval cleared');
+    
+    // 3. Close all ClickHouse sessions
+    const { getSessionCount, cleanupExpiredSessions } = await import('./services/clickhouse');
+    const sessionCount = getSessionCount();
+    if (sessionCount > 0) {
+      // Force cleanup all sessions (set maxAge to 0 to clean all)
+      await cleanupExpiredSessions(0);
+      console.log(`[Shutdown] Closed ${sessionCount} ClickHouse session(s)`);
+    }
+    
+    // 4. Shutdown RBAC system
+    await shutdownRbac();
+    console.log('[Shutdown] RBAC system shut down');
+    
+    console.log('[Shutdown] Graceful shutdown complete');
+  } catch (error) {
+    console.error('[Shutdown] Error during graceful shutdown:', error);
+  } finally {
+    // Force exit after cleanup
+    process.exit(0);
+  }
+}
+
+// Handle graceful shutdown signals
+process.on("SIGINT", () => {
+  gracefulShutdown('SIGINT').catch((error) => {
+    console.error('[Shutdown] Failed to shutdown gracefully:', error);
+    process.exit(1);
+  });
+});
+
+process.on("SIGTERM", () => {
+  gracefulShutdown('SIGTERM').catch((error) => {
+    console.error('[Shutdown] Failed to shutdown gracefully:', error);
+    process.exit(1);
+  });
 });
 
 console.log(`Server running at http://localhost:${PORT}`);

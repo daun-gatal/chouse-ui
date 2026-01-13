@@ -125,6 +125,18 @@ authRoutes.post('/logout', rbacAuthMiddleware, async (c) => {
 
   await logoutUser(user.sessionId);
 
+  // Destroy all ClickHouse sessions owned by this user
+  try {
+    const { destroyUserSessions } = await import('../../services/clickhouse');
+    const destroyed = await destroyUserSessions(user.sub);
+    if (destroyed > 0) {
+      console.log(`[Auth] Destroyed ${destroyed} ClickHouse session(s) for user ${user.sub}`);
+    }
+  } catch (error) {
+    console.error('[Auth] Failed to destroy ClickHouse sessions on logout:', error);
+    // Continue with logout even if session cleanup fails
+  }
+
   // Log logout
   await createAuditLog(AUDIT_ACTIONS.LOGOUT, user.sub, {
     ipAddress,
@@ -148,6 +160,18 @@ authRoutes.post('/logout-all', rbacAuthMiddleware, async (c) => {
   const userAgent = c.req.header('User-Agent');
 
   await logoutAllSessions(user.sub);
+
+  // Destroy all ClickHouse sessions owned by this user
+  try {
+    const { destroyUserSessions } = await import('../../services/clickhouse');
+    const destroyed = await destroyUserSessions(user.sub);
+    if (destroyed > 0) {
+      console.log(`[Auth] Destroyed ${destroyed} ClickHouse session(s) for user ${user.sub} (logout-all)`);
+    }
+  } catch (error) {
+    console.error('[Auth] Failed to destroy ClickHouse sessions on logout-all:', error);
+    // Continue with logout even if session cleanup fails
+  }
 
   // Log logout all
   await createAuditLog(AUDIT_ACTIONS.LOGOUT, user.sub, {
@@ -226,6 +250,15 @@ authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', Chang
 
   // Logout all other sessions for security
   await logoutAllSessions(user.sub);
+
+  // Destroy all ClickHouse sessions owned by this user
+  try {
+    const { destroyUserSessions } = await import('../../services/clickhouse');
+    await destroyUserSessions(user.sub);
+  } catch (error) {
+    console.error('[Auth] Failed to destroy ClickHouse sessions on password change:', error);
+    // Continue even if session cleanup fails
+  }
 
   return c.json({
     success: true,
