@@ -462,21 +462,118 @@ export const initializeMonacoGlobally = async () => {
   isInitialized = true;
 };
 
+// Default Monaco editor options
+export interface MonacoEditorOptions {
+  fontSize?: number;
+  wordWrap?: 'on' | 'off' | 'wordWrapColumn' | 'bounded';
+  minimap?: { enabled: boolean };
+  tabSize?: number;
+  padding?: { top: number };
+  suggestOnTriggerCharacters?: boolean;
+  quickSuggestions?: boolean;
+  wordBasedSuggestions?: 'off' | 'allDocuments' | 'matchingDocuments' | 'currentDocument';
+}
+
+const DEFAULT_MONACO_OPTIONS: Required<MonacoEditorOptions> = {
+  fontSize: 14,
+  wordWrap: 'off',
+  minimap: { enabled: false },
+  tabSize: 2,
+  padding: { top: 10 },
+  suggestOnTriggerCharacters: true,
+  quickSuggestions: true,
+  wordBasedSuggestions: 'off',
+};
+
+/**
+ * Get Monaco editor options from user preferences or defaults
+ */
+export async function getMonacoEditorOptions(): Promise<MonacoEditorOptions> {
+  try {
+    // Try to import the API (avoid circular dependency)
+    const { rbacUserPreferencesApi } = await import('@/api/rbac');
+    const { useRbacStore } = await import('@/stores/rbac');
+    
+    const rbacState = useRbacStore.getState();
+    if (!rbacState.isAuthenticated) {
+      return DEFAULT_MONACO_OPTIONS;
+    }
+
+    const preferences = await rbacUserPreferencesApi.getPreferences();
+    const monacoSettings = preferences.workspacePreferences?.monacoSettings as 
+      | MonacoEditorOptions
+      | undefined;
+    
+    if (monacoSettings) {
+      return {
+        ...DEFAULT_MONACO_OPTIONS,
+        ...monacoSettings,
+        // Ensure nested objects are merged properly
+        minimap: monacoSettings.minimap !== undefined 
+          ? { ...DEFAULT_MONACO_OPTIONS.minimap, ...monacoSettings.minimap }
+          : DEFAULT_MONACO_OPTIONS.minimap,
+        padding: monacoSettings.padding !== undefined
+          ? { ...DEFAULT_MONACO_OPTIONS.padding, ...monacoSettings.padding }
+          : DEFAULT_MONACO_OPTIONS.padding,
+      };
+    }
+    
+    return DEFAULT_MONACO_OPTIONS;
+  } catch (error) {
+    console.error('[MonacoConfig] Failed to fetch editor preferences:', error);
+    return DEFAULT_MONACO_OPTIONS;
+  }
+}
+
+/**
+ * Update Monaco editor options in user preferences
+ */
+export async function updateMonacoEditorOptions(
+  options: Partial<MonacoEditorOptions>
+): Promise<void> {
+  try {
+    const { rbacUserPreferencesApi } = await import('@/api/rbac');
+    const { useRbacStore } = await import('@/stores/rbac');
+    
+    const rbacState = useRbacStore.getState();
+    if (!rbacState.isAuthenticated) {
+      return;
+    }
+
+    const currentPreferences = await rbacUserPreferencesApi.getPreferences();
+    await rbacUserPreferencesApi.updatePreferences({
+      workspacePreferences: {
+        ...currentPreferences.workspacePreferences,
+        monacoSettings: {
+          ...((currentPreferences.workspacePreferences?.monacoSettings as MonacoEditorOptions) || {}),
+          ...options,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('[MonacoConfig] Failed to update editor preferences:', error);
+  }
+}
+
 // Create a Monaco Editor instance
-export const createMonacoEditor = (
+export const createMonacoEditor = async (
   container: HTMLElement,
   theme: string
-): monaco.editor.IStandaloneCodeEditor => {
+): Promise<monaco.editor.IStandaloneCodeEditor> => {
+  const options = await getMonacoEditorOptions();
+  
   const editor = monaco.editor.create(container, {
     language: "sql",
     theme: theme || "vs-dark",
     automaticLayout: true,
-    tabSize: 2,
-    minimap: { enabled: false },
-    padding: { top: 10 },
-    suggestOnTriggerCharacters: true,
-    quickSuggestions: true,
-    wordBasedSuggestions: "off",
+    fontSize: options.fontSize,
+    wordWrap: options.wordWrap,
+    minimap: options.minimap,
+    tabSize: options.tabSize,
+    padding: options.padding,
+    suggestOnTriggerCharacters: options.suggestOnTriggerCharacters,
+    quickSuggestions: options.quickSuggestions,
+    wordBasedSuggestions: options.wordBasedSuggestions,
   });
 
   return editor;

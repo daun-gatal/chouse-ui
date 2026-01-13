@@ -9,6 +9,7 @@ import { persist } from 'zustand/middleware';
 import { queryApi, savedQueriesApi } from '@/api';
 import type { QueryResult } from '@/api';
 import { toast } from 'sonner';
+import { useRbacStore } from './rbac';
 
 // ============================================
 // Types
@@ -73,6 +74,105 @@ const defaultTabs: Tab[] = [
   },
 ];
 
+// Custom storage adapter that includes user ID in the key
+const createUserSpecificStorage = (): any => {
+  const getStorageKey = (): string => {
+    try {
+      const state = useRbacStore.getState();
+      const userId = state.user?.id;
+      
+      // If we have a current user, use it and store it for later
+      if (userId) {
+        // Store the user ID so we can use it even after logout
+        try {
+          localStorage.setItem('workspace-last-user-id', userId);
+        } catch {
+          // Ignore storage errors
+        }
+        return `workspace-storage-${userId}`;
+      }
+      
+      // If no current user, try to use the last known user ID
+      // This preserves data across logout/login for the same user
+      try {
+        const lastUserId = localStorage.getItem('workspace-last-user-id');
+        if (lastUserId) {
+          return `workspace-storage-${lastUserId}`;
+        }
+      } catch {
+        // Ignore storage errors
+      }
+      
+      return 'workspace-storage';
+    } catch {
+      return 'workspace-storage';
+    }
+  };
+
+  return {
+    getItem: (name: string): string | null => {
+      const key = getStorageKey();
+      try {
+        const value = localStorage.getItem(key);
+        return value;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (name: string, value: string): void => {
+      const key = getStorageKey();
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        // Ignore storage errors
+      }
+    },
+    removeItem: (name: string): void => {
+      const key = getStorageKey();
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // Ignore storage errors
+      }
+    },
+  };
+};
+
+// Track current user ID to detect user changes
+let workspaceCurrentUserId: string | null = null;
+
+// Check if user has changed and clear tabs if so
+const checkAndClearWorkspaceData = (set: any) => {
+  try {
+    const state = useRbacStore.getState();
+    const userId = state.user?.id || null;
+    
+    // Only clear if:
+    // 1. We had a previous user (workspaceCurrentUserId !== null)
+    // 2. The user actually changed (workspaceCurrentUserId !== userId)
+    // 3. The new user is not null (userId !== null) - meaning we're logging in as a different user, not logging out
+    if (workspaceCurrentUserId !== null && workspaceCurrentUserId !== userId && userId !== null) {
+      // Clear tabs except home when user changes
+      set({ tabs: defaultTabs, activeTab: 'home' });
+      // Clear the stored user ID since it's a different user
+      try {
+        localStorage.removeItem('workspace-last-user-id');
+        localStorage.setItem('workspace-last-user-id', userId);
+      } catch {
+        // Ignore storage errors
+      }
+    }
+    
+    // Only update current user ID if we have a user (don't set to null on logout)
+    // This preserves the storage key so data persists across logout/login for the same user
+    if (userId !== null) {
+      workspaceCurrentUserId = userId;
+    }
+  } catch {
+    // Ignore errors
+  }
+};
+
 // ============================================
 // Store
 // ============================================
@@ -90,6 +190,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
        * Add a new tab
        */
       addTab: (tab: Tab) => {
+        // Check if user changed and clear if needed
+        checkAndClearWorkspaceData(set);
+        
         const { tabs } = get();
         const existingTab = tabs.find((t) => t.id === tab.id);
 
@@ -317,6 +420,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     }),
     {
       name: 'workspace-storage',
+      storage: createUserSpecificStorage(),
       partialize: (state) => ({
         tabs: state.tabs.map((t) => ({
           ...t,
@@ -326,6 +430,36 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         })),
         activeTab: state.activeTab,
       }),
+      // Restore tabs and check if user changed
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          try {
+            const rbacState = useRbacStore.getState();
+            const userId = rbacState.user?.id || null;
+            
+            // Only clear if we had a previous user and it's different from current
+            if (workspaceCurrentUserId !== null && workspaceCurrentUserId !== userId && userId !== null) {
+              // Clear tabs except home when user changes
+              state.tabs = defaultTabs;
+              state.activeTab = 'home';
+              // Clear the stored user ID since it's a different user
+              try {
+                localStorage.removeItem('workspace-last-user-id');
+                localStorage.setItem('workspace-last-user-id', userId);
+              } catch {
+                // Ignore storage errors
+              }
+            }
+            
+            // Update current user ID
+            if (userId !== null) {
+              workspaceCurrentUserId = userId;
+            }
+          } catch {
+            // Ignore errors
+          }
+        }
+      },
     }
   )
 );

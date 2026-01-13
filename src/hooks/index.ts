@@ -51,3 +51,15 @@ export {
 
 // Utility hooks
 export { useDebounce } from './useDebounce';
+
+// Pagination preferences hook
+export { usePaginationPreference, getDefaultPaginationSize } from './usePaginationPreferences';
+export type { TablePaginationPreferences } from './usePaginationPreferences';
+
+// Logs page preferences hook
+export { useLogsPreferences } from './useLogsPreferences';
+export type { LogsPagePreferences } from './useLogsPreferences';
+
+// User management preferences hook
+export { useUserManagementPreferences } from './useUserManagementPreferences';
+export type { UserManagementPreferences } from './useUserManagementPreferences';

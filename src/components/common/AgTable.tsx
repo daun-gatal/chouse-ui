@@ -6,6 +6,7 @@ import { useTheme } from "@/components/common/theme-provider";
 import EmptyQueryResult from "@/features/workspace/components/EmptyQueryResult";
 import StatisticsDisplay from "@/features/workspace/components/StatisticsDisplay";
 import DownloadDialog from "@/components/common/DownloadDialog";
+import { usePaginationPreference } from "@/hooks";
 
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,6 +55,7 @@ export default function AgTable({
   showHeader = true
 }: AgTableProps) {
   const { theme } = useTheme();
+  const { pageSize: paginationPageSize } = usePaginationPreference('queryResults');
 
   const gridTheme =
     theme === "light" ? themeBalham : themeBalham.withPart(colorSchemeDark);
@@ -136,7 +138,7 @@ export default function AgTable({
             modules={[AllCommunityModule]}
             theme={gridTheme}
             pagination={true}
-            paginationPageSize={100}
+            paginationPageSize={paginationPageSize}
             enableCellTextSelection={true}
             animateRows={true}
             domLayout="normal"

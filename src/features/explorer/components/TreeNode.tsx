@@ -92,13 +92,13 @@ const TreeNode: React.FC<TreeNodeProps> = ({
     }
   }, [hasChildren, toggleNode, node.name]);
 
-  const handleViewInfo = useCallback(() => {
+  const handleViewInfo = useCallback(async () => {
     // Track as recent item
     if (isDatabase) {
-      addRecentItem(node.name);
+      await addRecentItem(node.name);
       navigate(`/explorer?database=${node.name}`);
     } else {
-      addRecentItem(databaseName, node.name);
+      await addRecentItem(databaseName, node.name);
       navigate(`/explorer?database=${databaseName}&table=${node.name}`);
     }
   }, [isDatabase, navigate, node.name, databaseName, addRecentItem]);
