@@ -1,6 +1,31 @@
 import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import { Tag } from 'lucide-react';
 
 export default function Hero() {
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Fetch changelog to extract latest version
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    const changelogPath = `${baseUrl}CHANGELOG.md`.replace(/\/+/g, '/');
+    fetch(changelogPath)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load changelog');
+        return res.text();
+      })
+      .then((text) => {
+        // Extract the first version from CHANGELOG.md
+        const versionMatch = text.match(/^## \[(v[\d.]+)\] - \d{4}-\d{2}-\d{2}/m);
+        if (versionMatch) {
+          setLatestVersion(versionMatch[1]);
+        }
+      })
+      .catch(() => {
+        // Silently fail if changelog can't be loaded
+      });
+  }, []);
+
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
@@ -101,6 +126,19 @@ export default function Hero() {
           <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-medium">
             A web interface for ClickHouse with built-in RBAC
           </p>
+          {latestVersion && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.7, duration: 0.5 }}
+              className="flex items-center justify-center gap-2 mt-4"
+            >
+              <Tag className="w-4 h-4 text-purple-400" />
+              <span className="text-lg text-gray-400">
+                Latest version: <span className="text-purple-400 font-semibold">{latestVersion}</span>
+              </span>
+            </motion.div>
+          )}
         </motion.div>
 
         <motion.div
