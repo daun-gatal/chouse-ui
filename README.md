@@ -471,7 +471,11 @@ We welcome contributions! Please see our contributing guidelines.
 4. Run tests (`bun test`)
 5. Commit (`git commit -m 'Add amazing feature'`)
 6. Push (`git push origin feature/amazing`)
-7. Open a Pull Request
+7. Open a Pull Request (use the PR template when creating your PR)
+
+**Before submitting:**
+- Use the [issue templates](.github/ISSUE_TEMPLATE/) for bug reports, feature requests, or questions
+- Use the [pull request template](.github/pull_request_template.md) when creating PRs
 
 ---
 
