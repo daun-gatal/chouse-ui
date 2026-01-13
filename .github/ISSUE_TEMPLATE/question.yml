@@ -1,0 +1,61 @@
+name: Question
+description: Ask a question about CHouse UI
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help! Please provide as much context as possible.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: Ask your question here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish? What have you tried so far?
+      placeholder: |
+        I'm trying to...
+        I've tried...
+        I'm stuck on...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      description: What area does your question relate to?
+      options:
+        - General Usage
+        - Installation/Setup
+        - Configuration
+        - RBAC/Permissions
+        - Query Execution
+        - Database Management
+        - Deployment
+        - Troubleshooting
+        - API/Integration
+        - Other
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: CHouse UI version (if applicable)
+      placeholder: e.g., 2.5.0
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Any other details that might help us answer your question
+      placeholder: Add any other relevant information...
