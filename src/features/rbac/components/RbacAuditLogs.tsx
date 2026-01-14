@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,7 +75,7 @@ const getActionColor = (action: string) => {
 
 export const RbacAuditLogs: React.FC = () => {
   const { hasPermission } = useRbacStore();
-  
+
   // State
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState<string>('all');
@@ -111,13 +112,39 @@ export const RbacAuditLogs: React.FC = () => {
 
   const canExport = hasPermission(RBAC_PERMISSIONS.AUDIT_EXPORT);
 
-  const handleExport = () => {
-    const url = rbacAuditApi.getExportUrl({
-      action: actionFilter !== 'all' ? actionFilter : undefined,
-      startDate: dateRange.start?.toISOString(),
-      endDate: dateRange.end?.toISOString(),
-    });
-    window.open(url, '_blank');
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    try {
+      setIsExporting(true);
+      const uniqueId = `rbac_export_${Date.now()}`;
+      toast.loading('Exporting audit logs...', { id: uniqueId });
+
+      const blob = await rbacAuditApi.exportLogs({
+        action: actionFilter !== 'all' ? actionFilter : undefined,
+        startDate: dateRange.start?.toISOString(),
+        endDate: dateRange.end?.toISOString(),
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-logs-${format(new Date(), 'yyyy-MM-dd-HH-mm')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+
+      // Cleanup
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast.success('Export completed successfully', { id: uniqueId });
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error('Failed to export audit logs', { id: `rbac_export_error` });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -145,14 +172,15 @@ export const RbacAuditLogs: React.FC = () => {
             Refresh
           </Button>
           {canExport && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleExport} 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={isExporting}
               className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
             >
-              <Download className="h-4 w-4" />
-              Export CSV
+              <Download className={cn("h-4 w-4", isExporting && "animate-spin")} />
+              {isExporting ? 'Exporting...' : 'Export CSV'}
             </Button>
           )}
         </div>

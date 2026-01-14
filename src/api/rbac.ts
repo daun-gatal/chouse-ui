@@ -132,43 +132,41 @@ export function clearRbacTokens(): void {
 
 async function rbacFetch<T>(
   endpoint: string,
-  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}
+  options: { method?: string; body?: unknown; headers?: Record<string, string>; responseType?: 'json' | 'blob' } = {}
 ): Promise<T> {
   const accessToken = getRbacAccessToken();
   const sessionId = getSessionId();
-  
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
     ...(options.headers || {}),
   };
-  
+
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
-  
+
   // Add session ID if available (for ClickHouse operations)
   // Only add if not already provided in options.headers
   if (sessionId && !headers['X-Session-ID']) {
     headers['X-Session-ID'] = sessionId;
   }
-  
+
   const fetchOptions: RequestInit = {
     method: options.method || 'GET',
     headers,
   };
-  
+
   // Handle body - stringify if it's an object
   if (options.body !== undefined) {
-    fetchOptions.body = typeof options.body === 'string' 
-      ? options.body 
+    fetchOptions.body = typeof options.body === 'string'
+      ? options.body
       : JSON.stringify(options.body);
   }
-  
+
   const response = await fetch(`/api/rbac${endpoint}`, fetchOptions);
-  
-  const data = await response.json();
-  
+
   if (!response.ok) {
     // Try to refresh token on 401
     if (response.status === 401 && accessToken) {
@@ -178,20 +176,34 @@ async function rbacFetch<T>(
         return rbacFetch<T>(endpoint, options);
       }
     }
+
+    // Try to parse error as JSON even if we expect a blob, as errors are usually JSON
+    let errorData;
+    try {
+      errorData = await response.json();
+    } catch {
+      // ignore
+    }
+
     throw new ApiError(
-      data.error?.message || 'Request failed',
+      errorData?.error?.message || 'Request failed',
       response.status,
-      data.error?.code
+      errorData?.error?.code
     );
   }
-  
+
+  if (options.responseType === 'blob') {
+    return (await response.blob()) as unknown as T;
+  }
+
+  const data = await response.json();
   return data.data;
 }
 
 async function refreshTokens(): Promise<boolean> {
   const refreshToken = getRbacRefreshToken();
   if (!refreshToken) return false;
-  
+
   try {
     const response = await fetch('/api/rbac/auth/refresh', {
       method: 'POST',
@@ -201,12 +213,12 @@ async function refreshTokens(): Promise<boolean> {
       },
       body: JSON.stringify({ refreshToken }),
     });
-    
+
     if (!response.ok) {
       clearRbacTokens();
       return false;
     }
-    
+
     const data = await response.json();
     setRbacTokens(data.data.tokens);
     return true;
@@ -225,6 +237,7 @@ export const rbacAuthApi = {
    * Login with email/username and password
    */
   async login(identifier: string, password: string): Promise<RbacLoginResponse> {
+    // ... existing implementation
     const response = await fetch('/api/rbac/auth/login', {
       method: 'POST',
       headers: {
@@ -233,9 +246,9 @@ export const rbacAuthApi = {
       },
       body: JSON.stringify({ identifier, password }),
     });
-    
+
     const data = await response.json();
-    
+
     if (!response.ok) {
       throw new ApiError(
         data.error?.message || 'Login failed',
@@ -243,13 +256,13 @@ export const rbacAuthApi = {
         data.error?.code
       );
     }
-    
+
     // Store tokens
     setRbacTokens(data.data.tokens);
-    
+
     return data.data;
   },
-  
+
   /**
    * Logout current session
    */
@@ -260,7 +273,7 @@ export const rbacAuthApi = {
       clearRbacTokens();
     }
   },
-  
+
   /**
    * Logout from all sessions
    */
@@ -271,7 +284,7 @@ export const rbacAuthApi = {
       clearRbacTokens();
     }
   },
-  
+
   /**
    * Get current user info
    */
@@ -279,7 +292,7 @@ export const rbacAuthApi = {
     const result = await rbacFetch<{ user: RbacUser }>('/auth/me');
     return result.user;
   },
-  
+
   /**
    * Change password
    */
@@ -289,7 +302,7 @@ export const rbacAuthApi = {
       body: JSON.stringify({ currentPassword, newPassword }),
     });
   },
-  
+
   /**
    * Validate current token
    */
@@ -325,10 +338,10 @@ export const rbacUsersApi = {
     if (options?.search) params.set('search', options.search);
     if (options?.roleId) params.set('roleId', options.roleId);
     if (options?.isActive !== undefined) params.set('isActive', String(options.isActive));
-    
+
     return rbacFetch(`/users?${params}`);
   },
-  
+
   /**
    * Get user by ID
    */
@@ -336,7 +349,7 @@ export const rbacUsersApi = {
     const result = await rbacFetch<{ user: RbacUser }>(`/users/${id}`);
     return result.user;
   },
-  
+
   /**
    * Create user
    */
@@ -346,7 +359,7 @@ export const rbacUsersApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Update user
    */
@@ -357,14 +370,14 @@ export const rbacUsersApi = {
     });
     return result.user;
   },
-  
+
   /**
    * Delete user
    */
   async delete(id: string): Promise<void> {
     await rbacFetch(`/users/${id}`, { method: 'DELETE' });
   },
-  
+
   /**
    * Reset user password
    */
@@ -377,7 +390,7 @@ export const rbacUsersApi = {
       body: JSON.stringify(options || { generatePassword: true }),
     });
   },
-  
+
   /**
    * Assign roles to user
    */
@@ -402,7 +415,7 @@ export const rbacRolesApi = {
     const result = await rbacFetch<{ roles: RbacRole[] }>('/roles');
     return result.roles;
   },
-  
+
   /**
    * Get role by ID
    */
@@ -410,7 +423,7 @@ export const rbacRolesApi = {
     const result = await rbacFetch<{ role: RbacRole }>(`/roles/${id}`);
     return result.role;
   },
-  
+
   /**
    * Create role
    */
@@ -421,7 +434,7 @@ export const rbacRolesApi = {
     });
     return result.role;
   },
-  
+
   /**
    * Update role
    */
@@ -432,14 +445,14 @@ export const rbacRolesApi = {
     });
     return result.role;
   },
-  
+
   /**
    * Delete role
    */
   async delete(id: string): Promise<void> {
     await rbacFetch(`/roles/${id}`, { method: 'DELETE' });
   },
-  
+
   /**
    * List all permissions
    */
@@ -447,7 +460,7 @@ export const rbacRolesApi = {
     const result = await rbacFetch<{ permissions: RbacPermission[] }>('/roles/permissions/list');
     return result.permissions;
   },
-  
+
   /**
    * Get permissions grouped by category
    */
@@ -480,17 +493,17 @@ export const rbacAuditApi = {
     if (options?.action) params.set('action', options.action);
     if (options?.startDate) params.set('startDate', options.startDate);
     if (options?.endDate) params.set('endDate', options.endDate);
-    
+
     return rbacFetch(`/audit?${params}`);
   },
-  
+
   /**
    * Get available audit actions
    */
   async getActions(): Promise<{ actions: string[]; groupedActions: Record<string, string[]> }> {
     return rbacFetch('/audit/actions');
   },
-  
+
   /**
    * Get audit statistics
    */
@@ -505,9 +518,29 @@ export const rbacAuditApi = {
   }> {
     return rbacFetch('/audit/stats');
   },
-  
+
   /**
-   * Export audit logs as CSV (returns download URL)
+   * Export audit logs as CSV
+   */
+  async exportLogs(options?: {
+    userId?: string;
+    action?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<Blob> {
+    const params = new URLSearchParams();
+    if (options?.userId) params.set('userId', options.userId);
+    if (options?.action) params.set('action', options.action);
+    if (options?.startDate) params.set('startDate', options.startDate);
+    if (options?.endDate) params.set('endDate', options.endDate);
+
+    return rbacFetch<Blob>(`/audit/export?${params}`, {
+      responseType: 'blob'
+    });
+  },
+
+  /**
+   * Get export URL (legacy - favor exportLogs for safer access)
    */
   getExportUrl(options?: {
     userId?: string;
@@ -520,10 +553,10 @@ export const rbacAuditApi = {
     if (options?.action) params.set('action', options.action);
     if (options?.startDate) params.set('startDate', options.startDate);
     if (options?.endDate) params.set('endDate', options.endDate);
-    
+
     const accessToken = getRbacAccessToken();
     return `/api/rbac/audit/export?${params}&token=${accessToken}`;
-  },
+  }
 };
 
 // ============================================
@@ -624,18 +657,18 @@ export const rbacConnectionsApi = {
     if (options?.activeOnly) params.set('activeOnly', 'true');
     if (options?.limit) params.set('limit', String(options.limit));
     if (options?.offset) params.set('offset', String(options.offset));
-    
+
     const query = params.toString();
     return rbacFetch(`/connections${query ? `?${query}` : ''}`);
   },
-  
+
   /**
    * Get current user's accessible connections
    */
   async getMyConnections(): Promise<ClickHouseConnection[]> {
     return rbacFetch('/connections/my');
   },
-  
+
   /**
    * Get the default connection
    */
@@ -649,14 +682,14 @@ export const rbacConnectionsApi = {
       throw error;
     }
   },
-  
+
   /**
    * Get connection by ID
    */
   async getById(id: string): Promise<ClickHouseConnection> {
     return rbacFetch(`/connections/${id}`);
   },
-  
+
   /**
    * Create a new connection
    */
@@ -666,7 +699,7 @@ export const rbacConnectionsApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Update a connection
    */
@@ -676,7 +709,7 @@ export const rbacConnectionsApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Delete a connection
    */
@@ -685,7 +718,7 @@ export const rbacConnectionsApi = {
       method: 'DELETE',
     });
   },
-  
+
   /**
    * Set a connection as default
    */
@@ -694,7 +727,7 @@ export const rbacConnectionsApi = {
       method: 'POST',
     });
   },
-  
+
   /**
    * Test a connection (without saving)
    */
@@ -704,7 +737,7 @@ export const rbacConnectionsApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Test a saved connection
    */
@@ -713,7 +746,7 @@ export const rbacConnectionsApi = {
       method: 'POST',
     });
   },
-  
+
   /**
    * Get users with access to a connection
    */
@@ -729,7 +762,7 @@ export const rbacConnectionsApi = {
   }>> {
     return rbacFetch(`/connections/${connectionId}/users`);
   },
-  
+
   /**
    * Grant user access to a connection
    */
@@ -738,7 +771,7 @@ export const rbacConnectionsApi = {
       method: 'POST',
     });
   },
-  
+
   /**
    * Revoke user access to a connection
    */
@@ -747,7 +780,7 @@ export const rbacConnectionsApi = {
       method: 'DELETE',
     });
   },
-  
+
   /**
    * Connect to a saved connection (creates ClickHouse session)
    */
@@ -756,7 +789,7 @@ export const rbacConnectionsApi = {
       method: 'POST',
     });
   },
-  
+
   /**
    * Disconnect from ClickHouse (destroy session)
    */
@@ -770,7 +803,7 @@ export const rbacConnectionsApi = {
       headers,
     });
   },
-  
+
   /**
    * Get current ClickHouse session status
    */
@@ -838,21 +871,21 @@ export const rbacClickHouseUsersApi = {
   async list(): Promise<ClickHouseUser[]> {
     return rbacFetch('/clickhouse-users');
   },
-  
+
   /**
    * Get available clusters
    */
   async getClusters(): Promise<string[]> {
     return rbacFetch('/clickhouse-users/clusters');
   },
-  
+
   /**
    * Get ClickHouse user by username
    */
   async get(username: string): Promise<ClickHouseUser> {
     return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}`);
   },
-  
+
   /**
    * Generate DDL for creating a user (preview)
    */
@@ -862,7 +895,7 @@ export const rbacClickHouseUsersApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Create a ClickHouse user
    */
@@ -872,7 +905,7 @@ export const rbacClickHouseUsersApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Generate DDL for updating a user (preview)
    */
@@ -882,7 +915,7 @@ export const rbacClickHouseUsersApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Update a ClickHouse user
    */
@@ -892,7 +925,7 @@ export const rbacClickHouseUsersApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Delete a ClickHouse user
    */
@@ -901,7 +934,7 @@ export const rbacClickHouseUsersApi = {
       method: 'DELETE',
     });
   },
-  
+
   /**
    * Sync unregistered ClickHouse users to metadata
    */
@@ -1061,7 +1094,7 @@ export const rbacUserPreferencesApi = {
       console.error('[UserPreferences] Response text:', text);
       throw new ApiError('Invalid response from server', response.status);
     }
-    
+
     if (!response.ok) {
       console.error('[UserPreferences] Failed to add favorite:', {
         status: response.status,
@@ -1131,7 +1164,7 @@ export const rbacUserPreferencesApi = {
 
     const params = new URLSearchParams({ database });
     if (table) params.append('table', table);
-    
+
     const response = await fetch(`/api/rbac/user-preferences/favorites/check?${params.toString()}`, {
       method: 'GET',
       headers: {
@@ -1282,11 +1315,11 @@ export const rbacDataAccessApi = {
     if (options?.connectionId) params.set('connectionId', options.connectionId);
     if (options?.limit) params.set('limit', String(options.limit));
     if (options?.offset) params.set('offset', String(options.offset));
-    
+
     const query = params.toString();
     return rbacFetch(`/data-access${query ? `?${query}` : ''}`);
   },
-  
+
   /**
    * Get rules for a specific role
    */
@@ -1294,21 +1327,21 @@ export const rbacDataAccessApi = {
     const params = connectionId ? `?connectionId=${connectionId}` : '';
     return rbacFetch(`/data-access/role/${roleId}${params}`);
   },
-  
+
   /**
    * Get rules for a specific user (user-level rules only)
    */
   async getRulesForUser(userId: string): Promise<DataAccessRule[]> {
     return rbacFetch(`/data-access/user/${userId}`);
   },
-  
+
   /**
    * Get rule by ID
    */
   async getById(id: string): Promise<DataAccessRule> {
     return rbacFetch(`/data-access/${id}`);
   },
-  
+
   /**
    * Create a new rule
    */
@@ -1318,7 +1351,7 @@ export const rbacDataAccessApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Update a rule
    */
@@ -1328,7 +1361,7 @@ export const rbacDataAccessApi = {
       body: JSON.stringify(input),
     });
   },
-  
+
   /**
    * Delete a rule
    */
@@ -1337,7 +1370,7 @@ export const rbacDataAccessApi = {
       method: 'DELETE',
     });
   },
-  
+
   /**
    * Bulk set rules for a role (replaces existing)
    */
@@ -1350,7 +1383,7 @@ export const rbacDataAccessApi = {
       body: JSON.stringify({ roleId, rules }),
     });
   },
-  
+
   /**
    * Bulk set rules for a user (replaces existing user-level rules)
    */
@@ -1363,7 +1396,7 @@ export const rbacDataAccessApi = {
       body: JSON.stringify({ userId, rules }),
     });
   },
-  
+
   /**
    * Check if current user has access to a database/table
    */
@@ -1378,7 +1411,7 @@ export const rbacDataAccessApi = {
       body: JSON.stringify({ database, table, accessType, connectionId }),
     });
   },
-  
+
   /**
    * Filter databases for current user
    */
@@ -1391,7 +1424,7 @@ export const rbacDataAccessApi = {
       body: JSON.stringify({ databases, connectionId }),
     });
   },
-  
+
   /**
    * Filter tables for current user
    */
