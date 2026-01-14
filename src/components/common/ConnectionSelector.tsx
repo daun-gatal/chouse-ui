@@ -122,23 +122,23 @@ export default function ConnectionSelector({
   const [isConnected, setIsConnected] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const hasInitialized = useRef(false);
-  
+
   const { isAuthenticated } = useRbacStore();
   const queryClient = useQueryClient();
 
   const fetchConnections = async () => {
     if (!isAuthenticated) return;
-    
+
     setIsLoading(true);
     try {
       const myConnections = await rbacConnectionsApi.getMyConnections();
       const previousConnectionsCount = connections.length;
       setConnections(myConnections);
-      
+
       // If this is the first time initializing, try to auto-connect
       if (!hasInitialized.current) {
         hasInitialized.current = true;
-        
+
         // Try to restore previously selected connection from database
         let storedConnectionId: string | null = null;
         try {
@@ -148,19 +148,19 @@ export default function ConnectionSelector({
           // Fallback to localStorage
           storedConnectionId = getStoredConnectionId();
         }
-        
+
         let connectionToUse: ClickHouseConnection | undefined;
-        
+
         if (storedConnectionId) {
           // Find the stored connection
           connectionToUse = myConnections.find(c => c.id === storedConnectionId);
         }
-        
+
         // Fall back to default connection, then first available
         if (!connectionToUse) {
           connectionToUse = myConnections.find(c => c.isDefault) || myConnections[0];
         }
-        
+
         if (connectionToUse) {
           setActiveConnection(connectionToUse);
           // Auto-connect to selected connection
@@ -197,14 +197,14 @@ export default function ConnectionSelector({
     setIsConnecting(true);
     try {
       const result = await rbacConnectionsApi.connect(connection.id);
-      
+
       // Store session ID for API calls
       setSessionId(result.sessionId);
-      
+
       // Build connection URL for display
       const protocol = connection.sslEnabled ? 'https' : 'http';
       const connectionUrl = `${protocol}://${connection.host}:${connection.port}`;
-      
+
       // Update auth store with connection information
       useAuthStore.setState({
         username: result.username,
@@ -214,24 +214,25 @@ export default function ConnectionSelector({
         permissions: result.permissions,
         sessionId: result.sessionId,
       });
-      
+
       // Persist the selected connection to database (and localStorage as fallback)
       await setStoredConnectionIdToDb(connection.id);
-      
+
       setIsConnected(true);
       onConnectionChange?.(connection, result);
       toast.success(`Connected to "${connection.name}" (v${result.version})`);
-      
+
       // Invalidate cached queries to ensure fresh data with new connection's permissions
       queryClient.invalidateQueries({ queryKey: ['databases'] });
       queryClient.invalidateQueries({ queryKey: ['tableDetails'] });
       queryClient.invalidateQueries({ queryKey: ['tableSample'] });
       queryClient.invalidateQueries({ queryKey: ['systemStats'] });
       queryClient.invalidateQueries({ queryKey: ['recentQueries'] });
-      
+      queryClient.invalidateQueries({ queryKey: ['queryLogs'] });
+
       // Trigger a refresh of data by dispatching a custom event
       window.dispatchEvent(new CustomEvent('clickhouse:connected', { detail: result }));
-      
+
       return result;
     } catch (error) {
       console.error('Failed to connect:', error);
@@ -254,9 +255,9 @@ export default function ConnectionSelector({
       setIsConnected(false);
       return;
     }
-    
+
     fetchConnections();
-    
+
     // Check if we have an existing session
     const existingSession = getSessionId();
     if (existingSession) {
@@ -287,10 +288,10 @@ export default function ConnectionSelector({
       setIsOpen(false);
       return;
     }
-    
+
     setActiveConnection(connection);
     setIsOpen(false);
-    
+
     // Disconnect from previous connection
     if (isConnected) {
       try {
@@ -301,7 +302,7 @@ export default function ConnectionSelector({
         console.error('Failed to disconnect:', error);
       }
     }
-    
+
     // Connect to new connection
     await connectToClickHouse(connection);
   };
@@ -350,7 +351,7 @@ export default function ConnectionSelector({
     const conn = connections[0];
     const statusColor = isConnected ? 'text-green-400' : 'text-yellow-400';
     const statusBgColor = isConnected ? 'bg-green-400' : 'bg-yellow-400';
-    
+
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -394,7 +395,7 @@ export default function ConnectionSelector({
   // Multiple connections - show dropdown
   const statusColor = isConnected ? 'text-green-400' : 'text-yellow-400';
   const statusBgColor = isConnected ? 'bg-green-400' : 'bg-yellow-400';
-  
+
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
@@ -437,7 +438,7 @@ export default function ConnectionSelector({
           Switch Connection
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-gray-800" />
-        
+
         {connections.map((conn) => (
           <DropdownMenuItem
             key={conn.id}
@@ -475,7 +476,7 @@ export default function ConnectionSelector({
             )}
           </DropdownMenuItem>
         ))}
-        
+
         <DropdownMenuSeparator className="bg-gray-800" />
         <DropdownMenuItem
           onClick={fetchConnections}

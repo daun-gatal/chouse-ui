@@ -35,7 +35,7 @@ export const queryKeys = {
   // Explorer
   databases: ['databases'] as const,
   tableDetails: (database: string, table: string) => ['tableDetails', database, table] as const,
-  tableSample: (database: string, table: string, limit?: number) => 
+  tableSample: (database: string, table: string, limit?: number) =>
     ['tableSample', database, table, limit] as const,
 
   // Metrics
@@ -510,12 +510,14 @@ export function useQueryLogs(
     user: string;
     rbacUser?: string | null;
     rbacUserId?: string | null;
+    connectionId?: string | null;
+    connectionName?: string;
     exception?: string;
   }>, Error>>
 ) {
   // Build user filter clause (legacy support for ClickHouse username)
   const userFilter = username ? `AND user = '${username}'` : '';
-  
+
   return useQuery({
     queryKey: ['queryLogs', limit, username, rbacUserId] as const,
     queryFn: async () => {
@@ -540,7 +542,7 @@ export function useQueryLogs(
           ORDER BY __table1.event_time DESC
           LIMIT ${limit}
         `);
-      
+
       const logs = result.data.map((log: any) => ({
         type: log.type,
         event_date: log.event_date,
@@ -571,10 +573,31 @@ export function useQueryLogs(
 
       // Fetch audit logs for query execution to get RBAC users
       try {
-        const { rbacAuditApi, rbacUsersApi } = await import('@/api/rbac');
+        const { rbacAuditApi, rbacUsersApi, rbacConnectionsApi } = await import('@/api/rbac');
+
+        // Fetch connections to map IDs to names
+        // We fetch all connections to ensure we can resolve names even for connections the user might not currently have access to but were used in logs
+        // Fetch connections to map IDs to names
+        // We fetch all connections to ensure we can resolve names even for connections the user might not currently have access to but were used in logs
+        // This is safe as we only display the name
+        let connectionMap = new Map<string, string>();
+        try {
+          // Try to list all connections (requires super_admin)
+          const { connections } = await rbacConnectionsApi.list({ limit: 1000 });
+          connectionMap = new Map(connections.map(c => [c.id, c.name]));
+        } catch (error) {
+          // If listing all fails (e.g. not super_admin), try fetching user's accessible connections
+          try {
+            const myConnections = await rbacConnectionsApi.getMyConnections();
+            connectionMap = new Map(myConnections.map(c => [c.id, c.name]));
+          } catch (innerError) {
+            console.warn('[QueryLogs] Failed to fetch connections for name resolution:', innerError);
+          }
+        }
+
         // Fetch audit logs from the last 2 days to ensure we catch all queries
         const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-        
+
         // Fetch audit logs - optimize by fetching in larger batches
         // If rbacUserId is provided, only fetch audit logs for that user
         // Use a single large fetch instead of pagination to reduce API calls
@@ -585,43 +608,59 @@ export function useQueryLogs(
           userId: rbacUserId, // Filter by RBAC user ID if provided
           startDate: twoDaysAgo.toISOString(),
         });
-        
+
         const allAuditLogs = auditResult.logs;
 
-        // Create a map of timestamp -> RBAC user ID
+        // Create a map of timestamp -> Array<{ userId, connectionId, query }>
         // Match audit logs with query logs by timestamp (within 60 seconds for better matching)
         // Use the timestamp from audit log details if available, otherwise use createdAt
-        const auditMap = new Map<number, string | null>();
+        const auditMap = new Map<number, Array<{ userId: string | null, connectionId: string | null, query: string | null }>>();
         for (const auditLog of allAuditLogs) {
           if (auditLog.userId) {
             // Prefer timestamp from details (stored when query was executed)
             // Fall back to createdAt if details.timestamp is not available
             const detailsTimestamp = auditLog.details?.timestamp as number | undefined;
-            const auditTime = detailsTimestamp 
+            const connectionId = auditLog.details?.connectionId as string | undefined;
+            const queryText = auditLog.details?.query as string | undefined;
+
+            const auditTime = detailsTimestamp
               ? Math.floor(detailsTimestamp / 1000) // Convert from milliseconds to seconds
               : Math.floor(new Date(auditLog.createdAt).getTime() / 1000);
-            
+
             // Store multiple timestamps around the audit time for better matching
             // Use a wider range (60 seconds) to account for query execution time and clock skew
             // Optimize: Only store every 5 seconds to reduce memory usage while maintaining accuracy
             // This reduces map entries from 121 to ~25 per audit log
+            const data = {
+              userId: auditLog.userId,
+              connectionId: connectionId || null,
+              query: queryText || null
+            };
+
+            // Helper to add data to map array
+            const addToMap = (time: number) => {
+              const existing = auditMap.get(time) || [];
+              existing.push(data);
+              auditMap.set(time, existing);
+            };
+
             for (let offset = -60; offset <= 60; offset += 5) {
-              auditMap.set(auditTime + offset, auditLog.userId);
+              addToMap(auditTime + offset);
             }
             // Also store exact timestamp for precise matching
-            auditMap.set(auditTime, auditLog.userId);
+            addToMap(auditTime);
           }
         }
-        
+
         // Debug logging (can be removed in production or made conditional)
         if (process.env.NODE_ENV === 'development') {
           console.log('[QueryLogs] Audit logs found:', allAuditLogs.length, 'Unique users:', new Set(allAuditLogs.map(l => l.userId).filter(Boolean)).size, rbacUserId ? `(filtered for user: ${rbacUserId})` : '(all users)');
         }
 
         // Get unique user IDs to fetch user details
-        const uniqueUserIds = Array.from(new Set(Array.from(auditMap.values()).filter(Boolean) as string[]));
+        const uniqueUserIds = Array.from(new Set(Array.from(auditMap.values()).flat().map(d => d.userId).filter(Boolean) as string[]));
         const userMap = new Map<string, { username: string; email: string; displayName: string | null }>();
-        
+
         // Fetch user details in parallel
         await Promise.all(
           uniqueUserIds.map(async (userId) => {
@@ -647,27 +686,51 @@ export function useQueryLogs(
             // Try to find matching audit log within 60 seconds (wider window for better matching)
             // Optimize: Check exact match first, then check ±5 second intervals
             let rbacUserId: string | null | undefined = undefined;
+            let connectionId: string | null | undefined = undefined;
             let rbacUserInfo: { username: string; email: string; displayName: string | null } | undefined = undefined;
-            
+
+            // Find best match among candidates
+            const findBestMatch = (candidates: Array<{ userId: string | null, connectionId: string | null, query: string | null }>) => {
+              // 1. Try to match by query text content
+              // The audit log stores truncated query (500 chars), so check if log.query starts with or includes it
+              const queryMatch = candidates.find(c => c.query && log.query.includes(c.query));
+              if (queryMatch) return queryMatch;
+
+              // 2. If no query match (or no query text in audit), return first candidate
+              // This falls back to timestamp-only matching
+              return candidates[0];
+            };
+
             // First try exact match (most common case)
             if (auditMap.has(queryTime)) {
-              rbacUserId = auditMap.get(queryTime) || null;
+              const candidates = auditMap.get(queryTime);
+              if (candidates && candidates.length > 0) {
+                const match = findBestMatch(candidates);
+                rbacUserId = match.userId || null;
+                connectionId = match.connectionId || null;
+              }
             } else {
               // Then try ±5 second intervals (matches our optimized storage)
               for (let offset = -60; offset <= 60; offset += 5) {
                 const key = queryTime + offset;
                 if (auditMap.has(key)) {
-                  rbacUserId = auditMap.get(key) || null;
-                  break;
+                  const candidates = auditMap.get(key);
+                  if (candidates && candidates.length > 0) {
+                    const match = findBestMatch(candidates);
+                    rbacUserId = match.userId || null;
+                    connectionId = match.connectionId || null;
+                    break;
+                  }
                 }
               }
             }
-            
+
+
             if (rbacUserId && userMap.has(rbacUserId)) {
               rbacUserInfo = userMap.get(rbacUserId);
               matchedCount++;
             }
-            
+
             // Track unmatched queries for debugging
             if (!rbacUserId) {
               unmatchedCount++;
@@ -682,21 +745,23 @@ export function useQueryLogs(
               }
             }
 
-          return {
-            type: log.type,
-            event_date: log.event_date,
-            event_time: log.event_time,
-            query_id: log.query_id,
-            query: log.query,
-            query_duration_ms: log.query_duration_ms,
-            read_rows: log.read_rows,
-            read_bytes: log.read_bytes,
-            memory_usage: log.memory_usage,
-            user: log.user,
-            rbacUser: rbacUserInfo ? (rbacUserInfo.displayName || rbacUserInfo.username || rbacUserInfo.email) : (rbacUserId || undefined),
-            rbacUserId: rbacUserId,
-            exception: log.exception,
-          };
+            return {
+              type: log.type,
+              event_date: log.event_date,
+              event_time: log.event_time,
+              query_id: log.query_id,
+              query: log.query,
+              query_duration_ms: log.query_duration_ms,
+              read_rows: log.read_rows,
+              read_bytes: log.read_bytes,
+              memory_usage: log.memory_usage,
+              user: log.user,
+              rbacUser: rbacUserInfo ? (rbacUserInfo.displayName || rbacUserInfo.username || rbacUserInfo.email) : (rbacUserId || undefined),
+              rbacUserId: rbacUserId,
+              connectionId,
+              connectionName: connectionId ? connectionMap.get(connectionId) : undefined,
+              exception: log.exception,
+            };
           })
           .filter(log => {
             // If rbacUserId filter is provided, only return logs that have a matching RBAC user
@@ -709,7 +774,7 @@ export function useQueryLogs(
             // Super-admin sees all logs (including those without RBAC user match)
             return true;
           });
-        
+
         const filteredCount = matchedLogs.length;
         // Debug logging (can be removed in production or made conditional)
         if (process.env.NODE_ENV === 'development') {
@@ -739,6 +804,7 @@ export function useQueryLogs(
           user: log.user,
           rbacUser: undefined,
           rbacUserId: undefined,
+          connectionName: undefined,
           exception: log.exception,
         }));
       }
@@ -788,7 +854,7 @@ export function useMetrics(
         '24h': { interval: '24 HOUR', limit: 100 },
       };
       const { interval, limit } = config[timeRange] || config['1h'];
-      
+
       // Helper to safely execute queries
       const safeQuery = async (query: string): Promise<Record<string, unknown>[]> => {
         try {
@@ -799,7 +865,7 @@ export function useMetrics(
           return [];
         }
       };
-      
+
       // Fetch query counts by type per minute
       // For failed queries, we count:
       // 1. ExceptionWhileProcessing entries
@@ -826,31 +892,31 @@ export function useMetrics(
         ORDER BY ts DESC
         LIMIT ${limit}
       `);
-      
+
       // Reverse to get chronological order
       const sortedData = [...queriesData].reverse();
-      
+
       // Transform to individual metrics
       const qpsData = sortedData.map((d) => ({
         ts: Number((d as { ts: number }).ts),
         qps: Number((d as { total_count: number }).total_count) / 60,
       }));
-      
+
       const selectData = sortedData.map((d) => ({
         ts: Number((d as { ts: number }).ts),
         count: Number((d as { select_count: number }).select_count) / 60,
       }));
-      
+
       const insertData = sortedData.map((d) => ({
         ts: Number((d as { ts: number }).ts),
         count: Number((d as { insert_count: number }).insert_count) / 60,
       }));
-      
+
       const failedData = sortedData.map((d) => ({
         ts: Number((d as { ts: number }).ts),
         count: Number((d as { failed_count: number }).failed_count) || 0,
       }));
-      
+
       // Fetch current server stats (single values, very lightweight)
       let currentStats = {
         memoryUsage: 0,
@@ -865,7 +931,7 @@ export function useMetrics(
         replicasOk: 0,
         replicasTotal: 0,
       };
-      
+
       try {
         // Memory from asynchronous_metrics
         const memResult = await safeQuery(`
@@ -877,13 +943,13 @@ export function useMetrics(
         if (memResult.length > 0) {
           currentStats.memoryUsage = Number((memResult[0] as { val: number }).val) || 0;
         }
-        
+
         // Active queries from system.processes
         const activeResult = await safeQuery(`SELECT count() as cnt FROM system.processes`);
         if (activeResult.length > 0) {
           currentStats.activeQueries = Number((activeResult[0] as { cnt: number }).cnt) || 0;
         }
-        
+
         // Connections from system.metrics
         const connResult = await safeQuery(`
           SELECT value as val FROM system.metrics WHERE metric = 'TCPConnection' LIMIT 1
@@ -891,47 +957,47 @@ export function useMetrics(
         if (connResult.length > 0) {
           currentStats.connections = Number((connResult[0] as { val: number }).val) || 0;
         }
-        
+
         // Uptime from system.uptime
         const uptimeResult = await safeQuery(`SELECT value as val FROM system.asynchronous_metrics WHERE metric = 'Uptime' LIMIT 1`);
         if (uptimeResult.length > 0) {
           currentStats.uptime = Number((uptimeResult[0] as { val: number }).val) || 0;
         }
-        
+
         // Database and table counts
         const dbResult = await safeQuery(`SELECT count() as cnt FROM system.databases WHERE name NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')`);
         if (dbResult.length > 0) {
           currentStats.databasesCount = Number((dbResult[0] as { cnt: number }).cnt) || 0;
         }
-        
+
         const tableResult = await safeQuery(`SELECT count() as cnt FROM system.tables WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')`);
         if (tableResult.length > 0) {
           currentStats.tablesCount = Number((tableResult[0] as { cnt: number }).cnt) || 0;
         }
-        
+
         // Parts count (for MergeTree health)
         const partsResult = await safeQuery(`SELECT count() as cnt FROM system.parts WHERE active`);
         if (partsResult.length > 0) {
           currentStats.partsCount = Number((partsResult[0] as { cnt: number }).cnt) || 0;
         }
-        
+
         // Calculate totals from time series
         currentStats.totalQueries = sortedData.reduce((sum, d) => sum + Number((d as { total_count: number }).total_count), 0);
         currentStats.failedQueries = sortedData.reduce((sum, d) => sum + Number((d as { failed_count: number }).failed_count), 0);
-        
+
       } catch {
         // Ignore - will use defaults
       }
-      
+
       // Transform results to chart format
-      const transformData = (data: Array<{ ts: number; [key: string]: number }>, valueKey: string) => {
+      const transformData = (data: Array<{ ts: number;[key: string]: number }>, valueKey: string) => {
         if (!data || data.length === 0) return undefined;
         return {
           timestamps: data.map(d => Number(d.ts)),
           values: data.map(d => Number(d[valueKey]) || 0),
         };
       };
-      
+
       return {
         queriesPerSecond: transformData(qpsData, 'qps'),
         selectQueries: transformData(selectData, 'count'),
