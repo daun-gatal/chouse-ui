@@ -62,6 +62,8 @@ interface LogEntry {
   user: string;
   rbacUser?: string | null;
   rbacUserId?: string | null;
+  connectionId?: string | null;
+  connectionName?: string;
   exception?: string;
 }
 
@@ -117,7 +119,7 @@ function processLogs(
       exceptionQueryIds.add(log.query_id);
     }
   });
-  
+
   // Also track final states in the filtered set (for accurate stats)
   const filteredFinalStateQueryIds = new Set<string>();
 
@@ -143,7 +145,7 @@ function processLogs(
     // If searching by query_id and this log's query_id matches, include it
     // This takes priority to ensure we find the query even if other filters would exclude it
     const matchesQueryIdSearch = searchByQueryId && matchingQueryIds.has(log.query_id);
-    
+
     // If we have a query_id match, bypass other search filters
     const matchesSearch = matchesQueryIdSearch || (
       !searchTerm ||
@@ -153,7 +155,7 @@ function processLogs(
       log.rbacUser?.toLowerCase().includes(searchTerm.toLowerCase())
     );
     const matchesType = logType === "all" || log.type === logType;
-    
+
     // Filter by role if role is selected
     let matchesRole = true;
     if (hasRoleFilter) {
@@ -172,23 +174,23 @@ function processLogs(
         matchesRole = false;
       }
     }
-    
+
     const matches = matchesSearch && matchesType && matchesRole;
-    
+
     // Track final states in filtered set
     // QueryStart with exception should also be considered a final (failed) state
     const hasException = log.exception && log.exception.trim().length > 0;
     if (matches && (log.type === 'QueryFinish' || log.type === 'ExceptionWhileProcessing' || log.type === 'ExceptionBeforeStart' || (log.type === 'QueryStart' && hasException))) {
       filteredFinalStateQueryIds.add(log.query_id);
     }
-    
+
     return matches;
   });
 
   // Deduplicate by query_id - keep only one entry per query_id
   // Priority: ExceptionWhileProcessing > QueryStart with exception > QueryFinish > QueryStart (or most recent if same type)
   const queryMap = new Map<string, LogEntry>();
-  
+
   for (const log of filtered) {
     // If filtering by "Running" and this query_id has a final state, skip it
     if (logType === "QueryStart" && finalStateQueryIds.has(log.query_id)) {
@@ -196,7 +198,7 @@ function processLogs(
     }
 
     const existing = queryMap.get(log.query_id);
-    
+
     if (!existing) {
       // First occurrence of this query_id
       queryMap.set(log.query_id, log);
@@ -213,10 +215,10 @@ function processLogs(
         if (logEntry.type === 'QueryStart') return 1; // Running
         return 0;
       };
-      
+
       const existingPriority = getPriority(existing);
       const currentPriority = getPriority(log);
-      
+
       if (currentPriority > existingPriority) {
         // Current log has higher priority status
         queryMap.set(log.query_id, log);
@@ -237,7 +239,7 @@ function processLogs(
       // Otherwise keep the existing one
     }
   }
-  
+
   // Convert map back to array and sort by timestamp (most recent first)
   const deduplicated = Array.from(queryMap.values()).sort((a, b) => {
     // Compare by date first, then time
@@ -246,7 +248,7 @@ function processLogs(
     }
     return b.event_time.localeCompare(a.event_time);
   });
-  
+
   // Apply the requested limit AFTER deduplication
   const limitedLogs = deduplicated.slice(0, limit);
 
@@ -263,7 +265,7 @@ function processLogs(
     const hasException = log.exception && log.exception.trim().length > 0;
     const hasExceptionEntry = exceptionQueryIds.has(log.query_id);
     const isFailedQueryStart = log.type === "QueryStart" && (hasException || hasExceptionEntry);
-    
+
     if (log.type === "QueryFinish") {
       success++;
       if (log.query_duration_ms) {
@@ -330,7 +332,7 @@ const QueryDetail: React.FC<QueryDetailProps & { isFailed?: boolean; exceptionQu
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
-  
+
   // Determine if this log is failed (use provided isFailed or calculate)
   const logIsFailed = isFailed !== undefined ? isFailed : (
     log.type === "ExceptionWhileProcessing" || log.type === "ExceptionBeforeStart" ||
@@ -439,9 +441,21 @@ const QueryDetail: React.FC<QueryDetailProps & { isFailed?: boolean; exceptionQu
             {log.rbacUser ? (
               <span title={`RBAC User: ${log.rbacUser}${log.rbacUserId ? ` (${log.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${log.user}`}>
                 {log.rbacUser}
+                {(log.connectionName || log.connectionId) && (
+                  <span className="text-gray-500 ml-1">
+                    ({log.connectionName || `ID: ${log.connectionId?.substring(0, 8)}...`})
+                  </span>
+                )}
               </span>
             ) : (
-              <span title={`ClickHouse User: ${log.user}`}>{log.user}</span>
+              <span title={`ClickHouse User: ${log.user}`}>
+                {log.user}
+                {(log.connectionName || log.connectionId) && (
+                  <span className="text-gray-500 ml-1">
+                    ({log.connectionName || `ID: ${log.connectionId?.substring(0, 8)}...`})
+                  </span>
+                )}
+              </span>
             )}
           </span>
           <span className="flex items-center gap-1">
@@ -459,14 +473,14 @@ export default function Logs() {
   const { isSuperAdmin, user } = useRbacStore();
   const { pageSize: defaultLimit, setPageSize: setLimitPreference } = usePaginationPreference('logs');
   const { preferences: logsPrefs, updatePreferences: updateLogsPrefs } = useLogsPreferences();
-  
+
   const [limit, setLimit] = useState(defaultLimit);
-  
+
   // Sync limit state when preference changes
   useEffect(() => {
     setLimit(defaultLimit);
   }, [defaultLimit]);
-  
+
   // Initialize state from preferences
   const [searchTerm, setSearchTerm] = useState(logsPrefs.defaultSearchQuery || "");
   const [logType, setLogType] = useState<string>(logsPrefs.defaultLogType || "all");
@@ -477,7 +491,7 @@ export default function Logs() {
   const [selectedRoleId, setSelectedRoleId] = useState<string>(logsPrefs.defaultSelectedRoleId || "all");
   const previousLogStatesRef = useRef<Map<string, string>>(new Map());
   const [statusChangedIds, setStatusChangedIds] = useState<Set<string>>(new Set());
-  
+
   // Sync state from preferences when they load
   useEffect(() => {
     if (!logsPrefs) return;
@@ -487,7 +501,7 @@ export default function Logs() {
     if (logsPrefs.defaultSelectedUserId) setSelectedUserId(logsPrefs.defaultSelectedUserId);
     if (logsPrefs.defaultSelectedRoleId) setSelectedRoleId(logsPrefs.defaultSelectedRoleId);
   }, [logsPrefs]);
-  
+
   // Update preferences when state changes (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -501,7 +515,7 @@ export default function Logs() {
     }, 500);
     return () => clearTimeout(timeoutId);
   }, [viewMode, logType, autoRefresh, selectedUserId, selectedRoleId, updateLogsPrefs]);
-  
+
   // Update limit preference when limit changes
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -549,12 +563,12 @@ export default function Logs() {
   // All other users (including basic admin) only see their own logs
   // If admin user selects a specific user, filter by that user
   // If admin user selects a role, filter by users with that role
-  const rbacUserIdFilter = isSuperAdmin() 
-    ? (selectedUserId !== "all" 
-        ? selectedUserId 
-        : (selectedRoleId !== "all" && usersByRoleData?.users.length 
-            ? undefined // Will filter client-side by role user IDs
-            : undefined))
+  const rbacUserIdFilter = isSuperAdmin()
+    ? (selectedUserId !== "all"
+      ? selectedUserId
+      : (selectedRoleId !== "all" && usersByRoleData?.users.length
+        ? undefined // Will filter client-side by role user IDs
+        : undefined))
     : user?.id;
   // Fetch more logs than requested to account for:
   // 1. Deduplication (multiple entries per query_id: QueryStart, QueryFinish, Exception)
@@ -590,7 +604,7 @@ export default function Logs() {
         const hasException = logData?.exception && logData.exception.trim().length > 0;
         const isFailed = type === "ExceptionWhileProcessing" || type === "ExceptionBeforeStart" || (type === "QueryStart" && hasException);
         const statusText = type === "QueryFinish" ? "✅ Success" : isFailed ? "❌ Error" : "🔄 Running";
-        
+
         return (
           <div className={cn(
             "flex items-center gap-1",
@@ -602,9 +616,9 @@ export default function Logs() {
       },
     },
     { headerName: "Time", field: "event_time", width: 100 },
-    { 
-      headerName: "User", 
-      field: "user", 
+    {
+      headerName: "User",
+      field: "user",
       width: 150,
       valueGetter: (params: ValueGetterParams<LogEntry>) => {
         // Prioritize RBAC user, fallback to ClickHouse user
@@ -615,16 +629,34 @@ export default function Logs() {
         // Show RBAC user if available, otherwise ClickHouse user
         if (!params.data) return '-';
         if (params.data.rbacUser) {
-          return params.data.rbacUser;
+          return (
+            <div className="flex flex-col">
+              <span>{params.data.rbacUser}</span>
+              {(params.data.connectionName || params.data.connectionId) && (
+                <span className="text-[10px] text-gray-500">
+                  {params.data.connectionName || `ID: ${params.data.connectionId?.substring(0, 8)}...`}
+                </span>
+              )}
+            </div>
+          );
         }
-        return params.data.user || '-';
+        return (
+          <div className="flex flex-col">
+            <span>{params.data.user || '-'}</span>
+            {(params.data.connectionName || params.data.connectionId) && (
+              <span className="text-[10px] text-gray-500">
+                {params.data.connectionName || `ID: ${params.data.connectionId?.substring(0, 8)}...`}
+              </span>
+            )}
+          </div>
+        );
       },
       tooltipValueGetter: (params: ITooltipParams<LogEntry>) => {
         if (!params.data) return 'No user information';
         if (params.data.rbacUser) {
-          return `RBAC User: ${params.data.rbacUser}${params.data.rbacUserId ? ` (${params.data.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${params.data.user}`;
+          return `RBAC User: ${params.data.rbacUser}${params.data.rbacUserId ? ` (${params.data.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${params.data.user}${params.data.connectionName ? `\nConnection: ${params.data.connectionName}` : ''}`;
         }
-        return `ClickHouse User: ${params.data.user || '-'}`;
+        return `ClickHouse User: ${params.data.user || '-'}${params.data.connectionName ? `\nConnection: ${params.data.connectionName}` : ''}`;
       },
     },
     { headerName: "Query", field: "query", flex: 2, tooltipField: "query" },
@@ -698,7 +730,7 @@ export default function Logs() {
       const timeoutId = setTimeout(() => {
         setStatusChangedIds(new Set());
       }, 2000);
-      
+
       // Cleanup timeout on unmount or when filteredLogs change
       return () => {
         clearTimeout(timeoutId);
@@ -853,8 +885,8 @@ export default function Logs() {
             <>
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-gray-400" />
-                <Select 
-                  value={selectedUserId} 
+                <Select
+                  value={selectedUserId}
                   onValueChange={(value) => {
                     setSelectedUserId(value);
                     // Clear role filter when user is selected
@@ -878,8 +910,8 @@ export default function Logs() {
               </div>
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-gray-400" />
-                <Select 
-                  value={selectedRoleId} 
+                <Select
+                  value={selectedRoleId}
                   onValueChange={(value) => {
                     setSelectedRoleId(value);
                     // Clear user filter when role is selected
@@ -904,8 +936,8 @@ export default function Logs() {
             </>
           )}
 
-          <Select 
-            value={String(limit)} 
+          <Select
+            value={String(limit)}
             onValueChange={(v) => {
               const newLimit = Number(v);
               if (!isNaN(newLimit) && newLimit > 0) {
@@ -1079,15 +1111,15 @@ export default function Logs() {
                       <React.Fragment key={log.query_id + i}>
                         <motion.div
                           initial={{ opacity: 0, y: 10 }}
-                          animate={{ 
-                            opacity: 1, 
+                          animate={{
+                            opacity: 1,
                             y: 0,
                             scale: hasStatusChanged ? [1, 1.02, 1] : 1,
-                            backgroundColor: hasStatusChanged 
+                            backgroundColor: hasStatusChanged
                               ? (log.type === "QueryFinish" ? "rgba(34, 197, 94, 0.1)" : (isFailedLog(log) ? "rgba(239, 68, 68, 0.1)" : "rgba(255, 255, 255, 0.05)"))
                               : "rgba(255, 255, 255, 0.05)"
                           }}
-                          transition={{ 
+                          transition={{
                             delay: Math.min(i * 0.02, 0.5),
                             scale: hasStatusChanged ? { duration: 0.5, ease: "easeOut" } : undefined,
                             backgroundColor: hasStatusChanged ? { duration: 0.5 } : undefined
@@ -1104,7 +1136,7 @@ export default function Logs() {
                           )}
                         >
                           {/* Status Icon */}
-                          <motion.div 
+                          <motion.div
                             className="flex-shrink-0"
                             animate={{
                               scale: hasStatusChanged ? [1, 1.2, 1] : 1,
@@ -1123,44 +1155,44 @@ export default function Logs() {
                             )}
                           </motion.div>
 
-                        {/* Query Preview */}
-                        <div className="flex-1 overflow-hidden">
-                          <p className="text-sm text-gray-300 font-mono truncate">{log.query}</p>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                            <span className="flex items-center gap-1" title={log.rbacUser ? `RBAC User: ${log.rbacUser}${log.rbacUserId ? ` (${log.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${log.user}` : `ClickHouse User: ${log.user}`}>
-                              <User className="h-3 w-3" />
-                              {log.rbacUser ? (
-                                <span>{log.rbacUser}</span>
-                              ) : (
-                                <span>{log.user}</span>
-                              )}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Timer className="h-3 w-3" />
-                              {log.query_duration_ms}ms
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {log.event_time}
-                            </span>
+                          {/* Query Preview */}
+                          <div className="flex-1 overflow-hidden">
+                            <p className="text-sm text-gray-300 font-mono truncate">{log.query}</p>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                              <span className="flex items-center gap-1" title={log.rbacUser ? `RBAC User: ${log.rbacUser}${log.rbacUserId ? ` (${log.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${log.user}` : `ClickHouse User: ${log.user}`}>
+                                <User className="h-3 w-3" />
+                                {log.rbacUser ? (
+                                  <span>{log.rbacUser}</span>
+                                ) : (
+                                  <span>{log.user}</span>
+                                )}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Timer className="h-3 w-3" />
+                                {log.query_duration_ms}ms
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {log.event_time}
+                              </span>
+                            </div>
                           </div>
-                        </div>
 
-                        {/* Expand Icon */}
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 text-gray-500 transition-transform",
-                            expandedLog === log.query_id && "rotate-180"
+                          {/* Expand Icon */}
+                          <ChevronDown
+                            className={cn(
+                              "h-4 w-4 text-gray-500 transition-transform",
+                              expandedLog === log.query_id && "rotate-180"
+                            )}
+                          />
+                        </motion.div>
+
+                        <AnimatePresence>
+                          {expandedLog === log.query_id && (
+                            <QueryDetail log={log} onClose={() => setExpandedLog(null)} isFailed={isFailedLog(log)} exceptionQueryIds={exceptionQueryIds} />
                           )}
-                        />
-                      </motion.div>
-
-                      <AnimatePresence>
-                        {expandedLog === log.query_id && (
-                          <QueryDetail log={log} onClose={() => setExpandedLog(null)} isFailed={isFailedLog(log)} exceptionQueryIds={exceptionQueryIds} />
-                        )}
-                      </AnimatePresence>
-                    </React.Fragment>
+                        </AnimatePresence>
+                      </React.Fragment>
                     );
                   })}
                 </div>
