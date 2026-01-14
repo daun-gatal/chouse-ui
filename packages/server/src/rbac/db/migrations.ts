@@ -64,7 +64,7 @@ const MIGRATIONS: Migration[] = [
     description: 'Add data access rules table for database/table permissions (supports both role and user level rules)',
     up: async (db) => {
       const dbType = getDatabaseType();
-      
+
       if (dbType === 'sqlite') {
         (db as SqliteDb).run(sql`
           CREATE TABLE IF NOT EXISTS rbac_data_access_rules (
@@ -83,7 +83,7 @@ const MIGRATIONS: Migration[] = [
             description TEXT
           )
         `);
-        
+
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS data_access_role_idx ON rbac_data_access_rules(role_id)`);
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS data_access_user_idx ON rbac_data_access_rules(user_id)`);
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS data_access_conn_idx ON rbac_data_access_rules(connection_id)`);
@@ -108,7 +108,7 @@ const MIGRATIONS: Migration[] = [
             description TEXT
           )
         `);
-        
+
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_access_role_idx ON rbac_data_access_rules(role_id)`);
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_access_user_idx ON rbac_data_access_rules(user_id)`);
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_access_conn_idx ON rbac_data_access_rules(connection_id)`);
@@ -116,18 +116,18 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_access_role_conn_idx ON rbac_data_access_rules(role_id, connection_id)`);
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_access_user_conn_idx ON rbac_data_access_rules(user_id, connection_id)`);
       }
-      
+
       console.log('[Migration 1.1.0] Data access rules table created');
     },
     down: async (db) => {
       const dbType = getDatabaseType();
-      
+
       if (dbType === 'sqlite') {
         (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_data_access_rules`);
       } else {
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_data_access_rules`);
       }
-      
+
       console.log('[Migration 1.1.0] Data access rules table dropped');
     },
   },
@@ -137,7 +137,7 @@ const MIGRATIONS: Migration[] = [
     description: 'Add ClickHouse users metadata table to store user configuration (role, cluster, allowed databases/tables)',
     up: async (db) => {
       const dbType = getDatabaseType();
-      
+
       if (dbType === 'sqlite') {
         (db as SqliteDb).run(sql`
           CREATE TABLE IF NOT EXISTS rbac_clickhouse_users_metadata (
@@ -156,7 +156,7 @@ const MIGRATIONS: Migration[] = [
             UNIQUE(username, connection_id)
           )
         `);
-        
+
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_username_idx ON rbac_clickhouse_users_metadata(username)`);
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_connection_idx ON rbac_clickhouse_users_metadata(connection_id)`);
       } else {
@@ -177,22 +177,22 @@ const MIGRATIONS: Migration[] = [
             UNIQUE(username, connection_id)
           )
         `);
-        
+
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_username_idx ON rbac_clickhouse_users_metadata(username)`);
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_connection_idx ON rbac_clickhouse_users_metadata(connection_id)`);
       }
-      
+
       console.log('[Migration 1.2.0] ClickHouse users metadata table created');
     },
     down: async (db) => {
       const dbType = getDatabaseType();
-      
+
       if (dbType === 'sqlite') {
         (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_clickhouse_users_metadata`);
       } else {
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_clickhouse_users_metadata`);
       }
-      
+
       console.log('[Migration 1.2.0] ClickHouse users metadata table dropped');
     },
   },
@@ -202,7 +202,7 @@ const MIGRATIONS: Migration[] = [
     description: 'Add auth_type column to ClickHouse users metadata table',
     up: async (db) => {
       const dbType = getDatabaseType();
-      
+
       if (dbType === 'sqlite') {
         // SQLite doesn't support ALTER TABLE ADD COLUMN IF NOT EXISTS, so we check first
         try {
@@ -229,7 +229,7 @@ const MIGRATIONS: Migration[] = [
     },
     down: async (db) => {
       const dbType = getDatabaseType();
-      
+
       if (dbType === 'sqlite') {
         // SQLite doesn't support DROP COLUMN easily, would need to recreate table
         console.log('[Migration 1.2.1] SQLite does not support DROP COLUMN, manual intervention required');
@@ -250,32 +250,32 @@ const MIGRATIONS: Migration[] = [
       // Use the existing seed function which is idempotent
       // It will check if the role exists and only create it if it doesn't
       const { seedRoles, seedPermissions } = await import('../services/seed');
-      
+
       // First ensure all permissions exist
       const permissionIdMap = await seedPermissions();
-      
+
       // Then seed roles (which includes GUEST)
       const roleIdMap = await seedRoles(permissionIdMap);
-      
+
       console.log('[Migration 1.2.2] Ensured Guest role exists with permissions');
-      
+
       // Create data access rule for GUEST role to allow read access to system tables
       // This ensures guest users can query system tables for metrics and logs
       const guestRoleId = roleIdMap.get(SYSTEM_ROLES.GUEST);
       if (guestRoleId) {
         const { createDataAccessRule } = await import('../services/dataAccess');
-        
+
         try {
           // Check if rule already exists (idempotent)
           const { getRulesForRole } = await import('../services/dataAccess');
           const existingRules = await getRulesForRole(guestRoleId);
           const hasSystemRule = existingRules.some(
-            rule => rule.databasePattern === 'system' && 
-                    rule.tablePattern === '*' && 
-                    rule.accessType === 'read' &&
-                    rule.isAllowed === true
+            rule => rule.databasePattern === 'system' &&
+              rule.tablePattern === '*' &&
+              rule.accessType === 'read' &&
+              rule.isAllowed === true
           );
-          
+
           if (!hasSystemRule) {
             await createDataAccessRule({
               roleId: guestRoleId,
@@ -367,7 +367,7 @@ const MIGRATIONS: Migration[] = [
     description: 'Add user preferences tables for favorites, recent items, and UI preferences',
     up: async (db) => {
       const dbType = getDatabaseType();
-      
+
       if (dbType === 'sqlite') {
         // User Favorites table
         (db as SqliteDb).run(sql`
@@ -380,9 +380,9 @@ const MIGRATIONS: Migration[] = [
             UNIQUE(user_id, database, table)
           )
         `);
-        
+
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
-        
+
         // User Recent Items table
         (db as SqliteDb).run(sql`
           CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
@@ -394,10 +394,10 @@ const MIGRATIONS: Migration[] = [
             UNIQUE(user_id, database, table)
           )
         `);
-        
+
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
-        
+
         // User Preferences table
         (db as SqliteDb).run(sql`
           CREATE TABLE IF NOT EXISTS rbac_user_preferences (
@@ -410,7 +410,7 @@ const MIGRATIONS: Migration[] = [
             updated_at INTEGER NOT NULL DEFAULT (unixepoch())
           )
         `);
-        
+
         (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
       } else {
         // User Favorites table
@@ -424,9 +424,9 @@ const MIGRATIONS: Migration[] = [
             UNIQUE(user_id, database, "table")
           )
         `);
-        
+
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
-        
+
         // User Recent Items table
         await (db as PostgresDb).execute(sql`
           CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
@@ -438,10 +438,10 @@ const MIGRATIONS: Migration[] = [
             UNIQUE(user_id, database, "table")
           )
         `);
-        
+
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
-        
+
         // User Preferences table
         await (db as PostgresDb).execute(sql`
           CREATE TABLE IF NOT EXISTS rbac_user_preferences (
@@ -454,15 +454,15 @@ const MIGRATIONS: Migration[] = [
             updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
           )
         `);
-        
+
         await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
       }
-      
+
       console.log('[Migration 1.3.0] User preferences tables created');
     },
     down: async (db) => {
       const dbType = getDatabaseType();
-      
+
       if (dbType === 'sqlite') {
         (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_user_preferences`);
         (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_user_recent_items`);
@@ -472,7 +472,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_user_recent_items`);
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_user_favorites`);
       }
-      
+
       console.log('[Migration 1.3.0] User preferences tables dropped');
     },
   },
@@ -484,7 +484,7 @@ const MIGRATIONS: Migration[] = [
 
 async function ensureVersionTable(db: RbacDb): Promise<void> {
   const dbType = getDatabaseType();
-  
+
   if (dbType === 'sqlite') {
     (db as SqliteDb).run(sql`
       CREATE TABLE IF NOT EXISTS _rbac_migrations (
@@ -510,10 +510,10 @@ async function ensureVersionTable(db: RbacDb): Promise<void> {
 
 async function getAppliedMigrations(db: RbacDb): Promise<MigrationStatus[]> {
   const dbType = getDatabaseType();
-  
+
   try {
     let result: any[];
-    
+
     if (dbType === 'sqlite') {
       result = (db as SqliteDb).all(sql`
         SELECT version, name, applied_at as "appliedAt" 
@@ -528,7 +528,7 @@ async function getAppliedMigrations(db: RbacDb): Promise<MigrationStatus[]> {
       `);
       result = queryResult as any[];
     }
-    
+
     return result.map((row: any) => ({
       version: row.version,
       name: row.name,
@@ -542,11 +542,11 @@ async function getAppliedMigrations(db: RbacDb): Promise<MigrationStatus[]> {
 export async function getCurrentVersion(): Promise<string | null> {
   const db = getDatabase();
   const applied = await getAppliedMigrations(db);
-  
+
   if (applied.length === 0) {
     return null;
   }
-  
+
   return applied[applied.length - 1].version;
 }
 
@@ -557,7 +557,7 @@ export async function isFirstRun(): Promise<boolean> {
 
 async function recordMigration(db: RbacDb, migration: Migration): Promise<void> {
   const dbType = getDatabaseType();
-  
+
   if (dbType === 'sqlite') {
     (db as SqliteDb).run(sql`
       INSERT INTO _rbac_migrations (version, name, description)
@@ -585,7 +585,7 @@ async function createSchemaFromDrizzle(db: RbacDb): Promise<void> {
 
 async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
   console.log('[Migration] Creating SQLite schema from Drizzle definitions...');
-  
+
   // Users table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_users (
@@ -605,7 +605,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       metadata TEXT
     )
   `);
-  
+
   // Roles table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_roles (
@@ -621,7 +621,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       metadata TEXT
     )
   `);
-  
+
   // Permissions table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_permissions (
@@ -634,7 +634,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     )
   `);
-  
+
   // User-Role junction table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_roles (
@@ -647,7 +647,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       UNIQUE(user_id, role_id)
     )
   `);
-  
+
   // Role-Permission junction table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_role_permissions (
@@ -658,7 +658,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       UNIQUE(role_id, permission_id)
     )
   `);
-  
+
   // Resource Permissions (scoped access)
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_resource_permissions (
@@ -673,7 +673,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       created_by TEXT
     )
   `);
-  
+
   // Sessions table (for JWT refresh tokens)
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_sessions (
@@ -688,7 +688,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       revoked_at INTEGER
     )
   `);
-  
+
   // Audit Logs table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_audit_logs (
@@ -705,7 +705,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     )
   `);
-  
+
   // API Keys table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_api_keys (
@@ -721,7 +721,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       revoked_at INTEGER
     )
   `);
-  
+
   // ClickHouse Connections table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_clickhouse_connections (
@@ -741,7 +741,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       metadata TEXT
     )
   `);
-  
+
   // User-Connection Access table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_connections (
@@ -753,7 +753,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       UNIQUE(user_id, connection_id)
     )
   `);
-  
+
   // Create indexes
   db.run(sql`CREATE INDEX IF NOT EXISTS users_email_idx ON rbac_users(email)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS users_username_idx ON rbac_users(username)`);
@@ -772,7 +772,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
   db.run(sql`CREATE INDEX IF NOT EXISTS audit_created_at_idx ON rbac_audit_logs(created_at)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS api_keys_user_idx ON rbac_api_keys(user_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
-  
+
   // User Favorites table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_favorites (
@@ -784,9 +784,9 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       UNIQUE(user_id, database, table)
     )
   `);
-  
+
   db.run(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
-  
+
   // User Recent Items table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
@@ -798,10 +798,10 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       UNIQUE(user_id, database, table)
     )
   `);
-  
+
   db.run(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
-  
+
   // User Preferences table
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_preferences (
@@ -814,15 +814,15 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     )
   `);
-  
+
   db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
-  
+
   console.log('[Migration] SQLite schema created');
 }
 
 async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   console.log('[Migration] Creating PostgreSQL schema from Drizzle definitions...');
-  
+
   // Users table (using TEXT for IDs to match Drizzle schema)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_users (
@@ -842,7 +842,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       metadata JSONB
     )
   `);
-  
+
   // Roles table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_roles (
@@ -858,7 +858,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       metadata JSONB
     )
   `);
-  
+
   // Permissions table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_permissions (
@@ -871,7 +871,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
   `);
-  
+
   // User-Role junction table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_roles (
@@ -884,7 +884,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       UNIQUE(user_id, role_id)
     )
   `);
-  
+
   // Role-Permission junction table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_role_permissions (
@@ -895,7 +895,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       UNIQUE(role_id, permission_id)
     )
   `);
-  
+
   // Resource Permissions
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_resource_permissions (
@@ -910,7 +910,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       created_by TEXT
     )
   `);
-  
+
   // Sessions table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_sessions (
@@ -925,7 +925,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       revoked_at TIMESTAMP WITH TIME ZONE
     )
   `);
-  
+
   // Audit Logs table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_audit_logs (
@@ -942,7 +942,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
   `);
-  
+
   // API Keys table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_api_keys (
@@ -958,7 +958,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       revoked_at TIMESTAMP WITH TIME ZONE
     )
   `);
-  
+
   // ClickHouse Connections table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_clickhouse_connections (
@@ -978,7 +978,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       metadata JSONB
     )
   `);
-  
+
   // User-Connection Access table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_connections (
@@ -990,7 +990,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       UNIQUE(user_id, connection_id)
     )
   `);
-  
+
   // Create indexes
   await db.execute(sql`CREATE INDEX IF NOT EXISTS users_email_idx ON rbac_users(email)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS users_username_idx ON rbac_users(username)`);
@@ -1009,36 +1009,36 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS audit_created_at_idx ON rbac_audit_logs(created_at)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS api_keys_user_idx ON rbac_api_keys(user_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
-  
+
   // User Favorites table
   await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS rbac_user_favorites (
-      id TEXT PRIMARY KEY NOT NULL,
-      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
-      database VARCHAR(255) NOT NULL,
-      table VARCHAR(255),
-      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-      UNIQUE(user_id, database, table)
-    )
+      CREATE TABLE IF NOT EXISTS rbac_user_favorites (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+        database VARCHAR(255) NOT NULL,
+        "table" VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, database, "table")
+      )
   `);
-  
+
   await db.execute(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
-  
+
   // User Recent Items table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
       database VARCHAR(255) NOT NULL,
-      table VARCHAR(255),
+      "table" VARCHAR(255),
       accessed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-      UNIQUE(user_id, database, table)
+      UNIQUE(user_id, database, "table")
     )
   `);
-  
+
   await db.execute(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
-  
+
   // User Preferences table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_preferences (
@@ -1051,9 +1051,9 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
   `);
-  
+
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
-  
+
   console.log('[Migration] PostgreSQL schema created');
 }
 
@@ -1063,36 +1063,36 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
 
 export async function runMigrations(options: { skipSeed?: boolean } = {}): Promise<MigrationResult> {
   const db = getDatabase();
-  
+
   await ensureVersionTable(db);
-  
+
   const appliedMigrations = await getAppliedMigrations(db);
   const appliedVersions = new Set(appliedMigrations.map(m => m.version));
-  const previousVersion = appliedMigrations.length > 0 
-    ? appliedMigrations[appliedMigrations.length - 1].version 
+  const previousVersion = appliedMigrations.length > 0
+    ? appliedMigrations[appliedMigrations.length - 1].version
     : null;
-  
+
   const isFirstRunFlag = appliedMigrations.length === 0;
   const migrationsApplied: string[] = [];
-  
+
   console.log(`[Migration] Current version: ${previousVersion || 'none (first run)'}`);
   console.log(`[Migration] Target version: ${APP_VERSION}`);
-  
+
   // For first run, create initial schema
   if (isFirstRunFlag) {
     console.log('[Migration] First run detected - creating initial schema');
     await createSchemaFromDrizzle(db);
   }
-  
+
   // Run pending migrations
   for (const migration of MIGRATIONS) {
     if (appliedVersions.has(migration.version)) {
       console.log(`[Migration] Skipping ${migration.version} (already applied)`);
       continue;
     }
-    
+
     console.log(`[Migration] Applying ${migration.version}: ${migration.name}`);
-    
+
     try {
       await migration.up(db);
       await recordMigration(db, migration);
@@ -1103,15 +1103,15 @@ export async function runMigrations(options: { skipSeed?: boolean } = {}): Promi
       throw new Error(`Migration ${migration.version} failed: ${error}`);
     }
   }
-  
+
   const currentVersion = await getCurrentVersion();
-  
+
   if (migrationsApplied.length > 0) {
     console.log(`[Migration] Applied ${migrationsApplied.length} migration(s): ${migrationsApplied.join(', ')}`);
   } else {
     console.log('[Migration] No new migrations to apply');
   }
-  
+
   return {
     isFirstRun: isFirstRunFlag,
     migrationsApplied,
@@ -1128,17 +1128,17 @@ export async function getMigrationStatus(): Promise<{
 }> {
   const db = getDatabase();
   await ensureVersionTable(db);
-  
+
   const appliedMigrations = await getAppliedMigrations(db);
   const appliedVersions = new Set(appliedMigrations.map(m => m.version));
-  
+
   const pendingMigrations = MIGRATIONS
     .filter(m => !appliedVersions.has(m.version))
     .map(m => m.version);
-  
+
   return {
-    currentVersion: appliedMigrations.length > 0 
-      ? appliedMigrations[appliedMigrations.length - 1].version 
+    currentVersion: appliedMigrations.length > 0
+      ? appliedMigrations[appliedMigrations.length - 1].version
       : null,
     targetVersion: APP_VERSION,
     pendingMigrations,

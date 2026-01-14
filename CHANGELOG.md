@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.5.1] - 2026-01-14
+
+### Fixed
+
+- **RBAC Migration**: Fixed syntax error in PostgreSQL `rbac_user_favorites` migration.
+- **Logs Page Refresh**: Fixed logs page verification to correctly refresh when switching connections.
+- **Connection Display**: Added connection name display in Logs page with improved matching logic and non-super-admin fallback.
+- **Audit Logs Export**: Fixed export functionality to correctly handle blob responses and download files.
+
 ## [v2.5.0] - 2026-01-13
 
 ### Added
