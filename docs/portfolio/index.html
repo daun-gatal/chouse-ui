@@ -1,69 +1,76 @@
 <!doctype html>
 <html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    
-    <!-- Favicons - Multiple sizes for better Google recognition -->
-    <!-- Primary favicon - Google prefers PNG/ICO for search results -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <!-- SVG favicon for modern browsers -->
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-    <!-- Apple touch icon -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <!-- Android Chrome icons -->
-    <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png" />
-    <!-- Web Manifest -->
-    <link rel="manifest" href="/site.webmanifest" />
-    
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-    <!-- Primary Meta Tags -->
-    <title>CHouse UI - Web Interface for ClickHouse with Built-in RBAC</title>
-    <meta name="title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
-    <meta name="description" content="CHouse UI is a secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging. Perfect for teams requiring centralized database management." />
-    <meta name="keywords" content="ClickHouse, database management, RBAC, web interface, SQL query, data analytics, database admin, ClickHouse UI, data visualization" />
-    <meta name="author" content="CHouse UI" />
-    <meta name="license" content="Apache-2.0" />
-    <meta name="robots" content="index, follow" />
-    <meta name="language" content="English" />
-    <meta name="theme-color" content="#0a0a0a" />
-    
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
-    <meta property="og:description" content="A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging." />
-    <meta property="og:image" content="https://chouse-ui.com/logo.svg" />
-    <meta property="og:url" content="https://chouse-ui.com/" />
-    <meta property="og:site_name" content="CHouse UI" />
-    <meta property="og:locale" content="en_US" />
-    
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
-    <meta name="twitter:description" content="A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging." />
-    <meta name="twitter:image" content="https://chouse-ui.com/logo.svg" />
-    
-    <!-- Structured Data (JSON-LD) -->
-    <!-- Organization Schema - This is KEY for logo in Google search results -->
-    <script type="application/ld+json">
+
+<head>
+  <meta charset="UTF-8" />
+
+  <!-- Favicons - Multiple sizes for better Google recognition -->
+  <!-- Primary favicon - Google prefers PNG/ICO for search results -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <!-- SVG favicon for modern browsers -->
+  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  <!-- Fallback/Alternate icon -->
+  <link rel="alternate icon" href="/logo.png" type="image/png" />
+  <!-- Apple touch icon -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
+  <!-- Android Chrome icons -->
+  <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png" />
+  <!-- Web Manifest -->
+  <link rel="manifest" href="/site.webmanifest" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Primary Meta Tags -->
+  <title>CHouse UI - Web Interface for ClickHouse with Built-in RBAC</title>
+  <meta name="title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
+  <meta name="description"
+    content="CHouse UI is a secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging. Perfect for teams requiring centralized database management." />
+  <meta name="keywords"
+    content="ClickHouse, database management, RBAC, web interface, SQL query, data analytics, database admin, ClickHouse UI, data visualization" />
+  <meta name="author" content="CHouse UI" />
+  <meta name="license" content="Apache-2.0" />
+  <meta name="robots" content="index, follow" />
+  <meta name="language" content="English" />
+  <meta name="theme-color" content="#0a0a0a" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
+  <meta property="og:description"
+    content="A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging." />
+  <meta property="og:image" content="https://chouse-ui.com/logo.png" />
+  <meta property="og:url" content="https://chouse-ui.com/" />
+  <meta property="og:site_name" content="CHouse UI" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
+  <meta name="twitter:description"
+    content="A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging." />
+  <meta name="twitter:image" content="https://chouse-ui.com/logo.png" />
+
+  <!-- Structured Data (JSON-LD) -->
+  <!-- Organization Schema - This is KEY for logo in Google search results -->
+  <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "Organization",
       "name": "CHouse UI",
       "url": "https://chouse-ui.com/",
-      "logo": "https://chouse-ui.com/logo.svg",
+      "logo": "https://chouse-ui.com/logo.png",
       "description": "A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging.",
       "sameAs": [
         "https://github.com/daun-gatal/chouse-ui"
       ]
     }
     </script>
-    
-    <!-- WebApplication Schema -->
-    <script type="application/ld+json">
+
+  <!-- WebApplication Schema -->
+  <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
@@ -90,9 +97,11 @@
       "logo": "https://chouse-ui.com/logo.svg"
     }
     </script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>
