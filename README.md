@@ -42,6 +42,7 @@ CHouse UI provides security and access control features for teams that need:
 
 ### 🔐 Security & Access Control
 - **RBAC System** - Role-based permissions (Super Admin, Admin, Developer, Analyst, Viewer, Guest)
+- **ClickHouse User Management** - Create and manage ClickHouse users with native grants (Developer, Analyst, Viewer roles)
 - **Encrypted Credentials** - AES-256-GCM encryption for ClickHouse connection passwords
 - **Password Hashing** - Argon2id for user passwords
 - **JWT Authentication** - Secure token-based sessions with access and refresh tokens
@@ -266,6 +267,24 @@ openssl rand -base64 16
 ---
 
 ## RBAC System
+
+### How RBAC Works
+
+CHouse UI has its **own permission system** that controls access to the web interface.
+
+**Two separate things:**
+
+1. **CHouse UI RBAC** (for the web interface):
+   - Controls who can use CHouse UI and what they can do
+   - Stored in CHouse UI's own database
+   - All queries are checked against these permissions before reaching ClickHouse
+
+2. **ClickHouse User Management** (optional feature):
+   - CHouse UI can create ClickHouse users with native grants
+   - These are actual ClickHouse users (not CHouse UI users)
+   - Useful if you want to manage ClickHouse users through the web interface
+
+**In simple terms:** CHouse UI's RBAC controls access to the web interface. It can also optionally create ClickHouse users, but that's a separate feature.
 
 ### Role Hierarchy
 
@@ -531,6 +550,7 @@ This project was initially based on **[CH-UI](https://github.com/caioricciuti/ch
 
 ### Built With
 
+#### Technologies
 - [ClickHouse](https://clickhouse.com/) - Analytics database
 - [Bun](https://bun.sh/) - JavaScript runtime
 - [Hono](https://hono.dev/) - Web framework
@@ -543,3 +563,8 @@ This project was initially based on **[CH-UI](https://github.com/caioricciuti/ch
 - [Tailwind CSS](https://tailwindcss.com/) - Styling
 - [Zustand](https://zustand-demo.pmnd.rs/) - State management
 - [TanStack Query](https://tanstack.com/query) - Data fetching
+
+#### AI Tools
+This project was developed with significant assistance from AI coding tools:
+- [Cursor](https://cursor.sh/) - AI-powered code editor (fork of VS Code)
+- [Google Antigravity](https://antigravity.google/) - AI-native IDE with multi-agent support
