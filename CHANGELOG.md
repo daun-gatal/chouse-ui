@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.5.2] - 2026-01-15
+
+### Added
+
+- **Release Announcements**: Automatic discussion announcement creation when new releases are published
+  - Extracts release notes from CHANGELOG.md
+  - Formats as announcement with installation instructions and resources
+  - Posts to Announcements discussion category automatically
+
+### Fixed
+
+- **Release Workflow**: Improved release workflow to include automatic announcement generation
+
 ## [v2.5.1] - 2026-01-14
 
 ### Fixed
