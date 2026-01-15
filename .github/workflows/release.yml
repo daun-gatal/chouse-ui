@@ -135,6 +135,152 @@ jobs:
           prerelease: false
           generate_release_notes: false
 
+      - name: Save Release Notes for Discussion
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          # Save RELEASE_NOTES.md as an artifact for the discussion job
+          echo "Release notes saved for discussion announcement"
+
+  create-release-announcement:
+    name: Create Release Announcement Discussion
+    needs: [tag-and-release]
+    if: |
+      always() &&
+      needs.tag-and-release.result == 'success' &&
+      needs.tag-and-release.outputs.tag_exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      discussions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get Repository and Category IDs
+        id: get_ids
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract owner and repo name from github.repository (format: owner/repo)
+          REPO_OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          
+          echo "Repository: $REPO_OWNER/$REPO_NAME"
+          
+          # Get repository ID
+          REPO_ID=$(gh api graphql -f query="{ repository(owner: \"$REPO_OWNER\", name: \"$REPO_NAME\") { id } }" -q '.data.repository.id')
+          echo "repository_id=$REPO_ID" >> $GITHUB_OUTPUT
+          
+          # Get Announcements category ID
+          CATEGORY_ID=$(gh api graphql -f query="{ repository(owner: \"$REPO_OWNER\", name: \"$REPO_NAME\") { discussionCategories(first: 10) { nodes { id name } } } }" -q '.data.repository.discussionCategories.nodes[] | select(.name == "Announcements") | .id')
+          echo "category_id=$CATEGORY_ID" >> $GITHUB_OUTPUT
+          
+          if [ -z "$REPO_ID" ] || [ -z "$CATEGORY_ID" ]; then
+            echo "Error: Could not get repository or category ID"
+            echo "Repository ID: $REPO_ID"
+            echo "Category ID: $CATEGORY_ID"
+            exit 1
+          fi
+          
+          echo "Repository ID: $REPO_ID"
+          echo "Category ID: $CATEGORY_ID"
+
+      - name: Extract Release Notes
+        id: extract_notes
+        env:
+          VERSION: ${{ needs.tag-and-release.outputs.version }}
+          REPO: ${{ github.repository }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          # Extract the section for this version from CHANGELOG.md
+          awk -v tag="[$VERSION]" '
+            /^## \[v/ { 
+              if (found) exit
+              if (index($0, tag) > 0) { found=1; next }
+            }
+            found { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          
+          # Check if release notes were extracted
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "Warning: No release notes found for $VERSION"
+            echo "## Release $VERSION" > RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+            echo "See the [full changelog](https://github.com/$REPO/blob/main/CHANGELOG.md) for details." >> RELEASE_NOTES.md
+          fi
+          
+          # Handle empty BEFORE_SHA (first commit scenario)
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            # Get the previous tag if available
+            PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+            if [ -n "$PREV_TAG" ]; then
+              BEFORE_SHA="$PREV_TAG"
+            else
+              # Fallback: use the tag itself (no comparison link)
+              BEFORE_SHA=""
+            fi
+          fi
+          
+          # Format as announcement
+          {
+            echo "# 🎉 CHouse UI $VERSION Released!"
+            echo ""
+            echo "We're excited to announce the release of **CHouse UI $VERSION**!"
+            echo ""
+            echo "## What's New"
+            echo ""
+            cat RELEASE_NOTES.md
+            echo ""
+            echo "## 📦 Installation"
+            echo ""
+            echo '```bash'
+            echo "# Using Docker"
+            echo "docker pull ghcr.io/$REPO:$VERSION"
+            echo ""
+            echo "# Or pull latest"
+            echo "docker pull ghcr.io/$REPO:latest"
+            echo '```'
+            echo ""
+            echo "## 🔗 Resources"
+            echo ""
+            echo "- **Release Notes**: https://github.com/$REPO/releases/tag/$VERSION"
+            echo "- **Repository**: https://github.com/$REPO"
+            echo "- **Documentation**: See README.md for setup and configuration"
+            echo ""
+            echo "## 🙏 Thank You"
+            echo ""
+            echo "Thank you to all contributors and users who helped make this release possible!"
+            echo ""
+            echo "---"
+            echo ""
+            if [ -n "$BEFORE_SHA" ]; then
+              echo "**Full Changelog**: https://github.com/$REPO/compare/$BEFORE_SHA...$CURRENT_SHA"
+            else
+              echo "**Release**: https://github.com/$REPO/releases/tag/$VERSION"
+            fi
+          } > ANNOUNCEMENT.md
+          
+          echo "Announcement prepared:"
+          cat ANNOUNCEMENT.md
+
+      - name: Create Discussion Announcement
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_ID: ${{ steps.get_ids.outputs.repository_id }}
+          CATEGORY_ID: ${{ steps.get_ids.outputs.category_id }}
+          VERSION: ${{ needs.tag-and-release.outputs.version }}
+        run: |
+          # Create discussion using GraphQL API
+          # Pipe the announcement file content to the mutation
+          cat ANNOUNCEMENT.md | gh api graphql \
+            --field query="mutation(\$body: String!) { createDiscussion(input: { repositoryId: \"$REPO_ID\", categoryId: \"$CATEGORY_ID\", title: \"CHouse UI $VERSION Released!\", body: \$body }) { discussion { id url title } } }" \
+            --field body=@-
+          
+          echo "✅ Release announcement discussion created successfully!"
+
   build-and-push:
     name: Build and Push Docker Image
     needs: [tag-and-release]
