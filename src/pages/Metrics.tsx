@@ -287,6 +287,17 @@ export default function Metrics() {
     }
   }, [refreshInterval, refetch, refetchProd]);
 
+  // Listen for connection changes and refetch metrics
+  React.useEffect(() => {
+    const handleConnectionChange = () => {
+      refetch();
+      refetchProd();
+    };
+    
+    window.addEventListener('clickhouse:connected', handleConnectionChange);
+    return () => window.removeEventListener('clickhouse:connected', handleConnectionChange);
+  }, [refetch, refetchProd]);
+
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : "--:--:--";
   const stats = metrics?.currentStats;
 

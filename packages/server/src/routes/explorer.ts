@@ -187,7 +187,7 @@ explorer.post(
 
     let query = `CREATE DATABASE IF NOT EXISTS ${name}`;
     
-    if (cluster && session.connectionConfig.database) {
+    if (cluster) {
       query += ` ON CLUSTER ${cluster}`;
     }
     

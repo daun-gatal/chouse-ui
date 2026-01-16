@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Server } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -11,15 +13,25 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useExplorerStore } from "@/stores";
-import { useDatabases, useExecuteQuery } from "@/hooks";
+import { useDatabases, useCreateDatabase, useClusterNames } from "@/hooks";
 
 const CreateDatabase: React.FC = () => {
   const { createDatabaseModalOpen, closeCreateDatabaseModal } = useExplorerStore();
   const { refetch: refetchDatabases } = useDatabases();
-  const executeQuery = useExecuteQuery();
+  const { data: clusters = [] } = useClusterNames();
+  const createDatabase = useCreateDatabase();
 
   const [databaseName, setDatabaseName] = useState("");
+  const [useCluster, setUseCluster] = useState(false);
+  const [selectedCluster, setSelectedCluster] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,14 +49,19 @@ const CreateDatabase: React.FC = () => {
       return;
     }
 
+    if (useCluster && !selectedCluster) {
+      toast.error("Please select a cluster");
+      return;
+    }
+
     try {
-      await executeQuery.mutateAsync({
-        query: `CREATE DATABASE IF NOT EXISTS ${databaseName}`,
+      await createDatabase.mutateAsync({
+        name: databaseName,
+        cluster: useCluster ? selectedCluster : undefined,
       });
-      toast.success(`Database "${databaseName}" created successfully`);
+      toast.success(`Database "${databaseName}" created successfully${useCluster ? ` on cluster ${selectedCluster}` : ""}`);
       await refetchDatabases();
-      setDatabaseName("");
-      closeCreateDatabaseModal();
+      handleClose();
     } catch (error) {
       console.error("Failed to create database:", error);
       toast.error(`Failed to create database: ${(error as Error).message}`);
@@ -53,6 +70,8 @@ const CreateDatabase: React.FC = () => {
 
   const handleClose = () => {
     setDatabaseName("");
+    setUseCluster(false);
+    setSelectedCluster("");
     closeCreateDatabaseModal();
   };
 
@@ -74,13 +93,48 @@ const CreateDatabase: React.FC = () => {
                 autoFocus
               />
             </div>
+
+            {/* Cluster Option */}
+            {clusters.length > 0 && (
+              <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Server className="h-4 w-4 text-orange-400" />
+                    <Label className="text-gray-300">Create on Cluster</Label>
+                  </div>
+                  <Switch checked={useCluster} onCheckedChange={setUseCluster} />
+                </div>
+                <AnimatePresence>
+                  {useCluster && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      <Select value={selectedCluster} onValueChange={setSelectedCluster}>
+                        <SelectTrigger className="bg-white/5 border-white/10">
+                          <SelectValue placeholder="Select cluster" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clusters.map((cluster) => (
+                            <SelectItem key={cluster} value={cluster}>
+                              {cluster}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={executeQuery.isPending}>
-              {executeQuery.isPending ? (
+            <Button type="submit" disabled={createDatabase.isPending}>
+              {createDatabase.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Creating...

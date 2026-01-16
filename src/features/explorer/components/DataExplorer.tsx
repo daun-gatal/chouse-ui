@@ -221,6 +221,16 @@ const DatabaseExplorer: React.FC = () => {
     return () => resizeObserver.disconnect();
   }, []);
 
+  // Listen for connection changes and refresh databases
+  useEffect(() => {
+    const handleConnectionChange = () => {
+      refreshDatabases();
+    };
+    
+    window.addEventListener('clickhouse:connected', handleConnectionChange);
+    return () => window.removeEventListener('clickhouse:connected', handleConnectionChange);
+  }, [refreshDatabases]);
+
   return (
     <div ref={containerRef} className="flex flex-col h-full bg-gradient-to-b from-white/[0.02] to-transparent">
       {/* Header */}
