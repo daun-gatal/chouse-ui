@@ -375,9 +375,9 @@ const MIGRATIONS: Migration[] = [
             id TEXT PRIMARY KEY NOT NULL,
             user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
             database TEXT NOT NULL,
-            table TEXT,
+            "table" TEXT,
             created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-            UNIQUE(user_id, database, table)
+            UNIQUE(user_id, database, "table")
           )
         `);
 
@@ -389,9 +389,9 @@ const MIGRATIONS: Migration[] = [
             id TEXT PRIMARY KEY NOT NULL,
             user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
             database TEXT NOT NULL,
-            table TEXT,
+            "table" TEXT,
             accessed_at INTEGER NOT NULL DEFAULT (unixepoch()),
-            UNIQUE(user_id, database, table)
+            UNIQUE(user_id, database, "table")
           )
         `);
 
@@ -779,9 +779,9 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
       database TEXT NOT NULL,
-      table TEXT,
+      "table" TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      UNIQUE(user_id, database, table)
+      UNIQUE(user_id, database, "table")
     )
   `);
 
@@ -793,9 +793,9 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
       database TEXT NOT NULL,
-      table TEXT,
+      "table" TEXT,
       accessed_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      UNIQUE(user_id, database, table)
+      UNIQUE(user_id, database, "table")
     )
   `);
 

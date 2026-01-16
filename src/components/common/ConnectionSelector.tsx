@@ -229,6 +229,8 @@ export default function ConnectionSelector({
       queryClient.invalidateQueries({ queryKey: ['systemStats'] });
       queryClient.invalidateQueries({ queryKey: ['recentQueries'] });
       queryClient.invalidateQueries({ queryKey: ['queryLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['productionMetrics'] });
 
       // Trigger a refresh of data by dispatching a custom event
       window.dispatchEvent(new CustomEvent('clickhouse:connected', { detail: result }));
