@@ -1,14 +1,14 @@
 import { useMemo } from "react";
-import { useWorkspaceStore, genTabId } from "@/stores";
-import { useSavedQueries, useSavedQueriesStatus } from "@/hooks";
+import { useWorkspaceStore, genTabId, useAuthStore } from "@/stores";
+import { useSavedQueries } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FilePlus, Save, Clock, ArrowRight } from "lucide-react";
 
 const HomeTab = () => {
   const { addTab, tabs } = useWorkspaceStore();
-  const { data: isSavedQueriesEnabled = false } = useSavedQueriesStatus();
-  const { data: savedQueries = [] } = useSavedQueries();
+  const { activeConnectionId } = useAuthStore();
+  const { data: savedQueries = [] } = useSavedQueries(activeConnectionId ?? undefined);
 
   const recentTabs = useMemo(() => {
     return tabs
@@ -108,9 +108,9 @@ const HomeTab = () => {
               </h2>
             </div>
             <ScrollArea className="h-[200px]">
-              {!isSavedQueriesEnabled ? (
+              {!activeConnectionId ? (
                 <p className="text-center text-gray-500 py-8">
-                  Saved queries feature is not enabled
+                  Connect to a server to view saved queries
                 </p>
               ) : savedQueries.length > 0 ? (
                 <div className="space-y-2">

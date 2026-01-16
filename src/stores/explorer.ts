@@ -10,6 +10,7 @@ import { explorerApi, savedQueriesApi, rbacUserPreferencesApi } from '@/api';
 import type { DatabaseInfo, SavedQuery, UserFavorite, UserRecentItem } from '@/api';
 import { toast } from 'sonner';
 import { useRbacStore } from './rbac';
+import { useAuthStore } from './auth';
 
 // ============================================
 // Types
@@ -21,6 +22,8 @@ export interface FavoriteItem {
   database: string;
   table?: string;
   name: string;
+  connectionId?: string | null;
+  connectionName?: string | null;
   addedAt: number;
 }
 
@@ -30,6 +33,8 @@ export interface RecentItem {
   database: string;
   table?: string;
   name: string;
+  connectionId?: string | null;
+  connectionName?: string | null;
   accessedAt: number;
 }
 
@@ -78,8 +83,7 @@ export interface ExplorerState {
   // Actions
   fetchDatabases: () => Promise<void>;
   clearDatabases: () => void; // Clear databases state immediately
-  fetchSavedQueries: () => Promise<SavedQuery[]>;
-  checkSavedQueriesStatus: () => Promise<boolean>;
+  fetchSavedQueries: (connectionId?: string) => Promise<SavedQuery[]>;
 
   // Tree actions
   toggleNode: (nodeId: string) => void;
@@ -308,39 +312,21 @@ export const useExplorerStore = create<ExplorerState>()(
   },
 
   /**
-   * Fetch saved queries
+   * Fetch saved queries (optionally filter by connection)
+   * Note: This is a legacy function. Prefer using useSavedQueries hook instead.
    */
-  fetchSavedQueries: async () => {
+  fetchSavedQueries: async (connectionId?: string) => {
     set({ isLoadingSavedQueries: true });
 
     try {
-      const queries = await savedQueriesApi.getSavedQueries();
-      set({ savedQueries: queries, isLoadingSavedQueries: false });
+      // connectionId is now optional - will fetch all user's queries if not provided
+      const queries = await savedQueriesApi.getSavedQueries(connectionId);
+      set({ savedQueries: queries, isLoadingSavedQueries: false, isSavedQueriesEnabled: true });
       return queries;
     } catch (error) {
       console.error('Failed to fetch saved queries:', error);
       set({ savedQueries: [], isLoadingSavedQueries: false });
       return [];
-    }
-  },
-
-  /**
-   * Check if saved queries feature is enabled
-   */
-  checkSavedQueriesStatus: async () => {
-    try {
-      const isEnabled = await savedQueriesApi.checkSavedQueriesStatus();
-      set({ isSavedQueriesEnabled: isEnabled });
-      
-      if (isEnabled) {
-        await get().fetchSavedQueries();
-      }
-      
-      return isEnabled;
-    } catch (error) {
-      console.error('Failed to check saved queries status:', error);
-      set({ isSavedQueriesEnabled: false });
-      return false;
     }
   },
 
@@ -464,9 +450,10 @@ export const useExplorerStore = create<ExplorerState>()(
    * Refresh all explorer data
    */
   refreshAll: async () => {
+    const connectionId = useAuthStore.getState().activeConnectionId;
     await Promise.all([
       get().fetchDatabases(),
-      get().isSavedQueriesEnabled ? get().fetchSavedQueries() : Promise.resolve(),
+      connectionId ? get().fetchSavedQueries(connectionId) : Promise.resolve([]),
     ]);
   },
 
@@ -488,6 +475,8 @@ export const useExplorerStore = create<ExplorerState>()(
         database: fav.database,
         table: fav.table,
         name: fav.table || fav.database,
+        connectionId: fav.connectionId,
+        connectionName: fav.connectionName,
         addedAt: new Date(fav.createdAt).getTime(),
       }));
 
@@ -507,19 +496,24 @@ export const useExplorerStore = create<ExplorerState>()(
       return;
     }
     
-    console.log('[ExplorerStore] Adding favorite:', { database, table, userId: rbacState.user?.id });
+    // Get current connection info
+    const authState = useAuthStore.getState();
+    const connectionId = authState.activeConnectionId;
+    const connectionName = authState.activeConnectionName;
+    
+    console.log('[ExplorerStore] Adding favorite:', { database, table, userId: rbacState.user?.id, connectionId });
 
     const id = getItemId(database, table);
     const { favorites } = get();
     
-    // Check if already favorited locally
-    if (favorites.some(f => f.id === id)) {
+    // Check if already favorited locally (for the same connection)
+    if (favorites.some(f => f.id === id && f.connectionId === connectionId)) {
       return;
     }
 
     try {
-      // Add to API
-      const apiFavorite = await rbacUserPreferencesApi.addFavorite(database, table);
+      // Add to API with connection info
+      const apiFavorite = await rbacUserPreferencesApi.addFavorite(database, table, connectionId, connectionName);
       
       // Update local state
       const newFavorite: FavoriteItem = {
@@ -528,6 +522,8 @@ export const useExplorerStore = create<ExplorerState>()(
         database: apiFavorite.database,
         table: apiFavorite.table,
         name: apiFavorite.table || apiFavorite.database,
+        connectionId: apiFavorite.connectionId,
+        connectionName: apiFavorite.connectionName,
         addedAt: new Date(apiFavorite.createdAt).getTime(),
       };
 
@@ -625,6 +621,8 @@ export const useExplorerStore = create<ExplorerState>()(
         database: item.database,
         table: item.table,
         name: item.table || item.database,
+        connectionId: item.connectionId,
+        connectionName: item.connectionName,
         accessedAt: new Date(item.accessedAt).getTime(),
       }));
 
@@ -646,16 +644,21 @@ export const useExplorerStore = create<ExplorerState>()(
     // Check if user changed and clear if needed
     checkAndClearUserData(set);
     
+    // Get current connection info
+    const authState = useAuthStore.getState();
+    const connectionId = authState.activeConnectionId;
+    const connectionName = authState.activeConnectionName;
+    
     try {
-      // Add to API (this will update or create the item)
-      const apiRecentItem = await rbacUserPreferencesApi.addRecentItem(database, table);
+      // Add to API (this will update or create the item) with connection info
+      const apiRecentItem = await rbacUserPreferencesApi.addRecentItem(database, table, connectionId, connectionName);
       
       // Update local state
       const id = getItemId(database, table);
       const { recentItems } = get();
       
-      // Remove existing if present
-      const filtered = recentItems.filter(item => item.id !== id);
+      // Remove existing if present (for same connection)
+      const filtered = recentItems.filter(item => !(item.id === id && item.connectionId === connectionId));
       
       const newRecent: RecentItem = {
         id,
@@ -663,6 +666,8 @@ export const useExplorerStore = create<ExplorerState>()(
         database,
         table,
         name: table || database,
+        connectionId: apiRecentItem.connectionId,
+        connectionName: apiRecentItem.connectionName,
         accessedAt: new Date(apiRecentItem.accessedAt).getTime(),
       };
 

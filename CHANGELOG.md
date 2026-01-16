@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.6.0] - 2026-01-16
+
+### Added
+
+#### Saved Queries Migration to RBAC Database
+- **RBAC-Based Storage**: Migrated saved queries from ClickHouse to RBAC metadata database (`rbac_saved_queries` table). Queries are now properly scoped by user with optional connection association.
+- **Shareable Queries**: Saved queries can now be shared across connections. When `connectionId` is null, queries are accessible from any connection.
+- **Connection Filter**: Added connection filter dropdown to Explorer page for filtering Saved Queries, Pinned items, and Recent items by connection.
+- **Connection Names API**: New `/saved-queries/connections` endpoint to fetch unique connection names for filter dropdown.
+
+#### Auto-Save Functionality
+- **Real-Time Sync**: Saved queries now auto-save 2 seconds after user stops typing, similar to Google Docs.
+- **Visual Status Indicators**: New status badges showing `Saving...`, `Saved`, `Unsaved`, and `Synced` states in the SQL editor.
+- **Immediate Save**: Press `⌘S` to save immediately without waiting for auto-save delay.
+
+#### Save As Functionality
+- **Save As New Query**: Duplicate saved queries with "Save As..." option (`⇧⌘S` shortcut).
+- **Duplicate Name Detection**: Warning shown when query name already exists.
+- **Rename & Save**: Update query name through dedicated menu option.
+
+#### Explorer Page Redesign
+- **Tab-Based Navigation**: Replaced collapsible sections with clean tab navigation (Databases, Pinned, Recent, Queries).
+- **Unified Search**: Context-aware search for each tab (databases/tables and saved queries).
+- **Connection-Aware Filtering**: Filter Pinned, Recent, and Saved Queries by connection (current, all, or specific).
+- **Polished Empty States**: Contextual empty states with helpful descriptions for each tab.
+- **Animated Transitions**: Smooth tab transitions with Framer Motion.
+
+### Changed
+
+#### Database Schema
+- **Saved Queries Table**: New `rbac_saved_queries` table with `userId`, `connectionId`, `connectionName`, `name`, `query`, `description`, `isPublic`, `createdAt`, `updatedAt` columns.
+- **User Favorites/Recent Items**: Extended `rbac_user_favorites` and `rbac_user_recent_items` tables with `connectionId` and `connectionName` columns for connection-aware tracking.
+- **Migrations**: Added v1.4.0, v1.5.0, v1.6.0 migrations for schema changes with proper `ON DELETE SET NULL` handling.
+
+#### API Changes
+- **Saved Queries Routes**: Refactored to use RBAC database instead of ClickHouse. Removed `/status`, `/activate`, `/deactivate` endpoints.
+- **User Preferences Routes**: Extended favorites and recent items APIs to accept `connectionId` and `connectionName`.
+- **Auth Store**: Added `activeConnectionId` and `activeConnectionName` to global state for connection-aware operations.
+
+#### UI/UX Improvements
+- **Consistent Colors**: Aligned Explorer page colors with global theme using `white/5` and `white/10` opacity values.
+- **Reactive Favorites**: Pinned star now updates immediately without requiring page refresh.
+- **Non-Clickable Title**: SQL editor title is now display-only; renaming available through dropdown menu.
+- **Removed Pencil Icon**: Removed edit icon from SQL editor for cleaner interface.
+
+### Fixed
+
+- **Pinned Star Not Updating**: Fixed `TreeNode` component to subscribe directly to favorites array for reactive re-rendering.
+- **Rename and Save Not Working**: Fixed `updateSavedQuery` to properly pass name parameter and invalidate query cache.
+- **Saved Queries Not Refreshing**: Added proper React Query cache invalidation after save/update operations.
+- **Count Display Issues**: Fixed messy count badges in Explorer tabs by using proper `tabular-nums` styling.
+- **Color Inconsistency**: Removed custom gradients and aligned hover/background colors across Explorer page.
+- **Connection Filter Scope**: Filter now correctly applies only to Pinned, Recent, and Queries tabs (not Databases, which is connection-specific).
+
+### Removed
+
+- **ActivateSavedQueries Component**: Removed admin component for enabling/disabling ClickHouse-based saved queries (feature now always available via RBAC).
+- **ClickHouse Saved Queries**: Removed all ClickHouse-specific saved queries logic from `ClickHouseService`.
+- **Legacy Status Checks**: Removed `useSavedQueriesStatus`, `useActivateSavedQueries`, `useDeactivateSavedQueries` hooks.
+
+### Security
+
+- **Ownership Validation**: Saved queries can only be updated/deleted by their owner (validated server-side).
+- **User Scoping**: Queries are properly scoped by `userId` with optional public sharing.
+
 ## [v2.5.3] - 2026-01-15
 
 ### Fixed

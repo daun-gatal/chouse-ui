@@ -1,9 +1,25 @@
+/**
+ * Saved Queries Routes
+ * 
+ * API endpoints for managing saved SQL queries.
+ * Queries are stored in the RBAC metadata database, scoped by user.
+ * Queries can optionally be associated with a connection for filtering.
+ */
+
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { authMiddleware, adminMiddleware } from "../middleware/auth";
+import { authMiddleware } from "../middleware/auth";
 import type { ClickHouseService } from "../services/clickhouse";
 import type { Session } from "../types";
+import {
+  getSavedQueries,
+  getSavedQueryById,
+  createSavedQuery,
+  updateSavedQuery,
+  deleteSavedQuery,
+  getQueryConnectionNames,
+} from "../rbac/services/savedQueries";
 
 type Variables = {
   sessionId: string;
@@ -11,139 +27,256 @@ type Variables = {
   session: Session;
 };
 
-const savedQueries = new Hono<{ Variables: Variables }>();
+const savedQueriesRouter = new Hono<{ Variables: Variables }>();
 
 // All routes require authentication
-savedQueries.use("*", authMiddleware);
+savedQueriesRouter.use("*", authMiddleware);
 
-/**
- * GET /saved-queries/status
- * Check if saved queries feature is enabled
- */
-savedQueries.get("/status", async (c) => {
-  const service = c.get("service");
+// ============================================
+// Schemas
+// ============================================
 
-  const isEnabled = await service.checkSavedQueriesEnabled();
-
-  return c.json({
-    success: true,
-    data: { isEnabled },
-  });
+const getQueriesSchema = z.object({
+  connectionId: z.string().optional(), // Optional - filter by connection or get all
 });
 
-/**
- * POST /saved-queries/activate
- * Activate saved queries feature (admin only)
- */
-savedQueries.post("/activate", adminMiddleware, async (c) => {
-  const service = c.get("service");
-
-  await service.activateSavedQueries();
-
-  return c.json({
-    success: true,
-    data: { message: "Saved queries activated successfully" },
-  });
+const createQuerySchema = z.object({
+  connectionId: z.string().optional().nullable(), // Optional - null means shared across all connections
+  connectionName: z.string().optional().nullable(), // Display name for the connection
+  name: z.string().min(1, "Query name is required"),
+  query: z.string().min(1, "Query content is required"),
+  description: z.string().optional(),
+  isPublic: z.boolean().optional().default(false),
 });
 
-/**
- * POST /saved-queries/deactivate
- * Deactivate saved queries feature (admin only)
- */
-savedQueries.post("/deactivate", adminMiddleware, async (c) => {
-  const service = c.get("service");
-
-  await service.deactivateSavedQueries();
-
-  return c.json({
-    success: true,
-    data: { message: "Saved queries deactivated successfully" },
-  });
+const updateQuerySchema = z.object({
+  name: z.string().min(1, "Query name is required").optional(),
+  query: z.string().min(1, "Query content is required").optional(),
+  description: z.string().optional(),
+  isPublic: z.boolean().optional(),
+  connectionId: z.string().optional().nullable(),
+  connectionName: z.string().optional().nullable(),
 });
+
+// ============================================
+// Routes
+// ============================================
 
 /**
  * GET /saved-queries
- * Get all saved queries
+ * Get all saved queries for the current user
+ * Query params: connectionId (optional - filter by connection)
  */
-savedQueries.get("/", async (c) => {
-  const service = c.get("service");
+savedQueriesRouter.get("/", zValidator("query", getQueriesSchema), async (c) => {
+  const { connectionId } = c.req.valid("query");
+  const session = c.get("session");
 
-  const isEnabled = await service.checkSavedQueriesEnabled();
-  if (!isEnabled) {
+  if (!session.rbacUserId) {
     return c.json({
-      success: true,
-      data: [],
-    });
+      success: false,
+      error: { message: "User not authenticated with RBAC" },
+    }, 401);
   }
 
-  const queries = await service.getSavedQueries();
+  try {
+    const queries = await getSavedQueries(session.rbacUserId, connectionId);
 
-  return c.json({
-    success: true,
-    data: queries,
-  });
+    return c.json({
+      success: true,
+      data: queries,
+    });
+  } catch (error) {
+    console.error("[SavedQueries] Failed to fetch queries:", error);
+    return c.json({
+      success: false,
+      error: { message: "Failed to fetch saved queries" },
+    }, 500);
+  }
+});
+
+/**
+ * GET /saved-queries/connections
+ * Get unique connection names from user's saved queries
+ * Used for the connection filter dropdown
+ */
+savedQueriesRouter.get("/connections", async (c) => {
+  const session = c.get("session");
+
+  if (!session.rbacUserId) {
+    return c.json({
+      success: false,
+      error: { message: "User not authenticated with RBAC" },
+    }, 401);
+  }
+
+  try {
+    const connectionNames = await getQueryConnectionNames(session.rbacUserId);
+
+    return c.json({
+      success: true,
+      data: connectionNames,
+    });
+  } catch (error) {
+    console.error("[SavedQueries] Failed to fetch connection names:", error);
+    return c.json({
+      success: false,
+      error: { message: "Failed to fetch connection names" },
+    }, 500);
+  }
+});
+
+/**
+ * GET /saved-queries/:id
+ * Get a single saved query by ID
+ */
+savedQueriesRouter.get("/:id", async (c) => {
+  const { id } = c.req.param();
+  const session = c.get("session");
+
+  if (!session.rbacUserId) {
+    return c.json({
+      success: false,
+      error: { message: "User not authenticated with RBAC" },
+    }, 401);
+  }
+
+  try {
+    const query = await getSavedQueryById(id, session.rbacUserId);
+
+    if (!query) {
+      return c.json({
+        success: false,
+        error: { message: "Query not found" },
+      }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: query,
+    });
+  } catch (error) {
+    console.error("[SavedQueries] Failed to fetch query:", error);
+    return c.json({
+      success: false,
+      error: { message: "Failed to fetch saved query" },
+    }, 500);
+  }
 });
 
 /**
  * POST /saved-queries
- * Save a new query
+ * Create a new saved query
+ * connectionId is optional - null means shared across all connections
  */
-const saveQuerySchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1, "Query name is required"),
-  query: z.string().min(1, "Query content is required"),
-  isPublic: z.boolean().optional().default(false),
-});
+savedQueriesRouter.post("/", zValidator("json", createQuerySchema), async (c) => {
+  const { connectionId, connectionName, name, query, description, isPublic } = c.req.valid("json");
+  const session = c.get("session");
 
-savedQueries.post("/", zValidator("json", saveQuerySchema), async (c) => {
-  const { id, name, query, isPublic } = c.req.valid("json");
-  const service = c.get("service");
+  if (!session.rbacUserId) {
+    return c.json({
+      success: false,
+      error: { message: "User not authenticated with RBAC" },
+    }, 401);
+  }
 
-  await service.saveQuery(id, name, query, isPublic);
+  try {
+    const savedQuery = await createSavedQuery(session.rbacUserId, {
+      connectionId: connectionId ?? null,
+      connectionName: connectionName ?? null,
+      name,
+      query,
+      description,
+      isPublic,
+    });
 
-  return c.json({
-    success: true,
-    data: { message: "Query saved successfully" },
-  });
+    return c.json({
+      success: true,
+      data: savedQuery,
+    });
+  } catch (error) {
+    console.error("[SavedQueries] Failed to create query:", error);
+    return c.json({
+      success: false,
+      error: { message: "Failed to save query" },
+    }, 500);
+  }
 });
 
 /**
  * PUT /saved-queries/:id
- * Update a saved query
+ * Update an existing saved query
  */
-const updateQuerySchema = z.object({
-  name: z.string().min(1, "Query name is required"),
-  query: z.string().min(1, "Query content is required"),
-});
-
-savedQueries.put("/:id", zValidator("json", updateQuerySchema), async (c) => {
+savedQueriesRouter.put("/:id", zValidator("json", updateQuerySchema), async (c) => {
   const { id } = c.req.param();
-  const { name, query } = c.req.valid("json");
-  const service = c.get("service");
+  const input = c.req.valid("json");
+  const session = c.get("session");
 
-  await service.updateSavedQuery(id, name, query);
+  if (!session.rbacUserId) {
+    return c.json({
+      success: false,
+      error: { message: "User not authenticated with RBAC" },
+    }, 401);
+  }
 
-  return c.json({
-    success: true,
-    data: { message: "Query updated successfully" },
-  });
+  try {
+    const updated = await updateSavedQuery(id, session.rbacUserId, input);
+
+    if (!updated) {
+      return c.json({
+        success: false,
+        error: { message: "Query not found or you don't have permission to update it" },
+      }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: updated,
+    });
+  } catch (error) {
+    console.error("[SavedQueries] Failed to update query:", error);
+    return c.json({
+      success: false,
+      error: { message: "Failed to update query" },
+    }, 500);
+  }
 });
 
 /**
  * DELETE /saved-queries/:id
  * Delete a saved query
  */
-savedQueries.delete("/:id", async (c) => {
+savedQueriesRouter.delete("/:id", async (c) => {
   const { id } = c.req.param();
-  const service = c.get("service");
+  const session = c.get("session");
 
-  await service.deleteSavedQuery(id);
+  if (!session.rbacUserId) {
+    return c.json({
+      success: false,
+      error: { message: "User not authenticated with RBAC" },
+    }, 401);
+  }
 
-  return c.json({
-    success: true,
-    data: { message: "Query deleted successfully" },
-  });
+  try {
+    const deleted = await deleteSavedQuery(id, session.rbacUserId);
+
+    if (!deleted) {
+      return c.json({
+        success: false,
+        error: { message: "Query not found or you don't have permission to delete it" },
+      }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: { message: "Query deleted successfully" },
+    });
+  } catch (error) {
+    console.error("[SavedQueries] Failed to delete query:", error);
+    return c.json({
+      success: false,
+      error: { message: "Failed to delete query" },
+    }, 500);
+  }
 });
 
-export default savedQueries;
-
+export default savedQueriesRouter;
