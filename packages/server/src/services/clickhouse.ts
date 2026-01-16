@@ -7,7 +7,6 @@ import type {
   SystemStats,
   RecentQuery,
   ColumnInfo,
-  SavedQuery,
 } from "../types";
 import { AppError } from "../types";
 
@@ -901,97 +900,6 @@ export class ClickHouseService {
       497: 'ACCESS_DENIED',
     };
     return exceptionNames[code] || `ERROR_${code}`;
-  }
-
-  // ============================================
-  // Saved Queries
-  // ============================================
-
-  async checkSavedQueriesEnabled(): Promise<boolean> {
-    try {
-      const result = await this.executeQuery<{ exists: number }>(`
-        SELECT COUNT(*) as exists 
-        FROM system.tables 
-        WHERE database = 'CH_UI' 
-        AND name = 'saved_queries'
-      `);
-      return (result.data[0]?.exists ?? 0) > 0;
-    } catch {
-      return false;
-    }
-  }
-
-  async activateSavedQueries(): Promise<void> {
-    await this.client.command({ query: "CREATE DATABASE IF NOT EXISTS CH_UI" });
-    await this.client.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS CH_UI.saved_queries (
-          id String,
-          name String,
-          query String,
-          created_at DateTime64(3),
-          updated_at DateTime64(3),
-          owner String,
-          is_public Boolean DEFAULT false,
-          PRIMARY KEY (id)
-        ) ENGINE = MergeTree()
-        ORDER BY (id, created_at)
-        SETTINGS index_granularity = 8192
-      `,
-    });
-  }
-
-  async deactivateSavedQueries(): Promise<void> {
-    await this.client.command({ query: "DROP TABLE IF EXISTS CH_UI.saved_queries" });
-  }
-
-  async getSavedQueries(): Promise<SavedQuery[]> {
-    const result = await this.executeQuery<SavedQuery>(
-      "SELECT * FROM CH_UI.saved_queries ORDER BY updated_at DESC"
-    );
-    return result.data;
-  }
-
-  async saveQuery(id: string, name: string, query: string, isPublic: boolean = false): Promise<void> {
-    const safeName = this.escapeString(name);
-    const safeQuery = this.escapeString(query);
-
-    await this.client.command({
-      query: `
-        INSERT INTO CH_UI.saved_queries (id, name, query, created_at, updated_at, owner, is_public)
-        VALUES (
-          '${id}',
-          '${safeName}',
-          '${safeQuery}',
-          now(),
-          now(),
-          currentUser(),
-          ${isPublic}
-        )
-      `,
-    });
-  }
-
-  async updateSavedQuery(id: string, name: string, query: string): Promise<void> {
-    const safeName = this.escapeString(name);
-    const safeQuery = this.escapeString(query);
-
-    await this.client.command({
-      query: `
-        ALTER TABLE CH_UI.saved_queries
-        UPDATE
-          name = '${safeName}',
-          query = '${safeQuery}',
-          updated_at = now()
-        WHERE id = '${id}'
-      `,
-    });
-  }
-
-  async deleteSavedQuery(id: string): Promise<void> {
-    await this.client.command({
-      query: `ALTER TABLE CH_UI.saved_queries DELETE WHERE id = '${id}'`,
-    });
   }
 
   // ============================================

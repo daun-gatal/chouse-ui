@@ -21,6 +21,8 @@ export interface FavoriteItem {
   id: string;
   database: string;
   table?: string;
+  connectionId?: string | null;
+  connectionName?: string | null;
   createdAt: Date;
 }
 
@@ -28,6 +30,8 @@ export interface RecentItem {
   id: string;
   database: string;
   table?: string;
+  connectionId?: string | null;
+  connectionName?: string | null;
   accessedAt: Date;
 }
 
@@ -54,6 +58,8 @@ export async function getUserFavorites(userId: string): Promise<FavoriteItem[]> 
       id: schema.userFavorites.id,
       database: schema.userFavorites.database,
       table: schema.userFavorites.table,
+      connectionId: schema.userFavorites.connectionId,
+      connectionName: schema.userFavorites.connectionName,
       createdAt: schema.userFavorites.createdAt,
     })
     .from(schema.userFavorites)
@@ -64,6 +70,8 @@ export async function getUserFavorites(userId: string): Promise<FavoriteItem[]> 
     id: fav.id,
     database: fav.database,
     table: fav.table || undefined,
+    connectionId: fav.connectionId || null,
+    connectionName: fav.connectionName || null,
     createdAt: fav.createdAt instanceof Date ? fav.createdAt : new Date(fav.createdAt),
   }));
 }
@@ -74,12 +82,14 @@ export async function getUserFavorites(userId: string): Promise<FavoriteItem[]> 
 export async function addUserFavorite(
   userId: string,
   database: string,
-  table?: string
+  table?: string,
+  connectionId?: string | null,
+  connectionName?: string | null
 ): Promise<FavoriteItem> {
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
   
-  // Check if favorite already exists
+  // Check if favorite already exists (with same connection)
   const [existing] = await db
     .select()
     .from(schema.userFavorites)
@@ -89,7 +99,10 @@ export async function addUserFavorite(
         eq(schema.userFavorites.database, database),
         table 
           ? eq(schema.userFavorites.table, table)
-          : sql`${schema.userFavorites.table} IS NULL`
+          : sql`${schema.userFavorites.table} IS NULL`,
+        connectionId
+          ? eq(schema.userFavorites.connectionId, connectionId)
+          : sql`${schema.userFavorites.connectionId} IS NULL`
       )
     )
     .limit(1);
@@ -100,6 +113,8 @@ export async function addUserFavorite(
       id: existing.id,
       database: existing.database,
       table: existing.table || undefined,
+      connectionId: existing.connectionId || null,
+      connectionName: existing.connectionName || null,
       createdAt: existing.createdAt instanceof Date ? existing.createdAt : new Date(existing.createdAt),
     };
   }
@@ -111,6 +126,8 @@ export async function addUserFavorite(
     userId,
     database,
     table: table || null,
+    connectionId: connectionId || null,
+    connectionName: connectionName || null,
   };
   
   await db.insert(schema.userFavorites).values(favorite);
@@ -130,6 +147,8 @@ export async function addUserFavorite(
     id: created.id,
     database: created.database,
     table: created.table || undefined,
+    connectionId: created.connectionId || null,
+    connectionName: created.connectionName || null,
     createdAt: created.createdAt instanceof Date ? created.createdAt : new Date(created.createdAt),
   };
 }
@@ -179,7 +198,8 @@ export async function clearUserFavorites(userId: string): Promise<void> {
 export async function isUserFavorite(
   userId: string,
   database: string,
-  table?: string
+  table?: string,
+  connectionId?: string | null
 ): Promise<boolean> {
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
@@ -193,7 +213,10 @@ export async function isUserFavorite(
         eq(schema.userFavorites.database, database),
         table 
           ? eq(schema.userFavorites.table, table)
-          : sql`${schema.userFavorites.table} IS NULL`
+          : sql`${schema.userFavorites.table} IS NULL`,
+        connectionId
+          ? eq(schema.userFavorites.connectionId, connectionId)
+          : sql`${schema.userFavorites.connectionId} IS NULL`
       )
     )
     .limit(1);
@@ -220,6 +243,8 @@ export async function getUserRecentItems(
       id: schema.userRecentItems.id,
       database: schema.userRecentItems.database,
       table: schema.userRecentItems.table,
+      connectionId: schema.userRecentItems.connectionId,
+      connectionName: schema.userRecentItems.connectionName,
       accessedAt: schema.userRecentItems.accessedAt,
     })
     .from(schema.userRecentItems)
@@ -231,6 +256,8 @@ export async function getUserRecentItems(
     id: item.id,
     database: item.database,
     table: item.table || undefined,
+    connectionId: item.connectionId || null,
+    connectionName: item.connectionName || null,
     accessedAt: item.accessedAt instanceof Date ? item.accessedAt : new Date(item.accessedAt),
   }));
 }
@@ -241,12 +268,14 @@ export async function getUserRecentItems(
 export async function addUserRecentItem(
   userId: string,
   database: string,
-  table?: string
+  table?: string,
+  connectionId?: string | null,
+  connectionName?: string | null
 ): Promise<RecentItem> {
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
   
-  // Check if item already exists
+  // Check if item already exists (with same connection)
   const [existing] = await db
     .select()
     .from(schema.userRecentItems)
@@ -256,7 +285,10 @@ export async function addUserRecentItem(
         eq(schema.userRecentItems.database, database),
         table 
           ? eq(schema.userRecentItems.table, table)
-          : sql`${schema.userRecentItems.table} IS NULL`
+          : sql`${schema.userRecentItems.table} IS NULL`,
+        connectionId
+          ? eq(schema.userRecentItems.connectionId, connectionId)
+          : sql`${schema.userRecentItems.connectionId} IS NULL`
       )
     )
     .limit(1);
@@ -272,6 +304,8 @@ export async function addUserRecentItem(
       id: existing.id,
       database: existing.database,
       table: existing.table || undefined,
+      connectionId: existing.connectionId || null,
+      connectionName: existing.connectionName || null,
       accessedAt: new Date(),
     };
   } else {
@@ -282,6 +316,8 @@ export async function addUserRecentItem(
       userId,
       database,
       table: table || null,
+      connectionId: connectionId || null,
+      connectionName: connectionName || null,
       accessedAt: new Date(),
     });
     
@@ -289,6 +325,8 @@ export async function addUserRecentItem(
       id,
       database,
       table,
+      connectionId: connectionId || null,
+      connectionName: connectionName || null,
       accessedAt: new Date(),
     };
   }

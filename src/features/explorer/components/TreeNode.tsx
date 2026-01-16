@@ -1,12 +1,14 @@
-import React, { useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useCallback, useMemo } from "react";
 import { ChevronRight, ChevronDown, MoreVertical, Database, Table2, FilePlus, Info, FileUp, Trash2, TerminalIcon, FileType, Settings2, Eye, Star } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
@@ -23,9 +25,9 @@ export interface TreeNodeData {
   name: string;
   type: "database" | "table" | "view";
   children: TreeNodeData[];
-  rows?: string; // Formatted row count (e.g., "1.2M")
-  size?: string; // Formatted size (e.g., "500 MB")
-  engine?: string; // Table engine type
+  rows?: string;
+  size?: string;
+  engine?: string;
 }
 
 interface TreeNodeProps {
@@ -50,10 +52,12 @@ const TreeNode: React.FC<TreeNodeProps> = ({
     openCreateTableModal,
     openUploadFileModal,
     openAlterTableModal,
-    isFavorite,
     toggleFavorite,
     addRecentItem,
   } = useExplorerStore();
+  
+  // Subscribe to favorites array directly for reactivity
+  const favorites = useExplorerStore((state) => state.favorites);
   const { addTab } = useWorkspaceStore();
 
   // Memoize computed values
@@ -77,7 +81,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
     );
   }, [hasChildren, node.children, searchTerm]);
 
-  // Early return for non-matching nodes (memoized check)
+  // Early return for non-matching nodes
   const shouldRender = useMemo(() => {
     if (!searchTerm) return true;
     if (matchesSearch) return true;
@@ -86,14 +90,14 @@ const TreeNode: React.FC<TreeNodeProps> = ({
   }, [searchTerm, matchesSearch, hasChildren, filteredChildren.length]);
 
   // Memoized callbacks
-  const handleToggle = useCallback(() => {
+  const handleToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     if (hasChildren) {
       toggleNode(node.name);
     }
   }, [hasChildren, toggleNode, node.name]);
 
   const handleViewInfo = useCallback(async () => {
-    // Track as recent item
     if (isDatabase) {
       await addRecentItem(node.name);
       navigate(`/explorer?database=${node.name}`);
@@ -109,8 +113,9 @@ const TreeNode: React.FC<TreeNodeProps> = ({
   }, [toggleFavorite, databaseName, isDatabase, node.name]);
 
   const isFavorited = useMemo(() => {
-    return isFavorite(databaseName, isDatabase ? undefined : node.name);
-  }, [isFavorite, databaseName, isDatabase, node.name]);
+    const id = isDatabase ? databaseName : `${databaseName}.${node.name}`;
+    return favorites.some(f => f.id === id);
+  }, [favorites, databaseName, isDatabase, node.name]);
 
   const handleNewQuery = useCallback(() => {
     const query = isDatabase
@@ -132,42 +137,45 @@ const TreeNode: React.FC<TreeNodeProps> = ({
   return (
     <div className="select-none">
       <div
-        className={`flex items-center py-1 px-2 hover:bg-white/5 rounded-md cursor-pointer transition-colors group ${
-          matchesSearch && searchTerm ? "bg-yellow-500/10" : ""
-        }`}
-        style={{ paddingLeft: `${level * 16 + 8}px` }}
+        className={cn(
+          "flex items-center py-1 px-2 rounded-md cursor-pointer transition-all duration-150 group",
+          "hover:bg-white/5",
+          matchesSearch && searchTerm && "bg-amber-500/10 hover:bg-amber-500/15"
+        )}
+        style={{ paddingLeft: `${level * 12 + 8}px` }}
+        onClick={handleViewInfo}
       >
-        {/* Expand/Collapse */}
+        {/* Expand/Collapse Button */}
         {hasChildren ? (
-          <button onClick={handleToggle} className="p-1 hover:bg-white/10 rounded">
-            {isExpanded ? (
-              <ChevronDown className="w-4 h-4 text-gray-400" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            )}
+          <button 
+            onClick={handleToggle} 
+            className="p-0.5 hover:bg-white/10 rounded transition-colors mr-1"
+          >
+            <motion.div
+              animate={{ rotate: isExpanded ? 90 : 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+            </motion.div>
           </button>
         ) : (
-          <span className="w-6" />
+          <span className="w-5" />
         )}
 
         {/* Icon */}
         {isDatabase ? (
-          <Database className="w-4 h-4 text-blue-400 mr-2 flex-shrink-0" />
+          <Database className="w-3.5 h-3.5 text-blue-400 mr-2 flex-shrink-0" />
         ) : node.type === "view" ? (
-          <Eye className="w-4 h-4 text-purple-400 mr-2 flex-shrink-0" />
+          <Eye className="w-3.5 h-3.5 text-purple-400 mr-2 flex-shrink-0" />
         ) : (
-          <Table2 className="w-4 h-4 text-green-400 mr-2 flex-shrink-0" />
+          <Table2 className="w-3.5 h-3.5 text-emerald-400 mr-2 flex-shrink-0" />
         )}
 
-        {/* Name and Metadata */}
+        {/* Name */}
         <TooltipProvider>
-          <Tooltip>
+          <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>
-              <span
-                className="flex-1 text-sm text-gray-200 truncate cursor-pointer"
-                onClick={handleViewInfo}
-                title={node.name}
-              >
+              <span className="flex-1 text-xs text-gray-300 truncate group-hover:text-white transition-colors">
                 {node.name}
               </span>
             </TooltipTrigger>
@@ -175,21 +183,21 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               <TooltipContent side="right" className="max-w-xs">
                 <div className="space-y-1 text-xs">
                   {node.engine && (
-                    <div>
-                      <span className="text-gray-400">Engine: </span>
-                      <span className="text-white">{node.engine}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Engine</span>
+                      <span className="text-white font-medium">{node.engine}</span>
                     </div>
                   )}
                   {node.rows && (
-                    <div>
-                      <span className="text-gray-400">Rows: </span>
-                      <span className="text-white">{node.rows}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Rows</span>
+                      <span className="text-white font-medium">{node.rows}</span>
                     </div>
                   )}
                   {node.size && (
-                    <div>
-                      <span className="text-gray-400">Size: </span>
-                      <span className="text-white">{node.size}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Size</span>
+                      <span className="text-white font-medium">{node.size}</span>
                     </div>
                   )}
                 </div>
@@ -198,37 +206,37 @@ const TreeNode: React.FC<TreeNodeProps> = ({
           </Tooltip>
         </TooltipProvider>
 
+        {/* Metadata Badges - Show on hover */}
+        {!isDatabase && (node.rows || node.size) && (
+          <div className="hidden sm:flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            {node.rows && (
+              <Badge className="text-[9px] px-1 py-0 bg-blue-500/15 text-blue-400 border-0 font-normal">
+                {node.rows}
+              </Badge>
+            )}
+          </div>
+        )}
+
         {/* Favorite Star */}
         <Button
           size="icon"
           variant="ghost"
           onClick={handleToggleFavorite}
-          className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity p-0"
-          title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+          className={cn(
+            "h-5 w-5 ml-1 p-0 transition-opacity",
+            isFavorited ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+          title={isFavorited ? "Remove from pinned" : "Pin"}
         >
           <Star
             className={cn(
-              "w-3.5 h-3.5 transition-colors",
-              isFavorited ? "fill-yellow-400 text-yellow-400" : "text-gray-500 hover:text-yellow-400"
+              "w-3 h-3 transition-colors",
+              isFavorited 
+                ? "fill-amber-400 text-amber-400" 
+                : "text-gray-500 hover:text-amber-400"
             )}
           />
         </Button>
-
-        {/* Metadata Badges */}
-        {!isDatabase && (node.rows || node.size) && (
-          <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {node.rows && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-500/20 text-blue-300 border-blue-500/30">
-                {node.rows}
-              </Badge>
-            )}
-            {node.size && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30">
-                {node.size}
-              </Badge>
-            )}
-          </div>
-        )}
 
         {/* Actions Menu */}
         <DropdownMenu>
@@ -236,32 +244,35 @@ const TreeNode: React.FC<TreeNodeProps> = ({
             <Button
               size="icon"
               variant="ghost"
-              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
             >
-              <MoreVertical className="w-4 h-4" />
+              <MoreVertical className="w-3.5 h-3.5 text-gray-500" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleViewInfo}>
-              <Info className="w-4 h-4 mr-2" />
-              View Information
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={handleViewInfo} className="text-xs gap-2">
+              <Info className="w-3.5 h-3.5" />
+              View Details
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleNewQuery}>
-              <TerminalIcon className="w-4 h-4 mr-2" />
+            <DropdownMenuItem onClick={handleNewQuery} className="text-xs gap-2">
+              <TerminalIcon className="w-3.5 h-3.5" />
               New Query
             </DropdownMenuItem>
+            
+            <DropdownMenuSeparator />
             
             {isDatabase && (
               <>
                 <PermissionGuard requiredPermission="CREATE TABLE" showTooltip>
-                  <DropdownMenuItem onClick={() => openCreateTableModal(node.name)}>
-                    <FilePlus className="w-4 h-4 mr-2" />
+                  <DropdownMenuItem onClick={() => openCreateTableModal(node.name)} className="text-xs gap-2">
+                    <FilePlus className="w-3.5 h-3.5 text-emerald-400" />
                     Create Table
                   </DropdownMenuItem>
                 </PermissionGuard>
                 <PermissionGuard requiredPermission="INSERT" showTooltip>
-                  <DropdownMenuItem onClick={() => openUploadFileModal(node.name)}>
-                    <FileUp className="w-4 h-4 mr-2" />
+                  <DropdownMenuItem onClick={() => openUploadFileModal(node.name)} className="text-xs gap-2">
+                    <FileUp className="w-3.5 h-3.5 text-purple-400" />
                     Upload File
                   </DropdownMenuItem>
                 </PermissionGuard>
@@ -279,19 +290,21 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                       content: `DESCRIBE TABLE ${databaseName}.${node.name}`,
                     });
                   }}
+                  className="text-xs gap-2"
                 >
-                  <FileType className="w-4 h-4 mr-2" />
+                  <FileType className="w-3.5 h-3.5" />
                   Describe Table
                 </DropdownMenuItem>
                 <PermissionGuard requiredPermission="ALTER TABLE" showTooltip>
-                  <DropdownMenuItem onClick={() => openAlterTableModal(databaseName, node.name)}>
-                    <Settings2 className="w-4 h-4 mr-2" />
+                  <DropdownMenuItem onClick={() => openAlterTableModal(databaseName, node.name)} className="text-xs gap-2">
+                    <Settings2 className="w-3.5 h-3.5" />
                     Alter Table
                   </DropdownMenuItem>
                 </PermissionGuard>
+                <DropdownMenuSeparator />
                 <PermissionGuard requiredPermission="DROP TABLE" showTooltip>
                   <DropdownMenuItem
-                    className="text-red-500"
+                    className="text-xs gap-2 text-red-400 focus:text-red-400"
                     onClick={() => {
                       addTab({
                         id: genTabId(),
@@ -301,7 +314,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                       });
                     }}
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />
+                    <Trash2 className="w-3.5 h-3.5" />
                     Drop Table
                   </DropdownMenuItem>
                 </PermissionGuard>
@@ -312,27 +325,34 @@ const TreeNode: React.FC<TreeNodeProps> = ({
       </div>
 
       {/* Children */}
-      {isExpanded && filteredChildren.length > 0 && (
-        <div>
-          {filteredChildren.map((child) => (
-            <TreeNode
-              key={`${databaseName}-${child.name}`}
-              node={child}
-              level={level + 1}
-              searchTerm={searchTerm}
-              parentDatabaseName={databaseName}
-              refreshData={refreshData}
-            />
-          ))}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {isExpanded && filteredChildren.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            {filteredChildren.map((child) => (
+              <TreeNode
+                key={`${databaseName}-${child.name}`}
+                node={child}
+                level={level + 1}
+                searchTerm={searchTerm}
+                parentDatabaseName={databaseName}
+                refreshData={refreshData}
+              />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
 // Memoize TreeNode to prevent unnecessary re-renders
 export default React.memo(TreeNode, (prevProps, nextProps) => {
-  // Custom comparison function for better performance
   return (
     prevProps.node.name === nextProps.node.name &&
     prevProps.node.type === nextProps.node.type &&

@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.6.0';
 
 // ============================================
 // Migration Registry
@@ -476,6 +476,252 @@ const MIGRATIONS: Migration[] = [
       console.log('[Migration 1.3.0] User preferences tables dropped');
     },
   },
+  {
+    version: '1.4.0',
+    name: 'saved_queries_table',
+    description: 'Add saved queries table to store user queries scoped by user and connection (replaces ClickHouse-based storage)',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saved_queries (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            query TEXT NOT NULL,
+            description TEXT,
+            is_public INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_idx ON rbac_saved_queries(user_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS saved_queries_conn_idx ON rbac_saved_queries(connection_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_conn_idx ON rbac_saved_queries(user_id, connection_id)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saved_queries (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            query TEXT NOT NULL,
+            description TEXT,
+            is_public BOOLEAN NOT NULL DEFAULT false,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_idx ON rbac_saved_queries(user_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS saved_queries_conn_idx ON rbac_saved_queries(connection_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_conn_idx ON rbac_saved_queries(user_id, connection_id)`);
+      }
+
+      console.log('[Migration 1.4.0] Saved queries table created');
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_saved_queries`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_saved_queries`);
+      }
+
+      console.log('[Migration 1.4.0] Saved queries table dropped');
+    },
+  },
+  {
+    version: '1.5.0',
+    name: 'saved_queries_shared',
+    description: 'Make saved queries shareable across connections - connectionId becomes optional, add connectionName for display',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        // SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+        // First, create a new table with the updated schema
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saved_queries_new (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+            connection_name TEXT,
+            name TEXT NOT NULL,
+            query TEXT NOT NULL,
+            description TEXT,
+            is_public INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+
+        // Copy data from old table to new, joining to get connection names
+        (db as SqliteDb).run(sql`
+          INSERT INTO rbac_saved_queries_new (id, user_id, connection_id, connection_name, name, query, description, is_public, created_at, updated_at)
+          SELECT sq.id, sq.user_id, sq.connection_id, cc.name, sq.name, sq.query, sq.description, sq.is_public, sq.created_at, sq.updated_at
+          FROM rbac_saved_queries sq
+          LEFT JOIN rbac_clickhouse_connections cc ON sq.connection_id = cc.id
+        `);
+
+        // Drop old table
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_saved_queries`);
+
+        // Rename new table
+        (db as SqliteDb).run(sql`ALTER TABLE rbac_saved_queries_new RENAME TO rbac_saved_queries`);
+
+        // Recreate indexes
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_idx ON rbac_saved_queries(user_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS saved_queries_conn_idx ON rbac_saved_queries(connection_id)`);
+      } else {
+        // PostgreSQL supports ALTER COLUMN
+        // Make connection_id nullable
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_saved_queries 
+          ALTER COLUMN connection_id DROP NOT NULL
+        `);
+
+        // Add connection_name column
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_saved_queries 
+          ADD COLUMN IF NOT EXISTS connection_name VARCHAR(255)
+        `);
+
+        // Populate connection_name from existing connections
+        await (db as PostgresDb).execute(sql`
+          UPDATE rbac_saved_queries sq
+          SET connection_name = cc.name
+          FROM rbac_clickhouse_connections cc
+          WHERE sq.connection_id = cc.id AND sq.connection_name IS NULL
+        `);
+
+        // Drop the old composite index
+        await (db as PostgresDb).execute(sql`DROP INDEX IF EXISTS saved_queries_user_conn_idx`);
+      }
+
+      console.log('[Migration 1.5.0] Saved queries table updated to support shared queries across connections');
+    },
+    down: async (db) => {
+      // This migration is not easily reversible as it changes data
+      console.log('[Migration 1.5.0] Down migration not supported - connectionId is now optional');
+    },
+  },
+  {
+    version: '1.6.0',
+    name: 'favorites_recent_connection',
+    description: 'Add connection association to favorites and recent items for filtering by connection',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        // SQLite: Recreate tables with new columns
+        
+        // Favorites table
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_favorites_new (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+            connection_name TEXT,
+            database TEXT NOT NULL,
+            "table" TEXT,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            UNIQUE(user_id, database, "table", connection_id)
+          )
+        `);
+
+        // Copy data from old favorites table, joining to get connection info
+        (db as SqliteDb).run(sql`
+          INSERT INTO rbac_user_favorites_new (id, user_id, connection_id, connection_name, database, "table", created_at)
+          SELECT id, user_id, NULL, NULL, database, "table", created_at
+          FROM rbac_user_favorites
+        `);
+
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_user_favorites`);
+        (db as SqliteDb).run(sql`ALTER TABLE rbac_user_favorites_new RENAME TO rbac_user_favorites`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_favorites_conn_id_idx ON rbac_user_favorites(connection_id)`);
+
+        // Recent items table
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_recent_items_new (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+            connection_name TEXT,
+            database TEXT NOT NULL,
+            "table" TEXT,
+            accessed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            UNIQUE(user_id, database, "table", connection_id)
+          )
+        `);
+
+        // Copy data from old recent items table
+        (db as SqliteDb).run(sql`
+          INSERT INTO rbac_user_recent_items_new (id, user_id, connection_id, connection_name, database, "table", accessed_at)
+          SELECT id, user_id, NULL, NULL, database, "table", accessed_at
+          FROM rbac_user_recent_items
+        `);
+
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_user_recent_items`);
+        (db as SqliteDb).run(sql`ALTER TABLE rbac_user_recent_items_new RENAME TO rbac_user_recent_items`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_conn_id_idx ON rbac_user_recent_items(connection_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
+      } else {
+        // PostgreSQL: Add columns to existing tables
+        
+        // Favorites table
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_user_favorites 
+          ADD COLUMN IF NOT EXISTS connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL
+        `);
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_user_favorites 
+          ADD COLUMN IF NOT EXISTS connection_name VARCHAR(255)
+        `);
+        await (db as PostgresDb).execute(sql`
+          DROP INDEX IF EXISTS user_favorites_user_db_table_idx
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS user_favorites_user_db_table_conn_idx 
+          ON rbac_user_favorites(user_id, database, "table", connection_id)
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE INDEX IF NOT EXISTS user_favorites_conn_id_idx ON rbac_user_favorites(connection_id)
+        `);
+
+        // Recent items table
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_user_recent_items 
+          ADD COLUMN IF NOT EXISTS connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL
+        `);
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_user_recent_items 
+          ADD COLUMN IF NOT EXISTS connection_name VARCHAR(255)
+        `);
+        await (db as PostgresDb).execute(sql`
+          DROP INDEX IF EXISTS user_recent_user_db_table_idx
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS user_recent_user_db_table_conn_idx 
+          ON rbac_user_recent_items(user_id, database, "table", connection_id)
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE INDEX IF NOT EXISTS user_recent_conn_id_idx ON rbac_user_recent_items(connection_id)
+        `);
+      }
+
+      console.log('[Migration 1.6.0] Favorites and recent items tables updated to support connection filtering');
+    },
+    down: async (db) => {
+      console.log('[Migration 1.6.0] Down migration not supported');
+    },
+  },
 ];
 
 // ============================================
@@ -773,33 +1019,39 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
   db.run(sql`CREATE INDEX IF NOT EXISTS api_keys_user_idx ON rbac_api_keys(user_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
 
-  // User Favorites table
+  // User Favorites table (with optional connection association)
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_favorites (
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+      connection_name TEXT,
       database TEXT NOT NULL,
       "table" TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      UNIQUE(user_id, database, "table")
+      UNIQUE(user_id, database, "table", connection_id)
     )
   `);
 
   db.run(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS user_favorites_conn_id_idx ON rbac_user_favorites(connection_id)`);
 
-  // User Recent Items table
+  // User Recent Items table (with optional connection association)
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+      connection_name TEXT,
       database TEXT NOT NULL,
       "table" TEXT,
       accessed_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      UNIQUE(user_id, database, "table")
+      UNIQUE(user_id, database, "table", connection_id)
     )
   `);
 
   db.run(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS user_recent_conn_id_idx ON rbac_user_recent_items(connection_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
 
   // User Preferences table
@@ -816,6 +1068,25 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
   `);
 
   db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
+
+  // Saved Queries table (connectionId is optional - null means shared across all connections)
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS rbac_saved_queries (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+      connection_name TEXT,
+      name TEXT NOT NULL,
+      query TEXT NOT NULL,
+      description TEXT,
+      is_public INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  db.run(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_idx ON rbac_saved_queries(user_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS saved_queries_conn_idx ON rbac_saved_queries(connection_id)`);
 
   console.log('[Migration] SQLite schema created');
 }
@@ -1011,32 +1282,39 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
 
   // User Favorites table
+  // User Favorites table (with optional connection association)
   await db.execute(sql`
       CREATE TABLE IF NOT EXISTS rbac_user_favorites (
         id TEXT PRIMARY KEY NOT NULL,
         user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+        connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+        connection_name VARCHAR(255),
         database VARCHAR(255) NOT NULL,
         "table" VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        UNIQUE(user_id, database, "table")
+        UNIQUE(user_id, database, "table", connection_id)
       )
   `);
 
   await db.execute(sql`CREATE INDEX IF NOT EXISTS user_favorites_user_id_idx ON rbac_user_favorites(user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS user_favorites_conn_id_idx ON rbac_user_favorites(connection_id)`);
 
-  // User Recent Items table
+  // User Recent Items table (with optional connection association)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_user_recent_items (
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+      connection_name VARCHAR(255),
       database VARCHAR(255) NOT NULL,
       "table" VARCHAR(255),
       accessed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-      UNIQUE(user_id, database, "table")
+      UNIQUE(user_id, database, "table", connection_id)
     )
   `);
 
   await db.execute(sql`CREATE INDEX IF NOT EXISTS user_recent_user_id_idx ON rbac_user_recent_items(user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS user_recent_conn_id_idx ON rbac_user_recent_items(connection_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
 
   // User Preferences table
@@ -1053,6 +1331,25 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   `);
 
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
+
+  // Saved Queries table (connectionId is optional - null means shared across all connections)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rbac_saved_queries (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+      connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+      connection_name VARCHAR(255),
+      name VARCHAR(255) NOT NULL,
+      query TEXT NOT NULL,
+      description TEXT,
+      is_public BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_idx ON rbac_saved_queries(user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS saved_queries_conn_idx ON rbac_saved_queries(connection_id)`);
 
   console.log('[Migration] PostgreSQL schema created');
 }
