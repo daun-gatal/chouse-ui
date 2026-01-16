@@ -306,33 +306,59 @@ export const clickhouseUsersMetadata = sqliteTable('rbac_clickhouse_users_metada
 
 /**
  * User Favorites Table
- * Stores favorite databases and tables for each user
+ * Stores favorite databases and tables for each user with optional connection association
  */
 export const userFavorites = sqliteTable('rbac_user_favorites', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }),
+  connectionName: text('connection_name'), // Denormalized for display when connection is deleted
   database: text('database').notNull(),
   table: text('table'), // null means favorite database, not table
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => ({
-  userDbTableIdx: uniqueIndex('user_favorites_user_db_table_idx').on(table.userId, table.database, table.table),
+  userDbTableConnIdx: uniqueIndex('user_favorites_user_db_table_conn_idx').on(table.userId, table.database, table.table, table.connectionId),
   userIdIdx: index('user_favorites_user_id_idx').on(table.userId),
+  connIdIdx: index('user_favorites_conn_id_idx').on(table.connectionId),
 }));
 
 /**
  * User Recent Items Table
- * Stores recently accessed databases and tables for each user
+ * Stores recently accessed databases and tables for each user with optional connection association
  */
 export const userRecentItems = sqliteTable('rbac_user_recent_items', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }),
+  connectionName: text('connection_name'), // Denormalized for display when connection is deleted
   database: text('database').notNull(),
   table: text('table'), // null means recent database, not table
   accessedAt: integer('accessed_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => ({
-  userDbTableIdx: uniqueIndex('user_recent_user_db_table_idx').on(table.userId, table.database, table.table),
+  userDbTableConnIdx: uniqueIndex('user_recent_user_db_table_conn_idx').on(table.userId, table.database, table.table, table.connectionId),
   userIdIdx: index('user_recent_user_id_idx').on(table.userId),
+  connIdIdx: index('user_recent_conn_id_idx').on(table.connectionId),
   accessedAtIdx: index('user_recent_accessed_at_idx').on(table.accessedAt),
+}));
+
+/**
+ * Saved Queries Table
+ * Stores user saved SQL queries. connectionId is optional - if null, query is shared across all connections.
+ */
+export const savedQueries = sqliteTable('rbac_saved_queries', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }), // Optional - null means shared across all connections
+  connectionName: text('connection_name'), // Denormalized for display when connection is deleted
+  name: text('name').notNull(),
+  query: text('query').notNull(),
+  description: text('description'),
+  isPublic: integer('is_public', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  userIdx: index('saved_queries_user_idx').on(table.userId),
+  connIdx: index('saved_queries_conn_idx').on(table.connectionId),
 }));
 
 /**
@@ -379,3 +405,5 @@ export type DataAccessRule = typeof dataAccessRules.$inferSelect;
 export type NewDataAccessRule = typeof dataAccessRules.$inferInsert;
 export type ClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferSelect;
 export type NewClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferInsert;
+export type SavedQuery = typeof savedQueries.$inferSelect;
+export type NewSavedQuery = typeof savedQueries.$inferInsert;

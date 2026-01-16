@@ -44,8 +44,8 @@ export const queryKeys = {
   productionMetrics: (interval: number) => ['productionMetrics', interval] as const,
 
   // Saved Queries
-  savedQueriesStatus: ['savedQueriesStatus'] as const,
-  savedQueries: ['savedQueries'] as const,
+  savedQueries: (connectionId?: string) => connectionId ? ['savedQueries', connectionId] as const : ['savedQueries'] as const,
+  savedQueriesConnectionNames: ['savedQueriesConnectionNames'] as const,
 
   // Intellisense
   intellisense: ['intellisense'] as const,
@@ -221,32 +221,33 @@ export function useRecentQueries(
 // ============================================
 
 /**
- * Hook to check if saved queries feature is enabled
+ * Hook to fetch saved queries
+ * Optionally filter by connection ID - if not provided, fetches all user's queries
+ * Returns user's own queries and public queries from other users
  */
-export function useSavedQueriesStatus(
-  options?: Partial<UseQueryOptions<boolean, Error>>
+export function useSavedQueries(
+  connectionId?: string,
+  options?: Partial<UseQueryOptions<SavedQuery[], Error>>
 ) {
   return useQuery({
-    queryKey: queryKeys.savedQueriesStatus,
-    queryFn: savedQueriesApi.checkSavedQueriesStatus,
-    staleTime: 60000,
+    queryKey: queryKeys.savedQueries(connectionId),
+    queryFn: () => savedQueriesApi.getSavedQueries(connectionId),
+    staleTime: 30000,
     ...options,
   });
 }
 
 /**
- * Hook to fetch saved queries
+ * Hook to fetch unique connection names from user's saved queries
+ * Used for the connection filter dropdown
  */
-export function useSavedQueries(
-  options?: Partial<UseQueryOptions<SavedQuery[], Error>>
+export function useSavedQueriesConnectionNames(
+  options?: Partial<UseQueryOptions<string[], Error>>
 ) {
-  const statusQuery = useSavedQueriesStatus();
-
   return useQuery({
-    queryKey: queryKeys.savedQueries,
-    queryFn: savedQueriesApi.getSavedQueries,
-    enabled: statusQuery.data === true,
-    staleTime: 30000,
+    queryKey: queryKeys.savedQueriesConnectionNames,
+    queryFn: savedQueriesApi.getQueryConnectionNames,
+    staleTime: 60000,
     ...options,
   });
 }
@@ -259,8 +260,13 @@ export function useSaveQuery() {
 
   return useMutation({
     mutationFn: savedQueriesApi.saveQuery,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries });
+    onSuccess: (_data, variables) => {
+      // Invalidate both the specific connection query and the general query
+      if (variables.connectionId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries(variables.connectionId) });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesConnectionNames });
     },
   });
 }
@@ -268,14 +274,19 @@ export function useSaveQuery() {
 /**
  * Hook to update a saved query
  */
-export function useUpdateSavedQuery() {
+export function useUpdateSavedQuery(connectionId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: { name: string; query: string } }) =>
+    mutationFn: ({ id, input }: { id: string; input: { name?: string; query?: string; description?: string; isPublic?: boolean; connectionId?: string | null; connectionName?: string | null } }) =>
       savedQueriesApi.updateSavedQuery(id, input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries });
+      // Invalidate both the specific connection query and the general query
+      if (connectionId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries(connectionId) });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesConnectionNames });
     },
   });
 }
@@ -283,42 +294,18 @@ export function useUpdateSavedQuery() {
 /**
  * Hook to delete a saved query
  */
-export function useDeleteSavedQuery() {
+export function useDeleteSavedQuery(connectionId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: savedQueriesApi.deleteSavedQuery,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries });
-    },
-  });
-}
-
-/**
- * Hook to activate saved queries feature
- */
-export function useActivateSavedQueries() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: savedQueriesApi.activateSavedQueries,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesStatus });
-    },
-  });
-}
-
-/**
- * Hook to deactivate saved queries feature
- */
-export function useDeactivateSavedQueries() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: savedQueriesApi.deactivateSavedQueries,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesStatus });
-      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries });
+      // Invalidate both the specific connection query and the general query
+      if (connectionId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries(connectionId) });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesConnectionNames });
     },
   });
 }

@@ -51,12 +51,14 @@ userPreferencesRoutes.post(
   zValidator('json', z.object({
     database: z.string().min(1),
     table: z.string().optional(),
+    connectionId: z.string().optional().nullable(),
+    connectionName: z.string().optional().nullable(),
   })),
   async (c) => {
     const user = getRbacUser(c);
-    const { database, table } = c.req.valid('json');
+    const { database, table, connectionId, connectionName } = c.req.valid('json');
     
-    const favorite = await addUserFavorite(user.sub, database, table);
+    const favorite = await addUserFavorite(user.sub, database, table, connectionId, connectionName);
     return c.json({ favorite }, 201);
   }
 );
@@ -96,12 +98,13 @@ userPreferencesRoutes.get(
   zValidator('query', z.object({
     database: z.string().min(1),
     table: z.string().optional(),
+    connectionId: z.string().optional(),
   })),
   async (c) => {
     const user = getRbacUser(c);
-    const { database, table } = c.req.valid('query');
+    const { database, table, connectionId } = c.req.valid('query');
     
-    const isFav = await isUserFavorite(user.sub, database, table);
+    const isFav = await isUserFavorite(user.sub, database, table, connectionId);
     return c.json({ isFavorite: isFav });
   }
 );
@@ -137,12 +140,14 @@ userPreferencesRoutes.post(
   zValidator('json', z.object({
     database: z.string().min(1),
     table: z.string().optional(),
+    connectionId: z.string().optional().nullable(),
+    connectionName: z.string().optional().nullable(),
   })),
   async (c) => {
     const user = getRbacUser(c);
-    const { database, table } = c.req.valid('json');
+    const { database, table, connectionId, connectionName } = c.req.valid('json');
     
-    const recentItem = await addUserRecentItem(user.sub, database, table);
+    const recentItem = await addUserRecentItem(user.sub, database, table, connectionId, connectionName);
     return c.json({ recentItem }, 201);
   }
 );

@@ -29,12 +29,17 @@ export interface AuthState {
   permissions: string[];
   version: string | null;
   
+  // Active connection
+  activeConnectionId: string | null;
+  activeConnectionName: string | null;
+  
   // Actions
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
   checkSession: () => Promise<boolean>;
   clearError: () => void;
+  setActiveConnection: (connectionId: string | null, connectionName?: string | null) => void;
 }
 
 // ============================================
@@ -55,6 +60,8 @@ export const useAuthStore = create<AuthState>()(
       isAdmin: false,
       permissions: [],
       version: null,
+      activeConnectionId: null,
+      activeConnectionName: null,
 
       /**
        * Login with credentials
@@ -116,6 +123,8 @@ export const useAuthStore = create<AuthState>()(
             permissions: [],
             version: null,
             error: null,
+            activeConnectionId: null,
+            activeConnectionName: null,
           });
         }
       },
@@ -187,6 +196,14 @@ export const useAuthStore = create<AuthState>()(
        * Clear error message
        */
       clearError: () => set({ error: null }),
+
+      /**
+       * Set active connection (ID and name)
+       */
+      setActiveConnection: (connectionId: string | null, connectionName?: string | null) => set({ 
+        activeConnectionId: connectionId,
+        activeConnectionName: connectionName ?? null,
+      }),
     }),
     {
       name: 'auth-storage',
@@ -197,6 +214,8 @@ export const useAuthStore = create<AuthState>()(
         url: state.url,
         isAdmin: state.isAdmin,
         version: state.version,
+        activeConnectionId: state.activeConnectionId,
+        activeConnectionName: state.activeConnectionName,
       }),
     }
   )

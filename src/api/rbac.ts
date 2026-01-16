@@ -1005,6 +1005,8 @@ export interface UserFavorite {
   id: string;
   database: string;
   table?: string;
+  connectionId?: string | null;
+  connectionName?: string | null;
   createdAt: string;
 }
 
@@ -1012,6 +1014,8 @@ export interface UserRecentItem {
   id: string;
   database: string;
   table?: string;
+  connectionId?: string | null;
+  connectionName?: string | null;
   accessedAt: string;
 }
 
@@ -1049,12 +1053,14 @@ export const rbacUserPreferencesApi = {
   /**
    * Add a favorite for the authenticated user
    */
-  async addFavorite(database: string, table?: string): Promise<UserFavorite> {
+  async addFavorite(database: string, table?: string, connectionId?: string | null, connectionName?: string | null): Promise<UserFavorite> {
     let accessToken = getRbacAccessToken();
     if (!accessToken) {
       console.error('[UserPreferences] No access token found');
       throw new ApiError('Not authenticated', 401);
     }
+
+    const body = { database, table, connectionId, connectionName };
 
     let response = await fetch('/api/rbac/user-preferences/favorites', {
       method: 'POST',
@@ -1063,7 +1069,7 @@ export const rbacUserPreferencesApi = {
         'X-Requested-With': 'XMLHttpRequest',
         'Authorization': `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ database, table }),
+      body: JSON.stringify(body),
     });
 
     // If 401, try to refresh token and retry
@@ -1079,7 +1085,7 @@ export const rbacUserPreferencesApi = {
               'X-Requested-With': 'XMLHttpRequest',
               'Authorization': `Bearer ${accessToken}`,
             },
-            body: JSON.stringify({ database, table }),
+            body: JSON.stringify(body),
           });
         }
       }
@@ -1207,7 +1213,7 @@ export const rbacUserPreferencesApi = {
   /**
    * Add a recent item for the authenticated user
    */
-  async addRecentItem(database: string, table?: string): Promise<UserRecentItem> {
+  async addRecentItem(database: string, table?: string, connectionId?: string | null, connectionName?: string | null): Promise<UserRecentItem> {
     const accessToken = getRbacAccessToken();
     if (!accessToken) throw new ApiError('Not authenticated', 401);
 
@@ -1218,7 +1224,7 @@ export const rbacUserPreferencesApi = {
         'X-Requested-With': 'XMLHttpRequest',
         'Authorization': `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ database, table }),
+      body: JSON.stringify({ database, table, connectionId, connectionName }),
     });
 
     const data = await response.json();
