@@ -1,5 +1,8 @@
 /**
  * Saved Queries API
+ * 
+ * API functions for managing saved SQL queries.
+ * Queries are scoped by user, with optional connection association.
  */
 
 import { api } from './client';
@@ -10,24 +13,33 @@ import { api } from './client';
 
 export interface SavedQuery {
   id: string;
+  userId: string;
+  connectionId: string | null;
+  connectionName: string | null;
   name: string;
   query: string;
-  created_at: string;
-  updated_at: string;
-  owner: string;
-  is_public: boolean;
+  description: string | null;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SaveQueryInput {
-  id: string;
+  connectionId?: string | null;
+  connectionName?: string | null;
   name: string;
   query: string;
+  description?: string;
   isPublic?: boolean;
 }
 
 export interface UpdateQueryInput {
-  name: string;
-  query: string;
+  name?: string;
+  query?: string;
+  description?: string;
+  isPublic?: boolean;
+  connectionId?: string | null;
+  connectionName?: string | null;
 }
 
 // ============================================
@@ -35,38 +47,35 @@ export interface UpdateQueryInput {
 // ============================================
 
 /**
- * Check if saved queries feature is enabled
+ * Get all saved queries for the current user
+ * Optionally filter by connection ID
+ * Returns user's own queries and public queries from other users
  */
-export async function checkSavedQueriesStatus(): Promise<boolean> {
-  const response = await api.get<{ isEnabled: boolean }>('/saved-queries/status');
-  return response.isEnabled;
+export async function getSavedQueries(connectionId?: string): Promise<SavedQuery[]> {
+  const params = connectionId ? `?connectionId=${encodeURIComponent(connectionId)}` : '';
+  return api.get<SavedQuery[]>(`/saved-queries${params}`);
 }
 
 /**
- * Activate saved queries feature (admin only)
+ * Get unique connection names from user's saved queries
+ * Used for the connection filter dropdown
  */
-export async function activateSavedQueries(): Promise<{ message: string }> {
-  return api.post('/saved-queries/activate');
+export async function getQueryConnectionNames(): Promise<string[]> {
+  return api.get<string[]>('/saved-queries/connections');
 }
 
 /**
- * Deactivate saved queries feature (admin only)
+ * Get a single saved query by ID
  */
-export async function deactivateSavedQueries(): Promise<{ message: string }> {
-  return api.post('/saved-queries/deactivate');
-}
-
-/**
- * Get all saved queries
- */
-export async function getSavedQueries(): Promise<SavedQuery[]> {
-  return api.get<SavedQuery[]>('/saved-queries');
+export async function getSavedQueryById(id: string): Promise<SavedQuery> {
+  return api.get<SavedQuery>(`/saved-queries/${id}`);
 }
 
 /**
  * Save a new query
+ * connectionId is optional - null means shared across all connections
  */
-export async function saveQuery(input: SaveQueryInput): Promise<{ message: string }> {
+export async function saveQuery(input: SaveQueryInput): Promise<SavedQuery> {
   return api.post('/saved-queries', input);
 }
 
@@ -76,7 +85,7 @@ export async function saveQuery(input: SaveQueryInput): Promise<{ message: strin
 export async function updateSavedQuery(
   id: string,
   input: UpdateQueryInput
-): Promise<{ message: string }> {
+): Promise<SavedQuery> {
   return api.put(`/saved-queries/${id}`, input);
 }
 
@@ -86,4 +95,3 @@ export async function updateSavedQuery(
 export async function deleteSavedQuery(id: string): Promise<{ message: string }> {
   return api.delete(`/saved-queries/${id}`);
 }
-

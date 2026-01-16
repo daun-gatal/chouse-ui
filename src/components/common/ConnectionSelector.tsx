@@ -213,6 +213,8 @@ export default function ConnectionSelector({
         isAdmin: result.isAdmin,
         permissions: result.permissions,
         sessionId: result.sessionId,
+        activeConnectionId: connection.id,
+        activeConnectionName: connection.name,
       });
 
       // Persist the selected connection to database (and localStorage as fallback)
@@ -231,6 +233,7 @@ export default function ConnectionSelector({
       queryClient.invalidateQueries({ queryKey: ['queryLogs'] });
       queryClient.invalidateQueries({ queryKey: ['metrics'] });
       queryClient.invalidateQueries({ queryKey: ['productionMetrics'] });
+      queryClient.invalidateQueries({ queryKey: ['savedQueries'] });
 
       // Trigger a refresh of data by dispatching a custom event
       window.dispatchEvent(new CustomEvent('clickhouse:connected', { detail: result }));

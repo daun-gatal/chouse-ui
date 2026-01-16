@@ -10,6 +10,9 @@ import { queryApi, savedQueriesApi } from '@/api';
 import type { QueryResult } from '@/api';
 import { toast } from 'sonner';
 import { useRbacStore } from './rbac';
+import { useAuthStore } from './auth';
+import { queryClient } from '@/providers/QueryProvider';
+import { queryKeys } from '@/hooks/useQuery';
 
 // ============================================
 // Types
@@ -50,7 +53,7 @@ export interface WorkspaceState {
 
   // Saved queries actions
   saveQuery: (tabId: string, name: string, query: string, isPublic?: boolean) => Promise<void>;
-  updateSavedQuery: (tabId: string, query: string) => Promise<void>;
+  updateSavedQuery: (tabId: string, query: string, name?: string) => Promise<void>;
   deleteSavedQuery: (id: string) => Promise<void>;
 
   // Utility
@@ -357,12 +360,44 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       /**
-       * Save a query
+       * Save a query (creates a new saved query)
+       * Updates the tab with the new saved query's ID
        */
       saveQuery: async (tabId: string, name: string, query: string, isPublic = false) => {
+        const authState = useAuthStore.getState();
+        const connectionId = authState.activeConnectionId;
+        const connectionName = authState.activeConnectionName;
+
         try {
-          await savedQueriesApi.saveQuery({ id: tabId, name, query, isPublic });
-          get().updateTab(tabId, { title: name, isSaved: true });
+          const savedQuery = await savedQueriesApi.saveQuery({ 
+            connectionId: connectionId ?? undefined, 
+            connectionName: connectionName ?? undefined,
+            name, 
+            query, 
+            isPublic 
+          });
+          
+          // Update the tab: change its ID to match the saved query's ID
+          // This ensures future "Save" operations update the correct query
+          const { tabs, activeTab } = get();
+          const newTabs = tabs.map(tab => 
+            tab.id === tabId 
+              ? { ...tab, id: savedQuery.id, title: name, isSaved: true, content: query }
+              : tab
+          );
+          
+          // Update active tab if it was the one being saved
+          const newActiveTab = activeTab === tabId ? savedQuery.id : activeTab;
+          
+          set({ tabs: newTabs, activeTab: newActiveTab });
+          
+          // Invalidate the saved queries cache to refresh the list
+          if (connectionId) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries(connectionId) });
+          }
+          queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries() });
+          queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesConnectionNames });
+          
           toast.success(`Query "${name}" saved successfully!`);
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to save query';
@@ -373,17 +408,31 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       /**
        * Update a saved query
+       * @param tabId - The tab/query ID
+       * @param query - The query content
+       * @param name - Optional new name for the query
        */
-      updateSavedQuery: async (tabId: string, query: string) => {
+      updateSavedQuery: async (tabId: string, query: string, name?: string) => {
+        const connectionId = useAuthStore.getState().activeConnectionId;
         const tab = get().getTabById(tabId);
-        if (!tab || !tab.title) {
-          throw new Error('Tab not found or has no title');
+        if (!tab) {
+          throw new Error('Tab not found');
         }
 
+        const queryName = name?.trim() || tab.title;
+
         try {
-          await savedQueriesApi.updateSavedQuery(tabId, { name: tab.title, query });
-          get().updateTab(tabId, { content: query });
-          toast.success(`Query "${tab.title}" updated successfully!`);
+          await savedQueriesApi.updateSavedQuery(tabId, { name: queryName, query });
+          get().updateTab(tabId, { content: query, title: queryName });
+          
+          // Invalidate the saved queries cache to refresh the list
+          if (connectionId) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries(connectionId) });
+          }
+          queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries() });
+          queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesConnectionNames });
+          
+          toast.success(`Query "${queryName}" updated successfully!`);
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to update query';
           toast.error(message);

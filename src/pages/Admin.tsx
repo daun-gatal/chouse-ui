@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import UserTable from "@/features/admin/components/UserManagement/index";
-import { InfoIcon, ShieldCheck, Users, Database, Shield, FileText, Server, UserCog } from "lucide-react";
+import { InfoIcon, ShieldCheck, Users, Shield, FileText, Server, UserCog } from "lucide-react";
 import InfoDialog from "@/components/common/InfoDialog";
-import ActivateSavedQueries from "@/features/admin/components/ActivateSavedQueries";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GlassCard, GlassCardContent } from "@/components/ui/glass-card";
 import { motion } from "framer-motion";
@@ -23,10 +22,6 @@ export default function Admin() {
   // Connections tab is restricted to super admins only
   const canViewConnections = isSuperAdmin();
   const canViewClickHouseUsers = hasPermission(RBAC_PERMISSIONS.CH_USERS_VIEW);
-  const canManageSavedQueries = hasAnyPermission([
-    RBAC_PERMISSIONS.SAVED_QUERIES_CREATE,
-    RBAC_PERMISSIONS.SAVED_QUERIES_UPDATE,
-  ]);
 
   // Determine default tab based on permissions
   const getDefaultTab = () => {
@@ -35,7 +30,6 @@ export default function Admin() {
     if (canViewConnections) return "connections";
     if (canViewClickHouseUsers) return "clickhouse-users";
     if (canViewAudit) return "audit";
-    if (canManageSavedQueries) return "queries";
     return "users";
   };
 
@@ -94,11 +88,6 @@ export default function Admin() {
                 <FileText className="w-4 h-4 mr-2" /> Audit Logs
               </TabsTrigger>
             )}
-            {canManageSavedQueries && (
-              <TabsTrigger value="queries" className="data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-300">
-                <Database className="w-4 h-4 mr-2" /> Saved Queries
-              </TabsTrigger>
-            )}
           </TabsList>
 
           {canViewUsers && (
@@ -150,18 +139,6 @@ export default function Admin() {
               </GlassCard>
             </TabsContent>
           )}
-
-          {canManageSavedQueries && (
-            <TabsContent value="queries">
-              <GlassCard>
-                <GlassCardContent className="p-6">
-                  <h2 className="text-xl font-semibold text-white mb-2">Saved Queries Management</h2>
-                  <p className="text-gray-400 mb-6">Enable or disable the saved queries feature for this ClickHouse cluster.</p>
-                  <ActivateSavedQueries />
-                </GlassCardContent>
-              </GlassCard>
-            </TabsContent>
-          )}
         </Tabs>
 
         <InfoDialog
@@ -180,7 +157,6 @@ export default function Admin() {
               <li>• <strong>Connections</strong> - Manage ClickHouse server connections</li>
               <li>• <strong>ClickHouse Users</strong> - Create and manage ClickHouse database users</li>
               <li>• <strong>Audit Logs</strong> - Track all system actions for compliance</li>
-              <li>• <strong>Saved Queries</strong> - Configure the saved queries feature</li>
             </ul>
             <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
               <p className="text-sm text-blue-200">

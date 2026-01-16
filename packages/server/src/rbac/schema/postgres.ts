@@ -306,33 +306,59 @@ export const clickhouseUsersMetadata = pgTable('rbac_clickhouse_users_metadata',
 
 /**
  * User Favorites Table
- * Stores favorite databases and tables for each user
+ * Stores favorite databases and tables for each user with optional connection association
  */
 export const userFavorites = pgTable('rbac_user_favorites', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }),
+  connectionName: varchar('connection_name', { length: 255 }), // Denormalized for display when connection is deleted
   database: varchar('database', { length: 255 }).notNull(),
   table: varchar('table', { length: 255 }), // null means favorite database, not table
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  userDbTableIdx: uniqueIndex('user_favorites_user_db_table_idx').on(table.userId, table.database, table.table),
+  userDbTableConnIdx: uniqueIndex('user_favorites_user_db_table_conn_idx').on(table.userId, table.database, table.table, table.connectionId),
   userIdIdx: index('user_favorites_user_id_idx').on(table.userId),
+  connIdIdx: index('user_favorites_conn_id_idx').on(table.connectionId),
 }));
 
 /**
  * User Recent Items Table
- * Stores recently accessed databases and tables for each user
+ * Stores recently accessed databases and tables for each user with optional connection association
  */
 export const userRecentItems = pgTable('rbac_user_recent_items', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }),
+  connectionName: varchar('connection_name', { length: 255 }), // Denormalized for display when connection is deleted
   database: varchar('database', { length: 255 }).notNull(),
   table: varchar('table', { length: 255 }), // null means recent database, not table
   accessedAt: timestamp('accessed_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  userDbTableIdx: uniqueIndex('user_recent_user_db_table_idx').on(table.userId, table.database, table.table),
+  userDbTableConnIdx: uniqueIndex('user_recent_user_db_table_conn_idx').on(table.userId, table.database, table.table, table.connectionId),
   userIdIdx: index('user_recent_user_id_idx').on(table.userId),
+  connIdIdx: index('user_recent_conn_id_idx').on(table.connectionId),
   accessedAtIdx: index('user_recent_accessed_at_idx').on(table.accessedAt),
+}));
+
+/**
+ * Saved Queries Table
+ * Stores user saved SQL queries. connectionId is optional - if null, query is shared across all connections.
+ */
+export const savedQueries = pgTable('rbac_saved_queries', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }), // Optional - null means shared across all connections
+  connectionName: varchar('connection_name', { length: 255 }), // Denormalized for display when connection is deleted
+  name: varchar('name', { length: 255 }).notNull(),
+  query: text('query').notNull(),
+  description: text('description'),
+  isPublic: boolean('is_public').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userIdx: index('saved_queries_user_idx').on(table.userId),
+  connIdx: index('saved_queries_conn_idx').on(table.connectionId),
 }));
 
 /**
@@ -379,3 +405,5 @@ export type DataAccessRule = typeof dataAccessRules.$inferSelect;
 export type NewDataAccessRule = typeof dataAccessRules.$inferInsert;
 export type ClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferSelect;
 export type NewClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferInsert;
+export type SavedQuery = typeof savedQueries.$inferSelect;
+export type NewSavedQuery = typeof savedQueries.$inferInsert;

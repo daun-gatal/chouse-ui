@@ -65,7 +65,10 @@ export async function cleanupUserSession(currentUserId: string | null): Promise<
     queryClient.removeQueries({ 
       predicate: (query) => query.queryKey[0] === 'recentQueries' 
     });
-    queryClient.removeQueries({ queryKey: queryKeys.savedQueries });
+    // Remove all saved queries (savedQueries is now a function, so use predicate)
+    queryClient.removeQueries({ 
+      predicate: (query) => query.queryKey[0] === 'savedQueries' 
+    });
     queryClient.removeQueries({ queryKey: queryKeys.intellisense });
 
     // 4. Clear any user-specific localStorage keys
