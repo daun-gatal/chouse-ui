@@ -35,3 +35,4 @@ dist-ssr
 packages/server/data/*.db
 packages/server/data/*.db-shm
 packages/server/data/*.db-wal
+data/*

@@ -19,7 +19,7 @@
     "@clickhouse/client": "^1.16.0",
     "@hono/zod-validator": "^0.7.6",
     "drizzle-orm": "^0.38.3",
-    "hono": "^4.11.3",
+    "hono": "^4.11.4",
     "jose": "^5.9.6",
     "node-sql-parser": "^5.3.13",
     "postgres": "^3.4.5",

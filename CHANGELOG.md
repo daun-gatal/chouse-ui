@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.5.3] - 2026-01-15
+
+### Fixed
+
+- **Metrics Page Auto-Refresh**: Fixed metrics page not automatically refreshing when ClickHouse connection is switched. Metrics now automatically update when switching connections via the connection selector.
+- **SQLite RBAC Migration**: Fixed SQLite syntax error during RBAC initialization caused by reserved keyword 'table' in `rbac_user_favorites` and `rbac_user_recent_items` tables. Column names are now properly quoted in SQLite migrations.
+- **Explorer Auto-Refresh**: Fixed Explorer tab not automatically refreshing when connection changes. Explorer now listens to connection change events and automatically fetches databases and tables from the newly selected connection.
+- **Database Creation with ON CLUSTER**: Fixed database creation to properly support `ON CLUSTER` statements for distributed ClickHouse setups. Removed incorrect condition that prevented cluster creation from working.
+
+### Security
+
+- **Hono Framework**: Upgraded Hono from 4.11.3 to 4.11.4 to address security vulnerability.
+
+### Added
+
+- **Database Cluster Support**: Added cluster selection UI to database creation dialog, matching table creation functionality. Users can now create databases on distributed ClickHouse clusters through the UI.
+
+### Changed
+
+- **Database Creation API**: Updated `CreateDatabase` component to use `createDatabase` API function instead of direct query execution, ensuring proper cluster parameter handling.
+
 ## [v2.5.2] - 2026-01-15
 
 ### Added
