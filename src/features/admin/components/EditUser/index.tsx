@@ -846,7 +846,12 @@ const EditUser: React.FC = () => {
             <Button variant="outline" onClick={() => navigate("/admin")}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={!hasChanges || isSaving || selectedRoles.length === 0 || !dataAccessValid}>
+            <Button
+              variant="outline"
+              onClick={handleSave}
+              disabled={!hasChanges || isSaving || selectedRoles.length === 0 || !dataAccessValid}
+              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+            >
               {isSaving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

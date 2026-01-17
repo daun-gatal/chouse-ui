@@ -187,8 +187,10 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
               return [];
             }),
           ]);
-          console.log('Fetched databases:', dbList);
-          console.log('Fetched clusters:', clusterList);
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Fetched databases:', dbList);
+            console.log('Fetched clusters:', clusterList);
+          }
           setDatabases(dbList || []);
           setClusters(clusterList || []);
         } catch (error) {
@@ -214,29 +216,37 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
   useEffect(() => {
     if (isOpen) {
       if (isEditing && user) {
-        console.log('[ClickHouse Users] Loading user data for editing:', user);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] Loading user data for editing:', user);
+        }
         setUsername(user.name);
         setPassword('');
         setConfirmPassword('');
         // Use role from grants if available, otherwise default to viewer
         const userRole = user.role || 'viewer';
         setRole(userRole);
-        console.log('[ClickHouse Users] Setting role:', userRole);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] Setting role:', userRole);
+        }
         
         // Use allowedDatabases and allowedTables from grants if available
         const userDatabases = user.allowedDatabases || [];
         const userTables = user.allowedTables || [];
         setAllowedDatabases(userDatabases);
         setAllowedTables(userTables);
-        console.log('[ClickHouse Users] Setting databases:', userDatabases);
-        console.log('[ClickHouse Users] Setting tables:', userTables);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] Setting databases:', userDatabases);
+          console.log('[ClickHouse Users] Setting tables:', userTables);
+        }
         
         // Auto-expand databases that have selected tables
         if (userDatabases.length > 0 || userTables.length > 0) {
           const dbSet = new Set(userDatabases);
           userTables.forEach(t => dbSet.add(t.database));
           setExpandedDatabases(dbSet);
-          console.log('[ClickHouse Users] Auto-expanding databases:', Array.from(dbSet));
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[ClickHouse Users] Auto-expanding databases:', Array.from(dbSet));
+          }
         }
         
         // ClickHouse returns host_ip and host_names as arrays, convert to strings
@@ -246,7 +256,9 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         const hostNamesStr = Array.isArray(hostNamesValue) ? (hostNamesValue[0] || '') : (typeof hostNamesValue === 'string' ? hostNamesValue : '');
         setHostIp(hostIpStr);
         setHostNames(hostNamesStr);
-        console.log('[ClickHouse Users] Setting hostIp:', hostIpStr, 'hostNames:', hostNamesStr);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] Setting hostIp:', hostIpStr, 'hostNames:', hostNamesStr);
+        }
         
         // Cluster is not stored in ClickHouse, so we can't retrieve it
         // User will need to set it again if they want to use a cluster
@@ -335,7 +347,9 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         }
         // Note: authType is not included in update - it cannot be changed
         
-        console.log('[ClickHouse Users] Generating DDL with input:', updateInput);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] Generating DDL with input:', updateInput);
+        }
         const generatedDdl = await rbacClickHouseUsersApi.generateUpdateDDL(username, updateInput);
         setDdl(generatedDdl);
       } else {
@@ -411,7 +425,9 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         }
         // Note: authType is not included in update - it cannot be changed
         
-        console.log('[ClickHouse Users] Submitting input:', input);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] Submitting input:', input);
+        }
         await rbacClickHouseUsersApi.update(username, input);
         toast.success('ClickHouse user updated successfully');
       } else {
@@ -446,7 +462,9 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
           createPayload.password = password;
         }
         
-        console.log('[ClickHouse Users] Submitting input:', createPayload);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] Submitting input:', createPayload);
+        }
         await rbacClickHouseUsersApi.create(createPayload);
         toast.success('ClickHouse user created successfully');
       }
@@ -666,8 +684,8 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[800px] bg-gray-900 border-gray-800 max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-4 border-b border-gray-800">
+      <DialogContent className="sm:max-w-[800px] bg-gray-900 border-gray-800 h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-800">
           <DialogTitle className="text-white flex items-center gap-2 text-xl">
             <div className="p-2 rounded-lg bg-purple-500/20">
               <Users className="w-5 h-5 text-purple-400" />
@@ -682,7 +700,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         </DialogHeader>
         
         {/* Progress Indicator */}
-        <div className="py-6 px-2">
+        <div className="py-6 px-6 flex-shrink-0 border-b border-gray-800">
           <div className="flex items-center justify-between relative">
             {/* Progress Line */}
             <div className="absolute top-5 left-0 right-0 h-0.5 bg-gray-800 -z-10">
@@ -730,7 +748,8 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         </div>
         
         {/* Step Content */}
-        <div className="flex-1 overflow-y-auto px-1">
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-6 py-4">
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -1441,14 +1460,15 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
               )}
             </motion.div>
           </AnimatePresence>
-        </div>
+          </div>
+        </ScrollArea>
         
-        <DialogFooter className="flex items-center justify-between pt-4 border-t border-gray-800">
+        <DialogFooter className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-t border-gray-800">
           <Button
             variant="outline"
             onClick={prevStep}
             disabled={step === 1}
-            className="border-gray-700"
+            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
           >
             <ChevronLeft className="w-4 h-4 mr-2" />
             Previous
@@ -1457,9 +1477,10 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
           <div className="flex gap-2">
             {step < 4 ? (
               <Button
+                variant="outline"
                 onClick={nextStep}
                 disabled={!canProceed()}
-                className="bg-purple-600 hover:bg-purple-700"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
               >
                 Next
                 <ChevronRight className="w-4 h-4 ml-2" />
@@ -1468,9 +1489,10 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
               <>
                 {!ddl ? (
                   <Button
+                    variant="outline"
                     onClick={handleGenerateDDL}
                     disabled={isGeneratingDDL}
-                    className="bg-purple-600 hover:bg-purple-700"
+                    className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
                   >
                     {isGeneratingDDL ? (
                       <>
@@ -1489,7 +1511,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
                     <Button
                       onClick={copyDDL}
                       variant="outline"
-                      className="border-gray-700"
+                      className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
                     >
                       {ddlCopied ? (
                         <>
@@ -1504,9 +1526,10 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
                       )}
                     </Button>
                     <Button
+                      variant="outline"
                       onClick={handleSubmit}
                       disabled={isSubmitting}
-                      className="bg-purple-600 hover:bg-purple-700"
+                      className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
                     >
                       {isSubmitting ? (
                         <>
@@ -1562,7 +1585,9 @@ export default function ClickHouseUsersManagement() {
       const sessionId = localSessionId || authStoreSessionId;
       
       if (!sessionId) {
-        console.log('[ClickHouse Users] No session ID found');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] No session ID found');
+        }
         setHasClickHouseSession(false);
         return;
       }
@@ -1572,7 +1597,9 @@ export default function ClickHouseUsersManagement() {
         const result = await rbacClickHouseUsersApi.list();
         setUsers(result);
         setHasClickHouseSession(true);
-        console.log('[ClickHouse Users] Successfully fetched users, session is valid');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ClickHouse Users] Successfully fetched users, session is valid');
+        }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Failed to load ClickHouse users';
         console.error('[ClickHouse Users] Failed to fetch users:', errorMsg);
@@ -1583,7 +1610,9 @@ export default function ClickHouseUsersManagement() {
             errorMsg.includes('NO_SESSION') ||
             (error instanceof Error && error.message.includes('session'))) {
           setHasClickHouseSession(false);
-          console.log('[ClickHouse Users] Session error detected');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[ClickHouse Users] Session error detected');
+          }
         } else {
           // Other error - still show as connected but show error toast
           setHasClickHouseSession(true);
@@ -1606,7 +1635,9 @@ export default function ClickHouseUsersManagement() {
     
     // Listen for connection events
     const handleConnection = () => {
-      console.log('[ClickHouse Users] Connection event received, refreshing...');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ClickHouse Users] Connection event received, refreshing...');
+      }
       checkSessionAndFetchUsers();
     };
     
@@ -1754,18 +1785,19 @@ export default function ClickHouseUsersManagement() {
                 size="sm"
                 onClick={handleSync}
                 disabled={isSyncing || !hasClickHouseSession}
-                className="border-gray-700"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
                 title="Sync unregistered ClickHouse users to metadata"
               >
-                <Download className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                <Download className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                 Sync
               </Button>
               <Button
+                variant="outline"
                 size="sm"
                 onClick={openCreateDialog}
-                className="bg-purple-600 hover:bg-purple-700"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-4 h-4" />
                 Create User
               </Button>
             </>

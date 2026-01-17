@@ -379,8 +379,10 @@ const UserManagement: React.FC = () => {
 
           {canCreateUsers && (
             <Button
+              variant="outline"
+              size="sm"
               onClick={() => navigate("/admin/users/create")}
-              className="gap-2 shrink-0"
+              className="gap-2 shrink-0 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Create User</span>

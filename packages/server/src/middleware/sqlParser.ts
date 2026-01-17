@@ -250,24 +250,22 @@ function extractTablesFromFromClause(from: any, tables: Array<{ database?: strin
     return;
   }
 
-  // Handle table reference
-  if (from.table) {
-    extractTableFromTableClause(from.table, tables);
-  }
-
-  // Handle subquery
+  // Handle subquery first (before table extraction to avoid duplicates)
   if (from.ast) {
     const subqueryTables = extractTablesFromAST(from.ast);
     tables.push(...subqueryTables);
   }
 
-  // Handle direct table reference
+  // Handle table reference - prefer direct db.table extraction over recursive call to avoid duplicates
   if (from.db || from.table) {
     const db = from.db ? String(from.db).replace(/[`"]/g, '') : undefined;
     const table = from.table ? String(from.table).replace(/[`"]/g, '') : undefined;
     if (table) {
       tables.push({ database: db, table });
     }
+  } else if (from.table) {
+    // Fallback: if db is not directly available, use recursive extraction
+    extractTableFromTableClause(from.table, tables);
   }
 }
 
@@ -334,6 +332,8 @@ function extractTablesFallback(statement: string): Array<{ database?: string; ta
     /INTO\s+([`"]?[\w]+[`"]?)/gi,
     /UPDATE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
     /UPDATE\s+([`"]?[\w]+[`"]?)/gi,
+    /(?:DROP|CREATE|ALTER|TRUNCATE)\s+TABLE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
+    /(?:DROP|CREATE|ALTER|TRUNCATE)\s+TABLE\s+([`"]?[\w]+[`"]?)/gi,
     /TABLE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
     /TABLE\s+([`"]?[\w]+[`"]?)/gi,
     /JOIN\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,

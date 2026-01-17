@@ -9,9 +9,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { authMiddleware } from "../middleware/auth";
-import type { ClickHouseService } from "../services/clickhouse";
-import type { Session } from "../types";
+import { rbacAuthMiddleware } from "../rbac/middleware/rbacAuth";
+import { PERMISSIONS } from "../rbac/schema/base";
+import { userHasPermission } from "../rbac/services/rbac";
+import { AppError } from "../types";
 import {
   getSavedQueries,
   getSavedQueryById,
@@ -22,15 +23,48 @@ import {
 } from "../rbac/services/savedQueries";
 
 type Variables = {
-  sessionId: string;
-  service: ClickHouseService;
-  session: Session;
+  rbacUserId: string;
+  rbacRoles?: string[];
+  rbacPermissions?: string[];
+  isRbacAdmin?: boolean;
 };
 
 const savedQueriesRouter = new Hono<{ Variables: Variables }>();
 
-// All routes require authentication
-savedQueriesRouter.use("*", authMiddleware);
+// All routes require RBAC authentication (saved queries are RBAC-only)
+savedQueriesRouter.use("*", rbacAuthMiddleware);
+
+/**
+ * Permission check helper for saved queries routes
+ * Works with hybrid auth (ClickHouse session + RBAC)
+ */
+async function checkSavedQueriesPermission(
+  rbacUserId: string | undefined,
+  rbacPermissions: string[] | undefined,
+  isRbacAdmin: boolean | undefined,
+  permission: string
+): Promise<void> {
+  // If no RBAC user, deny access (RBAC is required for saved queries)
+  if (!rbacUserId) {
+    throw AppError.forbidden("RBAC authentication required for saved queries");
+  }
+
+  // Admins have all permissions
+  if (isRbacAdmin) {
+    return;
+  }
+
+  // Check if user has the required permission
+  if (rbacPermissions && rbacPermissions.includes(permission)) {
+    return;
+  }
+
+  // Double-check against database (in case permissions changed)
+  const hasPermission = await userHasPermission(rbacUserId, permission as any);
+  if (!hasPermission) {
+    throw AppError.forbidden(`Permission '${permission}' required for this action`);
+  }
+}
 
 // ============================================
 // Schemas
@@ -69,17 +103,20 @@ const updateQuerySchema = z.object({
  */
 savedQueriesRouter.get("/", zValidator("query", getQueriesSchema), async (c) => {
   const { connectionId } = c.req.valid("query");
-  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
 
-  if (!session.rbacUserId) {
-    return c.json({
-      success: false,
-      error: { message: "User not authenticated with RBAC" },
-    }, 401);
-  }
+  // Check permission
+  await checkSavedQueriesPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.SAVED_QUERIES_VIEW
+  );
 
   try {
-    const queries = await getSavedQueries(session.rbacUserId, connectionId);
+    const queries = await getSavedQueries(rbacUserId, connectionId);
 
     return c.json({
       success: true,
@@ -100,17 +137,20 @@ savedQueriesRouter.get("/", zValidator("query", getQueriesSchema), async (c) => 
  * Used for the connection filter dropdown
  */
 savedQueriesRouter.get("/connections", async (c) => {
-  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
 
-  if (!session.rbacUserId) {
-    return c.json({
-      success: false,
-      error: { message: "User not authenticated with RBAC" },
-    }, 401);
-  }
+  // Check permission (view permission required to see connection names)
+  await checkSavedQueriesPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.SAVED_QUERIES_VIEW
+  );
 
   try {
-    const connectionNames = await getQueryConnectionNames(session.rbacUserId);
+    const connectionNames = await getQueryConnectionNames(rbacUserId);
 
     return c.json({
       success: true,
@@ -131,17 +171,20 @@ savedQueriesRouter.get("/connections", async (c) => {
  */
 savedQueriesRouter.get("/:id", async (c) => {
   const { id } = c.req.param();
-  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
 
-  if (!session.rbacUserId) {
-    return c.json({
-      success: false,
-      error: { message: "User not authenticated with RBAC" },
-    }, 401);
-  }
+  // Check permission
+  await checkSavedQueriesPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.SAVED_QUERIES_VIEW
+  );
 
   try {
-    const query = await getSavedQueryById(id, session.rbacUserId);
+    const query = await getSavedQueryById(id, rbacUserId);
 
     if (!query) {
       return c.json({
@@ -170,17 +213,20 @@ savedQueriesRouter.get("/:id", async (c) => {
  */
 savedQueriesRouter.post("/", zValidator("json", createQuerySchema), async (c) => {
   const { connectionId, connectionName, name, query, description, isPublic } = c.req.valid("json");
-  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
 
-  if (!session.rbacUserId) {
-    return c.json({
-      success: false,
-      error: { message: "User not authenticated with RBAC" },
-    }, 401);
-  }
+  // Check permission
+  await checkSavedQueriesPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.SAVED_QUERIES_CREATE
+  );
 
   try {
-    const savedQuery = await createSavedQuery(session.rbacUserId, {
+    const savedQuery = await createSavedQuery(rbacUserId, {
       connectionId: connectionId ?? null,
       connectionName: connectionName ?? null,
       name,
@@ -209,17 +255,20 @@ savedQueriesRouter.post("/", zValidator("json", createQuerySchema), async (c) =>
 savedQueriesRouter.put("/:id", zValidator("json", updateQuerySchema), async (c) => {
   const { id } = c.req.param();
   const input = c.req.valid("json");
-  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
 
-  if (!session.rbacUserId) {
-    return c.json({
-      success: false,
-      error: { message: "User not authenticated with RBAC" },
-    }, 401);
-  }
+  // Check permission
+  await checkSavedQueriesPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.SAVED_QUERIES_UPDATE
+  );
 
   try {
-    const updated = await updateSavedQuery(id, session.rbacUserId, input);
+    const updated = await updateSavedQuery(id, rbacUserId, input);
 
     if (!updated) {
       return c.json({
@@ -247,17 +296,20 @@ savedQueriesRouter.put("/:id", zValidator("json", updateQuerySchema), async (c) 
  */
 savedQueriesRouter.delete("/:id", async (c) => {
   const { id } = c.req.param();
-  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
 
-  if (!session.rbacUserId) {
-    return c.json({
-      success: false,
-      error: { message: "User not authenticated with RBAC" },
-    }, 401);
-  }
+  // Check permission
+  await checkSavedQueriesPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.SAVED_QUERIES_DELETE
+  );
 
   try {
-    const deleted = await deleteSavedQuery(id, session.rbacUserId);
+    const deleted = await deleteSavedQuery(id, rbacUserId);
 
     if (!deleted) {
       return c.json({

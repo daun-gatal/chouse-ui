@@ -379,6 +379,13 @@ export async function createRole(input: CreateRoleInput): Promise<RoleResponse> 
   const id = randomUUID();
   const now = new Date();
 
+  // Handle default flag - if setting as default, clear default from all other roles
+  if (input.isDefault === true) {
+    await db.update(schema.roles)
+      .set({ isDefault: false, updatedAt: now })
+      .where(eq(schema.roles.isDefault, true));
+  }
+
   await db.insert(schema.roles).values({
     id,
     name: input.name.toLowerCase().replace(/\s+/g, '_'),
@@ -464,7 +471,16 @@ export async function updateRole(
 
   if (input.displayName !== undefined) updateData.displayName = input.displayName;
   if (input.description !== undefined) updateData.description = input.description;
-  if (input.isDefault !== undefined) updateData.isDefault = input.isDefault;
+  
+  // Handle default flag - if setting as default, clear default from all other roles first
+  if (input.isDefault === true) {
+    await db.update(schema.roles)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(schema.roles.isDefault, true));
+    updateData.isDefault = true;
+  } else if (input.isDefault === false) {
+    updateData.isDefault = false;
+  }
 
   await db.update(schema.roles)
     .set(updateData)
