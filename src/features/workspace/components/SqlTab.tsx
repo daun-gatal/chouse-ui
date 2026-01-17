@@ -4,6 +4,7 @@ import { Loader2, FileX2 } from "lucide-react";
 import { AgGridReact } from "ag-grid-react";
 import { ColDef, AllCommunityModule, ICellRendererParams } from "ag-grid-community";
 import { themeBalham, colorSchemeDark } from "ag-grid-community";
+import DOMPurify from "dompurify";
 
 // Component imports
 import SQLEditor from "@/features/workspace/editor/SqlEditor";
@@ -43,10 +44,15 @@ const formatCellValue = (value: unknown): string => {
   return String(value);
 };
 
-// Cell renderer that can handle HTML content
+// Cell renderer that can handle HTML content (sanitized)
 const CustomCellRenderer = (props: ICellRendererParams) => {
   const formattedValue = formatCellValue(props.value);
-  return <div dangerouslySetInnerHTML={{ __html: formattedValue }} />;
+  // Sanitize HTML to prevent XSS attacks
+  const sanitizedHtml = DOMPurify.sanitize(formattedValue, {
+    ALLOWED_TAGS: ['em', 'strong', 'b', 'i', 'u', 'code', 'pre'],
+    ALLOWED_ATTR: [],
+  });
+  return <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
 };
 
 /**

@@ -7,6 +7,7 @@ import EmptyQueryResult from "@/features/workspace/components/EmptyQueryResult";
 import StatisticsDisplay from "@/features/workspace/components/StatisticsDisplay";
 import DownloadDialog from "@/components/common/DownloadDialog";
 import { usePaginationPreference } from "@/hooks";
+import DOMPurify from "dompurify";
 
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,10 +42,15 @@ const formatCellValue = (value: any): string => {
   return String(value);
 };
 
-// Cell renderer that can handle HTML content
+// Cell renderer that can handle HTML content (sanitized)
 const CustomCellRenderer = (props: ICellRendererParams) => {
   const formattedValue = formatCellValue(props.value);
-  return <div dangerouslySetInnerHTML={{ __html: formattedValue }} />;
+  // Sanitize HTML to prevent XSS attacks
+  const sanitizedHtml = DOMPurify.sanitize(formattedValue, {
+    ALLOWED_TAGS: ['em', 'strong', 'b', 'i', 'u', 'code', 'pre'],
+    ALLOWED_ATTR: [],
+  });
+  return <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
 };
 
 export default function AgTable({

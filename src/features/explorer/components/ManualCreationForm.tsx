@@ -19,6 +19,7 @@ import FieldManagement, { Field } from "./FieldManagement";
 import hljs from "highlight.js/lib/core";
 import sqlLang from "highlight.js/lib/languages/sql";
 import "highlight.js/styles/a11y-dark.css";
+import DOMPurify from "dompurify";
 
 hljs.registerLanguage("sql", sqlLang);
 
@@ -363,7 +364,10 @@ const ManualCreationForm: React.FC<ManualCreationFormProps> = ({
           <pre
             className="bg-[#2d2d2d] rounded-md p-4 overflow-x-auto"
             dangerouslySetInnerHTML={{
-              __html: hljs.highlight(sql, { language: "sql" }).value,
+              __html: DOMPurify.sanitize(hljs.highlight(sql, { language: "sql" }).value, {
+                ALLOWED_TAGS: ['span', 'div', 'pre', 'code'],
+                ALLOWED_ATTR: ['class'],
+              }),
             }}
           />
         </div>
