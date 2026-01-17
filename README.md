@@ -247,6 +247,20 @@ spec:
 | `RBAC_POSTGRES_URL` | PostgreSQL connection URL | - |
 | `RBAC_POSTGRES_POOL_SIZE` | Connection pool size | `10` |
 
+**PostgreSQL Permissions**: When using PostgreSQL, the database user specified in `RBAC_POSTGRES_URL` must have the following permissions:
+- `CREATEDB` privilege to create the database if it doesn't exist
+- Or the database must already exist and the user must have `CONNECT` and `CREATE` privileges on it
+
+The application will automatically create the database if it doesn't exist. To grant the required permissions:
+
+```sql
+-- Grant CREATEDB privilege (allows creating databases)
+ALTER USER your_user WITH CREATEDB;
+
+-- Or if the database already exists, grant privileges on it
+GRANT CONNECT, CREATE ON DATABASE your_database TO your_user;
+```
+
 #### Authentication
 
 | Variable | Description | Default |
@@ -492,6 +506,7 @@ RBAC system ready
 | Migration fails | Check logs, ensure DB is accessible |
 | Wrong permissions | Ensure volume/file ownership matches container user |
 | PostgreSQL connection | Verify `RBAC_POSTGRES_URL` is correct |
+| PostgreSQL permission denied | Ensure user has `CREATEDB` privilege or database exists with `CONNECT`/`CREATE` privileges |
 | Reset needed | Use `CONFIRM_RESET=yes bun run rbac:reset` |
 
 ---
