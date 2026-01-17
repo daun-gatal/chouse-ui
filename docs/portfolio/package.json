@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && npm run copy-404",
+    "build": "vite build && bun run copy-404",
     "copy-404": "bun scripts/copy-404.js",
     "preview": "vite preview"
   },
