@@ -16,6 +16,18 @@
   <a href="#configuration">Configuration</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/daun-gatal/chouse-ui/actions/workflows/ci.yml">
+    <img src="https://github.com/daun-gatal/chouse-ui/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  </a>
+  <a href="https://github.com/daun-gatal/chouse-ui/actions/workflows/github-pages.yml">
+    <img src="https://github.com/daun-gatal/chouse-ui/actions/workflows/github-pages.yml/badge.svg" alt="GitHub Pages" />
+  </a>
+  <a href="https://github.com/daun-gatal/chouse-ui/actions/workflows/release.yml">
+    <img src="https://github.com/daun-gatal/chouse-ui/actions/workflows/release.yml/badge.svg" alt="Release" />
+  </a>
+</p>
+
 ---
 
 ## Overview
