@@ -6,7 +6,7 @@
 
 import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 
@@ -65,11 +65,64 @@ const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 const SALT_LENGTH = 32;
+const PBKDF2_ITERATIONS = 100000; // OWASP recommended minimum
+const KEY_LENGTH = 32; // 256 bits for AES-256
 
+/**
+ * Get encryption key using PBKDF2 with proper key derivation
+ * In production, requires RBAC_ENCRYPTION_KEY to be set
+ */
 function getEncryptionKey(): Buffer {
-  const secret = process.env.RBAC_ENCRYPTION_KEY || process.env.JWT_SECRET || 'chouseui-default-key';
-  const salt = process.env.RBAC_ENCRYPTION_SALT || 'chouseui-salt';
-  return scryptSync(secret, salt, 32);
+  const NODE_ENV = process.env.NODE_ENV || 'development';
+  
+  // In production, require explicit encryption key
+  if (NODE_ENV === 'production') {
+    const encryptionKey = process.env.RBAC_ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error(
+        'RBAC_ENCRYPTION_KEY must be set in production. ' +
+        'Generate a secure 32-byte (64 hex characters) key and set it as an environment variable.'
+      );
+    }
+    if (encryptionKey.length < 32) {
+      throw new Error(
+        'RBAC_ENCRYPTION_KEY must be at least 32 characters long. ' +
+        'For AES-256, use a 32-byte (64 hex characters) key.'
+      );
+    }
+  }
+  
+  // Get secret - prefer RBAC_ENCRYPTION_KEY, fallback to JWT_SECRET, then default (dev only)
+  const secret = process.env.RBAC_ENCRYPTION_KEY || 
+                 process.env.JWT_SECRET || 
+                 (NODE_ENV === 'production' ? '' : 'chouseui-dev-key-do-not-use-in-production');
+  
+  if (!secret) {
+    throw new Error('Encryption key not configured. Set RBAC_ENCRYPTION_KEY or JWT_SECRET environment variable.');
+  }
+  
+  // Use environment variable salt or generate a deterministic one from secret
+  // Note: For production, use a fixed salt stored in env var for consistency
+  // For development, derive from secret (less secure but acceptable)
+  const saltEnv = process.env.RBAC_ENCRYPTION_SALT;
+  let salt: string;
+  
+  if (saltEnv) {
+    salt = saltEnv;
+  } else if (NODE_ENV === 'production') {
+    throw new Error(
+      'RBAC_ENCRYPTION_SALT must be set in production. ' +
+      'Use a unique, random 32-byte (64 hex characters) salt value.'
+    );
+  } else {
+    // Development: derive salt from secret (not ideal but acceptable for dev)
+    // This ensures same secret always produces same key in dev
+    const crypto = require('crypto');
+    salt = crypto.createHash('sha256').update(secret).digest('hex').substring(0, 64);
+  }
+  
+  // Use PBKDF2 with SHA-256 for key derivation (more secure than scrypt for this use case)
+  return pbkdf2Sync(secret, salt, PBKDF2_ITERATIONS, KEY_LENGTH, 'sha256');
 }
 
 export function encryptPassword(password: string): string {
@@ -86,18 +139,43 @@ export function encryptPassword(password: string): string {
 }
 
 export function decryptPassword(encryptedData: string): string {
-  const key = getEncryptionKey();
-  const [ivHex, authTagHex, encrypted] = encryptedData.split(':');
-  
-  const iv = Buffer.from(ivHex, 'hex');
-  const authTag = Buffer.from(authTagHex, 'hex');
-  const decipher = createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-  
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  
-  return decrypted;
+  try {
+    const key = getEncryptionKey();
+    const parts = encryptedData.split(':');
+    
+    if (parts.length !== 3) {
+      throw new Error('Invalid encrypted data format. Expected format: iv:authTag:encrypted');
+    }
+    
+    const [ivHex, authTagHex, encrypted] = parts;
+    
+    if (!ivHex || !authTagHex || !encrypted) {
+      throw new Error('Invalid encrypted data: missing components');
+    }
+    
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    
+    if (iv.length !== IV_LENGTH) {
+      throw new Error(`Invalid IV length: expected ${IV_LENGTH} bytes, got ${iv.length}`);
+    }
+    
+    if (authTag.length !== AUTH_TAG_LENGTH) {
+      throw new Error(`Invalid auth tag length: expected ${AUTH_TAG_LENGTH} bytes, got ${authTag.length}`);
+    }
+    
+    const decipher = createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return decrypted;
+  } catch (error) {
+    // Re-throw with more context instead of silently failing
+    const errorMessage = error instanceof Error ? error.message : 'Unknown decryption error';
+    throw new Error(`Failed to decrypt password: ${errorMessage}`);
+  }
 }
 
 // ============================================
@@ -192,7 +270,10 @@ export async function getConnectionWithPassword(id: string): Promise<ConnectionW
     try {
       password = decryptPassword(conn.passwordEncrypted);
     } catch (error) {
-      console.error('Failed to decrypt password:', error);
+      // Log the error but throw it to prevent silent failures
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Failed to decrypt password for connection ${id}:`, errorMessage);
+      throw new Error(`Failed to decrypt password for connection ${id}: ${errorMessage}`);
     }
   }
   

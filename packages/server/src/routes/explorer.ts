@@ -11,6 +11,7 @@ import {
 } from "../middleware/dataAccess";
 import type { ClickHouseService } from "../services/clickhouse";
 import type { Session } from "../types";
+import { escapeIdentifier, escapeQualifiedIdentifier, validateColumnType, validateFormat } from "../utils/sqlIdentifier";
 
 type Variables = {
   sessionId: string;
@@ -119,6 +120,17 @@ explorer.get("/table/:database/:table", async (c) => {
   const isRbacAdmin = c.get("isRbacAdmin");
   const connectionId = session?.rbacConnectionId;
 
+  // Validate identifiers
+  try {
+    escapeIdentifier(database);
+    escapeIdentifier(table);
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: { code: "INVALID_INPUT", message: `Invalid identifier: ${(error as Error).message}` },
+    }, 400);
+  }
+
   // Check access
   const hasAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId);
   if (!hasAccess) {
@@ -148,6 +160,17 @@ explorer.get("/table/:database/:table/sample", async (c) => {
   const rbacUserId = c.get("rbacUserId");
   const isRbacAdmin = c.get("isRbacAdmin");
   const connectionId = session?.rbacConnectionId;
+
+  // Validate identifiers
+  try {
+    escapeIdentifier(database);
+    escapeIdentifier(table);
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: { code: "INVALID_INPUT", message: `Invalid identifier: ${(error as Error).message}` },
+    }, 400);
+  }
 
   // Check access
   const hasAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId);
@@ -185,14 +208,32 @@ explorer.post(
     const service = c.get("service");
     const session = c.get("session");
 
-    let query = `CREATE DATABASE IF NOT EXISTS ${name}`;
+    // Validate and escape identifiers
+    let escapedName: string;
+    let escapedCluster: string | undefined;
+    try {
+      escapedName = escapeIdentifier(name);
+      if (cluster) {
+        escapedCluster = escapeIdentifier(cluster);
+      }
+    } catch (error) {
+      return c.json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: `Invalid identifier: ${(error as Error).message}` },
+      }, 400);
+    }
+
+    let query = `CREATE DATABASE IF NOT EXISTS ${escapedName}`;
     
-    if (cluster) {
-      query += ` ON CLUSTER ${cluster}`;
+    if (escapedCluster) {
+      query += ` ON CLUSTER ${escapedCluster}`;
     }
     
     if (engine) {
-      query += ` ENGINE = ${engine}`;
+      // Engine names should also be validated, but for now we'll escape it
+      // Note: Engine names in ClickHouse can contain special characters, so this is a basic check
+      const escapedEngine = engine.replace(/[`;]/g, '');
+      query += ` ENGINE = ${escapedEngine}`;
     }
 
     await service.executeQuery(query);
@@ -215,7 +256,18 @@ explorer.delete(
     const { name } = c.req.param();
     const service = c.get("service");
 
-    await service.executeQuery(`DROP DATABASE IF EXISTS ${name}`);
+    // Validate and escape identifier
+    let escapedName: string;
+    try {
+      escapedName = escapeIdentifier(name);
+    } catch (error) {
+      return c.json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: `Invalid identifier: ${(error as Error).message}` },
+      }, 400);
+    }
+
+    await service.executeQuery(`DROP DATABASE IF EXISTS ${escapedName}`);
 
     return c.json({
       success: true,
@@ -252,26 +304,105 @@ explorer.post(
     const { database, name, columns, engine, orderBy, partitionBy, primaryKey, cluster } = c.req.valid("json");
     const service = c.get("service");
 
+    // Validate and escape identifiers
+    let escapedDatabase: string;
+    let escapedName: string;
+    let escapedCluster: string | undefined;
+    try {
+      escapedDatabase = escapeIdentifier(database);
+      escapedName = escapeIdentifier(name);
+      if (cluster) {
+        escapedCluster = escapeIdentifier(cluster);
+      }
+    } catch (error) {
+      return c.json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: `Invalid identifier: ${(error as Error).message}` },
+      }, 400);
+    }
+
+    // Validate and escape column definitions
     const columnDefs = columns
       .map((col) => {
-        let def = `${col.name} ${col.type}`;
-        if (col.default) def += ` DEFAULT ${col.default}`;
-        if (col.comment) def += ` COMMENT '${col.comment.replace(/'/g, "''")}'`;
+        // Validate column name
+        let escapedColName: string;
+        try {
+          escapedColName = escapeIdentifier(col.name);
+        } catch (error) {
+          throw new Error(`Invalid column name "${col.name}": ${(error as Error).message}`);
+        }
+
+        // Validate column type
+        if (!validateColumnType(col.type)) {
+          throw new Error(`Invalid column type "${col.type}" for column "${col.name}"`);
+        }
+
+        let def = `${escapedColName} ${col.type}`;
+        
+        // Escape default value (if it's a string literal)
+        if (col.default) {
+          // For string defaults, escape single quotes
+          const escapedDefault = col.default.replace(/'/g, "''");
+          def += ` DEFAULT '${escapedDefault}'`;
+        }
+        
+        // Escape comment
+        if (col.comment) {
+          const escapedComment = col.comment.replace(/'/g, "''");
+          def += ` COMMENT '${escapedComment}'`;
+        }
+        
         return def;
       })
       .join(",\n  ");
 
-    let query = `CREATE TABLE IF NOT EXISTS ${database}.${name}`;
+    let query = `CREATE TABLE IF NOT EXISTS ${escapedDatabase}.${escapedName}`;
     
-    if (cluster) {
-      query += ` ON CLUSTER ${cluster}`;
+    if (escapedCluster) {
+      query += ` ON CLUSTER ${escapedCluster}`;
     }
     
     query += ` (\n  ${columnDefs}\n) ENGINE = ${engine}`;
     
-    if (orderBy) query += `\nORDER BY ${orderBy}`;
-    if (partitionBy) query += `\nPARTITION BY ${partitionBy}`;
-    if (primaryKey) query += `\nPRIMARY KEY ${primaryKey}`;
+    // Validate and escape ORDER BY, PARTITION BY, PRIMARY KEY
+    if (orderBy) {
+      // ORDER BY can contain multiple columns, so we need to parse and escape each
+      const orderByParts = orderBy.split(',').map(s => s.trim());
+      const escapedOrderBy = orderByParts.map(part => {
+        try {
+          return escapeIdentifier(part);
+        } catch {
+          // If it's not a simple identifier, it might be an expression - validate it doesn't contain SQL injection
+          if (/[;`'"]/.test(part)) {
+            throw new Error(`Invalid ORDER BY expression: contains dangerous characters`);
+          }
+          return part;
+        }
+      }).join(', ');
+      query += `\nORDER BY ${escapedOrderBy}`;
+    }
+    
+    if (partitionBy) {
+      // Similar validation for PARTITION BY
+      if (/[;`'"]/.test(partitionBy)) {
+        return c.json({
+          success: false,
+          error: { code: "INVALID_INPUT", message: "Invalid PARTITION BY expression: contains dangerous characters" },
+        }, 400);
+      }
+      query += `\nPARTITION BY ${partitionBy}`;
+    }
+    
+    if (primaryKey) {
+      // Similar validation for PRIMARY KEY
+      if (/[;`'"]/.test(primaryKey)) {
+        return c.json({
+          success: false,
+          error: { code: "INVALID_INPUT", message: "Invalid PRIMARY KEY expression: contains dangerous characters" },
+        }, 400);
+      }
+      query += `\nPRIMARY KEY ${primaryKey}`;
+    }
 
     await service.executeQuery(query);
 
@@ -293,7 +424,20 @@ explorer.delete(
     const { database, table } = c.req.param();
     const service = c.get("service");
 
-    await service.executeQuery(`DROP TABLE IF EXISTS ${database}.${table}`);
+    // Validate and escape identifiers
+    let escapedDatabase: string;
+    let escapedTable: string;
+    try {
+      escapedDatabase = escapeIdentifier(database);
+      escapedTable = escapeIdentifier(table);
+    } catch (error) {
+      return c.json({
+        success: false,
+        error: { code: "INVALID_INPUT", message: `Invalid identifier: ${(error as Error).message}` },
+      }, 400);
+    }
+
+    await service.executeQuery(`DROP TABLE IF EXISTS ${escapedDatabase}.${escapedTable}`);
 
     return c.json({
       success: true,

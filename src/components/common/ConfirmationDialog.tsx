@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import DOMPurify from "dompurify";
 
 type Variant = "danger" | "warning" | "info" | "success";
 
@@ -69,7 +70,12 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             </DialogTitle>
           </div>
           <DialogDescription className="text-gray-400">
-            <div dangerouslySetInnerHTML={{ __html: description }} />
+            <div dangerouslySetInnerHTML={{ 
+              __html: DOMPurify.sanitize(description, {
+                ALLOWED_TAGS: ['strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'br', 'p'],
+                ALLOWED_ATTR: [],
+              })
+            }} />
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex justify-end space-x-2 mt-6">
