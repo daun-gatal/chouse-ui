@@ -364,7 +364,11 @@ chouseui/
 
 ---
 
-## Security Best Practices
+## Security
+
+### Reporting Vulnerabilities
+
+If you discover a security vulnerability, please see [SECURITY.md](SECURITY.md) for information on how to report it responsibly.
 
 ### Production Checklist
 
@@ -482,55 +486,13 @@ RBAC system ready
 
 ## Contributing
 
-We welcome contributions! Please see our contributing guidelines.
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing`)
-3. Make your changes
-4. Run tests (`bun test`)
-5. Commit (`git commit -m 'Add amazing feature'`)
-6. Push (`git push origin feature/amazing`)
-7. Open a Pull Request (use the PR template when creating your PR)
-
-**Before submitting:**
-- Use the [issue templates](.github/ISSUE_TEMPLATE/) for bug reports, feature requests, or questions
-- Use the [pull request template](.github/pull_request_template.md) when creating PRs
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
 ---
 
 ## For AI Agents and Contributors
 
-### AI Agent Guidelines
-
-**All AI agents working on this repository MUST follow the established coding rules:**
-
-- **[CODE_CHANGES.md](.rules/CODE_CHANGES.md)** - Rules for making code changes
-  - TypeScript best practices (strict typing, no `any`)
-  - React best practices (hooks, performance, component structure)
-  - Error handling and resource cleanup
-  - Security and performance guidelines
-  - Code structure and documentation standards
-
-- **[CODE_REVIEWER.md](.rules/CODE_REVIEWER.md)** - Rules for reviewing code
-  - Review checklist and approval criteria
-  - Common issues to watch for
-  - Security and performance review guidelines
-  - Code quality standards
-
-**Before making any changes:**
-1. Read and understand the rules in `.rules/CODE_CHANGES.md`
-2. Follow TypeScript strict mode guidelines
-3. Ensure proper error handling and resource cleanup
-4. Follow React best practices for hooks and performance
-5. Maintain code consistency with existing patterns
-
-**Before submitting code:**
-1. Review your changes against `.rules/CODE_REVIEWER.md`
-2. Ensure all critical issues are resolved
-3. Verify security and performance considerations
-4. Check that code follows project structure and naming conventions
-
-These rules ensure production-grade code quality, consistency, and maintainability across the codebase.
+If you're using AI coding assistants to help with contributions, please see the [Using AI Tools](CONTRIBUTING.md#using-ai-tools) section in CONTRIBUTING.md for guidelines on following the project's coding rules.
 
 ---
 
