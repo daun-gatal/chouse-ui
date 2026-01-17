@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.7.3] - 2026-01-18
+
+### Added
+
+- **RBAC Permission Checks for All Pages**: Added proper RBAC permission checks for all application pages:
+  - **Overview/Home Page**: Now requires admin role (consistent with sidebar visibility)
+  - **Logs Page**: Requires `QUERY_HISTORY_VIEW` or `QUERY_HISTORY_VIEW_ALL` permission
+  - **Explorer Page**: Requires `DB_VIEW` or `TABLE_VIEW` permission
+  - **Settings Page**: Requires `SETTINGS_VIEW` permission
+  - All pages now properly enforce RBAC permissions, redirecting unauthorized users appropriately
+
+- **Role Form Dialog Enhancements**: Added Collapse/Expand All button in role creation/editing dialog:
+  - Single toggle button that switches between "Expand All" and "Collapse All" based on current state
+  - Makes it easier to navigate permission categories when managing roles
+  - Button shows appropriate icon (ChevronsDown/ChevronsUp) based on state
+
+### Fixed
+
+- **Duplicate Icon in Alert**: Fixed duplicate AlertCircle icon in "At least one permission is required" alert message. The Alert component already includes an icon based on variant, so the manual icon was removed.
+
 ## [v2.7.2] - 2026-01-18
 
 ### Fixed
