@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.7.1] - 2026-01-16
+
+### Fixed
+
+- **Role Permissions in Edit Mode**: Fixed bug where previously selected permissions were missing when editing a role. The issue was caused by a mismatch between permission names (returned by backend) and permission IDs (expected by frontend). Now correctly maps permission names to IDs when initializing the edit form. (Fixes #46)
+- **Explorer Dropdown Menu Actions**: Fixed two related bugs in the Explorer page dropdown menu:
+  - Clicking "New Query" no longer triggers "View Details" action. Added proper event propagation handling to prevent unintended side effects.
+  - Clicking disabled menu items (due to missing permissions) no longer opens the info tab. Disabled items now properly prevent event propagation. (Fixes #47)
+
 ## [v2.7.0] - 2026-01-16
 
 ### Added
