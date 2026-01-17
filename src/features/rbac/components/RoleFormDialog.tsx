@@ -5,7 +5,7 @@
  * Beautiful, interactive UI with smooth animations.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -98,6 +98,19 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     enabled: isOpen,
   });
 
+  // Create a mapping from permission names to IDs
+  const permissionNameToIdMap = useMemo(() => {
+    if (!permissionsByCategory) return new Map<string, string>();
+    
+    const map = new Map<string, string>();
+    Object.values(permissionsByCategory).forEach((permissions) => {
+      permissions.forEach((perm) => {
+        map.set(perm.name, perm.id);
+      });
+    });
+    return map;
+  }, [permissionsByCategory]);
+
   // Initialize form when role changes
   useEffect(() => {
     if (isOpen) {
@@ -106,7 +119,14 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
         setName(role.name);
         setDisplayName(role.displayName);
         setDescription(role.description || '');
-        setSelectedPermissionIds(new Set(role.permissions));
+        
+        // Map permission names to IDs
+        // role.permissions contains permission names, but we need IDs
+        const permissionIds = role.permissions
+          .map((permName) => permissionNameToIdMap.get(permName))
+          .filter((id): id is string => id !== undefined);
+        
+        setSelectedPermissionIds(new Set(permissionIds));
         setIsDefault(role.isDefault);
       } else {
         // Create mode
@@ -122,7 +142,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
         setExpandedCategories(new Set(Object.keys(permissionsByCategory)));
       }
     }
-  }, [isOpen, role, permissionsByCategory]);
+  }, [isOpen, role, permissionsByCategory, permissionNameToIdMap]);
 
   // Mutations
   const createMutation = useMutation({

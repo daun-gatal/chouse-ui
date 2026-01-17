@@ -118,7 +118,10 @@ const TreeNode: React.FC<TreeNodeProps> = ({
     return favorites.some(f => f.id === id);
   }, [favorites, databaseName, isDatabase, node.name]);
 
-  const handleNewQuery = useCallback(() => {
+  const handleNewQuery = useCallback((e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
     const query = isDatabase
       ? `SELECT * FROM ${node.name}. LIMIT 100`
       : `SELECT * FROM ${databaseName}.${node.name} LIMIT 100`;
@@ -251,12 +254,24 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               <MoreVertical className="w-3.5 h-3.5 text-gray-500" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onClick={handleViewInfo} className="text-xs gap-2">
+          <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewInfo();
+              }} 
+              className="text-xs gap-2"
+            >
               <Info className="w-3.5 h-3.5" />
               View Details
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleNewQuery} className="text-xs gap-2">
+            <DropdownMenuItem 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNewQuery(e);
+              }} 
+              className="text-xs gap-2"
+            >
               <TerminalIcon className="w-3.5 h-3.5" />
               New Query
             </DropdownMenuItem>
@@ -266,13 +281,25 @@ const TreeNode: React.FC<TreeNodeProps> = ({
             {isDatabase && (
               <>
                 <PermissionGuard requiredPermission={RBAC_PERMISSIONS.TABLE_CREATE} showTooltip>
-                  <DropdownMenuItem onClick={() => openCreateTableModal(node.name)} className="text-xs gap-2">
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openCreateTableModal(node.name);
+                    }} 
+                    className="text-xs gap-2"
+                  >
                     <FilePlus className="w-3.5 h-3.5 text-emerald-400" />
                     Create Table
                   </DropdownMenuItem>
                 </PermissionGuard>
                 <PermissionGuard requiredPermission={RBAC_PERMISSIONS.TABLE_INSERT} showTooltip>
-                  <DropdownMenuItem onClick={() => openUploadFileModal(node.name)} className="text-xs gap-2">
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openUploadFileModal(node.name);
+                    }} 
+                    className="text-xs gap-2"
+                  >
                     <FileUp className="w-3.5 h-3.5 text-purple-400" />
                     Upload File
                   </DropdownMenuItem>
@@ -283,7 +310,8 @@ const TreeNode: React.FC<TreeNodeProps> = ({
             {!isDatabase && (
               <>
                 <DropdownMenuItem
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     try {
                       // Validate and escape identifiers to prevent SQL injection
                       const escapedTable = escapeQualifiedIdentifier([databaseName, node.name]);
@@ -310,7 +338,13 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                   Describe Table
                 </DropdownMenuItem>
                 <PermissionGuard requiredPermission={RBAC_PERMISSIONS.TABLE_ALTER} showTooltip>
-                  <DropdownMenuItem onClick={() => openAlterTableModal(databaseName, node.name)} className="text-xs gap-2">
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAlterTableModal(databaseName, node.name);
+                    }} 
+                    className="text-xs gap-2"
+                  >
                     <Settings2 className="w-3.5 h-3.5" />
                     Alter Table
                   </DropdownMenuItem>
@@ -319,7 +353,8 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                 <PermissionGuard requiredPermission={RBAC_PERMISSIONS.TABLE_DROP} showTooltip>
                   <DropdownMenuItem
                     className="text-xs gap-2 text-red-400 focus:text-red-400"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       addTab({
                         id: genTabId(),
                         type: "sql",
