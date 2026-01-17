@@ -6,3 +6,4 @@
 
 export { RbacRolesTable } from './RbacRolesTable';
 export { RbacAuditLogs } from './RbacAuditLogs';
+export { RoleFormDialog } from './RoleFormDialog';

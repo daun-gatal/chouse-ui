@@ -350,6 +350,8 @@ export const RBAC_PERMISSIONS = {
   TABLE_DROP: 'table:drop',
   TABLE_SELECT: 'table:select',
   TABLE_INSERT: 'table:insert',
+  TABLE_UPDATE: 'table:update',
+  TABLE_DELETE: 'table:delete',
   
   // Query Operations
   QUERY_EXECUTE: 'query:execute',

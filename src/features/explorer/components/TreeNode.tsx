@@ -16,7 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useExplorerStore, useWorkspaceStore, genTabId } from "@/stores";
+import { useExplorerStore, useWorkspaceStore, genTabId, RBAC_PERMISSIONS } from "@/stores";
 import PermissionGuard from "@/components/common/PermissionGuard";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -265,13 +265,13 @@ const TreeNode: React.FC<TreeNodeProps> = ({
             
             {isDatabase && (
               <>
-                <PermissionGuard requiredPermission="CREATE TABLE" showTooltip>
+                <PermissionGuard requiredPermission={RBAC_PERMISSIONS.TABLE_CREATE} showTooltip>
                   <DropdownMenuItem onClick={() => openCreateTableModal(node.name)} className="text-xs gap-2">
                     <FilePlus className="w-3.5 h-3.5 text-emerald-400" />
                     Create Table
                   </DropdownMenuItem>
                 </PermissionGuard>
-                <PermissionGuard requiredPermission="INSERT" showTooltip>
+                <PermissionGuard requiredPermission={RBAC_PERMISSIONS.TABLE_INSERT} showTooltip>
                   <DropdownMenuItem onClick={() => openUploadFileModal(node.name)} className="text-xs gap-2">
                     <FileUp className="w-3.5 h-3.5 text-purple-400" />
                     Upload File
@@ -309,14 +309,14 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                   <FileType className="w-3.5 h-3.5" />
                   Describe Table
                 </DropdownMenuItem>
-                <PermissionGuard requiredPermission="ALTER TABLE" showTooltip>
+                <PermissionGuard requiredPermission={RBAC_PERMISSIONS.TABLE_ALTER} showTooltip>
                   <DropdownMenuItem onClick={() => openAlterTableModal(databaseName, node.name)} className="text-xs gap-2">
                     <Settings2 className="w-3.5 h-3.5" />
                     Alter Table
                   </DropdownMenuItem>
                 </PermissionGuard>
                 <DropdownMenuSeparator />
-                <PermissionGuard requiredPermission="DROP TABLE" showTooltip>
+                <PermissionGuard requiredPermission={RBAC_PERMISSIONS.TABLE_DROP} showTooltip>
                   <DropdownMenuItem
                     className="text-xs gap-2 text-red-400 focus:text-red-400"
                     onClick={() => {

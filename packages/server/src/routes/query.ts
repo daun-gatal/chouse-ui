@@ -1,67 +1,378 @@
-import { Hono } from "hono";
+import { Hono, Context, Next } from "hono";
+import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { QueryRequestSchema, Session } from "../types";
-import { authMiddleware } from "../middleware/auth";
+import { Session, AppError } from "../types";
 import { optionalRbacMiddleware, validateQueryAccess } from "../middleware/dataAccess";
-import type { ClickHouseService } from "../services/clickhouse";
+import { getSession } from "../services/clickhouse";
+import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
+import { ClickHouseService } from "../services/clickhouse";
 import { createAuditLog } from "../rbac/services/rbac";
-import { AUDIT_ACTIONS } from "../rbac/schema/base";
+import { userHasPermission } from "../rbac/services/rbac";
+import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 
 type Variables = {
-  sessionId: string;
+  sessionId?: string;
   service: ClickHouseService;
-  session: Session;
+  session?: Session;
   rbacUserId?: string;
   rbacRoles?: string[];
   rbacPermissions?: string[];
   isRbacAdmin?: boolean;
+  rbacConnectionId?: string;
 };
 
 const query = new Hono<{ Variables: Variables }>();
 
-// All routes require authentication + optional RBAC for data access
-query.use("*", authMiddleware);
-query.use("*", optionalRbacMiddleware);
+// Helper to get cookie value
+function getCookie(c: Context, name: string): string | undefined {
+  const cookies = c.req.header("Cookie") || "";
+  const match = cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
 
 /**
- * POST /query/execute
- * Execute a SQL query (with access validation)
+ * Hybrid auth middleware for query routes
+ * Supports both ClickHouse session auth and RBAC auth
  */
-query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+async function queryAuthMiddleware(c: Context<{ Variables: Variables }>, next: Next) {
+  // First try ClickHouse session auth (but still require RBAC)
+  const sessionId = c.req.header("X-Session-ID") || getCookie(c, "ch_session");
+  
+  if (sessionId) {
+    const sessionData = getSession(sessionId);
+    if (sessionData) {
+      // Add RBAC context to validate session ownership
+      await optionalRbacMiddleware(c, async () => {});
+      
+      const rbacUserId = c.get("rbacUserId");
+      
+      // If session has rbacUserId, validate ownership
+      if (sessionData.session.rbacUserId) {
+        if (!rbacUserId || sessionData.session.rbacUserId !== rbacUserId) {
+          throw AppError.forbidden("Session does not belong to current user. Please reconnect.");
+        }
+      } else {
+        // Legacy session without RBAC - require RBAC authentication
+        if (!rbacUserId) {
+          throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
+        }
+      }
+      
+      c.set("sessionId", sessionId);
+      c.set("service", sessionData.service);
+      c.set("session", sessionData.session);
+      await next();
+      return;
+    }
+  }
+
+  // If no ClickHouse session, try RBAC auth
+  await optionalRbacMiddleware(c, async () => {});
+  
+  const rbacUserId = c.get("rbacUserId");
+  const rbacRoles = c.get("rbacRoles");
+  const isSuperAdmin = rbacRoles?.includes('super_admin') || false;
+  
+  if (rbacUserId) {
+    let service: ClickHouseService | null = null;
+    
+    try {
+      // Super admins get all active connections, regular users get their assigned connections
+      let connections: Awaited<ReturnType<typeof getUserConnections>>;
+      if (isSuperAdmin) {
+        const { listConnections } = await import("../rbac/services/connections");
+        const result = await listConnections({ activeOnly: true });
+        connections = result.connections;
+      } else {
+        connections = await getUserConnections(rbacUserId);
+      }
+      
+      if (connections.length === 0) {
+        if (isSuperAdmin) {
+          throw AppError.unauthorized("No ClickHouse connections are configured in the system. Please create a connection first.");
+        }
+        throw AppError.unauthorized("No ClickHouse connection configured. Please contact an administrator to grant you access to a ClickHouse connection.");
+      }
+      
+      // Try to find default connection first, then any active connection
+      const defaultConnection = connections.find((conn) => conn.isDefault && conn.isActive);
+      const activeConnection = defaultConnection || connections.find((conn) => conn.isActive);
+      
+      if (!activeConnection) {
+        if (isSuperAdmin) {
+          throw AppError.unauthorized("No active ClickHouse connections found. Please activate a connection or create a new one.");
+        }
+        throw AppError.unauthorized("No active ClickHouse connection found. Please contact an administrator to activate a connection.");
+      }
+
+      // Get connection with password
+      const connection = await getConnectionWithPassword(activeConnection.id);
+      
+      if (!connection) {
+        throw AppError.unauthorized("Connection not found or access denied.");
+      }
+
+      // Build connection URL
+      const protocol = connection.sslEnabled ? 'https' : 'http';
+      const url = `${protocol}://${connection.host}:${connection.port}`;
+
+      // Create ClickHouse service from connection
+      service = new ClickHouseService({
+        url,
+        username: connection.username,
+        password: connection.password || "",
+        database: connection.database || undefined,
+      });
+
+      // Test connection
+      const isConnected = await service.ping();
+      if (!isConnected) {
+        await service.close();
+        throw AppError.unauthorized("Failed to connect to ClickHouse server.");
+      }
+
+      // Create a temporary session ID for this request
+      const tempSessionId = `rbac_${rbacUserId}_${Date.now()}`;
+      
+      // Create a temporary session-like object
+      const session: Session = {
+        id: tempSessionId,
+        connectionConfig: {
+          url,
+          username: connection.username,
+          password: connection.password || "",
+          database: connection.database || undefined,
+        },
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        isAdmin: false, // Will be determined by ClickHouse
+        permissions: [],
+        version: await service.getVersion(),
+        rbacConnectionId: connection.id,
+      };
+
+      const adminStatus = await service.checkIsAdmin();
+      session.isAdmin = adminStatus.isAdmin;
+      session.permissions = adminStatus.permissions;
+
+      c.set("service", service);
+      c.set("session", session);
+      c.set("rbacConnectionId", connection.id);
+      
+      try {
+        await next();
+      } finally {
+        // Cleanup: Always close service after request completes (success or error)
+        if (service) {
+          await service.close().catch((err) => {
+            console.error('[Query] Failed to close service:', err);
+          });
+        }
+      }
+      return;
+    } catch (error) {
+      // Ensure service is closed on error
+      if (service) {
+        await service.close().catch((err) => {
+          console.error('[Query] Failed to close service on error:', err);
+        });
+      }
+      
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw AppError.unauthorized("Failed to authenticate with ClickHouse. Please connect to a ClickHouse server first.");
+    }
+  }
+
+  // No authentication found
+  throw AppError.unauthorized("No session provided. Please login first.");
+}
+
+// All routes require authentication (hybrid: session or RBAC)
+query.use("*", queryAuthMiddleware);
+
+// ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Check if SQL statement matches expected type
+ */
+function validateSqlType(sql: string, expectedTypes: string[]): boolean {
+  const normalized = sql.trim().toUpperCase();
+  return expectedTypes.some(type => normalized.startsWith(type));
+}
+
+/**
+ * Detect if CREATE statement is for database or table
+ */
+function detectCreateTarget(sql: string): 'database' | 'table' | 'view' | 'other' {
+  const normalized = sql.trim().toUpperCase();
+  
+  // CREATE DATABASE
+  if (normalized.match(/^CREATE\s+(OR\s+REPLACE\s+)?DATABASE/i)) {
+    return 'database';
+  }
+  
+  // CREATE TABLE
+  if (normalized.match(/^CREATE\s+(OR\s+REPLACE\s+)?TABLE/i)) {
+    return 'table';
+  }
+  
+  // CREATE VIEW
+  if (normalized.match(/^CREATE\s+(OR\s+REPLACE\s+)?VIEW/i)) {
+    return 'view';
+  }
+  
+  // Other CREATE statements (INDEX, FUNCTION, etc.)
+  return 'other';
+}
+
+/**
+ * Detect if DROP statement is for database or table
+ */
+function detectDropTarget(sql: string): 'database' | 'table' | 'view' | 'other' {
+  const normalized = sql.trim().toUpperCase();
+  
+  // DROP DATABASE
+  if (normalized.match(/^DROP\s+(DATABASE|SCHEMA)/i)) {
+    return 'database';
+  }
+  
+  // DROP TABLE
+  if (normalized.match(/^DROP\s+TABLE/i)) {
+    return 'table';
+  }
+  
+  // DROP VIEW
+  if (normalized.match(/^DROP\s+VIEW/i)) {
+    return 'view';
+  }
+  
+  // Other DROP statements (INDEX, FUNCTION, etc.)
+  return 'other';
+}
+
+/**
+ * Check permission for database or table operation
+ * No fallback permissions - strict enforcement of specific permissions
+ */
+async function checkDbOrTablePermission(
+  rbacUserId: string | undefined,
+  rbacPermissions: string[] | undefined,
+  isRbacAdmin: boolean | undefined,
+  operation: 'create' | 'drop' | 'alter',
+  target: 'database' | 'table' | 'view' | 'other'
+): Promise<void> {
+  if (!rbacUserId) {
+    throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
+  }
+
+  if (isRbacAdmin) {
+    return;
+  }
+
+  let requiredPermission: string;
+  
+  if (target === 'database') {
+    if (operation === 'create') {
+      requiredPermission = PERMISSIONS.DB_CREATE;
+    } else if (operation === 'drop') {
+      requiredPermission = PERMISSIONS.DB_DROP;
+    } else {
+      // ALTER DATABASE - use DB_CREATE as it's a DDL operation
+      requiredPermission = PERMISSIONS.DB_CREATE;
+    }
+  } else if (target === 'table' || target === 'view') {
+    if (operation === 'create') {
+      requiredPermission = PERMISSIONS.TABLE_CREATE;
+    } else if (operation === 'drop') {
+      requiredPermission = PERMISSIONS.TABLE_DROP;
+    } else {
+      // ALTER TABLE/VIEW
+      requiredPermission = PERMISSIONS.TABLE_ALTER;
+    }
+  } else {
+    // Other operations (INDEX, FUNCTION, etc.) - require specific permission
+    // For now, we'll require TABLE_ALTER as these are typically table-related
+    // If needed, we can add more specific permissions later
+    requiredPermission = PERMISSIONS.TABLE_ALTER;
+  }
+
+  // Check if user has the required permission
+  if (rbacPermissions && rbacPermissions.includes(requiredPermission)) {
+    return;
+  }
+
+  // Double-check against database (no fallback - strict enforcement)
+  const hasPermission = await userHasPermission(rbacUserId, requiredPermission as any);
+  if (!hasPermission) {
+    throw AppError.forbidden(`Permission '${requiredPermission}' required for ${operation.toUpperCase()} ${target.toUpperCase()} operations`);
+  }
+}
+
+/**
+ * Permission check helper for query routes
+ */
+async function checkQueryPermission(
+  rbacUserId: string | undefined,
+  rbacPermissions: string[] | undefined,
+  isRbacAdmin: boolean | undefined,
+  requiredPermission: string
+): Promise<void> {
+  // RBAC user is required
+  if (!rbacUserId) {
+    throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
+  }
+
+  // Admins have all permissions
+  if (isRbacAdmin) {
+    return;
+  }
+
+  // Check if user has the required permission
+  if (rbacPermissions && rbacPermissions.includes(requiredPermission)) {
+    return;
+  }
+
+  // Double-check against database (in case permissions changed)
+  const hasPermission = await userHasPermission(rbacUserId, requiredPermission as any);
+  if (!hasPermission) {
+    throw AppError.forbidden(`Permission '${requiredPermission}' required for this action`);
+  }
+}
+
+/**
+ * Execute query with validation and audit logging
+ */
+async function executeQueryWithValidation(
+  c: Context<{ Variables: Variables }>,
+  sql: string,
+  format: 'JSON' | 'JSONEachRow' | 'CSV' | 'TabSeparated',
+  operationType: string
+) {
   const service = c.get("service");
   const session = c.get("session");
   const rbacUserId = c.get("rbacUserId");
   const isRbacAdmin = c.get("isRbacAdmin");
   const rbacPermissions = c.get("rbacPermissions");
-  
-  // Get RBAC connection ID from session for data access filtering
-  const connectionId = session?.rbacConnectionId;
+  const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
+  const defaultDatabase = session?.connectionConfig?.database;
 
   // Validate access before execution
-  // Advanced validation: splits multi-statement queries and validates each statement individually
-  // 1. Checks role permissions for the operation type (read/write/admin) per statement
-  // 2. Checks data access rules for the specific databases/tables per statement
-  // This prevents security vulnerabilities like: SELECT * FROM table; DROP TABLE sensitive_data;
   const accessCheck = await validateQueryAccess(
     rbacUserId,
     isRbacAdmin,
     rbacPermissions,
     sql,
-    session.connectionConfig.database,
+    defaultDatabase,
     connectionId
   );
 
   if (!accessCheck.allowed) {
     const statementCount = sql.split(';').filter(s => s.trim().length > 0).length;
-    console.log('[Query] Access denied:', {
-      userId: rbacUserId,
-      statementCount: statementCount > 1 ? statementCount : undefined,
-      statementIndex: accessCheck.statementIndex,
-      sql: sql.substring(0, 200),
-      reason: accessCheck.reason,
-    });
     return c.json({
       success: false,
       error: { 
@@ -80,9 +391,6 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
   // Create audit log for query execution
   if (rbacUserId) {
     try {
-      // Generate a timestamp-based identifier for matching with query_log
-      // We'll match by timestamp later since query_id from ClickHouse isn't immediately available
-      // Using timestamp + random suffix for uniqueness (not security-critical, just for matching)
       const queryId = `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
       await createAuditLog(
@@ -92,7 +400,8 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
           resourceType: 'query',
           resourceId: queryId,
           details: {
-            query: sql.substring(0, 500), // Store first 500 chars to avoid excessive storage
+            operationType,
+            query: sql.substring(0, 500),
             queryLength: sql.length,
             format,
             connectionId,
@@ -104,9 +413,7 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
         }
       );
     } catch (error) {
-      // Don't fail the query if audit logging fails
-      // Log error for monitoring but continue with query execution
-      console.error('[Query] Failed to create audit log:', error instanceof Error ? error.message : String(error));
+      console.error(`[Query/${operationType}] Failed to create audit log:`, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -114,6 +421,15 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
     success: true,
     data: result,
   });
+}
+
+// ============================================
+// Schema Definitions
+// ============================================
+
+const QueryRequestSchemaWithType = z.object({
+  query: z.string().min(1, "Query is required"),
+  format: z.enum(["JSON", "JSONEachRow", "CSV", "TabSeparated"]).optional().default("JSON"),
 });
 
 /**
@@ -121,6 +437,27 @@ query.post("/execute", zValidator("json", QueryRequestSchema), async (c) => {
  * Get intellisense data (columns, functions, keywords)
  */
 query.get("/intellisense", async (c) => {
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // RBAC user is required
+  if (!rbacUserId) {
+    throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
+  }
+
+  // Check RBAC permission for query execution (intellisense is used for querying)
+  if (!isRbacAdmin) {
+    const hasPermission = rbacPermissions?.includes(PERMISSIONS.QUERY_EXECUTE) || false;
+    if (!hasPermission) {
+      // Double-check against database
+      const hasDbPermission = await userHasPermission(rbacUserId, PERMISSIONS.QUERY_EXECUTE);
+      if (!hasDbPermission) {
+        throw AppError.forbidden(`Permission '${PERMISSIONS.QUERY_EXECUTE}' required for this action`);
+      }
+    }
+  }
+
   const service = c.get("service");
 
   const data = await service.getIntellisenseData();
@@ -130,6 +467,456 @@ query.get("/intellisense", async (c) => {
     data,
   });
 });
+
+// ============================================
+// Nested Routers for Table and Database Operations
+// ============================================
+
+const tableRouter = new Hono<{ Variables: Variables }>();
+const databaseRouter = new Hono<{ Variables: Variables }>();
+
+// ============================================
+// Table Operations Routes
+// ============================================
+
+/**
+ * POST /query/table/select
+ * Execute SELECT queries from tables (read-only)
+ * Permission: QUERY_EXECUTE or TABLE_SELECT
+ */
+tableRouter.post("/select", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually a SELECT query
+  if (!validateSqlType(sql, ['SELECT', 'WITH'])) {
+    throw AppError.badRequest('This endpoint only accepts SELECT queries. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Check permission (QUERY_EXECUTE or TABLE_SELECT)
+  const hasQueryExecute = rbacPermissions?.includes(PERMISSIONS.QUERY_EXECUTE) || false;
+  const hasTableSelect = rbacPermissions?.includes(PERMISSIONS.TABLE_SELECT) || false;
+  
+  if (!isRbacAdmin && !hasQueryExecute && !hasTableSelect) {
+    // Check against database
+    const hasQueryPerm = await userHasPermission(rbacUserId!, PERMISSIONS.QUERY_EXECUTE);
+    const hasSelectPerm = await userHasPermission(rbacUserId!, PERMISSIONS.TABLE_SELECT);
+    
+    if (!hasQueryPerm && !hasSelectPerm) {
+      throw AppError.forbidden(`Permission '${PERMISSIONS.QUERY_EXECUTE}' or '${PERMISSIONS.TABLE_SELECT}' required for SELECT queries`);
+    }
+  }
+
+  return executeQueryWithValidation(c, sql, format, 'SELECT');
+});
+
+/**
+ * POST /query/table/insert
+ * Execute INSERT statements into tables
+ * Permission: TABLE_INSERT (strict - no fallback)
+ */
+tableRouter.post("/insert", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually an INSERT query
+  if (!validateSqlType(sql, ['INSERT'])) {
+    throw AppError.badRequest('This endpoint only accepts INSERT statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Check permission (strict - no fallback)
+  await checkQueryPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.TABLE_INSERT
+  );
+
+  return executeQueryWithValidation(c, sql, format, 'INSERT');
+});
+
+/**
+ * POST /query/table/update
+ * Execute UPDATE statements on tables
+ * Permission: TABLE_UPDATE (strict - no fallback)
+ */
+tableRouter.post("/update", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually an UPDATE query
+  if (!validateSqlType(sql, ['UPDATE'])) {
+    throw AppError.badRequest('This endpoint only accepts UPDATE statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Check permission (strict - no fallback)
+  await checkQueryPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.TABLE_UPDATE
+  );
+
+  return executeQueryWithValidation(c, sql, format, 'UPDATE');
+});
+
+/**
+ * POST /query/table/delete
+ * Execute DELETE statements from tables
+ * Permission: TABLE_DELETE (strict - no fallback)
+ */
+tableRouter.post("/delete", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually a DELETE query
+  if (!validateSqlType(sql, ['DELETE'])) {
+    throw AppError.badRequest('This endpoint only accepts DELETE statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Check permission (strict - no fallback)
+  await checkQueryPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.TABLE_DELETE
+  );
+
+  return executeQueryWithValidation(c, sql, format, 'DELETE');
+});
+
+/**
+ * POST /query/table/create
+ * Execute CREATE TABLE statements (DDL)
+ * Permission: TABLE_CREATE (strict - no fallback)
+ * Note: CREATE TABLE also has a specific route in /api/explorer/table
+ */
+tableRouter.post("/create", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually a CREATE TABLE query
+  if (!validateSqlType(sql, ['CREATE'])) {
+    throw AppError.badRequest('This endpoint only accepts CREATE statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Validate it's CREATE TABLE (not CREATE DATABASE)
+  const target = detectCreateTarget(sql);
+  if (target !== 'table' && target !== 'view') {
+    throw AppError.badRequest(`This endpoint only accepts CREATE TABLE/VIEW statements. Use /query/database/create for CREATE DATABASE.`);
+  }
+  
+  // Check permission
+  await checkDbOrTablePermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    'create',
+    target
+  );
+
+  return executeQueryWithValidation(c, sql, format, `CREATE_${target.toUpperCase()}`);
+});
+
+/**
+ * POST /query/table/drop
+ * Execute DROP TABLE statements (DDL)
+ * Permission: TABLE_DROP (strict - no fallback)
+ * Note: DROP TABLE also has a specific route in /api/explorer/table/:database/:table
+ */
+tableRouter.post("/drop", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually a DROP query
+  if (!validateSqlType(sql, ['DROP'])) {
+    throw AppError.badRequest('This endpoint only accepts DROP statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Validate it's DROP TABLE (not DROP DATABASE)
+  const target = detectDropTarget(sql);
+  if (target !== 'table' && target !== 'view') {
+    throw AppError.badRequest(`This endpoint only accepts DROP TABLE/VIEW statements. Use /query/database/drop for DROP DATABASE.`);
+  }
+  
+  // Check permission
+  await checkDbOrTablePermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    'drop',
+    target
+  );
+
+  return executeQueryWithValidation(c, sql, format, `DROP_${target.toUpperCase()}`);
+});
+
+/**
+ * POST /query/table/alter
+ * Execute ALTER TABLE statements (DDL)
+ * Permission: TABLE_ALTER (strict - no fallback)
+ */
+tableRouter.post("/alter", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually an ALTER query
+  if (!validateSqlType(sql, ['ALTER'])) {
+    throw AppError.badRequest('This endpoint only accepts ALTER statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Validate it's ALTER TABLE/VIEW (not ALTER DATABASE)
+  const normalized = sql.trim().toUpperCase();
+  let target: 'database' | 'table' | 'view' | 'other' = 'table';
+  
+  if (normalized.match(/^ALTER\s+(DATABASE|SCHEMA)/i)) {
+    throw AppError.badRequest('This endpoint only accepts ALTER TABLE/VIEW statements. Use /query/database/alter for ALTER DATABASE.');
+  } else if (normalized.match(/^ALTER\s+TABLE/i)) {
+    target = 'table';
+  } else if (normalized.match(/^ALTER\s+VIEW/i)) {
+    target = 'view';
+  } else {
+    target = 'other';
+  }
+  
+  // Check permission
+  await checkDbOrTablePermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    'alter',
+    target
+  );
+
+  return executeQueryWithValidation(c, sql, format, `ALTER_${target.toUpperCase()}`);
+});
+
+/**
+ * POST /query/table/truncate
+ * Execute TRUNCATE TABLE statements (DDL)
+ * Permission: TABLE_DELETE (strict - no fallback)
+ */
+tableRouter.post("/truncate", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually a TRUNCATE query
+  if (!validateSqlType(sql, ['TRUNCATE'])) {
+    throw AppError.badRequest('This endpoint only accepts TRUNCATE statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Check permission (TRUNCATE requires TABLE_DELETE - no fallback)
+  await checkQueryPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.TABLE_DELETE
+  );
+
+  return executeQueryWithValidation(c, sql, format, 'TRUNCATE');
+});
+
+// ============================================
+// Database Operations Routes
+// ============================================
+
+/**
+ * POST /query/database/create
+ * Execute CREATE DATABASE statements (DDL)
+ * Permission: DB_CREATE (strict - no fallback)
+ * Note: CREATE DATABASE also has a specific route in /api/explorer/database
+ */
+databaseRouter.post("/create", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually a CREATE query
+  if (!validateSqlType(sql, ['CREATE'])) {
+    throw AppError.badRequest('This endpoint only accepts CREATE statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Validate it's CREATE DATABASE (not CREATE TABLE)
+  const target = detectCreateTarget(sql);
+  if (target !== 'database') {
+    throw AppError.badRequest(`This endpoint only accepts CREATE DATABASE statements. Use /query/table/create for CREATE TABLE/VIEW.`);
+  }
+  
+  // Check permission
+  await checkDbOrTablePermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    'create',
+    target
+  );
+
+  return executeQueryWithValidation(c, sql, format, 'CREATE_DATABASE');
+});
+
+/**
+ * POST /query/database/drop
+ * Execute DROP DATABASE statements (DDL)
+ * Permission: DB_DROP (strict - no fallback)
+ * Note: DROP DATABASE also has a specific route in /api/explorer/database/:name
+ */
+databaseRouter.post("/drop", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually a DROP query
+  if (!validateSqlType(sql, ['DROP'])) {
+    throw AppError.badRequest('This endpoint only accepts DROP statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Validate it's DROP DATABASE (not DROP TABLE)
+  const target = detectDropTarget(sql);
+  if (target !== 'database') {
+    throw AppError.badRequest(`This endpoint only accepts DROP DATABASE statements. Use /query/table/drop for DROP TABLE/VIEW.`);
+  }
+  
+  // Check permission
+  await checkDbOrTablePermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    'drop',
+    target
+  );
+
+  return executeQueryWithValidation(c, sql, format, 'DROP_DATABASE');
+});
+
+/**
+ * POST /query/database/alter
+ * Execute ALTER DATABASE statements (DDL)
+ * Permission: DB_CREATE (strict - no fallback)
+ */
+databaseRouter.post("/alter", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually an ALTER query
+  if (!validateSqlType(sql, ['ALTER'])) {
+    throw AppError.badRequest('This endpoint only accepts ALTER statements. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Validate it's ALTER DATABASE (not ALTER TABLE)
+  const normalized = sql.trim().toUpperCase();
+  if (!normalized.match(/^ALTER\s+(DATABASE|SCHEMA)/i)) {
+    throw AppError.badRequest('This endpoint only accepts ALTER DATABASE statements. Use /query/table/alter for ALTER TABLE/VIEW.');
+  }
+  
+  // Check permission
+  await checkDbOrTablePermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    'alter',
+    'database'
+  );
+
+  return executeQueryWithValidation(c, sql, format, 'ALTER_DATABASE');
+});
+
+// ============================================
+// System/Utility Routes (at root level)
+// ============================================
+
+/**
+ * POST /query/show
+ * Execute SHOW queries (read-only system queries)
+ * Permission: QUERY_EXECUTE or DB_VIEW / TABLE_VIEW
+ */
+query.post("/show", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's actually a SHOW query
+  if (!validateSqlType(sql, ['SHOW'])) {
+    throw AppError.badRequest('This endpoint only accepts SHOW queries. Please use the appropriate endpoint for your query type.');
+  }
+
+  // Check permission (QUERY_EXECUTE or view permissions)
+  const hasQueryExecute = rbacPermissions?.includes(PERMISSIONS.QUERY_EXECUTE) || false;
+  const hasDbView = rbacPermissions?.includes(PERMISSIONS.DB_VIEW) || false;
+  const hasTableView = rbacPermissions?.includes(PERMISSIONS.TABLE_VIEW) || false;
+  
+  if (!isRbacAdmin && !hasQueryExecute && !hasDbView && !hasTableView) {
+    const hasQueryPerm = await userHasPermission(rbacUserId!, PERMISSIONS.QUERY_EXECUTE);
+    const hasDbPerm = await userHasPermission(rbacUserId!, PERMISSIONS.DB_VIEW);
+    const hasTablePerm = await userHasPermission(rbacUserId!, PERMISSIONS.TABLE_VIEW);
+    
+    if (!hasQueryPerm && !hasDbPerm && !hasTablePerm) {
+      throw AppError.forbidden(`Permission '${PERMISSIONS.QUERY_EXECUTE}', '${PERMISSIONS.DB_VIEW}', or '${PERMISSIONS.TABLE_VIEW}' required for SHOW queries`);
+    }
+  }
+
+  return executeQueryWithValidation(c, sql, format, 'SHOW');
+});
+
+/**
+ * POST /query/system
+ * Execute system queries (read-only system information)
+ * Permission: QUERY_EXECUTE
+ */
+query.post("/system", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's a system query (SHOW, SELECT from system tables, DESCRIBE)
+  const normalized = sql.trim().toUpperCase();
+  const isSystemQuery = normalized.startsWith('SHOW') || 
+                        normalized.startsWith('SELECT') ||
+                        normalized.startsWith('DESCRIBE') ||
+                        normalized.startsWith('DESC');
+  
+  if (!isSystemQuery) {
+    throw AppError.badRequest('This endpoint only accepts system queries (SHOW, SELECT from system tables, DESCRIBE). Please use the appropriate endpoint for your query type.');
+  }
+
+  // Check permission
+  await checkQueryPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.QUERY_EXECUTE
+  );
+
+  return executeQueryWithValidation(c, sql, format, 'SYSTEM');
+});
+
+// ============================================
+// Mount Nested Routers
+// ============================================
+
+query.route("/table", tableRouter);
+query.route("/database", databaseRouter);
 
 export default query;
 

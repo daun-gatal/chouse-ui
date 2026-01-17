@@ -1,44 +1,44 @@
 /**
- * Authentication Store
+ * Connection Info Store
  * 
- * Manages user authentication state, session, and permissions.
- * Uses the new API client instead of direct ClickHouse connection.
+ * Stores ClickHouse connection information (session metadata).
+ * Authentication is handled by RBAC (useRbacStore).
+ * This store only tracks the active ClickHouse connection details.
  */
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { authApi, getSessionId, clearSession } from '@/api';
-import type { LoginCredentials, SessionInfo } from '@/api';
+import { clearSession } from '@/api/client';
 
 // ============================================
 // Types
 // ============================================
 
-export interface AuthState {
-  // State
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  isInitialized: boolean;
-  error: string | null;
-  
-  // Session info
+export interface ConnectionInfoState {
+  // ClickHouse session info (from connection)
   sessionId: string | null;
   username: string | null;
   url: string | null;
-  isAdmin: boolean;
-  permissions: string[];
   version: string | null;
+  isAdmin: boolean; // ClickHouse admin status (not RBAC admin)
+  permissions: string[]; // ClickHouse permissions (not RBAC permissions)
   
-  // Active connection
+  // Active connection tracking
   activeConnectionId: string | null;
   activeConnectionName: string | null;
   
   // Actions
-  login: (credentials: LoginCredentials) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshSession: () => Promise<void>;
-  checkSession: () => Promise<boolean>;
-  clearError: () => void;
+  setConnectionInfo: (info: {
+    sessionId: string;
+    username: string;
+    url: string;
+    version: string;
+    isAdmin: boolean;
+    permissions: string[];
+    activeConnectionId: string;
+    activeConnectionName: string;
+  }) => void;
+  clearConnectionInfo: () => void;
   setActiveConnection: (connectionId: string | null, connectionName?: string | null) => void;
 }
 
@@ -46,174 +46,71 @@ export interface AuthState {
 // Store
 // ============================================
 
-export const useAuthStore = create<AuthState>()(
+export const useAuthStore = create<ConnectionInfoState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // Initial state
-      isAuthenticated: false,
-      isLoading: false,
-      isInitialized: false,
-      error: null,
       sessionId: null,
       username: null,
       url: null,
+      version: null,
       isAdmin: false,
       permissions: [],
-      version: null,
       activeConnectionId: null,
       activeConnectionName: null,
 
       /**
-       * Login with credentials
+       * Set connection info (called after connecting to ClickHouse via RBAC)
        */
-      login: async (credentials: LoginCredentials) => {
-        set({ isLoading: true, error: null });
-
-        try {
-          const response = await authApi.login(credentials);
-
-          set({
-            isAuthenticated: true,
-            isLoading: false,
-            sessionId: response.sessionId,
-            username: response.username,
-            url: credentials.url,
-            isAdmin: response.isAdmin,
-            permissions: response.permissions,
-            version: response.version,
-            error: null,
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Login failed';
-          set({
-            isAuthenticated: false,
-            isLoading: false,
-            error: message,
-            sessionId: null,
-            username: null,
-            url: null,
-            isAdmin: false,
-            permissions: [],
-            version: null,
-          });
-          throw error;
-        }
+      setConnectionInfo: (info) => {
+        set({
+          sessionId: info.sessionId,
+          username: info.username,
+          url: info.url,
+          version: info.version,
+          isAdmin: info.isAdmin,
+          permissions: info.permissions,
+          activeConnectionId: info.activeConnectionId,
+          activeConnectionName: info.activeConnectionName,
+        });
       },
 
       /**
-       * Logout and clear session
+       * Clear connection info (called on disconnect/logout)
        */
-      logout: async () => {
-        set({ isLoading: true });
-
-        try {
-          await authApi.logout();
-        } catch (error) {
-          // Ignore logout errors - we'll clear local state anyway
-          console.error('Logout error:', error);
-        } finally {
-          clearSession();
-          set({
-            isAuthenticated: false,
-            isLoading: false,
-            sessionId: null,
-            username: null,
-            url: null,
-            isAdmin: false,
-            permissions: [],
-            version: null,
-            error: null,
-            activeConnectionId: null,
-            activeConnectionName: null,
-          });
-        }
+      clearConnectionInfo: () => {
+        clearSession();
+        set({
+          sessionId: null,
+          username: null,
+          url: null,
+          version: null,
+          isAdmin: false,
+          permissions: [],
+          activeConnectionId: null,
+          activeConnectionName: null,
+        });
       },
-
-      /**
-       * Refresh session and update permissions
-       */
-      refreshSession: async () => {
-        try {
-          const response = await authApi.refreshSession();
-          set({
-            isAdmin: response.isAdmin,
-            permissions: response.permissions,
-          });
-        } catch (error) {
-          // Session expired - force logout
-          await get().logout();
-          throw error;
-        }
-      },
-
-      /**
-       * Check if there's a valid session
-       */
-      checkSession: async () => {
-        const currentSessionId = getSessionId();
-        
-        if (!currentSessionId) {
-          set({ isInitialized: true, isAuthenticated: false });
-          return false;
-        }
-
-        set({ isLoading: true });
-
-        try {
-          const session = await authApi.getSession();
-          // Keep the persisted URL since the API doesn't return it
-          const currentUrl = get().url;
-          set({
-            isAuthenticated: true,
-            isLoading: false,
-            isInitialized: true,
-            sessionId: session.sessionId,
-            username: session.username,
-            url: currentUrl, // Preserve the stored URL
-            isAdmin: session.isAdmin,
-            permissions: session.permissions,
-            version: session.version,
-          });
-          return true;
-        } catch (error) {
-          clearSession();
-          set({
-            isAuthenticated: false,
-            isLoading: false,
-            isInitialized: true,
-            sessionId: null,
-            username: null,
-            url: null,
-            isAdmin: false,
-            permissions: [],
-            version: null,
-          });
-          return false;
-        }
-      },
-
-      /**
-       * Clear error message
-       */
-      clearError: () => set({ error: null }),
 
       /**
        * Set active connection (ID and name)
        */
-      setActiveConnection: (connectionId: string | null, connectionName?: string | null) => set({ 
-        activeConnectionId: connectionId,
-        activeConnectionName: connectionName ?? null,
-      }),
+      setActiveConnection: (connectionId: string | null, connectionName?: string | null) => {
+        set({ 
+          activeConnectionId: connectionId,
+          activeConnectionName: connectionName ?? null,
+        });
+      },
     }),
     {
-      name: 'auth-storage',
-      // Only persist session-related state, not sensitive data
+      name: 'connection-info-storage',
+      // Persist connection info for display purposes
       partialize: (state) => ({
         sessionId: state.sessionId,
         username: state.username,
         url: state.url,
-        isAdmin: state.isAdmin,
         version: state.version,
+        isAdmin: state.isAdmin,
         activeConnectionId: state.activeConnectionId,
         activeConnectionName: state.activeConnectionName,
       }),
@@ -222,27 +119,7 @@ export const useAuthStore = create<AuthState>()(
 );
 
 // ============================================
-// Selectors
+// Type alias for backward compatibility
 // ============================================
 
-export const selectIsAdmin = (state: AuthState) => state.isAdmin;
-export const selectPermissions = (state: AuthState) => state.permissions;
-export const selectUsername = (state: AuthState) => state.username;
-export const selectIsAuthenticated = (state: AuthState) => state.isAuthenticated;
-
-/**
- * Check if user has a specific permission
- */
-export function hasPermission(state: AuthState, permission: string): boolean {
-  if (state.isAdmin) return true;
-  
-  const normalizedPerm = permission.toUpperCase();
-  
-  return state.permissions.some((p) => {
-    if (p === 'ALL' || p === 'ALL DATABASES' || p === 'ALL TABLES') return true;
-    if (p === normalizedPerm) return true;
-    if (normalizedPerm.startsWith(p)) return true;
-    return false;
-  });
-}
-
+export type AuthState = ConnectionInfoState;

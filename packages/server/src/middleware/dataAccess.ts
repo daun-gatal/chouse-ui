@@ -100,8 +100,10 @@ export async function checkDatabaseAccess(
   // Admins have full access
   if (isAdmin) return true;
   
-  // No RBAC user = no filtering (legacy mode)
-  if (!userId) return true;
+  // RBAC user is required
+  if (!userId) {
+    throw new Error('RBAC user is required for database access checks');
+  }
 
   const result = await checkUserAccess(userId, database, null, accessType, connectionId);
   return result.allowed;
@@ -121,8 +123,10 @@ export async function checkTableAccess(
   // Admins have full access
   if (isAdmin) return true;
   
-  // No RBAC user = no filtering (legacy mode)
-  if (!userId) return true;
+  // RBAC user is required
+  if (!userId) {
+    throw new Error('RBAC user is required for table access checks');
+  }
 
   const result = await checkUserAccess(userId, database, table, accessType, connectionId);
   return result.allowed;
@@ -145,8 +149,10 @@ export async function filterDatabases(
   // Admins see all (including system databases)
   if (isAdmin) return databases;
   
-  // No RBAC user = no filtering (legacy mode)
-  if (!userId) return databases;
+  // RBAC user is required
+  if (!userId) {
+    throw new Error('RBAC user is required for database filtering');
+  }
 
   // Filter out system databases for non-admin users
   const filtered = await filterDatabasesForUser(userId, databases, connectionId);
@@ -168,8 +174,10 @@ export async function filterTables(
   // Admins see all (including system tables)
   if (isAdmin) return tables;
   
-  // No RBAC user = no filtering (legacy mode)
-  if (!userId) return tables;
+  // RBAC user is required
+  if (!userId) {
+    throw new Error('RBAC user is required for table filtering');
+  }
 
   // For system database, hide all tables from non-admin users
   if (SYSTEM_DATABASES.includes(database)) {
@@ -271,7 +279,21 @@ async function validateSingleStatement(
     };
   }
 
-  const tables = parsed.tables;
+  let tables = parsed.tables;
+  
+  // Deduplicate tables: prefer entries with database names over those without
+  const tableMap = new Map<string, { database?: string; table: string }>();
+  for (const table of tables) {
+    const key = table.table || '';
+    if (!key) continue;
+    
+    const existing = tableMap.get(key);
+    // Prefer entry with database name, or keep existing if it already has one
+    if (!existing || (!existing.database && table.database)) {
+      tableMap.set(key, table);
+    }
+  }
+  tables = Array.from(tableMap.values());
   
   // If no tables detected, allow (might be a system query)
   if (tables.length === 0) {
@@ -302,6 +324,64 @@ async function validateSingleStatement(
   for (const { database, table } of tables) {
     let db = database || defaultDatabase || 'default';
     let tbl = table || '*';
+    
+    // Fix for parser errors: If database is missing but table exists, try to extract database.table from statement
+    // This handles cases where the parser fails to extract the database name (e.g., "CH_UI.saved_queries")
+    if (!database && tbl !== '*' && db === (defaultDatabase || 'default')) {
+      // Try to extract database.table pattern from the statement
+      // Match patterns like: FROM database.table, DROP TABLE database.table, etc.
+      // Use a more comprehensive pattern that handles various SQL contexts
+      const dbTablePatterns = [
+        // DROP/CREATE/ALTER/TRUNCATE TABLE database.table (most specific first)
+        /(?:DROP|CREATE|ALTER|TRUNCATE)\s+TABLE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
+        // FROM/JOIN/INTO/UPDATE database.table (must have table name after dot)
+        /(?:FROM|JOIN|INTO|UPDATE)\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
+        // Generic TABLE database.table
+        /TABLE\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
+        // SELECT ... FROM database.table
+        /SELECT\s+.*?\s+FROM\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
+      ];
+      
+      for (const pattern of dbTablePatterns) {
+        const dbTableMatch = statement.match(pattern);
+        if (dbTableMatch && dbTableMatch[2]) {
+          const extractedDb = dbTableMatch[1].replace(/[`"]/g, '');
+          const extractedTable = dbTableMatch[2].replace(/[`"]/g, '');
+          // Use if the extracted table matches what we have, or if we don't have a table name
+          if (extractedTable === tbl || tbl === '*') {
+            db = extractedDb;
+            tbl = extractedTable;
+            break;
+          }
+        }
+      }
+      
+      // Special case: If we have a table name that looks like a database name and the statement has "database.table" pattern,
+      // it might be that the parser extracted the database as the table. Try to find the actual table name.
+      // Example: "SELECT * FROM CH_UI.saved_queries" might be parsed as table="CH_UI" when it should be db="CH_UI", table="saved_queries"
+      if (db === (defaultDatabase || 'default') && tbl !== '*') {
+        // Look for patterns like "FROM database.table" where database matches our table name
+        // This handles cases where the parser incorrectly treats "database" as the table name
+        const dbAsTablePatterns = [
+          new RegExp(`(?:FROM|JOIN|INTO|UPDATE)\\s+([\`"]?${tbl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\`"]?)\\.([\`"]?[\\w]+[\`"]?)`, 'i'),
+          new RegExp(`(?:DROP|CREATE|ALTER|TRUNCATE)\\s+TABLE\\s+([\`"]?${tbl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\`"]?)\\.([\`"]?[\\w]+[\`"]?)`, 'i'),
+        ];
+        
+        for (const pattern of dbAsTablePatterns) {
+          const dbAsTableMatch = statement.match(pattern);
+          if (dbAsTableMatch && dbAsTableMatch[2]) {
+            const actualDb = dbAsTableMatch[1].replace(/[`"]/g, '');
+            const actualTable = dbAsTableMatch[2].replace(/[`"]/g, '');
+            // Only use if the database name matches what we thought was the table
+            if (actualDb === tbl && actualTable) {
+              db = actualDb;
+              tbl = actualTable;
+              break;
+            }
+          }
+        }
+      }
+    }
     
     // Fix for parser errors: If table is 'system' but we're checking against 'default' database,
     // it's likely the parser incorrectly extracted 'system' as the table name from 'system.tableName'
@@ -361,7 +441,7 @@ async function validateSingleStatement(
  * The first statement would pass (read permission), but the second would be
  * rejected (requires admin permission), preventing the entire query.
  * 
- * @param userId - RBAC user ID (undefined = legacy mode, no filtering)
+ * @param userId - RBAC user ID (required)
  * @param isAdmin - Whether user is admin (admins bypass all checks)
  * @param permissions - User's role permissions array
  * @param sql - SQL query string (may contain multiple statements separated by semicolons)
@@ -380,8 +460,13 @@ export async function validateQueryAccess(
   // Admins have full access
   if (isAdmin) return { allowed: true };
   
-  // No RBAC user = no filtering (legacy mode)
-  if (!userId) return { allowed: true };
+  // RBAC user is required
+  if (!userId) {
+    return {
+      allowed: false,
+      reason: 'RBAC authentication is required. Please login with RBAC credentials.',
+    };
+  }
 
   // Split SQL into individual statements
   const statements = splitSqlStatements(sql);

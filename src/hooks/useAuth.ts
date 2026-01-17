@@ -1,55 +1,59 @@
 /**
- * Authentication Hook
+ * Authentication Hook (DEPRECATED)
  * 
- * Provides authentication utilities and state.
+ * This hook is deprecated. Use useRbacStore directly for authentication.
+ * 
+ * @deprecated Use useRbacStore instead for all authentication needs.
  */
 
 import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore, hasPermission } from '@/stores';
+import { useRbacStore } from '@/stores';
 
 /**
- * Main authentication hook
+ * Main authentication hook (DEPRECATED)
+ * @deprecated Use useRbacStore directly
  */
 export function useAuth() {
-  const store = useAuthStore();
+  const rbacStore = useRbacStore();
   const navigate = useNavigate();
 
   // Listen for unauthorized events
   useEffect(() => {
     const handleUnauthorized = () => {
-      store.logout();
+      rbacStore.logout().catch((err) => {
+        console.error('[useAuth] Logout error:', err);
+      });
       navigate('/login');
     };
 
     window.addEventListener('auth:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
-  }, [store, navigate]);
+  }, [rbacStore, navigate]);
 
   const logout = useCallback(async () => {
-    await store.logout();
+    await rbacStore.logout();
     navigate('/login');
-  }, [store, navigate]);
+  }, [rbacStore, navigate]);
 
   return {
-    ...store,
+    ...rbacStore,
     logout,
-    hasPermission: (permission: string) => hasPermission(store, permission),
   };
 }
 
 /**
- * Hook to require authentication
- * Redirects to login if not authenticated
+ * Hook to require authentication (DEPRECATED)
+ * @deprecated Use useRbacStore and check isAuthenticated directly
  */
 export function useRequireAuth(redirectTo: string = '/login') {
-  const { isAuthenticated, isInitialized, checkSession } = useAuthStore();
+  const { isAuthenticated, isInitialized, checkAuth } = useRbacStore();
   const navigate = useNavigate();
 
   useEffect(() => {
     const check = async () => {
       if (!isInitialized) {
-        const hasSession = await checkSession();
+        const hasSession = await checkAuth();
         if (!hasSession) {
           navigate(redirectTo);
         }
@@ -59,34 +63,35 @@ export function useRequireAuth(redirectTo: string = '/login') {
     };
 
     check();
-  }, [isAuthenticated, isInitialized, checkSession, navigate, redirectTo]);
+  }, [isAuthenticated, isInitialized, checkAuth, navigate, redirectTo]);
 
   return { isAuthenticated, isInitialized };
 }
 
 /**
- * Hook to require admin privileges
+ * Hook to require admin privileges (DEPRECATED)
+ * @deprecated Use useRbacStore.isAdmin() or useRbacStore.isSuperAdmin() directly
  */
 export function useRequireAdmin(redirectTo: string = '/') {
-  const { isAuthenticated, isAdmin, isInitialized } = useAuthStore();
+  const { isAuthenticated, isAdmin, isInitialized } = useRbacStore();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isInitialized && isAuthenticated && !isAdmin) {
+    if (isInitialized && isAuthenticated && !isAdmin()) {
       navigate(redirectTo);
     }
   }, [isAuthenticated, isAdmin, isInitialized, navigate, redirectTo]);
 
-  return { isAuthenticated, isAdmin, isInitialized };
+  return { isAuthenticated, isAdmin: isAdmin(), isInitialized };
 }
 
 /**
- * Hook to check if user has a specific permission
+ * Hook to check if user has a specific permission (DEPRECATED)
+ * @deprecated Use useRbacStore.hasPermission() directly
  */
 export function usePermission(permission: string) {
-  const store = useAuthStore();
-  return hasPermission(store, permission);
+  const { hasPermission } = useRbacStore();
+  return hasPermission(permission);
 }
 
 export default useAuth;
-

@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.7.0] - 2026-01-16
+
+### Added
+
+#### Role Management UI
+- **Interactive Role Creation/Editing**: New beautiful UI dialog for creating and editing RBAC roles
+  - Create custom roles with custom permissions
+  - Edit custom roles (name, display name, description, permissions, default flag)
+  - Edit predefined/system roles (display name, description, permissions - backend enforces system role protection)
+  - Permission selection by category with search functionality
+  - Select All/Deselect All permissions
+  - Collapsible permission categories with visual feedback
+  - Smooth animations using Framer Motion
+  - Default role assignment with automatic flag management
+
+### Fixed
+
+- **Default Role Flag**: Fixed bug where assigning a custom role as default didn't remove the default flag from the previous default role. Now ensures only one role can be default at any given time with atomic operations.
+
+### Changed
+
+#### Legacy Authentication Removal
+- **RBAC-Only Authentication**: Removed all legacy ClickHouse session-based authentication code
+  - Deleted `packages/server/src/routes/auth.ts` (legacy auth routes)
+  - Deleted `src/api/auth.ts` (legacy auth API client)
+  - Deleted `packages/server/src/middleware/auth.ts` (legacy auth middleware)
+  - All authentication now strictly uses RBAC, improving security and simplifying the codebase
+
+#### UI/UX Enhancements
+- **Consistent Button Styling**: All buttons in Admin page now use consistent styling (`variant="outline"` with unified className)
+- **Dialog Layout Improvements**: Fixed padding and scrolling issues in all dialogs
+  - Proper flexbox layout for scrollable content
+  - Consistent padding structure (`px-6` for horizontal, `py-4`/`py-6` for vertical)
+  - Fixed height dialogs (`h-[90vh]`) with proper overflow handling
+- **Enhanced Visual Design**: Improved animations and visual hierarchy across role management components
+
+### Removed
+
+- **Legacy Authentication Code**: Complete removal of unused ClickHouse session-based authentication
+  - Legacy auth routes, API client, and middleware removed
+  - All routes now require RBAC authentication only
+
+### Security
+
+- **Strengthened Authentication**: Removal of legacy auth paths reduces attack surface
+- **RBAC Enforcement**: All routes now strictly require RBAC authentication
+
+### Code Quality
+
+- **Console Logging**: All debug console.log statements in ClickHouseUsers component are now wrapped in `process.env.NODE_ENV === 'development'` checks
+- **Code Review**: All changes reviewed against `.rules/CODE_CHANGES.md` and `.rules/CODE_REVIEWER.md`
+
 ## [v2.6.1] - 2026-01-16
 
 ### Security

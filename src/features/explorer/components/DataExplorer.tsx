@@ -22,7 +22,7 @@ import {
   Layers,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useExplorerStore, useWorkspaceStore, genTabId, useAuthStore } from "@/stores";
+import { useExplorerStore, useWorkspaceStore, genTabId, useAuthStore, RBAC_PERMISSIONS } from "@/stores";
 import { useDatabases, useSavedQueries, useSavedQueriesConnectionNames, useDebounce } from "@/hooks";
 import {
   Select,
@@ -432,7 +432,7 @@ const DatabaseExplorer: React.FC = () => {
                     <TooltipContent>Refresh</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <PermissionGuard requiredPermission="CREATE DATABASE">
+                <PermissionGuard requiredPermission={RBAC_PERMISSIONS.DB_CREATE}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10">
