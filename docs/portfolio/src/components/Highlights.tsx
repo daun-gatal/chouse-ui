@@ -16,7 +16,7 @@ const highlights = [
   {
     icon: Shield,
     title: 'Enterprise Security',
-    description: 'Built with security-first approach. AES-256 encryption, Argon2 password hashing, and comprehensive RBAC system.',
+    description: 'Built with security-first approach. AES-256 encryption, Argon2 password hashing, SQL injection protection, XSS protection, and comprehensive RBAC system.',
     color: 'from-purple-500 to-purple-700',
   },
   {
@@ -92,11 +92,14 @@ export default function Highlights() {
         >
           <h2 className="text-5xl md:text-6xl font-bold mb-4">
             <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-              Project Highlights
+              Why Choose CHouse UI?
             </span>
           </h2>
-          <p className="text-gray-400 text-xl max-w-2xl mx-auto">
+          <p className="text-gray-400 text-xl max-w-2xl mx-auto mb-2">
             Key aspects that make this project stand out
+          </p>
+          <p className="text-gray-500 text-sm max-w-xl mx-auto">
+            Built with security, performance, and developer experience in mind
           </p>
         </motion.div>
 

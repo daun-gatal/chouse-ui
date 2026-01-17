@@ -122,11 +122,14 @@ export default function Changelog() {
             className="inline-block mb-6"
           >
             <span className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Latest Release
+              Latest Releases
             </span>
           </motion.div>
-          <p className="text-gray-400 text-xl max-w-2xl mx-auto mt-4">
+          <p className="text-gray-400 text-xl max-w-2xl mx-auto mt-4 mb-2">
             See what's new in the latest releases
+          </p>
+          <p className="text-gray-500 text-sm max-w-xl mx-auto">
+            Click on any version to view detailed changelog
           </p>
         </motion.div>
 
@@ -162,11 +165,16 @@ export default function Changelog() {
                 animate={isInView ? { opacity: 1, y: 0 } : {}}
                 transition={{ duration: 0.6, delay: index * 0.1 }}
               >
-                <GlassCard className="overflow-hidden">
+                <GlassCard className={`overflow-hidden transition-all ${
+                  isExpanded(entry.version) 
+                    ? 'border-purple-500/40 shadow-lg shadow-purple-500/20' 
+                    : 'hover:border-white/20'
+                }`}>
                   <GlassCardContent className="p-8">
-                    <div 
-                      className="flex items-center gap-4 mb-6 pb-6 border-b border-white/10 cursor-pointer hover:opacity-80 transition-opacity"
+                    <motion.div 
+                      className="flex items-center gap-4 mb-6 pb-6 border-b border-white/10 cursor-pointer hover:border-white/20 transition-all group"
                       onClick={() => toggleExpand(entry.version)}
+                      whileHover={{ x: 4 }}
                     >
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
                         <Tag className="w-6 h-6 text-white" />
@@ -194,11 +202,11 @@ export default function Changelog() {
                       <motion.div
                         animate={{ rotate: isExpanded(entry.version) ? 180 : 0 }}
                         transition={{ duration: 0.3 }}
-                        className="text-gray-400 hover:text-white transition-colors"
+                        className="text-gray-400 group-hover:text-white transition-colors"
                       >
                         <ChevronDown className="w-6 h-6" />
                       </motion.div>
-                    </div>
+                    </motion.div>
                     
                     <AnimatePresence initial={false}>
                       {isExpanded(entry.version) && (

@@ -46,3 +46,24 @@
 ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(112, 112, 112, 0.7);
 }
+
+/* Smooth transitions for interactive elements */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Enhanced focus styles for accessibility */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(147, 51, 234, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Selection color */
+::selection {
+  background-color: rgba(147, 51, 234, 0.3);
+  color: white;
+}
