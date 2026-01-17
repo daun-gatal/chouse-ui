@@ -11,9 +11,34 @@ import { randomUUID } from 'crypto';
 // Configuration
 // ============================================
 
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// Validate JWT_SECRET in production
+if (NODE_ENV === 'production') {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error(
+      'JWT_SECRET must be set in production. ' +
+      'Generate a secure random string (minimum 32 characters, recommended 64+ characters) and set it as an environment variable.'
+    );
+  }
+  if (jwtSecret.length < 32) {
+    throw new Error(
+      'JWT_SECRET must be at least 32 characters long in production. ' +
+      'Current length: ' + jwtSecret.length + '. ' +
+      'Generate a longer, cryptographically secure random string.'
+    );
+  }
+}
+
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-super-secret-key-change-in-production-min-32-chars!'
+  process.env.JWT_SECRET || (NODE_ENV === 'production' ? '' : 'dev-jwt-secret-min-32-chars-do-not-use-in-production')
 );
+
+if (JWT_SECRET.length === 0) {
+  throw new Error('JWT_SECRET is required but not set');
+}
+
 const JWT_ISSUER = process.env.JWT_ISSUER || 'chouseui';
 const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'chouseui-client';
 

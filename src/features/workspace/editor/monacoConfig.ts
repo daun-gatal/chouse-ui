@@ -18,6 +18,13 @@ let isInitialized = false;
 // Initialize ClickHouse client
 let client: any = null;
 
+// SECURITY WARNING: Storing ClickHouse credentials in localStorage is vulnerable to XSS attacks.
+// If an XSS vulnerability exists, attackers can steal credentials from localStorage.
+// Consider:
+// 1. Using httpOnly cookies for credentials (requires server-side changes)
+// 2. Using sessionStorage instead of localStorage (better, but still vulnerable to XSS)
+// 3. Never storing passwords in browser storage - use tokens/session IDs instead
+// For now, we rely on XSS prevention measures (DOMPurify, CSP headers) to protect credentials.
 const appStore = localStorage.getItem("app-storage");
 const state = appStore ? JSON.parse(appStore) : {};
 const credential = state.state?.credential || {};

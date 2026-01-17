@@ -124,6 +124,10 @@ class ApiClient {
     }
 
     // Add RBAC access token if available (for data access filtering)
+    // SECURITY WARNING: Storing tokens in localStorage is vulnerable to XSS attacks.
+    // If an XSS vulnerability exists, attackers can steal tokens from localStorage.
+    // Consider migrating to httpOnly cookies for better security (requires server-side changes).
+    // For now, we rely on XSS prevention measures (DOMPurify, CSP headers) to protect tokens.
     const rbacToken = localStorage.getItem(RBAC_ACCESS_TOKEN_KEY);
     if (rbacToken) {
       (headers as Record<string, string>)['Authorization'] = `Bearer ${rbacToken}`;

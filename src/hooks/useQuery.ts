@@ -13,6 +13,7 @@ import {
   UseMutationOptions,
 } from '@tanstack/react-query';
 import { explorerApi, metricsApi, savedQueriesApi, queryApi, configApi } from '@/api';
+import { escapeQualifiedIdentifier } from '@/helpers/sqlUtils';
 import type {
   DatabaseInfo,
   TableDetails,
@@ -456,7 +457,9 @@ export function useTableSchema(
   return useQuery({
     queryKey: ['tableSchema', database, table] as const,
     queryFn: async () => {
-      const result = await queryApi.executeQuery(`DESCRIBE TABLE ${database}.${table}`);
+      // Validate and escape identifiers to prevent SQL injection
+      const escapedTable = escapeQualifiedIdentifier([database, table]);
+      const result = await queryApi.executeQuery(`DESCRIBE TABLE ${escapedTable}`);
       return result.data as Array<{
         name: string;
         type: string;

@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useExplorerStore } from "@/stores";
 import { useDatabases, useExecuteQuery, useClusterNames } from "@/hooks";
+import { escapeIdentifier, validateColumnType } from "@/helpers/sqlUtils";
 
 interface TableColumn {
   name: string;
@@ -106,8 +107,33 @@ const AlterTable: React.FC = () => {
   // Comment state
   const [tableComment, setTableComment] = useState("");
 
-  const tableName = `${selectedDatabase}.${selectedTableForAlter}`;
-  const clusterClause = useCluster && selectedCluster ? ` ON CLUSTER '${selectedCluster}'` : "";
+  // Display table name (for UI)
+  const tableName = selectedDatabase && selectedTableForAlter 
+    ? `${selectedDatabase}.${selectedTableForAlter}` 
+    : "";
+
+  // Validate table identifiers and return escaped version for SQL queries
+  const getEscapedTableName = (): string => {
+    try {
+      const escapedDb = escapeIdentifier(selectedDatabase);
+      const escapedTable = escapeIdentifier(selectedTableForAlter);
+      return `${escapedDb}.${escapedTable}`;
+    } catch (error) {
+      throw new Error(`Invalid table identifier: ${(error as Error).message}`);
+    }
+  };
+
+  const getClusterClause = (): string => {
+    if (useCluster && selectedCluster) {
+      try {
+        const escapedCluster = escapeIdentifier(selectedCluster);
+        return ` ON CLUSTER ${escapedCluster}`;
+      } catch (error) {
+        throw new Error(`Invalid cluster name: ${(error as Error).message}`);
+      }
+    }
+    return "";
+  };
 
   // Fetch table structure
   const fetchTableStructure = async () => {
@@ -115,8 +141,9 @@ const AlterTable: React.FC = () => {
     
     setIsLoading(true);
     try {
+      const escapedTableName = getEscapedTableName();
       const result = await executeQuery.mutateAsync({
-        query: `DESCRIBE TABLE ${tableName}`,
+        query: `DESCRIBE TABLE ${escapedTableName}`,
       });
       setColumns(result.data as unknown as TableColumn[]);
     } catch (error) {
@@ -140,9 +167,33 @@ const AlterTable: React.FC = () => {
     }
 
     try {
-      let query = `ALTER TABLE ${tableName}${clusterClause} ADD COLUMN \`${newColumnName}\` ${newColumnType}`;
-      if (newColumnAfter) {
-        query += ` AFTER \`${newColumnAfter}\``;
+      // Validate identifiers and column type
+      let escapedTableName: string;
+      let escapedColumnName: string;
+      let escapedAfterColumn: string | undefined;
+      let clusterClause: string;
+      
+      try {
+        escapedTableName = getEscapedTableName();
+        escapedColumnName = escapeIdentifier(newColumnName.trim());
+        clusterClause = getClusterClause();
+        
+        if (newColumnAfter) {
+          escapedAfterColumn = escapeIdentifier(newColumnAfter);
+        }
+        
+        if (!validateColumnType(newColumnType)) {
+          toast.error(`Invalid column type: ${newColumnType}`);
+          return;
+        }
+      } catch (error) {
+        toast.error(`Invalid identifier: ${(error as Error).message}`);
+        return;
+      }
+
+      let query = `ALTER TABLE ${escapedTableName}${clusterClause} ADD COLUMN ${escapedColumnName} ${newColumnType}`;
+      if (escapedAfterColumn) {
+        query += ` AFTER ${escapedAfterColumn}`;
       }
 
       await executeQuery.mutateAsync({ query });
@@ -160,8 +211,22 @@ const AlterTable: React.FC = () => {
 
   const handleDropColumn = async (columnName: string) => {
     try {
+      // Validate identifiers
+      let escapedTableName: string;
+      let escapedColumnName: string;
+      let clusterClause: string;
+      
+      try {
+        escapedTableName = getEscapedTableName();
+        escapedColumnName = escapeIdentifier(columnName);
+        clusterClause = getClusterClause();
+      } catch (error) {
+        toast.error(`Invalid identifier: ${(error as Error).message}`);
+        return;
+      }
+
       await executeQuery.mutateAsync({
-        query: `ALTER TABLE ${tableName}${clusterClause} DROP COLUMN \`${columnName}\``,
+        query: `ALTER TABLE ${escapedTableName}${clusterClause} DROP COLUMN ${escapedColumnName}`,
       });
       toast.success(`Column "${columnName}" dropped successfully`);
       await fetchTableStructure();
@@ -179,8 +244,24 @@ const AlterTable: React.FC = () => {
     }
 
     try {
+      // Validate identifiers
+      let escapedTableName: string;
+      let escapedFromColumn: string;
+      let escapedToColumn: string;
+      let clusterClause: string;
+      
+      try {
+        escapedTableName = getEscapedTableName();
+        escapedFromColumn = escapeIdentifier(renameFrom);
+        escapedToColumn = escapeIdentifier(renameTo.trim());
+        clusterClause = getClusterClause();
+      } catch (error) {
+        toast.error(`Invalid identifier: ${(error as Error).message}`);
+        return;
+      }
+
       await executeQuery.mutateAsync({
-        query: `ALTER TABLE ${tableName}${clusterClause} RENAME COLUMN \`${renameFrom}\` TO \`${renameTo}\``,
+        query: `ALTER TABLE ${escapedTableName}${clusterClause} RENAME COLUMN ${escapedFromColumn} TO ${escapedToColumn}`,
       });
       toast.success(`Column renamed from "${renameFrom}" to "${renameTo}"`);
       setRenameFrom("");
@@ -200,8 +281,27 @@ const AlterTable: React.FC = () => {
     }
 
     try {
+      // Validate identifiers and column type
+      let escapedTableName: string;
+      let escapedColumnName: string;
+      let clusterClause: string;
+      
+      try {
+        escapedTableName = getEscapedTableName();
+        escapedColumnName = escapeIdentifier(modifyColumn);
+        clusterClause = getClusterClause();
+        
+        if (!validateColumnType(modifyType)) {
+          toast.error(`Invalid column type: ${modifyType}`);
+          return;
+        }
+      } catch (error) {
+        toast.error(`Invalid identifier: ${(error as Error).message}`);
+        return;
+      }
+
       await executeQuery.mutateAsync({
-        query: `ALTER TABLE ${tableName}${clusterClause} MODIFY COLUMN \`${modifyColumn}\` ${modifyType}`,
+        query: `ALTER TABLE ${escapedTableName}${clusterClause} MODIFY COLUMN ${escapedColumnName} ${modifyType}`,
       });
       toast.success(`Column "${modifyColumn}" type changed to ${modifyType}`);
       setModifyColumn("");
@@ -216,8 +316,23 @@ const AlterTable: React.FC = () => {
 
   const handleUpdateComment = async () => {
     try {
+      // Validate table identifier and escape comment
+      let escapedTableName: string;
+      let clusterClause: string;
+      
+      try {
+        escapedTableName = getEscapedTableName();
+        clusterClause = getClusterClause();
+      } catch (error) {
+        toast.error(`Invalid identifier: ${(error as Error).message}`);
+        return;
+      }
+
+      // Escape single quotes in comment
+      const escapedComment = tableComment.replace(/'/g, "''");
+      
       await executeQuery.mutateAsync({
-        query: `ALTER TABLE ${tableName}${clusterClause} MODIFY COMMENT '${tableComment.replace(/'/g, "\\'")}'`,
+        query: `ALTER TABLE ${escapedTableName}${clusterClause} MODIFY COMMENT '${escapedComment}'`,
       });
       toast.success("Table comment updated");
     } catch (error) {
