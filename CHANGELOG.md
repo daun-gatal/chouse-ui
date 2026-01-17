@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.7.4] - 2026-01-18
+
+### Added
+
+- **Automatic Database Creation**: Added automatic database creation for PostgreSQL and SQLite metadata databases:
+  - **SQLite**: Automatically creates the database directory and file if they don't exist
+  - **PostgreSQL**: Automatically creates the database if it doesn't exist (requires `CREATEDB` privilege)
+  - Eliminates the need for manual database setup during initial configuration
+  - Graceful error handling with informative logging
+
+### Documentation
+
+- Added PostgreSQL permission requirements to README with SQL examples for granting `CREATEDB` privilege
+- Added troubleshooting entry for PostgreSQL permission issues
+
 ## [v2.7.3] - 2026-01-18
 
 ### Added
