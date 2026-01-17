@@ -5,14 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v2.7.2] - 2026-01-16
+## [v2.7.2] - 2026-01-18
 
 ### Fixed
 
 - **Super Admin System Role Modification**: Fixed bug where super admins were blocked from modifying system roles despite having the proper permissions. The service layer now respects the route-level permission check, allowing super admins to modify system roles (including the super_admin role itself). (Fixes #50)
 - **GitHub Pages SPA Routing for Googlebot**: Fixed redirect errors for Googlebot smartphone crawler by adding automatic `404.html` file generation during build. GitHub Pages now properly serves the SPA for all routes, ensuring proper indexing without redirect errors. (Fixes Google Search Console redirect errors)
 
-## [v2.7.1] - 2026-01-16
+## [v2.7.1] - 2026-01-18
 
 ### Fixed
 
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Clicking "New Query" no longer triggers "View Details" action. Added proper event propagation handling to prevent unintended side effects.
   - Clicking disabled menu items (due to missing permissions) no longer opens the info tab. Disabled items now properly prevent event propagation. (Fixes #47)
 
-## [v2.7.0] - 2026-01-16
+## [v2.7.0] - 2026-01-17
 
 ### Added
 
