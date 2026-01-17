@@ -53,9 +53,9 @@ export default function App() {
               <Route
                 path="/overview"
                 element={
-                  <PrivateRoute>
+                  <AdminRoute>
                     <HomePage />
-                  </PrivateRoute>
+                  </AdminRoute>
                 }
               />
               
@@ -78,9 +78,14 @@ export default function App() {
               <Route
                 path="/logs"
                 element={
-                  <PrivateRoute>
+                  <AdminRoute
+                    requiredPermission={[
+                      RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
+                      RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
+                    ]}
+                  >
                     <LogsPage />
-                  </PrivateRoute>
+                  </AdminRoute>
                 }
               />
               
@@ -88,9 +93,14 @@ export default function App() {
               <Route
                 path="/explorer"
                 element={
-                  <PrivateRoute>
+                  <AdminRoute
+                    requiredPermission={[
+                      RBAC_PERMISSIONS.DB_VIEW,
+                      RBAC_PERMISSIONS.TABLE_VIEW,
+                    ]}
+                  >
                     <ExplorerPage />
-                  </PrivateRoute>
+                  </AdminRoute>
                 }
               />
               
@@ -135,9 +145,9 @@ export default function App() {
               <Route
                 path="/settings"
                 element={
-                  <PrivateRoute>
+                  <AdminRoute requiredPermission={RBAC_PERMISSIONS.SETTINGS_VIEW}>
                     <SettingsPage />
-                  </PrivateRoute>
+                  </AdminRoute>
                 }
               />
               
