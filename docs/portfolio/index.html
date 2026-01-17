@@ -21,37 +21,57 @@
   <!-- Web Manifest -->
   <link rel="manifest" href="/site.webmanifest" />
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+
+  <!-- Performance Hints -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://api.iconify.design" crossorigin />
+  <link rel="dns-prefetch" href="https://api.iconify.design" />
 
   <!-- Primary Meta Tags -->
-  <title>CHouse UI - Web Interface for ClickHouse with Built-in RBAC</title>
-  <meta name="title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
+  <title>CHouse UI - Open Source ClickHouse Web Interface with RBAC | Free & Self-Hosted</title>
+  <meta name="title" content="CHouse UI - Open Source ClickHouse Web Interface with RBAC | Free & Self-Hosted" />
   <meta name="description"
-    content="CHouse UI is a secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging. Perfect for teams requiring centralized database management." />
+    content="CHouse UI - Open-source ClickHouse web interface with built-in RBAC. Manage ClickHouse databases securely with encrypted credentials, SQL editor, audit logging, and multi-connection support. Free, self-hosted, and production-ready. Deploy in 5 minutes with Docker." />
   <meta name="keywords"
-    content="ClickHouse, database management, RBAC, web interface, SQL query, data analytics, database admin, ClickHouse UI, data visualization" />
+    content="ClickHouse, ClickHouse UI, ClickHouse web interface, ClickHouse management tool, ClickHouse admin, ClickHouse GUI, database management, RBAC, role based access control, web interface, SQL query, data analytics, database admin, data visualization, open source, database GUI, SQL editor, database security, audit logging, ClickHouse dashboard, database tool, analytics database, ClickHouse interface, manage ClickHouse, ClickHouse web UI, ClickHouse tool, ClickHouse client, ClickHouse management, ClickHouse admin panel" />
   <meta name="author" content="CHouse UI" />
   <meta name="license" content="Apache-2.0" />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <meta name="language" content="English" />
   <meta name="theme-color" content="#0a0a0a" />
+  <meta name="color-scheme" content="dark" />
+  
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://chouse-ui.com/" />
+  
+  <!-- Alternate Languages (if needed in future) -->
+  <link rel="alternate" hreflang="en" href="https://chouse-ui.com/" />
+  <link rel="alternate" hreflang="x-default" href="https://chouse-ui.com/" />
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
   <meta property="og:description"
-    content="A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging." />
+    content="Secure, open-source web interface for managing ClickHouse databases. Features RBAC, encrypted credentials, SQL editor, and audit logging. Perfect for teams requiring centralized database management." />
   <meta property="og:image" content="https://chouse-ui.com/logo.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CHouse UI Logo - ClickHouse Database Management Interface" />
   <meta property="og:url" content="https://chouse-ui.com/" />
   <meta property="og:site_name" content="CHouse UI" />
   <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="en_US" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CHouse UI - Web Interface for ClickHouse with Built-in RBAC" />
   <meta name="twitter:description"
-    content="A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging." />
+    content="Secure, open-source web interface for managing ClickHouse databases. Features RBAC, encrypted credentials, SQL editor, and audit logging." />
   <meta name="twitter:image" content="https://chouse-ui.com/logo.png" />
+  <meta name="twitter:image:alt" content="CHouse UI - ClickHouse Database Management Interface" />
+  <meta name="twitter:creator" content="@chouseui" />
+  <meta name="twitter:site" content="@chouseui" />
 
   <!-- Structured Data (JSON-LD) -->
   <!-- Organization Schema - This is KEY for logo in Google search results -->
@@ -62,10 +82,15 @@
       "name": "CHouse UI",
       "url": "https://chouse-ui.com/",
       "logo": "https://chouse-ui.com/logo.png",
-      "description": "A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging.",
+      "description": "A secure, open-source web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging.",
       "sameAs": [
         "https://github.com/daun-gatal/chouse-ui"
-      ]
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "Technical Support",
+        "url": "https://github.com/daun-gatal/chouse-ui/issues"
+      }
     }
     </script>
 
@@ -75,10 +100,12 @@
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "CHouse UI",
-      "description": "A secure web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging.",
+      "description": "A secure, open-source web interface for managing ClickHouse databases with server-side credential management, Role-Based Access Control (RBAC), encrypted credentials, and audit logging.",
       "url": "https://chouse-ui.com/",
       "applicationCategory": "DatabaseApplication",
       "operatingSystem": "Web",
+      "browserRequirements": "Requires JavaScript. Requires HTML5.",
+      "softwareVersion": "2.6.1",
       "offers": {
         "@type": "Offer",
         "price": "0",
@@ -90,11 +117,138 @@
         "Encrypted Credentials",
         "Multi-Connection Support",
         "Audit Logging",
-        "Query Explorer",
-        "Data Visualization"
+        "SQL Query Editor",
+        "Data Visualization",
+        "Database Explorer",
+        "User Management",
+        "ClickHouse User Management"
       ],
       "screenshot": "https://chouse-ui.com/logo.svg",
-      "logo": "https://chouse-ui.com/logo.svg"
+      "logo": "https://chouse-ui.com/logo.svg",
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "5",
+        "ratingCount": "1"
+      }
+    }
+    </script>
+
+  <!-- SoftwareApplication Schema -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "CHouse UI",
+      "applicationCategory": "DatabaseApplication",
+      "operatingSystem": "Docker, Linux, macOS, Windows",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "softwareVersion": "2.6.1",
+      "releaseNotes": "https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md",
+      "downloadUrl": "https://github.com/daun-gatal/chouse-ui",
+      "installUrl": "https://chouse-ui.com/#quick-start"
+    }
+    </script>
+
+  <!-- BreadcrumbList Schema -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": "https://chouse-ui.com/"
+        }
+      ]
+    }
+    </script>
+
+  <!-- HowTo Schema for Quick Start -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "How to Install and Deploy CHouse UI",
+      "description": "Step-by-step guide to install and deploy CHouse UI, the open-source ClickHouse web interface with RBAC",
+      "step": [
+        {
+          "@type": "HowToStep",
+          "name": "Prerequisites",
+          "text": "Install Docker 20.10+ and Docker Compose. Ensure ports 5521, 8123, 9000, and 5432 are available. Recommended 2GB+ RAM.",
+          "position": 1
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Clone and Run",
+          "text": "Clone the repository: git clone https://github.com/daun-gatal/chouse-ui.git, navigate to the directory, and run docker-compose up -d",
+          "position": 2
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Access and Login",
+          "text": "Open http://localhost:5521 in your browser. Login with default credentials: Email: admin@localhost, Password: admin123!",
+          "position": 3
+        }
+      ],
+      "totalTime": "PT5M"
+    }
+    </script>
+
+  <!-- ItemList Schema for Features -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "name": "CHouse UI Features",
+      "description": "Complete list of features in CHouse UI ClickHouse management interface",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Role-Based Access Control (RBAC)"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Encrypted Credential Storage"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "SQL Query Editor"
+        },
+        {
+          "@type": "ListItem",
+          "position": 4,
+          "name": "Multi-Connection Support"
+        },
+        {
+          "@type": "ListItem",
+          "position": 5,
+          "name": "Database Explorer"
+        },
+        {
+          "@type": "ListItem",
+          "position": 6,
+          "name": "Audit Logging"
+        },
+        {
+          "@type": "ListItem",
+          "position": 7,
+          "name": "JWT Authentication"
+        },
+        {
+          "@type": "ListItem",
+          "position": 8,
+          "name": "Data Export (CSV, JSON, TSV)"
+        }
+      ]
     }
     </script>
 </head>
