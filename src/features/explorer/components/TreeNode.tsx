@@ -20,6 +20,7 @@ import { useExplorerStore, useWorkspaceStore, genTabId } from "@/stores";
 import PermissionGuard from "@/components/common/PermissionGuard";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { escapeQualifiedIdentifier } from "@/helpers/sqlUtils";
 
 export interface TreeNodeData {
   name: string;
@@ -283,12 +284,25 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               <>
                 <DropdownMenuItem
                   onClick={() => {
-                    addTab({
-                      id: genTabId(),
-                      type: "sql",
-                      title: `Describe ${node.name}`,
-                      content: `DESCRIBE TABLE ${databaseName}.${node.name}`,
-                    });
+                    try {
+                      // Validate and escape identifiers to prevent SQL injection
+                      const escapedTable = escapeQualifiedIdentifier([databaseName, node.name]);
+                      addTab({
+                        id: genTabId(),
+                        type: "sql",
+                        title: `Describe ${node.name}`,
+                        content: `DESCRIBE TABLE ${escapedTable}`,
+                      });
+                    } catch (error) {
+                      console.error('Invalid table identifier:', error);
+                      // Still add tab but with error message
+                      addTab({
+                        id: genTabId(),
+                        type: "sql",
+                        title: `Describe ${node.name}`,
+                        content: `-- Error: Invalid table identifier - ${(error as Error).message}`,
+                      });
+                    }
                   }}
                   className="text-xs gap-2"
                 >

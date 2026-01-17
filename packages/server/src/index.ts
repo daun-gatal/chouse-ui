@@ -15,6 +15,102 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const SESSION_CLEANUP_INTERVAL = 60000; // 1 minute
 const SESSION_MAX_AGE = 3600000; // 1 hour
 
+// ============================================
+// Environment Variable Validation
+// ============================================
+
+/**
+ * Validate required environment variables at startup
+ * In production, ensures critical security settings are configured
+ */
+function validateEnvironmentVariables(): void {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (NODE_ENV === "production") {
+    // Required in production
+    const required: Array<{ key: string; minLength?: number; exactLength?: number; description?: string }> = [
+      {
+        key: "JWT_SECRET",
+        minLength: 32,
+        description: "Cryptographically secure random string for JWT token signing (minimum 32 characters, recommended 64+)",
+      },
+      {
+        key: "RBAC_ENCRYPTION_KEY",
+        minLength: 32,
+        description: "32-byte (64 hex characters) key for encrypting ClickHouse connection passwords",
+      },
+      {
+        key: "RBAC_ENCRYPTION_SALT",
+        exactLength: 64,
+        description: "32-byte (64 hex characters) salt for key derivation - must be unique and random",
+      },
+    ];
+
+    for (const config of required) {
+      const value = process.env[config.key];
+      if (!value) {
+        errors.push(
+          `${config.key} must be set in production. ${config.description || ""}`
+        );
+      } else if (config.minLength && value.length < config.minLength) {
+        errors.push(
+          `${config.key} must be at least ${config.minLength} characters long. ` +
+          `Current length: ${value.length}. ${config.description || ""}`
+        );
+      } else if (config.exactLength && value.length !== config.exactLength) {
+        errors.push(
+          `${config.key} must be exactly ${config.exactLength} characters long. ` +
+          `Current length: ${value.length}. ${config.description || ""}`
+        );
+      }
+    }
+
+    // Warn about CORS in production
+    if (CORS_ORIGIN === "*") {
+      warnings.push(
+        "CORS_ORIGIN is set to '*' in production. This allows requests from any origin. " +
+        "Consider restricting to specific domains for better security."
+      );
+    }
+  } else {
+    // Development warnings
+    if (!process.env.JWT_SECRET) {
+      warnings.push(
+        "JWT_SECRET not set. Using development default. Set a secure value for production."
+      );
+    }
+    if (!process.env.RBAC_ENCRYPTION_KEY) {
+      warnings.push(
+        "RBAC_ENCRYPTION_KEY not set. Using development default. Set a secure value for production."
+      );
+    }
+    if (!process.env.RBAC_ENCRYPTION_SALT) {
+      warnings.push(
+        "RBAC_ENCRYPTION_SALT not set. Using derived salt in development. Set a secure value for production."
+      );
+    }
+  }
+
+  // Print warnings
+  if (warnings.length > 0) {
+    console.warn("\n⚠️  Environment Variable Warnings:");
+    warnings.forEach((warning) => console.warn(`   - ${warning}`));
+    console.warn("");
+  }
+
+  // Throw errors (fail fast)
+  if (errors.length > 0) {
+    console.error("\n❌ Environment Variable Validation Failed:");
+    errors.forEach((error) => console.error(`   - ${error}`));
+    console.error("\nServer startup aborted. Please fix the above errors.\n");
+    process.exit(1);
+  }
+}
+
+// Validate environment variables before starting server
+validateEnvironmentVariables();
+
 // Create Hono app
 const app = new Hono();
 

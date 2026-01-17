@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.6.1] - 2026-01-16
+
+### Security
+
+#### Critical Security Fixes
+- **SQL Injection Vulnerabilities (Issue #27)**: Fixed multiple SQL injection vulnerabilities across the codebase
+  - Added SQL identifier validation and escaping utilities (`validateIdentifier`, `escapeIdentifier`, `escapeQualifiedIdentifier`)
+  - Implemented column type validation against whitelist
+  - Fixed SQL injection in file upload, database/table routes, ALTER TABLE operations, and query hooks
+  - All user-provided identifiers (database, table, column names) are now validated and properly escaped before use in SQL queries
+
+- **XSS Vulnerabilities (Issue #28)**: Fixed cross-site scripting vulnerabilities
+  - Integrated DOMPurify for HTML sanitization across all components using `dangerouslySetInnerHTML`
+  - Fixed XSS in `AgTable`, `SqlTab`, `ManualCreationForm`, and `ConfirmationDialog` components
+  - Added security warnings about localStorage token storage risks
+  - All HTML content is now sanitized before rendering to prevent script injection
+
+- **Weak Encryption and Environment Validation (Issue #29)**: Strengthened encryption and added production validation
+  - Replaced weak `scryptSync` with proper PBKDF2 key derivation (100,000 iterations)
+  - Removed hardcoded salt - now requires `RBAC_ENCRYPTION_SALT` environment variable in production
+  - Removed default JWT secret - now requires `JWT_SECRET` (minimum 32 characters) in production
+  - Added startup validation that fails fast if required environment variables are missing
+  - Fixed silent decryption failures to throw errors instead of logging and returning null
+
+### Changed
+
+#### Breaking Changes
+- **Production Environment Variables**: The following environment variables are now **required** in production:
+  - `JWT_SECRET` (minimum 32 characters, recommended 64+)
+  - `RBAC_ENCRYPTION_KEY` (minimum 32 characters, recommended 64 hex characters)
+  - `RBAC_ENCRYPTION_SALT` (exactly 64 hex characters)
+  - Server will **fail to start** in production if these are not set, preventing deployment with weak defaults
+
+#### Migration Notes
+- Existing encrypted passwords may need to be re-encrypted if the encryption key changes
+- All SQL identifiers are now validated and escaped, which may reject previously accepted invalid names
+- HTML content is now sanitized, which may affect custom formatting in some edge cases
+
 ## [v2.6.0] - 2026-01-16
 
 ### Added

@@ -22,6 +22,7 @@ import {
 import { useExplorerStore } from "@/stores";
 import { useDatabases } from "@/hooks";
 import { queryApi } from "@/api";
+import { escapeIdentifier, escapeQualifiedIdentifier, validateFormat } from "@/helpers/sqlUtils";
 
 const UploadFile: React.FC = () => {
   const { uploadFileModalOpen, closeUploadFileModal, selectedDatabase } = useExplorerStore();
@@ -76,10 +77,32 @@ const UploadFile: React.FC = () => {
 
     setIsUploading(true);
     try {
+      // Validate identifiers before escaping
+      const trimmedTableName = tableName.trim();
+      
+      // Validate format
+      if (!validateFormat(format)) {
+        toast.error("Invalid format");
+        setIsUploading(false);
+        return;
+      }
+
+      // Validate and escape identifiers (escapeIdentifier throws on invalid input)
+      let escapedDatabase: string;
+      let escapedTable: string;
+      try {
+        escapedDatabase = escapeIdentifier(database);
+        escapedTable = escapeIdentifier(trimmedTableName);
+      } catch (error) {
+        toast.error(`Invalid identifier: ${(error as Error).message}`);
+        setIsUploading(false);
+        return;
+      }
+
       const content = await file.text();
       
-      // Insert the data
-      const query = `INSERT INTO ${database}.${tableName} FORMAT ${format}\n${content}`;
+      // Insert the data with properly escaped identifiers
+      const query = `INSERT INTO ${escapedDatabase}.${escapedTable} FORMAT ${format.toUpperCase()}\n${content}`;
       await queryApi.executeQuery(query);
       
       toast.success(`Data uploaded successfully to ${database}.${tableName}`);
