@@ -40,7 +40,17 @@ const PermissionGuard: React.FC<PermissionGuardProps> = ({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="opacity-50 pointer-events-none grayscale">
+            <div 
+              className="opacity-50 pointer-events-none grayscale"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
               {children}
             </div>
           </TooltipTrigger>
