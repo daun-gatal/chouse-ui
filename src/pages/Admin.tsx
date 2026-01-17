@@ -104,7 +104,14 @@ export default function Admin() {
             <TabsContent value="roles">
               <GlassCard>
                 <GlassCardContent className="p-0">
-                  <RbacRolesTable />
+                  <RbacRolesTable
+                    onCreateRole={() => {
+                      // Optional: Add any additional logic after role creation
+                    }}
+                    onEditRole={() => {
+                      // Optional: Add any additional logic after role update
+                    }}
+                  />
                 </GlassCardContent>
               </GlassCard>
             </TabsContent>

@@ -205,14 +205,14 @@ export default function ConnectionSelector({
       const protocol = connection.sslEnabled ? 'https' : 'http';
       const connectionUrl = `${protocol}://${connection.host}:${connection.port}`;
 
-      // Update auth store with connection information
-      useAuthStore.setState({
+      // Update connection info store
+      useAuthStore.getState().setConnectionInfo({
+        sessionId: result.sessionId,
         username: result.username,
         url: connectionUrl,
         version: result.version,
         isAdmin: result.isAdmin,
         permissions: result.permissions,
-        sessionId: result.sessionId,
         activeConnectionId: connection.id,
         activeConnectionName: connection.name,
       });

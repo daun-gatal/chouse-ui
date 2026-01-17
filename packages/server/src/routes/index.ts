@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { Context, Next } from "hono";
-import auth from "./auth";
 import query from "./query";
 import explorer from "./explorer";
 import metrics from "./metrics";
@@ -26,12 +25,10 @@ const apiProtectionMiddleware = async (c: Context, next: Next) => {
   // Skip protection for:
   // - Health checks (needed for load balancers)
   // - Config endpoint (needed before app loads)
-  // - Login endpoints (needed for initial auth)
   // - RBAC auth endpoints (for RBAC login)
   const publicPaths = [
     "/api/health", 
     "/api/config", 
-    "/api/auth/login",
     "/api/rbac/auth/login",
     "/api/rbac/auth/refresh",
     "/api/rbac/health",
@@ -62,7 +59,6 @@ api.use("*", apiProtectionMiddleware);
 api.route("/config", config);
 
 // Mount route modules
-api.route("/auth", auth);
 api.route("/query", query);
 api.route("/explorer", explorer);
 api.route("/metrics", metrics);

@@ -907,7 +907,12 @@ const CreateUser: React.FC = () => {
           <Button type="button" variant="outline" onClick={() => navigate("/admin")}>
             Cancel
           </Button>
-          <Button onClick={onSubmit} disabled={isSubmitting || !isFormValid} className="gap-2">
+          <Button
+            variant="outline"
+            onClick={onSubmit}
+            disabled={isSubmitting || !isFormValid}
+            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+          >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1079,7 +1084,11 @@ const CreateUser: React.FC = () => {
             <Button variant="outline" onClick={() => setShowDataAccessDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveDataAccessRule}>
+            <Button
+              variant="outline"
+              onClick={handleSaveDataAccessRule}
+              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+            >
               {editingRuleIndex !== null ? 'Update' : 'Add'} Rule
             </Button>
           </DialogFooter>

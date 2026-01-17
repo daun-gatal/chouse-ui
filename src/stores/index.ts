@@ -4,9 +4,9 @@
  * Re-exports all stores for convenient imports.
  */
 
-// Auth store (ClickHouse connection)
-export { useAuthStore, hasPermission } from './auth';
-export type { AuthState } from './auth';
+// Connection info store (ClickHouse connection metadata)
+export { useAuthStore } from './auth';
+export type { AuthState, ConnectionInfoState } from './auth';
 
 // RBAC store (Role-Based Access Control)
 export { 

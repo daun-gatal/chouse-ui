@@ -14,6 +14,7 @@ import {
 } from '@tanstack/react-query';
 import { explorerApi, metricsApi, savedQueriesApi, queryApi, configApi } from '@/api';
 import { escapeQualifiedIdentifier } from '@/helpers/sqlUtils';
+import { useAuthStore } from '@/stores';
 import type {
   DatabaseInfo,
   TableDetails,
@@ -185,14 +186,20 @@ export function useDropTable() {
 
 /**
  * Hook to fetch system statistics
+ * Only fetches when there's an active ClickHouse connection
  */
 export function useSystemStats(
   options?: Partial<UseQueryOptions<SystemStats, Error>>
 ) {
+  // Check if there's an active connection (both connection ID and session)
+  const { activeConnectionId, sessionId } = useAuthStore();
+  const hasConnection = !!(activeConnectionId && sessionId);
+
   return useQuery({
     queryKey: queryKeys.systemStats,
     queryFn: metricsApi.getSystemStats,
-    refetchInterval: 5000, // Refetch every 5 seconds
+    enabled: hasConnection, // Only fetch when connected
+    refetchInterval: hasConnection ? 5000 : false, // Only refetch when connected
     staleTime: 3000,
     ...options,
   });
@@ -200,6 +207,7 @@ export function useSystemStats(
 
 /**
  * Hook to fetch recent queries
+ * Only fetches when there's an active ClickHouse connection
  * @param limit - Number of queries to fetch
  * @param username - Optional username to filter by (for non-admin users)
  */
@@ -208,10 +216,15 @@ export function useRecentQueries(
   username?: string,
   options?: Partial<UseQueryOptions<RecentQuery[], Error>>
 ) {
+  // Check if there's an active connection (both connection ID and session)
+  const { activeConnectionId, sessionId } = useAuthStore();
+  const hasConnection = !!(activeConnectionId && sessionId);
+
   return useQuery({
     queryKey: ['recentQueries', limit, username] as const,
     queryFn: () => metricsApi.getRecentQueries(limit, username),
-    refetchInterval: 10000, // Refetch every 10 seconds
+    enabled: hasConnection, // Only fetch when connected
+    refetchInterval: hasConnection ? 10000 : false, // Only refetch when connected
     staleTime: 5000,
     ...options,
   });
@@ -833,8 +846,13 @@ export function useMetrics(
     };
   }, Error>>
 ) {
+  // Check if there's an active connection (both connection ID and session)
+  const { activeConnectionId, sessionId } = useAuthStore();
+  const hasConnection = !!(activeConnectionId && sessionId);
+
   return useQuery({
     queryKey: ['metrics', timeRange] as const,
+    enabled: hasConnection, // Only fetch when connected
     queryFn: async () => {
       // Convert timeRange to interval for query
       const config: Record<string, { interval: string; limit: number }> = {
@@ -1007,14 +1025,20 @@ export function useMetrics(
 /**
  * Hook to fetch production-grade metrics
  * Fetches all production metrics in one optimized API call
+ * Only fetches when there's an active ClickHouse connection
  */
 export function useProductionMetrics(
   intervalMinutes: number = 60,
   options?: Partial<UseQueryOptions<metricsApi.ProductionMetrics, Error>>
 ) {
+  // Check if there's an active connection (both connection ID and session)
+  const { activeConnectionId, sessionId } = useAuthStore();
+  const hasConnection = !!(activeConnectionId && sessionId);
+
   return useQuery({
     queryKey: queryKeys.productionMetrics(intervalMinutes),
     queryFn: () => metricsApi.getProductionMetrics(intervalMinutes),
+    enabled: hasConnection, // Only fetch when connected
     staleTime: 30000,
     gcTime: 60000,
     retry: false,
