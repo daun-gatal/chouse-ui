@@ -34,7 +34,7 @@ export default function Hero() {
   };
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden" aria-label="Hero section">
       {/* Enhanced Animated Background */}
       <div className="absolute inset-0 z-0">
         <motion.div
@@ -91,8 +91,11 @@ export default function Hero() {
           >
             <img
               src={`${import.meta.env.BASE_URL}logo.svg`}
-              alt="CHouse UI"
+              alt="CHouse UI Logo - ClickHouse Database Management Interface"
               className="w-40 h-40 md:w-48 md:h-48 drop-shadow-[0_0_30px_rgba(255,200,0,0.6)]"
+              width="192"
+              height="192"
+              loading="eager"
             />
           </motion.div>
         </motion.div>
@@ -124,7 +127,7 @@ export default function Hero() {
           className="mb-6"
         >
           <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-medium">
-            A web interface for ClickHouse with built-in RBAC
+            Open-source ClickHouse web interface with built-in RBAC and enterprise security
           </p>
           {latestVersion && (
             <motion.div
@@ -145,46 +148,96 @@ export default function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6, duration: 0.5 }}
-          className="mb-8 max-w-3xl mx-auto"
+          className="mb-8 max-w-4xl mx-auto"
         >
-          <p className="text-lg text-gray-400 mb-4 leading-relaxed">
+          <p className="text-xl md:text-2xl text-gray-300 mb-6 leading-relaxed font-light">
             Built from the ground up to solve real-world challenges in ClickHouse database management. 
             This project combines modern web technologies with enterprise-grade security to deliver a 
             powerful yet intuitive interface for teams.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-gray-500">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-purple-400 rounded-full" />
-              <span>Zero-trust architecture</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-blue-400 rounded-full" />
-              <span>Production-ready</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-pink-400 rounded-full" />
-              <span>Enterprise-grade security</span>
-            </div>
+          
+          {/* Interactive Feature Pills */}
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+            {[
+              { label: 'Zero-trust architecture', color: 'purple', icon: '🔒' },
+              { label: 'Production-ready', color: 'blue', icon: '🚀' },
+              { label: 'Enterprise security', color: 'pink', icon: '🛡️' },
+              { label: 'RBAC built-in', color: 'cyan', icon: '👥' },
+            ].map((feature, idx) => (
+              <motion.div
+                key={feature.label}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.7 + idx * 0.1, duration: 0.4 }}
+                whileHover={{ scale: 1.05, y: -2 }}
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:border-white/20 transition-all cursor-default backdrop-blur-sm"
+              >
+                <span className="text-sm">{feature.icon}</span>
+                <span className="text-sm text-gray-300 font-medium">{feature.label}</span>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Key Benefits Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            {[
+              { title: 'Secure by Default', desc: 'Credentials never leave the server', icon: '🔐' },
+              { title: 'Role-Based Access', desc: 'Granular permissions for teams', icon: '🎯' },
+              { title: 'Easy Deployment', desc: 'Docker-ready in minutes', icon: '⚡' },
+            ].map((benefit, idx) => (
+              <motion.div
+                key={benefit.title}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8 + idx * 0.1, duration: 0.5 }}
+                whileHover={{ y: -4, scale: 1.02 }}
+                className="p-4 rounded-lg bg-white/5 border border-white/10 hover:border-purple-500/30 transition-all backdrop-blur-sm"
+              >
+                <div className="text-2xl mb-2">{benefit.icon}</div>
+                <h3 className="text-white font-semibold mb-1 text-sm">{benefit.title}</h3>
+                <p className="text-xs text-gray-400">{benefit.desc}</p>
+              </motion.div>
+            ))}
           </div>
         </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.65, duration: 0.5 }}
-          className="flex justify-center"
+          transition={{ delay: 0.9, duration: 0.5 }}
+          className="flex flex-col sm:flex-row justify-center items-center gap-4"
         >
           <motion.button
             onClick={() => scrollToSection('quick-start')}
-            whileHover={{ scale: 1.05 }}
+            whileHover={{ scale: 1.05, boxShadow: '0 20px 40px rgba(147, 51, 234, 0.4)' }}
             whileTap={{ scale: 0.95 }}
-            className="px-12 py-6 bg-gradient-to-r from-purple-600 via-blue-600 to-purple-600 bg-size-200 bg-pos-0 hover:bg-pos-100 text-white rounded-xl font-semibold shadow-2xl shadow-purple-900/30 transition-all duration-500 flex items-center justify-center gap-2 text-lg"
+            className="px-8 py-4 bg-gradient-to-r from-purple-600 via-blue-600 to-purple-600 bg-size-200 bg-pos-0 hover:bg-pos-100 text-white rounded-xl font-semibold shadow-2xl shadow-purple-900/30 transition-all duration-500 flex items-center justify-center gap-2 text-lg group"
             style={{
               backgroundSize: '200% 100%',
             }}
+            aria-label="Get started with CHouse UI - scroll to quick start guide"
           >
             <span>Get Started</span>
+            <motion.span
+              animate={{ x: [0, 4, 0] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              aria-hidden="true"
+            >
+              →
+            </motion.span>
           </motion.button>
+          
+          <motion.a
+            href="https://github.com/daun-gatal/chouse-ui"
+            target="_blank"
+            rel="noopener noreferrer"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="px-8 py-4 bg-white/5 border border-white/20 hover:border-white/30 text-white rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 text-lg backdrop-blur-sm"
+          >
+            <span>View on GitHub</span>
+            <span className="text-xl">⭐</span>
+          </motion.a>
         </motion.div>
       </div>
 

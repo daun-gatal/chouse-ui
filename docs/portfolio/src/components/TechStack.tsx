@@ -63,7 +63,8 @@ export default function TechStack() {
               Built With
             </span>
           </h2>
-          <p className="text-gray-400 text-xl">Modern technologies and best practices</p>
+          <p className="text-gray-400 text-xl mb-2">Modern technologies and best practices</p>
+          <p className="text-gray-500 text-sm">Click any technology to learn more</p>
         </motion.div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 max-w-5xl mx-auto">
@@ -86,8 +87,9 @@ export default function TechStack() {
                     <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${categoryColor} mb-3 flex items-center justify-center p-2`}>
                       <img
                         src={`https://api.iconify.design/${tech.icon}.svg?color=ffffff`}
-                        alt={tech.name}
+                        alt={`${tech.name} logo`}
                         className="w-full h-full object-contain"
+                        loading="lazy"
                         onError={(e) => {
                           // Fallback to alternative icon
                           const target = e.target as HTMLImageElement;

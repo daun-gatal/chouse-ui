@@ -15,7 +15,13 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+        },
+      },
     },
+    publicDir: 'public',
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

@@ -19,11 +19,14 @@ export default function Footer() {
             transition={{ duration: 0.5 }}
           >
             <div className="flex items-center gap-3 mb-4">
-              <img
-                src={`${import.meta.env.BASE_URL}logo.svg`}
-                alt="CHouse UI"
-                className="w-10 h-10 drop-shadow-[0_0_10px_rgba(255,200,0,0.3)]"
-              />
+            <img
+              src={`${import.meta.env.BASE_URL}logo.svg`}
+              alt="CHouse UI Logo"
+              className="w-10 h-10 drop-shadow-[0_0_10px_rgba(255,200,0,0.3)]"
+              width="40"
+              height="40"
+              loading="lazy"
+            />
               <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
                 CHouse UI
               </span>
@@ -46,6 +49,7 @@ export default function Footer() {
                 { label: 'Features', href: '#features' },
                 { label: 'Highlights', href: '#highlights' },
                 { label: 'Quick Start', href: '#quick-start' },
+                { label: 'FAQ', href: '#faq' },
                 { label: 'Tech Stack', href: '#tech-stack' },
                 { label: 'Latest Release', href: '#changelog' },
               ].map((item) => (
