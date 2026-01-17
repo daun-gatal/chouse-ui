@@ -18,13 +18,13 @@
 
 <p align="center">
   <a href="https://github.com/daun-gatal/chouse-ui/actions/workflows/ci.yml">
-    <img src="https://github.com/daun-gatal/chouse-ui/actions/workflows/ci.yml/badge.svg" alt="Build & Test" />
+    <img src="https://img.shields.io/github/actions/workflow/status/daun-gatal/chouse-ui/ci.yml?label=Build%20%26%20Test" alt="Build & Test" />
   </a>
   <a href="https://github.com/daun-gatal/chouse-ui/actions/workflows/github-pages.yml">
-    <img src="https://github.com/daun-gatal/chouse-ui/actions/workflows/github-pages.yml/badge.svg" alt="Github Pages" />
+    <img src="https://img.shields.io/github/actions/workflow/status/daun-gatal/chouse-ui/github-pages.yml?label=GitHub%20Pages" alt="GitHub Pages" />
   </a>
   <a href="https://github.com/daun-gatal/chouse-ui/actions/workflows/release.yml">
-    <img src="https://github.com/daun-gatal/chouse-ui/actions/workflows/release.yml/badge.svg" alt="Release" />
+    <img src="https://img.shields.io/github/actions/workflow/status/daun-gatal/chouse-ui/release.yml?label=Release" alt="Release" />
   </a>
 </p>
 
