@@ -146,7 +146,8 @@ roleRoutes.patch('/:id', requirePermission(PERMISSIONS.ROLES_UPDATE), zValidator
   }
 
   try {
-    const role = await updateRole(id, input);
+    // Allow system role modification if user is super admin
+    const role = await updateRole(id, input, isSuperAdmin(c));
 
     // Log role update
     await createAuditLog(AUDIT_ACTIONS.ROLE_UPDATE, currentUser.sub, {
