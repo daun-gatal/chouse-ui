@@ -42,8 +42,8 @@ function validateEnvironmentVariables(): void {
       },
       {
         key: "RBAC_ENCRYPTION_SALT",
-        exactLength: 64,
-        description: "32-byte (64 hex characters) salt for key derivation - must be unique and random",
+        minLength: 16,
+        description: "32-byte (64 hex characters) salt for key derivation - must be unique and random (minimum 16 characters, recommended 64)",
       },
     ];
 
@@ -71,6 +71,15 @@ function validateEnvironmentVariables(): void {
       warnings.push(
         "CORS_ORIGIN is set to '*' in production. This allows requests from any origin. " +
         "Consider restricting to specific domains for better security."
+      );
+    }
+    
+    // Warn if RBAC_ENCRYPTION_SALT is shorter than recommended
+    const saltValue = process.env.RBAC_ENCRYPTION_SALT;
+    if (saltValue && saltValue.length < 64) {
+      warnings.push(
+        `RBAC_ENCRYPTION_SALT is ${saltValue.length} characters long (recommended: 64). ` +
+        `Shorter salts will be automatically padded, but using a 64-character salt is recommended for better security.`
       );
     }
   } else {

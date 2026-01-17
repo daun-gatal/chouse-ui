@@ -5,7 +5,7 @@
  */
 
 import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
@@ -64,9 +64,27 @@ export interface TestConnectionResult {
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
-const SALT_LENGTH = 32;
 const PBKDF2_ITERATIONS = 100000; // OWASP recommended minimum
 const KEY_LENGTH = 32; // 256 bits for AES-256
+const RECOMMENDED_SALT_LENGTH = 64; // 32 bytes = 64 hex characters
+
+/**
+ * Pad salt to recommended length using deterministic method
+ * This ensures backward compatibility - same salt always produces same padded salt
+ * @param salt - The salt to pad
+ * @returns Salt padded to 64 characters
+ */
+function padSalt(salt: string): string {
+  if (salt.length >= RECOMMENDED_SALT_LENGTH) {
+    return salt.substring(0, RECOMMENDED_SALT_LENGTH);
+  }
+  
+  // Deterministic padding: use SHA-256 hash of the salt to generate padding
+  // This ensures the same salt always produces the same padded salt
+  const hash = createHash('sha256').update(salt).digest('hex');
+  const padding = hash.substring(0, RECOMMENDED_SALT_LENGTH - salt.length);
+  return salt + padding;
+}
 
 /**
  * Get encryption key using PBKDF2 with proper key derivation
@@ -108,11 +126,13 @@ function getEncryptionKey(): Buffer {
   let salt: string;
   
   if (saltEnv) {
-    salt = saltEnv;
+    // Pad salt to recommended length for backward compatibility
+    // This ensures existing encrypted passwords remain decryptable
+    salt = padSalt(saltEnv);
   } else if (NODE_ENV === 'production') {
     throw new Error(
       'RBAC_ENCRYPTION_SALT must be set in production. ' +
-      'Use a unique, random 32-byte (64 hex characters) salt value.'
+      'Use a unique, random 32-byte (64 hex characters) salt value (minimum 16 characters).'
     );
   } else {
     // Development: derive salt from secret (not ideal but acceptable for dev)
@@ -149,7 +169,7 @@ export function decryptPassword(encryptedData: string): string {
     
     const [ivHex, authTagHex, encrypted] = parts;
     
-    if (!ivHex || !authTagHex || !encrypted) {
+    if (ivHex === undefined || authTagHex === undefined || encrypted === undefined) {
       throw new Error('Invalid encrypted data: missing components');
     }
     
