@@ -41,6 +41,8 @@ import {
   CheckCircle2,
   Search,
   X,
+  ChevronsDown,
+  ChevronsUp,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -269,6 +271,20 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     });
   };
 
+  const handleToggleExpandAll = () => {
+    if (!filteredCategories) return;
+    const categoryKeys = Object.keys(filteredCategories);
+    const allExpanded = categoryKeys.every((key) => expandedCategories.has(key));
+    
+    if (allExpanded) {
+      // Collapse all
+      setExpandedCategories(new Set());
+    } else {
+      // Expand all
+      setExpandedCategories(new Set(categoryKeys));
+    }
+  };
+
   const handleSubmit = () => {
     if (!isValid || !canModify) return;
 
@@ -300,6 +316,10 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   const totalPermissions = Object.values(filteredCategories || {}).flat().length;
   const selectedCount = selectedPermissionIds.size;
   const allSelected = totalPermissions > 0 && selectedCount === totalPermissions;
+  
+  // Determine if all categories are expanded
+  const categoryKeys = filteredCategories ? Object.keys(filteredCategories) : [];
+  const allExpanded = categoryKeys.length > 0 && categoryKeys.every((key) => expandedCategories.has(key));
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -450,6 +470,28 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                     <Badge variant="outline" className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-purple-500/30 text-purple-300">
                       {selectedCount} selected
                     </Badge>
+                  )}
+                  {categoryKeys.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleToggleExpandAll}
+                      className="h-7 text-xs hover:bg-white/10 gap-1.5"
+                      title={allExpanded ? "Collapse all categories" : "Expand all categories"}
+                    >
+                      {allExpanded ? (
+                        <>
+                          <ChevronsUp className="h-3.5 w-3.5" />
+                          Collapse All
+                        </>
+                      ) : (
+                        <>
+                          <ChevronsDown className="h-3.5 w-3.5" />
+                          Expand All
+                        </>
+                      )}
+                    </Button>
                   )}
                   {canModify && totalPermissions > 0 && (
                     <Button
@@ -640,7 +682,6 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                   animate={{ opacity: 1 }}
                 >
                   <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
-                    <AlertCircle className="h-4 w-4 text-red-400" />
                     <AlertDescription className="text-red-300">
                       At least one permission is required for the role.
                     </AlertDescription>
