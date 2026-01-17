@@ -1,22 +1,35 @@
 import React from "react";
-import { useAuthStore, hasPermission } from "@/stores";
+import { useRbacStore } from "@/stores";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface PermissionGuardProps {
-  requiredPermission: string;
+  requiredPermission: string; // RBAC permission (e.g., "table:alter", "database:create")
   children: React.ReactNode;
   fallback?: React.ReactNode;
   showTooltip?: boolean;
 }
 
+/**
+ * PermissionGuard Component
+ * 
+ * Guards UI elements based on RBAC permissions.
+ * Only RBAC-authenticated users can access protected features.
+ */
 const PermissionGuard: React.FC<PermissionGuardProps> = ({
   requiredPermission,
   children,
   fallback = null,
   showTooltip = false,
 }) => {
-  const authState = useAuthStore();
-  const permitted = hasPermission(authState, requiredPermission);
+  const rbacStore = useRbacStore();
+  
+  // RBAC authentication is required
+  if (!rbacStore.isAuthenticated) {
+    return <>{fallback}</>;
+  }
+  
+  // Check if user has the required permission
+  const permitted = rbacStore.hasPermission(requiredPermission);
 
   if (permitted) {
     return <>{children}</>;

@@ -93,12 +93,12 @@ export default function Settings() {
       // Logout from RBAC
       await rbacLogout();
       
-      // Clear ClickHouse session
-      clearSession();
+      // Clear connection info
+      useAuthStore.getState().clearConnectionInfo();
     } catch (error) {
       console.error('Logout error:', error);
       // Clear local state anyway
-      clearSession();
+      useAuthStore.getState().clearConnectionInfo();
     } finally {
       navigate("/login");
     }

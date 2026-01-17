@@ -1,7 +1,6 @@
-import { Hono } from "hono";
+import { Hono, Context, Next } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { authMiddleware, requirePermission } from "../middleware/auth";
 import { 
   optionalRbacMiddleware, 
   filterDatabases, 
@@ -9,25 +8,229 @@ import {
   checkDatabaseAccess,
   checkTableAccess 
 } from "../middleware/dataAccess";
-import type { ClickHouseService } from "../services/clickhouse";
+import { PERMISSIONS } from "../rbac/schema/base";
+import { userHasPermission } from "../rbac/services/rbac";
+import { AppError } from "../types";
+import { ClickHouseService } from "../services/clickhouse";
+import { getSession } from "../services/clickhouse";
+import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
 import type { Session } from "../types";
 import { escapeIdentifier, escapeQualifiedIdentifier, validateColumnType, validateFormat } from "../utils/sqlIdentifier";
 
 type Variables = {
-  sessionId: string;
+  sessionId?: string;
   service: ClickHouseService;
-  session: Session;
+  session?: Session;
   rbacUserId?: string;
   rbacRoles?: string[];
   rbacPermissions?: string[];
   isRbacAdmin?: boolean;
+  rbacConnectionId?: string;
 };
 
 const explorer = new Hono<{ Variables: Variables }>();
 
-// All routes require authentication + optional RBAC context for data access filtering
-explorer.use("*", authMiddleware);
-explorer.use("*", optionalRbacMiddleware);
+// Helper to get cookie value
+function getCookie(c: Context, name: string): string | undefined {
+  const cookies = c.req.header("Cookie") || "";
+  const match = cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+/**
+ * Hybrid auth middleware for explorer routes
+ * Supports both ClickHouse session auth and RBAC auth
+ */
+async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next: Next) {
+  // First try ClickHouse session auth (but still require RBAC)
+  const sessionId = c.req.header("X-Session-ID") || getCookie(c, "ch_session");
+  
+  if (sessionId) {
+    const sessionData = getSession(sessionId);
+    if (sessionData) {
+      // Add RBAC context to validate session ownership
+      await optionalRbacMiddleware(c, async () => {});
+      
+      const rbacUserId = c.get("rbacUserId");
+      
+      // If session has rbacUserId, validate ownership
+      if (sessionData.session.rbacUserId) {
+        if (!rbacUserId || sessionData.session.rbacUserId !== rbacUserId) {
+          throw AppError.forbidden("Session does not belong to current user. Please reconnect.");
+        }
+      } else {
+        // Legacy session without RBAC - require RBAC authentication
+        if (!rbacUserId) {
+          throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
+        }
+      }
+      
+      c.set("sessionId", sessionId);
+      c.set("service", sessionData.service);
+      c.set("session", sessionData.session);
+      
+      await next();
+      return;
+    }
+  }
+
+  // If no ClickHouse session, try RBAC auth
+  await optionalRbacMiddleware(c, async () => {});
+  
+  const rbacUserId = c.get("rbacUserId");
+  const rbacRoles = c.get("rbacRoles");
+  const isSuperAdmin = rbacRoles?.includes('super_admin') || false;
+  
+  if (rbacUserId) {
+    let service: ClickHouseService | null = null;
+    
+    try {
+      // Super admins get all active connections, regular users get their assigned connections
+      let connections: Awaited<ReturnType<typeof getUserConnections>>;
+      if (isSuperAdmin) {
+        const { listConnections } = await import("../rbac/services/connections");
+        const result = await listConnections({ activeOnly: true });
+        connections = result.connections;
+      } else {
+        connections = await getUserConnections(rbacUserId);
+      }
+      
+      if (connections.length === 0) {
+        if (isSuperAdmin) {
+          throw AppError.unauthorized("No ClickHouse connections are configured in the system. Please create a connection first.");
+        }
+        throw AppError.unauthorized("No ClickHouse connection configured. Please contact an administrator to grant you access to a ClickHouse connection.");
+      }
+      
+      // Try to find default connection first, then any active connection
+      const defaultConnection = connections.find((conn) => conn.isDefault && conn.isActive);
+      const activeConnection = defaultConnection || connections.find((conn) => conn.isActive);
+      
+      if (!activeConnection) {
+        if (isSuperAdmin) {
+          throw AppError.unauthorized("No active ClickHouse connections found. Please activate a connection or create a new one.");
+        }
+        throw AppError.unauthorized("No active ClickHouse connection found. Please contact an administrator to activate a connection.");
+      }
+
+      // Get connection with password
+      const connection = await getConnectionWithPassword(activeConnection.id);
+      
+      if (!connection) {
+        throw AppError.unauthorized("Connection not found or access denied.");
+      }
+
+      // Build connection URL
+      const protocol = connection.sslEnabled ? 'https' : 'http';
+      const url = `${protocol}://${connection.host}:${connection.port}`;
+
+      // Create ClickHouse service from connection
+      service = new ClickHouseService({
+        url,
+        username: connection.username,
+        password: connection.password || "",
+        database: connection.database || undefined,
+      });
+
+      // Test connection
+      const isConnected = await service.ping();
+      if (!isConnected) {
+        await service.close();
+        throw AppError.unauthorized("Failed to connect to ClickHouse server.");
+      }
+
+      // Create a temporary session ID for this request
+      const tempSessionId = `rbac_${rbacUserId}_${Date.now()}`;
+      
+      // Create a temporary session-like object
+      const session: Session = {
+        id: tempSessionId,
+        connectionConfig: {
+          url,
+          username: connection.username,
+          password: connection.password || "",
+          database: connection.database || undefined,
+        },
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        isAdmin: false, // Will be determined by ClickHouse
+        permissions: [],
+        version: await service.getVersion(),
+        rbacConnectionId: connection.id,
+      };
+
+      const adminStatus = await service.checkIsAdmin();
+      session.isAdmin = adminStatus.isAdmin;
+      session.permissions = adminStatus.permissions;
+
+      c.set("service", service);
+      c.set("session", session);
+      c.set("rbacConnectionId", connection.id);
+      
+      try {
+        await next();
+      } finally {
+        // Cleanup: Always close service after request completes (success or error)
+        if (service) {
+          await service.close().catch((err) => {
+            console.error('[Explorer] Failed to close service:', err);
+          });
+        }
+      }
+      return;
+    } catch (error) {
+      // Ensure service is closed on error
+      if (service) {
+        await service.close().catch((err) => {
+          console.error('[Explorer] Failed to close service on error:', err);
+        });
+      }
+      
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw AppError.unauthorized("Failed to authenticate with ClickHouse. Please connect to a ClickHouse server first.");
+    }
+  }
+
+  // No authentication found
+  throw AppError.unauthorized("No session provided. Please login first.");
+}
+
+// All routes require authentication (hybrid: session or RBAC)
+explorer.use("*", explorerAuthMiddleware);
+
+/**
+ * Permission check helper for explorer routes
+ * Requires RBAC authentication
+ */
+async function checkExplorerPermission(
+  rbacUserId: string | undefined,
+  rbacPermissions: string[] | undefined,
+  isRbacAdmin: boolean | undefined,
+  permission: string
+): Promise<void> {
+  // RBAC user is required
+  if (!rbacUserId) {
+    throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
+  }
+
+  // Admins have all permissions
+  if (isRbacAdmin) {
+    return;
+  }
+
+  // Check if user has the required permission
+  if (rbacPermissions && rbacPermissions.includes(permission)) {
+    return;
+  }
+
+  // Double-check against database (in case permissions changed)
+  const hasPermission = await userHasPermission(rbacUserId, permission as any);
+  if (!hasPermission) {
+    throw AppError.forbidden(`Permission '${permission}' required for this action`);
+  }
+}
 
 /**
  * GET /explorer/databases
@@ -37,7 +240,16 @@ explorer.get("/databases", async (c) => {
   const service = c.get("service");
   const session = c.get("session");
   const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
+  
+  // Check RBAC permission for viewing databases/tables
+  await checkExplorerPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.DB_VIEW
+  );
   
   // Get the RBAC connection ID from the session (if session was created from RBAC connection)
   const connectionId = session?.rbacConnectionId;
@@ -117,8 +329,17 @@ explorer.get("/table/:database/:table", async (c) => {
   const service = c.get("service");
   const session = c.get("session");
   const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
   const connectionId = session?.rbacConnectionId;
+
+  // Check RBAC permission for viewing tables
+  await checkExplorerPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.TABLE_VIEW
+  );
 
   // Validate identifiers
   try {
@@ -158,8 +379,17 @@ explorer.get("/table/:database/:table/sample", async (c) => {
   const service = c.get("service");
   const session = c.get("session");
   const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
   const connectionId = session?.rbacConnectionId;
+
+  // Check RBAC permission for selecting table data
+  await checkExplorerPermission(
+    rbacUserId,
+    rbacPermissions,
+    isRbacAdmin,
+    PERMISSIONS.TABLE_SELECT
+  );
 
   // Validate identifiers
   try {
@@ -201,12 +431,21 @@ const createDatabaseSchema = z.object({
 
 explorer.post(
   "/database",
-  requirePermission("CREATE DATABASE"),
   zValidator("json", createDatabaseSchema),
   async (c) => {
+    const rbacUserId = c.get("rbacUserId");
+    const rbacPermissions = c.get("rbacPermissions");
+    const isRbacAdmin = c.get("isRbacAdmin");
+
+    // Check RBAC permission
+    await checkExplorerPermission(
+      rbacUserId,
+      rbacPermissions,
+      isRbacAdmin,
+      PERMISSIONS.DB_CREATE
+    );
     const { name, engine, cluster } = c.req.valid("json");
     const service = c.get("service");
-    const session = c.get("session");
 
     // Validate and escape identifiers
     let escapedName: string;
@@ -251,8 +490,18 @@ explorer.post(
  */
 explorer.delete(
   "/database/:name",
-  requirePermission("DROP DATABASE"),
   async (c) => {
+    const rbacUserId = c.get("rbacUserId");
+    const rbacPermissions = c.get("rbacPermissions");
+    const isRbacAdmin = c.get("isRbacAdmin");
+
+    // Check RBAC permission
+    await checkExplorerPermission(
+      rbacUserId,
+      rbacPermissions,
+      isRbacAdmin,
+      PERMISSIONS.DB_DROP
+    );
     const { name } = c.req.param();
     const service = c.get("service");
 
@@ -298,9 +547,19 @@ const createTableSchema = z.object({
 
 explorer.post(
   "/table",
-  requirePermission("CREATE TABLE"),
   zValidator("json", createTableSchema),
   async (c) => {
+    const rbacUserId = c.get("rbacUserId");
+    const rbacPermissions = c.get("rbacPermissions");
+    const isRbacAdmin = c.get("isRbacAdmin");
+
+    // Check RBAC permission
+    await checkExplorerPermission(
+      rbacUserId,
+      rbacPermissions,
+      isRbacAdmin,
+      PERMISSIONS.TABLE_CREATE
+    );
     const { database, name, columns, engine, orderBy, partitionBy, primaryKey, cluster } = c.req.valid("json");
     const service = c.get("service");
 
@@ -419,8 +678,18 @@ explorer.post(
  */
 explorer.delete(
   "/table/:database/:table",
-  requirePermission("DROP TABLE"),
   async (c) => {
+    const rbacUserId = c.get("rbacUserId");
+    const rbacPermissions = c.get("rbacPermissions");
+    const isRbacAdmin = c.get("isRbacAdmin");
+
+    // Check RBAC permission
+    await checkExplorerPermission(
+      rbacUserId,
+      rbacPermissions,
+      isRbacAdmin,
+      PERMISSIONS.TABLE_DROP
+    );
     const { database, table } = c.req.param();
     const service = c.get("service");
 

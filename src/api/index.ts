@@ -9,10 +9,6 @@
 export { api, getSessionId, setSessionId, clearSession } from './client';
 export type { ApiResponse, ApiError, RequestOptions } from './client';
 
-// Authentication
-export * as authApi from './auth';
-export type { LoginCredentials, LoginResponse, SessionInfo, RefreshResponse } from './auth';
-
 // Query execution
 export * as queryApi from './query';
 export type { QueryResult, QueryStatistics, QueryMeta, IntellisenseData } from './query';

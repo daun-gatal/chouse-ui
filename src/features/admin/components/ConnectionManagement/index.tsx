@@ -427,7 +427,7 @@ function ConnectionFormDialog({
                 variant="outline"
                 onClick={handleTest}
                 disabled={isTesting || !form.watch('host') || !form.watch('username')}
-                className="border-gray-700"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
               >
                 {isTesting ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -438,8 +438,9 @@ function ConnectionFormDialog({
               </Button>
               <Button
                 type="submit"
+                variant="outline"
                 disabled={isSubmitting}
-                className="bg-purple-600 hover:bg-purple-700"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
               >
                 {isSubmitting ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -586,11 +587,12 @@ export default function ConnectionManagement() {
           </Button>
           {canUpdate && (
             <Button
+              variant="outline"
               size="sm"
               onClick={openCreateDialog}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4" />
               Add Connection
             </Button>
           )}

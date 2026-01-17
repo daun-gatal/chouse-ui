@@ -316,7 +316,12 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
         {/* Save Button */}
         {canEdit && rules.length > 0 && (
           <div className="flex justify-end">
-            <Button onClick={handleSaveAll} disabled={isSaving}>
+            <Button
+              variant="outline"
+              onClick={handleSaveAll}
+              disabled={isSaving}
+              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+            >
               {isSaving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -455,7 +460,11 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
               <Button variant="outline" onClick={() => setShowDialog(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveRule}>
+              <Button
+                variant="outline"
+                onClick={handleSaveRule}
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+              >
                 {editingIndex !== null ? 'Update Rule' : 'Add Rule'}
               </Button>
             </DialogFooter>
