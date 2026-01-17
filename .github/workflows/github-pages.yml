@@ -85,6 +85,16 @@ jobs:
             exit 1
           fi
           echo ""
+          echo "Checking 404.html for GitHub Pages SPA routing..."
+          if [ -f dist/404.html ]; then
+            echo "✓ 404.html exists (required for GitHub Pages SPA routing)"
+            echo "  This ensures Googlebot and other crawlers get proper content instead of redirect errors"
+          else
+            echo "✗ 404.html not found in dist/"
+            echo "  This file is required for GitHub Pages to handle SPA routing correctly"
+            exit 1
+          fi
+          echo ""
           echo "Checking CHANGELOG.md in dist..."
           if [ -f dist/CHANGELOG.md ]; then
             echo "✓ CHANGELOG.md exists in dist"

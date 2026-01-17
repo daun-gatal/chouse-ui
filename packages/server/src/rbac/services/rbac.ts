@@ -450,7 +450,8 @@ export async function getRoleByName(name: string): Promise<Role | null> {
  */
 export async function updateRole(
   id: string,
-  input: UpdateRoleInput
+  input: UpdateRoleInput,
+  allowSystemRoleModification: boolean = false
 ): Promise<RoleResponse | null> {
   const db = getDatabase() as any;
   const schema = getSchema();
@@ -461,7 +462,8 @@ export async function updateRole(
     .where(eq(schema.roles.id, id))
     .limit(1);
 
-  if (existingRole[0]?.isSystem) {
+  // Only block system role modification if not explicitly allowed (e.g., by super admin)
+  if (existingRole[0]?.isSystem && !allowSystemRoleModification) {
     throw new Error('Cannot modify system role');
   }
 
