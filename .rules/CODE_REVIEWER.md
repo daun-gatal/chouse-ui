@@ -238,12 +238,56 @@ This document defines the rules and checklist for reviewing code changes in this
 ## Testing Review
 
 ### Critical Issues
-- ❌ **No tests for critical logic**: Should add tests
-- ❌ **Tests don't cover edge cases**: Should add more cases
+- ❌ **No tests for new utility functions**: Should add tests
+- ❌ **No tests for new API modules**: Should add tests
+- ❌ **No tests for security-related code**: Must add tests for validation, escaping, auth
+- ❌ **Existing tests broken by changes**: Must fix
+- ❌ **Tests don't cover edge cases**: Should add null/empty/boundary tests
 
 ### Warning Issues
-- ⚠️ **Low test coverage**: Should improve coverage
+- ⚠️ **Low test coverage on critical paths**: Should improve coverage
+- ⚠️ **Tests only cover happy path**: Should add error case tests
 - ⚠️ **Flaky tests**: Should fix instability
+- ⚠️ **Test file not co-located**: Should be next to source file
+
+### Review Checklist for Tests
+
+**When reviewing new code, ask:**
+- [ ] Are there tests for new utility functions?
+- [ ] Are there tests for new API methods?
+- [ ] Do tests cover edge cases (empty input, null, boundaries)?
+- [ ] Do tests cover error handling paths?
+- [ ] Are security-related functions tested?
+
+**When reviewing test code, check:**
+- [ ] Tests use descriptive names (`it('should...`)
+- [ ] Tests are independent (no shared state issues)
+- [ ] Mocks are appropriate (MSW for API, vi.mock for modules)
+- [ ] Store tests use dynamic imports (avoid Zustand persist issues)
+- [ ] Tests don't duplicate coverage unnecessarily
+
+### Test Expectations by File Type
+
+| File Type | Test Required? | Notes |
+|-----------|----------------|-------|
+| `src/api/*.ts` | ✅ Required | Mock API with MSW |
+| `src/hooks/*.ts` | ✅ Required for logic | Use renderHook, skip pure UI hooks |
+| `src/lib/*.ts` | ✅ Required | Pure function tests |
+| `src/helpers/*.ts` | ✅ Required | Pure function tests |
+| `src/stores/*.ts` | ✅ Required | Use dynamic imports |
+| `src/utils/*.ts` | ✅ Required | Pure function tests |
+| `src/components/*.tsx` | ⚠️ Optional | Only for complex logic |
+
+### Running Tests
+
+Reviewers should verify tests pass:
+```bash
+# Frontend tests
+bunx vitest run src/api src/lib src/helpers src/hooks src/stores src/utils
+
+# Server tests
+./scripts/test-isolated-server.sh
+```
 
 ---
 
@@ -427,6 +471,8 @@ Code should be approved when:
 - ✅ Error handling is proper
 - ✅ Code is maintainable and consistent
 - ✅ Documentation is adequate
+- ✅ **Tests are added for new functions/modules**
+- ✅ **All tests pass**
 
 Code should NOT be approved if:
 - ❌ Critical security issues exist
@@ -434,6 +480,8 @@ Code should NOT be approved if:
 - ❌ Memory leaks or performance issues
 - ❌ Missing error handling
 - ❌ Code doesn't follow project patterns
+- ❌ **New utility/API code lacks tests**
+- ❌ **Tests are failing**
 
 ---
 
