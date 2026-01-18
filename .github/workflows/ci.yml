@@ -94,7 +94,7 @@ jobs:
         run: bun install
 
       - name: Run Frontend Tests
-        run: bunx vitest run src/api src/lib src/helpers src/hooks src/stores src/utils --run --exclude '**/packages/**'
+        run: bunx vitest run src/api src/lib src/helpers src/hooks src/stores src/utils --run --exclude '**/packages/**' --coverage --coverage.provider=istanbul --coverage.reporter=text
 
   build:
     name: Build

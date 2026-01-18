@@ -34,8 +34,11 @@ for file in $TEST_FILES; do
     # Run test
     echo -n "Testing $file ... "
     
-    if bun test "$file" > /tmp/test-output.txt 2>&1; then
+    # Run test with forced color for pretty output
+    if FORCE_COLOR=1 bun test "$file" --coverage > /tmp/test-output.txt 2>&1; then
         echo -e "${GREEN}✓ PASS${NC}"
+        # Extract coverage table, indent it, and print
+        grep -E "\||^--+" /tmp/test-output.txt | sed 's/^/    /' || true
         PASSED=$((PASSED + 1))
     else
         echo -e "${RED}✗ FAIL${NC}"

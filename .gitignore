@@ -26,7 +26,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
-
+coverage
 
 # Remove some things for docker-compose
 .clickhouse_local_data
