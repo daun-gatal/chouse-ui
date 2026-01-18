@@ -1,10 +1,13 @@
 #!/bin/bash
 #
-# Run tests file-by-file for complete isolation
+# Run server tests file-by-file for complete isolation
 # This prevents mock leakage between test files
 #
 
 set -e  # Exit on first failure
+
+# Change to server directory
+cd "$(dirname "$0")/../packages/server"
 
 # Colors for output
 GREEN='\033[0;32m'

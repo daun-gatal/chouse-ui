@@ -74,8 +74,7 @@ jobs:
         run: bun install
 
       - name: Run Server Tests (Isolated)
-        working-directory: ./packages/server
-        run: ./test-isolated.sh
+        run: ./scripts/test-isolated-server.sh
 
   build:
     name: Build

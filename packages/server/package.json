@@ -16,7 +16,7 @@
     "rbac:version": "bun run src/rbac/cli.ts version",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
-    "test:isolated": "./test-isolated.sh",
+    "test:isolated": "../../scripts/test-isolated-server.sh",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
