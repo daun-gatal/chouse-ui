@@ -27,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useSystemStats, useRecentQueries } from "@/hooks";
 import { useAuthStore } from "@/stores/auth";
+import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { cn } from "@/lib/utils";
 
 // Stat card component with gradient background
@@ -119,7 +120,28 @@ const ActionCard: React.FC<ActionCardProps> = ({
 export default function HomePage() {
   const navigate = useNavigate();
   const { isAdmin, username } = useAuthStore();
+  const { hasPermission, hasAnyPermission } = useRbacStore();
   const { data: stats, isLoading: statsLoading } = useSystemStats();
+  
+  // Check permissions for quick actions
+  const canViewExplorer = hasAnyPermission([
+    RBAC_PERMISSIONS.DB_VIEW,
+    RBAC_PERMISSIONS.TABLE_VIEW,
+  ]);
+  const canViewMetrics = hasAnyPermission([
+    RBAC_PERMISSIONS.METRICS_VIEW,
+    RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
+  ]);
+  const canViewLogs = hasAnyPermission([
+    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
+    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
+  ]);
+  const canViewAdmin = hasAnyPermission([
+    RBAC_PERMISSIONS.USERS_VIEW,
+    RBAC_PERMISSIONS.USERS_CREATE,
+    RBAC_PERMISSIONS.ROLES_VIEW,
+    RBAC_PERMISSIONS.AUDIT_VIEW,
+  ]);
   
   // Non-admin users only see their own queries
   const usernameFilter = isAdmin ? undefined : username || undefined;
@@ -423,34 +445,42 @@ export default function HomePage() {
                 <h3 className="font-semibold text-white text-sm">Quick Actions</h3>
               </div>
               <div className="space-y-2">
-                <ActionCard
-                  title="Explore Data"
-                  description="Browse databases & tables"
-                  icon={Database}
-                  color="bg-purple-500/80"
-                  onClick={() => navigate("/explorer")}
-                />
-                <ActionCard
-                  title="View Metrics"
-                  description="Monitor performance"
-                  icon={BarChart3}
-                  color="bg-blue-500/80"
-                  onClick={() => navigate("/metrics")}
-                />
-                <ActionCard
-                  title="Query Logs"
-                  description="View execution history"
-                  icon={FileText}
-                  color="bg-emerald-500/80"
-                  onClick={() => navigate("/logs")}
-                />
-                <ActionCard
-                  title="Admin Panel"
-                  description="Manage users & roles"
-                  icon={Users}
-                  color="bg-orange-500/80"
-                  onClick={() => navigate("/admin")}
-                />
+                {canViewExplorer && (
+                  <ActionCard
+                    title="Explore Data"
+                    description="Browse databases & tables"
+                    icon={Database}
+                    color="bg-purple-500/80"
+                    onClick={() => navigate("/explorer")}
+                  />
+                )}
+                {canViewMetrics && (
+                  <ActionCard
+                    title="View Metrics"
+                    description="Monitor performance"
+                    icon={BarChart3}
+                    color="bg-blue-500/80"
+                    onClick={() => navigate("/metrics")}
+                  />
+                )}
+                {canViewLogs && (
+                  <ActionCard
+                    title="Query Logs"
+                    description="View execution history"
+                    icon={FileText}
+                    color="bg-emerald-500/80"
+                    onClick={() => navigate("/logs")}
+                  />
+                )}
+                {canViewAdmin && (
+                  <ActionCard
+                    title="Admin Panel"
+                    description="Manage users & roles"
+                    icon={Users}
+                    color="bg-orange-500/80"
+                    onClick={() => navigate("/admin")}
+                  />
+                )}
               </div>
             </div>
 

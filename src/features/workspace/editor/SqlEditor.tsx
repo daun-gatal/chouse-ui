@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import * as monaco from "monaco-editor";
 import { useTheme } from "@/components/common/theme-provider";
-import { useWorkspaceStore, useAuthStore } from "@/stores";
+import { useWorkspaceStore, useAuthStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import {
   initializeMonacoGlobally,
   createMonacoEditor,
@@ -41,6 +41,12 @@ const AUTO_SAVE_DELAY = 2000; // 2 seconds after user stops typing
 const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
   const { getTabById, updateTab, saveQuery, updateSavedQuery } = useWorkspaceStore();
   const { activeConnectionId } = useAuthStore();
+  const { hasPermission, hasAnyPermission } = useRbacStore();
+  
+  // Check permissions for saving queries
+  const canSaveQuery = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_CREATE);
+  const canUpdateQuery = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_UPDATE);
+  const canManageSavedQueries = canSaveQuery || canUpdateQuery;
 
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -382,47 +388,57 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
             <CirclePlay className="h-6 w-6" />
           </Button>
 
-          {/* Save Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="link"
-                className="gap-1"
-                disabled={tab.type === "home" || tab.type === "information" || isSaving}
-              >
-                <Save className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              {tab.isSaved ? (
-                <>
-                  <DropdownMenuItem onClick={() => performAutoSave()} className="gap-2">
-                    <Save className="h-3.5 w-3.5" />
-                    <span>Save Now</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
-                    <PenLine className="h-3.5 w-3.5" />
-                    <span>Rename & Save</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSaveAs} className="gap-2">
-                    <Copy className="h-3.5 w-3.5" />
-                    <span>Save As...</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘S</span>
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <>
-                  <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
-                    <Save className="h-3.5 w-3.5" />
-                    <span>Save Query</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Save Dropdown - Only show if user has permission to save queries */}
+          {canManageSavedQueries && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="link"
+                  className="gap-1"
+                  disabled={tab.type === "home" || tab.type === "information" || isSaving}
+                >
+                  <Save className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {tab.isSaved ? (
+                  <>
+                    {canUpdateQuery && (
+                      <DropdownMenuItem onClick={() => performAutoSave()} className="gap-2">
+                        <Save className="h-3.5 w-3.5" />
+                        <span>Save Now</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
+                      </DropdownMenuItem>
+                    )}
+                    {canUpdateQuery && (
+                      <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
+                        <PenLine className="h-3.5 w-3.5" />
+                        <span>Rename & Save</span>
+                      </DropdownMenuItem>
+                    )}
+                    {canSaveQuery && (canUpdateQuery && <DropdownMenuSeparator />)}
+                    {canSaveQuery && (
+                      <DropdownMenuItem onClick={handleSaveAs} className="gap-2">
+                        <Copy className="h-3.5 w-3.5" />
+                        <span>Save As...</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘S</span>
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {canSaveQuery && (
+                      <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
+                        <Save className="h-3.5 w-3.5" />
+                        <span>Save Query</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
       <div ref={editorRef} className="flex-1" />

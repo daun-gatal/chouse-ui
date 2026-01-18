@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/select";
 import { useTheme } from "@/components/common/theme-provider";
 import { useQueryLogs, usePaginationPreference, useLogsPreferences } from "@/hooks";
-import { useRbacStore } from "@/stores/rbac";
+import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -470,7 +470,8 @@ const QueryDetail: React.FC<QueryDetailProps & { isFailed?: boolean; exceptionQu
 
 export default function Logs() {
   const { theme } = useTheme();
-  const { isSuperAdmin, user } = useRbacStore();
+  const { isSuperAdmin, user, hasPermission } = useRbacStore();
+  const canViewAllLogs = isSuperAdmin() || hasPermission(RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL);
   const { pageSize: defaultLimit, setPageSize: setLimitPreference } = usePaginationPreference('logs');
   const { preferences: logsPrefs, updatePreferences: updateLogsPrefs } = useLogsPreferences();
 
@@ -535,19 +536,19 @@ export default function Logs() {
   // Check if any filters are active
   const hasActiveFilters = searchTerm.trim().length > 0 || logType !== "all" || selectedUserId !== "all" || selectedRoleId !== "all";
 
-  // Fetch users list for super_admin users to populate filter
+  // Fetch users list for users who can view all logs
   const { data: usersData } = useQuery({
     queryKey: ['rbac-users-list'],
     queryFn: () => rbacUsersApi.list({ limit: 1000, isActive: true }),
-    enabled: isSuperAdmin(), // Only fetch for super_admin users who can see all logs
+    enabled: canViewAllLogs, // Only fetch for users who can see all logs
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  // Fetch roles list for super_admin users to populate role filter
+  // Fetch roles list for users who can view all logs
   const { data: rolesData } = useQuery({
     queryKey: ['rbac-roles-list'],
     queryFn: () => rbacRolesApi.list(),
-    enabled: isSuperAdmin(), // Only fetch for super_admin users who can see all logs
+    enabled: canViewAllLogs, // Only fetch for users who can see all logs
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
@@ -555,15 +556,15 @@ export default function Logs() {
   const { data: usersByRoleData } = useQuery({
     queryKey: ['rbac-users-by-role', selectedRoleId],
     queryFn: () => rbacUsersApi.list({ limit: 1000, isActive: true, roleId: selectedRoleId }),
-    enabled: isSuperAdmin() && selectedRoleId !== "all",
+    enabled: canViewAllLogs && selectedRoleId !== "all",
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  // Only super_admin (system admin) can see all logs
-  // All other users (including basic admin) only see their own logs
-  // If admin user selects a specific user, filter by that user
-  // If admin user selects a role, filter by users with that role
-  const rbacUserIdFilter = isSuperAdmin()
+  // Users with QUERY_HISTORY_VIEW_ALL or super_admin can see all logs
+  // All other users only see their own logs
+  // If user can view all logs and selects a specific user, filter by that user
+  // If user can view all logs and selects a role, filter by users with that role
+  const rbacUserIdFilter = canViewAllLogs
     ? (selectedUserId !== "all"
       ? selectedUserId
       : (selectedRoleId !== "all" && usersByRoleData?.users.length
@@ -762,7 +763,7 @@ export default function Logs() {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-3xl font-bold tracking-tight text-white">Query Logs</h1>
-                {!isSuperAdmin() && user && (
+                {!canViewAllLogs && user && (
                   <Badge variant="secondary" className="bg-blue-500/20 text-blue-300 border border-blue-500/30">
                     <User className="h-3 w-3 mr-1" />
                     Your queries only
@@ -881,7 +882,7 @@ export default function Logs() {
             </Select>
           </div>
 
-          {isSuperAdmin() && (
+          {canViewAllLogs && (
             <>
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-gray-400" />

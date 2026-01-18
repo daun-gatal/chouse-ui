@@ -22,7 +22,7 @@ import {
   Layers,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useExplorerStore, useWorkspaceStore, genTabId, useAuthStore, RBAC_PERMISSIONS } from "@/stores";
+import { useExplorerStore, useWorkspaceStore, genTabId, useAuthStore, RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { useDatabases, useSavedQueries, useSavedQueriesConnectionNames, useDebounce } from "@/hooks";
 import {
   Select,
@@ -200,6 +200,8 @@ const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description }) => 
 // Main DatabaseExplorer Component
 // ============================================
 const DatabaseExplorer: React.FC = () => {
+  const { hasPermission } = useRbacStore();
+  const canViewSavedQueries = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_VIEW);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchQueryValue, setSearchQueryValue] = useState("");
   const [connectionFilter, setConnectionFilter] = useState<string>("all");
@@ -237,15 +239,17 @@ const DatabaseExplorer: React.FC = () => {
     error: tabError 
   } = useDatabases();
 
-  // Fetch all saved queries (not filtered by connection)
+  // Fetch all saved queries (not filtered by connection) - only if user has permission
   const { 
     data: savedQueriesList = [], 
     refetch: refreshSavedQueries, 
     isFetching: isRefreshingSavedQueries 
-  } = useSavedQueries();
+  } = useSavedQueries(undefined, { enabled: canViewSavedQueries });
   
-  // Fetch unique connection names for filter dropdown
-  const { data: connectionNames = [] } = useSavedQueriesConnectionNames();
+  // Fetch unique connection names for filter dropdown - only if user has permission
+  const { data: connectionNames = [] } = useSavedQueriesConnectionNames(
+    { enabled: canViewSavedQueries }
+  );
 
   // Filter function for connection-based filtering
   const filterByConnection = useCallback(<T extends { connectionId?: string | null; connectionName?: string | null }>(items: T[]): T[] => {
@@ -350,6 +354,13 @@ const DatabaseExplorer: React.FC = () => {
   // Has any filter content
   const hasConnectionFilter = connectionFilter !== "all";
 
+  // Reset active tab if user doesn't have permission for saved queries
+  React.useEffect(() => {
+    if (activeTab === "saved" && !canViewSavedQueries) {
+      setActiveTab("databases");
+    }
+  }, [activeTab, canViewSavedQueries]);
+
   return (
     <div className="flex flex-col h-full bg-slate-900/50">
       {/* Header */}
@@ -377,13 +388,15 @@ const DatabaseExplorer: React.FC = () => {
             label="Recent"
             count={filteredRecentItems.length}
           />
-          <TabButton
-            active={activeTab === "saved"}
-            onClick={() => setActiveTab("saved")}
-            icon={<FileCode className="w-3.5 h-3.5 text-amber-400" />}
-            label="Queries"
-            count={filteredQueries.length}
-          />
+          {canViewSavedQueries && (
+            <TabButton
+              active={activeTab === "saved"}
+              onClick={() => setActiveTab("saved")}
+              icon={<FileCode className="w-3.5 h-3.5 text-amber-400" />}
+              label="Queries"
+              count={filteredQueries.length}
+            />
+          )}
         </div>
       </div>
 
@@ -432,18 +445,20 @@ const DatabaseExplorer: React.FC = () => {
                     <TooltipContent>Refresh</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <PermissionGuard requiredPermission={RBAC_PERMISSIONS.DB_CREATE}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10">
-                        <Plus className="w-3.5 h-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10">
+                      <Plus className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {hasPermission(RBAC_PERMISSIONS.DB_CREATE) && (
                       <DropdownMenuItem onClick={() => openCreateDatabaseModal()}>
                         <FolderPlus className="w-4 h-4 mr-2" />
                         New Database
                       </DropdownMenuItem>
+                    )}
+                    {hasPermission(RBAC_PERMISSIONS.TABLE_CREATE) && (
                       <DropdownMenuItem onClick={() => {
                         const firstDb = databases[0]?.name;
                         if (firstDb) openCreateTableModal(firstDb);
@@ -451,17 +466,23 @@ const DatabaseExplorer: React.FC = () => {
                         <Table2 className="w-4 h-4 mr-2" />
                         New Table
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => {
-                        const firstDb = databases[0]?.name;
-                        if (firstDb) openUploadFileModal(firstDb);
-                      }}>
-                        <FileUp className="w-4 h-4 mr-2" />
-                        Upload File
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </PermissionGuard>
+                    )}
+                    {hasPermission(RBAC_PERMISSIONS.TABLE_INSERT) && (
+                      <>
+                        {(hasPermission(RBAC_PERMISSIONS.DB_CREATE) || hasPermission(RBAC_PERMISSIONS.TABLE_CREATE)) && (
+                          <DropdownMenuSeparator />
+                        )}
+                        <DropdownMenuItem onClick={() => {
+                          const firstDb = databases[0]?.name;
+                          if (firstDb) openUploadFileModal(firstDb);
+                        }}>
+                          <FileUp className="w-4 h-4 mr-2" />
+                          Upload File
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
               {/* Database Tree */}
@@ -679,8 +700,8 @@ const DatabaseExplorer: React.FC = () => {
             </motion.div>
           )}
 
-          {/* Saved Queries Tab */}
-          {activeTab === "saved" && (
+          {/* Saved Queries Tab - Only show if user has permission */}
+          {activeTab === "saved" && canViewSavedQueries && (
             <motion.div
               key="saved"
               initial={{ opacity: 0, x: -10 }}

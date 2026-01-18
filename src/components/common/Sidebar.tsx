@@ -108,6 +108,18 @@ export default function Sidebar() {
   
   const canViewOverview = isAdmin();
   
+  const canViewExplorer = hasAnyPermission([
+    RBAC_PERMISSIONS.DB_VIEW,
+    RBAC_PERMISSIONS.TABLE_VIEW,
+  ]);
+  
+  const canViewLogs = hasAnyPermission([
+    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
+    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
+  ]);
+  
+  const canViewSettings = hasPermission(RBAC_PERMISSIONS.SETTINGS_VIEW);
+  
   const { isAuthenticated } = useRbacStore();
   const [hasFetchedPreference, setHasFetchedPreference] = useState(false);
   
@@ -199,11 +211,11 @@ export default function Sidebar() {
 
   const sidebarItems = [
     ...(canViewOverview ? [{ icon: LayoutDashboard, label: "Overview", to: "/overview" }] : []),
-    { icon: Database, label: "Explorer", to: "/explorer" },
+    ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer" }] : []),
     ...(canViewMetrics ? [{ icon: Activity, label: "Metrics", to: "/metrics" }] : []),
-    { icon: FileText, label: "Logs", to: "/logs" },
+    ...(canViewLogs ? [{ icon: FileText, label: "Logs", to: "/logs" }] : []),
     ...(canViewAdmin ? [{ icon: Shield, label: "Administration", to: "/admin" }] : []),
-    { icon: Settings, label: "Settings", to: "/settings" },
+    ...(canViewSettings ? [{ icon: Settings, label: "Settings", to: "/settings" }] : []),
   ];
 
   const handleLogout = async () => {
