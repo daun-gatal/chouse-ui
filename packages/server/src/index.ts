@@ -1,8 +1,9 @@
-import { Hono } from "hono";
+import { Hono, Context } from "hono";
 import { serve } from "bun";
 import { serveStatic } from "hono/bun";
 import api from "./routes";
 import { corsMiddleware } from "./middleware/cors";
+import { rateLimiter } from "hono-rate-limiter";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { cleanupExpiredSessions, getSessionCount } from "./services/clickhouse";
 import { initializeRbac, shutdownRbac } from "./rbac";
@@ -121,7 +122,7 @@ const app = new Hono();
 // Security headers (XSS protection, clickjacking prevention, etc.)
 app.use("*", async (c, next) => {
   await next();
-  
+
   // Only add security headers for HTML responses (not API)
   if (!c.req.path.startsWith("/api")) {
     // Prevent XSS attacks
@@ -129,17 +130,26 @@ app.use("*", async (c, next) => {
     c.header("X-Frame-Options", "SAMEORIGIN");
     c.header("X-XSS-Protection", "1; mode=block");
     c.header("Referrer-Policy", "strict-origin-when-cross-origin");
-    
+
     // Content Security Policy - prevents inline script injection
-    c.header("Content-Security-Policy", [
+    const cspDirectives = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Required for React/Vite
-      "style-src 'self' 'unsafe-inline'", // Required for styled components
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self'", // Only allow API calls to same origin
       "frame-ancestors 'self'",
-    ].join("; "));
+    ];
+
+    // In production, remove unsafe-eval
+    if (NODE_ENV === "production") {
+      cspDirectives.push("script-src 'self' 'unsafe-inline'"); // TODO: Use nonces instead of unsafe-inline
+    } else {
+      cspDirectives.push("script-src 'self' 'unsafe-inline' 'unsafe-eval'"); // Required for React/Vite dev
+    }
+
+    cspDirectives.push("style-src 'self' 'unsafe-inline'"); // Required for styled components
+
+    c.header("Content-Security-Policy", cspDirectives.join("; "));
   }
 });
 
@@ -162,6 +172,47 @@ if (NODE_ENV === "development") {
     console.log(`${c.req.method} ${c.req.path} - ${c.res.status} ${ms}ms`);
   });
 }
+
+// ============================================
+// Security Middleware (Rate Limiting & Size)
+// ============================================
+
+// 1. Request Size Limits (10MB)
+app.use('*', async (c, next) => {
+  const contentLength = c.req.header('Content-Length');
+  const maxSize = 10 * 1024 * 1024; // 10MB for JSON
+
+  if (contentLength && parseInt(contentLength) > maxSize) {
+    return c.json({ error: 'Payload too large' }, 413);
+  }
+
+  await next();
+});
+
+// 2. Rate Limiting Configuration
+
+// Login endpoints: 5 attempts per 15 minutes per IP
+app.use('/api/rbac/auth/login', rateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 5,
+  standardHeaders: true,
+  keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+}));
+
+// Query execution: 10 queries per minute per user
+// Applies to all query operations (select, insert, etc.)
+app.use('/api/query/*', rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 10,
+  keyGenerator: (c: Context) => c.get('rbacUserId') || 'unknown',
+}));
+
+// General API endpoints: 100 requests per minute per user/IP
+app.use('/api/*', rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 100,
+  keyGenerator: (c: Context) => c.get('rbacUserId') || c.req.header('X-Forwarded-For') || 'unknown',
+}));
 
 // ============================================
 // API Routes
@@ -189,7 +240,7 @@ app.notFound(async (c) => {
   if (c.req.path.startsWith("/api")) {
     return notFoundHandler(c);
   }
-  
+
   // For all other routes, serve index.html for SPA routing
   try {
     const indexPath = `${STATIC_PATH}/index.html`;
@@ -200,7 +251,7 @@ app.notFound(async (c) => {
   } catch (e) {
     // Fall through to 404
   }
-  
+
   return notFoundHandler(c);
 });
 
@@ -244,16 +295,16 @@ const server = serve({
 // Graceful shutdown handler
 async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\nReceived ${signal}, shutting down gracefully...`);
-  
+
   try {
     // 1. Stop accepting new connections
     server.stop();
     console.log('[Shutdown] Server stopped accepting new connections');
-    
+
     // 2. Clear cleanup interval
     clearInterval(cleanupInterval);
     console.log('[Shutdown] Cleanup interval cleared');
-    
+
     // 3. Close all ClickHouse sessions
     const { getSessionCount, cleanupExpiredSessions } = await import('./services/clickhouse');
     const sessionCount = getSessionCount();
@@ -262,11 +313,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
       await cleanupExpiredSessions(0);
       console.log(`[Shutdown] Closed ${sessionCount} ClickHouse session(s)`);
     }
-    
+
     // 4. Shutdown RBAC system
     await shutdownRbac();
     console.log('[Shutdown] RBAC system shut down');
-    
+
     console.log('[Shutdown] Graceful shutdown complete');
   } catch (error) {
     console.error('[Shutdown] Error during graceful shutdown:', error);

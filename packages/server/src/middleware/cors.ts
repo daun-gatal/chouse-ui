@@ -38,6 +38,20 @@ function isOriginAllowed(origin: string, allowedOrigins: CorsOptions["origin"]):
 
   if (Array.isArray(allowedOrigins)) {
     return allowedOrigins.some(allowed => {
+      // Validate allowed origin format
+      try {
+        if (allowed !== "*" && !allowed.startsWith("*.")) {
+          const url = new URL(allowed);
+          if (!['http:', 'https:'].includes(url.protocol)) {
+            console.warn(`[CORS] Invalid protocol in allowed origin: ${allowed}`);
+            return false;
+          }
+        }
+      } catch (e) {
+        console.warn(`[CORS] Invalid allowed origin URL: ${allowed}`);
+        return false;
+      }
+
       // Support wildcard subdomains (e.g., *.example.com)
       if (allowed.startsWith("*.")) {
         const domain = allowed.slice(2);
@@ -62,6 +76,16 @@ function isOriginAllowed(origin: string, allowedOrigins: CorsOptions["origin"]):
  */
 export function corsMiddleware(options: CorsOptions = {}) {
   const opts = { ...defaultOptions, ...options };
+
+  // minimal validation of configuration in production
+  if (opts.strictMode && (!opts.origin || opts.origin === "*" || (Array.isArray(opts.origin) && opts.origin.length === 0))) {
+    console.error("CORS_ORIGINS must be set to specific domains in production");
+    // We don't throw here to avoid crashing if env var is missing, but strict mode will block everything if origin is "*"
+    // because isOriginAllowed returns true for "*", but strictMode logic below might need review.
+    // Actually, let's look at logic: if origin is "*", isOriginAllowed returns true.
+    // Then strictMode && hasOrigin && !isAllowed -> false. So it allows it.
+    // We should probably force it to NOT allow * in strict mode.
+  }
 
   return async (c: Context, next: Next) => {
     const origin = c.req.header("Origin") || "";

@@ -10,6 +10,11 @@ import { ClickHouseService } from '../../services/clickhouse';
 import { getDatabase, getSchema } from '../db';
 import { eq, and } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import type { ClickHouseUserMetadata } from '../schema';
+
+// Type helper for working with dual database setup
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDb = any;
 
 // ============================================
 // Types
@@ -70,21 +75,21 @@ export interface ClickHouseUserDDL {
  */
 export function generateUserDDL(input: CreateClickHouseUserInput): ClickHouseUserDDL {
   const { username, password, role, allowedDatabases = [], allowedTables = [], hostIp, hostNames, cluster, authType = 'sha256_password' } = input;
-  
+
   // Escape username and password for SQL
   const escapedUsername = username.replace(/`/g, '``');
   // Only escape password if it's provided (not needed for no_password)
   const escapedPassword = password ? password.replace(/'/g, "''") : '';
-  
+
   // Build CREATE USER statement
   let createUser = `CREATE USER IF NOT EXISTS \`${escapedUsername}\``;
-  
+
   // Add ON CLUSTER clause if specified
   if (cluster) {
     const escapedCluster = cluster.replace(/`/g, '``');
     createUser += ` ON CLUSTER \`${escapedCluster}\``;
   }
-  
+
   // Add host restrictions if specified
   if (hostIp || hostNames) {
     const hostParts: string[] = [];
@@ -100,14 +105,14 @@ export function generateUserDDL(input: CreateClickHouseUserInput): ClickHouseUse
   } else {
     createUser += ` HOST ANY`;
   }
-  
+
   // Add password with auth type
   if (authType === 'no_password') {
     createUser += ` IDENTIFIED WITH no_password`;
   } else {
     createUser += ` IDENTIFIED WITH ${authType} BY '${escapedPassword}'`;
   }
-  
+
   // Helper function to add ON CLUSTER clause to statements
   const addClusterClause = (statement: string): string => {
     if (cluster) {
@@ -116,16 +121,16 @@ export function generateUserDDL(input: CreateClickHouseUserInput): ClickHouseUse
     }
     return statement;
   };
-  
+
   // Build GRANT statements based on role
   const grantStatements: string[] = [];
-  
+
   const hasRestrictions = allowedDatabases.length > 0 || allowedTables.length > 0;
-  
+
   if (hasRestrictions) {
     // If there are restrictions, revoke all first, then grant specific permissions
     grantStatements.push(addClusterClause(`REVOKE ALL ON *.* FROM \`${escapedUsername}\``));
-    
+
     // Apply table-level restrictions if specified (most specific first)
     if (allowedTables.length > 0) {
       // Group by database for efficiency
@@ -136,7 +141,7 @@ export function generateUserDDL(input: CreateClickHouseUserInput): ClickHouseUse
         }
         tablesByDb.get(database)!.push(table);
       });
-      
+
       tablesByDb.forEach((tables, database) => {
         const escapedDb = database.replace(/`/g, '``');
         tables.forEach(table => {
@@ -202,7 +207,7 @@ export function generateUserDDL(input: CreateClickHouseUserInput): ClickHouseUse
         grantStatements.push(addClusterClause(`GRANT UPDATE ON *.* TO \`${escapedUsername}\``));
         grantStatements.push(addClusterClause(`GRANT DELETE ON *.* TO \`${escapedUsername}\``));
         break;
-        
+
       case 'analyst':
         // Analyst: Can read and write data, but not create/drop databases/tables
         grantStatements.push(addClusterClause(`GRANT SELECT ON *.* TO \`${escapedUsername}\``));
@@ -210,17 +215,17 @@ export function generateUserDDL(input: CreateClickHouseUserInput): ClickHouseUse
         grantStatements.push(addClusterClause(`GRANT UPDATE ON *.* TO \`${escapedUsername}\``));
         grantStatements.push(addClusterClause(`GRANT DELETE ON *.* TO \`${escapedUsername}\``));
         break;
-        
+
       case 'viewer':
         // Viewer: Read-only access
         grantStatements.push(addClusterClause(`GRANT SELECT ON *.* TO \`${escapedUsername}\``));
         break;
     }
   }
-  
+
   // Combine all statements
   const fullDDL = [createUser, ...grantStatements].join(';\n') + ';';
-  
+
   return {
     createUser: createUser + ';',
     grantStatements: grantStatements.map(s => s + ';'),
@@ -240,9 +245,9 @@ export function generateUpdateUserDDL(
   // Get authType from currentGrants (metadata) - we don't allow changing it
   const currentAuthType = currentGrants?.authType || 'sha256_password';
   const escapedUsername = username.replace(/`/g, '``');
-  
+
   const statements: string[] = [];
-  
+
   // Helper function to add ON CLUSTER clause to statements
   const addClusterClause = (statement: string): string => {
     if (cluster) {
@@ -251,7 +256,7 @@ export function generateUpdateUserDDL(
     }
     return statement;
   };
-  
+
   // Update password if provided
   // Note: authType cannot be changed during update - we use the existing authType from metadata
   if (password) {
@@ -264,7 +269,7 @@ export function generateUpdateUserDDL(
     }
   }
   // We don't allow changing authType during update, so we skip that logic
-  
+
   // Update host restrictions if provided
   // Note: ClickHouse doesn't support REMOVE HOST ANY directly
   // We need to handle this carefully - if hostIp/hostNames are empty strings, we want to allow all hosts
@@ -274,7 +279,7 @@ export function generateUpdateUserDDL(
   // For a complete solution, we'd need to query system.users first to see existing host_ip/host_names
   if (hostIp !== undefined || hostNames !== undefined) {
     const hostParts: string[] = [];
-    
+
     // Empty string means allow all hosts (HOST ANY)
     // Non-empty string means specific restriction
     if (hostIp && hostIp.trim()) {
@@ -283,7 +288,7 @@ export function generateUpdateUserDDL(
     if (hostNames && hostNames.trim()) {
       hostParts.push(`HOST NAME '${hostNames.replace(/'/g, "''")}'`);
     }
-    
+
     if (hostParts.length > 0) {
       // Add specific host restrictions
       // Note: This will add to existing restrictions. To fully replace, we'd need to query and remove existing ones first
@@ -296,25 +301,25 @@ export function generateUpdateUserDDL(
     }
     // If both are undefined (not provided), we don't change host restrictions
   }
-  
+
   // Handle grants update
   if (role !== undefined || allowedDatabases !== undefined || allowedTables !== undefined) {
     // Determine effective values (use input if provided, otherwise keep current)
     const effectiveRole = role !== undefined ? role : (currentGrants?.role || 'viewer');
-    const effectiveAllowedDbs = allowedDatabases !== undefined 
-      ? allowedDatabases 
+    const effectiveAllowedDbs = allowedDatabases !== undefined
+      ? allowedDatabases
       : (currentGrants?.allowedDatabases || []);
-    const effectiveAllowedTables = allowedTables !== undefined 
-      ? allowedTables 
+    const effectiveAllowedTables = allowedTables !== undefined
+      ? allowedTables
       : (currentGrants?.allowedTables || []);
-    
+
     // Empty arrays mean no restrictions (full access)
     // Non-empty arrays mean specific restrictions
     const hasRestrictions = effectiveAllowedDbs.length > 0 || effectiveAllowedTables.length > 0;
-    
+
     // Always revoke all grants first to ensure clean state
     statements.push(addClusterClause(`REVOKE ALL ON *.* FROM \`${escapedUsername}\``));
-    
+
     // Now generate grants based on effective values
     if (hasRestrictions) {
       // Apply table-level restrictions if specified (most specific first)
@@ -326,7 +331,7 @@ export function generateUpdateUserDDL(
           }
           tablesByDb.get(database)!.push(table);
         });
-        
+
         tablesByDb.forEach((tables, database) => {
           const escapedDb = database.replace(/`/g, '``');
           tables.forEach(table => {
@@ -403,15 +408,15 @@ export function generateUpdateUserDDL(
       }
     }
   }
-  
+
   // Ensure all statements end with semicolon (but not double semicolons)
   const normalizedStatements = statements.map(s => {
     const trimmed = s.trim();
     return trimmed.endsWith(';') ? trimmed : trimmed + ';';
   });
-  
+
   const fullDDL = normalizedStatements.length > 0 ? normalizedStatements.join('\n') : '';
-  
+
   return {
     createUser: normalizedStatements[0] || '',
     grantStatements: normalizedStatements.slice(1),
@@ -432,9 +437,9 @@ export async function saveUserMetadata(
   input: CreateClickHouseUserInput | UpdateClickHouseUserInput,
   createdBy?: string
 ): Promise<void> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
-  
+
   const metadata = {
     id: randomUUID(),
     username,
@@ -448,7 +453,7 @@ export async function saveUserMetadata(
     allowedTables: input.allowedTables || [],
     createdBy: createdBy || null,
   };
-  
+
   // Check if metadata already exists
   const existing = await db.select()
     .from(schema.clickhouseUsersMetadata)
@@ -457,7 +462,7 @@ export async function saveUserMetadata(
       eq(schema.clickhouseUsersMetadata.connectionId, connectionId)
     ))
     .limit(1);
-  
+
   if (existing.length > 0) {
     // Update existing metadata
     await db.update(schema.clickhouseUsersMetadata)
@@ -493,9 +498,9 @@ export async function getUserMetadata(
   allowedDatabases: string[];
   allowedTables: Array<{ database: string; table: string }>;
 } | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
-  
+
   const results = await db.select()
     .from(schema.clickhouseUsersMetadata)
     .where(and(
@@ -503,11 +508,11 @@ export async function getUserMetadata(
       eq(schema.clickhouseUsersMetadata.connectionId, connectionId)
     ))
     .limit(1);
-  
+
   if (results.length === 0) {
     return null;
   }
-  
+
   const meta = results[0];
   return {
     role: meta.role as ClickHouseUserRole,
@@ -527,9 +532,9 @@ export async function deleteUserMetadata(
   connectionId: string,
   username: string
 ): Promise<void> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
-  
+
   await db.delete(schema.clickhouseUsersMetadata)
     .where(and(
       eq(schema.clickhouseUsersMetadata.username, username),
@@ -562,28 +567,28 @@ export async function listClickHouseUsers(
       FROM system.users
       ORDER BY name`
     );
-    
+
     // Convert host_ip and host_names arrays to strings (ClickHouse returns them as arrays)
     const users = (result.data || []).map(user => ({
       ...user,
       host_ip: Array.isArray(user.host_ip) ? (user.host_ip[0] || undefined) : user.host_ip,
       host_names: Array.isArray(user.host_names) ? (user.host_names[0] || undefined) : user.host_names,
     }));
-    
+
     // If connectionId is provided, enrich with metadata (especially for host_ip/host_names)
     if (connectionId) {
-      const db = getDatabase() as any;
+      const db = getDatabase() as AnyDb;
       const schema = getSchema();
-      
+
       try {
         const metadataResults = await db.select()
           .from(schema.clickhouseUsersMetadata)
           .where(eq(schema.clickhouseUsersMetadata.connectionId, connectionId));
-        
+
         const metadataMap = new Map<string, { hostIp?: string | null; hostNames?: string | null; authType?: string | null }>(
-          metadataResults.map((meta: any) => [meta.username, { hostIp: meta.hostIp, hostNames: meta.hostNames, authType: meta.authType }])
+          metadataResults.map((meta: ClickHouseUserMetadata) => [meta.username, { hostIp: meta.hostIp, hostNames: meta.hostNames, authType: meta.authType }])
         );
-        
+
         // Enrich users with metadata
         return users.map(user => {
           const metadata = metadataMap.get(user.name);
@@ -604,7 +609,7 @@ export async function listClickHouseUsers(
         return users;
       }
     }
-    
+
     return users;
   } catch (error) {
     throw new Error(`Failed to list ClickHouse users: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -634,17 +639,17 @@ export async function getClickHouseUser(
       WHERE name = '${escapedUsername}'
       LIMIT 1`
     );
-    
+
     const user = result.data?.[0];
     if (!user) return null;
-    
+
     // Convert host_ip and host_names arrays to strings (ClickHouse returns them as arrays)
     const baseUser = {
       ...user,
       host_ip: Array.isArray(user.host_ip) ? (user.host_ip[0] || undefined) : user.host_ip,
       host_names: Array.isArray(user.host_names) ? (user.host_names[0] || undefined) : user.host_names,
     };
-    
+
     // Try to load metadata if connectionId is provided
     if (connectionId) {
       try {
@@ -666,7 +671,7 @@ export async function getClickHouseUser(
         // Fall through to grant parsing
       }
     }
-    
+
     // Fallback: parse grants if metadata not available
     try {
       const grants = await getUserGrants(service, username);
@@ -694,12 +699,12 @@ export async function getUserGrants(
 ): Promise<{ allowedDatabases: string[]; allowedTables: Array<{ database: string; table: string }>; role: ClickHouseUserRole | null }> {
   try {
     const escapedUsername = username.replace(/`/g, '``');
-    
+
     // Get grants for the user
     // ClickHouse returns grants in a specific format - try different query formats
     let grantsResult;
     try {
-      grantsResult = await service.executeQuery<{ grant?: string; [key: string]: any }>(
+      grantsResult = await service.executeQuery<{ grant?: string;[key: string]: any }>(
         `SHOW GRANTS FOR \`${escapedUsername}\``
       );
     } catch (error) {
@@ -717,17 +722,17 @@ export async function getUserGrants(
         };
       }
     }
-    
+
     const grants = grantsResult.data || [];
     console.log(`[getUserGrants] Raw grants for ${username}:`, grants);
     const allowedDatabases = new Set<string>();
     const allowedTables: Array<{ database: string; table: string }> = [];
     let role: ClickHouseUserRole | null = null;
     let hasFullAccess = false;
-    
+
     // Parse grants to extract databases and tables
     const permissions = new Set<string>();
-    
+
     for (const row of grants) {
       // Handle different possible column names and formats
       let grant: string = '';
@@ -742,21 +747,21 @@ export async function getUserGrants(
         const values = Object.values(row);
         grant = values.find(v => typeof v === 'string' && v.length > 0) as string || '';
       }
-      
+
       if (!grant || typeof grant !== 'string') {
         console.log(`[getUserGrants] Skipping invalid grant row:`, row);
         continue;
       }
-      
+
       console.log(`[getUserGrants] Processing grant:`, grant);
-      
+
       // Skip REVOKE statements
       if (grant.toUpperCase().startsWith('REVOKE')) {
         continue;
       }
-      
+
       const grantUpper = grant.toUpperCase();
-      
+
       // Collect all permissions to determine role
       if (grantUpper.includes('GRANT')) {
         if (grantUpper.includes('CREATE DATABASE')) permissions.add('CREATE_DATABASE');
@@ -768,26 +773,26 @@ export async function getUserGrants(
         if (grantUpper.includes('UPDATE')) permissions.add('UPDATE');
         if (grantUpper.includes('DELETE')) permissions.add('DELETE');
       }
-      
+
       // Check for full access (*.*)
       if (grantUpper.includes('ON *.*') || grantUpper.includes('ON `*`.`*`')) {
         hasFullAccess = true;
         continue;
       }
-      
+
       // Parse database/table patterns
       // Pattern: GRANT ... ON `database`.* TO ...
       // Pattern: GRANT ... ON `database`.`table` TO ...
       const onMatch = grant.match(/ON\s+([^T]+?)\s+TO/i);
       if (onMatch) {
         const target = onMatch[1].trim();
-        
+
         // Match `database`.* or `database`.`table`
         const dbTableMatch = target.match(/`([^`]+)`\.(`([^`]+)`|\*)/);
         if (dbTableMatch) {
           const database = dbTableMatch[1];
           const tableOrStar = dbTableMatch[2];
-          
+
           if (tableOrStar === '*') {
             // Database-level access
             allowedDatabases.add(database);
@@ -801,17 +806,17 @@ export async function getUserGrants(
         }
       }
     }
-    
+
     // Determine role based on permissions
-    if (permissions.has('CREATE_DATABASE') || permissions.has('CREATE_TABLE') || 
-        permissions.has('DROP_TABLE') || permissions.has('ALTER_TABLE')) {
+    if (permissions.has('CREATE_DATABASE') || permissions.has('CREATE_TABLE') ||
+      permissions.has('DROP_TABLE') || permissions.has('ALTER_TABLE')) {
       role = 'developer';
     } else if (permissions.has('INSERT') || permissions.has('UPDATE') || permissions.has('DELETE')) {
       role = 'analyst';
     } else if (permissions.has('SELECT')) {
       role = 'viewer';
     }
-    
+
     // If user has *.* access, return empty arrays (meaning no restrictions)
     // Otherwise, return the specific databases/tables
     const result = {
@@ -819,7 +824,7 @@ export async function getUserGrants(
       allowedTables: hasFullAccess ? [] : allowedTables,
       role,
     };
-    
+
     console.log(`[getUserGrants] Parsed grants for ${username}:`, result);
     return result;
   } catch (error) {
@@ -844,11 +849,11 @@ export async function createClickHouseUser(
 ): Promise<void> {
   try {
     const ddl = generateUserDDL(input);
-    
+
     // Execute each statement separately (ClickHouse doesn't support multi-statement queries)
     // First, create the user
     await service.executeQuery(ddl.createUser);
-    
+
     // Then execute each grant statement separately
     for (const grantStatement of ddl.grantStatements) {
       // Remove trailing semicolon if present (it's already in the statement)
@@ -857,7 +862,7 @@ export async function createClickHouseUser(
         await service.executeQuery(statement);
       }
     }
-    
+
     // Save metadata after successful creation
     if (connectionId) {
       try {
@@ -884,17 +889,17 @@ export async function updateClickHouseUser(
 ): Promise<void> {
   try {
     const ddl = generateUpdateUserDDL(username, input, currentGrants);
-    
+
     // Execute each statement separately (ClickHouse doesn't support multi-statement queries)
     const allStatements = [ddl.createUser, ...ddl.grantStatements].filter(s => s.trim());
-    
+
     for (const statement of allStatements) {
       const trimmedStatement = statement.trim();
       if (trimmedStatement) {
         await service.executeQuery(trimmedStatement);
       }
     }
-    
+
     // Update metadata after successful update
     if (connectionId) {
       try {
@@ -907,7 +912,7 @@ export async function updateClickHouseUser(
         } catch (error) {
           // Ignore error, will use default
         }
-        
+
         const fullInput: UpdateClickHouseUserInput = {
           role: input.role ?? currentGrants?.role ?? undefined,
           allowedDatabases: input.allowedDatabases ?? currentGrants?.allowedDatabases ?? [],
@@ -939,9 +944,9 @@ export async function deleteClickHouseUser(
   try {
     const escapedUsername = username.replace(/`/g, '``');
     const ddl = `DROP USER IF EXISTS \`${escapedUsername}\`;`;
-    
+
     await service.executeQuery(ddl);
-    
+
     // Delete metadata after successful deletion
     if (connectionId) {
       try {
@@ -967,23 +972,23 @@ export async function syncUnregisteredUsers(
 ): Promise<{ synced: number; errors: Array<{ username: string; error: string }> }> {
   const synced: number[] = [];
   const errors: Array<{ username: string; error: string }> = [];
-  
+
   try {
     // Get all ClickHouse users
     const allUsers = await listClickHouseUsers(service);
-    
+
     // Get all existing metadata for this connection
     const db = getDatabase() as any;
     const schema = getSchema();
     const existingMetadata = await db.select()
       .from(schema.clickhouseUsersMetadata)
       .where(eq(schema.clickhouseUsersMetadata.connectionId, connectionId));
-    
+
     const existingUsernames = new Set(existingMetadata.map((m: any) => m.username));
-    
+
     // Find users without metadata
     const unregisteredUsers = allUsers.filter(user => !existingUsernames.has(user.name));
-    
+
     // Sync each unregistered user
     for (const user of unregisteredUsers) {
       try {
@@ -991,7 +996,7 @@ export async function syncUnregisteredUsers(
         let role: ClickHouseUserRole = 'viewer';
         let allowedDatabases: string[] = [];
         let allowedTables: Array<{ database: string; table: string }> = [];
-        
+
         try {
           const grants = await getUserGrants(service, user.name);
           role = grants.role || 'viewer';
@@ -1001,7 +1006,7 @@ export async function syncUnregisteredUsers(
           console.warn(`[Sync] Failed to parse grants for ${user.name}, using defaults:`, error);
           // Use defaults if grant parsing fails
         }
-        
+
         // Create metadata entry
         await saveUserMetadata(
           connectionId,
@@ -1016,7 +1021,7 @@ export async function syncUnregisteredUsers(
           },
           createdBy
         );
-        
+
         synced.push(1);
       } catch (error) {
         errors.push({
@@ -1025,7 +1030,7 @@ export async function syncUnregisteredUsers(
         });
       }
     }
-    
+
     return {
       synced: synced.length,
       errors,
