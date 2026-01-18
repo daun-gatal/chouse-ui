@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { queryKeys } from './useQuery';
+import { queryKeys, useConfig, useDatabases, useTableDetails, useSystemStats, useIntellisense } from './useQuery';
 
 describe('useQuery', () => {
   describe('queryKeys', () => {
@@ -45,31 +45,26 @@ describe('useQuery', () => {
 
   describe('hook exports', () => {
     it('should export useConfig', () => {
-      const { useConfig } = require('./useQuery');
       expect(useConfig).toBeDefined();
       expect(typeof useConfig).toBe('function');
     });
 
     it('should export useDatabases', () => {
-      const { useDatabases } = require('./useQuery');
       expect(useDatabases).toBeDefined();
       expect(typeof useDatabases).toBe('function');
     });
 
     it('should export useTableDetails', () => {
-      const { useTableDetails } = require('./useQuery');
       expect(useTableDetails).toBeDefined();
       expect(typeof useTableDetails).toBe('function');
     });
 
     it('should export useSystemStats', () => {
-      const { useSystemStats } = require('./useQuery');
       expect(useSystemStats).toBeDefined();
       expect(typeof useSystemStats).toBe('function');
     });
 
     it('should export useIntellisense', () => {
-      const { useIntellisense } = require('./useQuery');
       expect(useIntellisense).toBeDefined();
       expect(typeof useIntellisense).toBe('function');
     });
