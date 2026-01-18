@@ -10,6 +10,9 @@ import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import { Database } from 'bun:sqlite';
 import postgres from 'postgres';
+import { existsSync } from 'fs';
+import { mkdir } from 'fs/promises';
+import { dirname } from 'path';
 
 import * as sqliteSchema from '../schema/sqlite';
 import * as postgresSchema from '../schema/postgres';
@@ -58,6 +61,122 @@ let sqliteClient: Database | null = null;
 let postgresClient: ReturnType<typeof postgres> | null = null;
 
 /**
+ * Parse PostgreSQL URL to extract database name and connection details
+ */
+function parsePostgresUrl(url: string): {
+  protocol: string;
+  username: string;
+  password: string;
+  host: string;
+  port: number;
+  database: string;
+  originalUrl: string;
+} {
+  try {
+    const urlObj = new URL(url);
+    const database = urlObj.pathname.slice(1); // Remove leading '/'
+    
+    return {
+      protocol: urlObj.protocol,
+      username: urlObj.username,
+      password: urlObj.password,
+      host: urlObj.hostname,
+      port: parseInt(urlObj.port || '5432', 10),
+      database: database || 'postgres',
+      originalUrl: url,
+    };
+  } catch (error) {
+    throw new Error(`[RBAC] Invalid PostgreSQL URL format: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Create a PostgreSQL URL with a different database name
+ */
+function createPostgresUrlWithDb(
+  originalUrl: string,
+  newDatabase: string
+): string {
+  const parsed = parsePostgresUrl(originalUrl);
+  const urlObj = new URL(originalUrl);
+  urlObj.pathname = `/${newDatabase}`;
+  return urlObj.toString();
+}
+
+/**
+ * Escape PostgreSQL identifier (database name, table name, etc.)
+ * Wraps identifier in double quotes and escapes any existing quotes
+ */
+function escapePostgresIdentifier(identifier: string): string {
+  // Replace double quotes with escaped double quotes and wrap in quotes
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Ensure PostgreSQL database exists, create it if it doesn't
+ */
+async function ensurePostgresDatabaseExists(postgresUrl: string): Promise<void> {
+  const parsed = parsePostgresUrl(postgresUrl);
+  
+  // If database name is 'postgres', it always exists
+  if (parsed.database === 'postgres') {
+    return;
+  }
+  
+  // Connect to default 'postgres' database to check/create target database
+  const adminUrl = createPostgresUrlWithDb(postgresUrl, 'postgres');
+  const adminClient = postgres(adminUrl, {
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
+  
+  try {
+    // Check if database exists
+    const result = await adminClient`
+      SELECT 1 FROM pg_database WHERE datname = ${parsed.database}
+    `;
+    
+    if (result.length === 0) {
+      // Database doesn't exist, create it
+      console.log(`[RBAC] Creating PostgreSQL database: ${parsed.database}`);
+      const escapedDbName = escapePostgresIdentifier(parsed.database);
+      await adminClient.unsafe(`CREATE DATABASE ${escapedDbName}`);
+      console.log(`[RBAC] PostgreSQL database created: ${parsed.database}`);
+    } else {
+      console.log(`[RBAC] PostgreSQL database already exists: ${parsed.database}`);
+    }
+  } finally {
+    await adminClient.end();
+  }
+}
+
+/**
+ * Ensure SQLite database file and directory exist
+ */
+async function ensureSqliteDatabaseExists(sqlitePath: string): Promise<void> {
+  const dir = dirname(sqlitePath);
+  
+  // Create directory if it doesn't exist (skip if it's current directory or root)
+  if (dir && dir !== '.' && dir !== './' && dir !== '/' && !existsSync(dir)) {
+    try {
+      await mkdir(dir, { recursive: true });
+      console.log(`[RBAC] Created SQLite directory: ${dir}`);
+    } catch (error) {
+      console.warn(`[RBAC] Warning: Could not create SQLite directory ${dir}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+  
+  // The database file will be created automatically when we open it
+  // Log status for user information
+  if (!existsSync(sqlitePath)) {
+    console.log(`[RBAC] SQLite database file will be created: ${sqlitePath}`);
+  } else {
+    console.log(`[RBAC] SQLite database file already exists: ${sqlitePath}`);
+  }
+}
+
+/**
  * Initialize the database connection
  */
 export async function initializeDatabase(config?: DatabaseConfig): Promise<RbacDb> {
@@ -68,14 +187,11 @@ export async function initializeDatabase(config?: DatabaseConfig): Promise<RbacD
   }
 
   if (cfg.type === 'sqlite') {
-    // Ensure data directory exists
+    // Ensure SQLite database file and directory exist
     const path = cfg.sqlitePath || './data/rbac.db';
-    const dir = path.substring(0, path.lastIndexOf('/'));
-    if (dir) {
-      await Bun.write(dir + '/.gitkeep', '');
-    }
+    await ensureSqliteDatabaseExists(path);
     
-    // Create SQLite connection
+    // Create SQLite connection (file is created automatically if it doesn't exist)
     sqliteClient = new Database(path);
     sqliteClient.exec('PRAGMA journal_mode = WAL;');
     sqliteClient.exec('PRAGMA foreign_keys = ON;');
@@ -85,6 +201,14 @@ export async function initializeDatabase(config?: DatabaseConfig): Promise<RbacD
   } else if (cfg.type === 'postgres') {
     if (!cfg.postgresUrl) {
       throw new Error('[RBAC] PostgreSQL URL is required. Set RBAC_POSTGRES_URL or DATABASE_URL');
+    }
+    
+    // Ensure PostgreSQL database exists, create it if it doesn't
+    try {
+      await ensurePostgresDatabaseExists(cfg.postgresUrl);
+    } catch (error) {
+      console.warn(`[RBAC] Warning: Could not ensure PostgreSQL database exists: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.warn(`[RBAC] Attempting to connect anyway...`);
     }
     
     // Create PostgreSQL connection
