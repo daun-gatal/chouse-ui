@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.7.5] - 2026-01-18
+
+### Added
+
+#### Comprehensive Server Test Infrastructure
+- **187 Unit Tests**: Comprehensive test coverage across server codebase (96.4% pass rate)
+  - Services: 49 tests (RBAC, ClickHouse, JWT, passwords, etc.)
+  - Middleware: 48 tests (CORS, error handling, SQL parsing, data access)
+  - RBAC Core: 24 tests (DB initialization, auth middleware, schema)
+  - Routes: 21 tests (config, explorer, metrics, query)
+  - RBAC Routes: 45 tests (auth, users, roles, audit, etc.)
+
+- **Isolated Test Runner**: Custom shell script (`scripts/test-isolated-server.sh`) for complete test isolation
+  - Runs each test file independently to prevent mock leakage
+  - Shows running success rate (e.g., "5/5 (100%)")
+  - Color-coded output with pass/fail indicators
+  - 100% test pass rate with isolated execution
+
+- **CI Integration**: Automated testing in GitHub Actions workflow
+  - Runs on every push/PR to main/develop branches
+  - Validates TypeScript compilation
+  - Executes full test suite with isolation
+  - Ensures code quality before merging
+
+- **Test Scripts**: Added npm scripts for different test scenarios
+  - `test` - Run all tests (quick feedback)
+  - `test:coverage` - Run with coverage reports
+  - `test:isolated` - Run with complete isolation (for CI)
+  - `typecheck` - TypeScript validation
+
+### Fixed
+
+- **Rate Limiter Configuration** (Issue #30): Fixed aggressive rate limiting causing 429 errors
+  - Increased login attempts: 5 → 10 per 15 minutes
+  - Increased query endpoints: 10 → 100 per minute
+  - Increased general API: 100 → 300 per minute
+  - Users no longer experience rate limit errors during normal usage
+
+- **Type Safety Improvements** (Issue #31): Enhanced TypeScript type safety across server
+  - All tests include proper type checking
+  - Improved error handling with typed errors
+  - Better IDE support with stricter types
+  - Reduced runtime errors through compile-time validation
+
+### Changed
+
+#### Project Organization
+- **Centralized Scripts**: Moved test scripts to `/scripts` directory for monorepo organization
+  - Renamed to `test-isolated-server.sh` for clarity
+  - Script auto-navigates to packages/server
+  - Prepared structure for future frontend tests
+
+#### Testing Infrastructure
+- **Mock Isolation**: Tests run file-by-file to prevent mock leakage between test suites
+- **Coverage Reporting**: Added Codecov integration for tracking test coverage over time
+- **CI Workflow**: Updated to use isolated test runner for reliability
+
+### Testing
+
+- Created comprehensive test suite covering:
+  - JWT token generation and verification
+  - Password hashing and validation
+  - RBAC middleware and permissions
+  - Route authentication and authorization
+  - Database initialization and migrations
+  - SQL parsing and injection prevention
+  - Error handling and formatting
+  - CORS policy enforcement
+
+### Documentation
+
+- Added test execution instructions to development workflow
+- Documented known test limitations (saved-queries mock issue)
+- Updated CI/CD documentation with test integration details
+
 ## [v2.7.4] - 2026-01-18
 
 ### Added
