@@ -55,11 +55,7 @@ mock.module("../rbac/db/index", () => ({
 import savedQueriesRouter from "./saved-queries";
 import { errorHandler } from "../middleware/error";
 
-// SKIP: Known issue with bun:test mock.module resolution
-// The JWT mock is not being applied correctly, causing 401 errors
-// The actual routes work correctly - this is purely a test mocking issue
-// See: test_results_summary.md for details
-describe.skip("Saved Queries Routes", () => {
+describe("Saved Queries Routes", () => {
     let app: Hono;
 
     beforeEach(() => {

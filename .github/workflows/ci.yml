@@ -73,23 +73,9 @@ jobs:
         working-directory: ./packages/server
         run: bun install
 
-      - name: Run Server Tests
+      - name: Run Server Tests (Isolated)
         working-directory: ./packages/server
-        run: bun run test:ci
-
-      - name: Generate Coverage Report
-        if: success()
-        working-directory: ./packages/server
-        run: bun test --coverage --coverage-reporter=text
-
-      - name: Upload Coverage
-        if: success()
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./packages/server/coverage/coverage-final.json
-          flags: server
-          name: server-coverage
-        continue-on-error: true
+        run: ./test-isolated.sh
 
   build:
     name: Build

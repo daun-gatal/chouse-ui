@@ -52,8 +52,7 @@ describe("RBAC Audit Routes", () => {
     });
 
     describe("GET /audit", () => {
-        // SKIP: Mock leakage issue - fix in future iteration
-        it.skip("should list audit logs for authorized user", async () => {
+        it("should list audit logs for authorized user", async () => {
             mockGetAuditLogs.mockResolvedValue({ logs: [], total: 0 });
 
             const res = await app.request("/audit", {
@@ -64,8 +63,7 @@ describe("RBAC Audit Routes", () => {
             expect(mockGetAuditLogs).toHaveBeenCalled();
         });
 
-        // SKIP: Mock leakage issue - fix in future iteration
-        it.skip("should restrict user to own logs if no audit:view permission", async () => {
+        it("should restrict user to own logs if no audit:view permission", async () => {
             mockTokenPayload.permissions = []; // No full view
             mockTokenPayload.sub = 'u1';
             mockGetAuditLogs.mockResolvedValue({ logs: [], total: 0 });
@@ -80,8 +78,7 @@ describe("RBAC Audit Routes", () => {
             expect(mockGetAuditLogs).toHaveBeenCalledWith(expect.objectContaining({ userId: "u1" }));
         });
 
-        // SKIP: Mock leakage issue - fix in future iteration
-        it.skip("should deny if user tries to view others logs without permission", async () => {
+        it("should deny if user tries to view others logs without permission", async () => {
             mockTokenPayload.permissions = [];
             mockTokenPayload.sub = 'u1';
 
