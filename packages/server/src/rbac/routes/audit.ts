@@ -41,14 +41,14 @@ const ListAuditLogsSchema = z.object({
  */
 auditRoutes.get('/', zValidator('query', ListAuditLogsSchema), async (c) => {
   // First ensure user is authenticated
-  await rbacAuthMiddleware(c, async () => {});
-  
+  await rbacAuthMiddleware(c, async () => { });
+
   const userId = c.get('rbacUserId');
   const permissions = c.get('rbacPermissions');
   const hasAuditView = permissions.includes(PERMISSIONS.AUDIT_VIEW);
-  
+
   const query = c.req.valid('query');
-  
+
   // If user doesn't have AUDIT_VIEW permission, they can only view their own logs
   let effectiveUserId = query.userId;
   if (!hasAuditView) {
@@ -60,12 +60,12 @@ auditRoutes.get('/', zValidator('query', ListAuditLogsSchema), async (c) => {
     // Force userId to be the current user's ID
     effectiveUserId = userId;
   }
-  
+
   // Validate userId format if provided
   if (effectiveUserId && typeof effectiveUserId !== 'string') {
     throw AppError.badRequest('Invalid userId format');
   }
-  
+
   let result;
   try {
     result = await getAuditLogs({
@@ -106,7 +106,7 @@ auditRoutes.get('/actions', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c)
 
   return c.json({
     success: true,
-    data: { 
+    data: {
       actions,
       groupedActions,
     },
@@ -119,7 +119,7 @@ auditRoutes.get('/actions', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c)
  */
 auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidator('query', ListAuditLogsSchema), async (c) => {
   const query = c.req.valid('query');
-  
+
   // Get all logs for export (with higher limit)
   const result = await getAuditLogs({
     page: 1,
@@ -150,8 +150,8 @@ auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidat
 
   c.header('Content-Type', 'text/csv');
   c.header('Content-Disposition', `attachment; filename="audit-logs-${new Date().toISOString().split('T')[0]}.csv"`);
-  
-  return c.text(csv);
+
+  return c.body(csv);
 });
 
 /**
@@ -161,7 +161,7 @@ auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidat
 auditRoutes.get('/stats', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c) => {
   // Get logs for the last 24 hours for stats
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  
+
   const result = await getAuditLogs({
     page: 1,
     limit: 10000,
@@ -180,10 +180,10 @@ auditRoutes.get('/stats', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c) =
   for (const log of result.logs) {
     // By action
     stats.byAction[log.action] = (stats.byAction[log.action] || 0) + 1;
-    
+
     // By status
     stats.byStatus[log.status] = (stats.byStatus[log.status] || 0) + 1;
-    
+
     // By hour
     const hour = new Date(log.createdAt).getHours().toString().padStart(2, '0') + ':00';
     stats.byHour[hour] = (stats.byHour[hour] || 0) + 1;
