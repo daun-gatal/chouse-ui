@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.7.4] - 2026-01-18
+
+### Added
+
+- **Automatic Database Creation**: Added automatic database creation for PostgreSQL and SQLite metadata databases:
+  - **SQLite**: Automatically creates the database directory and file if they don't exist
+  - **PostgreSQL**: Automatically creates the database if it doesn't exist (requires `CREATEDB` privilege)
+  - Eliminates the need for manual database setup during initial configuration
+  - Graceful error handling with informative logging
+
+- **Comprehensive Permission-Based UI Hiding**: All UI elements are now hidden based on user permissions:
+  - **Metrics Page**: Advanced tabs (Performance, Storage, Merges, Errors) are hidden for users with only `METRICS_VIEW` permission
+  - **Home/Overview Page**: Quick Actions section hides actions based on permissions (Explorer, Metrics, Logs, Admin)
+  - **Explorer Page**: Database/table operation dropdowns show only actions user has permission for:
+    - "New Database" requires `DB_CREATE`
+    - "New Table" requires `TABLE_CREATE`
+    - "Upload File" requires `TABLE_INSERT`
+  - **Logs Page**: User/role filter dropdowns now check `QUERY_HISTORY_VIEW_ALL` permission (not just super admin)
+  - **Saved Queries**: All saved query features are permission-gated:
+    - DataExplorer "Queries" tab requires `SAVED_QUERIES_VIEW`
+    - HomeTab saved queries section requires `SAVED_QUERIES_VIEW`
+    - SqlEditor save button requires `SAVED_QUERIES_CREATE` or `SAVED_QUERIES_UPDATE`
+  - Users can only see and access features they have permission for, improving security and UX
+
+### Documentation
+
+- Added PostgreSQL permission requirements to README with SQL examples for granting `CREATEDB` privilege
+- Added troubleshooting entry for PostgreSQL permission issues
+
 ## [v2.7.3] - 2026-01-18
 
 ### Added
