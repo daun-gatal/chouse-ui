@@ -1,14 +1,21 @@
 import { useMemo } from "react";
-import { useWorkspaceStore, genTabId, useAuthStore } from "@/stores";
+import { useWorkspaceStore, genTabId, useAuthStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { useSavedQueries } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FilePlus, Save, Clock, ArrowRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const HomeTab = () => {
   const { addTab, tabs } = useWorkspaceStore();
   const { activeConnectionId } = useAuthStore();
-  const { data: savedQueries = [] } = useSavedQueries(activeConnectionId ?? undefined);
+  const { hasPermission } = useRbacStore();
+  const canViewSavedQueries = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_VIEW);
+  // Only fetch saved queries if user has permission
+  const { data: savedQueries = [] } = useSavedQueries(
+    activeConnectionId ?? undefined,
+    { enabled: canViewSavedQueries }
+  );
 
   const recentTabs = useMemo(() => {
     return tabs
@@ -60,7 +67,7 @@ const HomeTab = () => {
           </Button>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className={cn("grid gap-6", canViewSavedQueries ? "md:grid-cols-2" : "md:grid-cols-1")}>
           {/* Recent Queries */}
           <div className="rounded-xl border border-white/10 bg-black/40 p-4">
             <div className="flex items-center gap-2 mb-4">
@@ -99,41 +106,43 @@ const HomeTab = () => {
             </ScrollArea>
           </div>
 
-          {/* Saved Queries */}
-          <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Save className="h-5 w-5 text-blue-400" />
-              <h2 className="text-lg font-semibold text-white/90">
-                Saved Queries
-              </h2>
+          {/* Saved Queries - Only show if user has permission */}
+          {canViewSavedQueries && (
+            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Save className="h-5 w-5 text-blue-400" />
+                <h2 className="text-lg font-semibold text-white/90">
+                  Saved Queries
+                </h2>
+              </div>
+              <ScrollArea className="h-[200px]">
+                {!activeConnectionId ? (
+                  <p className="text-center text-gray-500 py-8">
+                    Connect to a server to view saved queries
+                  </p>
+                ) : savedQueries.length > 0 ? (
+                  <div className="space-y-2">
+                    {savedQueries.slice(0, 5).map((query) => (
+                      <div
+                        key={query.id}
+                        className="p-3 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors flex items-center justify-between group"
+                        onClick={() => handleOpenSavedQuery(query)}
+                      >
+                        <span className="text-sm text-gray-300 truncate flex-1">
+                          {query.name}
+                        </span>
+                        <ArrowRight className="h-4 w-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 py-8">
+                    No saved queries yet
+                  </p>
+                )}
+              </ScrollArea>
             </div>
-            <ScrollArea className="h-[200px]">
-              {!activeConnectionId ? (
-                <p className="text-center text-gray-500 py-8">
-                  Connect to a server to view saved queries
-                </p>
-              ) : savedQueries.length > 0 ? (
-                <div className="space-y-2">
-                  {savedQueries.slice(0, 5).map((query) => (
-                    <div
-                      key={query.id}
-                      className="p-3 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors flex items-center justify-between group"
-                      onClick={() => handleOpenSavedQuery(query)}
-                    >
-                      <span className="text-sm text-gray-300 truncate flex-1">
-                        {query.name}
-                      </span>
-                      <ArrowRight className="h-4 w-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-center text-gray-500 py-8">
-                  No saved queries yet
-                </p>
-              )}
-            </ScrollArea>
-          </div>
+          )}
         </div>
       </div>
     </div>

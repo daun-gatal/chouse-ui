@@ -49,6 +49,7 @@ import { Progress } from "@/components/ui/progress";
 import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
 import { useMetrics, useProductionMetrics } from "@/hooks";
 import { cn } from "@/lib/utils";
+import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
 interface StatCardProps {
   title: string;
@@ -239,10 +240,20 @@ const getIntervalMinutes = (timeRange: string): number => {
 };
 
 export default function Metrics() {
+  const { hasPermission } = useRbacStore();
+  const hasAdvancedMetrics = hasPermission(RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED);
+  
   const [refreshInterval, setRefreshInterval] = useState<number>(0);
   const [timeRange, setTimeRange] = useState<string>("1h");
   const [activeTab, setActiveTab] = useState("overview");
   const [isRefreshCooldown, setIsRefreshCooldown] = useState(false);
+  
+  // Ensure users without advanced permission can't access advanced tabs
+  React.useEffect(() => {
+    if (!hasAdvancedMetrics && activeTab !== "overview") {
+      setActiveTab("overview");
+    }
+  }, [hasAdvancedMetrics, activeTab]);
 
   const intervalMinutes = getIntervalMinutes(timeRange);
   
@@ -493,22 +504,26 @@ export default function Metrics() {
               <BarChart3 className="h-4 w-4" />
               Overview
             </TabsTrigger>
-            <TabsTrigger value="performance" className="data-[state=active]:bg-white/10 gap-2">
-              <Gauge className="h-4 w-4" />
-              Performance
-            </TabsTrigger>
-            <TabsTrigger value="storage" className="data-[state=active]:bg-white/10 gap-2">
-              <HardDrive className="h-4 w-4" />
-              Storage
-            </TabsTrigger>
-            <TabsTrigger value="merges" className="data-[state=active]:bg-white/10 gap-2">
-              <GitMerge className="h-4 w-4" />
-              Merges
-            </TabsTrigger>
-            <TabsTrigger value="errors" className="data-[state=active]:bg-white/10 gap-2">
-              <AlertCircle className="h-4 w-4" />
-              Errors
-            </TabsTrigger>
+            {hasAdvancedMetrics && (
+              <>
+                <TabsTrigger value="performance" className="data-[state=active]:bg-white/10 gap-2">
+                  <Gauge className="h-4 w-4" />
+                  Performance
+                </TabsTrigger>
+                <TabsTrigger value="storage" className="data-[state=active]:bg-white/10 gap-2">
+                  <HardDrive className="h-4 w-4" />
+                  Storage
+                </TabsTrigger>
+                <TabsTrigger value="merges" className="data-[state=active]:bg-white/10 gap-2">
+                  <GitMerge className="h-4 w-4" />
+                  Merges
+                </TabsTrigger>
+                <TabsTrigger value="errors" className="data-[state=active]:bg-white/10 gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  Errors
+                </TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           {/* Overview Tab */}
@@ -593,8 +608,9 @@ export default function Metrics() {
             </div>
           </TabsContent>
 
-          {/* Performance Tab */}
-          <TabsContent value="performance" className="space-y-4">
+          {/* Performance Tab - Advanced only */}
+          {hasAdvancedMetrics && (
+            <TabsContent value="performance" className="space-y-4">
             {/* Latency Cards */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <StatCard
@@ -729,9 +745,11 @@ export default function Metrics() {
               />
             </div>
           </TabsContent>
+          )}
 
-          {/* Storage Tab */}
-          <TabsContent value="storage" className="space-y-4">
+          {/* Storage Tab - Advanced only */}
+          {hasAdvancedMetrics && (
+            <TabsContent value="storage" className="space-y-4">
             {/* Loading State */}
             {prodLoading && (
               <motion.div
@@ -899,9 +917,11 @@ export default function Metrics() {
               </motion.div>
             )}
           </TabsContent>
+          )}
 
-          {/* Merges Tab */}
-          <TabsContent value="merges" className="space-y-4">
+          {/* Merges Tab - Advanced only */}
+          {hasAdvancedMetrics && (
+            <TabsContent value="merges" className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <StatCard
                 title="Active Merges"
@@ -1031,9 +1051,11 @@ export default function Metrics() {
               </motion.div>
             )}
           </TabsContent>
+          )}
 
-          {/* Errors Tab */}
-          <TabsContent value="errors" className="space-y-4">
+          {/* Errors Tab - Advanced only */}
+          {hasAdvancedMetrics && (
+            <TabsContent value="errors" className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <StatCard
                 title="Failed Queries"
@@ -1127,6 +1149,7 @@ export default function Metrics() {
               </motion.div>
             )}
           </TabsContent>
+          )}
         </Tabs>
 
         {/* Quick Actions */}
