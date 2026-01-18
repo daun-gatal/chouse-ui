@@ -13,13 +13,21 @@
     "rbac:migrate": "bun run src/rbac/cli.ts migrate",
     "rbac:seed": "bun run src/rbac/cli.ts seed",
     "rbac:reset": "bun run src/rbac/cli.ts reset",
-    "rbac:version": "bun run src/rbac/cli.ts version"
+    "rbac:version": "bun run src/rbac/cli.ts version",
+    "test": "bun test",
+    "test:ci": "bun run test:services && bun run test:middleware && bun run test:rbac-core && bun test src/routes/config.test.ts src/routes/explorer.test.ts src/routes/index.test.ts src/routes/metrics.test.ts src/routes/query.test.ts && bun test src/rbac/routes/auth.test.ts src/rbac/routes/users.test.ts src/rbac/routes/roles.test.ts src/rbac/routes/audit.test.ts src/rbac/routes/dataAccess.test.ts src/rbac/routes/userPreferences.test.ts src/rbac/routes/index.test.ts",
+    "test:coverage": "bun test --coverage",
+    "test:services": "bun test src/rbac/services/*.test.ts src/services/*.test.ts",
+    "test:middleware": "bun test src/middleware/*.test.ts src/utils/*.test.ts",
+    "test:rbac-core": "bun test src/rbac/db/*.test.ts src/rbac/middleware/*.test.ts src/rbac/schema/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@clickhouse/client": "^1.16.0",
     "@hono/zod-validator": "^0.7.6",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.11.4",
+    "hono-rate-limiter": "^0.5.3",
     "jose": "^5.9.6",
     "node-sql-parser": "^5.3.13",
     "postgres": "^3.4.5",
