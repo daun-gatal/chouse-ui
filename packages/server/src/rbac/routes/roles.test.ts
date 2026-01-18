@@ -153,9 +153,7 @@ describe("RBAC Roles Routes", () => {
             expect(mockUpdateRole).not.toHaveBeenCalled();
         });
 
-
-        // SKIP: Mock leakage issue with role checking - fix in future iteration
-        it.skip("should allow updating system role for superadmin", async () => {
+        it("should allow updating system role for superadmin", async () => {
             mockGetRoleById.mockResolvedValue({ id: "sys1", isSystem: true });
             mockUpdateRole.mockResolvedValue({ id: "sys1" });
             mockTokenPayload.roles = ['super_admin']; // Elevate privilege
