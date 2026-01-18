@@ -194,7 +194,7 @@ app.use('*', async (c, next) => {
 // Login endpoints: 5 attempts per 15 minutes per IP
 app.use('/api/rbac/auth/login', rateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 5,
+  limit: 10, // 10 attempts per 15 minutes
   standardHeaders: true,
   keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
 }));
@@ -203,14 +203,14 @@ app.use('/api/rbac/auth/login', rateLimiter({
 // Applies to all query operations (select, insert, etc.)
 app.use('/api/query/*', rateLimiter({
   windowMs: 60 * 1000,
-  limit: 10,
+  limit: 100, // 100 queries per minute
   keyGenerator: (c: Context) => c.get('rbacUserId') || 'unknown',
 }));
 
 // General API endpoints: 100 requests per minute per user/IP
 app.use('/api/*', rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  limit: 100,
+  limit: 300, // 300 requests per minute
   keyGenerator: (c: Context) => c.get('rbacUserId') || c.req.header('X-Forwarded-For') || 'unknown',
 }));
 
