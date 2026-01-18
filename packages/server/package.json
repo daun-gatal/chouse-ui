@@ -13,13 +13,16 @@
     "rbac:migrate": "bun run src/rbac/cli.ts migrate",
     "rbac:seed": "bun run src/rbac/cli.ts seed",
     "rbac:reset": "bun run src/rbac/cli.ts reset",
-    "rbac:version": "bun run src/rbac/cli.ts version"
+    "rbac:version": "bun run src/rbac/cli.ts version",
+    "test:isolated": "../../scripts/test-isolated-server.sh",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@clickhouse/client": "^1.16.0",
     "@hono/zod-validator": "^0.7.6",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.11.4",
+    "hono-rate-limiter": "^0.5.3",
     "jose": "^5.9.6",
     "node-sql-parser": "^5.3.13",
     "postgres": "^3.4.5",

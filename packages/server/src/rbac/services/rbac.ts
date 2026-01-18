@@ -32,6 +32,10 @@ import type {
   UpdateRoleInput,
 } from '../schema';
 
+// Type helper for working with dual database setup
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDb = any;
+
 // ============================================
 // User Management
 // ============================================
@@ -43,7 +47,7 @@ export async function createUser(
   input: CreateUserInput,
   createdBy?: string
 ): Promise<UserResponse> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const id = randomUUID();
   const now = new Date();
@@ -70,7 +74,7 @@ export async function createUser(
       .from(schema.roles)
       .where(eq(schema.roles.isDefault, true))
       .limit(1);
-    
+
     if (defaultRole.length > 0) {
       roleIds.push(defaultRole[0].id);
     }
@@ -95,7 +99,7 @@ export async function createUser(
  * Get user by ID with roles and permissions
  */
 export async function getUserById(id: string): Promise<UserResponse | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const user = await db.select()
@@ -112,7 +116,7 @@ export async function getUserById(id: string): Promise<UserResponse | null> {
  * Get user by email
  */
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const user = await db.select()
@@ -127,7 +131,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
  * Get user by username
  */
 export async function getUserByUsername(username: string): Promise<User | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const user = await db.select()
@@ -142,7 +146,7 @@ export async function getUserByUsername(username: string): Promise<User | null> 
  * Get user by email or username (for login)
  */
 export async function getUserByEmailOrUsername(identifier: string): Promise<User | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const normalized = identifier.toLowerCase();
 
@@ -166,7 +170,7 @@ export async function updateUser(
   id: string,
   input: UpdateUserInput
 ): Promise<UserResponse | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const now = new Date();
 
@@ -188,7 +192,7 @@ export async function updateUser(
   if (input.roleIds !== undefined) {
     // Remove existing roles
     await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, id));
-    
+
     // Add new roles
     if (input.roleIds.length > 0) {
       await db.insert(schema.userRoles).values(
@@ -212,7 +216,7 @@ export async function updateUserPassword(
   id: string,
   newPassword: string
 ): Promise<void> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const passwordHash = await hashPassword(newPassword);
 
@@ -229,7 +233,7 @@ export async function updateUserPassword(
  * Delete user (soft delete by deactivating)
  */
 export async function deleteUser(id: string): Promise<void> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   // Check if user is a system user
@@ -257,7 +261,7 @@ export async function listUsers(options: {
   roleId?: string;
   isActive?: boolean;
 } = {}): Promise<{ users: UserResponse[]; total: number }> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const page = options.page || 1;
   const limit = Math.min(options.limit || 20, 1000); // Increased max limit to support role filtering
@@ -270,9 +274,9 @@ export async function listUsers(options: {
       const userRoles = await db.select({ userId: schema.userRoles.userId })
         .from(schema.userRoles)
         .where(eq(schema.userRoles.roleId, options.roleId));
-      
+
       const userIds = userRoles.map((ur: { userId: string }) => ur.userId).filter(Boolean) as string[];
-      
+
       if (userIds.length === 0) {
         // No users have this role
         return { users: [], total: 0 };
@@ -280,37 +284,37 @@ export async function listUsers(options: {
 
       // Build conditions for filtering
       const conditions = [inArray(schema.users.id, userIds)];
-    
-    if (options.search) {
-      const searchPattern = `%${options.search.toLowerCase()}%`;
-      const searchCondition = or(
-        like(schema.users.email, searchPattern),
-        like(schema.users.username, searchPattern),
-        like(schema.users.displayName, searchPattern)
-      );
-      if (searchCondition) {
-        conditions.push(searchCondition);
+
+      if (options.search) {
+        const searchPattern = `%${options.search.toLowerCase()}%`;
+        const searchCondition = or(
+          like(schema.users.email, searchPattern),
+          like(schema.users.username, searchPattern),
+          like(schema.users.displayName, searchPattern)
+        );
+        if (searchCondition) {
+          conditions.push(searchCondition);
+        }
       }
-    }
 
-    if (options.isActive !== undefined) {
-      conditions.push(eq(schema.users.isActive, options.isActive));
-    }
+      if (options.isActive !== undefined) {
+        conditions.push(eq(schema.users.isActive, options.isActive));
+      }
 
-    // Query users with the role
-    const users = await db.select()
-      .from(schema.users)
-      .where(and(...conditions))
-      .orderBy(asc(schema.users.username))
-      .limit(limit)
-      .offset(offset);
+      // Query users with the role
+      const users = await db.select()
+        .from(schema.users)
+        .where(and(...conditions))
+        .orderBy(asc(schema.users.username))
+        .limit(limit)
+        .offset(offset);
 
-    // Get total count
-    const countResult = await db.select({ count: sql<number>`count(*)` })
-      .from(schema.users)
-      .where(and(...conditions));
+      // Get total count
+      const countResult = await db.select({ count: sql<number>`count(*)` })
+        .from(schema.users)
+        .where(and(...conditions));
 
-    const total = Number(countResult[0]?.count || 0);
+      const total = Number(countResult[0]?.count || 0);
 
       // Expand user responses
       const userResponses = await Promise.all(users.map((u: User) => expandUserResponse(u)));
@@ -328,7 +332,7 @@ export async function listUsers(options: {
 
   // Apply filters
   const conditions = [];
-  
+
   if (options.search) {
     const searchPattern = `%${options.search.toLowerCase()}%`;
     conditions.push(
@@ -374,7 +378,7 @@ export async function listUsers(options: {
  * Create a new role
  */
 export async function createRole(input: CreateRoleInput): Promise<RoleResponse> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const id = randomUUID();
   const now = new Date();
@@ -417,7 +421,7 @@ export async function createRole(input: CreateRoleInput): Promise<RoleResponse> 
  * Get role by ID
  */
 export async function getRoleById(id: string): Promise<RoleResponse | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const role = await db.select()
@@ -434,7 +438,7 @@ export async function getRoleById(id: string): Promise<RoleResponse | null> {
  * Get role by name
  */
 export async function getRoleByName(name: string): Promise<Role | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const role = await db.select()
@@ -453,7 +457,7 @@ export async function updateRole(
   input: UpdateRoleInput,
   allowSystemRoleModification: boolean = false
 ): Promise<RoleResponse | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   // Check if role is a system role
@@ -473,7 +477,7 @@ export async function updateRole(
 
   if (input.displayName !== undefined) updateData.displayName = input.displayName;
   if (input.description !== undefined) updateData.description = input.description;
-  
+
   // Handle default flag - if setting as default, clear default from all other roles first
   if (input.isDefault === true) {
     await db.update(schema.roles)
@@ -491,7 +495,7 @@ export async function updateRole(
   // Update permissions if provided
   if (input.permissionIds !== undefined) {
     await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, id));
-    
+
     if (input.permissionIds.length > 0) {
       await db.insert(schema.rolePermissions).values(
         input.permissionIds.map(permId => ({
@@ -511,7 +515,7 @@ export async function updateRole(
  * Delete role
  */
 export async function deleteRole(id: string): Promise<void> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   // Check if role is a system role
@@ -532,7 +536,7 @@ export async function deleteRole(id: string): Promise<void> {
  * List all roles
  */
 export async function listRoles(): Promise<RoleResponse[]> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const roles = await db.select()
@@ -550,7 +554,7 @@ export async function listRoles(): Promise<RoleResponse[]> {
  * Get all permissions
  */
 export async function listPermissions(): Promise<Permission[]> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   return db.select()
@@ -563,7 +567,7 @@ export async function listPermissions(): Promise<Permission[]> {
  */
 export async function getPermissionsByCategory(): Promise<Record<string, Permission[]>> {
   const permissions = await listPermissions();
-  
+
   return permissions.reduce((acc, perm) => {
     if (!acc[perm.category]) {
       acc[perm.category] = [];
@@ -610,7 +614,7 @@ export async function userHasAllPermissions(
  * Get all permissions for a user (through their roles)
  */
 export async function getUserPermissions(userId: string): Promise<string[]> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   // Get user's roles
@@ -643,7 +647,7 @@ export async function getUserPermissions(userId: string): Promise<string[]> {
  * Get all roles for a user
  */
 export async function getUserRoles(userId: string): Promise<string[]> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const userRolesData = await db.select({ roleId: schema.userRoles.roleId })
@@ -675,7 +679,7 @@ export async function authenticateUser(
   userAgent?: string
 ): Promise<{ user: UserResponse; tokens: TokenPair } | null> {
   const user = await getUserByEmailOrUsername(identifier);
-  
+
   if (!user || !user.isActive) {
     return null;
   }
@@ -688,7 +692,7 @@ export async function authenticateUser(
   // Check if password needs rehashing
   if (needsRehash(user.passwordHash)) {
     const newHash = await hashPassword(password);
-    const db = getDatabase() as any;
+    const db = getDatabase() as AnyDb;
     const schema = getSchema();
     await db.update(schema.users)
       .set({ passwordHash: newHash })
@@ -696,7 +700,7 @@ export async function authenticateUser(
   }
 
   // Update last login
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
   await db.update(schema.users)
     .set({ lastLoginAt: new Date() })
@@ -741,7 +745,7 @@ export async function authenticateUser(
 export async function refreshAccessToken(
   refreshToken: string
 ): Promise<TokenPair | null> {
-  const db = getDatabase() as any;
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   // Find session by refresh token

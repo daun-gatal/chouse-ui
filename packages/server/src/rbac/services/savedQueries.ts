@@ -9,6 +9,8 @@
 import { eq, and, or, desc, isNull } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema } from '../db';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDb = any;
 
 // ============================================
 // Types
@@ -85,7 +87,7 @@ export async function getSavedQueries(
   userId: string,
   connectionId?: string | null
 ): Promise<SavedQueryResponse[]> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   let query = db
@@ -104,7 +106,8 @@ export async function getSavedQueries(
   // Filter by connectionId if provided
   let filteredRows = rows;
   if (connectionId !== undefined && connectionId !== null) {
-    filteredRows = rows.filter(row => 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    filteredRows = rows.filter((row: any) =>
       row.connectionId === connectionId || row.connectionId === null
     );
   }
@@ -119,7 +122,7 @@ export async function getSavedQueryById(
   id: string,
   userId: string
 ): Promise<SavedQueryResponse | null> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const rows = await db
@@ -151,7 +154,7 @@ export async function createSavedQuery(
   userId: string,
   input: SavedQueryInput
 ): Promise<SavedQueryResponse> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const id = randomUUID();
@@ -184,7 +187,7 @@ export async function updateSavedQuery(
   userId: string,
   input: Partial<SavedQueryInput>
 ): Promise<SavedQueryResponse | null> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   // First check if the query exists and belongs to the user
@@ -260,7 +263,7 @@ export async function deleteSavedQuery(
   id: string,
   userId: string
 ): Promise<boolean> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   // Check if the query exists and belongs to the user
@@ -295,7 +298,7 @@ export async function deleteSavedQuery(
  * Get count of saved queries for a user
  */
 export async function getSavedQueryCount(userId: string): Promise<number> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const rows = await db
@@ -311,7 +314,7 @@ export async function getSavedQueryCount(userId: string): Promise<number> {
  * Used for the connection filter dropdown
  */
 export async function getQueryConnectionNames(userId: string): Promise<string[]> {
-  const db = getDatabase();
+  const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
   const rows = await db
@@ -320,7 +323,8 @@ export async function getQueryConnectionNames(userId: string): Promise<string[]>
     .where(eq(schema.savedQueries.userId, userId));
 
   const uniqueNames = new Set<string>();
-  rows.forEach(row => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rows.forEach((row: any) => {
     if (row.connectionName) {
       uniqueNames.add(row.connectionName);
     }
