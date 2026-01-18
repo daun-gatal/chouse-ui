@@ -3,12 +3,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { useLogsPreferences } from './useLogsPreferences';
 
 // Test the constants/types exported from the module
 describe('useLogsPreferences', () => {
     it('should export LogsPagePreferences type', () => {
         // This test ensures the module structure is correct
-        const { useLogsPreferences } = require('./useLogsPreferences');
         expect(useLogsPreferences).toBeDefined();
         expect(typeof useLogsPreferences).toBe('function');
     });
