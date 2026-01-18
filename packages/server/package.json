@@ -14,8 +14,6 @@
     "rbac:seed": "bun run src/rbac/cli.ts seed",
     "rbac:reset": "bun run src/rbac/cli.ts reset",
     "rbac:version": "bun run src/rbac/cli.ts version",
-    "test": "bun test",
-    "test:coverage": "bun test --coverage",
     "test:isolated": "../../scripts/test-isolated-server.sh",
     "typecheck": "tsc --noEmit"
   },
