@@ -15,12 +15,8 @@
     "rbac:reset": "bun run src/rbac/cli.ts reset",
     "rbac:version": "bun run src/rbac/cli.ts version",
     "test": "bun test",
-    "test:ci": "bun run test:services && bun run test:middleware && bun run test:rbac-core && bun test src/routes/config.test.ts src/routes/explorer.test.ts src/routes/index.test.ts src/routes/metrics.test.ts src/routes/query.test.ts && bun test src/rbac/routes/auth.test.ts src/rbac/routes/users.test.ts src/rbac/routes/roles.test.ts src/rbac/routes/audit.test.ts src/rbac/routes/dataAccess.test.ts src/rbac/routes/userPreferences.test.ts src/rbac/routes/index.test.ts",
     "test:coverage": "bun test --coverage",
     "test:isolated": "./test-isolated.sh",
-    "test:services": "bun test src/rbac/services/*.test.ts src/services/*.test.ts",
-    "test:middleware": "bun test src/middleware/*.test.ts src/utils/*.test.ts",
-    "test:rbac-core": "bun test src/rbac/db/*.test.ts src/rbac/middleware/*.test.ts src/rbac/schema/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
