@@ -73,9 +73,18 @@ describe("JWT Service", () => {
                 mockUser.sessionId
             );
 
+            // Explicit checks for CI robustness
+            expect(pair).toBeDefined();
+            expect(pair.accessToken).toBeDefined();
+            expect(pair.refreshToken).toBeDefined();
+            expect(pair.expiresIn).toBeDefined();
+
             expect(pair.accessToken).toBeString();
+            expect(pair.accessToken.length).toBeGreaterThan(0);
             expect(pair.refreshToken).toBeString();
+            expect(pair.refreshToken.length).toBeGreaterThan(0);
             expect(pair.expiresIn).toBeNumber();
+            expect(pair.expiresIn).toBeGreaterThan(0);
         });
     });
 
