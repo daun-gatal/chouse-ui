@@ -15,12 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Eliminates the need for manual database setup during initial configuration
   - Graceful error handling with informative logging
 
-- **Permission-Based Navigation Hiding**: Navigation items in the sidebar are now hidden based on user permissions:
-  - **Explorer**: Only visible if user has `DB_VIEW` or `TABLE_VIEW` permissions
-  - **Logs**: Only visible if user has `QUERY_HISTORY_VIEW` or `QUERY_HISTORY_VIEW_ALL` permissions
-  - **Settings**: Only visible if user has `SETTINGS_VIEW` permission
-  - Default redirect now checks permissions and redirects to first accessible page
-  - Improved UX by showing users only what they can access
+- **Comprehensive Permission-Based UI Hiding**: All UI elements are now hidden based on user permissions:
+  - **Metrics Page**: Advanced tabs (Performance, Storage, Merges, Errors) are hidden for users with only `METRICS_VIEW` permission
+  - **Home/Overview Page**: Quick Actions section hides actions based on permissions (Explorer, Metrics, Logs, Admin)
+  - **Explorer Page**: Database/table operation dropdowns show only actions user has permission for:
+    - "New Database" requires `DB_CREATE`
+    - "New Table" requires `TABLE_CREATE`
+    - "Upload File" requires `TABLE_INSERT`
+  - **Logs Page**: User/role filter dropdowns now check `QUERY_HISTORY_VIEW_ALL` permission (not just super admin)
+  - **Saved Queries**: All saved query features are permission-gated:
+    - DataExplorer "Queries" tab requires `SAVED_QUERIES_VIEW`
+    - HomeTab saved queries section requires `SAVED_QUERIES_VIEW`
+    - SqlEditor save button requires `SAVED_QUERIES_CREATE` or `SAVED_QUERIES_UPDATE`
+  - Users can only see and access features they have permission for, improving security and UX
 
 ### Documentation
 
