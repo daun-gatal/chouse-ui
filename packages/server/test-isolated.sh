@@ -28,11 +28,8 @@ FILE_COUNT=$(echo "$TEST_FILES" | wc -l | tr -d ' ')
 for file in $TEST_FILES; do
     TOTAL=$((TOTAL + 1))
     
-    # Calculate percentage
-    PERCENT=$((TOTAL * 100 / FILE_COUNT))
-    
     # Run test
-    echo -n "[$PERCENT%] Testing $file ... "
+    echo -n "Testing $file ... "
     
     if bun test "$file" > /tmp/test-output.txt 2>&1; then
         echo -e "${GREEN}✓ PASS${NC}"
@@ -47,6 +44,10 @@ for file in $TEST_FILES; do
         tail -20 /tmp/test-output.txt | grep -E "(fail|error|Error)" || echo "  (see full output in /tmp/test-output.txt)"
         echo ""
     fi
+    
+    # Show running success rate
+    SUCCESS_PERCENT=$((PASSED * 100 / TOTAL))
+    echo -e "   ${GREEN}→ Success: $PASSED/$TOTAL ($SUCCESS_PERCENT%)${NC}"
 done
 
 echo ""
