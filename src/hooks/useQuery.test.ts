@@ -1,0 +1,77 @@
+/**
+ * Tests for useQuery hooks
+ */
+
+import { describe, it, expect } from 'vitest';
+import { queryKeys } from './useQuery';
+
+describe('useQuery', () => {
+  describe('queryKeys', () => {
+    it('should define databases key', () => {
+      expect(queryKeys.databases).toBeDefined();
+      expect(Array.isArray(queryKeys.databases)).toBe(true);
+    });
+
+    it('should define systemStats key', () => {
+      expect(queryKeys.systemStats).toBeDefined();
+      expect(Array.isArray(queryKeys.systemStats)).toBe(true);
+    });
+
+    it('should define intellisense key', () => {
+      expect(queryKeys.intellisense).toBeDefined();
+      expect(Array.isArray(queryKeys.intellisense)).toBe(true);
+    });
+
+    it('should define config key', () => {
+      expect(queryKeys.config).toBeDefined();
+      expect(Array.isArray(queryKeys.config)).toBe(true);
+    });
+
+    it('should define savedQueries as function', () => {
+      expect(queryKeys.savedQueries).toBeDefined();
+      expect(typeof queryKeys.savedQueries).toBe('function');
+    });
+
+    it('should define tableDetails as function', () => {
+      expect(queryKeys.tableDetails).toBeDefined();
+      expect(typeof queryKeys.tableDetails).toBe('function');
+    });
+
+    it('should define tableSample as function', () => {
+      expect(queryKeys.tableSample).toBeDefined();
+      expect(typeof queryKeys.tableSample).toBe('function');
+    });
+  });
+
+  describe('hook exports', () => {
+    it('should export useConfig', () => {
+      const { useConfig } = require('./useQuery');
+      expect(useConfig).toBeDefined();
+      expect(typeof useConfig).toBe('function');
+    });
+
+    it('should export useDatabases', () => {
+      const { useDatabases } = require('./useQuery');
+      expect(useDatabases).toBeDefined();
+      expect(typeof useDatabases).toBe('function');
+    });
+
+    it('should export useTableDetails', () => {
+      const { useTableDetails } = require('./useQuery');
+      expect(useTableDetails).toBeDefined();
+      expect(typeof useTableDetails).toBe('function');
+    });
+
+    it('should export useSystemStats', () => {
+      const { useSystemStats } = require('./useQuery');
+      expect(useSystemStats).toBeDefined();
+      expect(typeof useSystemStats).toBe('function');
+    });
+
+    it('should export useIntellisense', () => {
+      const { useIntellisense } = require('./useQuery');
+      expect(useIntellisense).toBeDefined();
+      expect(typeof useIntellisense).toBe('function');
+    });
+  });
+});

@@ -286,27 +286,125 @@ const { data: logs = [] } = useQuery({
 
 ## Testing
 
-### Test Coverage
-- **Unit tests**: Write tests for utilities and pure functions
-- **Component tests**: Test React components with React Testing Library
-- **Integration tests**: Test API routes and data flow
-- **Edge cases**: Test error cases, empty states, boundary conditions
+### When to Add/Update Tests
 
-### Test Structure
+**Add new tests when:**
+- Creating a new utility function, hook, or API module
+- Adding new exported functions to existing modules
+- Implementing security-related functionality (validation, escaping, auth)
+- Adding business logic that can be unit tested
+
+**Update existing tests when:**
+- Modifying function signatures or behavior
+- Fixing bugs (add a test that would have caught the bug)
+- Changing API response structures
+- Updating validation logic
+
+**Tests may be skipped for:**
+- Pure UI components without complex logic (use visual testing instead)
+- Simple re-exports from index files
+- Third-party library wrappers with minimal logic
+
+### Testing Frameworks
+
+**Frontend (Vitest + jsdom):**
+- Located in `src/**/*.test.ts`
+- Uses MSW (Mock Service Worker) for API mocking
+- React Testing Library for hooks
+- Run with: `bunx vitest run`
+
+**Server (Bun Test):**
+- Located in `packages/server/src/**/*.test.ts`
+- Uses Hono's built-in test utilities
+- Run with: `./scripts/test-isolated-server.sh`
+
+### Test File Structure
+
+Test files should be co-located with source files:
+```
+src/
+  api/
+    client.ts
+    client.test.ts     # ← Test file next to source
+  hooks/
+    useDebounce.ts
+    useDebounce.test.ts
+  stores/
+    auth.ts
+    auth.test.ts
+```
+
+### Test Patterns
+
+#### API/Utility Tests
 ```typescript
-// ✅ Good: Test structure
-describe('formatSqlQuery', () => {
-  it('should format valid SQL', () => {
-    const result = formatSqlQuery('SELECT * FROM users');
-    expect(result).toContain('SELECT');
-  });
+import { describe, it, expect } from 'vitest';
+import { myFunction } from './myModule';
 
-  it('should handle invalid SQL gracefully', () => {
-    const result = formatSqlQuery('');
-    expect(result).toBe('');
+describe('myModule', () => {
+  describe('myFunction', () => {
+    it('should return expected result for valid input', () => {
+      expect(myFunction('valid')).toBe('expected');
+    });
+
+    it('should handle edge cases', () => {
+      expect(myFunction('')).toBe('');
+      expect(myFunction(null as any)).toBe('');
+    });
+
+    it('should throw on invalid input', () => {
+      expect(() => myFunction('invalid')).toThrow();
+    });
   });
 });
 ```
+
+#### Store Tests (Zustand)
+Use dynamic imports to avoid initialization issues:
+```typescript
+import { describe, it, expect } from 'vitest';
+
+describe('stores/myStore', () => {
+  it('should export useMyStore', async () => {
+    const module = await import('./myStore');
+    expect(module.useMyStore).toBeDefined();
+    expect(typeof module.useMyStore).toBe('function');
+  });
+});
+```
+
+#### Hook Tests
+```typescript
+import { describe, it, expect } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { useMyHook } from './useMyHook';
+
+describe('useMyHook', () => {
+  it('should return initial value', () => {
+    const { result } = renderHook(() => useMyHook('initial'));
+    expect(result.current).toBe('initial');
+  });
+});
+```
+
+### What to Test
+
+**Always test:**
+- ✅ Security functions (validation, escaping, sanitization)
+- ✅ Data transformation functions
+- ✅ API client methods
+- ✅ Error handling paths
+- ✅ Edge cases (empty strings, null, undefined, boundaries)
+
+**Test exports validate that:**
+- ✅ All public functions are exported
+- ✅ No breaking changes to module API
+- ✅ Types are properly defined
+
+### Test Coverage Goals
+- Aim for 80%+ coverage on utilities and API modules
+- Focus on critical paths over line coverage
+- Prioritize security-related code
 
 ---
 
@@ -376,6 +474,8 @@ console.error('[Component] Failed to fetch data:', error instanceof Error ? erro
 - [ ] No commented-out code
 - [ ] Meaningful variable and function names
 - [ ] Code is properly formatted
+- [ ] **Unit tests added/updated for new/modified functions**
+- [ ] **All tests pass (`bunx vitest run` for frontend)**
 
 ---
 
