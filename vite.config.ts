@@ -29,7 +29,9 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "happy-dom",
+    environment: "jsdom",
     globals: true,
+    globalSetup: './src/test/globalSetup.ts',
+    setupFiles: ['./src/test/setup.ts'],
   },
 });
