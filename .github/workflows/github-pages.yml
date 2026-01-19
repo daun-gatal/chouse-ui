@@ -4,19 +4,9 @@ on:
   push:
     branches:
       - main
-    # Deploy on any merge to main (removed path restrictions)
+    paths:
+      - 'docs/**'
   workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Reason for manual deployment'
-        required: false
-        default: 'Manual trigger'
-        type: string
-      force_changelog_sync:
-        description: 'Force sync CHANGELOG even if unchanged'
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: read
