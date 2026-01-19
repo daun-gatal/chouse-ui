@@ -4,12 +4,20 @@
         xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
         http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
   
-  <!-- Homepage - Single page application -->
+  <!-- Homepage -->
   <url>
-    <loc>https://chouse-ui.com/</loc>
-    <lastmod>2026-01-18</lastmod>
+    <loc>https://www.chouse-ui.com/</loc>
+    <lastmod>2026-01-19</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+  
+  <!-- Documentation -->
+  <url>
+    <loc>https://www.chouse-ui.com/docs/</loc>
+    <lastmod>2026-01-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   
 </urlset>
