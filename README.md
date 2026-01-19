@@ -17,6 +17,9 @@
 </p>
 
 <p align="center">
+  <a href="https://chouse-ui.com">
+    <img src="https://img.shields.io/badge/Website-chouse--ui.com-blue?style=flat&logo=googlechrome&logoColor=white" alt="Website" />
+  </a>
   <a href="https://github.com/daun-gatal/chouse-ui/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/daun-gatal/chouse-ui/ci.yml?label=Build%20%26%20Test" alt="Build & Test" />
   </a>
