@@ -3,7 +3,7 @@ User-agent: *
 Allow: /
 
 # Sitemap location
-Sitemap: https://www.chouse-ui.com/sitemap.xml
+Sitemap: https://chouse-ui.com/sitemap.xml
 
 # Disallow admin/internal paths if any
 # Disallow: /admin
