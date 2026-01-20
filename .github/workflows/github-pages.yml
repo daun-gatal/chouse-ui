@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'CHANGELOG.md'
   workflow_dispatch:
 
 permissions:
