@@ -1,8 +1,8 @@
 {
   "name": "chouseui",
   "private": true,
-  "author": "",
-  "version": "2.7.5",
+  "author": "daun-gatal",
+  "version": "2.7.6",
   "license": "Apache-2.0",
   "type": "module",
   "workspaces": [

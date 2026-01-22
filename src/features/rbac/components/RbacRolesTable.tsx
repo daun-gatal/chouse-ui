@@ -63,14 +63,14 @@ const ROLE_COLORS: Record<string, { bg: string; text: string; border: string; ic
     bg: 'bg-gradient-to-br from-red-500/20 via-red-500/10 to-red-500/20',
     text: 'text-red-300',
     border: 'border-red-500/30',
-    icon: '🛡️',
+    icon: '👑',
     gradient: 'from-red-500/30 to-orange-500/30',
   },
   admin: {
     bg: 'bg-gradient-to-br from-orange-500/20 via-orange-500/10 to-orange-500/20',
     text: 'text-orange-300',
     border: 'border-orange-500/30',
-    icon: '👑',
+    icon: '🛡️',
     gradient: 'from-orange-500/30 to-yellow-500/30',
   },
   developer: {
