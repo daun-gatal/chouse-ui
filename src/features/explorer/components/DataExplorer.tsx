@@ -20,10 +20,14 @@ import {
   Bookmark,
   Filter,
   Layers,
+  Trash2,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useExplorerStore, useWorkspaceStore, genTabId, useAuthStore, RBAC_PERMISSIONS, useRbacStore } from "@/stores";
-import { useDatabases, useSavedQueries, useSavedQueriesConnectionNames, useDebounce } from "@/hooks";
+import { useDatabases, useSavedQueries, useSavedQueriesConnectionNames, useDebounce, useDeleteSavedQuery } from "@/hooks";
 import {
   Select,
   SelectContent,
@@ -39,6 +43,16 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -107,9 +121,10 @@ const QuickAccessItem: React.FC<QuickAccessItemProps> = ({
 interface SavedQueryItemProps {
   query: SavedQuery;
   onOpen: () => void;
+  onDelete?: (query: SavedQuery) => void;
 }
 
-const SavedQueryItem: React.FC<SavedQueryItemProps> = ({ query, onOpen }) => {
+const SavedQueryItem: React.FC<SavedQueryItemProps> = ({ query, onOpen, onDelete }) => {
   return (
     <button
       onClick={onOpen}
@@ -137,6 +152,18 @@ const SavedQueryItem: React.FC<SavedQueryItemProps> = ({ query, onOpen }) => {
           </span>
         </div>
       </div>
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(query);
+          }}
+          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-all flex-shrink-0"
+          title="Delete query"
+        >
+          <Trash2 className="w-3.5 h-3.5 text-gray-500 hover:text-red-400" />
+        </button>
+      )}
     </button>
   );
 };
@@ -207,7 +234,7 @@ const DatabaseExplorer: React.FC = () => {
   const [connectionFilter, setConnectionFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"databases" | "pinned" | "recent" | "saved">("databases");
   const navigate = useNavigate();
-  
+
   // Debounce search terms
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const debouncedSearchQueryValue = useDebounce(searchQueryValue, 300);
@@ -224,32 +251,56 @@ const DatabaseExplorer: React.FC = () => {
     clearRecentItems,
     removeFavorite,
   } = useExplorerStore();
-  
+
   const allRecentItems = useExplorerStore((state) => state.recentItems);
   const recentItems = useMemo(() => allRecentItems.slice(0, 8), [allRecentItems]);
-  
+
   const { addTab } = useWorkspaceStore();
   const { activeConnectionId, activeConnectionName } = useAuthStore();
 
-  const { 
-    data: databases = [], 
-    isLoading: isLoadingDatabase, 
-    isFetching: isFetchingDatabases, 
-    refetch: refreshDatabases, 
-    error: tabError 
+  const {
+    data: databases = [],
+    isLoading: isLoadingDatabase,
+    isFetching: isFetchingDatabases,
+    refetch: refreshDatabases,
+    error: tabError
   } = useDatabases();
 
   // Fetch all saved queries (not filtered by connection) - only if user has permission
-  const { 
-    data: savedQueriesList = [], 
-    refetch: refreshSavedQueries, 
-    isFetching: isRefreshingSavedQueries 
+  const {
+    data: savedQueriesList = [],
+    refetch: refreshSavedQueries,
+    isFetching: isRefreshingSavedQueries
   } = useSavedQueries(undefined, { enabled: canViewSavedQueries });
-  
+
   // Fetch unique connection names for filter dropdown - only if user has permission
   const { data: connectionNames = [] } = useSavedQueriesConnectionNames(
     { enabled: canViewSavedQueries }
   );
+
+  // Delete saved query mutation
+  const deleteSavedQueryMutation = useDeleteSavedQuery();
+  const [queryToDelete, setQueryToDelete] = useState<SavedQuery | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteClick = (query: SavedQuery) => {
+    setQueryToDelete(query);
+  };
+
+  const confirmDelete = async () => {
+    if (!queryToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteSavedQueryMutation.mutateAsync(queryToDelete.id);
+      toast.success("Query deleted successfully");
+      setQueryToDelete(null);
+    } catch (error) {
+      toast.error(`Failed to delete query: ${(error as Error).message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Filter function for connection-based filtering
   const filterByConnection = useCallback(<T extends { connectionId?: string | null; connectionName?: string | null }>(items: T[]): T[] => {
@@ -257,7 +308,7 @@ const DatabaseExplorer: React.FC = () => {
       return items;
     }
     if (connectionFilter === "current" && activeConnectionId) {
-      return items.filter((item) => 
+      return items.filter((item) =>
         item.connectionId === activeConnectionId || !item.connectionId
       );
     }
@@ -280,14 +331,14 @@ const DatabaseExplorer: React.FC = () => {
   // Filtered saved queries (by connection and search)
   const filteredQueries = useMemo(() => {
     let result = filterByConnection(savedQueriesList);
-    
+
     if (debouncedSearchQueryValue) {
       const lowerSearch = debouncedSearchQueryValue.toLowerCase();
       result = result.filter((query) =>
         query.name.toLowerCase().includes(lowerSearch)
       );
     }
-    
+
     return result;
   }, [savedQueriesList, debouncedSearchQueryValue, filterByConnection]);
 
@@ -339,7 +390,7 @@ const DatabaseExplorer: React.FC = () => {
 
   // Keyboard shortcut for search
   const searchInputRef = useRef<HTMLInputElement>(null);
-  
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -554,14 +605,16 @@ const DatabaseExplorer: React.FC = () => {
                           </span>
                         </SelectItem>
                       )}
-                      {connectionNames.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          <span className="flex items-center gap-2">
-                            <Database className="w-3.5 h-3.5 text-blue-400" />
-                            {name}
-                          </span>
-                        </SelectItem>
-                      ))}
+                      {connectionNames
+                        .filter((name) => name !== activeConnectionName)
+                        .map((name) => (
+                          <SelectItem key={name} value={name}>
+                            <span className="flex items-center gap-2">
+                              <Database className="w-3.5 h-3.5 text-blue-400" />
+                              {name}
+                            </span>
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   {hasConnectionFilter && (
@@ -583,7 +636,7 @@ const DatabaseExplorer: React.FC = () => {
                     <QuickAccessItem
                       key={`${fav.id}-${fav.connectionId || 'shared'}`}
                       icon={
-                        fav.type === 'database' 
+                        fav.type === 'database'
                           ? <Database className="w-3.5 h-3.5 text-blue-400" />
                           : <Table2 className="w-3.5 h-3.5 text-emerald-400" />
                       }
@@ -637,14 +690,16 @@ const DatabaseExplorer: React.FC = () => {
                           </span>
                         </SelectItem>
                       )}
-                      {connectionNames.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          <span className="flex items-center gap-2">
-                            <Database className="w-3.5 h-3.5 text-blue-400" />
-                            {name}
-                          </span>
-                        </SelectItem>
-                      ))}
+                      {connectionNames
+                        .filter((name) => name !== activeConnectionName)
+                        .map((name) => (
+                          <SelectItem key={name} value={name}>
+                            <span className="flex items-center gap-2">
+                              <Database className="w-3.5 h-3.5 text-blue-400" />
+                              {name}
+                            </span>
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   {hasConnectionFilter && (
@@ -732,14 +787,16 @@ const DatabaseExplorer: React.FC = () => {
                         </span>
                       </SelectItem>
                     )}
-                    {connectionNames.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        <span className="flex items-center gap-2">
-                          <Database className="w-3.5 h-3.5 text-blue-400" />
-                          {name}
-                        </span>
-                      </SelectItem>
-                    ))}
+                    {connectionNames
+                      .filter((name) => name !== activeConnectionName)
+                      .map((name) => (
+                        <SelectItem key={name} value={name}>
+                          <span className="flex items-center gap-2">
+                            <Database className="w-3.5 h-3.5 text-blue-400" />
+                            {name}
+                          </span>
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 {hasConnectionFilter && (
@@ -792,6 +849,11 @@ const DatabaseExplorer: React.FC = () => {
                       key={query.id}
                       query={query}
                       onOpen={() => handleSavedQueryOpen(query)}
+                      onDelete={
+                        hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_DELETE)
+                          ? handleDeleteClick
+                          : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -812,6 +874,40 @@ const DatabaseExplorer: React.FC = () => {
           )}
         </AnimatePresence>
       </ScrollArea>
+
+      <AlertDialog open={!!queryToDelete} onOpenChange={(open) => !open && setQueryToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Delete Saved Query
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{queryToDelete?.name}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDelete();
+              }}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

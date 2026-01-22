@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.7.6] - 2026-01-22
+
+### Added
+
+- **Saved Queries Deletion** (Issue #65): Added ability to delete saved queries directly from the Data Explorer UI.
+  - Delete button (trash icon) on saved query items
+  - Confirmation dialog to prevent accidental deletion
+  - Permissions check (`SAVED_QUERIES_DELETE`)
+
+### Fixed
+
+- **Duplicate Connection Filters** (Issue #66): Fixed issue where the active connection name was duplicated in "Pinned", "Recent", and "Queries" filter dropdowns in Data Explorer.
+- **Role Icon Consistency** (Issue #67): Fixed icon mismatch between Roles Table and Role Form Dialog.
+  - Aligned icons for Super Admin and Admin roles across the application
+  - Updated Custom Role icon to `🔐` (Lock with Key) for consistency in Create/Edit User forms
+  - Added "User Count" display to Role Form Dialog to match the table view
+
 ## [v2.7.5] - 2026-01-18
 
 ### Added
