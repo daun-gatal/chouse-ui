@@ -214,7 +214,7 @@ const CreateUser: React.FC = () => {
     const hasAdminRole = selectedRoleNames.some(name => ADMIN_ROLES.includes(name));
     const hasPredefinedRules = selectedRoleNames.some(name => ROLES_WITH_PREDEFINED_RULES.includes(name));
     const needsDataAccess = !hasAdminRole && !hasPredefinedRules && selectedRoles.length > 0;
-    
+
     if (needsDataAccess && dataAccessRules.length === 0) {
       setShowDataAccessSection(true);
     }
@@ -429,10 +429,10 @@ const CreateUser: React.FC = () => {
                   <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm break-all">
                     {generatedPassword}
                   </code>
-                  <Button 
+                  <Button
                     type="button"
-                    size="sm" 
-                    variant="outline" 
+                    size="sm"
+                    variant="outline"
                     onClick={copyGeneratedPassword}
                   >
                     <Copy className="h-4 w-4" />
@@ -642,7 +642,7 @@ const CreateUser: React.FC = () => {
                 <div className="space-y-3">
                   {roles.map((role) => {
                     const colors = ROLE_COLORS[role.name] || {
-                      icon: "🔹",
+                      icon: "🔐",
                       color: "text-gray-400",
                       bgColor: "bg-gray-500/20",
                       borderColor: "border-gray-500/50",
@@ -655,11 +655,10 @@ const CreateUser: React.FC = () => {
                         type="button"
                         onClick={() => canAssignRoles && toggleRole(role.id)}
                         disabled={!canAssignRoles}
-                        className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                          isSelected
+                        className={`w-full p-4 rounded-lg border-2 transition-all text-left ${isSelected
                             ? `${colors.bgColor} ${colors.borderColor}`
                             : "bg-white/5 border-white/10 hover:bg-white/10"
-                        } ${!canAssignRoles && "opacity-50 cursor-not-allowed"}`}
+                          } ${!canAssignRoles && "opacity-50 cursor-not-allowed"}`}
                       >
                         <div className="flex items-start gap-3">
                           <div className="text-2xl">{colors.icon}</div>
@@ -697,11 +696,10 @@ const CreateUser: React.FC = () => {
                             </div>
                           </div>
                           <div className="shrink-0">
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                              isSelected 
-                                ? 'border-cyan-400 bg-cyan-400' 
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected
+                                ? 'border-cyan-400 bg-cyan-400'
                                 : 'border-gray-500 bg-transparent'
-                            }`}>
+                              }`}>
                               {isSelected && (
                                 <div className="w-2.5 h-2.5 rounded-full bg-white" />
                               )}
@@ -722,124 +720,124 @@ const CreateUser: React.FC = () => {
 
           {/* Data Access Section */}
           {showDataAccessUI && (
-          <GlassCard className={requiresDataAccess && dataAccessRules.length === 0 ? "border-red-500/50" : ""}>
-            <GlassCardHeader>
-              <button
-                type="button"
-                onClick={() => setShowDataAccessSection(!showDataAccessSection)}
-                className="flex items-center justify-between w-full"
-              >
-                <GlassCardTitle className="flex items-center gap-2">
-                  <Database className={`h-5 w-5 ${requiresDataAccess && dataAccessRules.length === 0 ? "text-red-400" : "text-cyan-400"}`} />
-                  Data Access Rules
-                  {requiresDataAccess && (
-                    <span className="text-red-400 text-xs">*</span>
-                  )}
-                  {dataAccessRules.length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {dataAccessRules.length}
-                    </Badge>
-                  )}
-                  {requiresDataAccess && dataAccessRules.length === 0 && (
-                    <Badge variant="destructive" className="ml-2 text-xs">
-                      Required
-                    </Badge>
-                  )}
-                </GlassCardTitle>
-                {showDataAccessSection ? (
-                  <ChevronUp className="h-5 w-5 text-gray-400" />
-                ) : (
-                  <ChevronDown className="h-5 w-5 text-gray-400" />
-                )}
-              </button>
-            </GlassCardHeader>
-            {showDataAccessSection && (
-              <GlassCardContent className="space-y-4">
-                {requiresDataAccess && dataAccessRules.length === 0 ? (
-                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="font-medium">Data access rules required</p>
-                      <p className="text-xs text-red-400/80 mt-1">
-                        Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-sm text-cyan-300 flex items-start gap-2">
-                    <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                    <div>
-                      <p>Configure which databases and tables this user can access.</p>
-                      <p className="text-xs text-cyan-400/80 mt-1">
-                        Access type (read/write/admin) is determined by the user's role permissions.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {dataAccessRules.length > 0 ? (
-                  <div className="space-y-2">
-                    {dataAccessRules.map((rule, index) => (
-                      <div
-                        key={rule.id}
-                        className="p-3 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between gap-3"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant={rule.isAllowed ? "default" : "destructive"} className="text-xs">
-                              {rule.isAllowed ? "Allow" : "Deny"}
-                            </Badge>
-                            <span className="text-sm text-white font-mono truncate">
-                              {rule.databasePattern}.{rule.tablePattern}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-400 mt-1">
-                            {getConnectionName(rule.connectionId)}
-                            {rule.description && ` • ${rule.description}`}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditDataAccessDialog(index)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-400 hover:text-red-300"
-                            onClick={() => handleDeleteDataAccessRule(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-gray-400">
-                    <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No data access rules configured</p>
-                    <p className="text-xs text-gray-500 mt-1">User will have access based on role permissions only</p>
-                  </div>
-                )}
-
-                <Button
+            <GlassCard className={requiresDataAccess && dataAccessRules.length === 0 ? "border-red-500/50" : ""}>
+              <GlassCardHeader>
+                <button
                   type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={openAddDataAccessDialog}
+                  onClick={() => setShowDataAccessSection(!showDataAccessSection)}
+                  className="flex items-center justify-between w-full"
                 >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Data Access Rule
-                </Button>
-              </GlassCardContent>
-            )}
-          </GlassCard>
+                  <GlassCardTitle className="flex items-center gap-2">
+                    <Database className={`h-5 w-5 ${requiresDataAccess && dataAccessRules.length === 0 ? "text-red-400" : "text-cyan-400"}`} />
+                    Data Access Rules
+                    {requiresDataAccess && (
+                      <span className="text-red-400 text-xs">*</span>
+                    )}
+                    {dataAccessRules.length > 0 && (
+                      <Badge variant="secondary" className="ml-2">
+                        {dataAccessRules.length}
+                      </Badge>
+                    )}
+                    {requiresDataAccess && dataAccessRules.length === 0 && (
+                      <Badge variant="destructive" className="ml-2 text-xs">
+                        Required
+                      </Badge>
+                    )}
+                  </GlassCardTitle>
+                  {showDataAccessSection ? (
+                    <ChevronUp className="h-5 w-5 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-gray-400" />
+                  )}
+                </button>
+              </GlassCardHeader>
+              {showDataAccessSection && (
+                <GlassCardContent className="space-y-4">
+                  {requiresDataAccess && dataAccessRules.length === 0 ? (
+                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-medium">Data access rules required</p>
+                        <p className="text-xs text-red-400/80 mt-1">
+                          Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-sm text-cyan-300 flex items-start gap-2">
+                      <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                      <div>
+                        <p>Configure which databases and tables this user can access.</p>
+                        <p className="text-xs text-cyan-400/80 mt-1">
+                          Access type (read/write/admin) is determined by the user's role permissions.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {dataAccessRules.length > 0 ? (
+                    <div className="space-y-2">
+                      {dataAccessRules.map((rule, index) => (
+                        <div
+                          key={rule.id}
+                          className="p-3 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant={rule.isAllowed ? "default" : "destructive"} className="text-xs">
+                                {rule.isAllowed ? "Allow" : "Deny"}
+                              </Badge>
+                              <span className="text-sm text-white font-mono truncate">
+                                {rule.databasePattern}.{rule.tablePattern}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              {getConnectionName(rule.connectionId)}
+                              {rule.description && ` • ${rule.description}`}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditDataAccessDialog(index)}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-400 hover:text-red-300"
+                              onClick={() => handleDeleteDataAccessRule(index)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-gray-400">
+                      <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No data access rules configured</p>
+                      <p className="text-xs text-gray-500 mt-1">User will have access based on role permissions only</p>
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={openAddDataAccessDialog}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Data Access Rule
+                  </Button>
+                </GlassCardContent>
+              )}
+            </GlassCard>
           )}
 
           {/* Summary Card */}
@@ -864,16 +862,16 @@ const CreateUser: React.FC = () => {
                   <div className="flex flex-wrap gap-1 justify-end">
                     {selectedRoles.length > 0
                       ? selectedRoles.map((roleId) => {
-                          const role = roles.find((r) => r.id === roleId);
-                          return (
-                            <span
-                              key={roleId}
-                              className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300"
-                            >
-                              {role?.displayName || roleId}
-                            </span>
-                          );
-                        })
+                        const role = roles.find((r) => r.id === roleId);
+                        return (
+                          <span
+                            key={roleId}
+                            className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300"
+                          >
+                            {role?.displayName || roleId}
+                          </span>
+                        );
+                      })
                       : "-"}
                   </div>
                 </div>
