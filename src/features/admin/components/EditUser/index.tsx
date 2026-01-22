@@ -165,7 +165,7 @@ const EditUser: React.FC = () => {
   const requiresDataAccess = !hasAdminRole && !hasPredefinedRules && selectedRoles.length > 0;
   const dataAccessValid = !requiresDataAccess || dataAccessRulesCount > 0;
   const ROLES_WITHOUT_DATA_ACCESS_UI = [...ADMIN_ROLES, ...ROLES_WITH_PREDEFINED_RULES]; // Roles that don't need data access UI
-  
+
   // Hide Data Access tab if:
   // 1. Selected roles include admin roles or roles with predefined rules, OR
   // 2. The user being edited has super_admin role (even if basic admin is editing)
@@ -181,7 +181,7 @@ const EditUser: React.FC = () => {
     }
 
     Promise.all([
-      rbacUsersApi.get(userId), 
+      rbacUsersApi.get(userId),
       rbacRolesApi.list(),
       rbacDataAccessApi.getRulesForUser(userId)
     ])
@@ -361,7 +361,7 @@ const EditUser: React.FC = () => {
   const getRoleDisplay = (roleName: string) => {
     const role = roles.find((r) => r.name === roleName);
     const colors = ROLE_COLORS[roleName] || {
-      icon: "🔹",
+      icon: "🔐",
       color: "text-gray-400",
       bgColor: "bg-gray-500/20",
       borderColor: "border-gray-500/50",
@@ -538,16 +538,16 @@ const EditUser: React.FC = () => {
             Roles
           </TabsTrigger>
           {showDataAccessUI && (
-          <TabsTrigger 
-            value="data-access" 
-            className={`data-[state=active]:bg-cyan-500/20 ${requiresDataAccess && !dataAccessValid ? "text-red-400" : ""}`}
-          >
-            <Database className="h-4 w-4 mr-2" />
-            Data Access
-            {requiresDataAccess && !dataAccessValid && (
-              <span className="ml-1 text-red-400">*</span>
-            )}
-          </TabsTrigger>
+            <TabsTrigger
+              value="data-access"
+              className={`data-[state=active]:bg-cyan-500/20 ${requiresDataAccess && !dataAccessValid ? "text-red-400" : ""}`}
+            >
+              <Database className="h-4 w-4 mr-2" />
+              Data Access
+              {requiresDataAccess && !dataAccessValid && (
+                <span className="ml-1 text-red-400">*</span>
+              )}
+            </TabsTrigger>
           )}
           <TabsTrigger value="security" className="data-[state=active]:bg-yellow-500/20">
             <Key className="h-4 w-4 mr-2" />
@@ -641,7 +641,7 @@ const EditUser: React.FC = () => {
               <div className="space-y-3">
                 {roles.map((role) => {
                   const colors = ROLE_COLORS[role.name] || {
-                    icon: "🔹",
+                    icon: "🔐",
                     color: "text-gray-400",
                     bgColor: "bg-gray-500/20",
                     borderColor: "border-gray-500/50",
@@ -654,11 +654,10 @@ const EditUser: React.FC = () => {
                       type="button"
                       onClick={() => toggleRole(role.id)}
                       disabled={!canAssignRoles}
-                      className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                        isSelected
-                          ? `${colors.bgColor} ${colors.borderColor}`
-                          : "bg-white/5 border-white/10 hover:bg-white/10"
-                      } ${!canAssignRoles && "opacity-50 cursor-not-allowed"}`}
+                      className={`w-full p-4 rounded-lg border-2 transition-all text-left ${isSelected
+                        ? `${colors.bgColor} ${colors.borderColor}`
+                        : "bg-white/5 border-white/10 hover:bg-white/10"
+                        } ${!canAssignRoles && "opacity-50 cursor-not-allowed"}`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="text-2xl">{colors.icon}</div>
@@ -691,11 +690,10 @@ const EditUser: React.FC = () => {
                           </div>
                         </div>
                         <div className="shrink-0">
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                            isSelected 
-                              ? 'border-cyan-400 bg-cyan-400' 
-                              : 'border-gray-500 bg-transparent'
-                          }`}>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected
+                            ? 'border-cyan-400 bg-cyan-400'
+                            : 'border-gray-500 bg-transparent'
+                            }`}>
                             {isSelected && (
                               <div className="w-2.5 h-2.5 rounded-full bg-white" />
                             )}
@@ -716,55 +714,55 @@ const EditUser: React.FC = () => {
 
         {/* Data Access Tab */}
         {showDataAccessUI && (
-        <TabsContent value="data-access">
-          <GlassCard className={requiresDataAccess && !dataAccessValid ? "border-red-500/50" : ""}>
-            <GlassCardHeader>
-              <GlassCardTitle className="flex items-center gap-2">
-                <Database className={`h-5 w-5 ${requiresDataAccess && !dataAccessValid ? "text-red-400" : "text-cyan-400"}`} />
-                Database & Table Access
-                {requiresDataAccess && (
-                  <span className="text-red-400 text-xs">*</span>
-                )}
-                {dataAccessRulesCount > 0 && (
-                  <Badge variant="secondary" className="ml-2">
-                    {dataAccessRulesCount} rule{dataAccessRulesCount !== 1 ? 's' : ''}
-                  </Badge>
-                )}
-                {requiresDataAccess && !dataAccessValid && (
-                  <Badge variant="destructive" className="ml-2 text-xs">
-                    Required
-                  </Badge>
-                )}
-              </GlassCardTitle>
-            </GlassCardHeader>
-            <GlassCardContent>
-              {requiresDataAccess && !dataAccessValid ? (
-                <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="font-medium">Data access rules required</p>
-                    <p className="text-xs text-red-400/80 mt-1">
-                      Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
+          <TabsContent value="data-access">
+            <GlassCard className={requiresDataAccess && !dataAccessValid ? "border-red-500/50" : ""}>
+              <GlassCardHeader>
+                <GlassCardTitle className="flex items-center gap-2">
+                  <Database className={`h-5 w-5 ${requiresDataAccess && !dataAccessValid ? "text-red-400" : "text-cyan-400"}`} />
+                  Database & Table Access
+                  {requiresDataAccess && (
+                    <span className="text-red-400 text-xs">*</span>
+                  )}
+                  {dataAccessRulesCount > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {dataAccessRulesCount} rule{dataAccessRulesCount !== 1 ? 's' : ''}
+                    </Badge>
+                  )}
+                  {requiresDataAccess && !dataAccessValid && (
+                    <Badge variant="destructive" className="ml-2 text-xs">
+                      Required
+                    </Badge>
+                  )}
+                </GlassCardTitle>
+              </GlassCardHeader>
+              <GlassCardContent>
+                {requiresDataAccess && !dataAccessValid ? (
+                  <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">Data access rules required</p>
+                      <p className="text-xs text-red-400/80 mt-1">
+                        Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-300">
+                    <p>
+                      These rules define which databases and tables this user can access.
+                      User-specific rules supplement the permissions from assigned roles.
                     </p>
                   </div>
-                </div>
-              ) : (
-                <div className="mb-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-300">
-                  <p>
-                    These rules define which databases and tables this user can access.
-                    User-specific rules supplement the permissions from assigned roles.
-                  </p>
-                </div>
-              )}
-              <UserDataAccess
-                userId={userId!}
-                userName={user.displayName || user.username}
-                canEdit={canUpdateUsers}
-                onRulesChange={(count) => setDataAccessRulesCount(count)}
-              />
-            </GlassCardContent>
-          </GlassCard>
-        </TabsContent>
+                )}
+                <UserDataAccess
+                  userId={userId!}
+                  userName={user.displayName || user.username}
+                  canEdit={canUpdateUsers}
+                  onRulesChange={(count) => setDataAccessRulesCount(count)}
+                />
+              </GlassCardContent>
+            </GlassCard>
+          </TabsContent>
         )}
 
         {/* Security Tab */}
@@ -889,10 +887,10 @@ const EditUser: React.FC = () => {
                   <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm break-all">
                     {generatedPassword}
                   </code>
-                  <Button 
+                  <Button
                     type="button"
-                    size="sm" 
-                    variant="outline" 
+                    size="sm"
+                    variant="outline"
                     onClick={copyPassword}
                   >
                     <Copy className="h-4 w-4" />

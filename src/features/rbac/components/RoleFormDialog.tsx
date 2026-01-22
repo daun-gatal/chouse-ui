@@ -43,6 +43,8 @@ import {
   X,
   ChevronsDown,
   ChevronsUp,
+  Users,
+  Info,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -103,7 +105,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   // Create a mapping from permission names to IDs
   const permissionNameToIdMap = useMemo(() => {
     if (!permissionsByCategory) return new Map<string, string>();
-    
+
     const map = new Map<string, string>();
     Object.values(permissionsByCategory).forEach((permissions) => {
       permissions.forEach((perm) => {
@@ -121,13 +123,13 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
         setName(role.name);
         setDisplayName(role.displayName);
         setDescription(role.description || '');
-        
+
         // Map permission names to IDs
         // role.permissions contains permission names, but we need IDs
         const permissionIds = role.permissions
           .map((permName) => permissionNameToIdMap.get(permName))
           .filter((id): id is string => id !== undefined);
-        
+
         setSelectedPermissionIds(new Set(permissionIds));
         setIsDefault(role.isDefault);
       } else {
@@ -275,7 +277,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     if (!filteredCategories) return;
     const categoryKeys = Object.keys(filteredCategories);
     const allExpanded = categoryKeys.every((key) => expandedCategories.has(key));
-    
+
     if (allExpanded) {
       // Collapse all
       setExpandedCategories(new Set());
@@ -316,7 +318,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   const totalPermissions = Object.values(filteredCategories || {}).flat().length;
   const selectedCount = selectedPermissionIds.size;
   const allSelected = totalPermissions > 0 && selectedCount === totalPermissions;
-  
+
   // Determine if all categories are expanded
   const categoryKeys = filteredCategories ? Object.keys(filteredCategories) : [];
   const allExpanded = categoryKeys.length > 0 && categoryKeys.every((key) => expandedCategories.has(key));
@@ -358,338 +360,348 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
               transition={{ delay: 0.1 }}
               className="space-y-6"
             >
-            {/* System Role Warning */}
-            <AnimatePresence>
-              {isEditing && isSystemRole && !canEditSystemRole && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                >
-                  <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
-                    <Lock className="h-4 w-4 text-red-400" />
-                    <AlertDescription className="text-red-300">
-                      This is a system role. Only super admins can modify system roles.
-                    </AlertDescription>
-                  </Alert>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              {/* System Role Warning */}
+              <AnimatePresence>
+                {isEditing && isSystemRole && !canEditSystemRole && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
+                      <Lock className="h-4 w-4 text-red-400" />
+                      <AlertDescription className="text-red-300">
+                        This is a system role. Only super admins can modify system roles.
+                      </AlertDescription>
+                    </Alert>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-            {/* Basic Information */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className="space-y-4 p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm"
-            >
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-purple-400" />
-                Basic Information
-              </h3>
+              {/* Basic Information */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="space-y-4 p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Info className="h-4 w-4 text-purple-400" />
+                    Basic Information
+                  </h3>
+                  {isEditing && role && (
+                    <Badge variant="outline" className="bg-blue-500/10 text-blue-300 border-blue-500/20 gap-1.5 pl-2 pr-2.5 py-0.5">
+                      <Users className="h-3.5 w-3.5" />
+                      <span>
+                        {role.userCount || 0} users assigned
+                      </span>
+                    </Badge>
+                  )}
+                </div>
 
-              {/* Name (only for create) */}
-              {!isEditing && (
+                {/* Name (only for create) */}
+                {!isEditing && (
+                  <div className="space-y-2">
+                    <Label htmlFor="name" className="text-gray-300">
+                      Role Name <span className="text-red-400">*</span>
+                    </Label>
+                    <Input
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g., custom_role"
+                      disabled={!canModify}
+                      className="bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20 transition-all"
+                    />
+                    <p className="text-xs text-gray-400">
+                      Must start with a letter and contain only letters, numbers, underscores, and hyphens.
+                      This cannot be changed after creation.
+                    </p>
+                  </div>
+                )}
+
+                {/* Display Name */}
                 <div className="space-y-2">
-                  <Label htmlFor="name" className="text-gray-300">
-                    Role Name <span className="text-red-400">*</span>
+                  <Label htmlFor="displayName" className="text-gray-300">
+                    Display Name <span className="text-red-400">*</span>
                   </Label>
                   <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g., custom_role"
+                    id="displayName"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="e.g., Custom Role"
                     disabled={!canModify}
                     className="bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20 transition-all"
                   />
-                  <p className="text-xs text-gray-400">
-                    Must start with a letter and contain only letters, numbers, underscores, and hyphens.
-                    This cannot be changed after creation.
-                  </p>
                 </div>
-              )}
 
-              {/* Display Name */}
-              <div className="space-y-2">
-                <Label htmlFor="displayName" className="text-gray-300">
-                  Display Name <span className="text-red-400">*</span>
-                </Label>
-                <Input
-                  id="displayName"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="e.g., Custom Role"
-                  disabled={!canModify}
-                  className="bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20 transition-all"
-                />
-              </div>
-
-              {/* Description */}
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-gray-300">Description</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the role's purpose and responsibilities..."
-                  disabled={!canModify}
-                  rows={3}
-                  className="bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20 resize-none transition-all"
-                />
-              </div>
-
-              {/* Is Default */}
-              <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10">
-                <Checkbox
-                  id="isDefault"
-                  checked={isDefault}
-                  onCheckedChange={(checked) => setIsDefault(checked === true)}
-                  disabled={!canModify}
-                  className="data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
-                />
-                <Label htmlFor="isDefault" className="cursor-pointer text-gray-300">
-                  Set as default role for new users
-                </Label>
-              </div>
-            </motion.div>
-
-            {/* Permissions */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="space-y-4"
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-blue-400" />
-                  Permissions <span className="text-red-400">*</span>
-                </h3>
-                <div className="flex items-center gap-3">
-                  {selectedCount > 0 && (
-                    <Badge variant="outline" className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-purple-500/30 text-purple-300">
-                      {selectedCount} selected
-                    </Badge>
-                  )}
-                  {categoryKeys.length > 0 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleToggleExpandAll}
-                      className="h-7 text-xs hover:bg-white/10 gap-1.5"
-                      title={allExpanded ? "Collapse all categories" : "Expand all categories"}
-                    >
-                      {allExpanded ? (
-                        <>
-                          <ChevronsUp className="h-3.5 w-3.5" />
-                          Collapse All
-                        </>
-                      ) : (
-                        <>
-                          <ChevronsDown className="h-3.5 w-3.5" />
-                          Expand All
-                        </>
-                      )}
-                    </Button>
-                  )}
-                  {canModify && totalPermissions > 0 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleSelectAll}
-                      className="h-7 text-xs hover:bg-white/10"
-                    >
-                      {allSelected ? 'Deselect All' : 'Select All'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Search */}
-              {!loadingPermissions && totalPermissions > 5 && (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search permissions..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 pr-9 bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20"
+                {/* Description */}
+                <div className="space-y-2">
+                  <Label htmlFor="description" className="text-gray-300">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Describe the role's purpose and responsibilities..."
+                    disabled={!canModify}
+                    rows={3}
+                    className="bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20 resize-none transition-all"
                   />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
                 </div>
-              )}
 
-              {loadingPermissions ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-20 w-full rounded-lg bg-white/5" />
-                  ))}
+                {/* Is Default */}
+                <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                  <Checkbox
+                    id="isDefault"
+                    checked={isDefault}
+                    onCheckedChange={(checked) => setIsDefault(checked === true)}
+                    disabled={!canModify}
+                    className="data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
+                  />
+                  <Label htmlFor="isDefault" className="cursor-pointer text-gray-300">
+                    Set as default role for new users
+                  </Label>
                 </div>
-              ) : !filteredCategories || Object.keys(filteredCategories).length === 0 ? (
-                <Alert className="border-gray-700 bg-gray-800/50">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {searchQuery ? 'No permissions found matching your search.' : 'No permissions available'}
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <div className="space-y-2">
-                  <AnimatePresence mode="popLayout">
-                    {Object.entries(filteredCategories).map(([category, permissions], index) => {
-                      const isExpanded = expandedCategories.has(category);
-                      const categorySelected = permissions.filter((p) =>
-                        selectedPermissionIds.has(p.id)
-                      );
-                      const allSelected = categorySelected.length === permissions.length;
-                      const someSelected = categorySelected.length > 0 && !allSelected;
+              </motion.div>
 
-                      return (
-                        <motion.div
-                          key={category}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ delay: index * 0.05 }}
-                        >
-                          <Collapsible
-                            open={isExpanded}
-                            onOpenChange={() => toggleCategory(category)}
-                          >
-                            <div className="rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] overflow-hidden backdrop-blur-sm hover:border-white/20 transition-all">
-                              <CollapsibleTrigger className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors group">
-                                <div className="flex items-center gap-3">
-                                  <motion.div
-                                    animate={{ rotate: isExpanded ? 90 : 0 }}
-                                    transition={{ duration: 0.2 }}
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronDown className="h-4 w-4 text-purple-400" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-purple-400 transition-colors" />
-                                    )}
-                                  </motion.div>
-                                  <span className="font-semibold text-white">{category}</span>
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      'text-xs transition-colors',
-                                      allSelected
-                                        ? 'bg-green-500/20 text-green-300 border-green-500/30'
-                                        : someSelected
-                                        ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                                        : 'bg-white/5 text-gray-400 border-white/10'
-                                    )}
-                                  >
-                                    {categorySelected.length}/{permissions.length}
-                                  </Badge>
-                                </div>
-                                {canModify && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleSelectAllInCategory(category);
-                                    }}
-                                    className="h-7 text-xs hover:bg-white/10"
-                                  >
-                                    {allSelected ? 'Deselect All' : 'Select All'}
-                                  </Button>
-                                )}
-                              </CollapsibleTrigger>
-                              <CollapsibleContent>
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: 'auto', opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="px-4 pb-4 pt-2 space-y-2"
-                                >
-                                  {permissions.map((permission) => {
-                                    const isSelected = selectedPermissionIds.has(permission.id);
-                                    return (
-                                      <motion.div
-                                        key={permission.id}
-                                        whileHover={{ scale: 1.01 }}
-                                        whileTap={{ scale: 0.99 }}
-                                        className={cn(
-                                          'flex items-start space-x-3 p-3 rounded-lg cursor-pointer transition-all',
-                                          isSelected
-                                            ? 'bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 shadow-lg shadow-purple-500/10'
-                                            : 'bg-white/5 border border-transparent hover:bg-white/10 hover:border-white/20'
-                                        )}
-                                        onClick={() => togglePermission(permission.id)}
-                                      >
-                                        <Checkbox
-                                          id={permission.id}
-                                          checked={isSelected}
-                                          onCheckedChange={() => togglePermission(permission.id)}
-                                          disabled={!canModify}
-                                          className="mt-0.5 data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <Label
-                                            htmlFor={permission.id}
-                                            className={cn(
-                                              'text-sm cursor-pointer block',
-                                              isSelected ? 'text-white font-medium' : 'text-gray-300'
-                                            )}
-                                          >
-                                            {permission.displayName}
-                                          </Label>
-                                          {permission.description && (
-                                            <p className="text-xs text-gray-400 mt-1">
-                                              {permission.description}
-                                            </p>
-                                          )}
-                                        </div>
-                                        {isSelected && (
-                                          <motion.div
-                                            initial={{ scale: 0 }}
-                                            animate={{ scale: 1 }}
-                                            className="text-purple-400"
-                                          >
-                                            <CheckCircle2 className="h-4 w-4" />
-                                          </motion.div>
-                                        )}
-                                      </motion.div>
-                                    );
-                                  })}
-                                </motion.div>
-                              </CollapsibleContent>
-                            </div>
-                          </Collapsible>
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
+              {/* Permissions */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-blue-400" />
+                    Permissions <span className="text-red-400">*</span>
+                  </h3>
+                  <div className="flex items-center gap-3">
+                    {selectedCount > 0 && (
+                      <Badge variant="outline" className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-purple-500/30 text-purple-300">
+                        {selectedCount} selected
+                      </Badge>
+                    )}
+                    {categoryKeys.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleToggleExpandAll}
+                        className="h-7 text-xs hover:bg-white/10 gap-1.5"
+                        title={allExpanded ? "Collapse all categories" : "Expand all categories"}
+                      >
+                        {allExpanded ? (
+                          <>
+                            <ChevronsUp className="h-3.5 w-3.5" />
+                            Collapse All
+                          </>
+                        ) : (
+                          <>
+                            <ChevronsDown className="h-3.5 w-3.5" />
+                            Expand All
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {canModify && totalPermissions > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleSelectAll}
+                        className="h-7 text-xs hover:bg-white/10"
+                      >
+                        {allSelected ? 'Deselect All' : 'Select All'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              )}
 
-              {selectedPermissionIds.size === 0 && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
-                    <AlertDescription className="text-red-300">
-                      At least one permission is required for the role.
+                {/* Search */}
+                {!loadingPermissions && totalPermissions > 5 && (
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search permissions..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 pr-9 bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {loadingPermissions ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Skeleton key={i} className="h-20 w-full rounded-lg bg-white/5" />
+                    ))}
+                  </div>
+                ) : !filteredCategories || Object.keys(filteredCategories).length === 0 ? (
+                  <Alert className="border-gray-700 bg-gray-800/50">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      {searchQuery ? 'No permissions found matching your search.' : 'No permissions available'}
                     </AlertDescription>
                   </Alert>
-                </motion.div>
-              )}
+                ) : (
+                  <div className="space-y-2">
+                    <AnimatePresence mode="popLayout">
+                      {Object.entries(filteredCategories).map(([category, permissions], index) => {
+                        const isExpanded = expandedCategories.has(category);
+                        const categorySelected = permissions.filter((p) =>
+                          selectedPermissionIds.has(p.id)
+                        );
+                        const allSelected = categorySelected.length === permissions.length;
+                        const someSelected = categorySelected.length > 0 && !allSelected;
+
+                        return (
+                          <motion.div
+                            key={category}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ delay: index * 0.05 }}
+                          >
+                            <Collapsible
+                              open={isExpanded}
+                              onOpenChange={() => toggleCategory(category)}
+                            >
+                              <div className="rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] overflow-hidden backdrop-blur-sm hover:border-white/20 transition-all">
+                                <CollapsibleTrigger className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors group">
+                                  <div className="flex items-center gap-3">
+                                    <motion.div
+                                      animate={{ rotate: isExpanded ? 90 : 0 }}
+                                      transition={{ duration: 0.2 }}
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronDown className="h-4 w-4 text-purple-400" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-purple-400 transition-colors" />
+                                      )}
+                                    </motion.div>
+                                    <span className="font-semibold text-white">{category}</span>
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        'text-xs transition-colors',
+                                        allSelected
+                                          ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                                          : someSelected
+                                            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                                            : 'bg-white/5 text-gray-400 border-white/10'
+                                      )}
+                                    >
+                                      {categorySelected.length}/{permissions.length}
+                                    </Badge>
+                                  </div>
+                                  {canModify && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSelectAllInCategory(category);
+                                      }}
+                                      className="h-7 text-xs hover:bg-white/10"
+                                    >
+                                      {allSelected ? 'Deselect All' : 'Select All'}
+                                    </Button>
+                                  )}
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="px-4 pb-4 pt-2 space-y-2"
+                                  >
+                                    {permissions.map((permission) => {
+                                      const isSelected = selectedPermissionIds.has(permission.id);
+                                      return (
+                                        <motion.div
+                                          key={permission.id}
+                                          whileHover={{ scale: 1.01 }}
+                                          whileTap={{ scale: 0.99 }}
+                                          className={cn(
+                                            'flex items-start space-x-3 p-3 rounded-lg cursor-pointer transition-all',
+                                            isSelected
+                                              ? 'bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 shadow-lg shadow-purple-500/10'
+                                              : 'bg-white/5 border border-transparent hover:bg-white/10 hover:border-white/20'
+                                          )}
+                                          onClick={() => togglePermission(permission.id)}
+                                        >
+                                          <Checkbox
+                                            id={permission.id}
+                                            checked={isSelected}
+                                            onCheckedChange={() => togglePermission(permission.id)}
+                                            disabled={!canModify}
+                                            className="mt-0.5 data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <Label
+                                              htmlFor={permission.id}
+                                              className={cn(
+                                                'text-sm cursor-pointer block',
+                                                isSelected ? 'text-white font-medium' : 'text-gray-300'
+                                              )}
+                                            >
+                                              {permission.displayName}
+                                            </Label>
+                                            {permission.description && (
+                                              <p className="text-xs text-gray-400 mt-1">
+                                                {permission.description}
+                                              </p>
+                                            )}
+                                          </div>
+                                          {isSelected && (
+                                            <motion.div
+                                              initial={{ scale: 0 }}
+                                              animate={{ scale: 1 }}
+                                              className="text-purple-400"
+                                            >
+                                              <CheckCircle2 className="h-4 w-4" />
+                                            </motion.div>
+                                          )}
+                                        </motion.div>
+                                      );
+                                    })}
+                                  </motion.div>
+                                </CollapsibleContent>
+                              </div>
+                            </Collapsible>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {selectedPermissionIds.size === 0 && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                  >
+                    <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
+                      <AlertDescription className="text-red-300">
+                        At least one permission is required for the role.
+                      </AlertDescription>
+                    </Alert>
+                  </motion.div>
+                )}
+              </motion.div>
             </motion.div>
-          </motion.div>
           </div>
         </ScrollArea>
 
