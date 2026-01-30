@@ -108,7 +108,7 @@ export default function Sidebar() {
     RBAC_PERMISSIONS.AUDIT_VIEW,
   ]);
 
-  const canViewOverview = isAdmin();
+  const canViewOverview = true; // Visible to all authenticated users
 
   const canViewExplorer = hasAnyPermission([
     RBAC_PERMISSIONS.DB_VIEW,

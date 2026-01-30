@@ -90,6 +90,7 @@ export interface ResourceMetrics {
   local_threads: number;
   file_descriptors_used: number;
   file_descriptors_max: number;
+  read_rate: number; // Bytes read per second
 }
 
 export interface ErrorMetrics {
