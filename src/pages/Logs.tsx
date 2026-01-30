@@ -46,6 +46,39 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  icon: any;
+  color: string;
+}
+
+const StatCard = ({ title, value, icon: Icon, color }: StatCardProps) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className={cn(
+      "p-4 rounded-xl border backdrop-blur-sm",
+      "bg-gradient-to-br from-gray-900/50 to-gray-800/50",
+      `border-${color}-500/20`
+    )}
+  >
+    <div className="flex items-center gap-3">
+      <div className={cn(
+        "p-2 rounded-lg",
+        `bg-${color}-500/20`
+      )}>
+        <Icon className={cn("w-5 h-5", `text-${color}-400`)} />
+      </div>
+      <div>
+        <p className="text-xs text-gray-400 uppercase tracking-wider">{title}</p>
+        <p className={cn("text-xl font-bold", `text-${color}-300`)}>{value}</p>
+      </div>
+    </div>
+  </motion.div>
+);
+
 import { useQuery } from "@tanstack/react-query";
 import { rbacUsersApi, rbacRolesApi } from "@/api/rbac";
 
@@ -80,7 +113,6 @@ interface ProcessedLogsResult {
     total: number;
     success: number;
     failed: number;
-    running: number;
     avgDuration: number;
   };
   exceptionQueryIds: Set<string>; // Track query_ids that have ExceptionWhileProcessing entries
@@ -277,11 +309,7 @@ function processLogs(
         durations.push(log.query_duration_ms);
       }
     } else if (log.type === "QueryStart") {
-      // Only count as running if it doesn't have a final state in the filtered set
-      // This ensures we only count queries that are truly still running (no final state after filtering)
-      if (!filteredFinalStateQueryIds.has(log.query_id)) {
-        running++;
-      }
+      // Running queries are now filtered out
     }
   });
 
@@ -296,7 +324,6 @@ function processLogs(
       total,
       success,
       failed,
-      running,
       avgDuration,
     },
     exceptionQueryIds,
@@ -468,7 +495,11 @@ const QueryDetail: React.FC<QueryDetailProps & { isFailed?: boolean; exceptionQu
   );
 };
 
-export default function Logs() {
+interface LogsProps {
+  embedded?: boolean;
+}
+
+export default function Logs({ embedded = false }: LogsProps) {
   const { theme } = useTheme();
   const { isSuperAdmin, user, hasPermission } = useRbacStore();
   const canViewAllLogs = isSuperAdmin() || hasPermission(RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL);
@@ -749,14 +780,17 @@ export default function Logs() {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="container mx-auto p-6 space-y-6 flex flex-col h-full">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-start flex-wrap gap-4"
-        >
-          <div className="flex items-center gap-4">
+      <div className={cn(
+        "container mx-auto space-y-6 flex flex-col h-full",
+        embedded ? "p-4" : "p-6"
+      )}>
+        {/* Header - separate title and controls */}
+        {!embedded && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-4 mb-6"
+          >
             <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 shadow-lg shadow-blue-500/20">
               <FileText className="h-7 w-7 text-white" />
             </div>
@@ -775,77 +809,42 @@ export default function Logs() {
                 Last updated: {lastUpdated}
               </p>
             </div>
-          </div>
+          </motion.div>
+        )}
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant={autoRefresh ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={cn(
-                "gap-2",
-                autoRefresh
-                  ? "bg-green-500/20 border-green-500/30 text-green-400"
-                  : "bg-white/5 border-white/10"
-              )}
-            >
-              {autoRefresh ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              {autoRefresh ? "Stop Auto" : "Auto Refresh"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="gap-2 bg-white/5 border-white/10"
-            >
-              <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-              Refresh
-            </Button>
-          </div>
-        </motion.div>
+
 
         {/* Summary Stats */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-2 md:grid-cols-5 gap-3"
+          className="grid grid-cols-2 lg:grid-cols-4 gap-4"
         >
-          <LogStat
+          <StatCard
             title="Total Queries"
             value={stats.total}
             icon={Database}
-            color="text-blue-400"
-            bgColor="bg-blue-500/10"
+            color="blue"
           />
-          <LogStat
+          <StatCard
             title="Successful"
             value={stats.success}
             icon={CheckCircle2}
-            color="text-green-400"
-            bgColor="bg-green-500/10"
+            color="green"
           />
-          <LogStat
+          <StatCard
             title="Failed"
             value={stats.failed}
             icon={XCircle}
-            color="text-red-400"
-            bgColor="bg-red-500/10"
+            color="red"
           />
-          <LogStat
-            title="Running"
-            value={stats.running}
-            icon={Zap}
-            color="text-amber-400"
-            bgColor="bg-amber-500/10"
-          />
-          <LogStat
+
+          <StatCard
             title="Avg Duration"
-            value={`${stats.avgDuration}ms`}
+            value={`${Math.round(stats.avgDuration)}ms`}
             icon={Timer}
-            color="text-purple-400"
-            bgColor="bg-purple-500/10"
+            color="purple"
           />
         </motion.div>
 
@@ -854,198 +853,231 @@ export default function Logs() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.15 }}
-          className="flex flex-wrap gap-3 p-4 rounded-xl bg-white/5 border border-white/10"
         >
-          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-            <Search className="h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search queries, users, IDs..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-white/5 border-white/10"
-            />
-          </div>
+          <div className={cn(
+            "relative overflow-hidden rounded-2xl border border-white/10 p-4 flex flex-wrap gap-3",
+            "bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl"
+          )}>
+            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+              <Search className="h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search queries, users, IDs..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-white/5 border-white/10"
+              />
+            </div>
 
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-400" />
-            <Select value={logType} onValueChange={setLogType}>
-              <SelectTrigger className="w-[140px] bg-white/5 border-white/10">
-                <SelectValue />
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-gray-400" />
+              <Select value={logType} onValueChange={setLogType}>
+                <SelectTrigger className="w-[140px] bg-white/5 border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="QueryFinish">Success</SelectItem>
+
+                  <SelectItem value="ExceptionWhileProcessing">Failed</SelectItem>
+                  <SelectItem value="ExceptionBeforeStart">Failed (Before Start)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {canViewAllLogs && (
+              <>
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-gray-400" />
+                  <Select
+                    value={selectedUserId}
+                    onValueChange={(value) => {
+                      setSelectedUserId(value);
+                      // Clear role filter when user is selected
+                      if (value !== "all") {
+                        setSelectedRoleId("all");
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px] bg-white/5 border-white/10 [&>span]:text-left [&>span]:truncate">
+                      <SelectValue placeholder="All Users" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Users</SelectItem>
+                      {usersData?.users.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.displayName || u.username || u.email || u.id.substring(0, 8)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-gray-400" />
+                  <Select
+                    value={selectedRoleId}
+                    onValueChange={(value) => {
+                      setSelectedRoleId(value);
+                      // Clear user filter when role is selected
+                      if (value !== "all") {
+                        setSelectedUserId("all");
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px] bg-white/5 border-white/10 [&>span]:text-left [&>span]:truncate">
+                      <SelectValue placeholder="All Roles" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roles</SelectItem>
+                      {rolesData?.map((role) => (
+                        <SelectItem key={role.id} value={role.id}>
+                          {role.displayName || role.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
+            <Select
+              value={String(limit)}
+              onValueChange={(v) => {
+                const newLimit = Number(v);
+                if (!isNaN(newLimit) && newLimit > 0) {
+                  setLimit(newLimit);
+                  setLimitPreference(newLimit);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[120px] bg-white/5 border-white/10">
+                <SelectValue placeholder="Select rows" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="QueryFinish">Success</SelectItem>
-                <SelectItem value="QueryStart">Running</SelectItem>
-                <SelectItem value="ExceptionWhileProcessing">Failed</SelectItem>
-                <SelectItem value="ExceptionBeforeStart">Failed (Before Start)</SelectItem>
+                <SelectItem value="50">50 rows</SelectItem>
+                <SelectItem value="100">100 rows</SelectItem>
+                <SelectItem value="500">500 rows</SelectItem>
+                <SelectItem value="1000">1000 rows</SelectItem>
               </SelectContent>
             </Select>
-          </div>
 
-          {canViewAllLogs && (
-            <>
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-gray-400" />
-                <Select
-                  value={selectedUserId}
-                  onValueChange={(value) => {
-                    setSelectedUserId(value);
-                    // Clear role filter when user is selected
-                    if (value !== "all") {
-                      setSelectedRoleId("all");
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-[180px] bg-white/5 border-white/10 [&>span]:text-left [&>span]:truncate">
-                    <SelectValue placeholder="All Users" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Users</SelectItem>
-                    {usersData?.users.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.displayName || u.username || u.email || u.id.substring(0, 8)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-gray-400" />
-                <Select
-                  value={selectedRoleId}
-                  onValueChange={(value) => {
-                    setSelectedRoleId(value);
-                    // Clear user filter when role is selected
-                    if (value !== "all") {
-                      setSelectedUserId("all");
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-[180px] bg-white/5 border-white/10 [&>span]:text-left [&>span]:truncate">
-                    <SelectValue placeholder="All Roles" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Roles</SelectItem>
-                    {rolesData?.map((role) => (
-                      <SelectItem key={role.id} value={role.id}>
-                        {role.displayName || role.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </>
-          )}
+            {hasActiveFilters && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={clearFilters}
+                      className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 text-gray-400 hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                      Clear Filters
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Clear all filters</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
 
-          <Select
-            value={String(limit)}
-            onValueChange={(v) => {
-              const newLimit = Number(v);
-              if (!isNaN(newLimit) && newLimit > 0) {
-                setLimit(newLimit);
-                setLimitPreference(newLimit);
-              }
-            }}
-          >
-            <SelectTrigger className="w-[120px] bg-white/5 border-white/10">
-              <SelectValue placeholder="Select rows" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="50">50 rows</SelectItem>
-              <SelectItem value="100">100 rows</SelectItem>
-              <SelectItem value="500">500 rows</SelectItem>
-              <SelectItem value="1000">1000 rows</SelectItem>
-            </SelectContent>
-          </Select>
+            <div className="flex items-center gap-2 border-l border-white/10 pl-3 ml-auto">
+              <Button
+                variant={autoRefresh ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={cn(
+                  "gap-2 h-8",
+                  autoRefresh
+                    ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                    : "text-gray-400 hover:text-white hover:bg-white/5"
+                )}
+                title={autoRefresh ? "Stop Auto Refresh" : "Auto Refresh (5s)"}
+              >
+                {autoRefresh ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                <span className="hidden xl:inline">{autoRefresh ? "Stop" : "Auto"}</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="gap-2 h-8 text-gray-400 hover:text-white hover:bg-white/5"
+                title="Refresh Logs"
+              >
+                <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+                <span className="hidden xl:inline">Refresh</span>
+              </Button>
+            </div>
 
-          {hasActiveFilters && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 text-gray-400 hover:text-white"
-                  >
-                    <X className="h-4 w-4" />
-                    Clear Filters
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Clear all filters</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-
-          <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      "h-7 px-2",
-                      viewMode === "grid"
-                        ? "bg-white/10 text-white hover:bg-white/15"
-                        : "text-gray-400 hover:text-white hover:bg-white/5"
-                    )}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.nativeEvent.stopImmediatePropagation();
-                      setViewMode("grid");
-                    }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Grid View</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      "h-7 px-2",
-                      viewMode === "table"
-                        ? "bg-white/10 text-white hover:bg-white/15"
-                        : "text-gray-400 hover:text-white hover:bg-white/5"
-                    )}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.nativeEvent.stopImmediatePropagation();
-                      // Removed debug logging
-                      setViewMode("table");
-                    }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                  >
-                    <ArrowUpDown className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Table View (Sortable)</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "h-7 px-2",
+                        viewMode === "grid"
+                          ? "bg-white/10 text-white hover:bg-white/15"
+                          : "text-gray-400 hover:text-white hover:bg-white/5"
+                      )}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        setViewMode("grid");
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Grid View</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "h-7 px-2",
+                        viewMode === "table"
+                          ? "bg-white/10 text-white hover:bg-white/15"
+                          : "text-gray-400 hover:text-white hover:bg-white/5"
+                      )}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        // Removed debug logging
+                        setViewMode("table");
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
+                      <ArrowUpDown className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Table View (Sortable)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
         </motion.div>
 
@@ -1069,139 +1101,144 @@ export default function Logs() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="flex-1 rounded-xl bg-white/5 border border-white/10 overflow-hidden"
         >
-          {viewMode === "table" ? (
-            <div className="h-full">
-              <AgGridReact
-                rowData={filteredLogs}
-                columnDefs={columnDefs}
-                defaultColDef={{
-                  sortable: true,
-                  filter: true,
-                  resizable: true,
-                }}
-                modules={[AllCommunityModule]}
-                theme={gridTheme}
-                pagination={true}
-                paginationPageSize={50}
-                enableCellTextSelection={true}
-                loading={isLoading}
-              />
-            </div>
-          ) : (
-            <div className="h-full overflow-auto p-4">
-              {isLoading ? (
-                <div className="flex items-center justify-center h-64">
-                  <div className="flex flex-col items-center gap-3 text-gray-500">
-                    <RefreshCw className="h-8 w-8 animate-spin" />
-                    <span className="text-sm">Loading logs...</span>
+          <div className={cn(
+            "relative overflow-hidden rounded-2xl border border-white/10 flex flex-col h-full",
+            "bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl"
+          )}>
+            {viewMode === "table" ? (
+              <div className="h-full">
+                <AgGridReact
+                  rowData={filteredLogs}
+                  columnDefs={columnDefs}
+                  defaultColDef={{
+                    sortable: true,
+                    filter: true,
+                    resizable: true,
+                  }}
+                  modules={[AllCommunityModule]}
+                  theme={gridTheme}
+                  pagination={true}
+                  paginationPageSize={50}
+                  enableCellTextSelection={true}
+                  loading={isLoading}
+                />
+              </div>
+
+            ) : (
+              <div className="h-full overflow-auto p-4">
+                {isLoading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="flex flex-col items-center gap-3 text-gray-500">
+                      <RefreshCw className="h-8 w-8 animate-spin" />
+                      <span className="text-sm">Loading logs...</span>
+                    </div>
                   </div>
-                </div>
-              ) : filteredLogs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                  <FileText className="h-16 w-16 opacity-20 mb-4" />
-                  <p className="text-lg font-medium">No logs found</p>
-                  <p className="text-sm">Try adjusting your filters</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredLogs.map((log, i) => {
-                    const hasStatusChanged = statusChangedIds.has(log.query_id);
-                    return (
-                      <React.Fragment key={log.query_id + i}>
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{
-                            opacity: 1,
-                            y: 0,
-                            scale: hasStatusChanged ? [1, 1.02, 1] : 1,
-                            backgroundColor: hasStatusChanged
-                              ? (log.type === "QueryFinish" ? "rgba(34, 197, 94, 0.1)" : (isFailedLog(log) ? "rgba(239, 68, 68, 0.1)" : "rgba(255, 255, 255, 0.05)"))
-                              : "rgba(255, 255, 255, 0.05)"
-                          }}
-                          transition={{
-                            delay: Math.min(i * 0.02, 0.5),
-                            scale: hasStatusChanged ? { duration: 0.5, ease: "easeOut" } : undefined,
-                            backgroundColor: hasStatusChanged ? { duration: 0.5 } : undefined
-                          }}
-                          onClick={() => setExpandedLog(expandedLog === log.query_id ? null : log.query_id)}
-                          className={cn(
-                            "flex items-center gap-3 p-3 rounded-xl cursor-pointer",
-                            "hover:bg-white/10 transition-all",
-                            "border border-transparent hover:border-white/10",
-                            expandedLog === log.query_id && "border-white/20 bg-white/10",
-                            hasStatusChanged && "ring-2 ring-offset-2 ring-offset-[#0a0a0a]",
-                            hasStatusChanged && log.type === "QueryFinish" && "ring-green-500/50",
-                            hasStatusChanged && isFailedLog(log) && "ring-red-500/50"
-                          )}
-                        >
-                          {/* Status Icon */}
+                ) : filteredLogs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                    <FileText className="h-16 w-16 opacity-20 mb-4" />
+                    <p className="text-lg font-medium">No logs found</p>
+                    <p className="text-sm">Try adjusting your filters</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredLogs.map((log, i) => {
+                      const hasStatusChanged = statusChangedIds.has(log.query_id);
+                      return (
+                        <React.Fragment key={log.query_id + i}>
                           <motion.div
-                            className="flex-shrink-0"
+                            initial={{ opacity: 0, y: 10 }}
                             animate={{
-                              scale: hasStatusChanged ? [1, 1.2, 1] : 1,
+                              opacity: 1,
+                              y: 0,
+                              scale: hasStatusChanged ? [1, 1.02, 1] : 1,
+                              backgroundColor: hasStatusChanged
+                                ? (log.type === "QueryFinish" ? "rgba(34, 197, 94, 0.1)" : (isFailedLog(log) ? "rgba(239, 68, 68, 0.1)" : "rgba(255, 255, 255, 0.05)"))
+                                : "rgba(255, 255, 255, 0.05)"
                             }}
                             transition={{
-                              duration: 0.5,
-                              ease: "easeOut"
+                              delay: Math.min(i * 0.02, 0.5),
+                              scale: hasStatusChanged ? { duration: 0.5, ease: "easeOut" } : undefined,
+                              backgroundColor: hasStatusChanged ? { duration: 0.5 } : undefined
                             }}
-                          >
-                            {log.type === "QueryFinish" ? (
-                              <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            ) : isFailedLog(log) ? (
-                              <XCircle className="h-4 w-4 text-red-500" />
-                            ) : (
-                              <Zap className="h-4 w-4 text-amber-500 animate-pulse" />
+                            onClick={() => setExpandedLog(expandedLog === log.query_id ? null : log.query_id)}
+                            className={cn(
+                              "flex items-center gap-3 p-3 rounded-xl cursor-pointer",
+                              "hover:bg-white/10 transition-all",
+                              "border border-transparent hover:border-white/10",
+                              expandedLog === log.query_id && "border-white/20 bg-white/10",
+                              hasStatusChanged && "ring-2 ring-offset-2 ring-offset-[#0a0a0a]",
+                              hasStatusChanged && log.type === "QueryFinish" && "ring-green-500/50",
+                              hasStatusChanged && isFailedLog(log) && "ring-red-500/50"
                             )}
+                          >
+                            {/* Status Icon */}
+                            <motion.div
+                              className="flex-shrink-0"
+                              animate={{
+                                scale: hasStatusChanged ? [1, 1.2, 1] : 1,
+                              }}
+                              transition={{
+                                duration: 0.5,
+                                ease: "easeOut"
+                              }}
+                            >
+                              {log.type === "QueryFinish" ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                              ) : isFailedLog(log) ? (
+                                <XCircle className="h-4 w-4 text-red-500" />
+                              ) : (
+                                <Zap className="h-4 w-4 text-amber-500 animate-pulse" />
+                              )}
+                            </motion.div>
+
+                            {/* Query Preview */}
+                            <div className="flex-1 overflow-hidden">
+                              <p className="text-sm text-gray-300 font-mono truncate">{log.query}</p>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                <span className="flex items-center gap-1" title={log.rbacUser ? `RBAC User: ${log.rbacUser}${log.rbacUserId ? ` (${log.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${log.user}` : `ClickHouse User: ${log.user}`}>
+                                  <User className="h-3 w-3" />
+                                  {log.rbacUser ? (
+                                    <span>{log.rbacUser}</span>
+                                  ) : (
+                                    <span>{log.user}</span>
+                                  )}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Timer className="h-3 w-3" />
+                                  {log.query_duration_ms}ms
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {log.event_time}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Expand Icon */}
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 text-gray-500 transition-transform",
+                                expandedLog === log.query_id && "rotate-180"
+                              )}
+                            />
                           </motion.div>
 
-                          {/* Query Preview */}
-                          <div className="flex-1 overflow-hidden">
-                            <p className="text-sm text-gray-300 font-mono truncate">{log.query}</p>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                              <span className="flex items-center gap-1" title={log.rbacUser ? `RBAC User: ${log.rbacUser}${log.rbacUserId ? ` (${log.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${log.user}` : `ClickHouse User: ${log.user}`}>
-                                <User className="h-3 w-3" />
-                                {log.rbacUser ? (
-                                  <span>{log.rbacUser}</span>
-                                ) : (
-                                  <span>{log.user}</span>
-                                )}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Timer className="h-3 w-3" />
-                                {log.query_duration_ms}ms
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {log.event_time}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Expand Icon */}
-                          <ChevronDown
-                            className={cn(
-                              "h-4 w-4 text-gray-500 transition-transform",
-                              expandedLog === log.query_id && "rotate-180"
+                          <AnimatePresence>
+                            {expandedLog === log.query_id && (
+                              <QueryDetail log={log} onClose={() => setExpandedLog(null)} isFailed={isFailedLog(log)} exceptionQueryIds={exceptionQueryIds} />
                             )}
-                          />
-                        </motion.div>
-
-                        <AnimatePresence>
-                          {expandedLog === log.query_id && (
-                            <QueryDetail log={log} onClose={() => setExpandedLog(null)} isFailed={isFailedLog(log)} exceptionQueryIds={exceptionQueryIds} />
-                          )}
-                        </AnimatePresence>
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                          </AnimatePresence>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </motion.div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

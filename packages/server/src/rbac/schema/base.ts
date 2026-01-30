@@ -11,7 +11,7 @@
 
 export const SYSTEM_ROLES = {
   SUPER_ADMIN: 'super_admin',
-  ADMIN: 'admin', 
+  ADMIN: 'admin',
   DEVELOPER: 'developer',
   ANALYST: 'analyst',
   VIEWER: 'viewer',
@@ -39,25 +39,25 @@ export const PERMISSIONS = {
   USERS_CREATE: 'users:create',
   USERS_UPDATE: 'users:update',
   USERS_DELETE: 'users:delete',
-  
+
   // Role Management
   ROLES_VIEW: 'roles:view',
   ROLES_CREATE: 'roles:create',
   ROLES_UPDATE: 'roles:update',
   ROLES_DELETE: 'roles:delete',
   ROLES_ASSIGN: 'roles:assign',
-  
+
   // ClickHouse User Management
   CH_USERS_VIEW: 'clickhouse:users:view',
   CH_USERS_CREATE: 'clickhouse:users:create',
   CH_USERS_UPDATE: 'clickhouse:users:update',
   CH_USERS_DELETE: 'clickhouse:users:delete',
-  
+
   // Database Operations
   DB_VIEW: 'database:view',
   DB_CREATE: 'database:create',
   DB_DROP: 'database:drop',
-  
+
   // Table Operations
   TABLE_VIEW: 'table:view',
   TABLE_CREATE: 'table:create',
@@ -67,32 +67,36 @@ export const PERMISSIONS = {
   TABLE_INSERT: 'table:insert',
   TABLE_UPDATE: 'table:update',
   TABLE_DELETE: 'table:delete',
-  
+
   // Query Operations
   QUERY_EXECUTE: 'query:execute',
   QUERY_EXECUTE_DDL: 'query:execute:ddl',
   QUERY_EXECUTE_DML: 'query:execute:dml',
   QUERY_HISTORY_VIEW: 'query:history:view',
   QUERY_HISTORY_VIEW_ALL: 'query:history:view:all',
-  
+
   // Saved Queries
   SAVED_QUERIES_VIEW: 'saved_queries:view',
   SAVED_QUERIES_CREATE: 'saved_queries:create',
   SAVED_QUERIES_UPDATE: 'saved_queries:update',
   SAVED_QUERIES_DELETE: 'saved_queries:delete',
   SAVED_QUERIES_SHARE: 'saved_queries:share',
-  
+
   // Metrics & Monitoring
   METRICS_VIEW: 'metrics:view',
   METRICS_VIEW_ADVANCED: 'metrics:view:advanced',
-  
+
   // Settings
   SETTINGS_VIEW: 'settings:view',
   SETTINGS_UPDATE: 'settings:update',
-  
+
   // Audit Logs
   AUDIT_VIEW: 'audit:view',
   AUDIT_EXPORT: 'audit:export',
+
+  // Live Query Management (admin only)
+  LIVE_QUERIES_VIEW: 'live_queries:view',
+  LIVE_QUERIES_KILL: 'live_queries:kill',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -103,7 +107,7 @@ export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
   [SYSTEM_ROLES.SUPER_ADMIN]: Object.values(PERMISSIONS),
-  
+
   [SYSTEM_ROLES.ADMIN]: [
     PERMISSIONS.USERS_VIEW,
     PERMISSIONS.USERS_CREATE,
@@ -141,8 +145,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SETTINGS_VIEW,
     PERMISSIONS.SETTINGS_UPDATE,
     PERMISSIONS.AUDIT_VIEW,
+    PERMISSIONS.LIVE_QUERIES_VIEW,
+    PERMISSIONS.LIVE_QUERIES_KILL,
   ],
-  
+
   [SYSTEM_ROLES.DEVELOPER]: [
     PERMISSIONS.DB_VIEW,
     PERMISSIONS.DB_CREATE,
@@ -165,7 +171,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SAVED_QUERIES_DELETE,
     PERMISSIONS.METRICS_VIEW,
   ],
-  
+
   [SYSTEM_ROLES.ANALYST]: [
     PERMISSIONS.DB_VIEW,
     PERMISSIONS.TABLE_VIEW,
@@ -182,7 +188,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SAVED_QUERIES_DELETE,
     PERMISSIONS.METRICS_VIEW,
   ],
-  
+
   [SYSTEM_ROLES.VIEWER]: [
     PERMISSIONS.DB_VIEW,
     PERMISSIONS.TABLE_VIEW,
@@ -192,7 +198,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SAVED_QUERIES_VIEW,
     PERMISSIONS.METRICS_VIEW,
   ],
-  
+
   [SYSTEM_ROLES.GUEST]: [
     // User Management - View only
     PERMISSIONS.USERS_VIEW,
@@ -243,19 +249,19 @@ export const AUDIT_ACTIONS = {
   LOGOUT: 'auth.logout',
   LOGIN_FAILED: 'auth.login_failed',
   PASSWORD_CHANGE: 'auth.password_change',
-  
+
   // User Management
   USER_CREATE: 'user.create',
   USER_UPDATE: 'user.update',
   USER_DELETE: 'user.delete',
   USER_ROLE_ASSIGN: 'user.role_assign',
   USER_ROLE_REVOKE: 'user.role_revoke',
-  
+
   // Role Management
   ROLE_CREATE: 'role.create',
   ROLE_UPDATE: 'role.update',
   ROLE_DELETE: 'role.delete',
-  
+
   // ClickHouse Operations
   CH_USER_CREATE: 'clickhouse.user_create',
   CH_USER_UPDATE: 'clickhouse.user_update',
@@ -267,9 +273,12 @@ export const AUDIT_ACTIONS = {
   CH_TABLE_CREATE: 'clickhouse.table_create',
   CH_TABLE_ALTER: 'clickhouse.table_alter',
   CH_TABLE_DROP: 'clickhouse.table_drop',
-  
+
   // Settings
   SETTINGS_UPDATE: 'settings.update',
+
+  // Live Query Management
+  LIVE_QUERY_KILL: 'live_query.kill',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

@@ -1,7 +1,7 @@
-import { BrowserRouter as Router, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from "react-router-dom";
 import Sidebar from "@/components/common/Sidebar";
 import HomePage from "@/pages/Home";
-import MetricsPage from "@/pages/Metrics";
+import MonitoringPage from "@/pages/Monitoring";
 import SettingsPage from "@/pages/Settings";
 import { DefaultRedirect } from "@/components/common/DefaultRedirect";
 import { ThemeProvider } from "@/components/common/theme-provider";
@@ -9,7 +9,6 @@ import AppInitializer from "@/components/common/AppInit";
 import NotFound from "./pages/NotFound";
 import { PrivateRoute } from "@/components/common/privateRoute";
 import Admin from "@/pages/Admin";
-import LogsPage from "@/pages/Logs";
 import Login from "@/pages/Login";
 import ExplorerPage from "@/pages/Explorer";
 import { AdminRoute } from "@/features/admin/routes/adminRoute";
@@ -48,7 +47,7 @@ export default function App() {
             <Route element={<MainLayout />}>
               {/* Default redirect based on user role */}
               <Route path="/" element={<DefaultRedirect />} />
-              
+
               {/* Overview - Admin default landing page */}
               <Route
                 path="/overview"
@@ -58,37 +57,29 @@ export default function App() {
                   </AdminRoute>
                 }
               />
-              
-              {/* Metrics */}
+
+              {/* Monitoring - Live Queries, Logs, Metrics */}
               <Route
-                path="/metrics"
+                path="/monitoring"
                 element={
                   <AdminRoute
                     requiredPermission={[
+                      RBAC_PERMISSIONS.LIVE_QUERIES_VIEW,
                       RBAC_PERMISSIONS.METRICS_VIEW,
                       RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
-                    ]}
-                  >
-                    <MetricsPage />
-                  </AdminRoute>
-                }
-              />
-              
-              {/* Logs */}
-              <Route
-                path="/logs"
-                element={
-                  <AdminRoute
-                    requiredPermission={[
                       RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
                       RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
                     ]}
                   >
-                    <LogsPage />
+                    <MonitoringPage />
                   </AdminRoute>
                 }
               />
-              
+
+              {/* Backward compatibility redirects for old routes */}
+              <Route path="/logs" element={<Navigate to="/monitoring" replace />} />
+              <Route path="/metrics" element={<Navigate to="/monitoring" replace />} />
+
               {/* Explorer */}
               <Route
                 path="/explorer"
@@ -103,7 +94,7 @@ export default function App() {
                   </AdminRoute>
                 }
               />
-              
+
               {/* Administration - RBAC User Management */}
               <Route
                 path="/admin"
@@ -120,7 +111,7 @@ export default function App() {
                   </AdminRoute>
                 }
               />
-              
+
               {/* Create User */}
               <Route
                 path="/admin/users/create"
@@ -130,7 +121,7 @@ export default function App() {
                   </AdminRoute>
                 }
               />
-              
+
               {/* Edit User - using userId */}
               <Route
                 path="/admin/users/edit/:userId"
@@ -140,7 +131,7 @@ export default function App() {
                   </AdminRoute>
                 }
               />
-              
+
               {/* Settings */}
               <Route
                 path="/settings"
@@ -150,7 +141,7 @@ export default function App() {
                   </AdminRoute>
                 }
               />
-              
+
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Route>

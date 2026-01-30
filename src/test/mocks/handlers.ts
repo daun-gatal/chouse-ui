@@ -135,6 +135,56 @@ export const handlers = [
     return HttpResponse.json({ success: true, data: [{ name: 'default', path: '/var/lib/clickhouse', free_space: 100000000, total_space: 500000000, used_space: 400000000, used_percent: 80 }] });
   }),
 
+  http.get(`${API_BASE}/metrics/top-tables`, ({ request }) => {
+    const url = new URL(request.url);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 50);
+    const data = Array.from({ length: limit }, (_, i) => ({
+      database: 'default',
+      table: `table_${i + 1}`,
+      rows: 1000 * (i + 1),
+      bytes_on_disk: 4096 * (i + 1),
+      compressed_size: `${4.1 * (i + 1)} KiB`,
+      parts_count: 0,
+    }));
+    return HttpResponse.json({ success: true, data });
+  }),
+
+  // Live Queries
+  http.get(`${API_BASE}/live-queries`, () => {
+    return HttpResponse.json({
+      success: true,
+      data: {
+        queries: [
+          {
+            query_id: 'live-query-1',
+            user: 'default',
+            query: 'SELECT * FROM system.tables',
+            elapsed_seconds: 2,
+            read_rows: 10,
+            read_bytes: 1024,
+            memory_usage: 4096,
+            is_initial_query: 1,
+            client_name: 'client',
+          },
+        ],
+        connectionId: 'conn1',
+        total: 1,
+      },
+    });
+  }),
+
+  http.post(`${API_BASE}/live-queries/kill`, async ({ request }) => {
+    const body = await request.json() as { queryId?: string };
+    const queryId = body?.queryId ?? 'unknown';
+    return HttpResponse.json({
+      success: true,
+      data: {
+        message: 'Query killed successfully.',
+        queryId,
+      },
+    });
+  }),
+
   // Default 404
   http.all('*', ({ request }) => {
     console.warn(`Unhandled: ${request.method} ${request.url}`);

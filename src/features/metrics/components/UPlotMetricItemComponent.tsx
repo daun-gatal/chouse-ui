@@ -10,12 +10,18 @@ interface UPlotMetricItemComponentProps {
   data: MetricData;
   title: string;
   color?: string;
+  fill?: string | ((u: uPlot) => CanvasGradient | string);
+  unit?: string;
+  height?: number;
 }
 
 const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
   data,
   title,
   color = "#a855f7",
+  fill,
+  unit = "",
+  height,
 }) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const uplotRef = useRef<uPlot | null>(null);
@@ -24,17 +30,21 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
   useEffect(() => {
     if (!chartRef.current || !data.timestamps.length) return;
 
-    // Get gradient colors based on main color
+    // Get gradient colors based on main color if no fill provided
     const getGradientFill = (u: uPlot) => {
+      if (fill) return typeof fill === 'function' ? fill(u) : fill;
+
       const gradient = u.ctx.createLinearGradient(0, 0, 0, u.height);
       gradient.addColorStop(0, `${color}40`);
       gradient.addColorStop(1, `${color}05`);
       return gradient;
     };
 
+    const chartHeight = height || (chartRef.current.clientHeight - 10);
+
     const opts: uPlot.Options = {
       width: chartRef.current.clientWidth,
-      height: chartRef.current.clientHeight - 10,
+      height: chartHeight,
       title: "",
       padding: [10, 10, 0, 0],
       cursor: {
@@ -150,7 +160,7 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
       if (uplotRef.current && chartRef.current) {
         uplotRef.current.setSize({
           width: chartRef.current.clientWidth,
-          height: chartRef.current.clientHeight - 10,
+          height: height || (chartRef.current.clientHeight - 10),
         });
       }
     };
@@ -163,7 +173,7 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
         uplotRef.current.destroy();
       }
     };
-  }, [data, title, color]);
+  }, [data, title, color, fill, height]);
 
   if (!data.timestamps.length) {
     return (
@@ -177,9 +187,9 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
     <div className="relative w-full h-full">
       {/* Hover tooltip */}
       {hoveredValue && (
-        <div className="absolute top-2 right-2 z-10 px-3 py-1.5 rounded-lg bg-black/80 border border-white/10 backdrop-blur-md">
+        <div className="absolute top-2 right-2 z-10 px-3 py-1.5 rounded-lg bg-black/80 border border-white/10 backdrop-blur-md pointer-events-none">
           <div className="text-xs text-gray-400">{hoveredValue.time}</div>
-          <div className="text-sm font-medium text-white">{hoveredValue.value} {title}</div>
+          <div className="text-sm font-medium text-white">{hoveredValue.value}{unit} {title}</div>
         </div>
       )}
       <div ref={chartRef} className="w-full h-full" />

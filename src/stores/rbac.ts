@@ -26,12 +26,12 @@ export interface RbacState {
   isLoading: boolean;
   isInitialized: boolean;
   error: string | null;
-  
+
   // User info
   user: RbacUser | null;
   roles: string[];
   permissions: string[];
-  
+
   // Actions
   login: (identifier: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -39,7 +39,7 @@ export interface RbacState {
   refreshUser: () => Promise<void>;
   checkAuth: () => Promise<boolean>;
   clearError: () => void;
-  
+
   // Permission helpers
   hasPermission: (permission: string) => boolean;
   hasAnyPermission: (permissions: string[]) => boolean;
@@ -192,7 +192,7 @@ export const useRbacStore = create<RbacState>()(
        */
       checkAuth: async () => {
         const accessToken = getRbacAccessToken();
-        
+
         if (!accessToken) {
           set({ isInitialized: true, isAuthenticated: false });
           return false;
@@ -324,25 +324,25 @@ export const RBAC_PERMISSIONS = {
   USERS_CREATE: 'users:create',
   USERS_UPDATE: 'users:update',
   USERS_DELETE: 'users:delete',
-  
+
   // Role Management
   ROLES_VIEW: 'roles:view',
   ROLES_CREATE: 'roles:create',
   ROLES_UPDATE: 'roles:update',
   ROLES_DELETE: 'roles:delete',
   ROLES_ASSIGN: 'roles:assign',
-  
+
   // ClickHouse User Management
   CH_USERS_VIEW: 'clickhouse:users:view',
   CH_USERS_CREATE: 'clickhouse:users:create',
   CH_USERS_UPDATE: 'clickhouse:users:update',
   CH_USERS_DELETE: 'clickhouse:users:delete',
-  
+
   // Database Operations
   DB_VIEW: 'database:view',
   DB_CREATE: 'database:create',
   DB_DROP: 'database:drop',
-  
+
   // Table Operations
   TABLE_VIEW: 'table:view',
   TABLE_CREATE: 'table:create',
@@ -352,32 +352,36 @@ export const RBAC_PERMISSIONS = {
   TABLE_INSERT: 'table:insert',
   TABLE_UPDATE: 'table:update',
   TABLE_DELETE: 'table:delete',
-  
+
   // Query Operations
   QUERY_EXECUTE: 'query:execute',
   QUERY_EXECUTE_DDL: 'query:execute:ddl',
   QUERY_EXECUTE_DML: 'query:execute:dml',
   QUERY_HISTORY_VIEW: 'query:history:view',
   QUERY_HISTORY_VIEW_ALL: 'query:history:view:all',
-  
+
   // Saved Queries
   SAVED_QUERIES_VIEW: 'saved_queries:view',
   SAVED_QUERIES_CREATE: 'saved_queries:create',
   SAVED_QUERIES_UPDATE: 'saved_queries:update',
   SAVED_QUERIES_DELETE: 'saved_queries:delete',
   SAVED_QUERIES_SHARE: 'saved_queries:share',
-  
+
   // Metrics
   METRICS_VIEW: 'metrics:view',
   METRICS_VIEW_ADVANCED: 'metrics:view:advanced',
-  
+
   // Settings
   SETTINGS_VIEW: 'settings:view',
   SETTINGS_UPDATE: 'settings:update',
-  
+
   // Audit
   AUDIT_VIEW: 'audit:view',
   AUDIT_EXPORT: 'audit:export',
+
+  // Live Query Management (admin only)
+  LIVE_QUERIES_VIEW: 'live_queries:view',
+  LIVE_QUERIES_KILL: 'live_queries:kill',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

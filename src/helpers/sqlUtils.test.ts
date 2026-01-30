@@ -29,7 +29,10 @@ describe('helpers/sqlUtils', () => {
     it('should reject reserved keywords', () => {
       expect(validateIdentifier('select')).toBe(false);
       expect(validateIdentifier('from')).toBe(false);
-      expect(validateIdentifier('default')).toBe(false);
+    });
+
+    it('should allow default (ClickHouse built-in database name)', () => {
+      expect(validateIdentifier('default')).toBe(true);
     });
 
     it('should handle edge cases', () => {
@@ -59,6 +62,10 @@ describe('helpers/sqlUtils', () => {
 
     it('should handle single identifier', () => {
       expect(escapeQualifiedIdentifier(['users'])).toBe('`users`');
+    });
+
+    it('should allow default database (ClickHouse built-in)', () => {
+      expect(escapeQualifiedIdentifier(['default', 'viz_test_largest_tables'])).toBe('`default`.`viz_test_largest_tables`');
     });
 
     it('should throw on invalid input', () => {

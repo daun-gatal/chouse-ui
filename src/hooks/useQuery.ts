@@ -26,6 +26,7 @@ import type {
   AppConfig,
 } from '@/api';
 
+
 // ============================================
 // Query Keys
 // ============================================
@@ -538,9 +539,11 @@ export function useQueryLogs(
             read_bytes,
             memory_usage,
             user,
-            exception
+            exception,
+            Settings['log_comment'] as log_comment_json
           FROM system.query_log AS __table1
           WHERE event_date >= today() - 1
+          AND type != 'QueryStart'
           ${userFilter}
           ORDER BY __table1.event_time DESC
           LIMIT ${limit}
@@ -559,6 +562,7 @@ export function useQueryLogs(
         memory_usage: log.memory_usage,
         user: log.user,
         exception: log.exception,
+        log_comment_json: log.log_comment_json,
       })) as Array<{
         type: string;
         event_date: string;
@@ -572,6 +576,7 @@ export function useQueryLogs(
         memory_usage: number;
         user: string;
         exception?: string;
+        log_comment_json?: string;
       }>;
 
       // Fetch audit logs for query execution to get RBAC users
@@ -660,8 +665,19 @@ export function useQueryLogs(
           console.log('[QueryLogs] Audit logs found:', allAuditLogs.length, 'Unique users:', new Set(allAuditLogs.map(l => l.userId).filter(Boolean)).size, rbacUserId ? `(filtered for user: ${rbacUserId})` : '(all users)');
         }
 
-        // Get unique user IDs to fetch user details
-        const uniqueUserIds = Array.from(new Set(Array.from(auditMap.values()).flat().map(d => d.userId).filter(Boolean) as string[]));
+        // Get unique user IDs to fetch user details (from both Audit Logs and log_comment)
+        const auditUserIds = Array.from(auditMap.values()).flat().map(d => d.userId).filter(Boolean) as string[];
+        const logCommentUserIds = logs.map(l => {
+          try {
+            if (l.log_comment_json) {
+              const parsed = JSON.parse(l.log_comment_json);
+              return parsed.rbac_user_id;
+            }
+          } catch (e) { return null; }
+          return null;
+        }).filter(Boolean) as string[];
+
+        const uniqueUserIds = Array.from(new Set([...auditUserIds, ...logCommentUserIds]));
         const userMap = new Map<string, { username: string; email: string; displayName: string | null }>();
 
         // Fetch user details in parallel
@@ -726,6 +742,16 @@ export function useQueryLogs(
                   }
                 }
               }
+            }
+
+            // Priority: Check log_comment for RBAC User ID
+            if (log.log_comment_json) {
+              try {
+                const parsed = JSON.parse(log.log_comment_json);
+                if (parsed.rbac_user_id) {
+                  rbacUserId = parsed.rbac_user_id;
+                }
+              } catch (e) { }
             }
 
 
@@ -1043,6 +1069,26 @@ export function useProductionMetrics(
     gcTime: 60000,
     retry: false,
     refetchOnWindowFocus: false,
+    ...options,
+  });
+}
+
+/**
+ * Hook to fetch top tables by size
+ */
+export function useTopTables(
+  limit: number = 10,
+  options?: Partial<UseQueryOptions<metricsApi.TopTableBySize[], Error>>
+) {
+  // Check if there's an active connection
+  const { activeConnectionId, sessionId } = useAuthStore();
+  const hasConnection = !!(activeConnectionId && sessionId);
+
+  return useQuery({
+    queryKey: ['topTables', limit] as const,
+    queryFn: () => metricsApi.getTopTables(limit),
+    enabled: hasConnection,
+    staleTime: 60000,
     ...options,
   });
 }
