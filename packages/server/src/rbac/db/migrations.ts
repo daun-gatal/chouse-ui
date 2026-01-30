@@ -767,7 +767,8 @@ const MIGRATIONS: Migration[] = [
           const rows = await (db as PostgresDb).execute(sql`
             SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
           `);
-          roleResult = Array.isArray(rows) ? rows : (rows as { rows?: Array<{ id: string }> }).rows ?? [];
+          const raw = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          roleResult = raw as Array<{ id: string }>;
         }
 
         if (roleResult.length > 0) {
