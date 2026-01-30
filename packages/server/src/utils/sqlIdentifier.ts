@@ -37,14 +37,15 @@ export function validateIdentifier(name: string): boolean {
     return false;
   }
 
-  // Basic reserved keyword check (common ClickHouse keywords)
+  // Basic reserved keyword check (common ClickHouse keywords).
+  // 'default' is excluded: it is the built-in default database name in ClickHouse.
   const reservedKeywords = new Set([
     'select', 'from', 'where', 'insert', 'update', 'delete', 'create', 'drop',
     'alter', 'table', 'database', 'index', 'view', 'as', 'on', 'join', 'inner',
     'left', 'right', 'full', 'outer', 'union', 'all', 'distinct', 'group', 'by',
     'order', 'having', 'limit', 'offset', 'case', 'when', 'then', 'else', 'end',
     'if', 'exists', 'in', 'not', 'and', 'or', 'like', 'between', 'is', 'null',
-    'true', 'false', 'default', 'primary', 'key', 'foreign', 'references',
+    'true', 'false', 'primary', 'key', 'foreign', 'references',
     'constraint', 'unique', 'check', 'engine', 'partition', 'cluster'
   ]);
 

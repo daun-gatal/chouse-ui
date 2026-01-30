@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { queryKeys, useConfig, useDatabases, useTableDetails, useSystemStats, useIntellisense } from './useQuery';
+import { queryKeys, useConfig, useDatabases, useTableDetails, useSystemStats, useIntellisense, useTopTables } from './useQuery';
 
 describe('useQuery', () => {
   describe('queryKeys', () => {
@@ -67,6 +67,11 @@ describe('useQuery', () => {
     it('should export useIntellisense', () => {
       expect(useIntellisense).toBeDefined();
       expect(typeof useIntellisense).toBe('function');
+    });
+
+    it('should export useTopTables', () => {
+      expect(useTopTables).toBeDefined();
+      expect(typeof useTopTables).toBe('function');
     });
   });
 });

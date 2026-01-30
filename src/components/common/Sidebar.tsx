@@ -6,7 +6,6 @@ import {
   Activity,
   LogOut,
   Database,
-  FileText,
   Shield,
   ChevronLeft,
   ChevronRight,
@@ -83,46 +82,44 @@ const SidebarItem = ({ icon: Icon, label, to, isActive, isCollapsed }: SidebarIt
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  
+
   // Use RBAC store for all authentication
-  const { 
-    user, 
-    logout, 
-    isAdmin, 
+  const {
+    user,
+    logout,
+    isAdmin,
     hasPermission,
     hasAnyPermission,
   } = useRbacStore();
-  
+
   // Check permissions for various sections
-  const canViewMetrics = hasAnyPermission([
+  const canViewMonitoring = hasAnyPermission([
+    RBAC_PERMISSIONS.LIVE_QUERIES_VIEW,
     RBAC_PERMISSIONS.METRICS_VIEW,
     RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
+    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
+    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
   ]);
-  
+
   const canViewAdmin = hasAnyPermission([
     RBAC_PERMISSIONS.USERS_VIEW,
     RBAC_PERMISSIONS.USERS_CREATE,
     RBAC_PERMISSIONS.ROLES_VIEW,
     RBAC_PERMISSIONS.AUDIT_VIEW,
   ]);
-  
+
   const canViewOverview = isAdmin();
-  
+
   const canViewExplorer = hasAnyPermission([
     RBAC_PERMISSIONS.DB_VIEW,
     RBAC_PERMISSIONS.TABLE_VIEW,
   ]);
-  
-  const canViewLogs = hasAnyPermission([
-    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
-    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
-  ]);
-  
+
   const canViewSettings = hasPermission(RBAC_PERMISSIONS.SETTINGS_VIEW);
-  
+
   const { isAuthenticated } = useRbacStore();
   const [hasFetchedPreference, setHasFetchedPreference] = useState(false);
-  
+
   // Load initial state from localStorage (fallback for non-authenticated users)
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
@@ -143,7 +140,7 @@ export default function Sidebar() {
       try {
         const preferences = await rbacUserPreferencesApi.getPreferences();
         const savedCollapsed = preferences.workspacePreferences?.sidebarCollapsed as boolean | undefined;
-        
+
         if (typeof savedCollapsed === 'boolean') {
           setIsCollapsed(savedCollapsed);
           // Also update localStorage for fallback
@@ -212,8 +209,7 @@ export default function Sidebar() {
   const sidebarItems = [
     ...(canViewOverview ? [{ icon: LayoutDashboard, label: "Overview", to: "/overview" }] : []),
     ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer" }] : []),
-    ...(canViewMetrics ? [{ icon: Activity, label: "Metrics", to: "/metrics" }] : []),
-    ...(canViewLogs ? [{ icon: FileText, label: "Logs", to: "/logs" }] : []),
+    ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring" }] : []),
     ...(canViewAdmin ? [{ icon: Shield, label: "Administration", to: "/admin" }] : []),
     ...(canViewSettings ? [{ icon: Settings, label: "Settings", to: "/settings" }] : []),
   ];
@@ -230,10 +226,10 @@ export default function Sidebar() {
           // Continue with logout even if disconnect fails
         }
       }
-      
+
       // Logout from RBAC
       await logout();
-      
+
       // Clear ClickHouse session
       clearSession();
     } catch (error) {
@@ -270,7 +266,7 @@ export default function Sidebar() {
           <img src={Logo} alt="Logo" className="w-8 h-8 object-contain drop-shadow-[0_0_10px_rgba(255,200,0,0.2)]" />
         </div>
         {!isCollapsed && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.2 }}

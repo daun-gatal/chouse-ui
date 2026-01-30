@@ -7,6 +7,7 @@ import {
     getSystemStats,
     getRecentQueries,
     getDiskMetrics,
+    getTopTables,
 } from './metrics';
 
 describe('Metrics API', () => {
@@ -48,6 +49,29 @@ describe('Metrics API', () => {
 
             expect(disks).toBeDefined();
             expect(Array.isArray(disks)).toBe(true);
+        });
+    });
+
+    describe('getTopTables', () => {
+        it('should fetch top tables by size (non-system)', async () => {
+            const tables = await getTopTables(5);
+
+            expect(tables).toBeDefined();
+            expect(Array.isArray(tables)).toBe(true);
+            expect(tables.length).toBeGreaterThan(0);
+            expect(tables.length).toBeLessThanOrEqual(5);
+            const first = tables[0];
+            expect(first).toHaveProperty('database');
+            expect(first).toHaveProperty('table');
+            expect(first).toHaveProperty('rows');
+            expect(first).toHaveProperty('bytes_on_disk');
+            expect(first).toHaveProperty('compressed_size');
+            expect(first).toHaveProperty('parts_count');
+        });
+
+        it('should respect limit parameter', async () => {
+            const tables = await getTopTables(3);
+            expect(tables.length).toBeLessThanOrEqual(3);
         });
     });
 });

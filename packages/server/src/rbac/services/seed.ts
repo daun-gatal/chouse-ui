@@ -85,6 +85,10 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.AUDIT_VIEW,
     PERMISSIONS.AUDIT_EXPORT,
   ],
+  'Live Query Management': [
+    PERMISSIONS.LIVE_QUERIES_VIEW,
+    PERMISSIONS.LIVE_QUERIES_KILL,
+  ],
 };
 
 // Human-readable permission names
@@ -129,6 +133,8 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.SETTINGS_UPDATE]: 'Update Settings',
   [PERMISSIONS.AUDIT_VIEW]: 'View Audit Logs',
   [PERMISSIONS.AUDIT_EXPORT]: 'Export Audit Logs',
+  [PERMISSIONS.LIVE_QUERIES_VIEW]: 'View Live Queries',
+  [PERMISSIONS.LIVE_QUERIES_KILL]: 'Kill Live Queries',
 };
 
 // Role display names and descriptions
@@ -317,7 +323,7 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
     }
 
     console.log(`[RBAC] Created super admin user: ${adminEmail}`);
-    
+
     if (adminPassword === 'admin123!') {
       console.log('[RBAC] ⚠️  WARNING: Using default admin password. Please change it immediately!');
       console.log('[RBAC] Set RBAC_ADMIN_PASSWORD environment variable for production.');
@@ -332,12 +338,12 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
  */
 export async function seedDatabase(): Promise<void> {
   console.log('[RBAC] Starting database seeding...');
-  
+
   try {
     const permissionIdMap = await seedPermissions();
     const roleIdMap = await seedRoles(permissionIdMap);
     await seedSuperAdmin(roleIdMap);
-    
+
     console.log('[RBAC] Database seeding completed successfully');
   } catch (error) {
     console.error('[RBAC] Database seeding failed:', error);
@@ -357,7 +363,7 @@ export async function needsSeeding(): Promise<boolean> {
     const roles = await db.select()
       .from(schema.roles)
       .limit(1);
-    
+
     return roles.length === 0;
   } catch {
     // Table might not exist yet

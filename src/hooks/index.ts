@@ -37,6 +37,7 @@ export {
   useSettings,
   useClusters,
   useClusterNames,
+  useTopTables,
 } from './useQuery';
 
 // Auth hooks

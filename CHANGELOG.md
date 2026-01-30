@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.8.0] - 2026-01-30
+
+### Added
+
+- **Live Query Management** (Issue #71): Admins can view and stop running ClickHouse queries from the UI.
+  - **View**: New Live Queries page lists executing queries from `system.processes` (filtered to exclude internal queries).
+  - **Control**: Kill running queries via UI with confirmation; requires `live_queries:kill` permission.
+  - **Security**: Restricted via RBAC; new permissions `live_queries:view` and `live_queries:kill` (assigned to admin roles).
+  - **Backend**: New `/api/live-queries` route (GET list, POST kill); audit logging for kill actions.
+  - **Frontend**: `liveQueriesApi`, `useLiveQueries`, `useKillQuery`, `useLiveQueriesStats`; Monitoring/Live Queries pages and nav entry.
+  - **Tests**: Server route tests (`live-queries.test.ts`), frontend API and hook tests, MSW handlers for live-queries.
+
+- **Overview Largest Tables**: Top tables by size now use `system.tables` (non-system databases only) so the overview "Largest Tables" section is populated even when `system.parts` is empty (e.g. non-MergeTree tables or restricted environments).
+  - **Tests**: `getTopTablesBySize` and GET `/metrics/top-tables` tests; `getTopTables` and `useTopTables` frontend tests; MSW handler for `/metrics/top-tables`.
+
+### Fixed
+
+- **Upload to `default` database**: Allowed `default` as a valid database name in SQL identifier validation so file uploads to the ClickHouse `default` database no longer fail with "Invalid identifier: default".
+  - **Frontend**: Removed `default` from reserved keywords in `src/helpers/sqlUtils.ts`; added tests for `validateIdentifier('default')` and `escapeQualifiedIdentifier(['default', 'table'])`.
+  - **Server**: Same change in `packages/server/src/utils/sqlIdentifier.ts` and tests.
+
+### Testing
+
+- Added and updated tests for Live Queries (server routes, API, hooks, `useLiveQueriesStats`).
+- Added tests for top-tables API, `useTopTables` export, and metrics GET `/metrics/top-tables`.
+- Added tests for `default` identifier and `escapeQualifiedIdentifier` with `default` database (frontend and server).
+
 ## [v2.7.6] - 2026-01-22
 
 ### Added
