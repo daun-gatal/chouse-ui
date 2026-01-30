@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.6.0';
+export const APP_VERSION = '1.7.0';
 
 // ============================================
 // Migration Registry
@@ -619,7 +619,7 @@ const MIGRATIONS: Migration[] = [
 
       if (dbType === 'sqlite') {
         // SQLite: Recreate tables with new columns
-        
+
         // Favorites table
         (db as SqliteDb).run(sql`
           CREATE TABLE IF NOT EXISTS rbac_user_favorites_new (
@@ -674,7 +674,7 @@ const MIGRATIONS: Migration[] = [
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
       } else {
         // PostgreSQL: Add columns to existing tables
-        
+
         // Favorites table
         await (db as PostgresDb).execute(sql`
           ALTER TABLE rbac_user_favorites 
@@ -720,6 +720,104 @@ const MIGRATIONS: Migration[] = [
     },
     down: async (db) => {
       console.log('[Migration 1.6.0] Down migration not supported');
+    },
+  },
+  {
+    version: '1.7.0',
+    name: 'live_query_management_permissions',
+    description: 'Add live query management permissions for viewing and killing running queries',
+    up: async (db) => {
+      // Use the existing seed function which is idempotent
+      // It will check if permissions exist and only create them if they don't
+      const { seedPermissions, seedRoles } = await import('../services/seed');
+
+      // First ensure all permissions exist (including new ones)
+      const permissionIdMap = await seedPermissions();
+
+      console.log('[Migration 1.7.0] Live query management permissions created');
+
+      // Get LIVE_QUERIES_VIEW and LIVE_QUERIES_KILL permission IDs
+      const liveQueriesViewId = permissionIdMap.get('live_queries:view');
+      const liveQueriesKillId = permissionIdMap.get('live_queries:kill');
+
+      if (!liveQueriesViewId || !liveQueriesKillId) {
+        console.error('[Migration 1.7.0] Failed to get live query permission IDs');
+        return;
+      }
+
+      // Import database functions (use raw SQL to avoid schema/db dialect union type issues)
+      const { getDatabaseType } = await import('./index');
+      const { SYSTEM_ROLES } = await import('../schema/base');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+
+      const dbType = getDatabaseType();
+
+      // Get super_admin role ID (live queries permissions are only granted to super_admin by default)
+      const rolesToUpdate = [SYSTEM_ROLES.SUPER_ADMIN];
+
+      for (const roleName of rolesToUpdate) {
+        let roleResult: Array<{ id: string }>;
+
+        if (dbType === 'sqlite') {
+          roleResult = (db as SqliteDb).all(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `) as Array<{ id: string }>;
+        } else {
+          const rows = await (db as PostgresDb).execute(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `);
+          const raw = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          roleResult = raw as Array<{ id: string }>;
+        }
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          for (const permId of [liveQueriesViewId, liveQueriesKillId]) {
+            let existing: Array<unknown>;
+
+            if (dbType === 'sqlite') {
+              existing = (db as SqliteDb).all(sql`
+                SELECT 1 FROM rbac_role_permissions
+                WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1
+              `);
+            } else {
+              const rows = await (db as PostgresDb).execute(sql`
+                SELECT 1 FROM rbac_role_permissions
+                WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1
+              `);
+              existing = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+            }
+
+            if (existing.length === 0) {
+              const id = randomUUID();
+              const createdAt = new Date();
+
+              if (dbType === 'sqlite') {
+                (db as SqliteDb).run(sql`
+                  INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                  VALUES (${id}, ${roleId}, ${permId}, ${Math.floor(createdAt.getTime() / 1000)})
+                `);
+              } else {
+                await (db as PostgresDb).execute(sql`
+                  INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                  VALUES (${id}, ${roleId}, ${permId}, ${createdAt})
+                `);
+              }
+              console.log(`[Migration 1.7.0] Assigned permission ${permId} to role ${roleName}`);
+            } else {
+              console.log(`[Migration 1.7.0] Permission ${permId} already assigned to role ${roleName}`);
+            }
+          }
+        }
+      }
+
+      console.log('[Migration 1.7.0] Live query management permissions assigned to super_admin role');
+    },
+    down: async (db) => {
+      console.log('[Migration 1.7.0] Down migration: Removing live query permissions');
+      // Permissions will be removed by cascade on role deletion, but we can clean up manually if needed
     },
   },
 ];

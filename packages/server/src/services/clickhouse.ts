@@ -1,8 +1,8 @@
 import { createClient, ClickHouseClient, ClickHouseSettings } from "@clickhouse/client";
-import type { 
-  ConnectionConfig, 
-  QueryResult, 
-  DatabaseInfo, 
+import type {
+  ConnectionConfig,
+  QueryResult,
+  DatabaseInfo,
   TableDetails,
   SystemStats,
   RecentQuery,
@@ -34,9 +34,11 @@ function extractData<T>(response: JsonResponse<T>): T[] {
 export class ClickHouseService {
   private client: ClickHouseClient;
   private config: ConnectionConfig;
+  private rbacUserId?: string;
 
-  constructor(config: ConnectionConfig) {
+  constructor(config: ConnectionConfig, options?: { rbacUserId?: string }) {
     this.config = config;
+    this.rbacUserId = options?.rbacUserId;
     this.client = createClient({
       url: config.url,
       username: config.username,
@@ -86,9 +88,9 @@ export class ClickHouseService {
       });
       // JSONEachRow format returns an array directly
       const grants = await result.json() as { access_type: string; database?: string | null; table?: string | null }[];
-      
+
       const permissions = grants.map(g => g.access_type);
-      
+
       const isAdmin = grants.some(g => {
         const isGlobal = (!g.database || g.database === "") && (!g.table || g.table === "");
         if (g.access_type === "ALL" && isGlobal) return true;
@@ -115,7 +117,7 @@ export class ClickHouseService {
   ): Promise<QueryResult<T>> {
     try {
       const trimmedQuery = query.trim();
-      
+
       // Check if it's a command (CREATE, INSERT, ALTER, DROP, etc.)
       if (this.isCommand(trimmedQuery)) {
         await this.client.command({ query: trimmedQuery });
@@ -128,9 +130,20 @@ export class ClickHouseService {
         };
       }
 
+      // Build query settings
+      const clickhouse_settings: Record<string, string | number> = {};
+
+      // Inject RBAC User ID into log_comment if present
+      if (this.rbacUserId) {
+        // Tag format: {"rbac_user_id":"UUID"}
+        // This allows us to track which RBAC user executed the query regardless of the DB user
+        clickhouse_settings.log_comment = JSON.stringify({ rbac_user_id: this.rbacUserId });
+      }
+
       const result = await this.client.query({
         query: trimmedQuery,
         format: format as "JSON" | "JSONEachRow",
+        clickhouse_settings,
       });
 
       const jsonResult = await result.json() as {
@@ -165,6 +178,7 @@ export class ClickHouseService {
       /^\s*DETACH\s+/i,
       /^\s*GRANT\s+/i,
       /^\s*REVOKE\s+/i,
+      /^\s*KILL\s+/i,
     ];
     return commandPatterns.some(pattern => pattern.test(query));
   }
@@ -209,7 +223,7 @@ export class ClickHouseService {
 
       for (const row of response.data) {
         const { database_name, table_name, table_engine, total_rows, total_bytes } = row;
-        
+
         if (!databases[database_name]) {
           databases[database_name] = {
             name: database_name,
@@ -361,7 +375,7 @@ export class ClickHouseService {
     try {
       // Build user filter clause if username is provided
       const userFilter = username ? `AND user = '${username.replace(/'/g, "''")}'` : '';
-      
+
       const result = await this.client.query({
         query: `
           SELECT 
@@ -429,7 +443,7 @@ export class ClickHouseService {
         avg_ms: number;
         slow_queries_count: number;
       }>;
-      
+
       const data = response.data[0] || {};
       return {
         p50_ms: Number(data.p50_ms) || 0,
@@ -469,7 +483,7 @@ export class ClickHouseService {
         used_space: string;
         used_percent: number;
       }>;
-      
+
       return response.data.map(d => ({
         name: d.name,
         path: d.path,
@@ -550,7 +564,7 @@ export class ClickHouseService {
         total_replicas: number;
         active_replicas: number;
       }>;
-      
+
       return response.data.map(r => ({
         database: r.database,
         table: r.table,
@@ -591,23 +605,23 @@ export class ClickHouseService {
         uncomp_misses: number;
         compiled_cache: number;
       }>;
-      
+
       const data = response.data[0] || {};
       const markHits = Number(data.mark_hits) || 0;
       const markMisses = Number(data.mark_misses) || 0;
       const uncompHits = Number(data.uncomp_hits) || 0;
       const uncompMisses = Number(data.uncomp_misses) || 0;
-      
+
       return {
         mark_cache_hits: markHits,
         mark_cache_misses: markMisses,
-        mark_cache_hit_ratio: markHits + markMisses > 0 
-          ? Math.round((markHits / (markHits + markMisses)) * 100 * 100) / 100 
+        mark_cache_hit_ratio: markHits + markMisses > 0
+          ? Math.round((markHits / (markHits + markMisses)) * 100 * 100) / 100
           : 0,
         uncompressed_cache_hits: uncompHits,
         uncompressed_cache_misses: uncompMisses,
-        uncompressed_cache_hit_ratio: uncompHits + uncompMisses > 0 
-          ? Math.round((uncompHits / (uncompHits + uncompMisses)) * 100 * 100) / 100 
+        uncompressed_cache_hit_ratio: uncompHits + uncompMisses > 0
+          ? Math.round((uncompHits / (uncompHits + uncompMisses)) * 100 * 100) / 100
           : 0,
         compiled_expression_cache_count: Number(data.compiled_cache) || 0,
       };
@@ -642,7 +656,7 @@ export class ClickHouseService {
 
       const asyncData = await asyncMetrics.json() as JsonResponse<{ metric: string; value: number }>;
       const metricsData = await metrics.json() as JsonResponse<{ metric: string; value: number }>;
-      
+
       const asyncMap = Object.fromEntries(asyncData.data.map(d => [d.metric, Number(d.value)]));
       const metricsMap = Object.fromEntries(metricsData.data.map(d => [d.metric, Number(d.value)]));
 
@@ -702,7 +716,7 @@ export class ClickHouseService {
         count: number;
         last_occurred: string;
       }>;
-      
+
       return response.data.map(e => ({
         exception_code: Number(e.exception_code),
         exception_name: this.getExceptionName(Number(e.exception_code)),
@@ -741,7 +755,7 @@ export class ClickHouseService {
         bytes_per_second: number;
         inserts_per_second: number;
       }>;
-      
+
       return response.data.map(d => ({
         timestamp: Number(d.ts),
         rows_per_second: Number(d.rows_per_second) || 0,
@@ -754,7 +768,8 @@ export class ClickHouseService {
   }
 
   /**
-   * Get top tables by size
+   * Get top tables by size (non-system tables only).
+   * Uses system.tables so all user tables are included regardless of engine.
    */
   async getTopTablesBySize(limit: number = 10): Promise<import("../types").TopTableBySize[]> {
     try {
@@ -762,27 +777,23 @@ export class ClickHouseService {
         query: `
           SELECT 
             database,
-            table,
-            sum(rows) as rows,
-            sum(bytes_on_disk) as bytes_on_disk,
-            count() as parts_count
-          FROM system.parts
-          WHERE active
-            AND database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
-          GROUP BY database, table
-          ORDER BY bytes_on_disk DESC
+            name AS table,
+            coalesce(total_rows, 0) AS rows,
+            coalesce(total_bytes, 0) AS bytes_on_disk
+          FROM system.tables
+          WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+          ORDER BY coalesce(total_bytes, 0) DESC
           LIMIT ${limit}
         `,
+        format: "JSON",
       });
       const response = await result.json() as JsonResponse<{
         database: string;
         table: string;
-        rows: string;
-        bytes_on_disk: string;
-        parts_count: number;
+        rows: string | number;
+        bytes_on_disk: string | number;
       }>;
-      
-      // Helper function to format bytes to readable size
+
       const formatReadableSize = (bytes: number): string => {
         if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(2)} TiB`;
         if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GiB`;
@@ -790,8 +801,12 @@ export class ClickHouseService {
         if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(2)} KiB`;
         return `${bytes} B`;
       };
-      
-      return response.data.map(t => {
+
+      if (!response.data || response.data.length === 0) {
+        return [];
+      }
+
+      return response.data.map((t) => {
         const bytesOnDisk = Number(t.bytes_on_disk) || 0;
         return {
           database: t.database,
@@ -799,7 +814,7 @@ export class ClickHouseService {
           rows: Number(t.rows),
           bytes_on_disk: bytesOnDisk,
           compressed_size: formatReadableSize(bytesOnDisk),
-          parts_count: Number(t.parts_count),
+          parts_count: 0,
         };
       });
     } catch (error) {
@@ -1010,7 +1025,7 @@ export function createSession(
   config: ConnectionConfig,
   sessionData: Omit<import("../types").Session, "id" | "connectionConfig">
 ): ClickHouseService {
-  const service = new ClickHouseService(config);
+  const service = new ClickHouseService(config, { rbacUserId: sessionData.rbacUserId });
   sessions.set(sessionId, {
     service,
     session: {

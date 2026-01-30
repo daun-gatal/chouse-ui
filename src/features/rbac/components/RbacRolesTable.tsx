@@ -128,6 +128,7 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'metrics': 'Metrics',
   'settings': 'Settings',
   'audit': 'Audit',
+  'live_queries': 'Live Queries',
 };
 
 const getPermissionCategory = (permission: string): string => {

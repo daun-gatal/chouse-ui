@@ -23,6 +23,10 @@ describe("SQL Identifier Utils", () => {
             expect(validateIdentifier("drop")).toBe(false);
             expect(validateIdentifier("table")).toBe(false);
         });
+
+        it("should allow default (ClickHouse built-in database name)", () => {
+            expect(validateIdentifier("default")).toBe(true);
+        });
     });
 
     describe("escapeIdentifier", () => {
@@ -38,6 +42,10 @@ describe("SQL Identifier Utils", () => {
     describe("escapeQualifiedIdentifier", () => {
         it("should escape multiple parts", () => {
             expect(escapeQualifiedIdentifier(["db", "my_table"])).toBe("`db`.`my_table`");
+        });
+
+        it("should allow default database (ClickHouse built-in)", () => {
+            expect(escapeQualifiedIdentifier(["default", "viz_test_largest_tables"])).toBe("`default`.`viz_test_largest_tables`");
         });
     });
 

@@ -1,530 +1,419 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Activity,
   Database,
   HardDrive,
   Clock,
-  Server,
-  Terminal,
-  CheckCircle,
-  XCircle,
-  Cpu,
   Zap,
   Network,
-  TrendingUp,
   ArrowRight,
   BarChart3,
-  FileText,
-  Users,
-  Settings,
   Layers,
-  Sparkles,
+  Cpu,
+  RefreshCw,
+  Server,
+  Terminal,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { useSystemStats, useRecentQueries } from "@/hooks";
+import { useSystemStats, useRecentQueries, useMetrics, useTopTables } from "@/hooks";
 import { useAuthStore } from "@/stores/auth";
-import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { cn } from "@/lib/utils";
+import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
+import { useQueryClient } from "@tanstack/react-query";
 
-// Stat card component with gradient background
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  subtitle?: string;
-  icon: React.ElementType;
-  color: string;
-  bgGradient: string;
-  isLoading?: boolean;
-}
+// --- Styled Components ---
 
-const StatCard: React.FC<StatCardProps> = ({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  color,
-  bgGradient,
-  isLoading,
-}) => (
+const DashboardCard = ({ children, className, title, icon: Icon, action }: any) => (
   <motion.div
-    whileHover={{ scale: 1.02, y: -2 }}
+    initial={{ opacity: 0, scale: 0.98 }}
+    animate={{ opacity: 1, scale: 1 }}
     className={cn(
-      "relative overflow-hidden rounded-2xl p-5",
-      "bg-gradient-to-br backdrop-blur-xl",
-      "border border-white/10 hover:border-white/20 transition-all duration-300",
-      bgGradient
+      "relative overflow-hidden rounded-3xl border border-white/10 bg-[#0a0a0f]/80 backdrop-blur-xl shadow-2xl shadow-black/50 flex flex-col",
+      className
     )}
   >
-    <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-white/5 blur-2xl" />
-    <div className="relative z-10 flex items-start justify-between">
-      <div className="space-y-2">
-        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{title}</p>
-        {isLoading ? (
-          <div className="h-8 w-20 bg-white/10 rounded animate-pulse" />
-        ) : (
-          <div className="text-2xl font-bold text-white">{value}</div>
-        )}
-        {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+    <div className="absolute inset-0 bg-gradient-to-br from-white/[0.03] to-transparent pointer-events-none" />
+
+    {(title || Icon) && (
+      <div className="flex items-center justify-between p-5 pb-2 relative z-10">
+        <div className="flex items-center gap-3">
+          {Icon && (
+            <div className="p-2 rounded-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/5 shadow-inner">
+              <Icon className="w-4 h-4 text-gray-300" />
+            </div>
+          )}
+          {title && (
+            <h3 className="text-sm font-semibold text-gray-300 tracking-wide uppercase font-mono">
+              {title}
+            </h3>
+          )}
+        </div>
+        {action}
       </div>
-      <div className={cn("p-2.5 rounded-xl", color.replace("text-", "bg-").replace("400", "500/20"))}>
-        <Icon className={cn("h-5 w-5", color)} />
-      </div>
+    )}
+
+    <div className="flex-1 relative z-10">
+      {children}
     </div>
   </motion.div>
 );
 
-// Quick action card
-interface ActionCardProps {
-  title: string;
-  description: string;
-  icon: React.ElementType;
-  color: string;
-  onClick: () => void;
-}
-
-const ActionCard: React.FC<ActionCardProps> = ({
-  title,
-  description,
-  icon: Icon,
-  color,
-  onClick,
-}) => (
-  <motion.button
-    whileHover={{ scale: 1.02 }}
-    whileTap={{ scale: 0.98 }}
-    onClick={onClick}
-    className={cn(
-      "relative overflow-hidden rounded-xl p-4 text-left",
-      "bg-white/5 border border-white/10",
-      "hover:border-white/20 hover:bg-white/10 transition-all duration-300",
-      "group"
-    )}
-  >
-    <div className="flex items-center gap-3">
-      <div className={cn("p-2 rounded-lg transition-colors", color)}>
-        <Icon className="h-4 w-4 text-white" />
-      </div>
-      <div className="flex-1">
-        <h3 className="font-medium text-white text-sm">{title}</h3>
-        <p className="text-xs text-gray-500">{description}</p>
-      </div>
-      <ArrowRight className="h-4 w-4 text-gray-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
+const MetricValue = ({ label, value, unit, subtext, color = "text-white" }: any) => (
+  <div>
+    <p className="text-xs font-medium text-gray-500 mb-0.5">{label}</p>
+    <div className="flex items-baseline gap-1.5">
+      <span className={cn("text-2xl font-bold tracking-tight", color)}>{value}</span>
+      {unit && <span className="text-sm font-medium text-gray-500">{unit}</span>}
     </div>
-  </motion.button>
+    {subtext && <p className="text-[10px] text-gray-600 font-mono mt-1">{subtext}</p>}
+  </div>
 );
+
+const ProgressBar = ({ value, max = 100, color = "bg-blue-500" }: any) => {
+  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+  return (
+    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+      <div
+        style={{ width: `${percentage}%` }}
+        className={cn("h-full rounded-full shadow-[0_0_10px_currentColor]", color)}
+      />
+    </div>
+  );
+};
+
+// --- Main Page Component ---
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { isAdmin, username } = useAuthStore();
-  const { hasPermission, hasAnyPermission } = useRbacStore();
+  const queryClient = useQueryClient();
+  const { isAdmin, username, activeConnectionName, url: connectionUrl } = useAuthStore();
   const { data: stats, isLoading: statsLoading } = useSystemStats();
-  
-  // Check permissions for quick actions
-  const canViewExplorer = hasAnyPermission([
-    RBAC_PERMISSIONS.DB_VIEW,
-    RBAC_PERMISSIONS.TABLE_VIEW,
-  ]);
-  const canViewMetrics = hasAnyPermission([
-    RBAC_PERMISSIONS.METRICS_VIEW,
-    RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
-  ]);
-  const canViewLogs = hasAnyPermission([
-    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
-    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
-  ]);
-  const canViewAdmin = hasAnyPermission([
-    RBAC_PERMISSIONS.USERS_VIEW,
-    RBAC_PERMISSIONS.USERS_CREATE,
-    RBAC_PERMISSIONS.ROLES_VIEW,
-    RBAC_PERMISSIONS.AUDIT_VIEW,
-  ]);
-  
-  // Non-admin users only see their own queries
+  const { data: metrics, isLoading: metricsLoading } = useMetrics("24h");
+  const { data: topTables = [], isLoading: tablesLoading } = useTopTables(5);
+
+  // Recent Activity Data
   const usernameFilter = isAdmin ? undefined : username || undefined;
-  const { data: recentQueries = [], isLoading: queriesLoading } = useRecentQueries(7, usernameFilter);
+  const { data: recentQueries = [], isLoading: queriesLoading } = useRecentQueries(10, usernameFilter);
 
-  const formatUptime = (seconds: number) => {
-    const d = Math.floor(seconds / (3600 * 24));
-    const h = Math.floor((seconds % (3600 * 24)) / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (d > 0) return `${d}d ${h}h`;
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
-  };
+  // --- Derived State & Formatters ---
 
-  const formatBytes = (bytes: string | number) => {
-    const num = typeof bytes === "string" ? parseFloat(bytes) : bytes;
-    if (num >= 1e12) return `${(num / 1e12).toFixed(2)} TB`;
-    if (num >= 1e9) return `${(num / 1e9).toFixed(2)} GB`;
-    if (num >= 1e6) return `${(num / 1e6).toFixed(2)} MB`;
-    return bytes.toString();
-  };
-
-  // Format is now handled by backend - this just ensures proper display
-  const formatNumber = (value: string | number) => {
-    if (typeof value === "string" && value) return value;
-    if (typeof value === "number") {
-      if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`;
-      if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
-      if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
-      if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
-      return value.toLocaleString();
-    }
-    return "0";
-  };
-
-  const defaultStats = {
+  const displayStats = stats || {
     version: "-",
     uptime: 0,
     databaseCount: 0,
     tableCount: 0,
-    totalRows: "0",
+    totalRows: 0,
     totalSize: "0 B",
-    memoryUsage: "0 B",
+    memoryUsage: "0",
     cpuLoad: 0,
     activeConnections: 0,
     activeQueries: 0,
   };
 
-  const displayStats = stats || defaultStats;
+  const currentQps = useMemo(() => {
+    if (metrics?.queriesPerSecond?.values && metrics.queriesPerSecond.values.length > 0) {
+      return metrics.queriesPerSecond.values[metrics.queriesPerSecond.values.length - 1];
+    }
+    return 0;
+  }, [metrics]);
 
-  const successfulQueries = recentQueries.filter((q) => q.status === "Success").length;
-  const failedQueries = recentQueries.filter((q) => q.status !== "Success").length;
+  const memoryUsageGB = useMemo(() => {
+    if (metrics?.currentStats?.memoryUsage) return metrics.currentStats.memoryUsage;
+    const str = displayStats.memoryUsage || "0";
+    const num = parseFloat(str);
+    return isNaN(num) ? 0 : num;
+  }, [metrics, displayStats]);
+
+  const MEMORY_LIMIT_VISUAL_BASELINE = 32;
+
+  const formatUptime = (seconds: number) => {
+    if (!seconds) return "0s";
+    const d = Math.floor(seconds / (3600 * 24));
+    const h = Math.floor((seconds % (3600 * 24)) / 3600);
+    return d > 0 ? `${d}d ${h}h` : `${h}h ${Math.floor((seconds % 3600) / 60)}m`;
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+    if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+    return `${bytes} B`;
+  };
+
+  const handleRefresh = async () => {
+    await queryClient.invalidateQueries();
+    // Dispatch event for other listeners if any (legacy compatibility)
+    window.dispatchEvent(new CustomEvent('clickhouse:refresh'));
+  };
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="container mx-auto p-6 space-y-6">
-        {/* Header with Status */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-start flex-wrap gap-4"
-        >
-          <div className="flex items-center gap-4">
+    <div className="h-full overflow-y-auto bg-[#050508] text-white p-4 md:p-8 font-sans selection:bg-blue-500/30">
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* 1. Header Section: Summary */}
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-2">
+          <div className="flex items-center gap-5">
             <div className="relative">
-              <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg shadow-purple-500/20">
-                <Sparkles className="h-7 w-7 text-white" />
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center shadow-[0_0_30px_rgba(249,115,22,0.3)]">
+                <Database className="w-7 h-7 text-white" />
               </div>
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-500 border-2 border-[#0a0a0f]" />
             </div>
+
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white">
-                Welcome Back
+              <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+                {activeConnectionName || "Local ClickHouse"}
+                <Badge variant="outline" className="bg-white/5 border-white/10 text-gray-400 font-mono font-normal text-xs py-0.5">
+                  v{displayStats.version}
+                </Badge>
               </h1>
-              <p className="text-gray-400 text-sm flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                ClickHouse {statsLoading ? "..." : displayStats.version} • {formatUptime(displayStats.uptime)} uptime
-              </p>
+              <div className="flex items-center gap-4 mt-2 text-sm text-gray-400 font-medium font-mono">
+                <div className="flex items-center gap-1.5">
+                  <Network className="w-3.5 h-3.5" />
+                  {connectionUrl ? new URL(connectionUrl).host : "localhost"}
+                </div>
+                <div className="w-1 h-1 rounded-full bg-gray-700" />
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  Up: {formatUptime(displayStats.uptime)}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Badge variant="outline" className="bg-green-500/10 border-green-500/30 text-green-400 gap-1.5 py-1.5">
-              <CheckCircle className="h-3.5 w-3.5" />
-              Server Healthy
-            </Badge>
-          </div>
-        </motion.div>
-
-        {/* Key Stats Grid */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"
-        >
-          <StatCard
-            title="Databases"
-            value={displayStats.databaseCount}
-            icon={Database}
-            color="text-purple-400"
-            bgGradient="from-purple-500/10 to-transparent"
-            isLoading={statsLoading}
-          />
-          <StatCard
-            title="Tables"
-            value={displayStats.tableCount}
-            icon={Layers}
-            color="text-blue-400"
-            bgGradient="from-blue-500/10 to-transparent"
-            isLoading={statsLoading}
-          />
-          <StatCard
-            title="Total Rows"
-            value={formatNumber(displayStats.totalRows)}
-            icon={Activity}
-            color="text-emerald-400"
-            bgGradient="from-emerald-500/10 to-transparent"
-            isLoading={statsLoading}
-          />
-          <StatCard
-            title="Storage"
-            value={formatBytes(displayStats.totalSize)}
-            icon={HardDrive}
-            color="text-orange-400"
-            bgGradient="from-orange-500/10 to-transparent"
-            isLoading={statsLoading}
-          />
-          <StatCard
-            title="Memory"
-            value={displayStats.memoryUsage}
-            icon={Cpu}
-            color="text-pink-400"
-            bgGradient="from-pink-500/10 to-transparent"
-            isLoading={statsLoading}
-          />
-          <StatCard
-            title="Connections"
-            value={displayStats.activeConnections}
-            icon={Network}
-            color="text-cyan-400"
-            bgGradient="from-cyan-500/10 to-transparent"
-            isLoading={statsLoading}
-          />
-        </motion.div>
-
-        {/* Main Content Grid */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Recent Queries - Takes 2 columns */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 overflow-hidden flex flex-col"
+          <Button
+            variant="outline"
+            className="border-white/10 bg-white/5 hover:bg-white/10 hover:text-white text-gray-400 transition-all active:scale-95"
+            onClick={handleRefresh}
           >
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-500/20">
-                  <Terminal className="h-4 w-4 text-purple-400" />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-white">Recent Queries</h2>
-                  <p className="text-xs text-gray-500">{recentQueries.length} latest queries</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {successfulQueries > 0 && (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-green-500/10">
-                    <CheckCircle className="h-3 w-3 text-green-400" />
-                    <span className="text-xs text-green-400 font-medium">{successfulQueries}</span>
-                  </div>
-                )}
-                {failedQueries > 0 && (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-red-500/10">
-                    <XCircle className="h-3 w-3 text-red-400" />
-                    <span className="text-xs text-red-400 font-medium">{failedQueries}</span>
-                  </div>
-                )}
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh Data
+          </Button>
+        </header>
+
+        {/* 2. KPI Grid (Bento Top Row) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+          {/* QPS */}
+          <DashboardCard className="p-5">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400">
+                <Activity className="w-5 h-5" />
               </div>
             </div>
+            <MetricValue
+              label="Queries / Sec"
+              value={currentQps.toFixed(1)}
+              unit="QPS"
+              color="text-blue-100"
+            />
+            <div className="mt-4 h-1 w-full bg-blue-500/10 rounded-full overflow-hidden">
+              <div
+                style={{
+                  width: `${Math.min(100, currentQps * 2)}%` // Dynamic visual
+                }}
+                className="h-full bg-blue-500 shadow-[0_0_10px_#3b82f6]"
+              />
+            </div>
+          </DashboardCard>
 
-            <ScrollArea className="flex-1">
-              <div className="divide-y divide-white/5">
-                {queriesLoading ? (
-                  <div className="flex items-center justify-center py-20">
-                    <div className="flex flex-col items-center gap-3 text-gray-500">
-                      <div className="w-8 h-8 border-2 border-gray-600 border-t-purple-500 rounded-full animate-spin" />
-                      <span className="text-sm">Loading queries...</span>
-                    </div>
-                  </div>
-                ) : recentQueries.length > 0 ? (
-                  recentQueries.map((q, i) => {
-                    // Detect query type
-                    const queryUpper = q.query.trim().toUpperCase();
-                    const queryType = queryUpper.startsWith("SELECT") ? "SELECT" :
-                                     queryUpper.startsWith("INSERT") ? "INSERT" :
-                                     queryUpper.startsWith("CREATE") ? "CREATE" :
-                                     queryUpper.startsWith("ALTER") ? "ALTER" :
-                                     queryUpper.startsWith("DROP") ? "DROP" :
-                                     queryUpper.startsWith("SHOW") ? "SHOW" : "OTHER";
-                    
-                    const typeColors: Record<string, string> = {
-                      SELECT: "bg-blue-500/20 text-blue-400",
-                      INSERT: "bg-green-500/20 text-green-400",
-                      CREATE: "bg-purple-500/20 text-purple-400",
-                      ALTER: "bg-orange-500/20 text-orange-400",
-                      DROP: "bg-red-500/20 text-red-400",
-                      SHOW: "bg-cyan-500/20 text-cyan-400",
-                      OTHER: "bg-gray-500/20 text-gray-400",
-                    };
+          {/* System Processes */}
+          <DashboardCard className="p-5">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400">
+                <Zap className="w-5 h-5" />
+              </div>
+            </div>
+            <MetricValue
+              label="System Processes"
+              value={displayStats.activeQueries}
+              subtext="Active & Background"
+              color="text-amber-100"
+            />
+          </DashboardCard>
 
-                    // Format duration
-                    const formatDuration = (ms: number) => {
-                      if (ms < 1) return "<1ms";
-                      if (ms < 1000) return `${ms}ms`;
-                      return `${(ms / 1000).toFixed(2)}s`;
-                    };
+          {/* CPU Load */}
+          <DashboardCard className="p-5 justify-between">
+            <div className="flex justify-between items-start">
+              <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400">
+                <Cpu className="w-5 h-5" />
+              </div>
+              <span className="text-xl font-bold text-white">{(displayStats.cpuLoad * 100).toFixed(0)}%</span>
+            </div>
+            <div className="mt-4 space-y-1">
+              <p className="text-xs text-gray-500">System CPU Load</p>
+              <ProgressBar value={displayStats.cpuLoad * 100} color="bg-purple-500" />
+            </div>
+          </DashboardCard>
 
-                    return (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                        className={cn(
-                          "group px-4 py-3 hover:bg-white/5 transition-colors cursor-default"
-                        )}
-                      >
-                        <div className="flex items-start gap-3">
-                          {/* Status indicator */}
-                          <div className={cn(
-                            "mt-1 w-2 h-2 rounded-full flex-shrink-0",
-                            q.status === "Success" ? "bg-green-500" : "bg-red-500"
-                          )} />
-                          
-                          {/* Query content */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={cn(
-                                "px-1.5 py-0.5 rounded text-[10px] font-medium",
-                                typeColors[queryType]
-                              )}>
-                                {queryType}
-                              </span>
-                              <span className="text-[10px] text-gray-500">
-                                {new Date(q.time).toLocaleTimeString()}
-                              </span>
-                            </div>
-                            <p 
-                              className="text-sm text-gray-300 font-mono leading-relaxed line-clamp-2 group-hover:text-white transition-colors" 
-                              title={q.query}
-                            >
-                              {q.query}
-                            </p>
-                          </div>
+          {/* Memory Usage */}
+          <DashboardCard className="p-5 justify-between">
+            <div className="flex justify-between items-start">
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400">
+                <HardDrive className="w-5 h-5" />
+              </div>
+              <span className="text-xl font-bold text-white">{memoryUsageGB.toFixed(2)} <span className="text-sm text-gray-500 font-medium">GB</span></span>
+            </div>
+            <div className="mt-4 space-y-1">
+              <p className="text-xs text-gray-500">RAM Usage (Est.)</p>
+              <ProgressBar value={(memoryUsageGB / MEMORY_LIMIT_VISUAL_BASELINE) * 100} color="bg-emerald-500" />
+            </div>
+          </DashboardCard>
+        </div>
 
-                          {/* Duration */}
-                          <div className={cn(
-                            "flex-shrink-0 px-2 py-1 rounded text-xs font-mono",
-                            q.duration > 1000 ? "bg-amber-500/20 text-amber-400" : "bg-white/10 text-gray-400"
-                          )}>
-                            {formatDuration(q.duration)}
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })
+        {/* 3. Middle Section: Chart & Storage */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[350px]">
+
+          {/* Main Chart */}
+          <DashboardCard title="Query Traffic (24h)" icon={BarChart3} className="lg:col-span-2">
+            <div className="flex-1 w-full h-full p-4 pt-0">
+              {metricsLoading ? (
+                <div className="flex items-center justify-center h-full text-gray-600">Loading Chart...</div>
+              ) : metrics?.queriesPerSecond ? (
+                <UPlotMetricItemComponent
+                  data={metrics.queriesPerSecond}
+                  title=""
+                  color="rgb(59, 130, 246)"
+                  fill="rgba(59, 130, 246, 0.15)"
+                  unit=" qps"
+                  height={280}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-600">No chart data</div>
+              )}
+            </div>
+          </DashboardCard>
+
+          {/* Storage Summary - Redesigned Grid */}
+          <DashboardCard title="Storage Overview" icon={Server} className="p-6">
+            <div className="grid grid-cols-2 gap-4 h-full content-center">
+              {/* Box 1: Databases */}
+              <div className="bg-white/5 rounded-2xl p-4 flex flex-col justify-center gap-1 hover:bg-white/10 transition-colors">
+                <div className="flex items-center gap-2 text-indigo-400 mb-1">
+                  <Database className="w-4 h-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Databases</span>
+                </div>
+                <p className="text-2xl font-bold text-white">{displayStats.databaseCount}</p>
+              </div>
+
+              {/* Box 2: Tables */}
+              <div className="bg-white/5 rounded-2xl p-4 flex flex-col justify-center gap-1 hover:bg-white/10 transition-colors">
+                <div className="flex items-center gap-2 text-sky-400 mb-1">
+                  <Layers className="w-4 h-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Tables</span>
+                </div>
+                <p className="text-2xl font-bold text-white">{displayStats.tableCount}</p>
+              </div>
+
+              {/* Box 3: Total Size */}
+              <div className="bg-white/5 rounded-2xl p-4 flex flex-col justify-center gap-1 hover:bg-white/10 transition-colors">
+                <div className="flex items-center gap-2 text-orange-400 mb-1">
+                  <HardDrive className="w-4 h-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Size</span>
+                </div>
+                <p className="text-lg font-bold text-white truncate" title={displayStats.totalSize as string}>
+                  {parseInt(displayStats.totalSize as string) ? displayStats.totalSize : "0 B"}
+                </p>
+              </div>
+
+              {/* Box 4: Total Rows */}
+              <div className="bg-white/5 rounded-2xl p-4 flex flex-col justify-center gap-1 hover:bg-white/10 transition-colors">
+                <div className="flex items-center gap-2 text-emerald-400 mb-1">
+                  <Server className="w-4 h-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total Rows</span>
+                </div>
+                <p className="text-lg font-bold text-white truncate">
+                  {displayStats.totalRows || '0'}
+                </p>
+              </div>
+            </div>
+          </DashboardCard>
+        </div>
+
+        {/* 4. Bottom Section: Top Tables & Activity */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* Top Tables */}
+          <DashboardCard
+            title="Largest Tables"
+            icon={Search}
+            className="h-[400px]"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => navigate("/explorer")} className="text-xs h-7 text-gray-400 hover:text-white">
+                View All <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            }
+          >
+            <ScrollArea className="h-full">
+              <div className="p-2 space-y-1">
+                {tablesLoading ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">Loading tables...</div>
+                ) : topTables.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">No tables found</div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-20 text-gray-500">
-                    <Terminal className="h-12 w-12 opacity-20 mb-3" />
-                    <span className="text-sm font-medium">No recent queries</span>
-                    <span className="text-xs text-gray-600 mt-1">Execute a query to see it here</span>
-                  </div>
+                  topTables.map((table, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors group">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-bold text-xs">
+                          {i + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-200 truncate group-hover:text-white">{table.table}</p>
+                          <p className="text-[10px] text-gray-500 font-mono">{table.database}</p>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-bold text-gray-300">{formatSize(table.bytes_on_disk)}</p>
+                        <p className="text-[10px] text-gray-600 font-mono">{parseInt(table.rows as any).toLocaleString()} rows</p>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </ScrollArea>
+          </DashboardCard>
 
-            <div className="mt-auto px-4 py-2 border-t border-white/10 bg-white/[0.02]">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full h-7 text-xs text-gray-400 hover:text-white gap-1.5 hover:bg-white/5"
-                onClick={() => navigate("/logs")}
-              >
-                View All Logs
-                <ArrowRight className="h-3 w-3" />
+          {/* Recent Activity */}
+          <DashboardCard
+            title="Recent Activity"
+            icon={Terminal}
+            className="h-[400px]"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => navigate("/logs")} className="text-xs h-7 text-gray-400 hover:text-white">
+                View Logs <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
-            </div>
-          </motion.div>
-
-          {/* Right Column - Quick Actions & Server Info */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 }}
-            className="space-y-4"
+            }
           >
-            {/* Quick Actions */}
-            <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Zap className="h-4 w-4 text-amber-400" />
-                <h3 className="font-semibold text-white text-sm">Quick Actions</h3>
-              </div>
-              <div className="space-y-2">
-                {canViewExplorer && (
-                  <ActionCard
-                    title="Explore Data"
-                    description="Browse databases & tables"
-                    icon={Database}
-                    color="bg-purple-500/80"
-                    onClick={() => navigate("/explorer")}
-                  />
-                )}
-                {canViewMetrics && (
-                  <ActionCard
-                    title="View Metrics"
-                    description="Monitor performance"
-                    icon={BarChart3}
-                    color="bg-blue-500/80"
-                    onClick={() => navigate("/metrics")}
-                  />
-                )}
-                {canViewLogs && (
-                  <ActionCard
-                    title="Query Logs"
-                    description="View execution history"
-                    icon={FileText}
-                    color="bg-emerald-500/80"
-                    onClick={() => navigate("/logs")}
-                  />
-                )}
-                {canViewAdmin && (
-                  <ActionCard
-                    title="Admin Panel"
-                    description="Manage users & roles"
-                    icon={Users}
-                    color="bg-orange-500/80"
-                    onClick={() => navigate("/admin")}
-                  />
+            <ScrollArea className="h-full">
+              <div className="p-2 space-y-1">
+                {queriesLoading ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">Loading logs...</div>
+                ) : recentQueries.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">No recent activity</div>
+                ) : (
+                  recentQueries.map((q, i) => (
+                    <div key={i} className="p-3 rounded-xl hover:bg-white/5 transition-colors group">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] text-gray-500 font-mono">{new Date(q.time).toLocaleTimeString()}</span>
+                        <Badge variant="outline" className={cn(
+                          "text-[10px] px-1.5 py-0 border-0",
+                          q.status === "Success" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                        )}>
+                          {q.duration < 1 ? "<1ms" : `${q.duration}ms`}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-gray-300 font-mono line-clamp-2 group-hover:text-white transition-colors" title={q.query}>
+                        {q.query}
+                      </p>
+                    </div>
+                  ))
                 )}
               </div>
-            </div>
-
-            {/* Server Status */}
-            <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Server className="h-4 w-4 text-blue-400" />
-                <h3 className="font-semibold text-white text-sm">Server Status</h3>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
-                  <span className="text-xs text-gray-400">Version</span>
-                  <span className="font-mono text-sm text-white">
-                    {statsLoading ? "-" : displayStats.version}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
-                  <span className="text-xs text-gray-400">Uptime</span>
-                  <span className="font-mono text-sm text-white">
-                    {statsLoading ? "-" : formatUptime(displayStats.uptime)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
-                  <span className="text-xs text-gray-400">Active Queries</span>
-                  <span className="font-mono text-sm text-white">
-                    {statsLoading ? "-" : displayStats.activeQueries}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded-lg bg-white/5">
-                  <span className="text-xs text-gray-400">CPU Load</span>
-                  <span className="font-mono text-sm text-white">
-                    {statsLoading ? "-" : displayStats.cpuLoad.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded-lg bg-green-500/10">
-                  <span className="text-xs text-gray-400">Status</span>
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-sm text-green-400 font-medium">Active</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
+            </ScrollArea>
+          </DashboardCard>
         </div>
       </div>
     </div>
