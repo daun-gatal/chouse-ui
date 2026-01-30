@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle, Info, Loader2 } from "lucide-react";
 import DOMPurify from "dompurify";
 
 type Variant = "danger" | "warning" | "info" | "success";
@@ -18,32 +18,33 @@ interface ConfirmationDialogProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  description: string;
+  description: string | React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   variant?: Variant;
   onConfirmAction?: () => void;
+  isLoading?: boolean;
 }
 
 const variantStyles: Record<Variant, { icon: React.ReactNode; color: string }> =
-  {
-    danger: {
-      icon: <AlertCircle className="h-5 w-5" />,
-      color: "text-red-500",
-    },
-    warning: {
-      icon: <AlertTriangle className="h-5 w-5" />,
-      color: "text-yellow-500",
-    },
-    info: {
-      icon: <Info className="h-5 w-5" />,
-      color: "text-blue-500",
-    },
-    success: {
-      icon: <CheckCircle className="h-5 w-5" />,
-      color: "text-green-500",
-    },
-  };
+{
+  danger: {
+    icon: <AlertCircle className="h-5 w-5" />,
+    color: "text-red-500",
+  },
+  warning: {
+    icon: <AlertTriangle className="h-5 w-5" />,
+    color: "text-yellow-500",
+  },
+  info: {
+    icon: <Info className="h-5 w-5" />,
+    color: "text-blue-500",
+  },
+  success: {
+    icon: <CheckCircle className="h-5 w-5" />,
+    color: "text-green-500",
+  },
+};
 
 const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   isOpen,
@@ -54,8 +55,23 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   confirmText = "Confirm",
   cancelText = "Cancel",
   variant = "danger",
+  isLoading = false,
 }) => {
   const { icon, color } = variantStyles[variant];
+
+  const renderDescription = () => {
+    if (typeof description === 'string') {
+      return (
+        <div dangerouslySetInnerHTML={{
+          __html: DOMPurify.sanitize(description, {
+            ALLOWED_TAGS: ['strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'br', 'p'],
+            ALLOWED_ATTR: [],
+          })
+        }} />
+      );
+    }
+    return description;
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -69,35 +85,32 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
               <span>{title}</span>
             </DialogTitle>
           </div>
-          <DialogDescription className="text-gray-400">
-            <div dangerouslySetInnerHTML={{ 
-              __html: DOMPurify.sanitize(description, {
-                ALLOWED_TAGS: ['strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'br', 'p'],
-                ALLOWED_ATTR: [],
-              })
-            }} />
+          <DialogDescription className="text-gray-400" asChild>
+            <div>{renderDescription()}</div>
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex justify-end space-x-2 mt-6">
           <Button
             variant="outline"
             onClick={onClose}
+            disabled={isLoading}
             className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
           >
             {cancelText}
           </Button>
           <Button
             onClick={onConfirm}
+            disabled={isLoading}
             className={`
               ${variant === "danger" ? "bg-red-600 hover:bg-red-700" : ""}
-              ${
-                variant === "warning" ? "bg-yellow-600 hover:bg-yellow-700" : ""
+              ${variant === "warning" ? "bg-yellow-600 hover:bg-yellow-700" : ""
               }
               ${variant === "info" ? "bg-blue-600 hover:bg-blue-700" : ""}
               ${variant === "success" ? "bg-green-600 hover:bg-green-700" : ""}
               text-white
             `}
           >
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {confirmText}
           </Button>
         </DialogFooter>
@@ -107,3 +120,4 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 };
 
 export default ConfirmationDialog;
+

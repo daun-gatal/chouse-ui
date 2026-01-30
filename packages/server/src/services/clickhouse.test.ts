@@ -90,6 +90,44 @@ describe("ClickHouse Service", () => {
         });
     });
 
+    describe("getTopTablesBySize", () => {
+        it("should return top tables from system.tables (non-system DBs only)", async () => {
+            mockJsonFn.mockResolvedValue({
+                data: [
+                    { database: "default", table: "viz_test", rows: "1000", bytes_on_disk: "4096" },
+                    { database: "default", table: "small_table", rows: "10", bytes_on_disk: "256" }
+                ]
+            });
+
+            const result = await service.getTopTablesBySize(5);
+
+            expect(result).toHaveLength(2);
+            expect(result[0]).toEqual({
+                database: "default",
+                table: "viz_test",
+                rows: 1000,
+                bytes_on_disk: 4096,
+                compressed_size: "4.10 KiB", // 4096/1000 (decimal KiB in implementation)
+                parts_count: 0
+            });
+            expect(result[1].compressed_size).toBe("256 B");
+            expect(result[1].parts_count).toBe(0);
+            expect(mockQueryFn).toHaveBeenCalledTimes(1);
+            const call = mockQueryFn.mock.calls[0][0];
+            expect(call.query).toContain("system.tables");
+            expect(call.query).toContain("database NOT IN");
+            expect(call.format).toBe("JSON");
+        });
+
+        it("should return empty array when no tables", async () => {
+            mockJsonFn.mockResolvedValue({ data: [] });
+
+            const result = await service.getTopTablesBySize(10);
+
+            expect(result).toEqual([]);
+        });
+    });
+
     describe("ping", () => {
         it("should return true on success", async () => {
             const result = await service.ping();

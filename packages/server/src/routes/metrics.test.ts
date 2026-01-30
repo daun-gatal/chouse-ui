@@ -97,6 +97,7 @@ describe("Metrics Routes", () => {
 
         mockGetSystemStats.mockClear();
         mockGetRecentQueries.mockClear();
+        mockGetTopTablesBySize.mockClear();
         mockExecuteQuery.mockClear();
         mockClose.mockClear();
 
@@ -139,6 +140,27 @@ describe("Metrics Routes", () => {
 
             expect(res.status).toBe(200);
             expect(mockGetRecentQueries).toHaveBeenCalled();
+        });
+    });
+
+    describe("GET /metrics/top-tables", () => {
+        it("should return top tables by size (non-system only)", async () => {
+            mockGetTopTablesBySize.mockResolvedValue([
+                { database: "default", table: "viz_test", rows: 1000, bytes_on_disk: 4096, compressed_size: "4.00 KiB", parts_count: 0 }
+            ]);
+
+            const res = await app.request("/metrics/top-tables?limit=5", {
+                headers: { "Authorization": "Bearer token" }
+            });
+
+            expect(res.status).toBe(200);
+            const body = await res.json();
+            expect(body.success).toBe(true);
+            expect(body.data).toHaveLength(1);
+            expect(body.data[0].database).toBe("default");
+            expect(body.data[0].table).toBe("viz_test");
+            expect(body.data[0].parts_count).toBe(0);
+            expect(mockGetTopTablesBySize).toHaveBeenCalledWith(5);
         });
     });
 

@@ -83,6 +83,7 @@ export default function Admin() {
                 <UserCog className="w-4 h-4 mr-2" /> ClickHouse Users
               </TabsTrigger>
             )}
+
             {canViewAudit && (
               <TabsTrigger value="audit" className="data-[state=active]:bg-green-500/20 data-[state=active]:text-green-300">
                 <FileText className="w-4 h-4 mr-2" /> Audit Logs
@@ -137,6 +138,8 @@ export default function Admin() {
             </TabsContent>
           )}
 
+
+
           {canViewAudit && (
             <TabsContent value="audit">
               <GlassCard>
@@ -167,7 +170,7 @@ export default function Admin() {
             </ul>
             <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
               <p className="text-sm text-blue-200">
-                User management is now handled through RBAC. Users authenticate against the Studio's 
+                User management is now handled through RBAC. Users authenticate against the Studio's
                 internal database, not directly to ClickHouse.
               </p>
             </div>
@@ -177,3 +180,4 @@ export default function Admin() {
     </motion.div>
   );
 }
+

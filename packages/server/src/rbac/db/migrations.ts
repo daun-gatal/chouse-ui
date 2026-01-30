@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.6.0';
+export const APP_VERSION = '1.7.0';
 
 // ============================================
 // Migration Registry
@@ -619,7 +619,7 @@ const MIGRATIONS: Migration[] = [
 
       if (dbType === 'sqlite') {
         // SQLite: Recreate tables with new columns
-        
+
         // Favorites table
         (db as SqliteDb).run(sql`
           CREATE TABLE IF NOT EXISTS rbac_user_favorites_new (
@@ -674,7 +674,7 @@ const MIGRATIONS: Migration[] = [
         (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_recent_accessed_at_idx ON rbac_user_recent_items(accessed_at)`);
       } else {
         // PostgreSQL: Add columns to existing tables
-        
+
         // Favorites table
         await (db as PostgresDb).execute(sql`
           ALTER TABLE rbac_user_favorites 
@@ -720,6 +720,86 @@ const MIGRATIONS: Migration[] = [
     },
     down: async (db) => {
       console.log('[Migration 1.6.0] Down migration not supported');
+    },
+  },
+  {
+    version: '1.7.0',
+    name: 'live_query_management_permissions',
+    description: 'Add live query management permissions for viewing and killing running queries',
+    up: async (db) => {
+      // Use the existing seed function which is idempotent
+      // It will check if permissions exist and only create them if they don't
+      const { seedPermissions, seedRoles } = await import('../services/seed');
+
+      // First ensure all permissions exist (including new ones)
+      const permissionIdMap = await seedPermissions();
+
+      console.log('[Migration 1.7.0] Live query management permissions created');
+
+      // Get LIVE_QUERIES_VIEW and LIVE_QUERIES_KILL permission IDs
+      const liveQueriesViewId = permissionIdMap.get('live_queries:view');
+      const liveQueriesKillId = permissionIdMap.get('live_queries:kill');
+
+      if (!liveQueriesViewId || !liveQueriesKillId) {
+        console.error('[Migration 1.7.0] Failed to get live query permission IDs');
+        return;
+      }
+
+      // Import schema and database functions
+      const { getDatabase, getSchema, getDatabaseType } = await import('./index');
+      const { SYSTEM_ROLES } = await import('../schema/base');
+      const { sql } = await import('drizzle-orm');
+      const { eq } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+
+      const schema = getSchema();
+      const dbType = getDatabaseType();
+
+      // Get super_admin role ID (live queries permissions are only granted to super_admin by default)
+      // Other users can be granted these permissions individually through the admin UI
+      const rolesToUpdate = [SYSTEM_ROLES.SUPER_ADMIN];
+
+      for (const roleName of rolesToUpdate) {
+        // @ts-ignore - Union type issue with RbacDb, resolved at runtime
+        const roleResult = await db.select()
+          .from(schema.roles)
+          .where(eq(schema.roles.name, roleName))
+          .limit(1);
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          // Check if permission already assigned
+          for (const permId of [liveQueriesViewId, liveQueriesKillId]) {
+            // @ts-ignore - Union type issue with RbacDb, resolved at runtime
+            const existingPerm = await db.select()
+              .from(schema.rolePermissions)
+              .where(
+                sql`${schema.rolePermissions.roleId} = ${roleId} AND ${schema.rolePermissions.permissionId} = ${permId}`
+              )
+              .limit(1);
+
+            if (existingPerm.length === 0) {
+              // @ts-ignore - Union type issue with RbacDb, resolved at runtime
+              await db.insert(schema.rolePermissions).values({
+                id: randomUUID(),
+                roleId,
+                permissionId: permId,
+                createdAt: new Date(),
+              });
+              console.log(`[Migration 1.7.0] Assigned permission ${permId} to role ${roleName}`);
+            } else {
+              console.log(`[Migration 1.7.0] Permission ${permId} already assigned to role ${roleName}`);
+            }
+          }
+        }
+      }
+
+      console.log('[Migration 1.7.0] Live query management permissions assigned to super_admin role');
+    },
+    down: async (db) => {
+      console.log('[Migration 1.7.0] Down migration: Removing live query permissions');
+      // Permissions will be removed by cascade on role deletion, but we can clean up manually if needed
     },
   },
 ];

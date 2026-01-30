@@ -5,6 +5,7 @@ import explorer from "./explorer";
 import metrics from "./metrics";
 import savedQueries from "./saved-queries";
 import config from "./config";
+import liveQueries from "./live-queries";
 import { rbacRoutes } from "../rbac";
 
 const api = new Hono();
@@ -21,14 +22,14 @@ const api = new Hono();
  */
 const apiProtectionMiddleware = async (c: Context, next: Next) => {
   const path = c.req.path;
-  
+
   // Skip protection for:
   // - Health checks (needed for load balancers)
   // - Config endpoint (needed before app loads)
   // - RBAC auth endpoints (for RBAC login)
   const publicPaths = [
-    "/api/health", 
-    "/api/config", 
+    "/api/health",
+    "/api/config",
     "/api/rbac/auth/login",
     "/api/rbac/auth/refresh",
     "/api/rbac/health",
@@ -40,7 +41,7 @@ const apiProtectionMiddleware = async (c: Context, next: Next) => {
 
   // Check for X-Requested-With header (set by frontend JavaScript)
   const requestedWith = c.req.header("X-Requested-With");
-  
+
   if (requestedWith !== "XMLHttpRequest") {
     return c.json({
       success: false,
@@ -63,6 +64,7 @@ api.route("/query", query);
 api.route("/explorer", explorer);
 api.route("/metrics", metrics);
 api.route("/saved-queries", savedQueries);
+api.route("/live-queries", liveQueries);
 
 // RBAC routes (Role-Based Access Control)
 api.route("/rbac", rbacRoutes);
