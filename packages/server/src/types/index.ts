@@ -208,6 +208,7 @@ export interface ResourceMetrics {
   local_threads: number;
   file_descriptors_used: number;
   file_descriptors_max: number;
+  read_rate: number; // Bytes read per second
 }
 
 export interface ErrorMetrics {
@@ -272,9 +273,9 @@ export interface PaginatedResponse<T> {
 // Error Types
 // ============================================
 
-export type ErrorCategory = 
+export type ErrorCategory =
   | "connection"
-  | "authentication" 
+  | "authentication"
   | "query"
   | "timeout"
   | "network"

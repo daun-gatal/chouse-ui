@@ -7,11 +7,11 @@ import { Loader2 } from "lucide-react";
  * Checks what pages the user has access to and redirects to the first available one.
  */
 export const DefaultRedirect = () => {
-  const { 
-    isAuthenticated, 
-    isInitialized, 
-    isLoading, 
-    isAdmin, 
+  const {
+    isAuthenticated,
+    isInitialized,
+    isLoading,
+    isAdmin,
     hasPermission,
     hasAnyPermission,
   } = useRbacStore();
@@ -31,7 +31,7 @@ export const DefaultRedirect = () => {
   }
 
   // Check what pages user has access to, in priority order
-  const canViewOverview = isAdmin();
+  const canViewOverview = true; // Visible to all authenticated users
   const canViewExplorer = hasAnyPermission([
     RBAC_PERMISSIONS.DB_VIEW,
     RBAC_PERMISSIONS.TABLE_VIEW,

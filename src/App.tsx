@@ -48,13 +48,13 @@ export default function App() {
               {/* Default redirect based on user role */}
               <Route path="/" element={<DefaultRedirect />} />
 
-              {/* Overview - Admin default landing page */}
+              {/* Overview - Default landing page for all authenticated users */}
               <Route
                 path="/overview"
                 element={
-                  <AdminRoute>
+                  <PrivateRoute>
                     <HomePage />
-                  </AdminRoute>
+                  </PrivateRoute>
                 }
               />
 

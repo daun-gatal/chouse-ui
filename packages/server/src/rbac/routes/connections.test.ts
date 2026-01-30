@@ -11,7 +11,6 @@ const mockDeleteConnection = mock();
 const mockGetUserConnections = mock();
 const mockGetConnectionWithPassword = mock();
 const mockCreateAuditLog = mock(async () => { });
-const mockSetDefaultConnection = mock();
 const mockGetDefaultConnection = mock();
 const mockTestConnection = mock(); // used by /test
 const mockTestSavedConnection = mock(); // used by /:id/test
@@ -24,7 +23,6 @@ mock.module("../services/connections", () => ({
     deleteConnection: mockDeleteConnection,
     getUserConnections: mockGetUserConnections,
     getConnectionWithPassword: mockGetConnectionWithPassword,
-    setDefaultConnection: mockSetDefaultConnection,
     getDefaultConnection: mockGetDefaultConnection,
     testConnection: mockTestConnection,
     testSavedConnection: mockTestSavedConnection,

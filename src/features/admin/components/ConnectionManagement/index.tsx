@@ -18,7 +18,6 @@ import {
   Check,
   X,
   Star,
-  StarOff,
   Play,
   Loader2,
   Eye,
@@ -115,7 +114,7 @@ function ConnectionFormDialog({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  
+
   const isEditing = !!connection;
 
   const form = useForm<ConnectionFormData>({
@@ -162,7 +161,7 @@ function ConnectionFormDialog({
         sslEnabled: values.sslEnabled,
       });
       setTestResult(result);
-      
+
       if (result.success) {
         toast.success('Connection successful!', {
           description: `Version: ${result.version}`,
@@ -388,11 +387,10 @@ function ConnectionFormDialog({
             {/* Test Result */}
             {testResult && (
               <div
-                className={`p-3 rounded-lg border ${
-                  testResult.success
+                className={`p-3 rounded-lg border ${testResult.success
                     ? 'bg-green-500/10 border-green-500/20'
                     : 'bg-red-500/10 border-red-500/20'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   {testResult.success ? (
@@ -471,7 +469,7 @@ export default function ConnectionManagement() {
   const [deleteConnection, setDeleteConnection] = useState<ClickHouseConnection | null>(null);
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null);
   const [userAccessConnection, setUserAccessConnection] = useState<ClickHouseConnection | null>(null);
-  
+
   const { hasPermission } = useRbacStore();
   const canUpdate = hasPermission(RBAC_PERMISSIONS.SETTINGS_UPDATE);
 
@@ -491,15 +489,7 @@ export default function ConnectionManagement() {
     fetchConnections();
   }, []);
 
-  const handleSetDefault = async (connection: ClickHouseConnection) => {
-    try {
-      await rbacConnectionsApi.setDefault(connection.id);
-      toast.success(`"${connection.name}" is now the default connection`);
-      fetchConnections();
-    } catch (error) {
-      toast.error('Failed to set default connection');
-    }
-  };
+
 
   const handleToggleActive = async (connection: ClickHouseConnection) => {
     try {
@@ -622,176 +612,161 @@ export default function ConnectionManagement() {
         </div>
       ) : (
         <TooltipProvider>
-        <div className="rounded-lg border border-gray-800 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-gray-800 hover:bg-transparent">
-                <TableHead className="text-gray-400">Name</TableHead>
-                <TableHead className="text-gray-400">Host</TableHead>
-                <TableHead className="text-gray-400">User</TableHead>
-                <TableHead className="text-gray-400">Database</TableHead>
-                <TableHead className="text-gray-400">Status</TableHead>
-                <TableHead className="text-gray-400">Users</TableHead>
-                <TableHead className="text-gray-400 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {connections.map((conn) => (
-                <TableRow key={conn.id} className="border-gray-800">
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-white">{conn.name}</span>
-                      {conn.isDefault && (
-                        <Badge className="bg-yellow-500/20 text-yellow-400 text-xs">
-                          <Star className="w-3 h-3 mr-1" />
-                          Default
+          <div className="rounded-lg border border-gray-800 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-800 hover:bg-transparent">
+                  <TableHead className="text-gray-400">Name</TableHead>
+                  <TableHead className="text-gray-400">Host</TableHead>
+                  <TableHead className="text-gray-400">User</TableHead>
+                  <TableHead className="text-gray-400">Database</TableHead>
+                  <TableHead className="text-gray-400">Status</TableHead>
+                  <TableHead className="text-gray-400">Users</TableHead>
+                  <TableHead className="text-gray-400 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {connections.map((conn) => (
+                  <TableRow key={conn.id} className="border-gray-800">
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white">{conn.name}</span>
+                        {conn.isDefault && (
+                          <Badge className="bg-yellow-500/20 text-yellow-400 text-xs">
+                            <Star className="w-3 h-3 mr-1" />
+                            Default
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 text-gray-300">
+                        {conn.sslEnabled && (
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="w-3 h-3 text-green-400" />
+                            </TooltipTrigger>
+                            <TooltipContent>SSL Enabled</TooltipContent>
+                          </Tooltip>
+                        )}
+                        <span className="font-mono text-sm">
+                          {conn.host}:{conn.port}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-gray-300">{conn.username}</TableCell>
+                    <TableCell className="text-gray-400">
+                      {conn.database || <span className="text-gray-600">default</span>}
+                    </TableCell>
+                    <TableCell>
+                      {conn.isActive ? (
+                        <Badge className="bg-green-500/20 text-green-400">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Active
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-gray-500/20 text-gray-400">
+                          <X className="w-3 h-3 mr-1" />
+                          Inactive
                         </Badge>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-gray-300">
-                      {conn.sslEnabled && (
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Lock className="w-3 h-3 text-green-400" />
-                          </TooltipTrigger>
-                          <TooltipContent>SSL Enabled</TooltipContent>
-                        </Tooltip>
-                      )}
-                      <span className="font-mono text-sm">
-                        {conn.host}:{conn.port}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-gray-300">{conn.username}</TableCell>
-                  <TableCell className="text-gray-400">
-                    {conn.database || <span className="text-gray-600">default</span>}
-                  </TableCell>
-                  <TableCell>
-                    {conn.isActive ? (
-                      <Badge className="bg-green-500/20 text-green-400">
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-gray-500/20 text-gray-400">
-                        <X className="w-3 h-3 mr-1" />
-                        Inactive
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openUserAccessDialog(conn)}
-                          className="h-8 text-gray-300 hover:text-white"
-                        >
-                          <Users className="w-4 h-4 mr-1" />
-                          Manage Access
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Manage user access to this connection</TooltipContent>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
+                    </TableCell>
+                    <TableCell>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
                             variant="ghost"
-                            size="icon"
-                            onClick={() => handleTest(conn)}
-                            disabled={testingConnectionId === conn.id}
-                            className="h-8 w-8"
+                            size="sm"
+                            onClick={() => openUserAccessDialog(conn)}
+                            className="h-8 text-gray-300 hover:text-white"
                           >
-                            {testingConnectionId === conn.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Play className="w-4 h-4" />
-                            )}
+                            <Users className="w-4 h-4 mr-1" />
+                            Manage Access
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Test Connection</TooltipContent>
+                        <TooltipContent>Manage user access to this connection</TooltipContent>
                       </Tooltip>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleTest(conn)}
+                              disabled={testingConnectionId === conn.id}
+                              className="h-8 w-8"
+                            >
+                              {testingConnectionId === conn.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Play className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Test Connection</TooltipContent>
+                        </Tooltip>
 
-                      {canUpdate && (
-                        <>
-                          {!conn.isDefault && (
+                        {canUpdate && (
+                          <>
+
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  onClick={() => handleSetDefault(conn)}
+                                  onClick={() => handleToggleActive(conn)}
                                   className="h-8 w-8"
                                 >
-                                  <StarOff className="w-4 h-4" />
+                                  {conn.isActive ? (
+                                    <Unlock className="w-4 h-4" />
+                                  ) : (
+                                    <Lock className="w-4 h-4" />
+                                  )}
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Set as Default</TooltipContent>
+                              <TooltipContent>
+                                {conn.isActive ? 'Deactivate' : 'Activate'}
+                              </TooltipContent>
                             </Tooltip>
-                          )}
 
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleToggleActive(conn)}
-                                className="h-8 w-8"
-                              >
-                                {conn.isActive ? (
-                                  <Unlock className="w-4 h-4" />
-                                ) : (
-                                  <Lock className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {conn.isActive ? 'Deactivate' : 'Activate'}
-                            </TooltipContent>
-                          </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEditDialog(conn)}
+                                  className="h-8 w-8"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit</TooltipContent>
+                            </Tooltip>
 
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => openEditDialog(conn)}
-                                className="h-8 w-8"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Edit</TooltipContent>
-                          </Tooltip>
-
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setDeleteConnection(conn)}
-                                className="h-8 w-8 text-red-400 hover:text-red-300"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Delete</TooltipContent>
-                          </Tooltip>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleteConnection(conn)}
+                                  className="h-8 w-8 text-red-400 hover:text-red-300"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Delete</TooltipContent>
+                            </Tooltip>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </TooltipProvider>
       )}
 

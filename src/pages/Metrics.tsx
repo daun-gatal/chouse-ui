@@ -4,7 +4,6 @@ import {
   Activity,
   RefreshCw,
   Clock,
-  Cpu,
   HardDrive,
   MemoryStick,
   Zap,
@@ -673,7 +672,7 @@ export default function Metrics({ embedded = false }: MetricsProps) {
               >
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-2 rounded-lg bg-cyan-500/20">
-                    <Cpu className="h-5 w-5 text-cyan-400" />
+                    <Zap className="h-5 w-5 text-cyan-400" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-white">Cache Performance</h3>
@@ -719,12 +718,12 @@ export default function Metrics({ embedded = false }: MetricsProps) {
               {/* Resource Usage */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <StatCard
-                  title="CPU Load"
-                  value={((prodMetrics?.resources?.cpu_load ?? 0) * 100).toFixed(1)}
-                  unit="%"
-                  icon={Cpu}
-                  color="text-red-400"
-                  bgColor="bg-red-500/20"
+                  title="Read Rate"
+                  value={formatBytes(prodMetrics?.resources?.read_rate || 0)}
+                  unit="/s"
+                  icon={HardDriveDownload}
+                  color="text-cyan-400"
+                  bgColor="bg-cyan-500/20"
                   isLoading={prodLoading}
                 />
                 <StatCard
