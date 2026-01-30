@@ -760,24 +760,32 @@ const MIGRATIONS: Migration[] = [
       const rolesToUpdate = [SYSTEM_ROLES.SUPER_ADMIN];
 
       for (const roleName of rolesToUpdate) {
-        // @ts-ignore - Union type issue with RbacDb, resolved at runtime
-        const roleResult = await db.select()
-          .from(schema.roles)
-          .where(eq(schema.roles.name, roleName))
-          .limit(1);
+        const roleResult =
+          dbType === 'sqlite'
+            ? await (db as SqliteDb).select().from(schema.roles).where(eq(schema.roles.name, roleName)).limit(1)
+            : await (db as PostgresDb).select().from(schema.roles).where(eq(schema.roles.name, roleName)).limit(1);
 
         if (roleResult.length > 0) {
           const roleId = roleResult[0].id;
 
           // Check if permission already assigned
           for (const permId of [liveQueriesViewId, liveQueriesKillId]) {
-            // @ts-ignore - Union type issue with RbacDb, resolved at runtime
-            const existingPerm = await db.select()
-              .from(schema.rolePermissions)
-              .where(
-                sql`${schema.rolePermissions.roleId} = ${roleId} AND ${schema.rolePermissions.permissionId} = ${permId}`
-              )
-              .limit(1);
+            const existingPerm =
+              dbType === 'sqlite'
+                ? await (db as SqliteDb)
+                    .select()
+                    .from(schema.rolePermissions)
+                    .where(
+                      sql`${schema.rolePermissions.roleId} = ${roleId} AND ${schema.rolePermissions.permissionId} = ${permId}`
+                    )
+                    .limit(1)
+                : await (db as PostgresDb)
+                    .select()
+                    .from(schema.rolePermissions)
+                    .where(
+                      sql`${schema.rolePermissions.roleId} = ${roleId} AND ${schema.rolePermissions.permissionId} = ${permId}`
+                    )
+                    .limit(1);
 
             if (existingPerm.length === 0) {
               // @ts-ignore - Union type issue with RbacDb, resolved at runtime
