@@ -745,56 +745,65 @@ const MIGRATIONS: Migration[] = [
         return;
       }
 
-      // Import schema and database functions
-      const { getDatabase, getSchema, getDatabaseType } = await import('./index');
+      // Import database functions (use raw SQL to avoid schema/db dialect union type issues)
+      const { getDatabaseType } = await import('./index');
       const { SYSTEM_ROLES } = await import('../schema/base');
       const { sql } = await import('drizzle-orm');
-      const { eq } = await import('drizzle-orm');
       const { randomUUID } = await import('crypto');
 
-      const schema = getSchema();
       const dbType = getDatabaseType();
 
       // Get super_admin role ID (live queries permissions are only granted to super_admin by default)
-      // Other users can be granted these permissions individually through the admin UI
       const rolesToUpdate = [SYSTEM_ROLES.SUPER_ADMIN];
 
       for (const roleName of rolesToUpdate) {
-        const roleResult =
-          dbType === 'sqlite'
-            ? await (db as SqliteDb).select().from(schema.roles).where(eq(schema.roles.name, roleName)).limit(1)
-            : await (db as PostgresDb).select().from(schema.roles).where(eq(schema.roles.name, roleName)).limit(1);
+        let roleResult: Array<{ id: string }>;
+
+        if (dbType === 'sqlite') {
+          roleResult = (db as SqliteDb).all(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `) as Array<{ id: string }>;
+        } else {
+          const rows = await (db as PostgresDb).execute(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `);
+          roleResult = Array.isArray(rows) ? rows : (rows as { rows?: Array<{ id: string }> }).rows ?? [];
+        }
 
         if (roleResult.length > 0) {
           const roleId = roleResult[0].id;
 
-          // Check if permission already assigned
           for (const permId of [liveQueriesViewId, liveQueriesKillId]) {
-            const existingPerm =
-              dbType === 'sqlite'
-                ? await (db as SqliteDb)
-                    .select()
-                    .from(schema.rolePermissions)
-                    .where(
-                      sql`${schema.rolePermissions.roleId} = ${roleId} AND ${schema.rolePermissions.permissionId} = ${permId}`
-                    )
-                    .limit(1)
-                : await (db as PostgresDb)
-                    .select()
-                    .from(schema.rolePermissions)
-                    .where(
-                      sql`${schema.rolePermissions.roleId} = ${roleId} AND ${schema.rolePermissions.permissionId} = ${permId}`
-                    )
-                    .limit(1);
+            let existing: Array<unknown>;
 
-            if (existingPerm.length === 0) {
-              // @ts-ignore - Union type issue with RbacDb, resolved at runtime
-              await db.insert(schema.rolePermissions).values({
-                id: randomUUID(),
-                roleId,
-                permissionId: permId,
-                createdAt: new Date(),
-              });
+            if (dbType === 'sqlite') {
+              existing = (db as SqliteDb).all(sql`
+                SELECT 1 FROM rbac_role_permissions
+                WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1
+              `);
+            } else {
+              const rows = await (db as PostgresDb).execute(sql`
+                SELECT 1 FROM rbac_role_permissions
+                WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1
+              `);
+              existing = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+            }
+
+            if (existing.length === 0) {
+              const id = randomUUID();
+              const createdAt = new Date();
+
+              if (dbType === 'sqlite') {
+                (db as SqliteDb).run(sql`
+                  INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                  VALUES (${id}, ${roleId}, ${permId}, ${Math.floor(createdAt.getTime() / 1000)})
+                `);
+              } else {
+                await (db as PostgresDb).execute(sql`
+                  INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                  VALUES (${id}, ${roleId}, ${permId}, ${createdAt})
+                `);
+              }
               console.log(`[Migration 1.7.0] Assigned permission ${permId} to role ${roleName}`);
             } else {
               console.log(`[Migration 1.7.0] Permission ${permId} already assigned to role ${roleName}`);
