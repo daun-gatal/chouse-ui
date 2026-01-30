@@ -33,9 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Displays "All clear" or "Check logs" subtext based on error count
 - **Removed Unused Components**: Removed unused `ProgressBar` component from Home.tsx.
 
+## [v2.8.1] - 2026-01-30
+
 ### Fixed
 
-- **CPU Load Query**: Updated `getSystemStats` in backend to use a more robust CPU metric query with fallback from `OSCPULoad` to calculated CPU time.
+- **PostgreSQL migration 1.7.0**: Fixed failure when using PostgreSQL; the postgres driver expects string/Buffer for bind params, not `Date`. Use `createdAt.toISOString()` for the `created_at` column in the role-permissions INSERT (fixes "Received an instance of Date" error).
 
 ## [v2.8.0] - 2026-01-30
 

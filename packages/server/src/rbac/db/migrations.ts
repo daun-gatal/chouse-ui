@@ -800,9 +800,10 @@ const MIGRATIONS: Migration[] = [
                   VALUES (${id}, ${roleId}, ${permId}, ${Math.floor(createdAt.getTime() / 1000)})
                 `);
               } else {
+                // Postgres driver expects string/Buffer for bind params, not Date
                 await (db as PostgresDb).execute(sql`
                   INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
-                  VALUES (${id}, ${roleId}, ${permId}, ${createdAt})
+                  VALUES (${id}, ${roleId}, ${permId}, ${createdAt.toISOString()})
                 `);
               }
               console.log(`[Migration 1.7.0] Assigned permission ${permId} to role ${roleName}`);
