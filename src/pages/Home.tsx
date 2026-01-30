@@ -272,15 +272,17 @@ export default function HomePage() {
             <div className="flex-1 w-full h-full p-4 pt-0">
               {metricsLoading ? (
                 <div className="flex items-center justify-center h-full text-gray-600">Loading Chart...</div>
-              ) : (
+              ) : metrics?.queriesPerSecond ? (
                 <UPlotMetricItemComponent
-                  data={metrics?.queriesPerSecond}
+                  data={metrics.queriesPerSecond}
                   title=""
                   color="rgb(59, 130, 246)"
                   fill="rgba(59, 130, 246, 0.15)"
                   unit=" qps"
                   height={280}
                 />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-600">No chart data</div>
               )}
             </div>
           </DashboardCard>
