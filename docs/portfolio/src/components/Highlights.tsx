@@ -3,63 +3,35 @@ import { useRef } from 'react';
 import { GlassCard, GlassCardContent, GlassCardTitle, GlassCardDescription } from './GlassCard';
 import {
   Shield,
-  Zap,
-  Database,
-  Code,
   Users,
-  Lock,
-  TrendingUp,
-  Sparkles,
+  Database,
+  Zap,
 } from 'lucide-react';
 
 const highlights = [
   {
     icon: Shield,
     title: 'Enterprise Security',
-    description: 'Built with security-first approach. AES-256 encryption, Argon2 password hashing, SQL injection protection, XSS protection, and comprehensive RBAC system.',
+    description: 'AES-256 encryption, Argon2 password hashing, SQL injection protection, and XSS prevention built-in.',
     color: 'from-purple-500 to-purple-700',
-  },
-  {
-    icon: Zap,
-    title: 'High Performance',
-    description: 'Optimized for speed with Bun runtime, efficient state management, and virtualized rendering for large datasets.',
-    color: 'from-blue-500 to-blue-700',
-  },
-  {
-    icon: Database,
-    title: 'Multi-Database Support',
-    description: 'Flexible backend supporting both SQLite for development and PostgreSQL for production scalability.',
-    color: 'from-green-500 to-green-700',
-  },
-  {
-    icon: Code,
-    title: 'Modern Tech Stack',
-    description: 'Built with cutting-edge technologies: React 19, Bun, Hono, TypeScript, and Tailwind CSS.',
-    color: 'from-orange-500 to-orange-700',
   },
   {
     icon: Users,
     title: 'Role-Based Access',
-    description: 'Granular permission system with 5 predefined roles and custom data access rules per user.',
-    color: 'from-pink-500 to-pink-700',
+    description: '6 predefined roles with granular data access rules per user. Control who sees what.',
+    color: 'from-blue-500 to-blue-700',
   },
   {
-    icon: Lock,
-    title: 'Zero Trust Architecture',
-    description: 'No credentials in browser. All ClickHouse passwords encrypted and stored server-side only.',
-    color: 'from-red-500 to-red-700',
+    icon: Database,
+    title: 'Multi-Connection',
+    description: 'Manage multiple ClickHouse servers from one interface. Switch connections instantly.',
+    color: 'from-green-500 to-green-700',
   },
   {
-    icon: TrendingUp,
-    title: 'Production Ready',
-    description: 'Automatic migrations, comprehensive error handling, and audit logging built-in.',
-    color: 'from-cyan-500 to-cyan-700',
-  },
-  {
-    icon: Sparkles,
-    title: 'Beautiful UI/UX',
-    description: 'Glassmorphism design, smooth animations, responsive layout, and intuitive user experience.',
-    color: 'from-indigo-500 to-indigo-700',
+    icon: Zap,
+    title: 'Live Operations',
+    description: 'Real-time query monitoring, metrics dashboard, and comprehensive audit logging.',
+    color: 'from-orange-500 to-orange-700',
   },
 ];
 
@@ -95,15 +67,12 @@ export default function Highlights() {
               Why Choose CHouse UI?
             </span>
           </h2>
-          <p className="text-gray-400 text-xl max-w-2xl mx-auto mb-2">
-            Key aspects that make this project stand out
-          </p>
-          <p className="text-gray-500 text-sm max-w-xl mx-auto">
-            Built with security, performance, and developer experience in mind
+          <p className="text-gray-400 text-xl max-w-2xl mx-auto">
+            Built for teams who need secure, scalable ClickHouse management
           </p>
         </motion.div>
 
-        {/* Highlights Grid with staggered animation */}
+        {/* Highlights Grid - 4 cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {highlights.map((highlight, index) => (
             <motion.div
