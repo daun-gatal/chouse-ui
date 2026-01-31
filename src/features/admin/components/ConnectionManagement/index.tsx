@@ -471,7 +471,8 @@ export default function ConnectionManagement() {
   const [userAccessConnection, setUserAccessConnection] = useState<ClickHouseConnection | null>(null);
 
   const { hasPermission } = useRbacStore();
-  const canUpdate = hasPermission(RBAC_PERMISSIONS.SETTINGS_UPDATE);
+  const canEdit = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_EDIT);
+  const canDelete = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_DELETE);
 
   const fetchConnections = async () => {
     setIsLoading(true);
@@ -575,7 +576,7 @@ export default function ConnectionManagement() {
             <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
             Refresh
           </Button>
-          {canUpdate && (
+          {canEdit && (
             <Button
               variant="outline"
               size="sm"
@@ -599,7 +600,7 @@ export default function ConnectionManagement() {
           <Server className="w-12 h-12 mx-auto text-gray-600 mb-4" />
           <h3 className="text-lg font-medium text-gray-300">No connections configured</h3>
           <p className="text-gray-500 mt-1">Add your first ClickHouse connection to get started</p>
-          {canUpdate && (
+          {canEdit && (
             <Button
               size="sm"
               onClick={openCreateDialog}
@@ -708,43 +709,45 @@ export default function ConnectionManagement() {
                           <TooltipContent>Test Connection</TooltipContent>
                         </Tooltip>
 
-                        {canUpdate && (
-                          <>
+                        {canEdit && (
+                            <>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleToggleActive(conn)}
+                                    className="h-8 w-8"
+                                  >
+                                    {conn.isActive ? (
+                                      <Unlock className="w-4 h-4" />
+                                    ) : (
+                                      <Lock className="w-4 h-4" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {conn.isActive ? 'Deactivate' : 'Activate'}
+                                </TooltipContent>
+                              </Tooltip>
 
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleToggleActive(conn)}
-                                  className="h-8 w-8"
-                                >
-                                  {conn.isActive ? (
-                                    <Unlock className="w-4 h-4" />
-                                  ) : (
-                                    <Lock className="w-4 h-4" />
-                                  )}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {conn.isActive ? 'Deactivate' : 'Activate'}
-                              </TooltipContent>
-                            </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => openEditDialog(conn)}
+                                    className="h-8 w-8"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Edit</TooltipContent>
+                              </Tooltip>
+                            </>
+                        )}
 
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => openEditDialog(conn)}
-                                  className="h-8 w-8"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Edit</TooltipContent>
-                            </Tooltip>
-
+                        {canDelete && (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
@@ -758,7 +761,6 @@ export default function ConnectionManagement() {
                               </TooltipTrigger>
                               <TooltipContent>Delete</TooltipContent>
                             </Tooltip>
-                          </>
                         )}
                       </div>
                     </TableCell>

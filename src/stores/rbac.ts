@@ -382,6 +382,11 @@ export const RBAC_PERMISSIONS = {
   // Live Query Management (admin only)
   LIVE_QUERIES_VIEW: 'live_queries:view',
   LIVE_QUERIES_KILL: 'live_queries:kill',
+
+  // Connection Management
+  CONNECTIONS_VIEW: 'connections:view',
+  CONNECTIONS_EDIT: 'connections:edit',
+  CONNECTIONS_DELETE: 'connections:delete',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

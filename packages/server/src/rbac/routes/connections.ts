@@ -25,7 +25,7 @@ import {
 } from '../services/connections';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLog } from '../services/rbac';
-import { AUDIT_ACTIONS } from '../schema/base';
+import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { ClickHouseService, createSession, destroySession, getSession } from '../../services/clickhouse';
 import type { ConnectionConfig } from '../../types';
 
@@ -79,25 +79,14 @@ const listQuerySchema = z.object({
 // Routes
 // ============================================
 
-// List all connections (requires super_admin role)
+// List all connections (requires connections:view permission)
 connectionsRoutes.get(
   '/',
   rbacAuthMiddleware,
+  requirePermission(PERMISSIONS.CONNECTIONS_VIEW),
   zValidator('query', listQuerySchema),
   async (c) => {
     try {
-      const user = getRbacUser(c);
-      // Only super admins can list all connections
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can manage connections',
-          },
-        }, 403);
-      }
-
       const query = c.req.valid('query');
       const result = await listConnections({
         search: query.search,
@@ -238,24 +227,15 @@ connectionsRoutes.get(
   }
 );
 
-// Create new connection (requires super_admin role)
+// Create new connection (requires connections:edit permission)
 connectionsRoutes.post(
   '/',
   rbacAuthMiddleware,
+  requirePermission(PERMISSIONS.CONNECTIONS_EDIT),
   zValidator('json', createConnectionSchema),
   async (c) => {
     try {
       const user = getRbacUser(c);
-      // Only super admins can create connections
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can create connections',
-          },
-        }, 403);
-      }
       const input = c.req.valid('json');
 
       const connection = await createConnection(input, user.sub);
@@ -290,24 +270,15 @@ connectionsRoutes.post(
   }
 );
 
-// Update connection (requires super_admin role)
+// Update connection (requires connections:edit permission)
 connectionsRoutes.patch(
   '/:id',
   rbacAuthMiddleware,
+  requirePermission(PERMISSIONS.CONNECTIONS_EDIT),
   zValidator('json', updateConnectionSchema),
   async (c) => {
     try {
       const user = getRbacUser(c);
-      // Only super admins can update connections
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can update connections',
-          },
-        }, 403);
-      }
       const id = c.req.param('id');
       const input = c.req.valid('json');
 
@@ -353,23 +324,14 @@ connectionsRoutes.patch(
   }
 );
 
-// Delete connection (requires super_admin role)
+// Delete connection (requires connections:delete permission)
 connectionsRoutes.delete(
   '/:id',
   rbacAuthMiddleware,
+  requirePermission(PERMISSIONS.CONNECTIONS_DELETE),
   async (c) => {
     try {
       const user = getRbacUser(c);
-      // Only super admins can delete connections
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can delete connections',
-          },
-        }, 403);
-      }
       const id = c.req.param('id');
 
       // Get connection info before deleting (for audit log)
@@ -457,23 +419,13 @@ connectionsRoutes.post(
   }
 );
 
-// Test saved connection (requires super_admin role)
+// Test saved connection (requires connections:view permission)
 connectionsRoutes.post(
   '/:id/test',
   rbacAuthMiddleware,
+  requirePermission(PERMISSIONS.CONNECTIONS_VIEW),
   async (c) => {
     try {
-      const user = getRbacUser(c);
-      // Only super admins can test connections
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can test connections',
-          },
-        }, 403);
-      }
       const id = c.req.param('id');
       const result = await testSavedConnection(id);
 
@@ -715,23 +667,14 @@ connectionsRoutes.get(
   }
 );
 
-// Grant user access to connection (requires super_admin role)
+// Grant user access to connection (requires connections:edit permission)
 connectionsRoutes.post(
   '/:id/access/:userId',
   rbacAuthMiddleware,
+  requirePermission(PERMISSIONS.CONNECTIONS_EDIT),
   async (c) => {
     try {
       const user = getRbacUser(c);
-      // Only super admins can grant connection access
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can grant connection access',
-          },
-        }, 403);
-      }
       const connectionId = c.req.param('id');
       const targetUserId = c.req.param('userId');
 
@@ -767,23 +710,14 @@ connectionsRoutes.post(
   }
 );
 
-// Revoke user access to connection (requires super_admin role)
+// Revoke user access to connection (requires connections:delete permission)
 connectionsRoutes.delete(
   '/:id/access/:userId',
   rbacAuthMiddleware,
+  requirePermission(PERMISSIONS.CONNECTIONS_DELETE),
   async (c) => {
     try {
       const user = getRbacUser(c);
-      // Only super admins can revoke connection access
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can revoke connection access',
-          },
-        }, 403);
-      }
       const connectionId = c.req.param('id');
       const targetUserId = c.req.param('userId');
 
@@ -819,23 +753,13 @@ connectionsRoutes.delete(
   }
 );
 
-// Get users with access to a connection (requires super_admin role)
+// Get users with access to a connection (requires connections:view permission)
 connectionsRoutes.get(
   '/:id/users',
   rbacAuthMiddleware,
+  requirePermission(PERMISSIONS.CONNECTIONS_VIEW),
   async (c) => {
     try {
-      const user = getRbacUser(c);
-      // Only super admins can view connection users
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can view connection users',
-          },
-        }, 403);
-      }
       const connectionId = c.req.param('id');
 
       // Verify connection exists
