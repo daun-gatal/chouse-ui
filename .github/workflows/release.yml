@@ -267,19 +267,87 @@ jobs:
           cat ANNOUNCEMENT.md
 
       - name: Create Discussion Announcement
+        id: create_discussion
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_ID: ${{ steps.get_ids.outputs.repository_id }}
           CATEGORY_ID: ${{ steps.get_ids.outputs.category_id }}
           VERSION: ${{ needs.tag-and-release.outputs.version }}
         run: |
-          # Create discussion using GraphQL API
-          # Pipe the announcement file content to the mutation
-          cat ANNOUNCEMENT.md | gh api graphql \
+          # Create discussion using GraphQL API and capture the response
+          RESPONSE=$(cat ANNOUNCEMENT.md | gh api graphql \
             --field query="mutation(\$body: String!) { createDiscussion(input: { repositoryId: \"$REPO_ID\", categoryId: \"$CATEGORY_ID\", title: \"CHouse UI $VERSION Released!\", body: \$body }) { discussion { id url title } } }" \
-            --field body=@-
+            --field body=@-)
           
-          echo "✅ Release announcement discussion created successfully!"
+          # Extract the discussion ID from the response
+          DISCUSSION_ID=$(echo "$RESPONSE" | jq -r '.data.createDiscussion.discussion.id')
+          DISCUSSION_URL=$(echo "$RESPONSE" | jq -r '.data.createDiscussion.discussion.url')
+          
+          echo "discussion_id=$DISCUSSION_ID" >> $GITHUB_OUTPUT
+          echo "discussion_url=$DISCUSSION_URL" >> $GITHUB_OUTPUT
+          
+          echo "✅ Release announcement discussion created: $DISCUSSION_URL"
+
+      - name: Unpin Previous Announcement and Pin New One
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_DISCUSSION_ID: ${{ steps.create_discussion.outputs.discussion_id }}
+        run: |
+          REPO_OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          
+          # Find all pinned discussions that match the release announcement pattern
+          PINNED_DISCUSSIONS=$(gh api graphql -f query="
+            query {
+              repository(owner: \"$REPO_OWNER\", name: \"$REPO_NAME\") {
+                pinnedDiscussions(first: 10) {
+                  nodes {
+                    id
+                    discussion {
+                      id
+                      title
+                    }
+                  }
+                }
+              }
+            }
+          " -q '.data.repository.pinnedDiscussions.nodes[] | select(.discussion.title | test("CHouse UI v[0-9]+\\.[0-9]+\\.[0-9]+ Released!")) | .id')
+          
+          # Unpin each previous release announcement
+          if [ -n "$PINNED_DISCUSSIONS" ]; then
+            echo "Found pinned release announcements to unpin..."
+            for PINNED_ID in $PINNED_DISCUSSIONS; do
+              echo "Unpinning: $PINNED_ID"
+              gh api graphql -f query="
+                mutation {
+                  unpinDiscussion(input: { pinnedDiscussionId: \"$PINNED_ID\" }) {
+                    discussion {
+                      id
+                      title
+                    }
+                  }
+                }
+              "
+            done
+            echo "✅ Previous announcements unpinned"
+          else
+            echo "No previous release announcements were pinned"
+          fi
+          
+          # Pin the new discussion
+          echo "Pinning new announcement: $NEW_DISCUSSION_ID"
+          gh api graphql -f query="
+            mutation {
+              pinDiscussion(input: { discussionId: \"$NEW_DISCUSSION_ID\" }) {
+                discussion {
+                  id
+                  title
+                }
+              }
+            }
+          "
+          
+          echo "✅ New release announcement pinned successfully!"
 
   build-and-push:
     name: Build and Push Docker Image
