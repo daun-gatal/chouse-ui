@@ -17,7 +17,6 @@ import {
   deleteConnection,
   testConnection,
   testSavedConnection,
-  setDefaultConnection,
   getDefaultConnection,
   getUserConnections,
   getConnectionUsers,
@@ -98,7 +97,7 @@ connectionsRoutes.get(
           },
         }, 403);
       }
-      
+
       const query = c.req.valid('query');
       const result = await listConnections({
         search: query.search,
@@ -138,7 +137,7 @@ connectionsRoutes.get(
       const user = getRbacUser(c);
       const isSuperAdmin = user.roles.includes('super_admin');
       const isBasicAdmin = user.roles.includes('admin') && !isSuperAdmin;
-      
+
       // Super admins get all active connections
       if (isSuperAdmin) {
         const result = await listConnections({ activeOnly: true });
@@ -147,7 +146,7 @@ connectionsRoutes.get(
           data: result.connections,
         });
       }
-      
+
       // Basic admins and regular users get their accessible connections (or default if none assigned)
       const connections = await getUserConnections(user.sub);
       return c.json({
@@ -174,7 +173,7 @@ connectionsRoutes.get(
   async (c) => {
     try {
       const connection = await getDefaultConnection();
-      
+
       if (!connection) {
         return c.json({
           success: false,
@@ -427,66 +426,6 @@ connectionsRoutes.delete(
   }
 );
 
-// Set connection as default (requires super_admin role)
-connectionsRoutes.post(
-  '/:id/default',
-  rbacAuthMiddleware,
-  async (c) => {
-    try {
-      const user = getRbacUser(c);
-      // Only super admins can set default connection
-      if (!user.roles.includes('super_admin')) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only super admins can set default connection',
-          },
-        }, 403);
-      }
-      const id = c.req.param('id');
-
-      const connection = await setDefaultConnection(id);
-
-      if (!connection) {
-        return c.json({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Connection not found',
-          },
-        }, 404);
-      }
-
-      // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
-        resourceType: 'connection',
-        resourceId: connection.id,
-        details: {
-          operation: 'set_default',
-          connectionName: connection.name,
-        },
-        ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
-      });
-
-      return c.json({
-        success: true,
-        data: connection,
-      });
-    } catch (error) {
-      console.error('[Connections] Set default error:', error);
-      return c.json({
-        success: false,
-        error: {
-          code: 'UPDATE_FAILED',
-          message: 'Failed to set default connection',
-        },
-      }, 500);
-    }
-  }
-);
-
 // Test connection (without saving)
 connectionsRoutes.post(
   '/test',
@@ -706,7 +645,7 @@ connectionsRoutes.post(
   async (c) => {
     try {
       const sessionId = c.req.header('X-Session-ID');
-      
+
       if (sessionId) {
         await destroySession(sessionId);
       }
@@ -735,7 +674,7 @@ connectionsRoutes.get(
   async (c) => {
     try {
       const sessionId = c.req.header('X-Session-ID');
-      
+
       if (!sessionId) {
         return c.json({
           success: true,
@@ -744,7 +683,7 @@ connectionsRoutes.get(
       }
 
       const sessionData = getSession(sessionId);
-      
+
       if (!sessionData) {
         return c.json({
           success: true,
@@ -898,7 +837,7 @@ connectionsRoutes.get(
         }, 403);
       }
       const connectionId = c.req.param('id');
-      
+
       // Verify connection exists
       const connection = await getConnectionById(connectionId);
       if (!connection) {
@@ -910,9 +849,9 @@ connectionsRoutes.get(
           },
         }, 404);
       }
-      
+
       const users = await getConnectionUsers(connectionId);
-      
+
       return c.json({
         success: true,
         data: users,
