@@ -720,15 +720,6 @@ export const rbacConnectionsApi = {
   },
 
   /**
-   * Set a connection as default
-   */
-  async setDefault(id: string): Promise<ClickHouseConnection> {
-    return rbacFetch(`/connections/${id}/default`, {
-      method: 'POST',
-    });
-  },
-
-  /**
    * Test a connection (without saving)
    */
   async test(input: TestConnectionInput): Promise<TestConnectionResult> {

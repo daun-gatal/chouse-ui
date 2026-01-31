@@ -333,7 +333,19 @@ export class ClickHouseService {
         this.client.query({ query: "SELECT count() FROM system.tables WHERE database NOT IN ('system', 'information_schema')" }),
         this.client.query({ query: "SELECT formatReadableSize(sum(bytes_on_disk)) as size, sum(rows) as rows FROM system.parts WHERE active" }),
         this.client.query({ query: "SELECT formatReadableSize(value) as mem FROM system.metrics WHERE metric = 'MemoryTracking'" }),
-        this.client.query({ query: "SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSCPULoad' LIMIT 1" }),
+        // Try multiple CPU metrics with fallback - OSCPULoad may not be available on all systems
+        this.client.query({
+          query: `
+            SELECT 
+              COALESCE(
+                (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSCPULoad' LIMIT 1),
+                (SELECT (sumIf(value, metric = 'OSUserTimeCPU') + sumIf(value, metric = 'OSSystemTimeCPU')) / 
+                        greatest(sumIf(value, metric = 'OSIdleTimeCPU') + sumIf(value, metric = 'OSUserTimeCPU') + sumIf(value, metric = 'OSSystemTimeCPU'), 1) 
+                 FROM system.asynchronous_metrics),
+                0
+              ) as cpu_load
+          `
+        }),
         this.client.query({ query: "SELECT value FROM system.metrics WHERE metric = 'TCPConnection'" }),
         this.client.query({ query: "SELECT count() as cnt FROM system.processes" }),
       ]);
@@ -345,7 +357,7 @@ export class ClickHouseService {
       const tableCount = await tableCountRes.json() as JsonResponse<{ "count()": number }>;
       const sizeData = await sizeRes.json() as JsonResponse<{ size: string; rows: string }>;
       const memData = await memRes.json() as JsonResponse<{ mem: string }>;
-      const cpuData = await cpuRes.json() as JsonResponse<{ value: number }>;
+      const cpuData = await cpuRes.json() as JsonResponse<{ cpu_load: number }>;
       const connData = await connRes.json() as JsonResponse<{ value: number }>;
       const activeQueriesData = await activeQueriesRes.json() as JsonResponse<{ cnt: number }>;
 
@@ -357,7 +369,7 @@ export class ClickHouseService {
         totalRows: this.formatLargeNumber(Number(sizeData.data[0]?.rows || 0)),
         totalSize: sizeData.data[0]?.size || "0 B",
         memoryUsage: memData.data[0]?.mem || "0 B",
-        cpuLoad: Number(cpuData.data[0]?.value || 0),
+        cpuLoad: Number(cpuData.data[0]?.cpu_load || 0),
         activeConnections: Number(connData.data[0]?.value || 0),
         activeQueries: Number(activeQueriesData.data[0]?.cnt || 0),
       };
@@ -630,12 +642,9 @@ export class ClickHouseService {
     }
   }
 
-  /**
-   * Get resource usage metrics (CPU, memory, threads)
-   */
   async getResourceMetrics(): Promise<import("../types").ResourceMetrics> {
     try {
-      const [asyncMetrics, metrics] = await Promise.all([
+      const [asyncMetrics, metrics, profileEvents] = await Promise.all([
         this.client.query({
           query: `
             SELECT metric, value FROM system.asynchronous_metrics 
@@ -648,14 +657,25 @@ export class ClickHouseService {
             WHERE metric IN (
               'MemoryTracking', 'BackgroundPoolTask', 'BackgroundSchedulePoolTask',
               'BackgroundMergesAndMutationsPoolTask', 'GlobalThread', 'LocalThread',
-              'OpenFileForRead', 'OpenFileForWrite'
+              'OpenFileForRead', 'OpenFileForWrite', 'Read'
             )
+          `,
+        }),
+        // Get read rate from profile events (bytes read in last minute)
+        this.client.query({
+          query: `
+            SELECT 
+              sumIf(ProfileEvents['ReadBufferFromFileDescriptorReadBytes'], event_time >= now() - INTERVAL 60 SECOND) / 60 as read_bytes_per_sec
+            FROM system.query_log 
+            WHERE event_time >= now() - INTERVAL 60 SECOND
+            AND type = 'QueryFinish'
           `,
         }),
       ]);
 
       const asyncData = await asyncMetrics.json() as JsonResponse<{ metric: string; value: number }>;
       const metricsData = await metrics.json() as JsonResponse<{ metric: string; value: number }>;
+      const profileData = await profileEvents.json() as JsonResponse<{ read_bytes_per_sec: number }>;
 
       const asyncMap = Object.fromEntries(asyncData.data.map(d => [d.metric, Number(d.value)]));
       const metricsMap = Object.fromEntries(metricsData.data.map(d => [d.metric, Number(d.value)]));
@@ -671,6 +691,7 @@ export class ClickHouseService {
         local_threads: metricsMap.LocalThread || 0,
         file_descriptors_used: (metricsMap.OpenFileForRead || 0) + (metricsMap.OpenFileForWrite || 0),
         file_descriptors_max: 0, // Will be populated if available
+        read_rate: profileData.data[0]?.read_bytes_per_sec || 0,
       };
     } catch (error) {
       throw this.handleError(error, "Failed to fetch resource metrics");
@@ -842,7 +863,8 @@ export class ClickHouseService {
     const defaultResources: import("../types").ResourceMetrics = {
       cpu_load: 0, memory_resident: 0, memory_tracking: 0, background_pool_tasks: 0,
       background_schedule_pool_tasks: 0, background_merges_mutations_pool_tasks: 0,
-      global_threads: 0, local_threads: 0, file_descriptors_used: 0, file_descriptors_max: 0
+      global_threads: 0, local_threads: 0, file_descriptors_used: 0, file_descriptors_max: 0,
+      read_rate: 0
     };
 
     // Fetch all metrics with individual error handling

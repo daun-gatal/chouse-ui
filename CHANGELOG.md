@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.8.2] - 2026-01-31
+
+### Removed
+
+#### Set Default Connection Feature (Issue #64)
+- **Remove Set Default Connection**: Removed the non-functional 'Set Default Connection' feature that was admin-only and didn't persist correctly after login.
+  - Removed `setDefault` method from `RBACConnectionsApi` in `src/api/rbac.ts`
+  - Removed `handleSetDefault` and "Set as Default" button from `ConnectionManagement/index.tsx`
+  - Removed `setDefaultConnection` function from `packages/server/src/rbac/services/connections.ts`
+  - Removed `PUT /connections/:id/default` endpoint from `packages/server/src/rbac/routes/connections.ts`
+  - Removed related tests from `connections.test.ts`
+
+### Changed
+
+#### Metrics Page Improvements
+- **Replace CPU Load with Read Rate**: Replaced the CPU Load metric in the Performance tab with "Read Rate" (bytes read per second), providing more meaningful performance insights.
+  - Read Rate calculated from `system.query_log` ProfileEvents over the last 60 seconds
+  - Added `read_rate` field to `ResourceMetrics` interface (backend and frontend)
+  - Updated `getResourceMetrics` service to query read throughput data
+- **Cache Performance Icon**: Changed Cache Performance section icon from `Cpu` to `Zap` for visual consistency.
+
+#### Overview Page Improvements  
+- **Replace CPU Load with Error Rate**: Replaced the unreliable CPU Load metric on the Overview page with "Errors (24h)" for better utility.
+  - Shows count of failed queries in the last 24 hours from `useMetrics` hook
+  - Conditional styling: green when no errors, red/amber when errors present
+  - Displays "All clear" or "Check logs" subtext based on error count
+- **Removed Unused Components**: Removed unused `ProgressBar` component from Home.tsx.
+
 ## [v2.8.1] - 2026-01-30
 
 ### Fixed

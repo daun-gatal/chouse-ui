@@ -495,13 +495,6 @@ export async function getDefaultConnection(): Promise<ConnectionResponse | null>
   };
 }
 
-/**
- * Set a connection as default
- */
-export async function setDefaultConnection(id: string): Promise<ConnectionResponse | null> {
-  return updateConnection(id, { isDefault: true });
-}
-
 // ============================================
 // Connection Testing
 // ============================================

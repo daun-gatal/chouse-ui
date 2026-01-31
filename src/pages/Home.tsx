@@ -10,7 +10,7 @@ import {
   ArrowRight,
   BarChart3,
   Layers,
-  Cpu,
+  AlertTriangle,
   RefreshCw,
   Server,
   Terminal,
@@ -74,17 +74,6 @@ const MetricValue = ({ label, value, unit, subtext, color = "text-white" }: any)
   </div>
 );
 
-const ProgressBar = ({ value, max = 100, color = "bg-blue-500" }: any) => {
-  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
-  return (
-    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-      <div
-        style={{ width: `${percentage}%` }}
-        className={cn("h-full rounded-full shadow-[0_0_10px_currentColor]", color)}
-      />
-    </div>
-  );
-};
 
 // --- Main Page Component ---
 
@@ -110,7 +99,6 @@ export default function HomePage() {
     totalRows: 0,
     totalSize: "0 B",
     memoryUsage: "0",
-    cpuLoad: 0,
     activeConnections: 0,
     activeQueries: 0,
   };
@@ -130,6 +118,11 @@ export default function HomePage() {
   }, [metrics, displayStats]);
 
   const MEMORY_LIMIT_VISUAL_BASELINE = 32;
+
+  // Error count from metrics (last 24h)
+  const errorCount = useMemo(() => {
+    return metrics?.currentStats?.failedQueries || 0;
+  }, [metrics]);
 
   const formatUptime = (seconds: number) => {
     if (!seconds) return "0s";
@@ -235,31 +228,41 @@ export default function HomePage() {
             />
           </DashboardCard>
 
-          {/* CPU Load */}
-          <DashboardCard className="p-5 justify-between">
-            <div className="flex justify-between items-start">
-              <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400">
-                <Cpu className="w-5 h-5" />
+          {/* Error Rate */}
+          <DashboardCard className="p-5">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-2.5 rounded-xl bg-red-500/10 text-red-400">
+                <AlertTriangle className="w-5 h-5" />
               </div>
-              <span className="text-xl font-bold text-white">{(displayStats.cpuLoad * 100).toFixed(0)}%</span>
             </div>
-            <div className="mt-4 space-y-1">
-              <p className="text-xs text-gray-500">System CPU Load</p>
-              <ProgressBar value={displayStats.cpuLoad * 100} color="bg-purple-500" />
-            </div>
+            <MetricValue
+              label="Errors (24h)"
+              value={errorCount}
+              subtext={errorCount === 0 ? "All clear" : "Check logs"}
+              color={errorCount > 0 ? "text-red-100" : "text-green-100"}
+            />
           </DashboardCard>
 
           {/* Memory Usage */}
-          <DashboardCard className="p-5 justify-between">
-            <div className="flex justify-between items-start">
+          <DashboardCard className="p-5">
+            <div className="flex justify-between items-start mb-4">
               <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400">
                 <HardDrive className="w-5 h-5" />
               </div>
-              <span className="text-xl font-bold text-white">{memoryUsageGB.toFixed(2)} <span className="text-sm text-gray-500 font-medium">GB</span></span>
             </div>
-            <div className="mt-4 space-y-1">
-              <p className="text-xs text-gray-500">RAM Usage (Est.)</p>
-              <ProgressBar value={(memoryUsageGB / MEMORY_LIMIT_VISUAL_BASELINE) * 100} color="bg-emerald-500" />
+            <MetricValue
+              label="RAM Usage"
+              value={memoryUsageGB.toFixed(2)}
+              unit="GB"
+              color="text-emerald-100"
+            />
+            <div className="mt-4 h-1 w-full bg-emerald-500/10 rounded-full overflow-hidden">
+              <div
+                style={{
+                  width: `${Math.min(100, (memoryUsageGB / MEMORY_LIMIT_VISUAL_BASELINE) * 100)}%`
+                }}
+                className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]"
+              />
             </div>
           </DashboardCard>
         </div>
