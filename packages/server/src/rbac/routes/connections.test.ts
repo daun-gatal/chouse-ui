@@ -111,7 +111,8 @@ describe("RBAC Connections Routes", () => {
     });
 
     describe("GET /connections", () => {
-        it("should list connections for super admin", async () => {
+        it("should list connections for user with permission", async () => {
+            mockTokenPayload.permissions = ['connections:view'];
             mockListConnections.mockResolvedValue({ connections: [], total: 0 });
 
             const res = await app.request("/connections", { headers: { "Authorization": "Bearer token" } });
@@ -119,8 +120,9 @@ describe("RBAC Connections Routes", () => {
             expect(mockListConnections).toHaveBeenCalled();
         });
 
-        it("should deny list for non-super admin", async () => {
+        it("should deny list for user without permission", async () => {
             mockTokenPayload.roles = ['user'];
+            mockTokenPayload.permissions = []; // No permissions
 
             const res = await app.request("/connections", { headers: { "Authorization": "Bearer token" } });
             expect(res.status).toBe(403);
@@ -140,7 +142,8 @@ describe("RBAC Connections Routes", () => {
     });
 
     describe("POST /connections", () => {
-        it("should create connection", async () => { // Super admin
+        it("should create connection with permission", async () => {
+            mockTokenPayload.permissions = ['connections:edit'];
             mockCreateConnection.mockResolvedValue({ id: "c1", name: "test", host: "localhost" });
 
             const res = await app.request("/connections", {
@@ -153,8 +156,9 @@ describe("RBAC Connections Routes", () => {
             expect(mockCreateConnection).toHaveBeenCalled();
         });
 
-        it("should deny create for non-super admin", async () => {
+        it("should deny create without permission", async () => {
             mockTokenPayload.roles = ['user'];
+            mockTokenPayload.permissions = [];
 
             const res = await app.request("/connections", {
                 method: "POST",

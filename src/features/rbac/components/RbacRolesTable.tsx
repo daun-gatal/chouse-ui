@@ -120,7 +120,8 @@ const getRoleStyle = (role: string) => {
 const PERMISSION_CATEGORIES: Record<string, string> = {
   'users': 'User Management',
   'roles': 'Role Management',
-  'clickhouse': 'ClickHouse',
+  'connections': 'ClickHouse Connections',
+  'clickhouse': 'ClickHouse Users',
   'database': 'Database',
   'table': 'Table',
   'query': 'Query',

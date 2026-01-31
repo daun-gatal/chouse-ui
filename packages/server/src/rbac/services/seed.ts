@@ -89,6 +89,11 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.LIVE_QUERIES_VIEW,
     PERMISSIONS.LIVE_QUERIES_KILL,
   ],
+  'Connection Management': [
+    PERMISSIONS.CONNECTIONS_VIEW,
+    PERMISSIONS.CONNECTIONS_EDIT,
+    PERMISSIONS.CONNECTIONS_DELETE,
+  ],
 };
 
 // Human-readable permission names
@@ -135,6 +140,9 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.AUDIT_EXPORT]: 'Export Audit Logs',
   [PERMISSIONS.LIVE_QUERIES_VIEW]: 'View Live Queries',
   [PERMISSIONS.LIVE_QUERIES_KILL]: 'Kill Live Queries',
+  [PERMISSIONS.CONNECTIONS_VIEW]: 'View Connections',
+  [PERMISSIONS.CONNECTIONS_EDIT]: 'Edit Connections',
+  [PERMISSIONS.CONNECTIONS_DELETE]: 'Delete Connections',
 };
 
 // Role display names and descriptions
@@ -204,7 +212,20 @@ export async function seedPermissions(): Promise<Map<string, string>> {
         });
         permissionIdMap.set(permName, id);
       } else {
-        permissionIdMap.set(permName, existing[0].id);
+        const p = existing[0];
+        // Update metadata if changed
+        if (p.displayName !== displayName || p.category !== category) {
+          // @ts-ignore - Union type issue with RbacDb, resolved at runtime
+          await db.update(schema.permissions)
+            .set({
+              displayName,
+              category,
+              description: `Permission to ${displayName.toLowerCase()}`
+            })
+            .where(eq(schema.permissions.id, p.id));
+          console.log(`[RBAC] Updated permission metadata for ${permName}`);
+        }
+        permissionIdMap.set(permName, p.id);
       }
     }
   }

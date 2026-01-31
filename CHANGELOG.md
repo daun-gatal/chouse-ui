@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.8.3] - 2026-01-31
+
+### Added
+
+- **Connection management RBAC**: New permissions `connections:view`, `connections:edit`, and `connections:delete` to control access to the Connections tab and CRUD actions.
+  - **Backend**: Permissions in schema and seed; migration 1.8.0 assigns them to `super_admin`; connection routes require appropriate permission per action.
+  - **Frontend**: `CONNECTIONS_VIEW`, `CONNECTIONS_EDIT`, `CONNECTIONS_DELETE` in RBAC store; Admin tab visibility uses `connections:view`.
+
+### Changed
+
+- **Connection Management UI**: Edit and Delete actions are permission-gated.
+  - Add Connection, Edit, and Activate/Deactivate require `connections:edit`.
+  - Delete requires `connections:delete`.
+  - Test and Manage Access remain available to users with `connections:view`.
+- **Role cards**: Connection-related permissions are grouped under "Connections" instead of "Other" in the Roles table (`PERMISSION_CATEGORIES`).
+
 ## [v2.8.2] - 2026-01-31
 
 ### Removed
