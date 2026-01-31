@@ -32,8 +32,15 @@ mock.module("../services/connections", () => ({
     getConnectionUsers: mock(),
 }));
 
+const mockUserHasPermission = mock();
+const mockUserHasAnyPermission = mock();
+const mockUserHasAllPermissions = mock();
+
 mock.module("../services/rbac", () => ({
     createAuditLog: mockCreateAuditLog,
+    userHasPermission: mockUserHasPermission,
+    userHasAnyPermission: mockUserHasAnyPermission,
+    userHasAllPermissions: mockUserHasAllPermissions,
 }));
 
 // Mock ClickHouse Service
@@ -70,17 +77,14 @@ mock.module("../services/jwt", () => ({
 }));
 
 import connectionsRoutes from "./connections";
+import { errorHandler } from "../../middleware/error";
 
 describe("RBAC Connections Routes", () => {
     let app: Hono;
 
     beforeEach(() => {
         app = new Hono();
-        // We don't necessarily need errorHandler here if the routes return JSON explicitly on catch, 
-        // but looking at connections.ts, it uses try-catch calling c.json(...) mostly.
-        // It does not seem to throw AppError often, but returns JSON with error codes.
-        // Except checking getUserConnections...
-        // Let's assume standard behavior.
+        app.onError(errorHandler); // Handle AppError exceptions properly
         app.route("/connections", connectionsRoutes);
 
         // Reset mocks & state
@@ -96,6 +100,9 @@ describe("RBAC Connections Routes", () => {
         mockCHInstance.close.mockClear();
         mockCreateSession.mockClear();
         mockClickHouseService.mockClear();
+        mockUserHasPermission.mockClear();
+        mockUserHasAnyPermission.mockClear();
+        mockUserHasAllPermissions.mockClear();
 
         // Default: Super Admin
         mockTokenPayload = {
@@ -104,6 +111,18 @@ describe("RBAC Connections Routes", () => {
             permissions: ['settings:view'],
             sessionId: 'sess-1'
         };
+
+        // Mock permission checks to use token permissions by default
+        // This prevents database access during tests
+        mockUserHasPermission.mockImplementation(async (userId: string, permission: string) => {
+            return mockTokenPayload.permissions.includes(permission);
+        });
+        mockUserHasAnyPermission.mockImplementation(async (userId: string, permissions: string[]) => {
+            return permissions.some(p => mockTokenPayload.permissions.includes(p));
+        });
+        mockUserHasAllPermissions.mockImplementation(async (userId: string, permissions: string[]) => {
+            return permissions.every(p => mockTokenPayload.permissions.includes(p));
+        });
     });
 
     afterAll(() => {
@@ -111,7 +130,8 @@ describe("RBAC Connections Routes", () => {
     });
 
     describe("GET /connections", () => {
-        it("should list connections for super admin", async () => {
+        it("should list connections for user with permission", async () => {
+            mockTokenPayload.permissions = ['connections:view'];
             mockListConnections.mockResolvedValue({ connections: [], total: 0 });
 
             const res = await app.request("/connections", { headers: { "Authorization": "Bearer token" } });
@@ -119,8 +139,9 @@ describe("RBAC Connections Routes", () => {
             expect(mockListConnections).toHaveBeenCalled();
         });
 
-        it("should deny list for non-super admin", async () => {
+        it("should deny list for user without permission", async () => {
             mockTokenPayload.roles = ['user'];
+            mockTokenPayload.permissions = []; // No permissions
 
             const res = await app.request("/connections", { headers: { "Authorization": "Bearer token" } });
             expect(res.status).toBe(403);
@@ -140,7 +161,8 @@ describe("RBAC Connections Routes", () => {
     });
 
     describe("POST /connections", () => {
-        it("should create connection", async () => { // Super admin
+        it("should create connection with permission", async () => {
+            mockTokenPayload.permissions = ['connections:edit'];
             mockCreateConnection.mockResolvedValue({ id: "c1", name: "test", host: "localhost" });
 
             const res = await app.request("/connections", {
@@ -153,8 +175,9 @@ describe("RBAC Connections Routes", () => {
             expect(mockCreateConnection).toHaveBeenCalled();
         });
 
-        it("should deny create for non-super admin", async () => {
+        it("should deny create without permission", async () => {
             mockTokenPayload.roles = ['user'];
+            mockTokenPayload.permissions = [];
 
             const res = await app.request("/connections", {
                 method: "POST",

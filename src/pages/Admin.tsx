@@ -19,8 +19,8 @@ export default function Admin() {
   const canViewUsers = hasPermission(RBAC_PERMISSIONS.USERS_VIEW);
   const canViewRoles = hasPermission(RBAC_PERMISSIONS.ROLES_VIEW);
   const canViewAudit = hasPermission(RBAC_PERMISSIONS.AUDIT_VIEW);
-  // Connections tab is restricted to super admins only
-  const canViewConnections = isSuperAdmin();
+  // Connections tab requires connections:view permission
+  const canViewConnections = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canViewClickHouseUsers = hasPermission(RBAC_PERMISSIONS.CH_USERS_VIEW);
 
   // Determine default tab based on permissions
