@@ -15,6 +15,8 @@ import {
   Settings,
   Eye,
   ChevronRight,
+  Activity,
+  Star,
 } from 'lucide-react';
 
 const features = [
@@ -35,6 +37,7 @@ const features = [
     color: 'from-blue-500 to-blue-700',
     items: [
       { icon: Database, title: 'Multi-Connection Support', desc: 'Manage multiple ClickHouse servers' },
+      { icon: Activity, title: 'Live Query Management', desc: 'View and kill running queries in real-time' },
       { icon: Search, title: 'Database Explorer', desc: 'Tree view with schema inspection' },
       { icon: Settings, title: 'Table Management', desc: 'Create, alter, and drop tables with various engines' },
       { icon: Download, title: 'File Upload', desc: 'Upload CSV, TSV, or JSON files to existing tables' },
@@ -48,7 +51,7 @@ const features = [
       { icon: FileText, title: 'SQL Editor', desc: 'Monaco editor with syntax highlighting and auto-completion' },
       { icon: Zap, title: 'Query Execution', desc: 'Run queries with execution statistics' },
       { icon: Eye, title: 'Query History', desc: 'View and filter query logs with auto-refresh' },
-      { icon: FileText, title: 'Saved Queries', desc: 'Auto-save queries with connection-aware storage and sharing' },
+      { icon: FileText, title: 'Auto-Save Queries', desc: 'Real-time sync like Google Docs with ⌘S instant save' },
       { icon: Download, title: 'Data Export', desc: 'CSV, JSON, TSV formats' },
     ],
   },
@@ -58,6 +61,7 @@ const features = [
     color: 'from-pink-500 to-pink-700',
     items: [
       { icon: Palette, title: 'Modern UI', desc: 'Glassmorphism design with dark theme' },
+      { icon: Star, title: 'Favorites & Recent', desc: 'Star databases and tables for quick access' },
       { icon: Settings, title: 'Responsive', desc: 'Works on desktop and tablet' },
       { icon: Zap, title: 'Keyboard Shortcuts', desc: 'Power user support' },
     ],
@@ -117,15 +121,14 @@ export default function Features() {
                 whileHover={{ scale: 1.01, y: -2 }}
                 whileTap={{ scale: 0.99 }}
               >
-                <GlassCard className={`overflow-hidden transition-all ${
-                  expandedCategory === category.category 
-                    ? 'border-purple-500/40 shadow-lg shadow-purple-500/20' 
+                <GlassCard className={`overflow-hidden transition-all ${expandedCategory === category.category
+                    ? 'border-purple-500/40 shadow-lg shadow-purple-500/20'
                     : 'hover:border-white/20'
-                }`}>
+                  }`}>
                   <div className="p-6 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <motion.div
-                        animate={{ 
+                        animate={{
                           scale: expandedCategory === category.category ? 1.1 : 1,
                           rotate: expandedCategory === category.category ? 5 : 0
                         }}
@@ -141,7 +144,7 @@ export default function Features() {
                       </div>
                     </div>
                     <motion.div
-                      animate={{ 
+                      animate={{
                         rotate: expandedCategory === category.category ? 90 : 0,
                         scale: expandedCategory === category.category ? 1.1 : 1
                       }}
