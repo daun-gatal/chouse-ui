@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -84,6 +84,7 @@ export default function HomePage() {
   const { data: stats, isLoading: statsLoading } = useSystemStats();
   const { data: metrics, isLoading: metricsLoading } = useMetrics("24h");
   const { data: topTables = [], isLoading: tablesLoading } = useTopTables(5);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Recent Activity Data
   const usernameFilter = isAdmin ? undefined : username || undefined;
@@ -138,9 +139,16 @@ export default function HomePage() {
   };
 
   const handleRefresh = async () => {
-    await queryClient.invalidateQueries();
-    // Dispatch event for other listeners if any (legacy compatibility)
-    window.dispatchEvent(new CustomEvent('clickhouse:refresh'));
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries();
+      // Add a minimum delay of 500ms to allow user to see the spinner
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Dispatch event for other listeners if any (legacy compatibility)
+      window.dispatchEvent(new CustomEvent('clickhouse:refresh'));
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   return (
@@ -181,8 +189,9 @@ export default function HomePage() {
             variant="outline"
             className="border-white/10 bg-white/5 hover:bg-white/10 hover:text-white text-gray-400 transition-all active:scale-95"
             onClick={handleRefresh}
+            disabled={isRefreshing}
           >
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <RefreshCw className={cn("mr-2 h-4 w-4", isRefreshing && "animate-spin")} />
             Refresh Data
           </Button>
         </header>

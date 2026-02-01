@@ -7,7 +7,7 @@ import {
   createMonacoEditor,
 } from "@/features/workspace/editor/monacoConfig";
 import { Button } from "@/components/ui/button";
-import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check } from "lucide-react";
+import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,13 +19,30 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { useSavedQueries } from "@/hooks";
+import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useSavedQueries, useKillQuery } from "@/hooks";
 import { cn } from "@/lib/utils";
 
 interface SQLEditorProps {
@@ -42,7 +59,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
   const { getTabById, updateTab, saveQuery, updateSavedQuery } = useWorkspaceStore();
   const { activeConnectionId } = useAuthStore();
   const { hasPermission, hasAnyPermission } = useRbacStore();
-  
+
   // Check permissions for saving queries
   const canSaveQuery = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_CREATE);
   const canUpdateQuery = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_UPDATE);
@@ -56,9 +73,16 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
   const [saveMode, setSaveMode] = useState<SaveMode>("save");
   const [queryName, setQueryName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  
+
+  // Permissions for live queries
+  const canKillQuery = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_KILL);
+
+  // Kill query mutation
+  const killQueryMutation = useKillQuery();
+
   // Auto-save state
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [isKillDialogOpen, setIsKillDialogOpen] = useState(false);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedContentRef = useRef<string>("");
   const savedStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -66,7 +90,19 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
   // Get saved queries to check for duplicates
   const { data: savedQueries = [] } = useSavedQueries(activeConnectionId ?? undefined);
 
-  const editorTheme = theme === "light" ? "vs-light" : "vs-dark";
+  // Refs to avoid stale closures in Monaco listeners
+  const latestTabRef = useRef(tab);
+  const onRunQueryRef = useRef(onRunQuery);
+
+  useEffect(() => {
+    latestTabRef.current = tab;
+  }, [tab]);
+
+  useEffect(() => {
+    onRunQueryRef.current = onRunQuery;
+  }, [onRunQuery]);
+
+  const editorTheme = theme === "light" ? "vs-light" : "chouse-dark";
 
   // Check if name already exists (excluding current query if updating)
   const isDuplicateName = useMemo(() => {
@@ -103,27 +139,43 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
     }
   }, [onRunQuery, getCurrentQuery]);
 
+  const handleKillQuery = useCallback(() => {
+    if (tab?.queryId) {
+      killQueryMutation.mutate(tab.queryId, {
+        onSuccess: () => {
+          setIsKillDialogOpen(false);
+        }
+      });
+    }
+  }, [tab?.queryId, killQueryMutation]);
+
+  const isSavingRef = useRef(false);
+
   // Auto-save function
   const performAutoSave = useCallback(async () => {
-    if (!tab?.isSaved || !activeConnectionId) return;
-    
+    if (!latestTabRef.current?.isSaved || isSavingRef.current) return;
+
     const currentContent = getFullContent();
-    
+
     // Don't save if content hasn't changed from last save
     if (currentContent === lastSavedContentRef.current) {
+      console.log(`[AutoSave] Skipping save for tab ${tabId}: content unchanged`);
       setSaveStatus("saved");
       return;
     }
-    
+
     if (!currentContent.trim()) return;
 
     setSaveStatus("saving");
-    
+    isSavingRef.current = true;
+
     try {
+      console.log(`[AutoSave] Saving tab ${tabId}...`);
       await updateSavedQuery(tabId, currentContent);
+      console.log(`[AutoSave] Successfully saved tab ${tabId}`);
       lastSavedContentRef.current = currentContent;
       setSaveStatus("saved");
-      
+
       // Clear saved status after 3 seconds
       if (savedStatusTimeoutRef.current) {
         clearTimeout(savedStatusTimeoutRef.current);
@@ -134,26 +186,35 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
     } catch (error) {
       console.error("Auto-save failed:", error);
       setSaveStatus("unsaved");
+    } finally {
+      isSavingRef.current = false;
     }
-  }, [tab?.isSaved, activeConnectionId, tabId, updateSavedQuery, getFullContent]);
+  }, [activeConnectionId, tabId, updateSavedQuery, getFullContent]);
 
   // Schedule auto-save with debounce
   const scheduleAutoSave = useCallback(() => {
-    if (!tab?.isSaved) return;
-    
+    // Use the latest tab state from ref
+    if (!latestTabRef.current?.isSaved) return;
+
     // Clear existing timeout
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
     }
-    
+
     // Mark as unsaved (has pending changes)
     setSaveStatus("unsaved");
-    
+
     // Schedule new save
+    console.log(`[AutoSave] Scheduled save for tab ${tabId} in ${AUTO_SAVE_DELAY}ms`);
     autoSaveTimeoutRef.current = setTimeout(() => {
       performAutoSave();
     }, AUTO_SAVE_DELAY);
-  }, [tab?.isSaved, performAutoSave]);
+  }, [performAutoSave, tabId]);
+
+  const scheduleAutoSaveRef = useRef(scheduleAutoSave);
+  useEffect(() => {
+    scheduleAutoSaveRef.current = scheduleAutoSave;
+  }, [scheduleAutoSave]);
 
   useEffect(() => {
     let editor: monaco.editor.IStandaloneCodeEditor | null = null;
@@ -177,16 +238,23 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
         changeListener = editor.onDidChangeModelContent(() => {
           const newContent = editor?.getValue() || "";
           updateTab(tabId, { content: newContent });
-          
-          // Trigger auto-save for saved queries
-          if (tab?.isSaved) {
-            scheduleAutoSave();
+
+          // Trigger auto-save for saved queries using latest ref
+          if (latestTabRef.current?.isSaved) {
+            scheduleAutoSaveRef.current();
           }
         });
 
         editor.addCommand(
           monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-          handleRunQuery
+          () => {
+            const content = getCurrentQuery();
+            if (content.trim()) {
+              onRunQueryRef.current(content);
+            } else {
+              toast.error("Please enter a query to run");
+            }
+          }
         );
 
         // Add Ctrl/Cmd+S for save
@@ -220,7 +288,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
         clearTimeout(savedStatusTimeoutRef.current);
       }
     };
-  }, [tabId, editorTheme, handleRunQuery]);
+  }, [tabId, editorTheme]); // Removed handleRunQuery as it's handled by refs now
 
   // Update lastSavedContentRef when tab becomes saved
   useEffect(() => {
@@ -228,7 +296,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
       const content = typeof tab.content === "string" ? tab.content : "";
       lastSavedContentRef.current = content;
       setSaveStatus("saved");
-      
+
       // Clear saved status after 3 seconds
       if (savedStatusTimeoutRef.current) {
         clearTimeout(savedStatusTimeoutRef.current);
@@ -266,13 +334,13 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
     }
 
     setSaveMode(mode);
-    
+
     if (mode === "save" && tab?.isSaved) {
       setQueryName(tab.title);
     } else if (mode === "save-as") {
       const baseName = tab?.title || "Untitled Query";
-      const copyName = baseName.includes(" (copy)") 
-        ? baseName 
+      const copyName = baseName.includes(" (copy)")
+        ? baseName
         : `${baseName} (copy)`;
       setQueryName(copyName);
     } else {
@@ -330,8 +398,8 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
 
   if (!tab) return null;
 
-  const dialogTitle = saveMode === "save-as" 
-    ? "Save As New Query" 
+  const dialogTitle = saveMode === "save-as"
+    ? "Save As New Query"
     : (tab?.isSaved ? "Update Query" : "Save Query");
 
   const dialogDescription = saveMode === "save-as"
@@ -341,7 +409,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
   // Render save status indicator
   const renderSaveStatus = () => {
     if (!tab.isSaved) return null;
-    
+
     switch (saveStatus) {
       case "saving":
         return (
@@ -375,70 +443,124 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-4 flex items-center justify-between border-b">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground truncate max-w-[200px]">
-            {tab.title}
-          </span>
+    <div className="h-full flex flex-col bg-[#14141a]">
+      <div className="px-4 py-2 flex items-center justify-between border-b border-white/5 bg-white/5 backdrop-blur-md sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <FileCode className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider leading-none mb-1">Editor</span>
+              <span className="text-sm font-semibold truncate max-w-[200px] leading-none">
+                {tab.title}
+              </span>
+            </div>
+          </div>
+          <Separator orientation="vertical" className="h-6 mx-1" />
           {renderSaveStatus()}
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="link" onClick={handleRunQuery} className="gap-2">
-            <CirclePlay className="h-6 w-6" />
-          </Button>
 
-          {/* Save Dropdown - Only show if user has permission to save queries */}
-          {canManageSavedQueries && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="link"
-                  className="gap-1"
-                  disabled={tab.type === "home" || tab.type === "information" || isSaving}
-                >
-                  <Save className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {tab.isSaved ? (
-                  <>
-                    {canUpdateQuery && (
-                      <DropdownMenuItem onClick={() => performAutoSave()} className="gap-2">
-                        <Save className="h-3.5 w-3.5" />
-                        <span>Save Now</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
-                      </DropdownMenuItem>
+        <div className="flex items-center gap-2">
+          <TooltipProvider>
+            <div className="flex items-center gap-1 bg-white/5 border border-white/10 p-1 rounded-xl shadow-2xl backdrop-blur-md">
+              {tab?.isLoading && canKillQuery ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsKillDialogOpen(true)}
+                      disabled={killQueryMutation.isPending}
+                      className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-600 hover:text-white transition-all duration-200"
+                    >
+                      <CircleStop className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Terminate current query execution</TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRunQuery}
+                      className="h-8 w-8 p-0 text-muted-foreground hover:bg-blue-600 hover:text-white transition-all duration-200 ring-offset-black"
+                    >
+                      <CirclePlay className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="center">
+                    <p>Run query (Ctrl+Enter)</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+
+              <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
+
+              {/* Save Dropdown - Only show if user has permission to save queries */}
+              {canManageSavedQueries && (
+                <DropdownMenu>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 hover:bg-white/10"
+                          disabled={tab.type === "home" || tab.type === "information" || isSaving}
+                        >
+                          <Save className="h-4 w-4 text-muted-foreground mr-1" />
+                          <ChevronDown className="h-3 w-3 text-muted-foreground opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" align="end">
+                      Save & Management Options
+                    </TooltipContent>
+                  </Tooltip>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {tab.isSaved ? (
+                      <>
+                        {canUpdateQuery && (
+                          <DropdownMenuItem onClick={() => performAutoSave()} className="gap-2">
+                            <Save className="h-3.5 w-3.5" />
+                            <span>Save Now</span>
+                            <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
+                          </DropdownMenuItem>
+                        )}
+                        {canUpdateQuery && (
+                          <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
+                            <PenLine className="h-3.5 w-3.5" />
+                            <span>Rename & Save</span>
+                          </DropdownMenuItem>
+                        )}
+                        {canSaveQuery && (canUpdateQuery && <DropdownMenuSeparator />)}
+                        {canSaveQuery && (
+                          <DropdownMenuItem onClick={handleSaveAs} className="gap-2">
+                            <Copy className="h-3.5 w-3.5" />
+                            <span>Save As...</span>
+                            <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘S</span>
+                          </DropdownMenuItem>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {canSaveQuery && (
+                          <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
+                            <Save className="h-3.5 w-3.5" />
+                            <span>Save Query</span>
+                            <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
+                          </DropdownMenuItem>
+                        )}
+                      </>
                     )}
-                    {canUpdateQuery && (
-                      <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
-                        <PenLine className="h-3.5 w-3.5" />
-                        <span>Rename & Save</span>
-                      </DropdownMenuItem>
-                    )}
-                    {canSaveQuery && (canUpdateQuery && <DropdownMenuSeparator />)}
-                    {canSaveQuery && (
-                      <DropdownMenuItem onClick={handleSaveAs} className="gap-2">
-                        <Copy className="h-3.5 w-3.5" />
-                        <span>Save As...</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘S</span>
-                      </DropdownMenuItem>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {canSaveQuery && (
-                      <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
-                        <Save className="h-3.5 w-3.5" />
-                        <span>Save Query</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
-                      </DropdownMenuItem>
-                    )}
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          </TooltipProvider>
         </div>
       </div>
       <div ref={editorRef} className="flex-1" />
@@ -450,7 +572,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
             <DialogTitle>{dialogTitle}</DialogTitle>
             <DialogDescription>{dialogDescription}</DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-3 py-2">
             <Input
               type="text"
@@ -461,12 +583,12 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
               autoFocus
               className={cn(isDuplicateName && "border-amber-500 focus-visible:ring-amber-500")}
             />
-            
+
             {isDuplicateName && (
               <div className="flex items-start gap-2 text-amber-500 text-sm">
                 <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <span>
-                  A query with this name already exists. 
+                  A query with this name already exists.
                   {saveMode === "save-as" && " A new copy will be created."}
                 </span>
               </div>
@@ -477,8 +599,8 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
             <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              onClick={handleSaveQuery} 
+            <Button
+              onClick={handleSaveQuery}
               disabled={!queryName.trim() || isSaving}
             >
               {isSaving ? "Saving..." : (saveMode === "save-as" ? "Save As New" : "Save")}
@@ -486,6 +608,28 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Kill Query Confirmation Dialog */}
+      <AlertDialog open={isKillDialogOpen} onOpenChange={setIsKillDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop Query Execution?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will attempt to terminate the currently running query on the ClickHouse server.
+              Any partial results may be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleKillQuery}
+              disabled={killQueryMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {killQueryMutation.isPending ? "Stopping..." : "Stop Query"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

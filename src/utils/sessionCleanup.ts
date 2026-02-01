@@ -53,21 +53,29 @@ export async function cleanupUserSession(currentUserId: string | null): Promise<
     // Using removeQueries to immediately clear cache (invalidateQueries marks as stale but doesn't remove)
     queryClient.removeQueries({ queryKey: queryKeys.databases });
     // Remove all table details queries (using predicate to match all)
-    queryClient.removeQueries({ 
-      predicate: (query) => query.queryKey[0] === 'tableDetails' 
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'tableDetails'
     });
     // Remove all table sample queries
-    queryClient.removeQueries({ 
-      predicate: (query) => query.queryKey[0] === 'tableSample' 
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'tableSample'
     });
-    queryClient.removeQueries({ queryKey: queryKeys.systemStats });
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'systemStats'
+    });
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'productionMetrics'
+    });
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'topTables'
+    });
     // Remove all recent queries (using predicate to match all)
-    queryClient.removeQueries({ 
-      predicate: (query) => query.queryKey[0] === 'recentQueries' 
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'recentQueries'
     });
     // Remove all saved queries (savedQueries is now a function, so use predicate)
-    queryClient.removeQueries({ 
-      predicate: (query) => query.queryKey[0] === 'savedQueries' 
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'savedQueries'
     });
     queryClient.removeQueries({ queryKey: queryKeys.intellisense });
 

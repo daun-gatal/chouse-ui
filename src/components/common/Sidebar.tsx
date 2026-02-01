@@ -350,6 +350,27 @@ export default function Sidebar() {
           <LogOut className="h-4 w-4" />
           {!isCollapsed && "Log Out"}
         </Button>
+
+        {/* Version Display */}
+        <div className={cn(
+          "text-center pt-3 text-xs text-gray-600",
+          isCollapsed && "px-1"
+        )}>
+          {isCollapsed ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <span className="text-[10px]">v{__CH_UI_VERSION__}</span>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="bg-black/80 text-white border-white/10 backdrop-blur-md">
+                  CHouse UI v{__CH_UI_VERSION__}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <span>CHouse UI v{__CH_UI_VERSION__}</span>
+          )}
+        </div>
       </div>
     </motion.div>
   );

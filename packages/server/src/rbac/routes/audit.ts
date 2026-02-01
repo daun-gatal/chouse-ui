@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getAuditLogs } from '../services/rbac';
+import { getAuditLogs, deleteAuditLogs, createAuditLog } from '../services/rbac';
 import { PERMISSIONS, AUDIT_ACTIONS } from '../schema/base';
 import { requirePermission, requireAnyPermission, rbacAuthMiddleware } from '../middleware/rbacAuth';
 import { AppError } from '../../types';
@@ -193,6 +193,46 @@ auditRoutes.get('/stats', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c) =
     success: true,
     data: { stats },
   });
+});
+
+/**
+ * DELETE /rbac/audit
+ * Delete audit logs with filters
+ */
+auditRoutes.delete('/', requirePermission(PERMISSIONS.AUDIT_DELETE), zValidator('query', ListAuditLogsSchema), async (c) => {
+  const query = c.req.valid('query');
+  const userId = c.get('rbacUserId');
+
+  try {
+    const result = await deleteAuditLogs({
+      userId: query.userId,
+      action: query.action,
+      startDate: query.startDate ? new Date(query.startDate) : undefined,
+      endDate: query.endDate ? new Date(query.endDate) : undefined,
+    });
+
+    // Log the deletion action
+    await createAuditLog(
+      AUDIT_ACTIONS.AUDIT_LOG_DELETE,
+      userId,
+      {
+        resourceType: 'audit_log',
+        details: {
+          deletedCount: result.deletedCount,
+          filters: query,
+        },
+        status: 'success',
+      }
+    );
+
+    return c.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('[Audit] Failed to delete audit logs:', error);
+    throw AppError.internal('Failed to delete audit logs');
+  }
 });
 
 export default auditRoutes;

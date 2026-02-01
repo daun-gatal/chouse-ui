@@ -25,6 +25,7 @@ export interface Tab {
   content: string | { database?: string; table?: string };
   error?: string | null;
   isLoading?: boolean;
+  queryId?: string | null;
   isSaved?: boolean;
   result?: QueryResult | null;
   isDirty?: boolean;
@@ -83,7 +84,7 @@ const createUserSpecificStorage = (): any => {
     try {
       const state = useRbacStore.getState();
       const userId = state.user?.id;
-      
+
       // If we have a current user, use it and store it for later
       if (userId) {
         // Store the user ID so we can use it even after logout
@@ -94,7 +95,7 @@ const createUserSpecificStorage = (): any => {
         }
         return `workspace-storage-${userId}`;
       }
-      
+
       // If no current user, try to use the last known user ID
       // This preserves data across logout/login for the same user
       try {
@@ -105,7 +106,7 @@ const createUserSpecificStorage = (): any => {
       } catch {
         // Ignore storage errors
       }
-      
+
       return 'workspace-storage';
     } catch {
       return 'workspace-storage';
@@ -149,7 +150,7 @@ const checkAndClearWorkspaceData = (set: any) => {
   try {
     const state = useRbacStore.getState();
     const userId = state.user?.id || null;
-    
+
     // Only clear if:
     // 1. We had a previous user (workspaceCurrentUserId !== null)
     // 2. The user actually changed (workspaceCurrentUserId !== userId)
@@ -165,7 +166,7 @@ const checkAndClearWorkspaceData = (set: any) => {
         // Ignore storage errors
       }
     }
-    
+
     // Only update current user ID if we have a user (don't set to null on logout)
     // This preserves the storage key so data persists across logout/login for the same user
     if (userId !== null) {
@@ -195,7 +196,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       addTab: (tab: Tab) => {
         // Check if user changed and clear if needed
         checkAndClearWorkspaceData(set);
-        
+
         const { tabs } = get();
         const existingTab = tabs.find((t) => t.id === tab.id);
 
@@ -309,21 +310,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
        * Run a SQL query
        */
       runQuery: async (query: string, tabId?: string) => {
+        const executionQueryId = `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
         if (tabId) {
           set({
             tabs: get().tabs.map((tab) =>
-              tab.id === tabId ? { ...tab, isLoading: true, error: null } : tab
+              tab.id === tabId ? { ...tab, isLoading: true, queryId: executionQueryId, error: null } : tab
             ),
           });
         }
 
         try {
-          const result = await queryApi.executeQuery(query);
+          const result = await queryApi.executeQuery(query, "JSON", executionQueryId);
 
           if (tabId) {
             get().updateTab(tabId, {
               result,
               isLoading: false,
+              queryId: null,
               error: null,
             });
           }
@@ -336,6 +340,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             data: [],
             statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
             rows: 0,
+            queryId: executionQueryId,
             error: errorMessage,
           };
 
@@ -343,6 +348,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             get().updateTab(tabId, {
               result: errorResult,
               isLoading: false,
+              queryId: null,
               error: errorMessage,
             });
           }
@@ -352,7 +358,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (tabId) {
             set({
               tabs: get().tabs.map((tab) =>
-                tab.id === tabId ? { ...tab, isLoading: false } : tab
+                tab.id === tabId ? { ...tab, isLoading: false, queryId: null } : tab
               ),
             });
           }
@@ -369,35 +375,35 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const connectionName = authState.activeConnectionName;
 
         try {
-          const savedQuery = await savedQueriesApi.saveQuery({ 
-            connectionId: connectionId ?? undefined, 
+          const savedQuery = await savedQueriesApi.saveQuery({
+            connectionId: connectionId ?? undefined,
             connectionName: connectionName ?? undefined,
-            name, 
-            query, 
-            isPublic 
+            name,
+            query,
+            isPublic
           });
-          
+
           // Update the tab: change its ID to match the saved query's ID
           // This ensures future "Save" operations update the correct query
           const { tabs, activeTab } = get();
-          const newTabs = tabs.map(tab => 
-            tab.id === tabId 
+          const newTabs = tabs.map(tab =>
+            tab.id === tabId
               ? { ...tab, id: savedQuery.id, title: name, isSaved: true, content: query }
               : tab
           );
-          
+
           // Update active tab if it was the one being saved
           const newActiveTab = activeTab === tabId ? savedQuery.id : activeTab;
-          
+
           set({ tabs: newTabs, activeTab: newActiveTab });
-          
+
           // Invalidate the saved queries cache to refresh the list
           if (connectionId) {
             queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries(connectionId) });
           }
           queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries() });
           queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesConnectionNames });
-          
+
           toast.success(`Query "${name}" saved successfully!`);
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to save query';
@@ -424,14 +430,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         try {
           await savedQueriesApi.updateSavedQuery(tabId, { name: queryName, query });
           get().updateTab(tabId, { content: query, title: queryName });
-          
+
           // Invalidate the saved queries cache to refresh the list
           if (connectionId) {
             queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries(connectionId) });
           }
           queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries() });
           queryClient.invalidateQueries({ queryKey: queryKeys.savedQueriesConnectionNames });
-          
+
           toast.success(`Query "${queryName}" updated successfully!`);
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to update query';
@@ -485,7 +491,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           try {
             const rbacState = useRbacStore.getState();
             const userId = rbacState.user?.id || null;
-            
+
             // Only clear if we had a previous user and it's different from current
             if (workspaceCurrentUserId !== null && workspaceCurrentUserId !== userId && userId !== null) {
               // Clear tabs except home when user changes
@@ -499,7 +505,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 // Ignore storage errors
               }
             }
-            
+
             // Update current user ID
             if (userId !== null) {
               workspaceCurrentUserId = userId;
