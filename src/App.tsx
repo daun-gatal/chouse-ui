@@ -15,6 +15,8 @@ import { AdminRoute } from "@/features/admin/routes/adminRoute";
 import CreateUser from "@/features/admin/components/CreateUser";
 import EditUser from "@/features/admin/components/EditUser";
 import { RBAC_PERMISSIONS } from "@/stores/rbac";
+import { PageTitleUpdater } from "@/components/common/PageTitleUpdater";
+
 
 // Layout for the main application (authenticated routes)
 const MainLayout = () => {
@@ -39,6 +41,7 @@ export default function App() {
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <Router basename={import.meta.env.BASE_URL}>
         <AppInitializer>
+          <PageTitleUpdater />
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />

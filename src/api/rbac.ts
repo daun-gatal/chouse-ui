@@ -540,6 +540,26 @@ export const rbacAuditApi = {
   },
 
   /**
+   * Delete audit logs with filters
+   */
+  async delete(options?: {
+    userId?: string;
+    action?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{ deletedCount: number }> {
+    const params = new URLSearchParams();
+    if (options?.userId) params.set('userId', options.userId);
+    if (options?.action) params.set('action', options.action);
+    if (options?.startDate) params.set('startDate', options.startDate);
+    if (options?.endDate) params.set('endDate', options.endDate);
+
+    return rbacFetch(`/audit?${params}`, {
+      method: 'DELETE'
+    });
+  },
+
+  /**
    * Get export URL (legacy - favor exportLogs for safer access)
    */
   getExportUrl(options?: {

@@ -40,6 +40,7 @@ export interface SessionInfo {
 export const QueryRequestSchema = z.object({
   query: z.string().min(1, "Query is required"),
   format: z.enum(["JSON", "JSONEachRow", "CSV", "TabSeparated"]).optional().default("JSON"),
+  queryId: z.string().optional(),
 });
 
 export type QueryRequest = z.infer<typeof QueryRequestSchema>;
@@ -60,6 +61,7 @@ export interface QueryResult<T = Record<string, unknown>> {
   data: T[];
   statistics: QueryStatistics;
   rows: number;
+  queryId?: string | null;
   error?: string | null;
 }
 

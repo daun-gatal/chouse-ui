@@ -351,7 +351,8 @@ async function executeQueryWithValidation(
   c: Context<{ Variables: Variables }>,
   sql: string,
   format: 'JSON' | 'JSONEachRow' | 'CSV' | 'TabSeparated',
-  operationType: string
+  operationType: string,
+  queryId?: string
 ) {
   const service = c.get("service");
   const session = c.get("session");
@@ -386,19 +387,19 @@ async function executeQueryWithValidation(
     }, 403);
   }
 
-  const result = await service.executeQuery(sql, format);
+  const result = await service.executeQuery(sql, format, queryId);
 
   // Create audit log for query execution
   if (rbacUserId) {
     try {
-      const queryId = `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const logQueryId = queryId || `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
       await createAuditLog(
         AUDIT_ACTIONS.CH_QUERY_EXECUTE,
         rbacUserId,
         {
           resourceType: 'query',
-          resourceId: queryId,
+          resourceId: logQueryId,
           details: {
             operationType,
             query: sql.substring(0, 500),
@@ -430,6 +431,7 @@ async function executeQueryWithValidation(
 const QueryRequestSchemaWithType = z.object({
   query: z.string().min(1, "Query is required"),
   format: z.enum(["JSON", "JSONEachRow", "CSV", "TabSeparated"]).optional().default("JSON"),
+  queryId: z.string().optional(),
 });
 
 /**
@@ -485,7 +487,7 @@ const databaseRouter = new Hono<{ Variables: Variables }>();
  * Permission: QUERY_EXECUTE or TABLE_SELECT
  */
 tableRouter.post("/select", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -509,7 +511,7 @@ tableRouter.post("/select", zValidator("json", QueryRequestSchemaWithType), asyn
     }
   }
 
-  return executeQueryWithValidation(c, sql, format, 'SELECT');
+  return executeQueryWithValidation(c, sql, format, 'SELECT', queryId);
 });
 
 /**
@@ -518,7 +520,7 @@ tableRouter.post("/select", zValidator("json", QueryRequestSchemaWithType), asyn
  * Permission: TABLE_INSERT (strict - no fallback)
  */
 tableRouter.post("/insert", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -536,7 +538,7 @@ tableRouter.post("/insert", zValidator("json", QueryRequestSchemaWithType), asyn
     PERMISSIONS.TABLE_INSERT
   );
 
-  return executeQueryWithValidation(c, sql, format, 'INSERT');
+  return executeQueryWithValidation(c, sql, format, 'INSERT', queryId);
 });
 
 /**
@@ -545,7 +547,7 @@ tableRouter.post("/insert", zValidator("json", QueryRequestSchemaWithType), asyn
  * Permission: TABLE_UPDATE (strict - no fallback)
  */
 tableRouter.post("/update", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -563,7 +565,7 @@ tableRouter.post("/update", zValidator("json", QueryRequestSchemaWithType), asyn
     PERMISSIONS.TABLE_UPDATE
   );
 
-  return executeQueryWithValidation(c, sql, format, 'UPDATE');
+  return executeQueryWithValidation(c, sql, format, 'UPDATE', queryId);
 });
 
 /**
@@ -572,7 +574,7 @@ tableRouter.post("/update", zValidator("json", QueryRequestSchemaWithType), asyn
  * Permission: TABLE_DELETE (strict - no fallback)
  */
 tableRouter.post("/delete", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -590,7 +592,7 @@ tableRouter.post("/delete", zValidator("json", QueryRequestSchemaWithType), asyn
     PERMISSIONS.TABLE_DELETE
   );
 
-  return executeQueryWithValidation(c, sql, format, 'DELETE');
+  return executeQueryWithValidation(c, sql, format, 'DELETE', queryId);
 });
 
 /**
@@ -600,7 +602,7 @@ tableRouter.post("/delete", zValidator("json", QueryRequestSchemaWithType), asyn
  * Note: CREATE TABLE also has a specific route in /api/explorer/table
  */
 tableRouter.post("/create", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -625,7 +627,7 @@ tableRouter.post("/create", zValidator("json", QueryRequestSchemaWithType), asyn
     target
   );
 
-  return executeQueryWithValidation(c, sql, format, `CREATE_${target.toUpperCase()}`);
+  return executeQueryWithValidation(c, sql, format, `CREATE_${target.toUpperCase()}`, queryId);
 });
 
 /**
@@ -635,7 +637,7 @@ tableRouter.post("/create", zValidator("json", QueryRequestSchemaWithType), asyn
  * Note: DROP TABLE also has a specific route in /api/explorer/table/:database/:table
  */
 tableRouter.post("/drop", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -660,7 +662,7 @@ tableRouter.post("/drop", zValidator("json", QueryRequestSchemaWithType), async 
     target
   );
 
-  return executeQueryWithValidation(c, sql, format, `DROP_${target.toUpperCase()}`);
+  return executeQueryWithValidation(c, sql, format, `DROP_${target.toUpperCase()}`, queryId);
 });
 
 /**
@@ -669,7 +671,7 @@ tableRouter.post("/drop", zValidator("json", QueryRequestSchemaWithType), async 
  * Permission: TABLE_ALTER (strict - no fallback)
  */
 tableRouter.post("/alter", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -702,7 +704,7 @@ tableRouter.post("/alter", zValidator("json", QueryRequestSchemaWithType), async
     target
   );
 
-  return executeQueryWithValidation(c, sql, format, `ALTER_${target.toUpperCase()}`);
+  return executeQueryWithValidation(c, sql, format, `ALTER_${target.toUpperCase()}`, queryId);
 });
 
 /**
@@ -711,7 +713,7 @@ tableRouter.post("/alter", zValidator("json", QueryRequestSchemaWithType), async
  * Permission: TABLE_DELETE (strict - no fallback)
  */
 tableRouter.post("/truncate", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -729,7 +731,7 @@ tableRouter.post("/truncate", zValidator("json", QueryRequestSchemaWithType), as
     PERMISSIONS.TABLE_DELETE
   );
 
-  return executeQueryWithValidation(c, sql, format, 'TRUNCATE');
+  return executeQueryWithValidation(c, sql, format, 'TRUNCATE', queryId);
 });
 
 // ============================================
@@ -743,7 +745,7 @@ tableRouter.post("/truncate", zValidator("json", QueryRequestSchemaWithType), as
  * Note: CREATE DATABASE also has a specific route in /api/explorer/database
  */
 databaseRouter.post("/create", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format } = c.req.valid("json");
+  const { query: sql, format, queryId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -768,7 +770,7 @@ databaseRouter.post("/create", zValidator("json", QueryRequestSchemaWithType), a
     target
   );
 
-  return executeQueryWithValidation(c, sql, format, 'CREATE_DATABASE');
+  return executeQueryWithValidation(c, sql, format, 'CREATE_DATABASE', queryId);
 });
 
 /**

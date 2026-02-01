@@ -93,6 +93,7 @@ export const PERMISSIONS = {
   // Audit Logs
   AUDIT_VIEW: 'audit:view',
   AUDIT_EXPORT: 'audit:export',
+  AUDIT_DELETE: 'audit:delete',
 
   // Live Query Management (admin only)
   LIVE_QUERIES_VIEW: 'live_queries:view',
@@ -284,6 +285,9 @@ export const AUDIT_ACTIONS = {
 
   // Live Query Management
   LIVE_QUERY_KILL: 'live_query.kill',
+
+  // Audit Logs
+  AUDIT_LOG_DELETE: 'audit.delete',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

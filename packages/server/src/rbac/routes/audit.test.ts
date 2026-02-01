@@ -6,8 +6,11 @@ import { Hono } from "hono";
 const mockGetAuditLogs = mock();
 const mockCreateAuditLog = mock(async () => { });
 
+const mockDeleteAuditLogs = mock();
+
 mock.module("../services/rbac", () => ({
     getAuditLogs: mockGetAuditLogs,
+    deleteAuditLogs: mockDeleteAuditLogs,
     createAuditLog: mockCreateAuditLog,
 }));
 
@@ -126,6 +129,41 @@ describe("RBAC Audit Routes", () => {
             expect(res.headers.get('Content-Type')).toBe('text/csv');
             const text = await res.text();
             expect(text).toContain('"l1","u1","login"');
+        });
+    });
+
+    describe("DELETE /audit", () => {
+        it("should delete audit logs for authorized user", async () => {
+            mockTokenPayload.permissions = ['audit:delete'];
+            mockDeleteAuditLogs.mockResolvedValue({ deletedCount: 5 });
+
+            const res = await app.request("/audit?action=login", {
+                method: "DELETE",
+                headers: { "Authorization": "Bearer token" }
+            });
+
+            expect(res.status).toBe(200);
+            const body = await res.json();
+            expect(body.data.deletedCount).toBe(5);
+            expect(mockDeleteAuditLogs).toHaveBeenCalledWith(expect.objectContaining({ action: "login" }));
+            expect(mockCreateAuditLog).toHaveBeenCalledWith(
+                'audit.delete',
+                'admin-id',
+                expect.objectContaining({
+                    details: expect.objectContaining({ deletedCount: 5 })
+                })
+            );
+        });
+
+        it("should deny delete if unauthorized", async () => {
+            mockTokenPayload.permissions = ['audit:view']; // Only view, no delete
+
+            const res = await app.request("/audit", {
+                method: "DELETE",
+                headers: { "Authorization": "Bearer token" }
+            });
+
+            expect(res.status).toBe(403);
         });
     });
 });

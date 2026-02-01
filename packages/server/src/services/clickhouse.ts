@@ -113,19 +113,24 @@ export class ClickHouseService {
 
   async executeQuery<T = Record<string, unknown>>(
     query: string,
-    format: string = "JSON"
+    format: string = "JSON",
+    queryId?: string
   ): Promise<QueryResult<T>> {
     try {
       const trimmedQuery = query.trim();
 
       // Check if it's a command (CREATE, INSERT, ALTER, DROP, etc.)
       if (this.isCommand(trimmedQuery)) {
-        await this.client.command({ query: trimmedQuery });
+        const result = await this.client.command({
+          query: trimmedQuery,
+          query_id: queryId,
+        });
         return {
           meta: [],
           data: [],
           statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
           rows: 0,
+          queryId: result.query_id,
           error: null,
         };
       }
@@ -144,6 +149,7 @@ export class ClickHouseService {
         query: trimmedQuery,
         format: format as "JSON" | "JSONEachRow",
         clickhouse_settings,
+        query_id: queryId,
       });
 
       const jsonResult = await result.json() as {
@@ -158,6 +164,7 @@ export class ClickHouseService {
         data: jsonResult.data || [],
         statistics: jsonResult.statistics || { elapsed: 0, rows_read: 0, bytes_read: 0 },
         rows: jsonResult.rows || (jsonResult.data?.length ?? 0),
+        queryId: result.query_id,
         error: null,
       };
     } catch (error) {

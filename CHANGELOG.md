@@ -5,6 +5,101 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.8.4] - 2026-02-01
+
+### Added
+
+- **Audit Log Cleanup**: Added ability to delete audit logs based on active filters (Issue #89).
+  - New "Delete Logs" button in Audit Logs tab with confirmation summarize.
+  - Secure backend endpoint `DELETE /api/rbac/audit` with support for filtering.
+  - Configurable retention protection (`CHOUSE_AUDIT_LOG_RETENTION_DAYS`, default 365).
+  - New permission `audit:delete` for controlling cleanup operations.
+- **Audit Deletion Migration**: Migration `v1.9.0` ensures the new `audit:delete` permission is assigned to the `super_admin` role automatically.
+- **Version Display**: Added CHouse UI version number to sidebar footer (Issue #87).
+  - Version is always visible in the sidebar
+  - Shows abbreviated version when sidebar is collapsed with full version in tooltip
+  - Version is dynamically read from package.json at build time
+- **Kill Query Button**: Added ability to terminate running queries directly from the SQL Editor (Issue #88).
+  - New "Stop" button appears in the toolbar when a query is executing
+  - Confirmation dialog prevents accidental query termination
+  - Requires `LIVE_QUERIES_KILL` permission
+  - Dynamically tracks query execution status via `queryId`
+
+### Changed
+
+- **Premium Popover Design**: Updated Date Range and Delete Logs popovers with `backdrop-blur-3xl` glassmorphism and refined dark aesthetics.
+- **Date Range UX**: Simplified interaction and added quick-select presets for range selection.
+- **Query Logs View**: Default view mode changed to Grid Only (Issue #80).
+  - Removed table view option to simplify the interface
+  - Removed view toggle buttons
+  - Set grid view as the permanent display mode
+- **Explorer Page Title**: Removed redundant 'Explore' title from Explorer page header (Issue #85).
+  - The sidebar already identifies the page as 'Explorer'
+  - Title now only appears as a breadcrumb when navigating to a database/table
+  - Creates a cleaner interface with more space for actual content
+- **SQL Editor Toolbar**: Complete redesign of the editor toolbar for better aesthetics and UX.
+  - New modular control group with black styling and backdrop blur
+  - Dynamic button hover states (Blue for Run, Red for Stop)
+  - Icon-only "Run" and "Stop" buttons with tooltips for a cleaner, modern look
+  - Integrated save status indicators and tooltips for all actions
+
+### Fixed
+
+- **Calendar Alignment & Visibility**: Fixed "Su MoTuWeThFrSa" alignment issues by syncing with `react-day-picker` v9 classes.
+  - Implemented robust CSS Grid layout for perfect weekday and date centering.
+  - Enabled `fixedWeeks` to ensure all dates are visible without height jumps.
+- **Dynamic Page Titles**: Fixed browser tab title not updating when navigating between pages (Issue #84).
+  - Added `PageTitleUpdater` component to manage titles globally
+  - Titles now update dynamically (e.g., "CHouse UI | Overview", "CHouse UI | Monitoring")
+  - Explorer page retains context-aware titles (database/table names)
+
+### Added
+
+- **Version Display**: Added CHouse UI version number to sidebar footer (Issue #87).
+  - Version is always visible in the sidebar
+  - Shows abbreviated version when sidebar is collapsed with full version in tooltip
+  - Version is dynamically read from package.json at build time
+- **Kill Query Button**: Added ability to terminate running queries directly from the SQL Editor (Issue #88).
+  - New "Stop" button appears in the toolbar when a query is executing
+  - Confirmation dialog prevents accidental query termination
+  - Requires `LIVE_QUERIES_KILL` permission
+  - Dynamically tracks query execution status via `queryId`
+
+### Changed
+
+- **Query Logs View**: Default view mode changed to Grid Only (Issue #80).
+  - Removed table view option to simplify the interface
+  - Removed view toggle buttons
+  - Set grid view as the permanent display mode
+- **Explorer Page Title**: Removed redundant 'Explore' title from Explorer page header (Issue #85).
+  - The sidebar already identifies the page as 'Explorer'
+  - Title now only appears as a breadcrumb when navigating to a database/table
+  - Creates a cleaner interface with more space for actual content
+- **SQL Editor Toolbar**: Complete redesign of the editor toolbar for better aesthetics and UX.
+  - New modular control group with black styling and backdrop blur
+  - Dynamic button hover states (Blue for Run, Red for Stop)
+  - Icon-only "Run" and "Stop" buttons with tooltips for a cleaner, modern look
+  - Integrated save status indicators and tooltips for all actions
+
+### Fixed
+
+- **Dynamic Page Titles**: Fixed browser tab title not updating when navigating between pages (Issue #84).
+  - Added `PageTitleUpdater` component to manage titles globally
+  - Titles now update dynamically (e.g., "CHouse UI | Overview", "CHouse UI | Monitoring")
+  - Explorer page retains context-aware titles (database/table names)
+- **Search Bar Layout**: Fixed layout shift issue where search bar would expand unpredictably (Issue #81).
+  - Enforced stable width for search bar input container
+- **Refresh Button UX**: Added visual feedback to the Refresh button on Overview page (Issue #82).
+  - Button now shows disabled state and spinning icon while refreshing
+  - Added visual confirmation that refresh action is in progress
+- **Metrics Updates**: Fixed issue where Errors card and other metrics would not update when switching connections (Issue #83).
+  - Updated React Query hooks (`useMetrics`, `useSystemStats`, etc.) to include connection ID in query keys
+  - Ensures data is automatically refetched when active connection changes
+- **Horizontal Scrolling**: Fixed issue where query result grids wouldn't scroll horizontally with many columns.
+  - Added width constraints and overflow management to the results panel
+  - Ensured AG Grid correctly fills the available container space
+
+
 ## [v2.8.3] - 2026-01-31
 
 ### Added
