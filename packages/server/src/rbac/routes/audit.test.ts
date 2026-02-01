@@ -8,10 +8,15 @@ const mockCreateAuditLog = mock(async () => { });
 
 const mockDeleteAuditLogs = mock();
 
+const mockUserHasPermission = mock();
+const mockUserHasAnyPermission = mock();
+
 mock.module("../services/rbac", () => ({
     getAuditLogs: mockGetAuditLogs,
     deleteAuditLogs: mockDeleteAuditLogs,
     createAuditLog: mockCreateAuditLog,
+    userHasPermission: mockUserHasPermission,
+    userHasAnyPermission: mockUserHasAnyPermission,
 }));
 
 // Mock JWT Service
@@ -40,6 +45,8 @@ describe("RBAC Audit Routes", () => {
         app.route("/audit", auditRoutes);
 
         mockGetAuditLogs.mockClear();
+        mockUserHasPermission.mockClear();
+        mockUserHasAnyPermission.mockClear();
 
         // Default: Admin with view permission
         mockTokenPayload = {

@@ -129,7 +129,7 @@ describe("Query Routes", () => {
             });
 
             expect(res.status).toBe(200);
-            expect(mockExecuteQuery).toHaveBeenCalledWith("SELECT * FROM t1 WHERE id = 1", "JSON");
+            expect(mockExecuteQuery).toHaveBeenCalledWith("SELECT * FROM t1 WHERE id = 1", "JSON", undefined);
             expect(mockCreateAuditLog).toHaveBeenCalled();
         });
 
