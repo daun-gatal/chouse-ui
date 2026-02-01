@@ -946,6 +946,50 @@ export async function getAuditLogs(options: {
   };
 }
 
+/**
+ * Delete audit logs with filters
+ */
+export async function deleteAuditLogs(options: {
+  userId?: string;
+  action?: string;
+  startDate?: Date;
+  endDate?: Date;
+} = {}): Promise<{ deletedCount: number }> {
+  const db = getDatabase() as any;
+  const schema = getSchema();
+
+  const conditions = [];
+
+  if (options.userId) {
+    conditions.push(eq(schema.auditLogs.userId, options.userId));
+  }
+
+  if (options.action) {
+    conditions.push(eq(schema.auditLogs.action, options.action));
+  }
+
+  if (options.startDate) {
+    conditions.push(gte(schema.auditLogs.createdAt, options.startDate));
+  }
+
+  if (options.endDate) {
+    conditions.push(lte(schema.auditLogs.createdAt, options.endDate));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const result = await db.delete(schema.auditLogs)
+    .where(whereClause);
+
+  // For SQLite/LibSQL, the result might not have rowsAffected in the same way as Postgres
+  // But usually execute() returns information about affected rows.
+  // In Drizzle with SQLite/LibSQL, it returns { rowsAffected: number }
+
+  return {
+    deletedCount: result.rowsAffected || 0,
+  };
+}
+
 // ============================================
 // Helper Functions
 // ============================================

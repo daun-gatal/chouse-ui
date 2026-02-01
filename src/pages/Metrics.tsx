@@ -240,16 +240,34 @@ const getIntervalMinutes = (timeRange: string): number => {
 
 interface MetricsProps {
   embedded?: boolean;
+  refreshKey?: number;
+  autoRefresh?: boolean;
+  timeRange?: string;
+  onRefreshChange?: (isRefreshing: boolean) => void;
 }
 
-export default function Metrics({ embedded = false }: MetricsProps) {
+export default function Metrics({
+  embedded = false,
+  refreshKey,
+  autoRefresh: externalAutoRefresh = false,
+  timeRange: externalTimeRange = "1h",
+  onRefreshChange
+}: MetricsProps) {
   const { hasPermission } = useRbacStore();
   const hasAdvancedMetrics = hasPermission(RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED);
 
-  const [refreshInterval, setRefreshInterval] = useState<number>(0);
-  const [timeRange, setTimeRange] = useState<string>("1h");
+  const [internalRefreshInterval, setInternalRefreshInterval] = useState<number>(0);
+  const [internalTimeRange, setInternalTimeRange] = useState<string>("1h");
   const [activeTab, setActiveTab] = useState("overview");
   const [isRefreshCooldown, setIsRefreshCooldown] = useState(false);
+
+  // Use external timeRange if embedded, otherwise internal
+  const timeRange = embedded ? externalTimeRange : internalTimeRange;
+
+  // Use external autoRefresh if embedded (fixed 10s), otherwise internal
+  const refreshInterval = embedded
+    ? (externalAutoRefresh ? 10 : 0)
+    : internalRefreshInterval;
 
   // Ensure users without advanced permission can't access advanced tabs
   React.useEffect(() => {
@@ -260,17 +278,29 @@ export default function Metrics({ embedded = false }: MetricsProps) {
 
   const intervalMinutes = getIntervalMinutes(timeRange);
 
-  const { data: metrics, isLoading, isFetching, refetch, error, dataUpdatedAt } = useMetrics(timeRange);
+  const { data: metrics, isLoading, isFetching, refetch, error, dataUpdatedAt } = useMetrics(timeRange, {
+    refetchInterval: refreshInterval > 0 ? refreshInterval * 1000 : false,
+    refetchOnWindowFocus: false,
+  });
+
   const {
     data: prodMetrics,
     isLoading: prodLoading,
     isFetching: prodFetching,
     refetch: refetchProd
-  } = useProductionMetrics(intervalMinutes);
+  } = useProductionMetrics(intervalMinutes, {
+    refetchInterval: refreshInterval > 0 ? refreshInterval * 1000 : false,
+    refetchOnWindowFocus: false,
+  });
 
   // Combined loading/fetching state
   const isAnyLoading = isLoading || prodLoading;
   const isAnyFetching = isFetching || prodFetching;
+
+  // Notify parent of refresh status change
+  React.useEffect(() => {
+    onRefreshChange?.(isAnyFetching);
+  }, [isAnyFetching, onRefreshChange]);
 
   // Debounced refresh
   const handleRefresh = React.useCallback(() => {
@@ -290,16 +320,13 @@ export default function Metrics({ embedded = false }: MetricsProps) {
     return prev !== 0 ? ((latest - prev) / prev) * 100 : 0;
   }, [metrics?.queriesPerSecond]);
 
-  // Auto-refresh effect
+  // Manual refresh effect from prop
   React.useEffect(() => {
-    if (refreshInterval > 0) {
-      const interval = setInterval(() => {
-        refetch();
-        refetchProd();
-      }, refreshInterval * 1000);
-      return () => clearInterval(interval);
+    if (refreshKey) {
+      refetch();
+      refetchProd();
     }
-  }, [refreshInterval, refetch, refetchProd]);
+  }, [refreshKey, refetch, refetchProd]);
 
   // Listen for connection changes and refetch metrics
   React.useEffect(() => {
@@ -364,7 +391,7 @@ export default function Metrics({ embedded = false }: MetricsProps) {
                 <span className="text-sm text-gray-400">{lastUpdated}</span>
               </div>
 
-              <Select value={timeRange} onValueChange={setTimeRange}>
+              <Select value={internalTimeRange} onValueChange={setInternalTimeRange}>
                 <SelectTrigger className="w-[130px] bg-white/5 border-white/10">
                   <Clock className="h-4 w-4 mr-2 text-gray-400" />
                   <SelectValue />
@@ -377,7 +404,7 @@ export default function Metrics({ embedded = false }: MetricsProps) {
                 </SelectContent>
               </Select>
 
-              <Select value={String(refreshInterval)} onValueChange={(v) => setRefreshInterval(Number(v))}>
+              <Select value={String(internalRefreshInterval)} onValueChange={(v) => setInternalRefreshInterval(Number(v))}>
                 <SelectTrigger className="w-[140px] bg-white/5 border-white/10">
                   {refreshInterval > 0 ? (
                     <Play className="h-4 w-4 mr-2 text-green-400" />
@@ -1161,60 +1188,63 @@ export default function Metrics({ embedded = false }: MetricsProps) {
         </Tabs>
 
         {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="flex items-center justify-center gap-4 pt-4 pb-8"
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
-            onClick={() => setTimeRange("15m")}
+        {/* Quick Actions Footer - Hidden when embedded */}
+        {!embedded && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="flex items-center justify-center gap-4 pt-4 pb-8"
           >
-            15min
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
-            onClick={() => setTimeRange("1h")}
-          >
-            1 Hour
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
-            onClick={() => setTimeRange("24h")}
-          >
-            24 Hours
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn(
-              "gap-2 border-white/10",
-              refreshInterval > 0
-                ? "bg-green-500/20 border-green-500/30 text-green-400"
-                : "bg-white/5 hover:bg-white/10"
-            )}
-            onClick={() => setRefreshInterval(refreshInterval > 0 ? 0 : 30)}
-          >
-            {refreshInterval > 0 ? (
-              <>
-                <Pause className="h-3 w-3" />
-                Stop Auto
-              </>
-            ) : (
-              <>
-                <Play className="h-3 w-3" />
-                Auto (30s)
-              </>
-            )}
-          </Button>
-        </motion.div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+              onClick={() => setInternalTimeRange("15m")}
+            >
+              15min
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+              onClick={() => setInternalTimeRange("1h")}
+            >
+              1 Hour
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+              onClick={() => setInternalTimeRange("24h")}
+            >
+              24 Hours
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn(
+                "gap-2 border-white/10",
+                refreshInterval > 0
+                  ? "bg-green-500/20 border-green-500/30 text-green-400"
+                  : "bg-white/5 hover:bg-white/10"
+              )}
+              onClick={() => setInternalRefreshInterval(refreshInterval > 0 ? 0 : 30)}
+            >
+              {refreshInterval > 0 ? (
+                <>
+                  <Pause className="h-3 w-3" />
+                  Stop Auto
+                </>
+              ) : (
+                <>
+                  <Play className="h-3 w-3" />
+                  Auto (30s)
+                </>
+              )}
+            </Button>
+          </motion.div>
+        )}
       </div>
     </div>
   );

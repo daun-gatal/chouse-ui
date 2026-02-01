@@ -12,9 +12,9 @@ describe('useQuery', () => {
       expect(Array.isArray(queryKeys.databases)).toBe(true);
     });
 
-    it('should define systemStats key', () => {
-      expect(queryKeys.systemStats).toBeDefined();
-      expect(Array.isArray(queryKeys.systemStats)).toBe(true);
+    it('should define config key', () => {
+      expect(queryKeys.config).toBeDefined();
+      expect(Array.isArray(queryKeys.config)).toBe(true);
     });
 
     it('should define intellisense key', () => {
@@ -22,9 +22,24 @@ describe('useQuery', () => {
       expect(Array.isArray(queryKeys.intellisense)).toBe(true);
     });
 
-    it('should define config key', () => {
-      expect(queryKeys.config).toBeDefined();
-      expect(Array.isArray(queryKeys.config)).toBe(true);
+    it('should define systemStats as function', () => {
+      expect(queryKeys.systemStats).toBeDefined();
+      expect(typeof queryKeys.systemStats).toBe('function');
+    });
+
+    it('should define recentQueries as function', () => {
+      expect(queryKeys.recentQueries).toBeDefined();
+      expect(typeof queryKeys.recentQueries).toBe('function');
+    });
+
+    it('should define productionMetrics as function', () => {
+      expect(queryKeys.productionMetrics).toBeDefined();
+      expect(typeof queryKeys.productionMetrics).toBe('function');
+    });
+
+    it('should define topTables as function', () => {
+      expect(queryKeys.topTables).toBeDefined();
+      expect(typeof queryKeys.topTables).toBe('function');
     });
 
     it('should define savedQueries as function', () => {

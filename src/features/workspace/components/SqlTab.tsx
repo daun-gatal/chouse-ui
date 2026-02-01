@@ -167,8 +167,8 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     }
 
     return (
-      <div className="h-full flex flex-col">
-        <div className="flex-1">
+      <div className="h-full w-full flex flex-col overflow-hidden">
+        <div className="flex-1 w-full overflow-hidden">
           <AgGridReact
             rowData={rowData}
             columnDefs={columnDefs}
@@ -190,8 +190,8 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     if (!tab?.result?.meta?.length) return null;
 
     return (
-      <div className="h-full flex flex-col">
-        <div className="flex-1">
+      <div className="h-full w-full flex flex-col overflow-hidden">
+        <div className="flex-1 w-full overflow-hidden">
           <AgGridReact
             rowData={tab.result.meta}
             columnDefs={[
@@ -226,7 +226,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         onValueChange={setActiveTab}
         className="h-full flex flex-col"
       >
-        <TabsList className="rounded-none border-b px-4">
+        <TabsList className="rounded-none border-b border-white/5 bg-black/20 backdrop-blur-md px-4">
           <TabsTrigger value="results">
             Results
             {hasData && (
@@ -247,14 +247,14 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           </TabsTrigger>
           <TabsTrigger value="statistics">Statistics</TabsTrigger>
         </TabsList>
-        <div className="flex-1">
-          <TabsContent value="results" className="h-full m-0">
+        <div className="flex-1 overflow-hidden w-full">
+          <TabsContent value="results" className="h-full m-0 flex flex-col overflow-hidden w-full">
             {renderResultsTab()}
           </TabsContent>
-          <TabsContent value="metadata" className="h-full m-0">
+          <TabsContent value="metadata" className="h-full m-0 flex flex-col overflow-hidden w-full">
             {renderMetadataTab()}
           </TabsContent>
-          <TabsContent value="statistics" className="h-full m-0">
+          <TabsContent value="statistics" className="h-full m-0 overflow-auto">
             {renderStatisticsResults()}
           </TabsContent>
         </div>

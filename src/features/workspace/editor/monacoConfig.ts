@@ -277,6 +277,19 @@ export const initializeMonacoGlobally = async () => {
 
   ensureMonacoEnvironment();
 
+  // Define custom dark theme
+  monaco.editor.defineTheme('chouse-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [],
+    colors: {
+      'editor.background': '#14141a',
+      'editor.lineHighlightBackground': '#ffffff0a',
+      'editorLineNumber.foreground': '#ffffff20',
+      'editorLineNumber.activeForeground': '#ffffff60',
+    }
+  });
+
   // Register the SQL language
   monaco.languages.register({ id: "sql" });
 
@@ -500,23 +513,23 @@ export async function getMonacoEditorOptions(): Promise<MonacoEditorOptions> {
     // Try to import the API (avoid circular dependency)
     const { rbacUserPreferencesApi } = await import('@/api/rbac');
     const { useRbacStore } = await import('@/stores/rbac');
-    
+
     const rbacState = useRbacStore.getState();
     if (!rbacState.isAuthenticated) {
       return DEFAULT_MONACO_OPTIONS;
     }
 
     const preferences = await rbacUserPreferencesApi.getPreferences();
-    const monacoSettings = preferences.workspacePreferences?.monacoSettings as 
+    const monacoSettings = preferences.workspacePreferences?.monacoSettings as
       | MonacoEditorOptions
       | undefined;
-    
+
     if (monacoSettings) {
       return {
         ...DEFAULT_MONACO_OPTIONS,
         ...monacoSettings,
         // Ensure nested objects are merged properly
-        minimap: monacoSettings.minimap !== undefined 
+        minimap: monacoSettings.minimap !== undefined
           ? { ...DEFAULT_MONACO_OPTIONS.minimap, ...monacoSettings.minimap }
           : DEFAULT_MONACO_OPTIONS.minimap,
         padding: monacoSettings.padding !== undefined
@@ -524,7 +537,7 @@ export async function getMonacoEditorOptions(): Promise<MonacoEditorOptions> {
           : DEFAULT_MONACO_OPTIONS.padding,
       };
     }
-    
+
     return DEFAULT_MONACO_OPTIONS;
   } catch (error) {
     console.error('[MonacoConfig] Failed to fetch editor preferences:', error);
@@ -541,7 +554,7 @@ export async function updateMonacoEditorOptions(
   try {
     const { rbacUserPreferencesApi } = await import('@/api/rbac');
     const { useRbacStore } = await import('@/stores/rbac');
-    
+
     const rbacState = useRbacStore.getState();
     if (!rbacState.isAuthenticated) {
       return;
@@ -568,10 +581,10 @@ export const createMonacoEditor = async (
   theme: string
 ): Promise<monaco.editor.IStandaloneCodeEditor> => {
   const options = await getMonacoEditorOptions();
-  
+
   const editor = monaco.editor.create(container, {
     language: "sql",
-    theme: theme || "vs-dark",
+    theme: theme === 'vs-dark' ? 'chouse-dark' : theme || "vs-dark",
     automaticLayout: true,
     fontSize: options.fontSize,
     wordWrap: options.wordWrap,

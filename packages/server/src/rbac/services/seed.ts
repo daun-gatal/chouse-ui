@@ -84,6 +84,7 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
   'Audit': [
     PERMISSIONS.AUDIT_VIEW,
     PERMISSIONS.AUDIT_EXPORT,
+    PERMISSIONS.AUDIT_DELETE,
   ],
   'Live Query Management': [
     PERMISSIONS.LIVE_QUERIES_VIEW,
@@ -138,6 +139,7 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.SETTINGS_UPDATE]: 'Update Settings',
   [PERMISSIONS.AUDIT_VIEW]: 'View Audit Logs',
   [PERMISSIONS.AUDIT_EXPORT]: 'Export Audit Logs',
+  [PERMISSIONS.AUDIT_DELETE]: 'Delete Audit Logs',
   [PERMISSIONS.LIVE_QUERIES_VIEW]: 'View Live Queries',
   [PERMISSIONS.LIVE_QUERIES_KILL]: 'Kill Live Queries',
   [PERMISSIONS.CONNECTIONS_VIEW]: 'View Connections',

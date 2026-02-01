@@ -26,7 +26,7 @@ const ExplorerPage = () => {
   const navigate = useNavigate();
   const { fetchFavorites, fetchRecentItems, fetchPreferences } = useExplorerStore();
   const { isAuthenticated } = useRbacStore();
-  
+
   // Panel sizes state (defaults)
   const [leftPanelSize, setLeftPanelSize] = useState(35);
   const [rightPanelSize, setRightPanelSize] = useState(65);
@@ -42,11 +42,11 @@ const ExplorerPage = () => {
   const tableCount = databases.reduce((acc, db) => acc + (db.children?.length || 0), 0);
 
   useEffect(() => {
-    const title = currentTable 
+    const title = currentTable
       ? `CHouse UI | ${currentDatabase}.${currentTable}`
       : currentDatabase
-      ? `CHouse UI | ${currentDatabase}`
-      : "CHouse UI | Explorer";
+        ? `CHouse UI | ${currentDatabase}`
+        : "CHouse UI | Explorer";
     document.title = title;
   }, [currentDatabase, currentTable]);
 
@@ -68,10 +68,10 @@ const ExplorerPage = () => {
     const fetchPanelSizes = async (): Promise<void> => {
       try {
         const preferences = await rbacUserPreferencesApi.getPreferences();
-        const panelSizes = preferences.workspacePreferences?.panelSizes as 
+        const panelSizes = preferences.workspacePreferences?.panelSizes as
           | { explorer?: { left?: number; right?: number } }
           | undefined;
-        
+
         if (panelSizes?.explorer) {
           if (typeof panelSizes.explorer.left === 'number' && panelSizes.explorer.left >= 20 && panelSizes.explorer.left <= 50) {
             setLeftPanelSize(panelSizes.explorer.left);
@@ -146,7 +146,7 @@ const ExplorerPage = () => {
   // Breadcrumb items
   const breadcrumbs = React.useMemo(() => {
     const items: Array<{ label: string; path: string; icon: React.ReactNode }> = [];
-    
+
     if (currentDatabase) {
       items.push({
         label: currentDatabase,
@@ -177,18 +177,15 @@ const ExplorerPage = () => {
       <div className="flex-none h-11 px-4 flex items-center justify-between border-b border-white/10">
         {/* Left: Breadcrumbs */}
         <div className="flex items-center gap-2 min-w-0">
-          <button
-            onClick={() => navigate('/explorer')}
-            className={cn(
-              "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors",
-              breadcrumbs.length === 0 
-                ? "text-white bg-white/10" 
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            )}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Explorer</span>
-          </button>
+          {breadcrumbs.length > 0 && (
+            <button
+              onClick={() => navigate('/explorer')}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Explorer</span>
+            </button>
+          )}
 
           {breadcrumbs.map((crumb, index) => (
             <React.Fragment key={crumb.path}>
@@ -243,14 +240,14 @@ const ExplorerPage = () => {
 
       {/* Main Content */}
       <div className="flex-1 min-h-0">
-        <ResizablePanelGroup 
+        <ResizablePanelGroup
           direction="horizontal"
           onLayout={handlePanelLayout}
           className="h-full"
         >
           {/* Left Panel - Sidebar */}
-          <ResizablePanel 
-            className="overflow-hidden" 
+          <ResizablePanel
+            className="overflow-hidden"
             defaultSize={leftPanelSize}
             minSize={20}
             maxSize={50}
@@ -259,12 +256,12 @@ const ExplorerPage = () => {
           </ResizablePanel>
 
           {/* Resizable Handle */}
-          <ResizableHandle 
-            withHandle 
+          <ResizableHandle
+            withHandle
             className={cn(
               "w-px bg-white/10 hover:bg-white/20 transition-colors duration-200",
               "data-[resize-handle-active]:bg-white/30"
-            )} 
+            )}
           />
 
           {/* Right Panel - Workspace */}

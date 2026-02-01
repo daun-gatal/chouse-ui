@@ -16,12 +16,15 @@ import {
   Calendar,
   Filter,
   User,
+  Trash2,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, subDays, startOfToday, endOfToday, startOfYesterday, endOfYesterday } from 'date-fns';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -44,6 +47,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -89,7 +103,7 @@ export const RbacAuditLogs: React.FC = () => {
       limit: 50,
       action: actionFilter !== 'all' ? actionFilter : undefined,
       startDate: dateRange.start?.toISOString(),
-      endDate: dateRange.end?.toISOString(),
+      endDate: dateRange.end ? new Date(new Date(dateRange.end).setHours(23, 59, 59, 999)).toISOString() : undefined,
     }),
   });
 
@@ -123,7 +137,7 @@ export const RbacAuditLogs: React.FC = () => {
       const blob = await rbacAuditApi.exportLogs({
         action: actionFilter !== 'all' ? actionFilter : undefined,
         startDate: dateRange.start?.toISOString(),
-        endDate: dateRange.end?.toISOString(),
+        endDate: dateRange.end ? new Date(new Date(dateRange.end).setHours(23, 59, 59, 999)).toISOString() : undefined,
       });
 
       // Create download link
@@ -144,6 +158,31 @@ export const RbacAuditLogs: React.FC = () => {
       toast.error('Failed to export audit logs', { id: `rbac_export_error` });
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const canDelete = hasPermission(RBAC_PERMISSIONS.AUDIT_DELETE);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    try {
+      setIsDeleting(true);
+      const uniqueId = `rbac_delete_${Date.now()}`;
+      toast.loading('Deleting audit logs...', { id: uniqueId });
+
+      const result = await rbacAuditApi.delete({
+        action: actionFilter !== 'all' ? actionFilter : undefined,
+        startDate: dateRange.start?.toISOString(),
+        endDate: dateRange.end ? new Date(new Date(dateRange.end).setHours(23, 59, 59, 999)).toISOString() : undefined,
+      });
+
+      toast.success(`Successfully deleted ${result.deletedCount} audit logs`, { id: uniqueId });
+      refetch();
+    } catch (error) {
+      console.error('Delete failed:', error);
+      toast.error('Failed to delete audit logs', { id: `rbac_delete_error` });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -183,6 +222,65 @@ export const RbacAuditLogs: React.FC = () => {
               {isExporting ? 'Exporting...' : 'Export CSV'}
             </Button>
           )}
+          {canDelete && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isDeleting}
+                  className="gap-2 bg-red-500/10 border-red-500/20 hover:bg-red-500/20 text-red-400"
+                >
+                  <Trash2 className={cn("h-4 w-4", isDeleting && "animate-spin")} />
+                  {isDeleting ? 'Deleting...' : 'Delete Logs'}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-gray-900/95 border-white/10 text-white backdrop-blur-xl shadow-2xl max-w-md">
+                <AlertDialogHeader>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 rounded-full bg-red-500/20">
+                      <AlertTriangle className="h-6 w-6 text-red-400" />
+                    </div>
+                    <AlertDialogTitle className="text-xl">Permanent Deletion</AlertDialogTitle>
+                  </div>
+                  <AlertDialogDescription className="text-gray-400 text-base">
+                    You are about to permanently delete audit logs matching these filters:
+                    <div className="mt-4 p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500 uppercase tracking-wider text-[10px] font-bold">Action Type</span>
+                        <Badge variant="outline" className="bg-white/10 text-white border-white/20">
+                          {actionFilter === 'all' ? 'All Actions' : actionFilter}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500 uppercase tracking-wider text-[10px] font-bold">Date Range</span>
+                        <span className="text-white font-medium">
+                          {dateRange.start ? (
+                            dateRange.end && format(dateRange.start, 'MMM d, yyyy') !== format(dateRange.end, 'MMM d, yyyy')
+                              ? `${format(dateRange.start, 'MMM d')} - ${format(dateRange.end, 'MMM d, yyyy')}`
+                              : format(dateRange.start, 'MMM d, yyyy')
+                          ) : 'All time'}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="mt-6 text-red-400/90 text-sm flex items-center gap-2 font-medium">
+                      <AlertTriangle className="h-4 w-4" />
+                      This action is irreversible and will be audited.
+                    </p>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="mt-6">
+                  <AlertDialogCancel className="bg-white/5 border-white/10 hover:bg-white/10 text-white rounded-xl">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    className="bg-red-500 hover:bg-red-600 text-white border-none rounded-xl px-6"
+                  >
+                    Confirm Deletion
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </div>
 
@@ -213,8 +311,8 @@ export const RbacAuditLogs: React.FC = () => {
       {/* Filters */}
       <div className="flex items-center gap-4">
         <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[200px] bg-white/5 border-white/10">
-            <Filter className="h-4 w-4 mr-2" />
+          <SelectTrigger className="w-[200px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors">
+            <Filter className="h-4 w-4 mr-2 text-cyan-400" />
             <SelectValue placeholder="Filter by action" />
           </SelectTrigger>
           <SelectContent>
@@ -234,23 +332,100 @@ export const RbacAuditLogs: React.FC = () => {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2 bg-white/5 border-white/10">
-              <Calendar className="h-4 w-4" />
-              {dateRange.start
-                ? `${format(dateRange.start, 'MMM d')} - ${dateRange.end ? format(dateRange.end, 'MMM d') : '...'}`
-                : 'Date Range'}
+            <Button variant="outline" className="gap-2 bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors">
+              <Calendar className="h-4 w-4 text-cyan-400" />
+              {dateRange.start ? (
+                dateRange.end && format(dateRange.start, 'MMM d, yyyy') !== format(dateRange.end, 'MMM d, yyyy')
+                  ? `${format(dateRange.start, 'MMM d')} - ${format(dateRange.end, 'MMM d, yyyy')}`
+                  : format(dateRange.start, 'MMM d, yyyy')
+              ) : 'Date Range'}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <CalendarComponent
-              mode="range"
-              selected={{ from: dateRange.start, to: dateRange.end }}
-              onSelect={(range) => {
-                setDateRange({ start: range?.from, end: range?.to });
-                setPage(1);
-              }}
-              initialFocus
-            />
+          <PopoverContent className="w-auto p-0 bg-[#0B0D11] border-white/10 shadow-2xl rounded-2xl border backdrop-blur-3xl" align="start">
+            <div className="flex h-auto">
+              {/* Presets Sidebar */}
+              <div className="w-40 bg-white/[0.03] p-4 flex flex-col gap-1.5 border-r border-white/5">
+                <p className="px-2 mb-3 text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Presets</p>
+                {[
+                  { label: 'Today', getValue: () => ({ start: startOfToday(), end: endOfToday() }) },
+                  { label: 'Yesterday', getValue: () => ({ start: startOfYesterday(), end: endOfYesterday() }) },
+                  { label: 'Last 7 Days', getValue: () => ({ start: subDays(new Date(), 7), end: new Date() }) },
+                  { label: 'Last 30 Days', getValue: () => ({ start: subDays(new Date(), 30), end: new Date() }) },
+                  { label: 'All Time', getValue: () => ({ start: undefined, end: undefined }) },
+                ].map((preset) => (
+                  <Button
+                    key={preset.label}
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start font-medium text-gray-400 hover:text-white hover:bg-white/5 rounded-lg h-9 w-full"
+                    onClick={() => {
+                      const range = preset.getValue();
+                      setDateRange(range);
+                      setPage(1);
+                    }}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+
+                <div className="mt-auto pt-4 border-t border-white/5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start font-medium text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-lg h-9 w-full"
+                    onClick={() => {
+                      setDateRange({});
+                      setPage(1);
+                    }}
+                  >
+                    Clear Filter
+                  </Button>
+                </div>
+              </div>
+
+              {/* Calendar Section */}
+              <div className="flex-1 p-6 bg-transparent min-w-[340px]">
+                <CalendarComponent
+                  mode="range"
+                  selected={{ from: dateRange.start, to: dateRange.end }}
+                  onSelect={(range) => {
+                    setDateRange({ start: range?.from, end: range?.to });
+                    setPage(1);
+                  }}
+                  initialFocus
+                  fixedWeeks
+                  className="p-0"
+                  classNames={{
+                    months: "w-full",
+                    month: "space-y-4 w-full",
+                    month_caption: "flex justify-center pt-1 relative items-center mb-6",
+                    caption_label: "text-sm font-bold text-white uppercase tracking-widest",
+                    nav: "space-x-1 flex items-center",
+                    button_previous: cn(
+                      buttonVariants({ variant: "outline" }),
+                      "h-8 w-8 bg-white/5 border-white/10 p-0 text-gray-400 hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                    ),
+                    button_next: cn(
+                      buttonVariants({ variant: "outline" }),
+                      "h-8 w-8 bg-white/5 border-white/10 p-0 text-gray-400 hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                    ),
+                    month_grid: "w-full border-collapse select-none",
+                    weekdays: "grid grid-cols-7 w-full mb-4 px-1",
+                    weekday: "text-gray-500 font-bold uppercase text-[9px] tracking-[0.2em] text-center flex items-center justify-center h-8",
+                    week: "grid grid-cols-7 w-full mt-1 px-1",
+                    day: "h-11 w-full text-center text-sm p-0 relative flex items-center justify-center",
+                    day_button: cn(
+                      buttonVariants({ variant: "ghost" }),
+                      "h-10 w-10 p-0 font-semibold text-gray-300 hover:bg-white/10 hover:text-white rounded-xl transition-all duration-200 flex items-center justify-center text-[13px] tracking-tight"
+                    ),
+                    selected: "!bg-cyan-500 !text-white hover:!bg-cyan-600 focus:!bg-cyan-500 rounded-xl shadow-[0_8px_16px_rgba(6,182,212,0.3)] opacity-100 border-none",
+                    today: "border border-cyan-500/50 text-cyan-400 font-black rounded-xl bg-cyan-500/5",
+                    outside: "text-gray-800 opacity-10",
+                    range_middle: "aria-selected:bg-cyan-500/10 aria-selected:text-cyan-200 !rounded-none",
+                  }}
+                />
+              </div>
+            </div>
           </PopoverContent>
         </Popover>
 
@@ -263,8 +438,10 @@ export const RbacAuditLogs: React.FC = () => {
               setDateRange({});
               setPage(1);
             }}
+            className="text-gray-400 hover:text-white hover:bg-white/5 rounded-xl px-4"
           >
-            Clear Filters
+            <X className="h-4 w-4 mr-2" />
+            Reset Filters
           </Button>
         )}
       </div>

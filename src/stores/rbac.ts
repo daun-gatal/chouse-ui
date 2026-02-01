@@ -378,6 +378,7 @@ export const RBAC_PERMISSIONS = {
   // Audit
   AUDIT_VIEW: 'audit:view',
   AUDIT_EXPORT: 'audit:export',
+  AUDIT_DELETE: 'audit:delete',
 
   // Live Query Management (admin only)
   LIVE_QUERIES_VIEW: 'live_queries:view',

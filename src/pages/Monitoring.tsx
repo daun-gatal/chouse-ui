@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
     InfoIcon,
@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { DataControls } from "@/components/common/DataControls";
 
 // Import the actual page components
 import LogsPage from "./Logs";
@@ -169,6 +170,22 @@ function TabCard({
 export default function Monitoring() {
     const [isInfoOpen, setIsInfoOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<TabKey>("live-queries");
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [autoRefresh, setAutoRefresh] = useState(false);
+    const [timeRange, setTimeRange] = useState("1h");
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    // In a real app, lastUpdated would be synced from the child components or a shared store
+    // For now, we'll update it when refresh is triggered
+    const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
+
+    const handleRefresh = () => {
+        setRefreshKey(prev => prev + 1);
+        setLastUpdated(new Date().toLocaleTimeString());
+    };
+
+    const handleAutoRefreshChange = (value: boolean) => {
+        setAutoRefresh(value);
+    };
     const { hasPermission, hasAnyPermission } = useRbacStore();
 
     // Permission checks for tabs
@@ -181,6 +198,15 @@ export default function Monitoring() {
         RBAC_PERMISSIONS.METRICS_VIEW,
         RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
     ]);
+
+    // Enable auto-refresh when switching to Live Queries
+    useEffect(() => {
+        if (activeTab === "live-queries") {
+            setAutoRefresh(true);
+        } else {
+            setAutoRefresh(false);
+        }
+    }, [activeTab]);
 
     // Determine default tab based on permissions
     const getDefaultTab = (): TabKey => {
@@ -238,14 +264,27 @@ export default function Monitoring() {
                         </div>
                     </div>
 
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setIsInfoOpen(true)}
-                        className="text-gray-400 hover:text-white hover:bg-white/10"
-                    >
-                        <InfoIcon className="w-5 h-5" />
-                    </Button>
+                    <div className="flex items-center gap-3">
+                        <DataControls
+                            lastUpdated={lastUpdated}
+                            isRefreshing={isRefreshing}
+                            onRefresh={handleRefresh}
+                            autoRefresh={autoRefresh}
+                            onAutoRefreshChange={handleAutoRefreshChange}
+                            showTimeRange={activeTab === "metrics"} // Only show for Metrics tab
+                            timeRange={timeRange}
+                            onTimeRangeChange={setTimeRange}
+                        />
+
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setIsInfoOpen(true)}
+                            className="text-gray-400 hover:text-white hover:bg-white/10"
+                        >
+                            <InfoIcon className="w-5 h-5" />
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Tab Navigation Cards */}
@@ -274,19 +313,35 @@ export default function Monitoring() {
                     >
                         {activeTab === "live-queries" && canViewLiveQueries && (
                             <div className="h-full overflow-auto rounded-xl bg-white/5 border border-white/10">
-                                <LiveQueriesTable embedded />
+                                <LiveQueriesTable
+                                    embedded
+                                    refreshKey={refreshKey}
+                                    autoRefresh={autoRefresh}
+                                    onRefreshChange={setIsRefreshing}
+                                />
                             </div>
                         )}
 
                         {activeTab === "logs" && canViewLogs && (
                             <div className="h-full overflow-auto rounded-xl bg-white/5 border border-white/10">
-                                <LogsPage embedded />
+                                <LogsPage
+                                    embedded
+                                    refreshKey={refreshKey}
+                                    autoRefresh={autoRefresh}
+                                    onRefreshChange={setIsRefreshing}
+                                />
                             </div>
                         )}
 
                         {activeTab === "metrics" && canViewMetrics && (
                             <div className="h-full overflow-auto rounded-xl bg-white/5 border border-white/10">
-                                <MetricsPage embedded />
+                                <MetricsPage
+                                    embedded
+                                    refreshKey={refreshKey}
+                                    autoRefresh={autoRefresh}
+                                    timeRange={timeRange}
+                                    onRefreshChange={setIsRefreshing}
+                                />
                             </div>
                         )}
                     </motion.div>
