@@ -5,7 +5,7 @@
  * Restricted to super_admin and admin roles only.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Zap,
@@ -316,10 +316,28 @@ const REFRESH_INTERVALS = [
     { value: 10000, label: '10s' },
 ];
 
-export default function LiveQueriesTable({ embedded = false }: { embedded?: boolean }) {
+interface LiveQueriesTableProps {
+    embedded?: boolean;
+    refreshKey?: number;
+    autoRefresh?: boolean;
+    onRefreshChange?: (isRefreshing: boolean) => void;
+}
+
+export default function LiveQueriesTable({
+    embedded = false,
+    refreshKey = 0,
+    autoRefresh = false,
+    onRefreshChange
+}: LiveQueriesTableProps) {
     const [searchQuery, setSearchQuery] = useState('');
-    const [refreshInterval, setRefreshInterval] = useState(3000);
+    const [internalRefreshInterval, setInternalRefreshInterval] = useState(3000);
     const [queryToKill, setQueryToKill] = useState<string | null>(null);
+
+    // If embedded, use external autoRefresh (fixed to 3s when on) or 0 (off)
+    // If not embedded, use internal selector
+    const refreshInterval = embedded
+        ? (autoRefresh ? 3000 : 0)
+        : internalRefreshInterval;
 
     const { hasPermission, isSuperAdmin, user } = useRbacStore();
     const canGlobalKill = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_KILL);
@@ -327,6 +345,18 @@ export default function LiveQueriesTable({ embedded = false }: { embedded?: bool
     const { data, isLoading, error, refetch, isFetching } = useLiveQueries(refreshInterval);
     const killQuery = useKillQuery();
     const stats = useLiveQueriesStats(data);
+
+    // Manual refresh effect
+    useEffect(() => {
+        if (refreshKey) {
+            refetch();
+        }
+    }, [refreshKey, refetch]);
+
+    // Notify parent of refresh status change
+    useEffect(() => {
+        onRefreshChange?.(isLoading || isFetching);
+    }, [isLoading, isFetching, onRefreshChange]);
 
     // Filter queries based on search
     const filteredQueries = useMemo(() => {
@@ -433,38 +463,42 @@ export default function LiveQueriesTable({ embedded = false }: { embedded?: bool
 
                 <div className="flex items-center gap-3">
                     {/* Refresh Interval Selector */}
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 whitespace-nowrap hidden sm:inline">Auto-refresh:</span>
-                        <Select
-                            value={refreshInterval.toString()}
-                            onValueChange={(v) => setRefreshInterval(parseInt(v))}
-                        >
-                            <SelectTrigger className="w-24 h-10 bg-white/5 border-white/10">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {REFRESH_INTERVALS.map((interval) => (
-                                    <SelectItem key={interval.value} value={interval.value.toString()}>
-                                        {interval.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {!embedded && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 whitespace-nowrap hidden sm:inline">Auto-refresh:</span>
+                            <Select
+                                value={internalRefreshInterval.toString()}
+                                onValueChange={(v) => setInternalRefreshInterval(parseInt(v))}
+                            >
+                                <SelectTrigger className="w-24 h-10 bg-white/5 border-white/10">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {REFRESH_INTERVALS.map((interval) => (
+                                        <SelectItem key={interval.value} value={interval.value.toString()}>
+                                            {interval.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
 
                     {/* Manual Refresh */}
-                    <Button
-                        variant="outline"
-                        onClick={() => refetch()}
-                        disabled={isFetching}
-                        className="h-10 px-4 bg-white/5 border-white/10 hover:bg-white/10"
-                    >
-                        <RefreshCw className={cn(
-                            "w-4 h-4 mr-2",
-                            isFetching && "animate-spin"
-                        )} />
-                        Refresh
-                    </Button>
+                    {!embedded && (
+                        <Button
+                            variant="outline"
+                            onClick={() => refetch()}
+                            disabled={isFetching}
+                            className="h-10 px-4 bg-white/5 border-white/10 hover:bg-white/10"
+                        >
+                            <RefreshCw className={cn(
+                                "w-4 h-4 mr-2",
+                                isFetching && "animate-spin"
+                            )} />
+                            Refresh
+                        </Button>
+                    )}
                 </div>
             </div>
 

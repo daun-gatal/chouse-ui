@@ -42,9 +42,10 @@ export const queryKeys = {
     ['tableSample', database, table, limit] as const,
 
   // Metrics
-  systemStats: ['systemStats'] as const,
-  recentQueries: (limit?: number) => ['recentQueries', limit] as const,
-  productionMetrics: (interval: number) => ['productionMetrics', interval] as const,
+  systemStats: (connectionId?: string) => ['systemStats', connectionId] as const,
+  recentQueries: (limit?: number, username?: string, connectionId?: string) => ['recentQueries', limit, username, connectionId] as const,
+  productionMetrics: (interval: number, connectionId?: string) => ['productionMetrics', interval, connectionId] as const,
+  topTables: (limit: number, connectionId?: string) => ['topTables', limit, connectionId] as const,
 
   // Saved Queries
   savedQueries: (connectionId?: string) => connectionId ? ['savedQueries', connectionId] as const : ['savedQueries'] as const,
@@ -197,11 +198,11 @@ export function useSystemStats(
   const hasConnection = !!(activeConnectionId && sessionId);
 
   return useQuery({
-    queryKey: queryKeys.systemStats,
+    queryKey: queryKeys.systemStats(activeConnectionId || undefined),
     queryFn: metricsApi.getSystemStats,
     enabled: hasConnection, // Only fetch when connected
-    refetchInterval: hasConnection ? 5000 : false, // Only refetch when connected
-    staleTime: 3000,
+    refetchInterval: false,
+    staleTime: 5000,
     ...options,
   });
 }
@@ -222,10 +223,10 @@ export function useRecentQueries(
   const hasConnection = !!(activeConnectionId && sessionId);
 
   return useQuery({
-    queryKey: ['recentQueries', limit, username] as const,
+    queryKey: queryKeys.recentQueries(limit, username, activeConnectionId || undefined),
     queryFn: () => metricsApi.getRecentQueries(limit, username),
     enabled: hasConnection, // Only fetch when connected
-    refetchInterval: hasConnection ? 10000 : false, // Only refetch when connected
+    refetchInterval: false,
     staleTime: 5000,
     ...options,
   });
@@ -519,11 +520,14 @@ export function useQueryLogs(
     exception?: string;
   }>, Error>>
 ) {
+  // Check if there's an active connection
+  const { activeConnectionId } = useAuthStore();
+
   // Build user filter clause (legacy support for ClickHouse username)
   const userFilter = username ? `AND user = '${username}'` : '';
 
   return useQuery({
-    queryKey: ['queryLogs', limit, username, rbacUserId] as const,
+    queryKey: ['queryLogs', limit, username, rbacUserId, activeConnectionId] as const,
     queryFn: async () => {
       // Fetch query logs
       const result = await queryApi.executeQuery(`
@@ -877,7 +881,7 @@ export function useMetrics(
   const hasConnection = !!(activeConnectionId && sessionId);
 
   return useQuery({
-    queryKey: ['metrics', timeRange] as const,
+    queryKey: ['metrics', timeRange, activeConnectionId] as const,
     enabled: hasConnection, // Only fetch when connected
     queryFn: async () => {
       // Convert timeRange to interval for query
@@ -952,6 +956,7 @@ export function useMetrics(
       }));
 
       // Fetch current server stats (single values, very lightweight)
+      // Optimized: Fetch all stats in a single query to reduce HTTP overhead
       let currentStats = {
         memoryUsage: 0,
         activeQueries: 0,
@@ -967,59 +972,33 @@ export function useMetrics(
       };
 
       try {
-        // Memory from asynchronous_metrics
-        const memResult = await safeQuery(`
-          SELECT value / 1073741824 as val
-          FROM system.asynchronous_metrics
-          WHERE metric = 'MemoryResident'
-          LIMIT 1
+        const statsResult = await safeQuery(`
+          SELECT
+            (SELECT value / 1073741824 FROM system.asynchronous_metrics WHERE metric = 'MemoryResident' LIMIT 1) as memoryUsage,
+            (SELECT count() FROM system.processes) as activeQueries,
+            (SELECT value FROM system.metrics WHERE metric = 'TCPConnection' LIMIT 1) as connections,
+            (SELECT value FROM system.asynchronous_metrics WHERE metric = 'Uptime' LIMIT 1) as uptime,
+            (SELECT count() FROM system.databases WHERE name NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')) as databasesCount,
+            (SELECT count() FROM system.tables WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')) as tablesCount,
+            (SELECT count() FROM system.parts WHERE active) as partsCount
         `);
-        if (memResult.length > 0) {
-          currentStats.memoryUsage = Number((memResult[0] as { val: number }).val) || 0;
-        }
 
-        // Active queries from system.processes
-        const activeResult = await safeQuery(`SELECT count() as cnt FROM system.processes`);
-        if (activeResult.length > 0) {
-          currentStats.activeQueries = Number((activeResult[0] as { cnt: number }).cnt) || 0;
-        }
-
-        // Connections from system.metrics
-        const connResult = await safeQuery(`
-          SELECT value as val FROM system.metrics WHERE metric = 'TCPConnection' LIMIT 1
-        `);
-        if (connResult.length > 0) {
-          currentStats.connections = Number((connResult[0] as { val: number }).val) || 0;
-        }
-
-        // Uptime from system.uptime
-        const uptimeResult = await safeQuery(`SELECT value as val FROM system.asynchronous_metrics WHERE metric = 'Uptime' LIMIT 1`);
-        if (uptimeResult.length > 0) {
-          currentStats.uptime = Number((uptimeResult[0] as { val: number }).val) || 0;
-        }
-
-        // Database and table counts
-        const dbResult = await safeQuery(`SELECT count() as cnt FROM system.databases WHERE name NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')`);
-        if (dbResult.length > 0) {
-          currentStats.databasesCount = Number((dbResult[0] as { cnt: number }).cnt) || 0;
-        }
-
-        const tableResult = await safeQuery(`SELECT count() as cnt FROM system.tables WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')`);
-        if (tableResult.length > 0) {
-          currentStats.tablesCount = Number((tableResult[0] as { cnt: number }).cnt) || 0;
-        }
-
-        // Parts count (for MergeTree health)
-        const partsResult = await safeQuery(`SELECT count() as cnt FROM system.parts WHERE active`);
-        if (partsResult.length > 0) {
-          currentStats.partsCount = Number((partsResult[0] as { cnt: number }).cnt) || 0;
+        if (statsResult.length > 0) {
+          const row = statsResult[0] as Record<string, number>;
+          currentStats.memoryUsage = Number(row.memoryUsage) || 0;
+          currentStats.activeQueries = Number(row.activeQueries) || 0;
+          currentStats.connections = Number(row.connections) || 0;
+          currentStats.uptime = Number(row.uptime) || 0;
+          currentStats.databasesCount = Number(row.databasesCount) || 0;
+          currentStats.tablesCount = Number(row.tablesCount) || 0;
+          currentStats.partsCount = Number(row.partsCount) || 0;
         }
 
         // Calculate totals from time series
         currentStats.totalQueries = sortedData.reduce((sum, d) => sum + Number((d as { total_count: number }).total_count), 0);
         currentStats.failedQueries = sortedData.reduce((sum, d) => sum + Number((d as { failed_count: number }).failed_count), 0);
-
-      } catch {
+      } catch (error) {
+        console.warn('Failed to fetch current stats:', error);
         // Ignore - will use defaults
       }
 
@@ -1062,7 +1041,7 @@ export function useProductionMetrics(
   const hasConnection = !!(activeConnectionId && sessionId);
 
   return useQuery({
-    queryKey: queryKeys.productionMetrics(intervalMinutes),
+    queryKey: queryKeys.productionMetrics(intervalMinutes, activeConnectionId || undefined),
     queryFn: () => metricsApi.getProductionMetrics(intervalMinutes),
     enabled: hasConnection, // Only fetch when connected
     staleTime: 30000,
@@ -1085,7 +1064,7 @@ export function useTopTables(
   const hasConnection = !!(activeConnectionId && sessionId);
 
   return useQuery({
-    queryKey: ['topTables', limit] as const,
+    queryKey: queryKeys.topTables(limit, activeConnectionId || undefined),
     queryFn: () => metricsApi.getTopTables(limit),
     enabled: hasConnection,
     staleTime: 60000,

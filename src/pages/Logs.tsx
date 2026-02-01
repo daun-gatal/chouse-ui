@@ -24,8 +24,7 @@ import {
   Shield,
   X,
 } from "lucide-react";
-import { AgGridReact } from "ag-grid-react";
-import { AllCommunityModule, themeBalham, colorSchemeDark, ColDef, ICellRendererParams, ValueGetterParams, ITooltipParams } from "ag-grid-community";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +45,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DataControls } from "@/components/common/DataControls";
 
 interface StatCardProps {
   title: string;
@@ -495,11 +495,14 @@ const QueryDetail: React.FC<QueryDetailProps & { isFailed?: boolean; exceptionQu
   );
 };
 
-interface LogsProps {
+interface LogsPageProps {
   embedded?: boolean;
+  refreshKey?: number;
+  autoRefresh?: boolean;
+  onRefreshChange?: (isRefreshing: boolean) => void;
 }
 
-export default function Logs({ embedded = false }: LogsProps) {
+export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh: externalAutoRefresh = false, onRefreshChange }: LogsPageProps) {
   const { theme } = useTheme();
   const { isSuperAdmin, user, hasPermission } = useRbacStore();
   const canViewAllLogs = isSuperAdmin() || hasPermission(RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL);
@@ -516,29 +519,21 @@ export default function Logs({ embedded = false }: LogsProps) {
   // Initialize state from preferences
   const [searchTerm, setSearchTerm] = useState(logsPrefs.defaultSearchQuery || "");
   const [logType, setLogType] = useState<string>(logsPrefs.defaultLogType || "all");
-  const [viewMode, setViewMode] = useState<"grid" | "table">(logsPrefs.defaultViewMode || "grid");
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(logsPrefs.autoRefresh || false);
+  const [internalAutoRefresh, setInternalAutoRefresh] = useState(logsPrefs.autoRefresh || false);
+
+  // Use external autoRefresh if embedded, otherwise internal state
+  const autoRefresh = embedded ? externalAutoRefresh : internalAutoRefresh;
+  const setAutoRefresh = embedded ? () => { } : setInternalAutoRefresh;
   const [selectedUserId, setSelectedUserId] = useState<string>(logsPrefs.defaultSelectedUserId || "all");
   const [selectedRoleId, setSelectedRoleId] = useState<string>(logsPrefs.defaultSelectedRoleId || "all");
   const previousLogStatesRef = useRef<Map<string, string>>(new Map());
   const [statusChangedIds, setStatusChangedIds] = useState<Set<string>>(new Set());
 
-  // Sync state from preferences when they load
-  useEffect(() => {
-    if (!logsPrefs) return;
-    if (logsPrefs.defaultViewMode) setViewMode(logsPrefs.defaultViewMode);
-    if (logsPrefs.defaultLogType) setLogType(logsPrefs.defaultLogType);
-    if (logsPrefs.autoRefresh !== undefined) setAutoRefresh(logsPrefs.autoRefresh);
-    if (logsPrefs.defaultSelectedUserId) setSelectedUserId(logsPrefs.defaultSelectedUserId);
-    if (logsPrefs.defaultSelectedRoleId) setSelectedRoleId(logsPrefs.defaultSelectedRoleId);
-  }, [logsPrefs]);
-
   // Update preferences when state changes (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       updateLogsPrefs({
-        defaultViewMode: viewMode,
         defaultLogType: logType,
         autoRefresh: autoRefresh,
         defaultSelectedUserId: selectedUserId,
@@ -546,7 +541,7 @@ export default function Logs({ embedded = false }: LogsProps) {
       });
     }, 500);
     return () => clearTimeout(timeoutId);
-  }, [viewMode, logType, autoRefresh, selectedUserId, selectedRoleId, updateLogsPrefs]);
+  }, [logType, autoRefresh, selectedUserId, selectedRoleId, updateLogsPrefs]);
 
   // Update limit preference when limit changes
   useEffect(() => {
@@ -614,6 +609,21 @@ export default function Logs({ embedded = false }: LogsProps) {
   const fetchLimit = Math.max(limit * multiplier, 1000); // Higher multiplier when filters active, minimum 1000 to ensure enough data
   const { data: logs = [], isLoading, isFetching, refetch, error, dataUpdatedAt } = useQueryLogs(fetchLimit, undefined, rbacUserIdFilter);
 
+  // Combined loading state
+  const isAnyLoading = isLoading || isFetching;
+
+  // Notify parent of refresh status change
+  useEffect(() => {
+    onRefreshChange?.(isAnyLoading);
+  }, [isAnyLoading, onRefreshChange]);
+
+  // Manual refresh effect
+  useEffect(() => {
+    if (refreshKey) {
+      refetch();
+    }
+  }, [refreshKey, refetch]);
+
   // Auto refresh
   React.useEffect(() => {
     if (autoRefresh) {
@@ -622,92 +632,7 @@ export default function Logs({ embedded = false }: LogsProps) {
     }
   }, [autoRefresh, refetch]);
 
-  const gridTheme = theme === "light" ? themeBalham : themeBalham.withPart(colorSchemeDark);
 
-  const columnDefs: ColDef<LogEntry>[] = useMemo(() => [
-    {
-      headerName: "Status",
-      field: "type",
-      width: 100,
-      cellRenderer: (params: ICellRendererParams<LogEntry>) => {
-        const type = params.value as string;
-        const hasStatusChanged = statusChangedIds.has(params.data?.query_id || '');
-        const logData = params.data as LogEntry | undefined;
-        const hasException = logData?.exception && logData.exception.trim().length > 0;
-        const isFailed = type === "ExceptionWhileProcessing" || type === "ExceptionBeforeStart" || (type === "QueryStart" && hasException);
-        const statusText = type === "QueryFinish" ? "✅ Success" : isFailed ? "❌ Error" : "🔄 Running";
-
-        return (
-          <div className={cn(
-            "flex items-center gap-1",
-            hasStatusChanged && "animate-pulse"
-          )}>
-            {statusText}
-          </div>
-        );
-      },
-    },
-    { headerName: "Time", field: "event_time", width: 100 },
-    {
-      headerName: "User",
-      field: "user",
-      width: 150,
-      valueGetter: (params: ValueGetterParams<LogEntry>) => {
-        // Prioritize RBAC user, fallback to ClickHouse user
-        if (!params.data) return '-';
-        return params.data.rbacUser || params.data.user || '-';
-      },
-      cellRenderer: (params: ICellRendererParams<LogEntry>) => {
-        // Show RBAC user if available, otherwise ClickHouse user
-        if (!params.data) return '-';
-        if (params.data.rbacUser) {
-          return (
-            <div className="flex flex-col">
-              <span>{params.data.rbacUser}</span>
-              {(params.data.connectionName || params.data.connectionId) && (
-                <span className="text-[10px] text-gray-500">
-                  {params.data.connectionName || `ID: ${params.data.connectionId?.substring(0, 8)}...`}
-                </span>
-              )}
-            </div>
-          );
-        }
-        return (
-          <div className="flex flex-col">
-            <span>{params.data.user || '-'}</span>
-            {(params.data.connectionName || params.data.connectionId) && (
-              <span className="text-[10px] text-gray-500">
-                {params.data.connectionName || `ID: ${params.data.connectionId?.substring(0, 8)}...`}
-              </span>
-            )}
-          </div>
-        );
-      },
-      tooltipValueGetter: (params: ITooltipParams<LogEntry>) => {
-        if (!params.data) return 'No user information';
-        if (params.data.rbacUser) {
-          return `RBAC User: ${params.data.rbacUser}${params.data.rbacUserId ? ` (${params.data.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${params.data.user}${params.data.connectionName ? `\nConnection: ${params.data.connectionName}` : ''}`;
-        }
-        return `ClickHouse User: ${params.data.user || '-'}${params.data.connectionName ? `\nConnection: ${params.data.connectionName}` : ''}`;
-      },
-    },
-    { headerName: "Query", field: "query", flex: 2, tooltipField: "query" },
-    {
-      headerName: "Duration",
-      field: "query_duration_ms",
-      width: 100,
-      type: "numericColumn",
-      valueFormatter: (params) => `${params.value}ms`,
-    },
-    {
-      headerName: "Rows",
-      field: "read_rows",
-      width: 100,
-      type: "numericColumn",
-      valueFormatter: (params) => params.value?.toLocaleString(),
-    },
-    { headerName: "Exception", field: "exception", flex: 1 },
-  ], [statusChangedIds]);
 
   // Use shared function to process logs - ensures consistency between display and stats
   const processedLogs = useMemo(() => {
@@ -785,32 +710,41 @@ export default function Logs({ embedded = false }: LogsProps) {
         embedded ? "p-4" : "p-6"
       )}>
         {/* Header - separate title and controls */}
-        {!embedded && (
+        {!embedded ? (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-4 mb-6"
+            className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6"
           >
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 shadow-lg shadow-blue-500/20">
-              <FileText className="h-7 w-7 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold tracking-tight text-white">Query Logs</h1>
-                {!canViewAllLogs && user && (
-                  <Badge variant="secondary" className="bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    <User className="h-3 w-3 mr-1" />
-                    Your queries only
-                  </Badge>
-                )}
+            {/* Title Section */}
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 shadow-lg shadow-blue-500/20">
+                <FileText className="h-7 w-7 text-white" />
               </div>
-              <p className="text-gray-400 text-sm flex items-center gap-2">
-                <Clock className="h-3 w-3" />
-                Last updated: {lastUpdated}
-              </p>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-3xl font-bold tracking-tight text-white">Query Logs</h1>
+                  {!canViewAllLogs && user && (
+                    <Badge variant="secondary" className="bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      <User className="h-3 w-3 mr-1" />
+                      Your queries only
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* Data Controls - Top Right */}
+            <DataControls
+              lastUpdated={lastUpdated}
+              isRefreshing={isFetching}
+              onRefresh={() => refetch()}
+              autoRefresh={autoRefresh}
+              onAutoRefreshChange={setAutoRefresh}
+            />
           </motion.div>
-        )}
+        ) : null}
+
 
 
 
@@ -848,6 +782,8 @@ export default function Logs({ embedded = false }: LogsProps) {
           />
         </motion.div>
 
+
+
         {/* Filters */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -855,10 +791,10 @@ export default function Logs({ embedded = false }: LogsProps) {
           transition={{ delay: 0.15 }}
         >
           <div className={cn(
-            "relative overflow-hidden rounded-2xl border border-white/10 p-4 flex flex-wrap gap-3",
+            "relative overflow-hidden rounded-2xl border border-white/10 p-4 flex flex-wrap gap-3 items-center",
             "bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl"
           )}>
-            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+            <div className="flex items-center gap-2 w-full md:w-[320px]">
               <Search className="h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Search queries, users, IDs..."
@@ -981,105 +917,17 @@ export default function Logs({ embedded = false }: LogsProps) {
                 </Tooltip>
               </TooltipProvider>
             )}
-
-            <div className="flex items-center gap-2 border-l border-white/10 pl-3 ml-auto">
-              <Button
-                variant={autoRefresh ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setAutoRefresh(!autoRefresh)}
-                className={cn(
-                  "gap-2 h-8",
-                  autoRefresh
-                    ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                )}
-                title={autoRefresh ? "Stop Auto Refresh" : "Auto Refresh (5s)"}
-              >
-                {autoRefresh ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                <span className="hidden xl:inline">{autoRefresh ? "Stop" : "Auto"}</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => refetch()}
-                disabled={isFetching}
-                className="gap-2 h-8 text-gray-400 hover:text-white hover:bg-white/5"
-                title="Refresh Logs"
-              >
-                <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-                <span className="hidden xl:inline">Refresh</span>
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "h-7 px-2",
-                        viewMode === "grid"
-                          ? "bg-white/10 text-white hover:bg-white/15"
-                          : "text-gray-400 hover:text-white hover:bg-white/5"
-                      )}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                        setViewMode("grid");
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                    >
-                      <BarChart3 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Grid View</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "h-7 px-2",
-                        viewMode === "table"
-                          ? "bg-white/10 text-white hover:bg-white/15"
-                          : "text-gray-400 hover:text-white hover:bg-white/5"
-                      )}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                        // Removed debug logging
-                        setViewMode("table");
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                    >
-                      <ArrowUpDown className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Table View (Sortable)</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
           </div>
+
+
+
+
+
+
+
         </motion.div>
+
+
 
         {/* Error State */}
         <AnimatePresence>
@@ -1106,136 +954,115 @@ export default function Logs({ embedded = false }: LogsProps) {
             "relative overflow-hidden rounded-2xl border border-white/10 flex flex-col h-full",
             "bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl"
           )}>
-            {viewMode === "table" ? (
-              <div className="h-full">
-                <AgGridReact
-                  rowData={filteredLogs}
-                  columnDefs={columnDefs}
-                  defaultColDef={{
-                    sortable: true,
-                    filter: true,
-                    resizable: true,
-                  }}
-                  modules={[AllCommunityModule]}
-                  theme={gridTheme}
-                  pagination={true}
-                  paginationPageSize={50}
-                  enableCellTextSelection={true}
-                  loading={isLoading}
-                />
-              </div>
-
-            ) : (
-              <div className="h-full overflow-auto p-4">
-                {isLoading ? (
-                  <div className="flex items-center justify-center h-64">
-                    <div className="flex flex-col items-center gap-3 text-gray-500">
-                      <RefreshCw className="h-8 w-8 animate-spin" />
-                      <span className="text-sm">Loading logs...</span>
-                    </div>
+            <div className="h-full overflow-auto p-4">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="flex flex-col items-center gap-3 text-gray-500">
+                    <RefreshCw className="h-8 w-8 animate-spin" />
+                    <span className="text-sm">Loading logs...</span>
                   </div>
-                ) : filteredLogs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                    <FileText className="h-16 w-16 opacity-20 mb-4" />
-                    <p className="text-lg font-medium">No logs found</p>
-                    <p className="text-sm">Try adjusting your filters</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {filteredLogs.map((log, i) => {
-                      const hasStatusChanged = statusChangedIds.has(log.query_id);
-                      return (
-                        <React.Fragment key={log.query_id + i}>
+                </div>
+              ) : filteredLogs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <FileText className="h-16 w-16 opacity-20 mb-4" />
+                  <p className="text-lg font-medium">No logs found</p>
+                  <p className="text-sm">Try adjusting your filters</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredLogs.map((log, i) => {
+                    const hasStatusChanged = statusChangedIds.has(log.query_id);
+                    return (
+                      <React.Fragment key={log.query_id + i}>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{
+                            opacity: 1,
+                            y: 0,
+                            scale: hasStatusChanged ? [1, 1.02, 1] : 1,
+                            backgroundColor: hasStatusChanged
+                              ? (log.type === "QueryFinish" ? "rgba(34, 197, 94, 0.1)" : (isFailedLog(log) ? "rgba(239, 68, 68, 0.1)" : "rgba(255, 255, 255, 0.05)"))
+                              : "rgba(255, 255, 255, 0.05)"
+                          }}
+                          transition={{
+                            delay: Math.min(i * 0.02, 0.5),
+                            scale: hasStatusChanged ? { duration: 0.5, ease: "easeOut" } : undefined,
+                            backgroundColor: hasStatusChanged ? { duration: 0.5 } : undefined
+                          }}
+                          onClick={() => setExpandedLog(expandedLog === log.query_id ? null : log.query_id)}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-xl cursor-pointer",
+                            "hover:bg-white/10 transition-all",
+                            "border border-transparent hover:border-white/10",
+                            expandedLog === log.query_id && "border-white/20 bg-white/10",
+                            hasStatusChanged && "ring-2 ring-offset-2 ring-offset-[#0a0a0a]",
+                            hasStatusChanged && log.type === "QueryFinish" && "ring-green-500/50",
+                            hasStatusChanged && isFailedLog(log) && "ring-red-500/50"
+                          )}
+                        >
+                          {/* Status Icon */}
                           <motion.div
-                            initial={{ opacity: 0, y: 10 }}
+                            className="flex-shrink-0"
                             animate={{
-                              opacity: 1,
-                              y: 0,
-                              scale: hasStatusChanged ? [1, 1.02, 1] : 1,
-                              backgroundColor: hasStatusChanged
-                                ? (log.type === "QueryFinish" ? "rgba(34, 197, 94, 0.1)" : (isFailedLog(log) ? "rgba(239, 68, 68, 0.1)" : "rgba(255, 255, 255, 0.05)"))
-                                : "rgba(255, 255, 255, 0.05)"
+                              scale: hasStatusChanged ? [1, 1.2, 1] : 1,
                             }}
                             transition={{
-                              delay: Math.min(i * 0.02, 0.5),
-                              scale: hasStatusChanged ? { duration: 0.5, ease: "easeOut" } : undefined,
-                              backgroundColor: hasStatusChanged ? { duration: 0.5 } : undefined
+                              duration: 0.5,
+                              ease: "easeOut"
                             }}
-                            onClick={() => setExpandedLog(expandedLog === log.query_id ? null : log.query_id)}
-                            className={cn(
-                              "flex items-center gap-3 p-3 rounded-xl cursor-pointer",
-                              "hover:bg-white/10 transition-all",
-                              "border border-transparent hover:border-white/10",
-                              expandedLog === log.query_id && "border-white/20 bg-white/10",
-                              hasStatusChanged && "ring-2 ring-offset-2 ring-offset-[#0a0a0a]",
-                              hasStatusChanged && log.type === "QueryFinish" && "ring-green-500/50",
-                              hasStatusChanged && isFailedLog(log) && "ring-red-500/50"
-                            )}
                           >
-                            {/* Status Icon */}
-                            <motion.div
-                              className="flex-shrink-0"
-                              animate={{
-                                scale: hasStatusChanged ? [1, 1.2, 1] : 1,
-                              }}
-                              transition={{
-                                duration: 0.5,
-                                ease: "easeOut"
-                              }}
-                            >
-                              {log.type === "QueryFinish" ? (
-                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                              ) : isFailedLog(log) ? (
-                                <XCircle className="h-4 w-4 text-red-500" />
-                              ) : (
-                                <Zap className="h-4 w-4 text-amber-500 animate-pulse" />
-                              )}
-                            </motion.div>
-
-                            {/* Query Preview */}
-                            <div className="flex-1 overflow-hidden">
-                              <p className="text-sm text-gray-300 font-mono truncate">{log.query}</p>
-                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                                <span className="flex items-center gap-1" title={log.rbacUser ? `RBAC User: ${log.rbacUser}${log.rbacUserId ? ` (${log.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${log.user}` : `ClickHouse User: ${log.user}`}>
-                                  <User className="h-3 w-3" />
-                                  {log.rbacUser ? (
-                                    <span>{log.rbacUser}</span>
-                                  ) : (
-                                    <span>{log.user}</span>
-                                  )}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Timer className="h-3 w-3" />
-                                  {log.query_duration_ms}ms
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {log.event_time}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Expand Icon */}
-                            <ChevronDown
-                              className={cn(
-                                "h-4 w-4 text-gray-500 transition-transform",
-                                expandedLog === log.query_id && "rotate-180"
-                              )}
-                            />
+                            {log.type === "QueryFinish" ? (
+                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                            ) : isFailedLog(log) ? (
+                              <XCircle className="h-4 w-4 text-red-500" />
+                            ) : (
+                              <Zap className="h-4 w-4 text-amber-500 animate-pulse" />
+                            )}
                           </motion.div>
 
-                          <AnimatePresence>
-                            {expandedLog === log.query_id && (
-                              <QueryDetail log={log} onClose={() => setExpandedLog(null)} isFailed={isFailedLog(log)} exceptionQueryIds={exceptionQueryIds} />
+                          {/* Query Preview */}
+                          <div className="flex-1 overflow-hidden">
+                            <p className="text-sm text-gray-300 font-mono truncate">{log.query}</p>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                              <span className="flex items-center gap-1" title={log.rbacUser ? `RBAC User: ${log.rbacUser}${log.rbacUserId ? ` (${log.rbacUserId.substring(0, 8)}...)` : ''}\nClickHouse User: ${log.user}` : `ClickHouse User: ${log.user}`}>
+                                <User className="h-3 w-3" />
+                                {log.rbacUser ? (
+                                  <span>{log.rbacUser}</span>
+                                ) : (
+                                  <span>{log.user}</span>
+                                )}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Timer className="h-3 w-3" />
+                                {log.query_duration_ms}ms
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {log.event_time}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Expand Icon */}
+                          <ChevronDown
+                            className={cn(
+                              "h-4 w-4 text-gray-500 transition-transform",
+                              expandedLog === log.query_id && "rotate-180"
                             )}
-                          </AnimatePresence>
-                        </React.Fragment>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+                          />
+                        </motion.div>
+
+                        <AnimatePresence>
+                          {expandedLog === log.query_id && (
+                            <QueryDetail log={log} onClose={() => setExpandedLog(null)} isFailed={isFailedLog(log)} exceptionQueryIds={exceptionQueryIds} />
+                          )}
+                        </AnimatePresence>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </motion.div>
       </div >
