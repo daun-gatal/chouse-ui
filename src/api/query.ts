@@ -112,43 +112,17 @@ export function detectQueryType(sql: string): 'select' | 'insert' | 'update' | '
 // ============================================
 
 /**
- * Execute a SQL query (automatically routes to appropriate endpoint)
- * @deprecated Use specific query functions (executeSelect, executeInsert, etc.) for better type safety
+ * Execute a SQL query
+ * Routes to the generic execution endpoint which handles parsing and permission checks
  */
 export async function executeQuery<T = Record<string, unknown>>(
   query: string,
   format: 'JSON' | 'JSONEachRow' | 'CSV' | 'TabSeparated' = 'JSON',
   queryId?: string
 ): Promise<QueryResult<T>> {
-  // Auto-detect query type and route to appropriate endpoint
-  const queryType = detectQueryType(query);
-
-  switch (queryType) {
-    case 'select':
-      return executeSelect<T>(query, format, queryId);
-    case 'insert':
-      return executeInsert<T>(query, format, queryId);
-    case 'update':
-      return executeUpdate<T>(query, format, queryId);
-    case 'delete':
-      return executeDelete<T>(query, format, queryId);
-    case 'create':
-      return executeCreate<T>(query, format, queryId);
-    case 'drop':
-      return executeDrop<T>(query, format, queryId);
-    case 'alter':
-      return executeAlter<T>(query, format, queryId);
-    case 'truncate':
-      return executeTruncate<T>(query, format, queryId);
-    case 'show':
-      return executeShow<T>(query, format, queryId);
-    case 'system':
-      return executeSystem<T>(query, format, queryId);
-    default:
-      // Unknown query type - try to route as SELECT (safest default for read operations)
-      console.warn(`[Query API] Unknown query type, routing as SELECT: ${query.substring(0, 50)}...`);
-      return executeSelect<T>(query, format, queryId);
-  }
+  // Use the generic execution endpoint for all queries
+  // The backend determines the query type and validates permissions
+  return api.post<QueryResult<T>>('/query/execute', { query, format, queryId });
 }
 
 /**

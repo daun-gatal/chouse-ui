@@ -873,6 +873,8 @@ export function useMetrics(
       tablesCount: number;
       replicasOk: number;
       replicasTotal: number;
+      totalRows: number;
+      totalBytes: number;
     };
   }, Error>>
 ) {
@@ -969,6 +971,8 @@ export function useMetrics(
         tablesCount: 0,
         replicasOk: 0,
         replicasTotal: 0,
+        totalRows: 0,
+        totalBytes: 0,
       };
 
       try {
@@ -978,8 +982,10 @@ export function useMetrics(
             (SELECT count() FROM system.processes) as activeQueries,
             (SELECT value FROM system.metrics WHERE metric = 'TCPConnection' LIMIT 1) as connections,
             (SELECT value FROM system.asynchronous_metrics WHERE metric = 'Uptime' LIMIT 1) as uptime,
-            (SELECT count() FROM system.databases WHERE name NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')) as databasesCount,
-            (SELECT count() FROM system.tables WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')) as tablesCount,
+            (SELECT sum(rows) FROM system.parts WHERE active) as totalRows,
+            (SELECT sum(bytes_on_disk) FROM system.parts WHERE active) as totalBytes,
+            (SELECT count() FROM system.databases) as databasesCount,
+            (SELECT count() FROM system.tables WHERE database NOT IN ('system', 'information_schema')) as tablesCount,
             (SELECT count() FROM system.parts WHERE active) as partsCount
         `);
 
@@ -989,9 +995,13 @@ export function useMetrics(
           currentStats.activeQueries = Number(row.activeQueries) || 0;
           currentStats.connections = Number(row.connections) || 0;
           currentStats.uptime = Number(row.uptime) || 0;
+          currentStats.partsCount = Number(row.partsCount) || 0;
+
+          // Consistent metrics (matched with Server logic)
+          currentStats.totalRows = Number(row.totalRows) || 0;
+          currentStats.totalBytes = Number(row.totalBytes) || 0;
           currentStats.databasesCount = Number(row.databasesCount) || 0;
           currentStats.tablesCount = Number(row.tablesCount) || 0;
-          currentStats.partsCount = Number(row.partsCount) || 0;
         }
 
         // Calculate totals from time series
