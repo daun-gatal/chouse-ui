@@ -133,6 +133,107 @@ describe("Data Access Middleware", () => {
             expect(result.allowed).toBe(false);
             expect(result.reason).toContain("No permission for admin");
         });
+
+        it("should allow mixed valid statements", async () => {
+            // SELECT (read) + SHOW (misc)
+            const sql = "SELECT * FROM users; SHOW TABLES";
+
+            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+            // User has both read and misc permissions
+            const permissions = ["table:select", "query:execute:misc", "read", "misc"];
+            // Note: permissions passed to validateQueryAccess are the raw strings.
+            // validateQueryAccess calls hasPermissionForAccessType checking against defined lists.
+            // 'table:select' is in READ_PERMISSIONS. 'query:execute:misc' is in MISC_PERMISSIONS.
+
+            const result = await validateQueryAccess(userId, false, ["table:select", "query:execute:misc"], sql);
+
+            expect(result.allowed).toBe(true);
+        });
+
+        it("should check table access for ALL tables in multi-statement query", async () => {
+            const sql = "SELECT * FROM allowed_table; SELECT * FROM denied_table";
+
+            // Setup mock to allow first table, deny second
+            mockRbacService.checkUserAccess.mockImplementation(async (userId, db, table) => {
+                if (table === 'allowed_table') return { allowed: true };
+                if (table === 'denied_table') return { allowed: false, reason: 'Denied table' };
+                return { allowed: true };
+            });
+
+            const result = await validateQueryAccess(userId, false, ["table:select"], sql);
+
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain("Access denied to");
+            expect(result.reason).toContain("denied_table");
+        });
+
+        it("should validate permissions for MIXED types (DQL, MISC, DML, DDL)", async () => {
+            const sql = "SELECT 1; SHOW TABLES; INSERT INTO t VALUES(1); CREATE TABLE t2 (a Int)";
+
+            // Reset mock to allow everything for this test (we are testing permissions here)
+            // Need to ensure checkUserAccess returns allowed: true
+            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+            // Case 1: All permissions -> Allowed
+            const allPerms = ["table:select", "query:execute:misc", "table:insert", "table:create"];
+            const resultAllowed = await validateQueryAccess(userId, false, allPerms, sql);
+            expect(resultAllowed.allowed).toBe(true);
+
+            // Case 2: Missing DDL -> Denied
+            const missingDdl = ["table:select", "query:execute:misc", "table:insert"];
+            const resultDenied = await validateQueryAccess(userId, false, missingDdl, sql);
+            expect(resultDenied.allowed).toBe(false);
+            expect(resultDenied.reason).toContain("create");
+        });
+
+        describe("Detailed Failure Scenarios", () => {
+            it("should fail when using TRUNCATE (admin) with only write permission", async () => {
+                const sql = "TRUNCATE TABLE logs";
+                mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+                // User has write permissions (INSERT/UPDATE/DELETE) but TRUNCATE is admin
+                const permissions = ["table:insert", "table:delete", "write"];
+
+                const result = await validateQueryAccess(userId, false, permissions, sql);
+
+                expect(result.allowed).toBe(false);
+                expect(result.reason).toContain("No permission for admin");
+            });
+
+            it("should fail validation for specific statement in a long batch", async () => {
+                // 3 valid statements, 4th is invalid (DROP)
+                const sql = "SELECT 1; SELECT 2; SHOW TABLES; DROP TABLE x; SELECT 3";
+                mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+                const permissions = ["table:select", "query:execute:misc", "read", "misc"];
+
+                const result = await validateQueryAccess(userId, false, permissions, sql);
+
+                expect(result.allowed).toBe(false);
+                expect(result.statementIndex).toBe(3); // 0-indexed, so 4th statement is index 3
+                expect(result.reason).toContain("Statement 4");
+            });
+
+            it("should fail if database access is explicitly denied even if table pattern matches", async () => {
+                const sql = "SELECT * FROM restricted_db.public_table";
+
+                // Mock: Table matches, but implicit check logic in service might flag DB
+                // In our integration, checkUserAccess handles this. 
+                // We simulate checkUserAccess returning false.
+                mockRbacService.checkUserAccess.mockResolvedValue({
+                    allowed: false,
+                    reason: "Database access denied"
+                });
+
+                const permissions = ["table:select", "read"];
+
+                const result = await validateQueryAccess(userId, false, permissions, sql);
+
+                expect(result.allowed).toBe(false);
+                expect(result.reason).toContain("Access denied to restricted_db.public_table");
+            });
+        });
     });
 
     describe("extractTablesFromQuery", () => {

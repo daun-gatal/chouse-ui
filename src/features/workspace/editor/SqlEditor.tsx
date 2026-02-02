@@ -464,20 +464,29 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
         <div className="flex items-center gap-2">
           <TooltipProvider>
             <div className="flex items-center gap-1 bg-white/5 border border-white/10 p-1 rounded-xl shadow-2xl backdrop-blur-md">
-              {tab?.isLoading && canKillQuery ? (
+              {tab?.isLoading ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setIsKillDialogOpen(true)}
-                      disabled={killQueryMutation.isPending}
-                      className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-600 hover:text-white transition-all duration-200"
+                      disabled={!canKillQuery || killQueryMutation.isPending}
+                      className={cn(
+                        "h-8 w-8 p-0 text-muted-foreground transition-all duration-200",
+                        canKillQuery
+                          ? "hover:bg-red-600 hover:text-white"
+                          : "opacity-50 cursor-not-allowed"
+                      )}
                     >
                       <CircleStop className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Terminate current query execution</TooltipContent>
+                  <TooltipContent>
+                    {canKillQuery
+                      ? "Terminate current query execution"
+                      : "Query is running (Termination restricted)"}
+                  </TooltipContent>
                 </Tooltip>
               ) : (
                 <Tooltip>

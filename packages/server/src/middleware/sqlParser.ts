@@ -16,12 +16,12 @@ const parser = new Parser();
 
 export interface ParsedStatement {
   statement: string;
-  type: 'select' | 'insert' | 'update' | 'delete' | 'create' | 'drop' | 'alter' | 'truncate' | 'show' | 'describe' | 'unknown';
+  type: 'select' | 'insert' | 'update' | 'delete' | 'create' | 'drop' | 'alter' | 'truncate' | 'show' | 'describe' | 'use' | 'set' | 'explain' | 'exists' | 'check' | 'kill' | 'unknown';
   tables: Array<{ database?: string; table: string }>;
   ast?: AST | AST[];
 }
 
-export type AccessType = 'read' | 'write' | 'admin';
+export type AccessType = 'read' | 'write' | 'admin' | 'misc';
 
 /**
  * Split SQL query into individual statements
@@ -190,6 +190,12 @@ function getStatementTypeFromAST(ast: AST): ParsedStatement['type'] {
   if (type.includes('truncate')) return 'truncate';
   if (type.includes('show')) return 'show';
   if (type.includes('describe') || type.includes('desc')) return 'describe';
+  if (type.includes('use')) return 'use';
+  if (type.includes('set')) return 'set';
+  if (type.includes('explain')) return 'explain';
+  if (type.includes('exists')) return 'exists';
+  if (type.includes('check')) return 'check';
+  if (type.includes('kill')) return 'kill';
 
   return 'unknown';
 }
@@ -228,10 +234,10 @@ function extractTablesFromAST(ast: AST): Array<{ database?: string; table: strin
   }
 
   // DDL: table name in various places
-  if (astAny.table && (astAny.type?.toLowerCase().includes('create') || 
-                       astAny.type?.toLowerCase().includes('drop') || 
-                       astAny.type?.toLowerCase().includes('alter') ||
-                       astAny.type?.toLowerCase().includes('truncate'))) {
+  if (astAny.table && (astAny.type?.toLowerCase().includes('create') ||
+    astAny.type?.toLowerCase().includes('drop') ||
+    astAny.type?.toLowerCase().includes('alter') ||
+    astAny.type?.toLowerCase().includes('truncate'))) {
     extractTableFromTableClause(astAny.table, tables);
   }
 
@@ -287,9 +293,9 @@ function extractTableFromTableClause(table: any, tables: Array<{ database?: stri
 
   if (typeof table === 'object') {
     const db = table.db ? String(table.db).replace(/[`"]/g, '') : undefined;
-    const tableName = table.table ? String(table.table).replace(/[`"]/g, '') : 
-                      table.name ? String(table.name).replace(/[`"]/g, '') : undefined;
-    
+    const tableName = table.table ? String(table.table).replace(/[`"]/g, '') :
+      table.name ? String(table.name).replace(/[`"]/g, '') : undefined;
+
     if (tableName) {
       tables.push({ database: db, table: tableName });
     }
@@ -302,8 +308,8 @@ function extractTableFromTableClause(table: any, tables: Array<{ database?: stri
  */
 function getStatementTypeFallback(statement: string): ParsedStatement['type'] {
   const normalized = statement.trim().toUpperCase();
-  
-  if (normalized.startsWith('SELECT')) return 'select';
+
+  if (normalized.startsWith('SELECT') || normalized.startsWith('WITH')) return 'select';
   if (normalized.startsWith('INSERT')) return 'insert';
   if (normalized.startsWith('UPDATE')) return 'update';
   if (normalized.startsWith('DELETE')) return 'delete';
@@ -313,7 +319,13 @@ function getStatementTypeFallback(statement: string): ParsedStatement['type'] {
   if (normalized.startsWith('TRUNCATE')) return 'truncate';
   if (normalized.startsWith('SHOW')) return 'show';
   if (normalized.startsWith('DESCRIBE') || normalized.startsWith('DESC')) return 'describe';
-  
+  if (normalized.startsWith('USE')) return 'use';
+  if (normalized.startsWith('SET')) return 'set';
+  if (normalized.startsWith('EXPLAIN')) return 'explain';
+  if (normalized.startsWith('EXISTS')) return 'exists';
+  if (normalized.startsWith('CHECK')) return 'check';
+  if (normalized.startsWith('KILL')) return 'kill';
+
   return 'unknown';
 }
 
@@ -324,7 +336,7 @@ function getStatementTypeFallback(statement: string): ParsedStatement['type'] {
 function extractTablesFallback(statement: string): Array<{ database?: string; table: string }> {
   const tables: Array<{ database?: string; table: string }> = [];
   const normalizedSql = statement.replace(/\s+/g, ' ').trim();
-  
+
   const patterns = [
     /FROM\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
     /FROM\s+([`"]?[\w]+[`"]?)/gi,
@@ -361,9 +373,16 @@ function extractTablesFallback(statement: string): Array<{ database?: string; ta
 export function getAccessTypeFromStatementType(statementType: ParsedStatement['type']): AccessType {
   switch (statementType) {
     case 'select':
+      return 'read';
     case 'show':
     case 'describe':
-      return 'read';
+    case 'use':
+    case 'set':
+    case 'explain':
+    case 'exists':
+    case 'check':
+    case 'kill':
+      return 'misc';
     case 'insert':
     case 'update':
     case 'delete':
@@ -374,6 +393,6 @@ export function getAccessTypeFromStatementType(statementType: ParsedStatement['t
     case 'truncate':
       return 'admin';
     default:
-      return 'read'; // Default to read for unknown types
+      return 'misc'; // Default to misc instead of read for safety (unknown commands shouldn't query data)
   }
 }

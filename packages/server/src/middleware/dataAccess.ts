@@ -7,18 +7,18 @@
 
 import { Context, Next } from 'hono';
 import { verifyAccessToken, extractTokenFromHeader, type TokenPayload } from '../rbac/services/jwt';
-import { 
-  checkUserAccess, 
-  filterDatabasesForUser, 
+import {
+  checkUserAccess,
+  filterDatabasesForUser,
   filterTablesForUser,
-  type AccessType 
+  type AccessType
 } from '../rbac/services/dataAccess';
 import { AppError } from '../types';
-import { 
-  splitSqlStatements, 
-  parseStatement, 
+import {
+  splitSqlStatements,
+  parseStatement,
   getAccessTypeFromStatementType,
-  type ParsedStatement 
+  type ParsedStatement
 } from './sqlParser';
 
 // ============================================
@@ -37,6 +37,7 @@ export interface DataAccessContext {
 // ============================================
 
 const READ_PERMISSIONS = ['table:select', 'query:execute', 'database:view', 'table:view'];
+const MISC_PERMISSIONS = ['query:execute:misc'];
 const WRITE_PERMISSIONS = ['table:insert', 'table:update', 'table:delete', 'query:execute:dml'];
 const ADMIN_PERMISSIONS = ['table:create', 'table:alter', 'table:drop', 'database:create', 'database:drop', 'query:execute:ddl'];
 
@@ -47,6 +48,8 @@ function hasPermissionForAccessType(permissions: string[], accessType: AccessTyp
   switch (accessType) {
     case 'read':
       return permissions.some(p => READ_PERMISSIONS.includes(p));
+    case 'misc':
+      return permissions.some(p => MISC_PERMISSIONS.includes(p));
     case 'write':
       return permissions.some(p => WRITE_PERMISSIONS.includes(p));
     case 'admin':
@@ -99,7 +102,7 @@ export async function checkDatabaseAccess(
 ): Promise<boolean> {
   // Admins have full access
   if (isAdmin) return true;
-  
+
   // RBAC user is required
   if (!userId) {
     throw new Error('RBAC user is required for database access checks');
@@ -122,7 +125,7 @@ export async function checkTableAccess(
 ): Promise<boolean> {
   // Admins have full access
   if (isAdmin) return true;
-  
+
   // RBAC user is required
   if (!userId) {
     throw new Error('RBAC user is required for table access checks');
@@ -148,7 +151,7 @@ export async function filterDatabases(
 ): Promise<string[]> {
   // Admins see all (including system databases)
   if (isAdmin) return databases;
-  
+
   // RBAC user is required
   if (!userId) {
     throw new Error('RBAC user is required for database filtering');
@@ -173,7 +176,7 @@ export async function filterTables(
 ): Promise<string[]> {
   // Admins see all (including system tables)
   if (isAdmin) return tables;
-  
+
   // RBAC user is required
   if (!userId) {
     throw new Error('RBAC user is required for table filtering');
@@ -213,22 +216,29 @@ export function getQueryAccessType(sql: string): AccessType {
   } catch (error) {
     // Fallback to simple pattern matching
     const normalizedSql = sql.trim().toUpperCase();
-    
-    if (normalizedSql.startsWith('SELECT') || normalizedSql.startsWith('SHOW') || normalizedSql.startsWith('DESCRIBE')) {
+
+    if (normalizedSql.startsWith('SELECT') || normalizedSql.startsWith('WITH')) {
       return 'read';
     }
-    
+
+    if (normalizedSql.startsWith('SHOW') || normalizedSql.startsWith('DESCRIBE') ||
+      normalizedSql.startsWith('USE') || normalizedSql.startsWith('SET') ||
+      normalizedSql.startsWith('EXPLAIN') || normalizedSql.startsWith('EXISTS') ||
+      normalizedSql.startsWith('CHECK') || normalizedSql.startsWith('KILL')) {
+      return 'misc';
+    }
+
     if (normalizedSql.startsWith('INSERT') || normalizedSql.startsWith('UPDATE') || normalizedSql.startsWith('DELETE')) {
       return 'write';
     }
-    
+
     // DDL operations
-    if (normalizedSql.startsWith('CREATE') || normalizedSql.startsWith('DROP') || 
-        normalizedSql.startsWith('ALTER') || normalizedSql.startsWith('TRUNCATE')) {
+    if (normalizedSql.startsWith('CREATE') || normalizedSql.startsWith('DROP') ||
+      normalizedSql.startsWith('ALTER') || normalizedSql.startsWith('TRUNCATE')) {
       return 'admin';
     }
-    
-    return 'read';
+
+    return 'misc'; // Default to misc for unknown types
   }
 }
 
@@ -269,7 +279,7 @@ async function validateSingleStatement(
   }
 
   const accessType = getAccessTypeFromStatementType(parsed.type);
-  
+
   // Check if user has permission for this type of operation (based on role)
   if (!hasPermissionForAccessType(permissions, accessType)) {
     return {
@@ -280,13 +290,13 @@ async function validateSingleStatement(
   }
 
   let tables = parsed.tables;
-  
+
   // Deduplicate tables: prefer entries with database names over those without
   const tableMap = new Map<string, { database?: string; table: string }>();
   for (const table of tables) {
     const key = table.table || '';
     if (!key) continue;
-    
+
     const existing = tableMap.get(key);
     // Prefer entry with database name, or keep existing if it already has one
     if (!existing || (!existing.database && table.database)) {
@@ -294,7 +304,7 @@ async function validateSingleStatement(
     }
   }
   tables = Array.from(tableMap.values());
-  
+
   // If no tables detected, allow (might be a system query)
   if (tables.length === 0) {
     return { allowed: true };
@@ -324,7 +334,7 @@ async function validateSingleStatement(
   for (const { database, table } of tables) {
     let db = database || defaultDatabase || 'default';
     let tbl = table || '*';
-    
+
     // Fix for parser errors: If database is missing but table exists, try to extract database.table from statement
     // This handles cases where the parser fails to extract the database name (e.g., "CH_UI.saved_queries")
     if (!database && tbl !== '*' && db === (defaultDatabase || 'default')) {
@@ -341,7 +351,7 @@ async function validateSingleStatement(
         // SELECT ... FROM database.table
         /SELECT\s+.*?\s+FROM\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/i,
       ];
-      
+
       for (const pattern of dbTablePatterns) {
         const dbTableMatch = statement.match(pattern);
         if (dbTableMatch && dbTableMatch[2]) {
@@ -355,7 +365,7 @@ async function validateSingleStatement(
           }
         }
       }
-      
+
       // Special case: If we have a table name that looks like a database name and the statement has "database.table" pattern,
       // it might be that the parser extracted the database as the table. Try to find the actual table name.
       // Example: "SELECT * FROM CH_UI.saved_queries" might be parsed as table="CH_UI" when it should be db="CH_UI", table="saved_queries"
@@ -366,7 +376,7 @@ async function validateSingleStatement(
           new RegExp(`(?:FROM|JOIN|INTO|UPDATE)\\s+([\`"]?${tbl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\`"]?)\\.([\`"]?[\\w]+[\`"]?)`, 'i'),
           new RegExp(`(?:DROP|CREATE|ALTER|TRUNCATE)\\s+TABLE\\s+([\`"]?${tbl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\`"]?)\\.([\`"]?[\\w]+[\`"]?)`, 'i'),
         ];
-        
+
         for (const pattern of dbAsTablePatterns) {
           const dbAsTableMatch = statement.match(pattern);
           if (dbAsTableMatch && dbAsTableMatch[2]) {
@@ -382,7 +392,7 @@ async function validateSingleStatement(
         }
       }
     }
-    
+
     // Fix for parser errors: If table is 'system' but we're checking against 'default' database,
     // it's likely the parser incorrectly extracted 'system' as the table name from 'system.tableName'
     // Try to extract the correct database.table from the statement
@@ -393,12 +403,12 @@ async function validateSingleStatement(
         tbl = systemTableMatch[1].replace(/[`"]/g, '');
       }
     }
-    
+
     // If table is a known system table but database is not 'system', check against 'system' database
     if (tbl !== '*' && SYSTEM_TABLES.includes(tbl.toLowerCase()) && db !== 'system') {
       db = 'system';
     }
-    
+
     // Additional fix: If database is 'system' but table is still 'system' or '*', extract from statement
     if (db === 'system' && (tbl === 'system' || tbl === '*')) {
       const fallbackMatch = statement.match(/FROM\s+system\.([`"]?[\w]+[`"]?)/i);
@@ -406,14 +416,14 @@ async function validateSingleStatement(
         tbl = fallbackMatch[1].replace(/[`"]/g, '');
       }
     }
-    
+
     // System databases are hidden from Explorer UI but queries are still allowed
     // Check user access normally (don't block system database queries)
     const result = await checkUserAccess(userId, db, tbl, accessType, connectionId);
-    
+
     if (!result.allowed) {
-      return { 
-        allowed: false, 
+      return {
+        allowed: false,
         reason: `Statement ${statementIndex + 1}: Access denied to ${db}.${tbl} (requires ${accessType} permission)`,
         statementIndex,
       };
@@ -459,7 +469,7 @@ export async function validateQueryAccess(
 ): Promise<{ allowed: boolean; reason?: string; statementIndex?: number }> {
   // Admins have full access
   if (isAdmin) return { allowed: true };
-  
+
   // RBAC user is required
   if (!userId) {
     return {
@@ -470,7 +480,7 @@ export async function validateQueryAccess(
 
   // Split SQL into individual statements
   const statements = splitSqlStatements(sql);
-  
+
   // If no valid statements found, deny
   if (statements.length === 0) {
     return {
