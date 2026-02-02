@@ -62,7 +62,14 @@ export function redactSecrets(query: string): string {
   let redacted = query;
   // Redact IDENTIFIED BY/WITH '...'
   redacted = redacted.replace(/(IDENTIFIED\s+(?:WITH\s+[a-zA-Z0-9_]+\s+)?BY\s+)'[^']+'/gi, "$1'******'");
-  // Redact PASSWORD '...'
   redacted = redacted.replace(/(PASSWORD\s+)'[^']+'/gi, "$1'******'");
   return redacted;
+}
+
+export function formatCompactNumber(number: number): string {
+  if (number === 0) return "0";
+  return Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(number);
 }
