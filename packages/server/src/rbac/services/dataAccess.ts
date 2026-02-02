@@ -17,7 +17,7 @@ type AnyDb = any;
 // Types
 // ============================================
 
-export type AccessType = 'read' | 'write' | 'admin';
+export type AccessType = 'read' | 'write' | 'admin' | 'misc';
 
 export interface DataAccessRuleInput {
   roleId?: string | null;  // Either roleId or userId must be set
@@ -75,7 +75,7 @@ function patternToRegex(pattern: string): RegExp {
 function matchesPattern(value: string, pattern: string): boolean {
   // Wildcard for all
   if (pattern === '*') return true;
-  
+
   // Regex pattern (starts with /)
   if (pattern.startsWith('/') && pattern.endsWith('/')) {
     try {
@@ -85,12 +85,12 @@ function matchesPattern(value: string, pattern: string): boolean {
       return false;
     }
   }
-  
+
   // Simple wildcard pattern
   if (pattern.includes('*')) {
     return patternToRegex(pattern).test(value);
   }
-  
+
   // Exact match (case-insensitive)
   return value.toLowerCase() === pattern.toLowerCase();
 }
@@ -224,7 +224,7 @@ export async function getRulesForRole(
   const schema = getSchema();
 
   const conditions = [eq(schema.dataAccessRules.roleId, roleId)];
-  
+
   if (connectionId) {
     // Get rules for this specific connection OR global rules (null connectionId)
     conditions.push(
@@ -263,7 +263,7 @@ export async function getRulesForUser(
       )!
     );
   }
-  
+
   const userRules = await db.select()
     .from(schema.dataAccessRules)
     .where(and(...userConditions))
@@ -280,7 +280,7 @@ export async function getRulesForUser(
 
     // Get all rules for those roles
     const roleConditions = [inArray(schema.dataAccessRules.roleId, roleIds)];
-    
+
     if (connectionId) {
       roleConditions.push(
         or(
@@ -523,28 +523,28 @@ export async function filterDatabasesForUser(
   connectionId?: string
 ): Promise<string[]> {
   const rules = await getRulesForUser(userId, connectionId);
-  
+
   // Debug logging
   console.log('[DataAccess] filterDatabasesForUser:', {
     userId,
     connectionId,
     rulesCount: rules.length,
-    rules: rules.map(r => ({ 
-      id: r.id.substring(0, 8), 
-      roleId: r.roleId?.substring(0, 8), 
+    rules: rules.map(r => ({
+      id: r.id.substring(0, 8),
+      roleId: r.roleId?.substring(0, 8),
       userId: r.userId?.substring(0, 8),
-      db: r.databasePattern, 
-      table: r.tablePattern, 
-      allowed: r.isAllowed 
+      db: r.databasePattern,
+      table: r.tablePattern,
+      allowed: r.isAllowed
     })),
   });
-  
+
   // If no rules, return empty (secure by default)
   // System databases will be filtered out by the caller for non-admin users
   if (rules.length === 0) {
     return [];
   }
-  
+
   // Check each database
   // Note: System databases are not automatically included here
   // They will be filtered out by the caller for non-admin users
@@ -568,10 +568,10 @@ export async function filterTablesForUser(
   connectionId?: string
 ): Promise<string[]> {
   const rules = await getRulesForUser(userId, connectionId);
-  
+
   // If no rules, return empty (secure by default)
   if (rules.length === 0) return [];
-  
+
   // Check each table
   return tables.filter(table => {
     const result = evaluateRules(rules, database, table, 'read');

@@ -183,4 +183,48 @@ describe("Query Routes", () => {
             expect(res.status).toBe(400);
         });
     });
+    describe("POST /query/execute", () => {
+        it("should execute standard SELECT query", async () => {
+            mockExecuteQuery.mockResolvedValue({ data: [] });
+
+            const res = await app.request("/query/execute", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ query: "SELECT * FROM t1" })
+            });
+
+            expect(res.status).toBe(200);
+            expect(mockExecuteQuery).toHaveBeenCalledWith("SELECT * FROM t1", "JSON", undefined);
+        });
+
+        it("should execute MISC query if allowed", async () => {
+            // Mock permissions to allow MISC (SHOW)
+            // Note: mocked middleware sets permissions in beforeEach, we might need to override or rely on validateQueryAccess mock
+            // The mockValidateQueryAccess is set to allow: true by default in beforeEach
+            mockExecuteQuery.mockResolvedValue({ data: [] });
+
+            const res = await app.request("/query/execute", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ query: "SHOW TABLES" })
+            });
+
+            expect(res.status).toBe(200);
+            expect(mockExecuteQuery).toHaveBeenCalledWith("SHOW TABLES", "JSON", undefined);
+        });
+
+        it("should fail if validation denies", async () => {
+            mockValidateQueryAccess.mockResolvedValue({ allowed: false, reason: "Denied" });
+
+            const res = await app.request("/query/execute", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ query: "DROP TABLE vital_data" })
+            });
+
+            expect(res.status).toBe(403);
+            const body = await res.json();
+            expect(body.error.message).toBe("Denied");
+        });
+    });
 });

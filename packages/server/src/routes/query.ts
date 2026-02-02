@@ -435,6 +435,27 @@ const QueryRequestSchemaWithType = z.object({
 });
 
 /**
+ * POST /query/execute
+ * Generic endpoint for executing any SQL query
+ * Validates access based on command type (SELECT, INSERT, CREATE, etc.)
+ */
+query.post("/execute", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, format, queryId } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+
+  // Basic validation that we got a query
+  if (!sql || !sql.trim()) {
+    throw AppError.badRequest('Query is required');
+  }
+
+  // Determine query type for audit logging
+  // Note: Detailed validation happens in executeQueryWithValidation -> validateQueryAccess
+  const queryType = sql.trim().split(/\s+/)[0].toUpperCase();
+
+  return executeQueryWithValidation(c, sql, format, queryType, queryId);
+});
+
+/**
  * GET /query/intellisense
  * Get intellisense data (columns, functions, keywords)
  */
@@ -448,7 +469,8 @@ query.get("/intellisense", async (c) => {
     throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
   }
 
-  // Check RBAC permission for query execution (intellisense is used for querying)
+  // Check generic query permission (needed for intellisense)
+  // We use QUERY_EXECUTE (read) as a baseline requirement
   if (!isRbacAdmin) {
     const hasPermission = rbacPermissions?.includes(PERMISSIONS.QUERY_EXECUTE) || false;
     if (!hasPermission) {

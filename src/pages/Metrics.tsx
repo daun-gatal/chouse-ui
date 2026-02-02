@@ -47,7 +47,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
 import { useMetrics, useProductionMetrics } from "@/hooks";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes as formatBytesUtil, formatCompactNumber } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
 interface StatCardProps {
@@ -578,24 +578,24 @@ export default function Metrics({
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <Table2 className="h-5 w-5 text-green-400" />
+                <Layers className="h-5 w-5 text-green-400" />
                 <div>
                   <p className="text-xs text-gray-400">Tables</p>
                   <p className="text-lg font-semibold text-white">{stats?.tablesCount || 0}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <Layers className="h-5 w-5 text-orange-400" />
+                <HardDrive className="h-5 w-5 text-orange-400" />
                 <div>
-                  <p className="text-xs text-gray-400">Active Parts</p>
-                  <p className="text-lg font-semibold text-white">{stats?.partsCount || 0}</p>
+                  <p className="text-xs text-gray-400">Size</p>
+                  <p className="text-lg font-semibold text-white">{formatBytes(stats?.totalBytes || 0)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <ArrowUpDown className="h-5 w-5 text-purple-400" />
+                <Server className="h-5 w-5 text-purple-400" />
                 <div>
-                  <p className="text-xs text-gray-400">Total Queries</p>
-                  <p className="text-lg font-semibold text-white">{stats?.totalQueries?.toLocaleString() || 0}</p>
+                  <p className="text-xs text-gray-400">Total Rows</p>
+                  <p className="text-lg font-semibold text-white">{formatCompactNumber(stats?.totalRows || 0)}</p>
                 </div>
               </div>
             </motion.div>

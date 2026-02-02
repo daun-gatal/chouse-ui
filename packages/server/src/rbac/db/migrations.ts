@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.9.0';
+export const APP_VERSION = '1.10.1';
 
 // ============================================
 // Migration Registry
@@ -1013,6 +1013,204 @@ const MIGRATIONS: Migration[] = [
     },
     down: async (db) => {
       console.log('[Migration 1.9.0] Down migration: Audit log deletion permission will remain (idempotent seed)');
+    },
+  },
+  {
+    version: '1.10.0',
+    name: 'query_execute_misc_permission',
+    description: 'Add query:execute:misc permission for non-DQL/DML/DDL queries (SHOW, DESCRIBE, etc.)',
+    up: async (db) => {
+      // Use the existing seed function which is idempotent
+      const { seedPermissions } = await import('../services/seed');
+
+      // First ensure all permissions exist (including new ones)
+      const permissionIdMap = await seedPermissions();
+
+      console.log('[Migration 1.10.0] Query execute misc permission created');
+
+      // Get permission ID
+      const queryMiscId = permissionIdMap.get('query:execute:misc');
+
+      if (!queryMiscId) {
+        console.error('[Migration 1.10.0] Failed to get query:execute:misc permission ID');
+        return;
+      }
+
+      // Import database functions
+      const { getDatabaseType } = await import('./index');
+      const { SYSTEM_ROLES } = await import('../schema/base');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+
+      const dbType = getDatabaseType();
+
+      // Grant to Super Admin, Admin, Developer, and Analyst (as defined in base.ts)
+      const rolesToUpdate = [
+        SYSTEM_ROLES.SUPER_ADMIN,
+        SYSTEM_ROLES.ADMIN,
+        SYSTEM_ROLES.DEVELOPER,
+        SYSTEM_ROLES.ANALYST
+      ];
+
+      for (const roleName of rolesToUpdate) {
+        let roleResult: Array<{ id: string }>;
+
+        if (dbType === 'sqlite') {
+          roleResult = (db as SqliteDb).all(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `) as Array<{ id: string }>;
+        } else {
+          const rows = await (db as PostgresDb).execute(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `);
+          const raw = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          roleResult = raw as Array<{ id: string }>;
+        }
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          let existing: Array<unknown>;
+
+          if (dbType === 'sqlite') {
+            existing = (db as SqliteDb).all(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${queryMiscId} LIMIT 1
+            `);
+          } else {
+            const rows = await (db as PostgresDb).execute(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${queryMiscId} LIMIT 1
+            `);
+            existing = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          }
+
+          if (existing.length === 0) {
+            const id = randomUUID();
+            const createdAt = new Date();
+
+            if (dbType === 'sqlite') {
+              (db as SqliteDb).run(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${queryMiscId}, ${Math.floor(createdAt.getTime() / 1000)})
+              `);
+            } else {
+              // Postgres driver expects string/Buffer for bind params, not Date
+              await (db as PostgresDb).execute(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${queryMiscId}, ${createdAt.toISOString()})
+              `);
+            }
+            console.log(`[Migration 1.10.0] Assigned permission ${queryMiscId} to role ${roleName}`);
+          } else {
+            console.log(`[Migration 1.10.0] Permission ${queryMiscId} already assigned to role ${roleName}`);
+          }
+        }
+      }
+
+      console.log('[Migration 1.10.0] Query execute misc permission assigned to relevant roles');
+    },
+    down: async (db) => {
+      console.log('[Migration 1.10.0] Down migration: Query execute misc permission will remain (idempotent seed)');
+    },
+  },
+  {
+    version: '1.10.1',
+    name: 'fix_query_execute_misc_permission',
+    description: 'Retry assignment of query:execute:misc permission (fix for 1.10.0)',
+    up: async (db) => {
+      // Use the existing seed function which is idempotent
+      const { seedPermissions } = await import('../services/seed');
+
+      // First ensure all permissions exist (including new ones)
+      const permissionIdMap = await seedPermissions();
+
+      console.log('[Migration 1.10.1] Ensuring query execute misc permission exists');
+
+      // Get permission ID
+      const queryMiscId = permissionIdMap.get('query:execute:misc');
+
+      if (!queryMiscId) {
+        console.error('[Migration 1.10.1] Failed to get query:execute:misc permission ID');
+        return;
+      }
+
+      // Import database functions
+      const { getDatabaseType } = await import('./index');
+      const { SYSTEM_ROLES } = await import('../schema/base');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+
+      const dbType = getDatabaseType();
+
+      // Grant to Super Admin, Admin, Developer, and Analyst
+      const rolesToUpdate = [
+        SYSTEM_ROLES.SUPER_ADMIN,
+        SYSTEM_ROLES.ADMIN,
+        SYSTEM_ROLES.DEVELOPER,
+        SYSTEM_ROLES.ANALYST
+      ];
+
+      for (const roleName of rolesToUpdate) {
+        let roleResult: Array<{ id: string }>;
+
+        if (dbType === 'sqlite') {
+          roleResult = (db as SqliteDb).all(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `) as Array<{ id: string }>;
+        } else {
+          const rows = await (db as PostgresDb).execute(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `);
+          const raw = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          roleResult = raw as Array<{ id: string }>;
+        }
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          let existing: Array<unknown>;
+
+          if (dbType === 'sqlite') {
+            existing = (db as SqliteDb).all(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${queryMiscId} LIMIT 1
+            `);
+          } else {
+            const rows = await (db as PostgresDb).execute(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${queryMiscId} LIMIT 1
+            `);
+            existing = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          }
+
+          if (existing.length === 0) {
+            const id = randomUUID();
+            const createdAt = new Date();
+
+            if (dbType === 'sqlite') {
+              (db as SqliteDb).run(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${queryMiscId}, ${Math.floor(createdAt.getTime() / 1000)})
+              `);
+            } else {
+              // Postgres driver expects string/Buffer for bind params, not Date
+              await (db as PostgresDb).execute(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${queryMiscId}, ${createdAt.toISOString()})
+              `);
+            }
+            console.log(`[Migration 1.10.1] Assigned permission ${queryMiscId} to role ${roleName}`);
+          } else {
+            console.log(`[Migration 1.10.1] Permission ${queryMiscId} already assigned to role ${roleName}`);
+          }
+        }
+      }
+
+      console.log('[Migration 1.10.1] Query execute misc permission check completed');
+    },
+    down: async (db) => {
+      console.log('[Migration 1.10.1] Down migration: No action needed');
     },
   },
 ];
