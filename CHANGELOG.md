@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.8.5] - 2026-02-03
+
+### Added
+
+- **RBAC-based Query Execution**: Strictly execute queries based on user permissions (Issue #94).
+  - Backend now handles permission checks for specific SQL commands.
+  - Ensures robust security enforcement at the API level.
+
+### Changed
+
+- **Metrics Dashboard Unification**: Unified Metrics dashboard visuals with the Overview page (Issue #93).
+  - Updated cards to match Overview style (Total Rows, Tables).
+  - Consistent iconography for better UX.
+
+### Fixed
+
+- **Execution Control**: Fixed issue where the Execute button remained accessible during a running query without kill permissions (Issue #92).
+  - Prevents unauthorized users from attempting to stop or re-run queries indiscriminately.
+
 ## [v2.8.4] - 2026-02-01
 
 ### Added
