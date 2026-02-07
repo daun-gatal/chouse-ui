@@ -47,24 +47,20 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 import { rbacAuditApi, type RbacAuditLog } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
 import { cn } from '@/lib/utils';
+import { RbacAuditPruneDialog } from './RbacAuditPruneDialog';
 
 // ============================================
 // Action Colors
@@ -162,29 +158,7 @@ export const RbacAuditLogs: React.FC = () => {
   };
 
   const canDelete = hasPermission(RBAC_PERMISSIONS.AUDIT_DELETE);
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleDelete = async () => {
-    try {
-      setIsDeleting(true);
-      const uniqueId = `rbac_delete_${Date.now()}`;
-      toast.loading('Deleting audit logs...', { id: uniqueId });
-
-      const result = await rbacAuditApi.delete({
-        action: actionFilter !== 'all' ? actionFilter : undefined,
-        startDate: dateRange.start?.toISOString(),
-        endDate: dateRange.end ? new Date(new Date(dateRange.end).setHours(23, 59, 59, 999)).toISOString() : undefined,
-      });
-
-      toast.success(`Successfully deleted ${result.deletedCount} audit logs`, { id: uniqueId });
-      refetch();
-    } catch (error) {
-      console.error('Delete failed:', error);
-      toast.error('Failed to delete audit logs', { id: `rbac_delete_error` });
-    } finally {
-      setIsDeleting(false);
-    }
-  };
 
   return (
     <div className="p-6 space-y-6">
@@ -222,64 +196,13 @@ export const RbacAuditLogs: React.FC = () => {
               {isExporting ? 'Exporting...' : 'Export CSV'}
             </Button>
           )}
+
           {canDelete && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isDeleting}
-                  className="gap-2 bg-red-500/10 border-red-500/20 hover:bg-red-500/20 text-red-400"
-                >
-                  <Trash2 className={cn("h-4 w-4", isDeleting && "animate-spin")} />
-                  {isDeleting ? 'Deleting...' : 'Delete Logs'}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent className="bg-gray-900/95 border-white/10 text-white backdrop-blur-xl shadow-2xl max-w-md">
-                <AlertDialogHeader>
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 rounded-full bg-red-500/20">
-                      <AlertTriangle className="h-6 w-6 text-red-400" />
-                    </div>
-                    <AlertDialogTitle className="text-xl">Permanent Deletion</AlertDialogTitle>
-                  </div>
-                  <AlertDialogDescription className="text-gray-400 text-base">
-                    You are about to permanently delete audit logs matching these filters:
-                    <div className="mt-4 p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-500 uppercase tracking-wider text-[10px] font-bold">Action Type</span>
-                        <Badge variant="outline" className="bg-white/10 text-white border-white/20">
-                          {actionFilter === 'all' ? 'All Actions' : actionFilter}
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-500 uppercase tracking-wider text-[10px] font-bold">Date Range</span>
-                        <span className="text-white font-medium">
-                          {dateRange.start ? (
-                            dateRange.end && format(dateRange.start, 'MMM d, yyyy') !== format(dateRange.end, 'MMM d, yyyy')
-                              ? `${format(dateRange.start, 'MMM d')} - ${format(dateRange.end, 'MMM d, yyyy')}`
-                              : format(dateRange.start, 'MMM d, yyyy')
-                          ) : 'All time'}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-6 text-red-400/90 text-sm flex items-center gap-2 font-medium">
-                      <AlertTriangle className="h-4 w-4" />
-                      This action is irreversible and will be audited.
-                    </p>
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter className="mt-6">
-                  <AlertDialogCancel className="bg-white/5 border-white/10 hover:bg-white/10 text-white rounded-xl">Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleDelete}
-                    className="bg-red-500 hover:bg-red-600 text-white border-none rounded-xl px-6"
-                  >
-                    Confirm Deletion
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <RbacAuditPruneDialog
+              onPruneSuccess={() => refetch()}
+              actionFilter={actionFilter}
+              dateRange={dateRange}
+            />
           )}
         </div>
       </div>
@@ -447,16 +370,18 @@ export const RbacAuditLogs: React.FC = () => {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-white/10 bg-white/5 overflow-hidden">
-        <Table>
+      <div className="rounded-lg border border-white/10 bg-white/5 overflow-x-auto">
+        <Table className="min-w-[1200px]">
           <TableHeader>
             <TableRow className="border-white/10 hover:bg-white/5">
-              <TableHead className="text-gray-400 w-[180px]">Timestamp</TableHead>
-              <TableHead className="text-gray-400">Action</TableHead>
-              <TableHead className="text-gray-400">User</TableHead>
-              <TableHead className="text-gray-400">Resource</TableHead>
-              <TableHead className="text-gray-400">Status</TableHead>
-              <TableHead className="text-gray-400">IP Address</TableHead>
+              <TableHead className="text-gray-400 w-[180px] whitespace-nowrap">Timestamp</TableHead>
+              <TableHead className="text-gray-400 whitespace-nowrap">Action</TableHead>
+              <TableHead className="text-gray-400 whitespace-nowrap">Display Name</TableHead>
+              <TableHead className="text-gray-400 whitespace-nowrap">Username</TableHead>
+              <TableHead className="text-gray-400 whitespace-nowrap">Email</TableHead>
+              <TableHead className="text-gray-400 whitespace-nowrap">Resource</TableHead>
+              <TableHead className="text-gray-400 whitespace-nowrap">Status</TableHead>
+              <TableHead className="text-gray-400 whitespace-nowrap">IP Address</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -465,7 +390,9 @@ export const RbacAuditLogs: React.FC = () => {
                 <TableRow key={i} className="border-white/10">
                   <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-16" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
@@ -473,7 +400,7 @@ export const RbacAuditLogs: React.FC = () => {
               ))
             ) : logs.length === 0 ? (
               <TableRow className="border-white/10">
-                <TableCell colSpan={6} className="text-center py-8 text-gray-400">
+                <TableCell colSpan={8} className="text-center py-8 text-gray-400">
                   No audit logs found
                 </TableCell>
               </TableRow>
@@ -494,14 +421,20 @@ export const RbacAuditLogs: React.FC = () => {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-white">
-                      {log.userId ? (
+                      {log.displayNameSnapshot ? (
                         <div className="flex items-center gap-2">
-                          <User className="h-3 w-3 text-gray-400" />
-                          <span className="text-sm">{log.userId.slice(0, 8)}...</span>
+                          <User className="h-3 w-3 text-cyan-400" />
+                          <span className="text-sm font-medium">{log.displayNameSnapshot}</span>
                         </div>
                       ) : (
                         <span className="text-gray-500">-</span>
                       )}
+                    </TableCell>
+                    <TableCell className="text-gray-400 text-sm">
+                      {log.usernameSnapshot || (log.userId ? log.userId.slice(0, 8) + '...' : '-')}
+                    </TableCell>
+                    <TableCell className="text-gray-400 text-sm">
+                      {log.emailSnapshot || '-'}
                     </TableCell>
                     <TableCell className="text-gray-400 text-sm">
                       {log.resourceType ? (

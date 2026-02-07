@@ -91,7 +91,7 @@ class ApiClient {
 
   private buildUrl(path: string, params?: Record<string, string | number | boolean | undefined>): string {
     const url = new URL(`${this.baseUrl}${path}`, window.location.origin);
-    
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined) {
@@ -133,37 +133,86 @@ class ApiClient {
       (headers as Record<string, string>)['Authorization'] = `Bearer ${rbacToken}`;
     }
 
-    const url = this.buildUrl(path, params);
+    // Retry logic for 429 Too Many Requests
+    const maxRetries = 3;
+    let attempt = 0;
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      credentials: 'include',
-      ...rest,
-    });
+    while (attempt <= maxRetries) {
+      try {
+        const url = this.buildUrl(path, params);
 
-    const data: ApiResponse<T> = await response.json();
+        const response = await fetch(url, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          credentials: 'include',
+          ...rest,
+        });
 
-    if (!response.ok || !data.success) {
-      const error = new ApiError(
-        data.error?.message || 'Request failed',
-        response.status,
-        data.error?.code || 'UNKNOWN_ERROR',
-        data.error?.category || 'unknown',
-        data.error?.details
-      );
+        const text = await response.text();
+        let data: ApiResponse<T> | undefined;
 
-      // Handle authentication errors
-      if (response.status === 401) {
-        clearSession();
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        try {
+          if (text) {
+            data = JSON.parse(text);
+          }
+        } catch (e) {
+          // If response is not JSON, we'll handle it below based on status code
+          // This happens for 429s or other errors that return plain text
+        }
+
+        if (!response.ok || !data || !data.success) {
+          // Handle 429 Too Many Requests with backoff
+          if (response.status === 429 && attempt < maxRetries) {
+            const retryAfterHeader = response.headers.get('Retry-After');
+            let waitTime = 1000 * Math.pow(2, attempt); // Exponential backoff: 1s, 2s, 4s
+
+            if (retryAfterHeader) {
+              const retryAfter = parseInt(retryAfterHeader, 10);
+              if (!isNaN(retryAfter)) {
+                // If header is seconds, convert to ms
+                waitTime = retryAfter * 1000;
+              }
+            }
+
+            console.warn(`[ApiClient] 429 rate limit exceeded. Retrying in ${waitTime}ms (attempt ${attempt + 1}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            attempt++;
+            continue;
+          }
+
+          const error = new ApiError(
+            data?.error?.message || (typeof data === 'string' ? data : text) || 'Request failed',
+            response.status,
+            data?.error?.code || 'UNKNOWN_ERROR',
+            data?.error?.category || 'unknown',
+            data?.error?.details
+          );
+
+          // Handle authentication errors
+          if (response.status === 401) {
+            clearSession();
+            window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          }
+
+          throw error;
+        }
+
+        return data.data as T;
+      } catch (error) {
+        // If it's an ApiError (handled above), rethrow
+        if (error instanceof ApiError) {
+          throw error;
+        }
+
+        // If it's a network error or other fetch error, we might want to retry?
+        // For now, only retrying on 429 as per requirements
+        throw error;
       }
-
-      throw error;
     }
 
-    return data.data as T;
+    // Should not reach here, but TS needs a return or throw
+    throw new ApiError('Max retries exceeded', 429, 'RATE_LIMIT_EXCEEDED', 'network');
   }
 
   // HTTP Methods

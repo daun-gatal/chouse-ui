@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Settings as SettingsIcon,
@@ -20,6 +20,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId, clearSession } from "@/api/client";
+import ConfirmationDialog from "@/components/common/ConfirmationDialog";
 
 interface SettingCardProps {
   title: string;
@@ -76,8 +77,11 @@ export default function Settings() {
   const { username, url, version, isAdmin } = useAuthStore();
   // Get RBAC logout function
   const { logout: rbacLogout } = useRbacStore();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     try {
       // Disconnect from ClickHouse connection if there's an active session
       const sessionId = getSessionId();
@@ -89,10 +93,10 @@ export default function Settings() {
           // Continue with logout even if disconnect fails
         }
       }
-      
+
       // Logout from RBAC
       await rbacLogout();
-      
+
       // Clear connection info
       useAuthStore.getState().clearConnectionInfo();
     } catch (error) {
@@ -100,6 +104,7 @@ export default function Settings() {
       // Clear local state anyway
       useAuthStore.getState().clearConnectionInfo();
     } finally {
+      setIsLoggingOut(false);
       navigate("/login");
     }
   };
@@ -107,6 +112,16 @@ export default function Settings() {
   return (
     <div className="h-full overflow-auto">
       <div className="container mx-auto p-6 space-y-6 max-w-4xl">
+        <ConfirmationDialog
+          isOpen={showLogoutConfirm}
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={handleLogout}
+          title="Log out"
+          description="Are you sure you want to log out?"
+          confirmText={isLoggingOut ? "Logging out..." : "Log out"}
+          cancelText="Cancel"
+          variant="danger"
+        />
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -215,7 +230,7 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 rounded-lg bg-white/5 text-center">
                 <p className="text-xs text-gray-500 mb-1">Built with</p>
@@ -242,7 +257,7 @@ export default function Settings() {
         >
           <Button
             variant="outline"
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="gap-2 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
           >
             <LogOut className="h-4 w-4" />

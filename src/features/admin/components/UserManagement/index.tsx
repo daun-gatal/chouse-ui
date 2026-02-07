@@ -107,12 +107,12 @@ const UserManagement: React.FC = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
-  
+
   // Sync pageSize state when preference changes
   useEffect(() => {
     setPageSize(defaultPageSize);
   }, [defaultPageSize]);
-  
+
   // Sync state from preferences when they load
   useEffect(() => {
     if (!userMgmtPrefs) return;
@@ -120,7 +120,7 @@ const UserManagement: React.FC = () => {
     if (userMgmtPrefs.defaultRoleFilter) setRoleFilter(userMgmtPrefs.defaultRoleFilter);
     if (userMgmtPrefs.defaultStatusFilter) setStatusFilter(userMgmtPrefs.defaultStatusFilter);
   }, [userMgmtPrefs]);
-  
+
   // Update preferences when state changes (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -132,7 +132,7 @@ const UserManagement: React.FC = () => {
     }, 500);
     return () => clearTimeout(timeoutId);
   }, [searchQuery, roleFilter, statusFilter, updateUserMgmtPrefs]);
-  
+
   // Update page size preference when pageSize changes
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -474,6 +474,8 @@ const UserManagement: React.FC = () => {
               const userIsSuperAdmin = user.roles.includes('super_admin');
               // Basic admins cannot edit super admins
               const canEditThisUser = canUpdateUsers && (isSuperAdmin() || !userIsSuperAdmin);
+              const canDeleteThisUser = canDeleteUsers && !isCurrentUser && (isSuperAdmin() || !userIsSuperAdmin);
+              const hasActions = canEditThisUser || canDeleteThisUser;
 
               return (
                 <div
@@ -482,9 +484,8 @@ const UserManagement: React.FC = () => {
                 >
                   {/* Status indicator */}
                   <div
-                    className={`absolute top-4 right-4 w-2 h-2 rounded-full ${
-                      user.isActive ? "bg-green-500" : "bg-gray-500"
-                    }`}
+                    className={`absolute top-4 right-4 w-2 h-2 rounded-full ${user.isActive ? "bg-green-500" : "bg-gray-500"
+                      }`}
                     title={user.isActive ? "Active" : "Inactive"}
                   />
 
@@ -549,31 +550,33 @@ const UserManagement: React.FC = () => {
                         Edit
                       </Button>
                     )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" className="px-2">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {canEditThisUser && (
-                          <DropdownMenuItem onClick={() => openResetPasswordDialog(user)}>
-                            <Key className="h-4 w-4 mr-2" />
-                            Reset Password
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        {canDeleteUsers && !isCurrentUser && (isSuperAdmin() || !userIsSuperAdmin) && (
-                          <DropdownMenuItem
-                            className="text-red-400 focus:text-red-400"
-                            onClick={() => openDeleteDialog(user)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete User
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {hasActions && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="px-2">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {canEditThisUser && (
+                            <DropdownMenuItem onClick={() => openResetPasswordDialog(user)}>
+                              <Key className="h-4 w-4 mr-2" />
+                              Reset Password
+                            </DropdownMenuItem>
+                          )}
+                          {canEditThisUser && canDeleteThisUser && <DropdownMenuSeparator />}
+                          {canDeleteThisUser && (
+                            <DropdownMenuItem
+                              className="text-red-400 focus:text-red-400"
+                              onClick={() => openDeleteDialog(user)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete User
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                 </div>
               );
@@ -763,10 +766,10 @@ const UserManagement: React.FC = () => {
                   <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm">
                     {generatedPassword}
                   </code>
-                  <Button 
+                  <Button
                     type="button"
-                    size="sm" 
-                    variant="outline" 
+                    size="sm"
+                    variant="outline"
                     onClick={copyPassword}
                   >
                     Copy
