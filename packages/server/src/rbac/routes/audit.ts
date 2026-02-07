@@ -131,10 +131,13 @@ auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidat
   });
 
   // Convert to CSV
-  const headers = ['ID', 'User ID', 'Action', 'Resource Type', 'Resource ID', 'Status', 'IP Address', 'Created At'];
+  const headers = ['ID', 'User ID', 'Username (Snapshot)', 'Email (Snapshot)', 'Display Name (Snapshot)', 'Action', 'Resource Type', 'Resource ID', 'Status', 'IP Address', 'Created At'];
   const rows = result.logs.map(log => [
     log.id,
     log.userId || '',
+    log.usernameSnapshot || '',
+    log.emailSnapshot || '',
+    log.displayNameSnapshot || '',
     log.action,
     log.resourceType || '',
     log.resourceId || '',

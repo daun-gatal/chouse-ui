@@ -1,6 +1,7 @@
 
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import { createUser, getUserById, createRole, listRoles } from "./rbac";
+
+import { createUser, getUserById, createRole, listRoles, createAuditLog } from "./rbac";
 
 // Mock data
 const mockUser = {
@@ -48,7 +49,8 @@ const mockSchema = {
 const createBuilder = (resolveData: any) => {
     const builder: any = {};
     // Chainable methods
-    const methods = ['where', 'orderBy', 'limit', 'offset', 'insert', 'values', 'update', 'set', 'delete', 'from'];
+    // Chainable methods
+    const methods = ['where', 'orderBy', 'limit', 'offset', 'insert', 'values', 'update', 'set', 'delete', 'from', 'innerJoin', 'leftJoin'];
     methods.forEach(m => {
         builder[m] = mock(() => builder);
     });
@@ -67,7 +69,7 @@ const countBuilder = createBuilder([{ count: 1 }]);
 
 // Router Builder - decides which builder to return based on .from(table)
 const routerBuilder: any = {};
-['select', 'insert', 'update', 'delete', 'where', 'orderBy', 'limit', 'values', 'set'].forEach(m => {
+['select', 'insert', 'update', 'delete', 'where', 'orderBy', 'limit', 'values', 'set', 'innerJoin', 'leftJoin'].forEach(m => {
     routerBuilder[m] = mock(() => routerBuilder);
 });
 
@@ -206,6 +208,23 @@ describe("RBAC Service", () => {
             });
 
             expect(result.id).toBe("role-123");
+        });
+    });
+
+    describe("createAuditLog", () => {
+        it("should snapshot user details", async () => {
+            // Reset mocks
+            routerBuilder.values.mockClear();
+
+            // getUserById will return mockUser because userBuilder returns [mockUser]
+            // and getUserRoles/Permissions will likely return [] due to routerBuilder defaults, which is fine
+
+            await createAuditLog("test.action" as any, "user-123");
+
+            expect(routerBuilder.values).toHaveBeenCalled();
+            const callArgs = routerBuilder.values.mock.calls[0][0];
+            expect(callArgs.usernameSnapshot).toBe("testuser");
+            expect(callArgs.emailSnapshot).toBe("test@example.com");
         });
     });
 

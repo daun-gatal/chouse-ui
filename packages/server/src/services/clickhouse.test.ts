@@ -59,6 +59,13 @@ describe("ClickHouse Service", () => {
             expect(result.rows).toBe(0);
         });
 
+        it("should execute command query (SET)", async () => {
+            const result = await service.executeQuery("SET param = value");
+
+            expect(mockCommandFn).toHaveBeenCalled();
+            expect(result.rows).toBe(0);
+        });
+
         it("should handle query errors", async () => {
             mockQueryFn.mockRejectedValue(new Error("DB Error"));
             // The service wraps the error but preserves the message if available

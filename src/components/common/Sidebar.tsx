@@ -23,8 +23,9 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
 import ConnectionSelector from "./ConnectionSelector";
-import { rbacConnectionsApi, rbacUserPreferencesApi } from "@/api/rbac";
-import { getSessionId, clearSession } from "@/api/client";
+import { rbacUserPreferencesApi } from "@/api/rbac";
+import UserMenu from "@/components/sidebar/UserMenu";
+import { version } from "../../../package.json";
 
 // Persist sidebar state in localStorage
 const SIDEBAR_COLLAPSED_KEY = "chouseui-sidebar-collapsed";
@@ -86,7 +87,7 @@ export default function Sidebar() {
   // Use RBAC store for all authentication
   const {
     user,
-    logout,
+    isAuthenticated,
     isAdmin,
     hasPermission,
     hasAnyPermission,
@@ -117,7 +118,7 @@ export default function Sidebar() {
 
   const canViewSettings = hasPermission(RBAC_PERMISSIONS.SETTINGS_VIEW);
 
-  const { isAuthenticated } = useRbacStore();
+
   const [hasFetchedPreference, setHasFetchedPreference] = useState(false);
 
   // Load initial state from localStorage (fallback for non-authenticated users)
@@ -214,36 +215,7 @@ export default function Sidebar() {
     ...(canViewSettings ? [{ icon: Settings, label: "Settings", to: "/settings" }] : []),
   ];
 
-  const handleLogout = async () => {
-    try {
-      // Disconnect from ClickHouse connection if there's an active session
-      const sessionId = getSessionId();
-      if (sessionId) {
-        try {
-          await rbacConnectionsApi.disconnect(sessionId);
-        } catch (error) {
-          console.error('Failed to disconnect ClickHouse connection:', error);
-          // Continue with logout even if disconnect fails
-        }
-      }
 
-      // Logout from RBAC
-      await logout();
-
-      // Clear ClickHouse session
-      clearSession();
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Clear local state anyway
-      clearSession();
-    } finally {
-      navigate("/login");
-    }
-  };
-
-  // Get display name
-  const displayName = user?.displayName || user?.username || "User";
-  const userInitials = displayName.slice(0, 2).toUpperCase();
 
   return (
     <motion.div
@@ -272,9 +244,14 @@ export default function Sidebar() {
             transition={{ duration: 0.2 }}
             className="flex flex-col"
           >
-            <span className="font-bold text-lg bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-              CHouse UI
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-lg bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                CHouse UI
+              </span>
+              <span className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] font-mono text-purple-400/80 tracking-widest">
+                v{version}
+              </span>
+            </div>
             <span className="text-xs text-gray-500 font-medium">
               Database Management
             </span>
@@ -307,70 +284,7 @@ export default function Sidebar() {
       </div>
 
       <div className="p-4 mt-auto border-t border-white/5 bg-black/20">
-        {!isCollapsed && <div className="px-2 mb-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">Account</div>}
-
-        <div className={cn("flex items-center gap-3 rounded-xl bg-white/5 p-3 mb-3 border border-white/5", isCollapsed && "justify-center bg-transparent border-0 p-0 mb-4")}>
-          {!isCollapsed ? (
-            <>
-              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500/30 to-blue-500/30 flex items-center justify-center ring-1 ring-white/10 font-semibold text-sm text-white">
-                {userInitials}
-              </div>
-              <div className="flex flex-col overflow-hidden">
-                <span className="text-sm font-medium text-white truncate w-32" title={displayName}>
-                  {displayName}
-                </span>
-                <span className="text-xs text-gray-400 truncate w-32">
-                  @{user?.username}
-                </span>
-              </div>
-            </>
-          ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500/30 to-blue-500/30 flex items-center justify-center ring-1 ring-white/10 font-semibold text-sm text-white relative">
-                    {userInitials}
-                    <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-green-400 border border-black" />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">{displayName}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
-
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors",
-            isCollapsed && "justify-center px-0"
-          )}
-          onClick={handleLogout}
-        >
-          <LogOut className="h-4 w-4" />
-          {!isCollapsed && "Log Out"}
-        </Button>
-
-        {/* Version Display */}
-        <div className={cn(
-          "text-center pt-3 text-xs text-gray-600",
-          isCollapsed && "px-1"
-        )}>
-          {isCollapsed ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <span className="text-[10px]">v{__CH_UI_VERSION__}</span>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="bg-black/80 text-white border-white/10 backdrop-blur-md">
-                  CHouse UI v{__CH_UI_VERSION__}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            <span>CHouse UI v{__CH_UI_VERSION__}</span>
-          )}
-        </div>
+        <UserMenu isCollapsed={isCollapsed} />
       </div>
     </motion.div>
   );

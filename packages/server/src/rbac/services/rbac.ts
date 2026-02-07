@@ -870,6 +870,25 @@ export async function createAuditLog(
   const db = getDatabase() as any;
   const schema = getSchema();
 
+  // Fetch user details for snapshot if userId is provided
+  let usernameSnapshot: string | undefined;
+  let emailSnapshot: string | undefined;
+  let displayNameSnapshot: string | undefined;
+
+  if (userId) {
+    try {
+      const user = await getUserById(userId);
+      if (user) {
+        usernameSnapshot = user.username;
+        emailSnapshot = user.email;
+        displayNameSnapshot = user.displayName || undefined;
+      }
+    } catch (error) {
+      // Ignore error if user fetch fails, just log without snapshot
+      console.warn(`[createAuditLog] Failed to fetch user snapshot for ${userId}:`, error);
+    }
+  }
+
   await db.insert(schema.auditLogs).values({
     id: randomUUID(),
     userId,
@@ -881,6 +900,9 @@ export async function createAuditLog(
     userAgent: options?.userAgent,
     status: options?.status || 'success',
     errorMessage: options?.errorMessage,
+    usernameSnapshot,
+    emailSnapshot,
+    displayNameSnapshot,
     createdAt: new Date(),
   });
 }

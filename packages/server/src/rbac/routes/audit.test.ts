@@ -124,7 +124,16 @@ describe("RBAC Audit Routes", () => {
             // Needs export permission
             mockTokenPayload.permissions = ['audit:export'];
             const logs = [
-                { id: 'l1', userId: 'u1', action: 'login', status: 'success', createdAt: new Date() }
+                {
+                    id: 'l1',
+                    userId: 'u1',
+                    usernameSnapshot: 'u1name',
+                    emailSnapshot: 'u1@example.com',
+                    displayNameSnapshot: 'User One',
+                    action: 'login',
+                    status: 'success',
+                    createdAt: new Date()
+                }
             ];
             mockGetAuditLogs.mockResolvedValue({ logs, total: 1 });
 
@@ -135,7 +144,10 @@ describe("RBAC Audit Routes", () => {
             expect(res.status).toBe(200);
             expect(res.headers.get('Content-Type')).toBe('text/csv');
             const text = await res.text();
-            expect(text).toContain('"l1","u1","login"');
+            // Header check
+            expect(text).toContain('Username (Snapshot)');
+            // Row check
+            expect(text).toContain('"l1","u1","u1name","u1@example.com","User One","login"');
         });
     });
 
@@ -172,5 +184,33 @@ describe("RBAC Audit Routes", () => {
 
             expect(res.status).toBe(403);
         });
+    });
+
+    it("should prune audit logs with endDate", async () => {
+        mockTokenPayload.permissions = ['audit:delete'];
+        mockDeleteAuditLogs.mockResolvedValue({ deletedCount: 10 });
+        const endDate = new Date().toISOString();
+
+        const res = await app.request(`/audit?endDate=${endDate}`, {
+            method: "DELETE",
+            headers: { "Authorization": "Bearer token" }
+        });
+
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.data.deletedCount).toBe(10);
+        // Verify delete service called with endDate
+        expect(mockDeleteAuditLogs).toHaveBeenCalledWith(expect.objectContaining({
+            endDate: expect.any(Date)
+        }));
+
+        // Verify audit log created
+        expect(mockCreateAuditLog).toHaveBeenCalledWith(
+            'audit.delete',
+            'admin-id',
+            expect.objectContaining({
+                details: expect.objectContaining({ deletedCount: 10 })
+            })
+        );
     });
 });
