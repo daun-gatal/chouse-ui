@@ -202,7 +202,7 @@ export function useSystemStats(
     queryFn: metricsApi.getSystemStats,
     enabled: hasConnection, // Only fetch when connected
     refetchInterval: false,
-    staleTime: 5000,
+    staleTime: 10000,
     ...options,
   });
 }

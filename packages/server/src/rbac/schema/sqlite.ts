@@ -156,6 +156,9 @@ export const auditLogs = sqliteTable('rbac_audit_logs', {
   userAgent: text('user_agent'),
   status: text('status').notNull().default('success'), // 'success', 'failure'
   errorMessage: text('error_message'),
+  usernameSnapshot: text('username_snapshot'),
+  emailSnapshot: text('email_snapshot'),
+  displayNameSnapshot: text('display_name_snapshot'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => ({
   userIdx: index('audit_user_idx').on(table.userId),
@@ -236,22 +239,22 @@ export const dataAccessRules = sqliteTable('rbac_data_access_rules', {
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'cascade' }),
   // null connectionId means rule applies to all connections
-  
+
   // Database pattern: exact name, wildcard (*), or regex pattern
   databasePattern: text('database_pattern').notNull().default('*'),
-  
+
   // Table pattern: exact name, wildcard (*), or regex pattern
   tablePattern: text('table_pattern').notNull().default('*'),
-  
+
   // Access type: 'read' (SELECT), 'write' (INSERT/UPDATE), 'admin' (DDL)
   accessType: text('access_type').notNull().default('read'),
-  
+
   // If false, this is a deny rule (takes precedence over allow rules)
   isAllowed: integer('is_allowed', { mode: 'boolean' }).notNull().default(true),
-  
+
   // Priority: higher priority rules are evaluated first
   priority: integer('priority').notNull().default(0),
-  
+
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),

@@ -34,9 +34,14 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
     const cleanup = listenForUserChanges((newUserId) => {
       // If user changed in another tab, logout current session
       if (newUserId === null) {
-        logout().catch((err) => {
-          console.error("[AppInit] Failed to logout on user change:", err);
-        });
+        // Only trigger logout if we are currently authenticated
+        // This prevents infinite loops if the broadcast was triggered by our own logout
+        const { isAuthenticated } = useRbacStore.getState();
+        if (isAuthenticated) {
+          logout().catch((err) => {
+            console.error("[AppInit] Failed to logout on user change:", err);
+          });
+        }
       }
     });
 
