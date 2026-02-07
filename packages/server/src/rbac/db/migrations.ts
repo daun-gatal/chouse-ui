@@ -1213,6 +1213,61 @@ const MIGRATIONS: Migration[] = [
       console.log('[Migration 1.10.1] Down migration: No action needed');
     },
   },
+  {
+    version: '1.11.0',
+    name: 'audit_log_snapshots',
+    description: 'Add user snapshot columns to audit logs table',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        const columns = [
+          'username_snapshot',
+          'email_snapshot',
+          'display_name_snapshot'
+        ];
+
+        for (const col of columns) {
+          try {
+            (db as SqliteDb).run(sql.raw(`
+              ALTER TABLE rbac_audit_logs 
+              ADD COLUMN ${col} TEXT
+            `));
+            console.log(`[Migration 1.11.0] Added ${col} column to SQLite audit logs table`);
+          } catch (error: any) {
+            if (error?.message?.includes('duplicate column')) {
+              console.log(`[Migration 1.11.0] ${col} column already exists, skipping`);
+            } else {
+              throw error;
+            }
+          }
+        }
+      } else {
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_audit_logs 
+          ADD COLUMN IF NOT EXISTS username_snapshot VARCHAR(100),
+          ADD COLUMN IF NOT EXISTS email_snapshot VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS display_name_snapshot VARCHAR(255)
+        `);
+        console.log('[Migration 1.11.0] Added snapshot columns to PostgreSQL audit logs table');
+      }
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        console.log('[Migration 1.11.0] SQLite does not support DROP COLUMN, manual intervention required');
+      } else {
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_audit_logs 
+          DROP COLUMN IF EXISTS username_snapshot,
+          DROP COLUMN IF EXISTS email_snapshot,
+          DROP COLUMN IF EXISTS display_name_snapshot
+        `);
+        console.log('[Migration 1.11.0] Removed snapshot columns from PostgreSQL audit logs table');
+      }
+    },
+  },
 ];
 
 // ============================================

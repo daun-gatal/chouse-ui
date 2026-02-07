@@ -156,6 +156,9 @@ export const auditLogs = pgTable('rbac_audit_logs', {
   userAgent: text('user_agent'),
   status: varchar('status', { length: 20 }).notNull().default('success'),
   errorMessage: text('error_message'),
+  usernameSnapshot: varchar('username_snapshot', { length: 100 }),
+  emailSnapshot: varchar('email_snapshot', { length: 255 }),
+  displayNameSnapshot: varchar('display_name_snapshot', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   userIdx: index('audit_user_idx').on(table.userId),
@@ -236,22 +239,22 @@ export const dataAccessRules = pgTable('rbac_data_access_rules', {
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'cascade' }),
   // null connectionId means rule applies to all connections
-  
+
   // Database pattern: exact name, wildcard (*), or regex pattern
   databasePattern: varchar('database_pattern', { length: 255 }).notNull().default('*'),
-  
+
   // Table pattern: exact name, wildcard (*), or regex pattern
   tablePattern: varchar('table_pattern', { length: 255 }).notNull().default('*'),
-  
+
   // Access type: 'read' (SELECT), 'write' (INSERT/UPDATE), 'admin' (DDL)
   accessType: varchar('access_type', { length: 20 }).notNull().default('read'),
-  
+
   // If false, this is a deny rule (takes precedence over allow rules)
   isAllowed: boolean('is_allowed').notNull().default(true),
-  
+
   // Priority: higher priority rules are evaluated first
   priority: integer('priority').notNull().default(0),
-  
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),

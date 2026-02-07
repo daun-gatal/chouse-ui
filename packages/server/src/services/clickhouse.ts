@@ -186,6 +186,7 @@ export class ClickHouseService {
       /^\s*GRANT\s+/i,
       /^\s*REVOKE\s+/i,
       /^\s*KILL\s+/i,
+      /^\s*SET\s+/i,
     ];
     return commandPatterns.some(pattern => pattern.test(query));
   }

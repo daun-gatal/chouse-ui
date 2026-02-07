@@ -66,6 +66,9 @@ export interface RbacAuditLog {
   status: 'success' | 'failure';
   errorMessage: string | null;
   createdAt: string;
+  usernameSnapshot?: string | null;
+  emailSnapshot?: string | null;
+  displayNameSnapshot?: string | null;
 }
 
 export interface CreateUserInput {

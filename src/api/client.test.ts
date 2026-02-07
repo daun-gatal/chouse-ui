@@ -8,7 +8,7 @@
  * - Authentication
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     ApiClient,
     ApiError,
@@ -147,6 +147,27 @@ describe('ApiClient', () => {
             }
         });
 
+        it('should handle non-JSON error responses gracefully', async () => {
+            server.use(
+                http.get('/api/service-unavailable', () => {
+                    return new HttpResponse('Service Unavailable', {
+                        status: 503,
+                        headers: {
+                            'Content-Type': 'text/plain',
+                        },
+                    });
+                })
+            );
+
+            try {
+                await client.get('/service-unavailable');
+            } catch (error) {
+                expect(error).toBeInstanceOf(ApiError);
+                expect((error as ApiError).statusCode).toBe(503);
+                expect((error as ApiError).message).toBe('Service Unavailable');
+            }
+        });
+
         it('should dispatch auth:unauthorized event on 401', async () => {
             const eventSpy = vi.fn();
             window.addEventListener('auth:unauthorized', eventSpy);
@@ -254,6 +275,91 @@ describe('ApiClient', () => {
             await client.get('/test', {
                 headers: { 'X-Custom': 'custom-value' }
             });
+        });
+    });
+    describe('Retry Logic', () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('should retry on 429 errors', async () => {
+            let attempts = 0;
+            server.use(
+                http.get('/api/retry-test', () => {
+                    attempts++;
+                    if (attempts < 3) {
+                        return new HttpResponse('Too many requests', {
+                            status: 429,
+                            headers: { 'Retry-After': '1' }
+                        });
+                    }
+                    return HttpResponse.json({ success: true, data: { status: 'ok' } });
+                })
+            );
+
+            const promise = client.get('/retry-test');
+
+            // Fast-forward timers for backoff
+            await vi.advanceTimersByTimeAsync(1000); // 1st retry
+            await vi.advanceTimersByTimeAsync(2000); // 2nd retry
+
+            const result = await promise;
+            expect(result).toEqual({ status: 'ok' });
+            expect(attempts).toBe(3); // Initial + 2 retries
+        });
+
+        it('should respect Retry-After header', async () => {
+            let attempts = 0;
+            server.use(
+                http.get('/api/retry-after', () => {
+                    attempts++;
+                    if (attempts === 1) {
+                        return new HttpResponse('rate limited', {
+                            status: 429,
+                            headers: { 'Retry-After': '5' } // 5 seconds
+                        });
+                    }
+                    return HttpResponse.json({ success: true, data: { status: 'ok' } });
+                })
+            );
+
+            const promise = client.get('/retry-after');
+
+            // Advance by 2s - should not be enough
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(attempts).toBe(1); // Still waiting
+
+            // Advance by remaining 3s
+            await vi.advanceTimersByTimeAsync(3000);
+
+            const result = await promise;
+            expect(result).toEqual({ status: 'ok' });
+            expect(attempts).toBe(2);
+        });
+
+        it('should fail after max retries', async () => {
+            server.use(
+                http.get('/api/max-retries', () => {
+                    return new HttpResponse('Too many requests', {
+                        status: 429,
+                        headers: { 'Retry-After': '1' }
+                    });
+                })
+            );
+
+            // Catch the error immediately to prevent "Unhandled Rejection" during timer advancement
+            const promise = client.get('/max-retries').catch(e => e);
+
+            // Advance timers for all retries (1s, 2s, 4s)
+            await vi.advanceTimersByTimeAsync(10000);
+
+            const result = await promise;
+            expect(result).toBeInstanceOf(ApiError);
+            expect((result as ApiError).statusCode).toBe(429);
         });
     });
 });

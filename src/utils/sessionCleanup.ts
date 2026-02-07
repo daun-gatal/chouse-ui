@@ -97,26 +97,38 @@ export async function cleanupUserSession(currentUserId: string | null): Promise<
   }
 }
 
+// Singleton BroadcastChannel instance
+let userChangeChannel: BroadcastChannel | null = null;
+
+function getUserChangeChannel(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === 'undefined') {
+    return null;
+  }
+
+  if (!userChangeChannel) {
+    userChangeChannel = new BroadcastChannel('user-change');
+  }
+
+  return userChangeChannel;
+}
+
 /**
  * Broadcast user change to all browser tabs
  * Uses BroadcastChannel API for cross-tab communication
  */
 export function broadcastUserChange(newUserId: string | null): void {
   try {
-    // Check if BroadcastChannel is supported
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel('user-change');
+    const channel = getUserChangeChannel();
+    if (channel) {
       channel.postMessage({
         type: 'USER_CHANGED',
         userId: newUserId,
         timestamp: Date.now(),
       });
-      // Close channel after sending (it will be recreated if needed)
-      setTimeout(() => channel.close(), 100);
     }
   } catch (error) {
     // BroadcastChannel might not be available in all environments
-    console.warn('[SessionCleanup] BroadcastChannel not available:', error);
+    console.warn('[SessionCleanup] BroadcastChannel error:', error);
   }
 }
 
@@ -130,18 +142,21 @@ export function listenForUserChanges(
   onUserChange: (userId: string | null) => void
 ): (() => void) | undefined {
   try {
-    if (typeof BroadcastChannel === 'undefined') {
+    const channel = getUserChangeChannel();
+    if (!channel) {
       return undefined;
     }
-
-    const channel = new BroadcastChannel('user-change');
 
     const handleMessage = (event: MessageEvent<{ type: string; userId: string | null }>): void => {
       if (event.data.type === 'USER_CHANGED') {
         const { userId } = event.data;
         // Cleanup current session before switching
         const currentUserId = useRbacStore.getState().user?.id || null;
+
+        // Only react if the user ID is different
         if (currentUserId !== userId) {
+          console.log('[SessionCleanup] User changed in another tab, syncing...', { from: currentUserId, to: userId });
+
           cleanupUserSession(currentUserId).catch((error) => {
             console.error('[SessionCleanup] Failed to cleanup on user change:', error);
           });
@@ -155,7 +170,7 @@ export function listenForUserChanges(
     // Return cleanup function
     return () => {
       channel.removeEventListener('message', handleMessage);
-      channel.close();
+      // Do NOT close the channel here as it's a singleton used for sending too
     };
   } catch (error) {
     console.warn('[SessionCleanup] Failed to setup BroadcastChannel listener:', error);

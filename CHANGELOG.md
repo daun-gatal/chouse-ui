@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.8.6] - 2026-02-07
+
+### Added
+
+- **Sidebar User Menu Redesign**: Replaced the "Account" section with a unified, premium User Menu (Issue #105).
+  - **Expandable Profile**: Expanded sidebar shows full profile details (Name/Email) to efficiently use space.
+  - **Minimalist Icon**: Collapsed sidebar shows a clean, icon-only avatar with tooltip details.
+  - **Dynamic Interactions**: Added hover effects for better visual feedback (Red gradient for logout).
+  - **Direct Actions**: Simplified interaction model with intuitive logout controls.
+- **Logout Confirmation**: Added a confirmation dialog to prevent accidental logouts.
+  - Implemented in both the **Sidebar User Menu** and the **Settings Page**.
+  - Standardized the confirmation message ("Are you sure you want to log out?") across the app.
+- **Audit Log Pruning**: Added retention policy support for audit logs (Issue #97).
+  - Users can now prune logs older than 7, 30, or 90 days.
+  - Support for custom date pruning.
+  - Consolidated deletion logic into a single `RbacAuditPruneDialog`.
+  - "Delete Logs" now supports deleting based on current active filters.
+- **Audit Log Enhancements**: Improved audit log accuracy and usability (Issue #99).
+  - **User Snapshots**: Audit logs now snapshot user details (`username`, `email`, `displayName`) at the time of the event, ensuring historical data remains accurate even if users are deleted or modified.
+  - **Enhanced UI**: Added explicit columns for Display Name, Username, and Email in the Audit Logs table, replacing the single "User" column.
+  - **Improved Export**: CSV export now includes snapshot fields (`Username (Snapshot)`, `Email (Snapshot)`, `Display Name (Snapshot)`) for better reporting.
+  - **Horizontal Scrolling**: Enabled horizontal scrolling for the audit logs table to prevent content truncation.
+
+### Fixed
+
+- **Sidebar Layout**: Optimized vertical space usage in the sidebar by grouping account actions.
+- **User Management Actions**: Fixed issue where the "More options" menu was visible for users with no permissions to act on the target user (Issue #98).
+  - Conditionally render the dropdown menu only when valid actions (Edit, Delete, Reset Password) are available.
+  - Ensures cleaner UI for admins who cannot modify super admins or other protected users.
+- **Logout Request Loop**: Fixed issue where clicking logout would trigger multiple requests to the logout endpoint, causing 429 errors.
+  - Implemented singleton `BroadcastChannel` in `sessionCleanup` to prevent self-notification loops.
+  - Added authentication check safeguard in `AppInit` to prevent redundant logout calls.
+- **SET Command Syntax Error**: Fixed issue where `SET` commands were treated as queries, causing `FORMAT JSON` to be appended and resulting in syntax errors (Issue #100).
+  - Added `SET` to the list of command patterns in `ClickHouseService` to ensure it's executed as a command without formatting.
+- **API Client Resilience**: Fixed application crash when receiving non-JSON error responses (e.g., 429 Too Many Requests) (Issue #103).
+  - Client now attempts to parse response as JSON and falls back to plain text if parsing fails.
+  - Ensures graceful error handling for rate limits and other infrastructure-level errors.
+- **Rate Limit Mitigation**: Mitigated frequent 429 "Too Many Requests" errors in production (Issue #104).
+  - Relaxed server-side rate limits (Queries: 300/min, API: 1000/min).
+  - Implemented client-side retry logic with exponential backoff for 429 responses.
+  - Optimized `useSystemStats` polling interval to reduce server load.
+- **Environment Configuration**: Fixed `bun run dev` not consistently loading `.env` variables.
+  - Updated `dev` script to explicitly use `--env-file=.env` flag, ensuring correct environment loading.
+
 ## [v2.8.5] - 2026-02-03
 
 ### Added
