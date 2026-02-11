@@ -22,6 +22,8 @@ export interface LiveQuery {
     is_initial_query: number;
     client_name: string;
     rbac_user_id?: string;
+    rbac_user?: string;
+    rbac_user_display_name?: string;
 }
 
 export interface LiveQueriesResponse {

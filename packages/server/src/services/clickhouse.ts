@@ -121,10 +121,19 @@ export class ClickHouseService {
 
       // Check if it's a command (CREATE, INSERT, ALTER, DROP, etc.)
       if (this.isCommand(trimmedQuery)) {
-        const result = await this.client.command({
+        const commandParams: any = {
           query: trimmedQuery,
           query_id: queryId,
-        });
+        };
+
+        // Inject RBAC User ID into log_comment if present
+        if (this.rbacUserId) {
+          commandParams.clickhouse_settings = {
+            log_comment: JSON.stringify({ rbac_user_id: this.rbacUserId }),
+          };
+        }
+
+        const result = await this.client.command(commandParams);
         return {
           meta: [],
           data: [],
@@ -340,22 +349,27 @@ export class ClickHouseService {
         this.client.query({ query: "SELECT count() FROM system.databases" }),
         this.client.query({ query: "SELECT count() FROM system.tables WHERE database NOT IN ('system', 'information_schema')" }),
         this.client.query({ query: "SELECT formatReadableSize(sum(bytes_on_disk)) as size, sum(rows) as rows FROM system.parts WHERE active" }),
-        this.client.query({ query: "SELECT formatReadableSize(value) as mem FROM system.metrics WHERE metric = 'MemoryTracking'" }),
-        // Try multiple CPU metrics with fallback - OSCPULoad may not be available on all systems
+        this.client.query({
+          query: `
+            SELECT
+              (SELECT value FROM system.asynchronous_metrics WHERE metric = 'MemoryResident' LIMIT 1) as mem_resident,
+              (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSMemoryTotal' LIMIT 1) as mem_total,
+              (SELECT value FROM system.metrics WHERE metric = 'MemoryTracking' LIMIT 1) as mem_tracking
+          `
+        }),
+        // Use ProfileEvent-based cores usage for summary cards
         this.client.query({
           query: `
             SELECT 
-              COALESCE(
-                (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSCPULoad' LIMIT 1),
-                (SELECT (sumIf(value, metric = 'OSUserTimeCPU') + sumIf(value, metric = 'OSSystemTimeCPU')) / 
-                        greatest(sumIf(value, metric = 'OSIdleTimeCPU') + sumIf(value, metric = 'OSUserTimeCPU') + sumIf(value, metric = 'OSSystemTimeCPU'), 1) 
-                 FROM system.asynchronous_metrics),
-                0
-              ) as cpu_load
+              (SELECT avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000 
+               FROM system.metric_log 
+               WHERE event_time >= now() - INTERVAL 5 SECOND) as cpu_load
           `
         }),
-        this.client.query({ query: "SELECT value FROM system.metrics WHERE metric = 'TCPConnection'" }),
-        this.client.query({ query: "SELECT count() as cnt FROM system.processes" }),
+        this.client.query({
+          query: "SELECT sum(value) as value FROM system.metrics WHERE metric IN ('TCPConnection', 'HTTPConnection', 'InterserverConnection', 'MySQLConnection', 'PostgreSQLConnection')"
+        }),
+        this.client.query({ query: "SELECT count() as cnt FROM system.processes WHERE query_id != currentQueryID()" }),
       ]);
 
       // Note: .json() returns { data: [...], meta: [...], ... }, extract the data array
@@ -364,10 +378,24 @@ export class ClickHouseService {
       const dbCount = await dbCountRes.json() as JsonResponse<{ "count()": number }>;
       const tableCount = await tableCountRes.json() as JsonResponse<{ "count()": number }>;
       const sizeData = await sizeRes.json() as JsonResponse<{ size: string; rows: string }>;
-      const memData = await memRes.json() as JsonResponse<{ mem: string }>;
+      const memData = await memRes.json() as JsonResponse<{ mem_resident: string; mem_total: string; mem_tracking: string }>;
       const cpuData = await cpuRes.json() as JsonResponse<{ cpu_load: number }>;
       const connData = await connRes.json() as JsonResponse<{ value: number }>;
       const activeQueriesData = await activeQueriesRes.json() as JsonResponse<{ cnt: number }>;
+
+      const memResident = Number(memData.data[0]?.mem_resident || 0);
+      const memTotal = Number(memData.data[0]?.mem_total || 0);
+
+      const formatSize = (bytes: number) => {
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let size = bytes;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+          size /= 1024;
+          unitIndex++;
+        }
+        return `${size.toFixed(2)} ${units[unitIndex]}`;
+      };
 
       return {
         version: version.data[0]?.["version()"] || "-",
@@ -376,7 +404,9 @@ export class ClickHouseService {
         tableCount: Number(tableCount.data[0]?.["count()"] || 0),
         totalRows: this.formatLargeNumber(Number(sizeData.data[0]?.rows || 0)),
         totalSize: sizeData.data[0]?.size || "0 B",
-        memoryUsage: memData.data[0]?.mem || "0 B",
+        memoryUsage: formatSize(memResident),
+        memoryTotal: formatSize(memTotal),
+        memoryPercentage: memTotal > 0 ? (memResident / memTotal) * 100 : 0,
         cpuLoad: Number(cpuData.data[0]?.cpu_load || 0),
         activeConnections: Number(connData.data[0]?.value || 0),
         activeQueries: Number(activeQueriesData.data[0]?.cnt || 0),
@@ -518,39 +548,112 @@ export class ClickHouseService {
   }
 
   /**
-   * Get merge and mutation metrics
+   * Get merge and mutation metrics from system.metric_log
+   * Uses CurrentMetric and ProfileEvent metrics following ClickHouse Cloud dashboard approach
    */
-  async getMergeMetrics(): Promise<import("../types").MergeMetrics> {
+  async getMergeMetrics(intervalMinutes: number = 60): Promise<import("../types").MergeMetrics> {
     try {
-      // Run queries with individual error handling for compatibility
-      const safeQuery = async <T>(query: string, defaultValue: T): Promise<T> => {
-        try {
-          const result = await this.client.query({ query });
-          const response = await result.json() as JsonResponse<T>;
-          return response.data[0] || defaultValue;
-        } catch {
-          return defaultValue;
-        }
+      // Check if system.metric_log exists
+      const checkTable = await this.client.query({
+        query: "EXISTS TABLE system.metric_log",
+      });
+      const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
+
+      if (!checkResponse.data[0] || checkResponse.data[0].result !== 1) {
+        // Fall back to system.metrics if metric_log is not available
+        return this.getMergeMetricsFallback();
+      }
+
+      // 1. Get instantaneous metrics from system.metrics (always up to date)
+      const metricsResult = await this.client.query({
+        query: `
+          SELECT metric, value 
+          FROM system.metrics 
+          WHERE metric IN ('PartMutation')
+        `,
+      });
+      const metricsResponse = await metricsResult.json() as JsonResponse<{ metric: string; value: string }>;
+      const metricsMap = new Map(metricsResponse.data.map(d => [d.metric, Number(d.value)]));
+
+      // 2. Get rates from system.metric_log (historical deltas)
+      const logResult = await this.client.query({
+        query: `
+          SELECT
+            avg(ProfileEvent_MergedRows) as merged_rows_per_sec,
+            avg(ProfileEvent_MergedUncompressedBytes) as merged_bytes_per_sec,
+            avg(CurrentMetric_Merge) as merges_running,
+            avg(CurrentMetric_MergesMutationsMemoryTracking) as merges_mutations_memory
+          FROM system.metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+        `,
+      });
+      const logResponse = await logResult.json() as JsonResponse<{
+        merged_rows_per_sec: number;
+        merged_bytes_per_sec: number;
+        merges_running: number;
+        merges_mutations_memory: number;
+      }>;
+      const logData = logResponse.data[0] || {
+        merged_rows_per_sec: 0,
+        merged_bytes_per_sec: 0,
+        merges_running: 0,
+        merges_mutations_memory: 0
       };
 
-      const [activeMerges, mergeQueue, mutations, parts, maxParts] = await Promise.all([
-        safeQuery<{ value: number }>("SELECT value FROM system.metrics WHERE metric = 'Merge'", { value: 0 }),
-        safeQuery<{ cnt: number }>("SELECT count() as cnt FROM system.merges", { cnt: 0 }),
-        safeQuery<{ cnt: number }>("SELECT count() as cnt FROM system.mutations WHERE is_done = 0", { cnt: 0 }),
-        safeQuery<{ cnt: number }>("SELECT count() as cnt FROM system.parts WHERE active AND level = 0", { cnt: 0 }),
-        safeQuery<{ val: number }>("SELECT max(num_parts) as val FROM system.merges", { val: 0 }),
-      ]);
+      // 3. Get pending mutations count
+      const mutationsResult = await this.client.query({
+        query: "SELECT count() as cnt FROM system.mutations WHERE is_done = 0",
+      });
+      const mutationsResponse = await mutationsResult.json() as JsonResponse<{ cnt: number }>;
+      const pendingMutations = Number(mutationsResponse.data[0]?.cnt) || 0;
 
       return {
-        active_merges: Number(activeMerges.value) || 0,
-        merge_queue_size: Number(mergeQueue.cnt) || 0,
-        pending_mutations: Number(mutations.cnt) || 0,
-        parts_to_merge: Number(parts.cnt) || 0,
-        max_parts_per_partition: Number(maxParts.val) || 0,
+        merges_running: Number(logData.merges_running) || 0,
+        mutations_running: metricsMap.get('PartMutation') || 0,
+        merged_rows_per_sec: Number(logData.merged_rows_per_sec) || 0,
+        merged_bytes_per_sec: Number(logData.merged_bytes_per_sec) || 0,
+        merges_mutations_memory: Number(logData.merges_mutations_memory) || 0,
+        pending_mutations: pendingMutations,
       };
     } catch (error) {
-      throw this.handleError(error, "Failed to fetch merge metrics");
+      // If metric_log query fails, fall back to legacy implementation
+      try {
+        return await this.getMergeMetricsFallback();
+      } catch (fallbackError) {
+        throw this.handleError(error, "Failed to fetch merge metrics");
+      }
     }
+  }
+
+  /**
+   * Fallback method using system.metrics when metric_log is not available
+   * @private
+   */
+  private async getMergeMetricsFallback(): Promise<import("../types").MergeMetrics> {
+    const safeQuery = async <T>(query: string, defaultValue: T): Promise<T> => {
+      try {
+        const result = await this.client.query({ query });
+        const response = await result.json() as JsonResponse<T>;
+        return response.data[0] || defaultValue;
+      } catch {
+        return defaultValue;
+      }
+    };
+
+    const [merges, mutationsRunning, pending] = await Promise.all([
+      safeQuery<{ value: number }>("SELECT value FROM system.metrics WHERE metric = 'Merge'", { value: 0 }),
+      safeQuery<{ value: number }>("SELECT value FROM system.metrics WHERE metric = 'PartMutation'", { value: 0 }),
+      safeQuery<{ cnt: number }>("SELECT count() as cnt FROM system.mutations WHERE is_done = 0", { cnt: 0 }),
+    ]);
+
+    return {
+      merges_running: Number(merges.value) || 0,
+      mutations_running: Number(mutationsRunning.value) || 0,
+      merged_rows_per_sec: 0, // Not available without metric_log
+      merged_bytes_per_sec: 0, // Not available without metric_log
+      merges_mutations_memory: 0, // Not available without metric_log
+      pending_mutations: Number(pending.cnt) || 0,
+    };
   }
 
   /**
@@ -650,59 +753,131 @@ export class ClickHouseService {
     }
   }
 
-  async getResourceMetrics(): Promise<import("../types").ResourceMetrics> {
+  async getResourceMetrics(intervalMinutes: number = 60): Promise<import("../types").ResourceMetrics> {
     try {
-      const [asyncMetrics, metrics, profileEvents] = await Promise.all([
-        this.client.query({
-          query: `
-            SELECT metric, value FROM system.asynchronous_metrics 
-            WHERE metric IN ('OSCPULoad', 'MemoryResident', 'MaxPartCountForPartition')
-          `,
-        }),
-        this.client.query({
-          query: `
-            SELECT metric, value FROM system.metrics 
-            WHERE metric IN (
-              'MemoryTracking', 'BackgroundPoolTask', 'BackgroundSchedulePoolTask',
-              'BackgroundMergesAndMutationsPoolTask', 'GlobalThread', 'LocalThread',
-              'OpenFileForRead', 'OpenFileForWrite', 'Read'
-            )
-          `,
-        }),
-        // Get read rate from profile events (bytes read in last minute)
-        this.client.query({
-          query: `
-            SELECT 
-              sumIf(ProfileEvents['ReadBufferFromFileDescriptorReadBytes'], event_time >= now() - INTERVAL 60 SECOND) / 60 as read_bytes_per_sec
-            FROM system.query_log 
-            WHERE event_time >= now() - INTERVAL 60 SECOND
-            AND type = 'QueryFinish'
-          `,
-        }),
+      // Check for table availability
+      const [hasMetricLog, hasAsyncMetricLog] = await Promise.all([
+        this.checkTableExists('system.metric_log'),
+        this.checkTableExists('system.asynchronous_metric_log')
       ]);
 
-      const asyncData = await asyncMetrics.json() as JsonResponse<{ metric: string; value: number }>;
-      const metricsData = await metrics.json() as JsonResponse<{ metric: string; value: number }>;
-      const profileData = await profileEvents.json() as JsonResponse<{ read_bytes_per_sec: number }>;
+      // Base query parts
+      let cpuLoadQuery = "0";
+      let loadAvgQuery = "0";
+      let totalPartsQuery = "0";
+      let maxPartsQuery = "0";
+      let primaryKeyCacheBytesQuery = "0";
+      let primaryKeyCacheFilesQuery = "0";
 
-      const asyncMap = Object.fromEntries(asyncData.data.map(d => [d.metric, Number(d.value)]));
-      const metricsMap = Object.fromEntries(metricsData.data.map(d => [d.metric, Number(d.value)]));
+      if (hasMetricLog) {
+        cpuLoadQuery = `(SELECT avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000 
+                         FROM system.metric_log 
+                         WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE)`;
+
+        primaryKeyCacheBytesQuery = `(SELECT avg(CurrentMetric_PrimaryIndexCacheBytes) 
+                                     FROM system.metric_log 
+                                     WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE)`;
+
+        primaryKeyCacheFilesQuery = `(SELECT avg(CurrentMetric_PrimaryIndexCacheFiles) 
+                                     FROM system.metric_log 
+                                     WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE)`;
+      }
+
+      if (hasAsyncMetricLog) {
+        loadAvgQuery = `(SELECT avg(value) FROM system.asynchronous_metric_log 
+                         WHERE metric = 'LoadAverage15' AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE)`;
+
+        totalPartsQuery = `(SELECT max(value) FROM system.asynchronous_metric_log 
+                           WHERE metric = 'TotalPartsOfMergeTreeTables' AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE)`;
+
+        maxPartsQuery = `(SELECT max(value) FROM system.asynchronous_metric_log 
+                         WHERE metric = 'MaxPartCountForPartition' AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE)`;
+      } else {
+        // Fallback for parts count if async metric log is missing
+        totalPartsQuery = "(SELECT count() FROM system.parts)";
+      }
+
+      // Get current resource metrics
+      const metricsResult = await this.client.query({
+        query: `
+            SELECT 
+              ${cpuLoadQuery} as cpu_load,
+              ${loadAvgQuery} as load_average_15,
+              ${totalPartsQuery} as total_parts,
+              ${maxPartsQuery} as max_parts_per_partition,
+              ${primaryKeyCacheBytesQuery} as primary_key_cache_bytes,
+              ${primaryKeyCacheFilesQuery} as primary_key_cache_files,
+              (SELECT value FROM system.asynchronous_metrics WHERE metric = 'MemoryResident' LIMIT 1) as memory_resident,
+              (SELECT value FROM system.metrics WHERE metric = 'MemoryTracking' LIMIT 1) as memory_tracking,
+              (SELECT value FROM system.metrics WHERE metric = 'BackgroundPoolTask' LIMIT 1) as background_pool_tasks,
+              (SELECT value FROM system.metrics WHERE metric = 'BackgroundSchedulePoolTask' LIMIT 1) as background_schedule_pool_tasks,
+              (SELECT value FROM system.metrics WHERE metric = 'BackgroundMergesAndMutationsPoolTask' LIMIT 1) as background_merges_mutations_pool_tasks,
+              (SELECT value FROM system.metrics WHERE metric = 'GlobalThread' LIMIT 1) as global_threads,
+              (SELECT value FROM system.metrics WHERE metric = 'LocalThread' LIMIT 1) as local_threads,
+              (SELECT value FROM system.metrics WHERE metric = 'OpenFileForRead' LIMIT 1) + 
+              (SELECT value FROM system.metrics WHERE metric = 'OpenFileForWrite' LIMIT 1) as file_descriptors_used,
+              (SELECT (max(ProfileEvent_ReadBufferFromFileDescriptorReadBytes) - min(ProfileEvent_ReadBufferFromFileDescriptorReadBytes)) / (${intervalMinutes} * 60)
+               FROM system.metric_log 
+               WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE) as read_rate
+          `,
+      });
+
+      const response = await metricsResult.json() as JsonResponse<{
+        cpu_load: number;
+        load_average_15: number;
+        total_parts: number;
+        max_parts_per_partition: number;
+        primary_key_cache_bytes: number;
+        primary_key_cache_files: number;
+        memory_resident: number;
+        memory_tracking: number;
+        background_pool_tasks: number;
+        background_schedule_pool_tasks: number;
+        background_merges_mutations_pool_tasks: number;
+        global_threads: number;
+        local_threads: number;
+        file_descriptors_used: number;
+        read_rate: number;
+      }>;
+
+      const data = response.data[0] || {} as any;
 
       return {
-        cpu_load: asyncMap.OSCPULoad || 0,
-        memory_resident: (asyncMap.MemoryResident || 0) / (1024 * 1024 * 1024), // Convert to GB
-        memory_tracking: (metricsMap.MemoryTracking || 0) / (1024 * 1024 * 1024), // Convert to GB
-        background_pool_tasks: metricsMap.BackgroundPoolTask || 0,
-        background_schedule_pool_tasks: metricsMap.BackgroundSchedulePoolTask || 0,
-        background_merges_mutations_pool_tasks: metricsMap.BackgroundMergesAndMutationsPoolTask || 0,
-        global_threads: metricsMap.GlobalThread || 0,
-        local_threads: metricsMap.LocalThread || 0,
-        file_descriptors_used: (metricsMap.OpenFileForRead || 0) + (metricsMap.OpenFileForWrite || 0),
-        file_descriptors_max: 0, // Will be populated if available
-        read_rate: profileData.data[0]?.read_bytes_per_sec || 0,
+        cpu_load: Number(data.cpu_load) || 0,
+        load_average_15: Number(data.load_average_15) || 0,
+        total_parts: Number(data.total_parts) || 0,
+        max_parts_per_partition: Number(data.max_parts_per_partition) || 0,
+        primary_key_cache_bytes: Number(data.primary_key_cache_bytes) || 0,
+        primary_key_cache_files: Number(data.primary_key_cache_files) || 0,
+        memory_resident: Number(data.memory_resident) || 0,
+        memory_tracking: Number(data.memory_tracking) || 0,
+        background_pool_tasks: Number(data.background_pool_tasks) || 0,
+        background_schedule_pool_tasks: Number(data.background_schedule_pool_tasks) || 0,
+        background_merges_mutations_pool_tasks: Number(data.background_merges_mutations_pool_tasks) || 0,
+        global_threads: Number(data.global_threads) || 0,
+        local_threads: Number(data.local_threads) || 0,
+        file_descriptors_used: Number(data.file_descriptors_used) || 0,
+        file_descriptors_max: 0,
+        read_rate: Number(data.read_rate) || 0,
       };
     } catch (error) {
       throw this.handleError(error, "Failed to fetch resource metrics");
+    }
+  }
+
+  /**
+   * Helper to check if a table exists
+   * @private
+   */
+  private async checkTableExists(tableName: string): Promise<boolean> {
+    try {
+      const result = await this.client.query({
+        query: `EXISTS TABLE ${tableName}`,
+      });
+      const response = await result.json() as JsonResponse<{ result: number }>;
+      return response.data[0]?.result === 1;
+    } catch {
+      return false;
     }
   }
 
@@ -861,7 +1036,7 @@ export class ClickHouseService {
       p50_ms: 0, p95_ms: 0, p99_ms: 0, max_ms: 0, avg_ms: 0, slow_queries_count: 0
     };
     const defaultMerges: import("../types").MergeMetrics = {
-      active_merges: 0, merge_queue_size: 0, pending_mutations: 0, parts_to_merge: 0, max_parts_per_partition: 0
+      merges_running: 0, mutations_running: 0, merged_rows_per_sec: 0, merged_bytes_per_sec: 0, merges_mutations_memory: 0, pending_mutations: 0
     };
     const defaultCache: import("../types").CacheMetrics = {
       mark_cache_hits: 0, mark_cache_misses: 0, mark_cache_hit_ratio: 0,
@@ -874,6 +1049,11 @@ export class ClickHouseService {
       global_threads: 0, local_threads: 0, file_descriptors_used: 0, file_descriptors_max: 0,
       read_rate: 0
     };
+    const defaultNetwork: import("../types").NetworkMetrics = {
+      tcp_connections: 0, http_connections: 0, interserver_connections: 0,
+      mysql_connections: 0, postgresql_connections: 0,
+      network_send_speed: 0, network_receive_speed: 0
+    };
 
     // Fetch all metrics with individual error handling
     const [
@@ -883,20 +1063,44 @@ export class ClickHouseService {
       replication,
       cache,
       resources,
+      network,
       errors,
       insertThroughput,
       topTables,
+      memoryHistory,
+      systemHistory,
+      networkHistory,
+      performanceHistory,
+      detailedMemoryHistory,
+      storageCacheHistory,
+      concurrencyHistory,
+      mergeHistory,
     ] = await Promise.all([
       this.getQueryLatencyMetrics(intervalMinutes).catch(() => defaultLatency),
       this.getDiskMetrics().catch(() => []),
-      this.getMergeMetrics().catch(() => defaultMerges),
+      this.getMergeMetrics(intervalMinutes).catch(() => defaultMerges),
       this.getReplicationMetrics().catch(() => []),
       this.getCacheMetrics().catch(() => defaultCache),
-      this.getResourceMetrics().catch(() => defaultResources),
+      this.getResourceMetrics(intervalMinutes).catch(() => defaultResources),
+      this.getNetworkMetrics(intervalMinutes).catch(() => defaultNetwork),
       this.getErrorMetrics(intervalMinutes).catch(() => []),
       this.getInsertThroughput(intervalMinutes).catch(() => []),
       this.getTopTablesBySize(10).catch(() => []),
+      this.getMemoryMetricsHistory(intervalMinutes).catch(() => []),
+      this.getSystemMetricsHistory(intervalMinutes).catch(() => []),
+      this.getNetworkMetricsHistory(intervalMinutes).catch(() => []),
+      this.getPerformanceMetricsHistory(intervalMinutes).catch(() => []),
+      this.getDetailedMemoryMetricsHistory(intervalMinutes).catch(() => []),
+      this.getStorageCacheMetricsHistory(intervalMinutes).catch(() => []),
+      this.getConcurrencyMetricsHistory(intervalMinutes).catch(() => []),
+      this.getMergeHistory(intervalMinutes).catch(() => []),
     ]);
+
+
+
+    // I should check how the results are destructured.
+    // Let me view the Promise.all call first to be safe.
+
 
     return {
       latency,
@@ -905,10 +1109,533 @@ export class ClickHouseService {
       replication,
       cache,
       resources,
+      network,
       errors,
       insertThroughput,
       topTables,
+      memory_history: memoryHistory,
+      system_history: systemHistory,
+      network_history: networkHistory,
+      performance_history: performanceHistory,
+      detailed_memory_history: detailedMemoryHistory,
+      storage_cache_history: storageCacheHistory,
+      concurrency_history: concurrencyHistory,
+      merges_history: mergeHistory,
     };
+  }
+
+  /**
+   * Get system metrics history (Queries, Parts, Merges, Mutations) from system.metric_log
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getSystemMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").SystemHistoryMetric[]> {
+    try {
+      // Check if system.metric_log exists first
+      const checkTable = await this.client.query({
+        query: "EXISTS TABLE system.metric_log",
+      });
+      const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
+
+      if (!checkResponse.data[0] || checkResponse.data[0].result !== 1) {
+        return [];
+      }
+
+      // Determine appropriate time bucket based on interval
+      let bucketSeconds = 60; // Default 1 minute
+      if (intervalMinutes <= 15) bucketSeconds = 10;
+      else if (intervalMinutes <= 60) bucketSeconds = 60;
+      else if (intervalMinutes <= 360) bucketSeconds = 300;
+      else bucketSeconds = 1800;
+
+      const result = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avgIf(value, metric = 'Query') as queries,
+            avgIf(value, metric = 'Merge') as merges,
+            avgIf(value, metric = 'Mutation') as mutations,
+            avgIf(value, metric = 'PartsCommitted') as parts
+          FROM system.asynchronous_metric_log
+          WHERE metric IN ('Query', 'Merge', 'Mutation', 'PartsCommitted')
+            AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      const response = await result.json() as JsonResponse<{ ts: number; queries: number; merges: number; mutations: number; parts: number }>;
+
+      return response.data.map(d => ({
+        timestamp: Number(d.ts),
+        queries: Number(d.queries) || 0,
+        merges: Number(d.merges) || 0,
+        mutations: Number(d.mutations) || 0,
+        parts: Number(d.parts) || 0,
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Get network traffic history from system.metric_log
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getNetworkMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").NetworkHistoryMetric[]> {
+    try {
+      // Check if system.metric_log exists first
+      const checkTable = await this.client.query({
+        query: "EXISTS TABLE system.metric_log",
+      });
+      const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
+
+      if (!checkResponse.data[0] || checkResponse.data[0].result !== 1) {
+        return [];
+      }
+
+      // Determine appropriate time bucket based on interval
+      let bucketSeconds = 60; // Default 1 minute
+      if (intervalMinutes <= 15) bucketSeconds = 10;
+      else if (intervalMinutes <= 60) bucketSeconds = 60;
+      else if (intervalMinutes <= 360) bucketSeconds = 300;
+      else bucketSeconds = 1800;
+
+      const result = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avg(ProfileEvent_NetworkSendBytes) as network_send_speed,
+            avg(ProfileEvent_NetworkReceiveBytes) as network_receive_speed
+          FROM system.metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      const response = await result.json() as JsonResponse<{ ts: number; network_send_speed: number; network_receive_speed: number }>;
+
+      return response.data.map(d => ({
+        timestamp: Number(d.ts),
+        network_send_speed: Number(d.network_send_speed) || 0,
+        network_receive_speed: Number(d.network_receive_speed) || 0,
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Get comprehensive performance metrics history including CPU, throughput
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getPerformanceMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").PerformanceHistoryMetric[]> {
+    try {
+      const checkTable = await this.client.query({
+        query: "EXISTS TABLE system.metric_log",
+      });
+      const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
+
+      if (!checkResponse.data[0] || checkResponse.data[0].result !== 1) {
+        return [];
+      }
+
+      let bucketSeconds = 60;
+      if (intervalMinutes <= 15) bucketSeconds = 10;
+      else if (intervalMinutes <= 60) bucketSeconds = 60;
+      else if (intervalMinutes <= 360) bucketSeconds = 300;
+      else bucketSeconds = 1800;
+
+      // Query metric_log for ProfileEvents
+      const metricResult = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avg(ProfileEvent_OSCPUWaitMicroseconds) / 1000000 as cpu_wait,
+            avg(ProfileEvent_OSIOWaitMicroseconds) / 1000000 as cpu_io_wait,
+            avg(ProfileEvent_Query) as queries_per_sec,
+            avg(ProfileEvent_SelectedRows) as selected_rows_per_sec,
+            avg(ProfileEvent_SelectedBytes) as selected_bytes_per_sec,
+            avg(ProfileEvent_InsertedBytes) as inserted_bytes_per_sec,
+            avg(ProfileEvent_OSReadBytes) as read_from_disk_bytes_per_sec,
+            avg(ProfileEvent_OSReadChars) as read_from_fs_bytes_per_sec,
+            avg(ProfileEvent_InsertedRows) as inserted_rows_per_sec,
+            avg(ProfileEvent_MergedRows) as merged_rows_per_sec
+          FROM system.metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      // Query asynchronous_metric_log for OS CPU metrics (Normalized)
+      const asyncResult = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avgIf(value, metric = 'OSUserTimeNormalized') as cpu_user,
+            avgIf(value, metric = 'OSSystemTimeNormalized') as cpu_system
+          FROM system.asynchronous_metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+            AND metric IN ('OSUserTimeNormalized', 'OSSystemTimeNormalized')
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      const metricResponse = await metricResult.json() as JsonResponse<any>;
+      const asyncResponse = await asyncResult.json() as JsonResponse<any>;
+
+      // Merge the two datasets by timestamp
+      const metricMap = new Map(metricResponse.data.map((d: any) => [Number(d.ts), d]));
+      const asyncMap = new Map(asyncResponse.data.map((d: any) => [Number(d.ts), d]));
+
+      const allTimestamps = new Set([...metricMap.keys(), ...asyncMap.keys()]);
+      const result: import("../types").PerformanceHistoryMetric[] = [];
+
+      for (const ts of Array.from(allTimestamps).sort()) {
+        const metricData = (metricMap.get(ts) || {}) as any;
+        const asyncData = (asyncMap.get(ts) || {}) as any;
+
+        result.push({
+          timestamp: ts,
+          cpu_user: Number(asyncData.cpu_user) || 0,
+          cpu_system: Number(asyncData.cpu_system) || 0,
+          cpu_wait: Number(metricData.cpu_wait) || 0,
+          cpu_io_wait: Number(metricData.cpu_io_wait) || 0,
+          queries_per_sec: Number(metricData.queries_per_sec) || 0,
+          selected_rows_per_sec: Number(metricData.selected_rows_per_sec) || 0,
+          selected_bytes_per_sec: Number(metricData.selected_bytes_per_sec) || 0,
+          inserted_bytes_per_sec: Number(metricData.inserted_bytes_per_sec) || 0,
+          read_from_disk_bytes_per_sec: Number(metricData.read_from_disk_bytes_per_sec) || 0,
+          read_from_fs_bytes_per_sec: Number(metricData.read_from_fs_bytes_per_sec) || 0,
+          inserted_rows_per_sec: Number(metricData.inserted_rows_per_sec) || 0,
+          merged_rows_per_sec: Number(metricData.merged_rows_per_sec) || 0,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Get detailed memory metrics history
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getDetailedMemoryMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").DetailedMemoryMetric[]> {
+    try {
+      // Check for table availability
+      const [hasMetricLog, hasAsyncMetricLog] = await Promise.all([
+        this.checkTableExists('system.metric_log'),
+        this.checkTableExists('system.asynchronous_metric_log')
+      ]);
+
+      if (!hasMetricLog && !hasAsyncMetricLog) {
+        return [];
+      }
+
+      let bucketSeconds = 60;
+      if (intervalMinutes <= 15) bucketSeconds = 10;
+      else if (intervalMinutes <= 60) bucketSeconds = 60;
+      else if (intervalMinutes <= 360) bucketSeconds = 300;
+      else bucketSeconds = 1800;
+
+      let metricMap = new Map<number, any>();
+      let asyncMap = new Map<number, any>();
+
+      if (hasMetricLog) {
+        const metricResult = await this.client.query({
+          query: `
+            SELECT
+              toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+              avg(CurrentMetric_MemoryTracking) as memory_tracking,
+              avg(CurrentMetric_MergesMutationsMemoryTracking) as merges_mutations_memory,
+              avg(CurrentMetric_PrimaryIndexCacheBytes) as primary_key_cache_bytes
+            FROM system.metric_log
+            WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+            GROUP BY ts
+            ORDER BY ts
+          `,
+        });
+        const metricResponse = await metricResult.json() as JsonResponse<any>;
+        metricMap = new Map(metricResponse.data.map((d: any) => [Number(d.ts), d]));
+      }
+
+      if (hasAsyncMetricLog) {
+        const asyncResult = await this.client.query({
+          query: `
+            SELECT
+              toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+              avgIf(value, metric = 'MemoryResident') as memory_resident,
+              avgIf(value, metric LIKE 'jemalloc.allocated') as jemalloc_allocated,
+              avgIf(value, metric LIKE 'jemalloc.resident') as jemalloc_resident,
+              avgIf(value, metric = 'TotalPrimaryKeyBytesInMemoryAllocated') as primary_key_memory,
+              avgIf(value, metric = 'TotalIndexGranularityBytesInMemoryAllocated') as index_granularity_memory
+            FROM system.asynchronous_metric_log
+            WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+              AND metric IN ('MemoryResident', 'jemalloc.allocated', 'jemalloc.resident', 
+                           'TotalPrimaryKeyBytesInMemoryAllocated', 'TotalIndexGranularityBytesInMemoryAllocated')
+            GROUP BY ts
+            ORDER BY ts
+          `,
+        });
+        const asyncResponse = await asyncResult.json() as JsonResponse<any>;
+        asyncMap = new Map(asyncResponse.data.map((d: any) => [Number(d.ts), d]));
+      }
+
+      const allTimestamps = new Set([...metricMap.keys(), ...asyncMap.keys()]);
+      const result: import("../types").DetailedMemoryMetric[] = [];
+
+      for (const ts of Array.from(allTimestamps).sort((a, b) => a - b)) {
+        const metricData = (metricMap.get(ts) || {}) as any;
+        const asyncData = (asyncMap.get(ts) || {}) as any;
+
+        result.push({
+          timestamp: ts,
+          memory_tracking: Number(metricData.memory_tracking) || 0,
+          memory_resident: Number(asyncData.memory_resident) || 0,
+          jemalloc_allocated: Number(asyncData.jemalloc_allocated) || 0,
+          jemalloc_resident: Number(asyncData.jemalloc_resident) || 0,
+          primary_key_memory: Number(asyncData.primary_key_memory) || 0,
+          index_granularity_memory: Number(asyncData.index_granularity_memory) || 0,
+          merges_mutations_memory: Number(metricData.merges_mutations_memory) || 0,
+          cache_bytes: Number(metricData.primary_key_cache_bytes) || 0,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Get storage and cache metrics history including S3 and cache hit rates
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getStorageCacheMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").StorageCacheMetric[]> {
+    try {
+      let bucketSeconds = 60;
+      if (intervalMinutes <= 15) bucketSeconds = 10;
+      else if (intervalMinutes <= 60) bucketSeconds = 60;
+      else if (intervalMinutes <= 360) bucketSeconds = 300;
+      else bucketSeconds = 1800;
+
+      const result = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avg(ProfileEvent_ReadBufferFromS3Bytes) as s3_read_bytes_per_sec,
+            avg(ProfileEvent_ReadBufferFromS3Microseconds) as s3_read_microseconds,
+            avg(ProfileEvent_ReadBufferFromS3RequestsErrors) as s3_read_errors_per_sec,
+            avg(ProfileEvent_DiskS3PutObject + ProfileEvent_DiskS3UploadPart + 
+                ProfileEvent_DiskS3CreateMultipartUpload + ProfileEvent_DiskS3CompleteMultipartUpload) as disk_s3_put_requests_per_sec,
+            avg(ProfileEvent_DiskS3GetObject + ProfileEvent_DiskS3HeadObject + ProfileEvent_DiskS3ListObjects) as disk_s3_get_requests_per_sec,
+            avg(CurrentMetric_FilesystemCacheSize) as filesystem_cache_size,
+            if(sum(ProfileEvent_CachedReadBufferReadFromCacheBytes) + sum(ProfileEvent_CachedReadBufferReadFromSourceBytes) > 0,
+               sum(ProfileEvent_CachedReadBufferReadFromCacheBytes) / 
+               (sum(ProfileEvent_CachedReadBufferReadFromCacheBytes) + sum(ProfileEvent_CachedReadBufferReadFromSourceBytes)),
+               0) as fs_cache_hit_rate,
+            greatest(0, if(sum(ProfileEvent_OSReadChars) + sum(ProfileEvent_ReadBufferFromS3Bytes) > 0,
+                          (sum(ProfileEvent_OSReadChars) - sum(ProfileEvent_OSReadBytes)) / 
+                          (sum(ProfileEvent_OSReadChars) + sum(ProfileEvent_ReadBufferFromS3Bytes)),
+                          0)) as page_cache_hit_rate
+          FROM system.metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      const response = await result.json() as JsonResponse<any>;
+
+      return response.data.map((d: any) => ({
+        timestamp: Number(d.ts),
+        s3_read_bytes_per_sec: Number(d.s3_read_bytes_per_sec) || 0,
+        s3_read_microseconds: Number(d.s3_read_microseconds) || 0,
+        s3_read_errors_per_sec: Number(d.s3_read_errors_per_sec) || 0,
+        disk_s3_put_requests_per_sec: Number(d.disk_s3_put_requests_per_sec) || 0,
+        disk_s3_get_requests_per_sec: Number(d.disk_s3_get_requests_per_sec) || 0,
+        fs_cache_hit_rate: Number(d.fs_cache_hit_rate) || 0,
+        page_cache_hit_rate: Number(d.page_cache_hit_rate) || 0,
+        filesystem_cache_size: Number(d.filesystem_cache_size) || 0,
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+
+  /**
+   * Get merge metrics history
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getMergeHistory(intervalMinutes: number = 60): Promise<import("../types").MergeHistoryMetric[]> {
+    try {
+      let bucketSeconds = 60;
+      if (intervalMinutes <= 15) bucketSeconds = 10;
+      else if (intervalMinutes <= 60) bucketSeconds = 60;
+      else if (intervalMinutes <= 360) bucketSeconds = 300;
+      else bucketSeconds = 1800;
+
+      const result = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            max(CurrentMetric_Merge) as merges_running,
+            max(CurrentMetric_PartMutation) as mutations_running,
+            avg(ProfileEvent_MergedRows) as merged_rows_per_sec,
+            avg(ProfileEvent_MergedUncompressedBytes) as merged_bytes_per_sec, 
+            max(CurrentMetric_MergesMutationsMemoryTracking) as memory_usage
+          FROM system.metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      const response = await result.json() as JsonResponse<any>;
+      return response.data.map((d: any) => ({
+        timestamp: Number(d.ts),
+        merges_running: Number(d.merges_running) || 0,
+        mutations_running: Number(d.mutations_running) || 0,
+        merged_rows_per_sec: Number(d.merged_rows_per_sec) || 0,
+        merged_bytes_per_sec: Number(d.merged_bytes_per_sec) || 0,
+        memory_usage: Number(d.memory_usage) || 0,
+      }));
+    } catch (error) {
+      console.error("Failed to fetch merge history", error);
+      return [];
+    }
+  }
+
+  /**
+   * Get concurrency metrics history including running queries, merges, connections, and parts
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getConcurrencyMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").ConcurrencyMetric[]> {
+    try {
+      let bucketSeconds = 60;
+      if (intervalMinutes <= 15) bucketSeconds = 10;
+      else if (intervalMinutes <= 60) bucketSeconds = 60;
+      else if (intervalMinutes <= 360) bucketSeconds = 300;
+      else bucketSeconds = 1800;
+
+      // Query metric_log for current metrics
+      const metricResult = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avg(CurrentMetric_Query) as running_queries,
+            avg(CurrentMetric_Merge) as running_merges,
+            max(CurrentMetric_TCPConnection) as tcp_connections,
+            max(CurrentMetric_HTTPConnection) as http_connections,
+            max(CurrentMetric_MySQLConnection) as mysql_connections,
+            max(CurrentMetric_InterserverConnection) as interserver_connections
+          FROM system.metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      // Query asynchronous_metric_log for parts metrics
+      const asyncResult = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avgIf(value, metric = 'TotalPartsOfMergeTreeTables') as total_mergetree_parts,
+            maxIf(value, metric = 'MaxPartCountForPartition') as max_parts_per_partition
+          FROM system.asynchronous_metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+            AND metric IN ('TotalPartsOfMergeTreeTables', 'MaxPartCountForPartition')
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      const metricResponse = await metricResult.json() as JsonResponse<any>;
+      const asyncResponse = await asyncResult.json() as JsonResponse<any>;
+
+      const metricMap = new Map(metricResponse.data.map((d: any) => [Number(d.ts), d]));
+      const asyncMap = new Map(asyncResponse.data.map((d: any) => [Number(d.ts), d]));
+
+      const allTimestamps = new Set([...metricMap.keys(), ...asyncMap.keys()]);
+      const result: import("../types").ConcurrencyMetric[] = [];
+
+      for (const ts of Array.from(allTimestamps).sort()) {
+        const metricData = metricMap.get(ts) || {};
+        const asyncData = asyncMap.get(ts) || {};
+
+        result.push({
+          timestamp: ts,
+          running_queries: Number(metricData.running_queries) || 0,
+          running_merges: Number(metricData.running_merges) || 0,
+          tcp_connections: Number(metricData.tcp_connections) || 0,
+          http_connections: Number(metricData.http_connections) || 0,
+          mysql_connections: Number(metricData.mysql_connections) || 0,
+          interserver_connections: Number(metricData.interserver_connections) || 0,
+          total_mergetree_parts: Number(asyncData.total_mergetree_parts) || 0,
+          max_parts_per_partition: Number(asyncData.max_parts_per_partition) || 0,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Get memory usage history from system.asynchronous_metric_log
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getMemoryMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").MemoryHistoryMetric[]> {
+    try {
+      // Check if system.asynchronous_metric_log exists first
+      // This table might not be enabled in all setups
+      const checkTable = await this.client.query({
+        query: "EXISTS TABLE system.asynchronous_metric_log",
+      });
+      const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
+
+      if (!checkResponse.data[0] || checkResponse.data[0].result !== 1) {
+        return [];
+      }
+
+      // Determine appropriate time bucket based on interval
+      // Target around 60-100 data points for smooth graphs
+      let bucketSeconds = 60; // Default 1 minute
+      if (intervalMinutes <= 15) bucketSeconds = 10; // 15m -> ~90 points
+      else if (intervalMinutes <= 60) bucketSeconds = 60; // 1h -> 60 points
+      else if (intervalMinutes <= 360) bucketSeconds = 300; // 6h -> 72 points
+      else bucketSeconds = 1800; // 24h -> 48 points
+
+      const result = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avg(value) / (1024 * 1024 * 1024) as memory_gb
+          FROM system.asynchronous_metric_log
+          WHERE metric = 'MemoryResident'
+            AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      const response = await result.json() as JsonResponse<{ ts: number; memory_gb: number }>;
+
+      return response.data.map(d => ({
+        timestamp: Number(d.ts),
+        memory_resident_gb: Number(d.memory_gb) || 0,
+      }));
+    } catch (error) {
+      // Silently fail if metric log is not available/accessible
+      return [];
+    }
   }
 
   /**
@@ -1002,6 +1729,64 @@ export class ClickHouseService {
     if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
     if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
     return num.toLocaleString();
+  }
+
+  /**
+   * Get network metrics
+   */
+  /**
+   * Get network metrics
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getNetworkMetrics(intervalMinutes: number = 60): Promise<import("../types").NetworkMetrics> {
+    try {
+      // Get connection metrics from system.metrics
+      const metricsResult = await this.client.query({
+        query: `
+          SELECT metric, value FROM system.metrics
+          WHERE metric IN ('TCPConnection', 'HTTPConnection', 'InterserverConnection', 'MySQLConnection', 'PostgreSQLConnection')
+        `,
+      });
+      const metricsResponse = await metricsResult.json() as JsonResponse<{ metric: string; value: number }>;
+      const metricsMap = Object.fromEntries(metricsResponse.data.map(d => [d.metric, Number(d.value)]));
+
+      // Get throughput metrics (prefer system.metric_log for rates, fallback to system.events)
+      let networkSendSpeed = 0;
+      let networkReceiveSpeed = 0;
+
+      try {
+        // Try to get average rate from last 15 seconds via metric_log
+        const logResult = await this.client.query({
+          query: `
+             SELECT 
+               avg(ProfileEvent_NetworkSendBytes) as send_speed,
+               avg(ProfileEvent_NetworkReceiveBytes) as receive_speed
+             FROM system.metric_log
+             WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          `,
+        });
+        const logResponse = await logResult.json() as JsonResponse<{ send_speed: number; receive_speed: number }>;
+        if (logResponse.data[0]) {
+          networkSendSpeed = Number(logResponse.data[0].send_speed) || 0;
+          networkReceiveSpeed = Number(logResponse.data[0].receive_speed) || 0;
+        }
+      } catch (e) {
+        // Fallback or ignore if metric_log not available/doesn't have columns
+        // Could implement a system.events delta check here if needed, but 0 is safe fallback
+      }
+
+      return {
+        tcp_connections: Number(metricsMap.TCPConnection) || 0,
+        http_connections: Number(metricsMap.HTTPConnection) || 0,
+        interserver_connections: Number(metricsMap.InterserverConnection) || 0,
+        mysql_connections: Number(metricsMap.MySQLConnection) || 0,
+        postgresql_connections: Number(metricsMap.PostgreSQLConnection) || 0,
+        network_send_speed: networkSendSpeed,
+        network_receive_speed: networkReceiveSpeed,
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch network metrics");
+    }
   }
 
   private handleError(error: unknown, defaultMessage: string): AppError {

@@ -1,15 +1,18 @@
 import React, { useRef, useEffect, useState } from "react";
 import uPlot from "uplot";
+import { formatBytes, formatCompactNumber } from "@/lib/utils";
 
 interface MetricData {
   timestamps: number[];
-  values: number[];
+  values: number[][]; // Multiple series
+  labels?: string[];
+  colors?: string[];
 }
 
 interface UPlotMetricItemComponentProps {
   data: MetricData;
-  title: string;
-  color?: string;
+  title: string; // Used as unit label (e.g., "Bytes", "Rows/s")
+  colors?: string[];
   fill?: string | ((u: uPlot) => CanvasGradient | string);
   unit?: string;
   height?: number;
@@ -18,22 +21,34 @@ interface UPlotMetricItemComponentProps {
 const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
   data,
   title,
-  color = "#a855f7",
+  colors = ["#a855f7"], // Default color if not provided
   fill,
   unit = "",
   height,
 }) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const uplotRef = useRef<uPlot | null>(null);
-  const [hoveredValue, setHoveredValue] = useState<{ time: string; value: string } | null>(null);
+  const [hoveredValues, setHoveredValues] = useState<{ time: string; values: { label: string; value: string; color: string }[] } | null>(null);
+
+  // Helper to format values based on title/unit
+  const formatValue = (val: number) => {
+    if (val === undefined || val === null) return "-";
+    if (title.includes("Bytes")) return formatBytes(val);
+    if (title.includes("%")) return `${val.toFixed(1)}%`;
+    if (title.includes("ms")) return `${val.toFixed(1)}ms`;
+    if (title.includes("Connections") || title === "Conn") return Math.round(val).toString();
+    return formatCompactNumber(val);
+  };
 
   useEffect(() => {
     if (!chartRef.current || !data.timestamps.length) return;
 
-    // Get gradient colors based on main color if no fill provided
-    const getGradientFill = (u: uPlot) => {
-      if (fill) return typeof fill === 'function' ? fill(u) : fill;
+    // Get gradient colors based on refined logic
+    const getGradientFill = (u: uPlot, color: string) => {
+      // If explicit fill function provided, use it (only works well for single series usually)
+      if (fill && typeof fill === 'function') return fill(u);
 
+      // Default gradient
       const gradient = u.ctx.createLinearGradient(0, 0, 0, u.height);
       gradient.addColorStop(0, `${color}40`);
       gradient.addColorStop(1, `${color}05`);
@@ -41,6 +56,22 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
     };
 
     const chartHeight = height || (chartRef.current.clientHeight - 10);
+
+    // Allow colors to be passed via data or props, fallback to default loop
+    const seriesColors = data.colors || colors;
+    const seriesLabels = data.labels || [title];
+
+    const seriesConfig: uPlot.Series[] = [
+      {}, // Time series
+      ...data.values.map((_, i) => ({
+        label: seriesLabels[i] || `Series ${i + 1}`,
+        stroke: seriesColors[i % seriesColors.length] || "#a855f7",
+        width: 2,
+        fill: (u: uPlot) => getGradientFill(u, seriesColors[i % seriesColors.length] || "#a855f7"),
+        points: { show: false },
+        spanGaps: true,
+      }))
+    ];
 
     const opts: uPlot.Options = {
       width: chartRef.current.clientWidth,
@@ -54,7 +85,7 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
         points: {
           show: true,
           size: 8,
-          fill: color,
+          // fill: color, // Removed global fill
           stroke: "#fff",
           width: 2,
         },
@@ -76,8 +107,19 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
         y: {
           auto: true,
           range: (u, min, max) => {
+            // Handle flat data
+            if (min === max) {
+              return [Math.max(0, min - 1), max + 1];
+            }
             const pad = (max - min) * 0.1;
-            return [Math.max(0, min - pad), max + pad];
+            const res = [Math.max(0, min - pad), max + pad] as [number, number];
+
+            // For tasks/counts, ensure at least some breathing room
+            if (title === "Tasks" || title === "Count" || title === "Reqs" || title === "Conn") {
+              if (res[1] - res[0] < 1) res[1] = res[0] + 1;
+            }
+
+            return res;
           },
         },
       },
@@ -113,32 +155,25 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
           },
           font: "11px Inter, system-ui, sans-serif",
           labelFont: "11px Inter, system-ui, sans-serif",
-          size: 50,
+          size: 80,
+          values: (u, vals) => vals.map(v => formatValue(v)),
         },
       ],
-      series: [
-        {},
-        {
-          label: title,
-          stroke: color,
-          fill: (u) => getGradientFill(u),
-          width: 2,
-          points: {
-            show: false,
-          },
-          spanGaps: true,
-        },
-      ],
+      series: seriesConfig,
       hooks: {
         setCursor: [
           (u) => {
             const idx = u.cursor.idx;
             if (idx !== null && idx !== undefined && data.timestamps[idx]) {
               const time = new Date(data.timestamps[idx] * 1000).toLocaleTimeString();
-              const value = data.values[idx]?.toFixed(2) || "0";
-              setHoveredValue({ time, value });
+              const vals = data.values.map((series, i) => ({
+                label: seriesLabels[i] || `Series ${i + 1}`,
+                value: formatValue(series[idx]),
+                color: seriesColors[i % seriesColors.length] || "#a855f7"
+              }));
+              setHoveredValues({ time, values: vals });
             } else {
-              setHoveredValue(null);
+              setHoveredValues(null);
             }
           },
         ],
@@ -147,8 +182,8 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
 
     const plotData: uPlot.AlignedData = [
       data.timestamps,
-      data.values,
-    ];
+      ...data.values,
+    ] as any;
 
     if (uplotRef.current) {
       uplotRef.current.destroy();
@@ -173,7 +208,7 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
         uplotRef.current.destroy();
       }
     };
-  }, [data, title, color, fill, height]);
+  }, [data, title, colors, fill, height]);
 
   if (!data.timestamps.length) {
     return (
@@ -186,10 +221,18 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
   return (
     <div className="relative w-full h-full">
       {/* Hover tooltip */}
-      {hoveredValue && (
-        <div className="absolute top-2 right-2 z-10 px-3 py-1.5 rounded-lg bg-black/80 border border-white/10 backdrop-blur-md pointer-events-none">
-          <div className="text-xs text-gray-400">{hoveredValue.time}</div>
-          <div className="text-sm font-medium text-white">{hoveredValue.value}{unit} {title}</div>
+      {hoveredValues && (
+        <div className="absolute top-2 right-2 z-10 px-3 py-2 rounded-lg bg-black/80 border border-white/10 backdrop-blur-md pointer-events-none">
+          <div className="text-xs text-gray-400 mb-1">{hoveredValues.time}</div>
+          <div className="flex flex-col gap-1">
+            {hoveredValues.values.map((v, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: v.color }} />
+                <span className="text-xs text-gray-300">{v.label}:</span>
+                <span className="text-sm font-medium text-white">{v.value}{unit}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       <div ref={chartRef} className="w-full h-full" />
