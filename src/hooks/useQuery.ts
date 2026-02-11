@@ -863,6 +863,9 @@ export function useMetrics(
     // Current values
     currentStats?: {
       memoryUsage: number;
+      memoryTotal: number;
+      memoryPercentage: number;
+      cpuLoad: number;
       activeQueries: number;
       connections: number;
       uptime: number;
@@ -961,6 +964,9 @@ export function useMetrics(
       // Optimized: Fetch all stats in a single query to reduce HTTP overhead
       let currentStats = {
         memoryUsage: 0,
+        memoryTotal: 0,
+        memoryPercentage: 0,
+        cpuLoad: 0,
         activeQueries: 0,
         connections: 0,
         uptime: 0,
@@ -979,8 +985,12 @@ export function useMetrics(
         const statsResult = await safeQuery(`
           SELECT
             (SELECT value / 1073741824 FROM system.asynchronous_metrics WHERE metric = 'MemoryResident' LIMIT 1) as memoryUsage,
+            (SELECT value / 1073741824 FROM system.asynchronous_metrics WHERE metric = 'OSMemoryTotal' LIMIT 1) as memoryTotal,
+            (SELECT avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000 
+             FROM system.metric_log 
+             WHERE event_time >= now() - INTERVAL ${interval}) as cpuLoad,
             (SELECT count() FROM system.processes) as activeQueries,
-            (SELECT value FROM system.metrics WHERE metric = 'TCPConnection' LIMIT 1) as connections,
+            (SELECT sum(value) FROM system.metrics WHERE metric IN ('TCPConnection', 'HTTPConnection')) as connections,
             (SELECT value FROM system.asynchronous_metrics WHERE metric = 'Uptime' LIMIT 1) as uptime,
             (SELECT sum(rows) FROM system.parts WHERE active) as totalRows,
             (SELECT sum(bytes_on_disk) FROM system.parts WHERE active) as totalBytes,
@@ -988,10 +998,12 @@ export function useMetrics(
             (SELECT count() FROM system.tables WHERE database NOT IN ('system', 'information_schema')) as tablesCount,
             (SELECT count() FROM system.parts WHERE active) as partsCount
         `);
-
         if (statsResult.length > 0) {
           const row = statsResult[0] as Record<string, number>;
           currentStats.memoryUsage = Number(row.memoryUsage) || 0;
+          currentStats.memoryTotal = Number(row.memoryTotal) || 0;
+          currentStats.memoryPercentage = currentStats.memoryTotal > 0 ? (currentStats.memoryUsage / currentStats.memoryTotal) * 100 : 0;
+          currentStats.cpuLoad = Number(row.cpuLoad) || 0;
           currentStats.activeQueries = Number(row.activeQueries) || 0;
           currentStats.connections = Number(row.connections) || 0;
           currentStats.uptime = Number(row.uptime) || 0;

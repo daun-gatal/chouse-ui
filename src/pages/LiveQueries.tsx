@@ -199,7 +199,9 @@ function QueryRow({ query, onKill, canKill, isKilling }: QueryRowProps) {
                 <TableCell>
                     <div className="flex items-center gap-2">
                         <User className="w-3.5 h-3.5 text-gray-500" />
-                        <span className="text-gray-300">{query.user}</span>
+                        <span className="text-gray-300">
+                            {query.rbac_user_display_name || query.rbac_user || query.user}
+                        </span>
                     </div>
                 </TableCell>
                 <TableCell className="max-w-[300px]">

@@ -13,7 +13,7 @@ import DataSampleSection from "./DataSampleSection";
 // Format SQL query using sql-formatter
 function formatSqlQuery(sql: string): string {
   if (!sql) return "";
-  
+
   try {
     // Use sql-formatter with ClickHouse dialect settings
     return format(sql, {
@@ -39,7 +39,7 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
   const [createTableQueryOpen, setCreateTableQueryOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Use appropriate hook based on whether we're viewing a database or table
   const {
     data: tableInfo,
@@ -56,18 +56,18 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
   const isLoading = tableName ? tableLoading : dbLoading;
   const error = tableName ? tableError : dbError;
   const info = tableName ? tableInfo : databaseInfo;
-  
+
   // Format the CREATE TABLE query
   const formattedQuery = useMemo(() => {
     if (!info || !info.create_table_query) return "";
     return formatSqlQuery(String(info.create_table_query));
   }, [info]);
-  
+
   // Filter out only create_table_query (handled separately)
   // Show all other fields, including 0, false, empty strings, etc.
   const regularFields = useMemo(() => {
     if (!info) return [];
-    return Object.entries(info).filter(([key]) => 
+    return Object.entries(info).filter(([key]) =>
       key !== "create_table_query"
     );
   }, [info]);
@@ -83,12 +83,12 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
 
   const copyToClipboard = async () => {
     if (!formattedQuery) return;
-    
+
     // Clear any existing timeout
     if (copyTimeoutRef.current) {
       clearTimeout(copyTimeoutRef.current);
     }
-    
+
     try {
       await navigator.clipboard.writeText(formattedQuery);
       setCopied(true);
@@ -163,46 +163,48 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
                 {info.create_table_query && (
                   <div className="p-3 rounded-lg bg-white/5 border border-white/10">
                     <Collapsible open={createTableQueryOpen} onOpenChange={setCreateTableQueryOpen}>
-                      <CollapsibleTrigger className="w-full text-left">
-                        <div className="flex items-center justify-between w-full mb-2">
-                          <p className="text-xs text-gray-400 capitalize flex items-center gap-2">
-                            <Code className="h-3 w-3" />
-                            Create Table Query
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-xs gap-1.5 px-2"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard();
-                              }}
-                            >
-                              {copied ? (
-                                <>
-                                  <Check className="h-3 w-3 text-green-400" />
-                                  <span className="text-green-400">Copied</span>
-                                </>
+                      <CollapsibleTrigger asChild>
+                        <div className="w-full text-left cursor-pointer">
+                          <div className="flex items-center justify-between w-full mb-2">
+                            <p className="text-xs text-gray-400 capitalize flex items-center gap-2">
+                              <Code className="h-3 w-3" />
+                              Create Table Query
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs gap-1.5 px-2"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyToClipboard();
+                                }}
+                              >
+                                {copied ? (
+                                  <>
+                                    <Check className="h-3 w-3 text-green-400" />
+                                    <span className="text-green-400">Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="h-3 w-3" />
+                                    <span>Copy</span>
+                                  </>
+                                )}
+                              </Button>
+                              {createTableQueryOpen ? (
+                                <ChevronUp className="h-4 w-4 text-gray-400" />
                               ) : (
-                                <>
-                                  <Copy className="h-3 w-3" />
-                                  <span>Copy</span>
-                                </>
+                                <ChevronDown className="h-4 w-4 text-gray-400" />
                               )}
-                            </Button>
-                            {createTableQueryOpen ? (
-                              <ChevronUp className="h-4 w-4 text-gray-400" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 text-gray-400" />
-                            )}
+                            </div>
                           </div>
+                          {!createTableQueryOpen && (
+                            <p className="text-sm text-white font-mono truncate text-left w-full">
+                              {formattedQuery.substring(0, 100)}...
+                            </p>
+                          )}
                         </div>
-                        {!createTableQueryOpen && (
-                          <p className="text-sm text-white font-mono truncate text-left w-full">
-                            {formattedQuery.substring(0, 100)}...
-                          </p>
-                        )}
                       </CollapsibleTrigger>
                       <CollapsibleContent className="pt-2">
                         <div className="relative">
@@ -235,7 +237,7 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
                     </Collapsible>
                   </div>
                 )}
-                
+
                 {/* Regular fields in grid */}
                 {regularFields.length > 0 && (
                   <div className="grid grid-cols-2 gap-4">

@@ -286,9 +286,12 @@ export default function HomePage() {
                 <div className="flex items-center justify-center h-full text-gray-600">Loading Chart...</div>
               ) : metrics?.queriesPerSecond ? (
                 <UPlotMetricItemComponent
-                  data={metrics.queriesPerSecond}
+                  data={{
+                    ...metrics.queriesPerSecond,
+                    values: [metrics.queriesPerSecond.values]
+                  }}
                   title=""
-                  color="rgb(59, 130, 246)"
+                  colors={["rgb(59, 130, 246)"]}
                   fill="rgba(59, 130, 246, 0.15)"
                   unit=" qps"
                   height={280}

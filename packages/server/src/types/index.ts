@@ -136,6 +136,8 @@ export interface SystemStats {
   totalRows: string;
   totalSize: string;
   memoryUsage: string;
+  memoryTotal: string;
+  memoryPercentage: number;
   cpuLoad: number;
   activeConnections: number;
   activeQueries: number;
@@ -171,11 +173,12 @@ export interface DiskMetrics {
 }
 
 export interface MergeMetrics {
-  active_merges: number;
-  merge_queue_size: number;
+  merges_running: number;
+  mutations_running: number;
+  merged_rows_per_sec: number;
+  merged_bytes_per_sec: number;
+  merges_mutations_memory: number;
   pending_mutations: number;
-  parts_to_merge: number;
-  max_parts_per_partition: number;
 }
 
 export interface ReplicationMetrics {
@@ -211,6 +214,13 @@ export interface ResourceMetrics {
   file_descriptors_used: number;
   file_descriptors_max: number;
   read_rate: number; // Bytes read per second
+  // New metrics
+  load_average_15?: number;
+  total_parts?: number;
+  max_parts_per_partition?: number;
+  primary_key_cache_bytes?: number;
+  primary_key_cache_files?: number;
+
 }
 
 export interface ErrorMetrics {
@@ -237,16 +247,115 @@ export interface TopTableBySize {
   parts_count: number;
 }
 
+export interface NetworkMetrics {
+  tcp_connections: number;
+  http_connections: number;
+  interserver_connections: number;
+  mysql_connections: number;
+  postgresql_connections: number;
+  // Throughput (bytes/sec)
+  network_send_speed: number;
+  network_receive_speed: number;
+}
+
+export interface MemoryHistoryMetric {
+  timestamp: number;
+  memory_resident_gb: number;
+}
+
+export interface SystemHistoryMetric {
+  timestamp: number;
+  queries: number;
+  merges: number;
+  mutations: number;
+  parts: number;
+}
+
+export interface NetworkHistoryMetric {
+  timestamp: number;
+  network_send_speed: number;
+  network_receive_speed: number;
+}
+
+export interface MergeHistoryMetric {
+  timestamp: number;
+  merges_running: number;
+  mutations_running: number;
+  merged_rows_per_sec: number;
+  merged_bytes_per_sec: number;
+  memory_usage: number;
+}
+
+export interface PerformanceHistoryMetric {
+  timestamp: number;
+  // CPU metrics (in cores)
+  cpu_user: number;
+  cpu_system: number;
+  cpu_wait: number;
+  cpu_io_wait: number;
+  // Query throughput
+  queries_per_sec: number;
+  selected_rows_per_sec: number;
+  // Data throughput (bytes/sec)
+  selected_bytes_per_sec: number;
+  inserted_bytes_per_sec: number;
+  read_from_disk_bytes_per_sec: number;
+  read_from_fs_bytes_per_sec: number;
+  // Process throughput
+  inserted_rows_per_sec: number;
+  merged_rows_per_sec: number;
+}
+
+
+
+export interface StorageCacheMetric {
+  timestamp: number;
+  // S3 metrics
+  s3_read_bytes_per_sec: number;
+  s3_read_microseconds: number;
+  s3_read_errors_per_sec: number;
+  // Disk S3 metrics
+  disk_s3_put_requests_per_sec: number;
+  disk_s3_get_requests_per_sec: number;
+  // Cache hit rates (0-1 ratio)
+  fs_cache_hit_rate: number;
+  page_cache_hit_rate: number;
+  // Filesystem cache size
+  filesystem_cache_size: number;
+}
+
+export interface ConcurrencyMetric {
+  timestamp: number;
+  running_queries: number;
+  running_merges: number;
+  tcp_connections: number;
+  http_connections: number;
+  mysql_connections: number;
+  interserver_connections: number;
+  total_mergetree_parts: number;
+  max_parts_per_partition: number;
+}
+
 export interface ProductionMetrics {
   latency: QueryLatencyMetrics;
   disks: DiskMetrics[];
   merges: MergeMetrics;
   replication: ReplicationMetrics[];
   cache: CacheMetrics;
+  network: NetworkMetrics;
   resources: ResourceMetrics;
   errors: ErrorMetrics[];
   insertThroughput: InsertThroughputMetrics[];
   topTables: TopTableBySize[];
+  memory_history: MemoryHistoryMetric[];
+  system_history: SystemHistoryMetric[];
+  network_history: NetworkHistoryMetric[];
+  // New comprehensive metrics
+  performance_history: PerformanceHistoryMetric[];
+  detailed_memory_history: DetailedMemoryMetric[];
+  storage_cache_history: StorageCacheMetric[];
+  concurrency_history: ConcurrencyMetric[];
+  merges_history: MergeHistoryMetric[];
 }
 
 // ============================================
@@ -327,3 +436,15 @@ export class AppError extends Error {
   }
 }
 
+
+export interface DetailedMemoryMetric {
+  timestamp: number;
+  memory_tracking: number;          // CurrentMetric_MemoryTracking
+  memory_resident: number;           // MemoryResident (async)
+  jemalloc_allocated: number;        // jemalloc.allocated (async)
+  jemalloc_resident: number;         // jemalloc.resident (async)
+  primary_key_memory: number;        // TotalPrimaryKeyBytesInMemoryAllocated
+  index_granularity_memory: number;  // TotalIndexGranularityBytesInMemoryAllocated
+  merges_mutations_memory: number;   // CurrentMetric_MergesMutationsMemoryTracking
+  cache_bytes: number;               // Sum of cache bytes (already tracked)
+}

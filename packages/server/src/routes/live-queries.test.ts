@@ -42,6 +42,10 @@ const mockUserHasPermission = mock();
 mock.module("../rbac/services/rbac", () => ({
     userHasPermission: mockUserHasPermission,
     createAuditLog: mock(() => Promise.resolve()),
+    getUserById: mock((id: string) => {
+        if (id === "user1") return Promise.resolve({ username: "alice" });
+        return Promise.resolve(null);
+    }),
 }));
 
 mock.module("../middleware/dataAccess", () => ({
@@ -94,6 +98,7 @@ describe("Live Queries Routes", () => {
                         memory_usage: 4096,
                         is_initial_query: 1,
                         client_name: "client",
+                        log_comment_json: JSON.stringify({ rbac_user_id: "user1" }),
                     },
                 ],
                 meta: [],
@@ -118,6 +123,7 @@ describe("Live Queries Routes", () => {
             expect(body.data.queries).toHaveLength(1);
             expect(body.data.queries[0].query_id).toBe("query-123");
             expect(body.data.queries[0].query).toBe("SELECT 1");
+            expect(body.data.queries[0].rbac_user).toBe("alice");
             expect(body.data.total).toBe(1);
         });
 

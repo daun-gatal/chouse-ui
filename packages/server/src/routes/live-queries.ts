@@ -14,7 +14,7 @@ import { optionalRbacMiddleware } from "../middleware/dataAccess";
 import { getSession } from "../services/clickhouse";
 import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
 import { ClickHouseService } from "../services/clickhouse";
-import { createAuditLog, userHasPermission } from "../rbac/services/rbac";
+import { createAuditLog, userHasPermission, getUserById } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 
@@ -33,6 +33,8 @@ interface LiveQuery {
     is_initial_query: number;
     client_name: string;
     rbac_user_id?: string; // Derived from log_comment
+    rbac_user?: string; // Resolved from rbac_user_id
+    rbac_user_display_name?: string; // Resolved from rbac_user_id
 }
 
 type Variables = {
@@ -256,6 +258,47 @@ liveQueries.get("/", async (c) => {
                 rbac_user_id
             };
         });
+
+        // Fetch RBAC user details for the queries
+        const userIds = new Set<string>();
+        queries.forEach(q => {
+            if (q.rbac_user_id) {
+                userIds.add(q.rbac_user_id);
+            }
+        });
+
+        if (userIds.size > 0) {
+            // Fetch users in parallel
+            // Note: In a large-scale system, we might want to use a batched getAllUsersByIds 
+            // query, but for live queries (usually < 100), individual selects are acceptable
+            // or we could use listUsers if we implement array filtering there.
+            // For now, Promise.all with getUserById is simplest and sufficient.
+            const userMap = new Map<string, { username: string; displayName?: string }>();
+            await Promise.all(
+                Array.from(userIds).map(async (id) => {
+                    try {
+                        const user = await getUserById(id);
+                        if (user) {
+                            userMap.set(id, {
+                                username: user.username,
+                                displayName: user.displayName || undefined
+                            });
+                        }
+                    } catch (e) {
+                        // Ignore errors fetching user
+                    }
+                })
+            );
+
+            // Attach usernames to queries
+            queries.forEach(q => {
+                if (q.rbac_user_id && userMap.has(q.rbac_user_id)) {
+                    const userInfo = userMap.get(q.rbac_user_id);
+                    q.rbac_user = userInfo?.username;
+                    q.rbac_user_display_name = userInfo?.displayName;
+                }
+            });
+        }
 
         return c.json({
             success: true,
