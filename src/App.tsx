@@ -11,6 +11,7 @@ import { PrivateRoute } from "@/components/common/privateRoute";
 import Admin from "@/pages/Admin";
 import Login from "@/pages/Login";
 import ExplorerPage from "@/pages/Explorer";
+import ExplainPopout from "@/pages/ExplainPopout";
 import { AdminRoute } from "@/features/admin/routes/adminRoute";
 import CreateUser from "@/features/admin/components/CreateUser";
 import EditUser from "@/features/admin/components/EditUser";
@@ -45,6 +46,7 @@ export default function App() {
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/explain-popout" element={<ExplainPopout />} />
 
             {/* Authenticated Application Routes */}
             <Route element={<MainLayout />}>

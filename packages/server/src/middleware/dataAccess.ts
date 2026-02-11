@@ -217,13 +217,14 @@ export function getQueryAccessType(sql: string): AccessType {
     // Fallback to simple pattern matching
     const normalizedSql = sql.trim().toUpperCase();
 
-    if (normalizedSql.startsWith('SELECT') || normalizedSql.startsWith('WITH')) {
+    if (normalizedSql.startsWith('SELECT') || normalizedSql.startsWith('WITH') || normalizedSql.startsWith('EXPLAIN')) {
       return 'read';
     }
 
     if (normalizedSql.startsWith('SHOW') || normalizedSql.startsWith('DESCRIBE') ||
       normalizedSql.startsWith('USE') || normalizedSql.startsWith('SET') ||
-      normalizedSql.startsWith('EXPLAIN') || normalizedSql.startsWith('EXISTS') ||
+      normalizedSql.startsWith('USE') || normalizedSql.startsWith('SET') ||
+      normalizedSql.startsWith('EXISTS') ||
       normalizedSql.startsWith('CHECK') || normalizedSql.startsWith('KILL')) {
       return 'misc';
     }

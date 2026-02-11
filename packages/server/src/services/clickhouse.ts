@@ -560,6 +560,28 @@ export class ClickHouseService {
   }
 
   /**
+   * Get Visual Query Explain Plan
+   */
+  async getExplainPlan(query: string): Promise<any> {
+    try {
+      const explainQuery = `EXPLAIN json = 1 ${query}`;
+      const result = await this.executeQuery(explainQuery, 'JSON');
+
+      if (result.data && result.data.length > 0) {
+        // EXPLAIN json = 1 returns a single row with 'explain' column containing the JSON string
+        const planJson = (result.data[0] as any).explain;
+        if (typeof planJson === 'string') {
+          return JSON.parse(planJson);
+        }
+        return planJson;
+      }
+      return null;
+    } catch (error) {
+      throw this.handleError(error, "Failed to get explain plan");
+    }
+  }
+
+  /**
    * Get disk space usage metrics
    */
   async getDiskMetrics(): Promise<import("../types").DiskMetrics[]> {
