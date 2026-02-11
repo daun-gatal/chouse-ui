@@ -456,6 +456,46 @@ query.post("/execute", zValidator("json", QueryRequestSchemaWithType), async (c)
 });
 
 /**
+ * POST /query/explain
+ * Get Visual Explain Plan for a query
+ */
+query.post("/explain", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql } = c.req.valid("json");
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Validate it's a SELECT or compatible query
+  // EXPLAIN only makes sense for queries that read data
+  if (!validateSqlType(sql, ['SELECT', 'WITH'])) {
+    throw AppError.badRequest('Explain plan is only available for SELECT or WITH queries.');
+  }
+
+  // Validate access for the underlying query
+  // We check if the user has permission to execute the query they want to explain
+  const accessCheck = await validateQueryAccess(
+    rbacUserId,
+    isRbacAdmin,
+    rbacPermissions,
+    sql,
+    c.get("session")?.connectionConfig?.database,
+    c.get("rbacConnectionId")
+  );
+
+  if (!accessCheck.allowed) {
+    throw AppError.forbidden(accessCheck.reason || "Access denied to one or more tables in query");
+  }
+
+  const service = c.get("service");
+  const plan = await service.getExplainPlan(sql);
+
+  return c.json({
+    success: true,
+    data: plan,
+  });
+});
+
+/**
  * GET /query/intellisense
  * Get intellisense data (columns, functions, keywords)
  */

@@ -263,3 +263,12 @@ export async function getIntellisenseData(): Promise<IntellisenseData> {
   return api.get<IntellisenseData>('/query/intellisense');
 }
 
+/**
+ * Get Visual Explain Plan for a query
+ */
+export async function explainQuery<T = any>(
+  query: string
+): Promise<T> {
+  return api.post<T>('/query/explain', { query });
+}
+

@@ -7,7 +7,7 @@ import {
   createMonacoEditor,
 } from "@/features/workspace/editor/monacoConfig";
 import { Button } from "@/components/ui/button";
-import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database } from "lucide-react";
+import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database, Network } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
 interface SQLEditorProps {
   tabId: string;
   onRunQuery: (query: string) => void;
+  onExplain?: (query: string) => void;
 }
 
 type SaveMode = "save" | "save-as";
@@ -55,7 +56,7 @@ type SaveStatus = "idle" | "saving" | "saved" | "unsaved";
 
 const AUTO_SAVE_DELAY = 2000; // 2 seconds after user stops typing
 
-const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
+const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) => {
   const { getTabById, updateTab, saveQuery, updateSavedQuery } = useWorkspaceStore();
   const { activeConnectionId } = useAuthStore();
   const { hasPermission, hasAnyPermission } = useRbacStore();
@@ -168,6 +169,17 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
       });
     }
   }, [tab?.queryId, killQueryMutation]);
+
+  const handleExplain = useCallback(() => {
+    if (onExplain) {
+      const content = getCurrentQuery();
+      if (content.trim()) {
+        onExplain(content);
+      } else {
+        toast.error("Please enter a query to explain");
+      }
+    }
+  }, [onExplain, getCurrentQuery]);
 
   const isSavingRef = useRef(false);
 
@@ -544,6 +556,27 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
                     <p>Run query (Ctrl+Enter)</p>
                   </TooltipContent>
                 </Tooltip>
+              )}
+
+              {onExplain && (
+                <>
+                  <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleExplain}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:bg-purple-600 hover:text-white transition-all duration-200"
+                      >
+                        <Network className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" align="center">
+                      <p>Explain Query Plan</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </>
               )}
 
               <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />

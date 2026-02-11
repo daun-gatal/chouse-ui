@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Data Preview**: Visualize the dataset structure and sample values.
   - **Streaming Upload**: Efficiently handles large file uploads using streaming inserts.
   - **Progress Tracking**: Real-time status updates for table creation and data insertion.
+- **Visual Query Explain Plan**: Added visual representation of query execution plans (Issue #101).
+  - **Explain Tab**: New tab in SQL Editor to visualize the query plan.
+  - **Interactive Graph**: Uses ReactFlow and Dagre for DAG visualization of query steps with execution order numbering.
+  - **Tear-out Window**: Support for popping out the explain plan into a standalone window via button or drag-and-drop.
+  - **JSON Output**: Supports `EXPLAIN JSON` for detailed plan analysis.
+- **Collapsible Explorer Sidebar**: Added ability to collapse/expand the database explorer sidebar to maximize workspace.
 
 ## [v2.8.7] - 2026-02-08
 
