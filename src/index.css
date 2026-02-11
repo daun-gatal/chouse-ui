@@ -94,8 +94,10 @@
     overscroll-behavior-x: contain;
 
     /* Style the scrollbar to be thin, rounded, and slightly transparent */
-    scrollbar-width: thin; /* For Firefox */
-    scrollbar-color: rgba(112, 112, 112, 0.5) transparent; /* For Firefox */
+    scrollbar-width: thin;
+    /* For Firefox */
+    scrollbar-color: rgba(112, 112, 112, 0.5) transparent;
+    /* For Firefox */
 
     /* WebKit scrollbar styling */
     &::-webkit-scrollbar {
@@ -119,7 +121,8 @@
     /* WebKit browsers including Safari (Mac) */
     ::-webkit-scrollbar {
       width: 8px;
-      height: 8px; /* Ensure the horizontal scrollbar is also sized properly */
+      height: 8px;
+      /* Ensure the horizontal scrollbar is also sized properly */
     }
 
     ::-webkit-scrollbar-thumb {
@@ -130,7 +133,8 @@
     /* Safari (Mac & iOS) - Overflow bar issue fix */
     @supports (-webkit-touch-callout: none) {
       ::-webkit-scrollbar {
-        display: block; /* Ensure scrollbars are always visible when needed */
+        display: block;
+        /* Ensure scrollbars are always visible when needed */
       }
     }
   }
@@ -156,6 +160,125 @@
   height: 24px;
   width: 75%;
   margin-bottom: 20px;
+}
+
+/* AgGrid Custom Styling - Ethereal & Clean Redesign */
+.ag-theme-balham-dark,
+.ag-theme-balham {
+  --ag-font-size: 12px;
+  --ag-header-height: 32px;
+  --ag-row-height: 28px;
+  --ag-selected-row-background-color: transparent;
+  --ag-row-hover-color: rgba(255, 255, 255, 0.02);
+  --ag-header-background-color: transparent;
+  --ag-border-color: rgba(255, 255, 255, 0.04);
+}
+
+/* Ethereal Headers */
+.ag-header {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background-color: transparent !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.ag-header-cell-label {
+  font-weight: 500 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  text-transform: lowercase;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+/* Micro-Transitions */
+.ag-row {
+  transition: background-color 0.3s ease;
+}
+
+.ag-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  border-right: 1px solid rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Softened Syntax Highlighting - No Glows */
+.cell-string {
+  color: rgba(206, 145, 120, 0.9) !important;
+  /* Soft Terracotta */
+}
+
+.cell-number {
+  color: rgba(181, 206, 168, 0.9) !important;
+  /* Soft Sage */
+}
+
+.cell-boolean {
+  color: rgba(86, 156, 214, 0.9) !important;
+  /* Soft Blue */
+}
+
+.cell-date {
+  color: rgba(156, 220, 254, 0.8) !important;
+  /* Soft Sky Blue */
+}
+
+.cell-null {
+  color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.cell-object-preview {
+  color: rgba(156, 220, 254, 0.4) !important;
+  font-size: 11px;
+}
+
+/* Colored Type Badges - High Visibility & Luminous */
+.cell-type-badge {
+  font-size: 8px;
+  opacity: 0.6;
+  margin-left: 8px;
+  font-style: italic;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.08);
+  /* Brighter background */
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  /* Luminous border */
+  text-transform: lowercase;
+}
+
+/* Vibrant Luminous colors */
+.type-string {
+  color: #ce9178;
+  text-shadow: 0 0 8px rgba(206, 145, 120, 0.3);
+}
+
+.type-number {
+  color: #b5cea8;
+  text-shadow: 0 0 8px rgba(181, 206, 168, 0.3);
+}
+
+.type-boolean {
+  color: #569cd6;
+  text-shadow: 0 0 8px rgba(86, 156, 214, 0.3);
+}
+
+.type-date {
+  color: #4fc1ff;
+  text-shadow: 0 0 8px rgba(79, 193, 255, 0.3);
+}
+
+.type-object {
+  color: #9cdcfe;
+  text-shadow: 0 0 8px rgba(156, 220, 254, 0.3);
+}
+
+.ag-header-cell:hover .cell-type-badge,
+.group:hover .cell-type-badge {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .skeleton-square {
@@ -293,6 +416,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }

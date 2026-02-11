@@ -28,15 +28,15 @@ const metrics = new Hono<{ Variables: Variables }>();
 async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next: Next) {
   // First try ClickHouse session auth (but still require RBAC)
   const sessionId = c.req.header("X-Session-ID") || getCookie(c, "ch_session");
-  
+
   if (sessionId) {
     const sessionData = getSession(sessionId);
     if (sessionData) {
       // Add RBAC context to validate session ownership
-      await optionalRbacMiddleware(c, async () => {});
-      
+      await optionalRbacMiddleware(c, async () => { });
+
       const rbacUserId = c.get("rbacUserId");
-      
+
       // If session has rbacUserId, validate ownership
       if (sessionData.session.rbacUserId) {
         if (!rbacUserId || sessionData.session.rbacUserId !== rbacUserId) {
@@ -48,7 +48,7 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
           throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
         }
       }
-      
+
       c.set("sessionId", sessionId);
       c.set("service", sessionData.service);
       c.set("session", sessionData.session);
@@ -58,15 +58,15 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
   }
 
   // If no ClickHouse session, try RBAC auth
-  await optionalRbacMiddleware(c, async () => {});
-  
+  await optionalRbacMiddleware(c, async () => { });
+
   const rbacUserId = c.get("rbacUserId");
   const rbacRoles = c.get("rbacRoles");
   const isSuperAdmin = rbacRoles?.includes('super_admin') || false;
-  
+
   if (rbacUserId) {
     let service: ClickHouseService | null = null;
-    
+
     try {
       // Super admins get all active connections, regular users get their assigned connections
       let connections: Awaited<ReturnType<typeof getUserConnections>>;
@@ -77,18 +77,18 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
       } else {
         connections = await getUserConnections(rbacUserId);
       }
-      
+
       if (connections.length === 0) {
         if (isSuperAdmin) {
           throw AppError.unauthorized("No ClickHouse connections are configured in the system. Please create a connection first.");
         }
         throw AppError.unauthorized("No ClickHouse connection configured. Please contact an administrator to grant you access to a ClickHouse connection.");
       }
-      
+
       // Try to find default connection first, then any active connection
       const defaultConnection = connections.find((conn) => conn.isDefault && conn.isActive);
       const activeConnection = defaultConnection || connections.find((conn) => conn.isActive);
-      
+
       if (!activeConnection) {
         if (isSuperAdmin) {
           throw AppError.unauthorized("No active ClickHouse connections found. Please activate a connection or create a new one.");
@@ -98,7 +98,7 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
 
       // Get connection with password
       const connection = await getConnectionWithPassword(activeConnection.id);
-      
+
       if (!connection) {
         throw AppError.unauthorized("Connection not found or access denied.");
       }
@@ -124,7 +124,7 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
 
       // Create a temporary session ID for this request
       const tempSessionId = `rbac_${rbacUserId}_${Date.now()}`;
-      
+
       // Create a temporary session-like object
       const session: Session = {
         id: tempSessionId,
@@ -149,7 +149,7 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
       c.set("service", service);
       c.set("session", session);
       c.set("rbacConnectionId", connection.id);
-      
+
       try {
         await next();
       } finally {
@@ -169,7 +169,7 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
           console.error('[Metrics] Failed to close service on error:', err);
         });
       }
-      
+
       if (error instanceof AppError) {
         throw error;
       }
@@ -371,9 +371,10 @@ metrics.get("/merges", async (c) => {
   // Check permission (basic metrics)
   await checkMetricsPermission(rbacUserId, rbacPermissions, isRbacAdmin, false);
 
+  const interval = parseInt(c.req.query("interval") || "60", 10);
   const service = c.get("service");
 
-  const merges = await service.getMergeMetrics();
+  const merges = await service.getMergeMetrics(Math.min(interval, 1440));
 
   return c.json({
     success: true,
@@ -437,9 +438,10 @@ metrics.get("/resources", async (c) => {
   // Check permission (basic metrics)
   await checkMetricsPermission(rbacUserId, rbacPermissions, isRbacAdmin, false);
 
+  const interval = parseInt(c.req.query("interval") || "60", 10);
   const service = c.get("service");
 
-  const resources = await service.getResourceMetrics();
+  const resources = await service.getResourceMetrics(Math.min(interval, 1440));
 
   return c.json({
     success: true,

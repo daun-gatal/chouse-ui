@@ -93,6 +93,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
   // Refs to avoid stale closures in Monaco listeners
   const latestTabRef = useRef(tab);
   const onRunQueryRef = useRef(onRunQuery);
+  const getCurrentQueryRef = useRef<() => string>(() => "");
 
   useEffect(() => {
     latestTabRef.current = tab;
@@ -123,12 +124,31 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
       }
       return monacoRef.current.getValue();
     }
+    // Fallback to tab content from store when Monaco editor is not ready
+    // This can happen during hot module reloading in development
+    const currentTab = latestTabRef.current;
+    if (currentTab?.content && typeof currentTab.content === "string") {
+      return currentTab.content;
+    }
     return "";
   }, []);
 
   const getFullContent = useCallback(() => {
-    return monacoRef.current?.getValue() || "";
+    if (monacoRef.current) {
+      return monacoRef.current.getValue();
+    }
+    // Fallback to tab content from store when Monaco editor is not ready
+    const currentTab = latestTabRef.current;
+    if (currentTab?.content && typeof currentTab.content === "string") {
+      return currentTab.content;
+    }
+    return "";
   }, []);
+
+  // Keep the ref updated with the latest getCurrentQuery function
+  useEffect(() => {
+    getCurrentQueryRef.current = getCurrentQuery;
+  }, [getCurrentQuery]);
 
   const handleRunQuery = useCallback(() => {
     const content = getCurrentQuery();
@@ -219,18 +239,34 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
   useEffect(() => {
     let editor: monaco.editor.IStandaloneCodeEditor | null = null;
     let changeListener: monaco.IDisposable | null = null;
+    let isAborted = false; // Flag to handle React Strict Mode double-invoke
 
     const initEditor = async () => {
       await initializeMonacoGlobally();
+
+      // Check if cleanup was called during async operation (React Strict Mode)
+      if (isAborted) {
+        return;
+      }
+
       if (editorRef.current) {
         editor = await createMonacoEditor(editorRef.current, editorTheme);
+
+        // Check again after async operation
+        if (isAborted) {
+          editor.dispose();
+          return;
+        }
+
         monacoRef.current = editor;
 
-        if (tab?.content) {
-          const content = typeof tab.content === "string" ? tab.content : "";
+        // Use latestTabRef to avoid stale closure with tab content
+        const currentTab = latestTabRef.current;
+        if (currentTab?.content) {
+          const content = typeof currentTab.content === "string" ? currentTab.content : "";
           editor.setValue(content);
           // Initialize last saved content for saved queries
-          if (tab.isSaved) {
+          if (currentTab.isSaved) {
             lastSavedContentRef.current = content;
           }
         }
@@ -248,7 +284,8 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
         editor.addCommand(
           monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
           () => {
-            const content = getCurrentQuery();
+            // Use ref to avoid stale closure - getCurrentQuery might not be updated
+            const content = getCurrentQueryRef.current();
             if (content.trim()) {
               onRunQueryRef.current(content);
             } else {
@@ -274,12 +311,15 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery }) => {
     initEditor();
 
     return () => {
+      isAborted = true; // Signal any pending async operations to abort
       if (changeListener) {
         changeListener.dispose();
       }
       if (editor) {
         editor.dispose();
       }
+      // Clear the monaco ref to prevent stale reference after HMR
+      monacoRef.current = null;
       // Clear auto-save timeout on unmount
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
