@@ -121,7 +121,9 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
 
             {/* Close Button */}
             {tab.id !== "home" && (
-              <button
+              <span
+                role="button"
+                tabIndex={0}
                 className={cn(
                   "ml-auto p-0.5 rounded hover:bg-white/10 transition-colors",
                   isHovering ? "opacity-100" : "opacity-0"
@@ -130,9 +132,16 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
                   e.stopPropagation();
                   removeTab(tab.id);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeTab(tab.id);
+                  }
+                }}
               >
                 <X className="h-3 w-3 text-gray-400 hover:text-white" />
-              </button>
+              </span>
             )}
 
             {/* Active Indicator */}

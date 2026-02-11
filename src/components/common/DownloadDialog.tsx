@@ -20,6 +20,7 @@ interface DownloadDialogProps {
   onExport?: (format: string) => Promise<Blob>;
   filename?: string;
   maxRows?: number;
+  trigger?: React.ReactNode;
 }
 
 type ExportFormat = "csv" | "json" | "clipboard";
@@ -55,10 +56,12 @@ const prepareRowForCsv = (row: Record<string, unknown>): Record<string, string |
   return prepared;
 };
 
+
 const DownloadDialog: React.FC<DownloadDialogProps> = ({
   data,
   onExport,
   maxRows = 1000000,
+  trigger,
 }) => {
   const [downloadOption, setDownloadOption] = useState<ExportFormat>("csv");
   const [estimatedSize, setEstimatedSize] = useState<string>("");
@@ -282,13 +285,17 @@ const DownloadDialog: React.FC<DownloadDialogProps> = ({
     }
   };
 
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="link" className="h-4 w-4 p-0 ml-2">
-          <Download />
-        </Button>
+        {trigger || (
+          <Button variant="link" className="h-4 w-4 p-0 ml-2">
+            <Download />
+          </Button>
+        )}
       </DialogTrigger>
+      {/* ... (rest of dialog content) */}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Export Data</DialogTitle>

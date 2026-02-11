@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
-import { Loader2, FileX2 } from "lucide-react";
-import { AgGridReact } from "ag-grid-react";
-import { ColDef, AllCommunityModule, ICellRendererParams } from "ag-grid-community";
-import { themeBalham, colorSchemeDark } from "ag-grid-community";
+import { Loader2, FileX2, Maximize2, Download } from "lucide-react";
 import DOMPurify from "dompurify";
+import { format as formatDate } from "date-fns";
+import { DataTable } from "@/components/ui/data-table";
+import { ColumnDef, CellContext } from "@tanstack/react-table";
+import { cn } from "@/lib/utils";
 
 // Component imports
 import SQLEditor from "@/features/workspace/editor/SqlEditor";
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { useTheme } from "@/components/common/theme-provider";
+import { Button } from "@/components/ui/button";
 import DownloadDialog from "@/components/common/DownloadDialog";
 import EmptyQueryResult from "./EmptyQueryResult";
 import StatisticsDisplay from "./StatisticsDisplay";
@@ -33,59 +34,68 @@ interface IRow {
   [key: string]: unknown;
 }
 
-// Format complex values for display in the grid
-const formatCellValue = (value: unknown): string => {
+// Format values for TanStack table (same as DataSampleSection)
+const formatCellValue = (value: unknown): { html: string; className?: string; type?: string } => {
   if (value === null || value === undefined) {
-    return "<em>null</em>";
+    return { html: "NULL", className: "cell-null" };
   }
-  if (typeof value === 'object') {
-    return JSON.stringify(value, null, 2);
-  }
-  return String(value);
-};
 
-// Cell renderer that can handle HTML content (sanitized)
-const CustomCellRenderer = (props: ICellRendererParams) => {
-  const formattedValue = formatCellValue(props.value);
-  // Sanitize HTML to prevent XSS attacks
-  const sanitizedHtml = DOMPurify.sanitize(formattedValue, {
-    ALLOWED_TAGS: ['em', 'strong', 'b', 'i', 'u', 'code', 'pre'],
-    ALLOWED_ATTR: [],
-  });
-  return <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+  const type = typeof value;
+
+  if (type === 'number') {
+    return {
+      html: (value as number).toLocaleString(),
+      className: "cell-number",
+      type: "number"
+    };
+  }
+
+  if (type === 'boolean') {
+    return {
+      html: value ? "TRUE" : "FALSE",
+      className: "cell-boolean",
+      type: "boolean"
+    };
+  }
+
+  if (value instanceof Date || (type === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value as string))) {
+    try {
+      const date = type === 'string' ? new Date(value as string) : (value as Date);
+      return {
+        html: formatDate(date, "yyyy-MM-dd HH:mm:ss"),
+        className: "cell-date",
+        type: "date"
+      };
+    } catch {
+      return { html: String(value), className: "cell-string", type: "string" };
+    }
+  }
+
+  if (type === 'object') {
+    const json = JSON.stringify(value);
+    const truncated = json.length > 50 ? json.substring(0, 50) + "..." : json;
+    return {
+      html: truncated,
+      className: "cell-object-preview",
+      type: "object"
+    };
+  }
+
+  return { html: String(value), className: "cell-string", type: "string" };
 };
 
 /**
  * SqlTab component that provides a SQL editor and result viewer
- *
- * Displays a resizable split panel with SQL editor on top and
- * query results, metadata, and statistics tabs on the bottom.
+ * 
+ * Migrated from AgGrid to DataTable for consistent Ethereal styling.
+ * Metadata tab removed as requested.
  */
 const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const { getTabById, runQuery } = useWorkspaceStore();
+  // Using refetch to handle side effects
   const { refetch: refetchDatabases } = useDatabases();
   const tab = getTabById(tabId);
-  const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState<string>("results");
-
-  // Configure AG Grid theme based on app theme
-  const gridTheme =
-    theme === "light" ? themeBalham : themeBalham.withPart(colorSchemeDark);
-
-  // AG Grid configuration
-  const defaultColDef: ColDef = {
-    flex: 1,
-    minWidth: 130,
-    sortable: true,
-    filter: true,
-    resizable: true,
-    filterParams: { buttons: ["reset", "apply"] },
-    cellRenderer: CustomCellRenderer,
-    autoHeight: true,
-  };
-
-  const [columnDefs, setColumnDefs] = useState<ColDef<IRow>[]>([]);
-  const [rowData, setRowData] = useState<IRow[]>([]);
 
   // Detect schema-changing queries to refresh database explorer
   const isSchemaModifyingQuery = (query: string): boolean => {
@@ -102,7 +112,8 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         const result = await runQuery(query, tabId);
 
         if (!result.error && shouldRefresh) {
-          await refetchDatabases();
+          // Trigger refetch but don't await blocking UI
+          refetchDatabases();
           toast.success("Data Explorer refreshed due to schema change");
         }
       } catch (error) {
@@ -115,21 +126,57 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     [runQuery, tabId, refetchDatabases]
   );
 
-  // Process result data into grid-compatible format
-  useMemo(() => {
-    if (tab?.result?.data && tab.result.data.length > 0 && tab?.result?.meta && tab.result.meta.length > 0) {
-      const colDefs: ColDef<IRow>[] = tab.result.meta.map((col: { name: string; type: string }) => ({
-        headerName: col.name,
-        valueGetter: (params) => params.data?.[col.name],
-      }));
+  // Generate TanStack columns from result metadata
+  const columns = useMemo<ColumnDef<IRow>[]>(() => {
+    if (!tab?.result?.meta || !tab.result.meta.length) return [];
 
-      setRowData(tab.result.data as IRow[]);
-      setColumnDefs(colDefs);
-    } else {
-      setColumnDefs([]);
-      setRowData([]);
-    }
-  }, [tab?.result?.data, tab?.result?.meta]);
+    return tab.result.meta.map((col: { name: string; type: string }) => {
+      const type = col.type?.toLowerCase() || "";
+      const typeClass = type.includes("string") ? "type-string" :
+        (type.includes("int") || type.includes("float") || type.includes("decimal")) ? "type-number" :
+          type.includes("bool") ? "type-boolean" :
+            (type.includes("date") || type.includes("time")) ? "type-date" :
+              (type.includes("array") || type.includes("map") || type.includes("tuple") || type.includes("json")) ? "type-object" : "";
+
+      return {
+        accessorKey: col.name,
+        header: () => (
+          <div className="flex items-center justify-between w-full group cursor-default h-full px-1">
+            <span className="truncate font-medium text-white/60 group-hover:text-white/90 transition-colors duration-300 lowercase text-[13px]">
+              {col.name}
+            </span>
+            <span className={cn("cell-type-badge text-[9px] font-mono transition-all duration-500", typeClass)}>
+              {col.type}
+            </span>
+          </div>
+        ),
+        cell: ({ getValue }) => {
+          const value = getValue();
+          const { html, className } = formatCellValue(value);
+          const sanitizedHtml = DOMPurify.sanitize(html, {
+            ALLOWED_TAGS: ['em', 'strong', 'b', 'i', 'u', 'code', 'pre'],
+            ALLOWED_ATTR: ['class'],
+          });
+
+          return (
+            <div
+              className={cn("w-full h-full truncate font-mono text-xs", className)}
+              dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+              title={typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
+            />
+          );
+        },
+        meta: {
+          wrap: false // Assuming no wrap by default for SQL results table to save space, but could make toggleable
+        }
+      };
+    });
+  }, [tab?.result?.meta]);
+
+  const rowData = useMemo(() => {
+    return (tab?.result?.data || []) as IRow[];
+  }, [tab?.result?.data]);
+
 
   // UI rendering functions
   const renderLoading = () => (
@@ -160,49 +207,22 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   );
 
   const renderResultsTab = () => {
-    if (!columnDefs.length || !rowData.length) {
+    if (!columns.length || !rowData.length) {
       return tab?.result?.statistics ? (
         <EmptyQueryResult statistics={tab.result.statistics} />
       ) : null;
     }
 
     return (
-      <div className="h-full w-full flex flex-col overflow-hidden">
-        <div className="flex-1 w-full overflow-hidden">
-          <AgGridReact
-            rowData={rowData}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            modules={[AllCommunityModule]}
-            theme={gridTheme}
-            pagination={true}
-            paginationPageSize={100}
-            enableCellTextSelection={true}
-            animateRows={true}
-            suppressMovableColumns={false}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  const renderMetadataTab = () => {
-    if (!tab?.result?.meta?.length) return null;
-
-    return (
-      <div className="h-full w-full flex flex-col overflow-hidden">
-        <div className="flex-1 w-full overflow-hidden">
-          <AgGridReact
-            rowData={tab.result.meta}
-            columnDefs={[
-              { headerName: "Column Name", field: "name", flex: 1 },
-              { headerName: "Data Type", field: "type", flex: 1 },
-            ]}
-            defaultColDef={defaultColDef}
-            modules={[AllCommunityModule]}
-            theme={gridTheme}
-            pagination={true}
-            enableCellTextSelection={true}
+      <div className="h-full w-full flex flex-col overflow-hidden bg-transparent">
+        {/* Toolbar mostly removed as AgGrid auto-size is handled internally or css. Download now in tabs. */}
+        <div className="flex-1 w-full overflow-hidden relative">
+          <DataTable
+            columns={columns}
+            data={rowData}
+            stickyHeader={true}
+            stickyFirstColumn={false}
+            className="border-0 rounded-none shadow-none bg-transparent h-full" // Clean integration
           />
         </div>
       </div>
@@ -216,9 +236,8 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
 
   const renderResultTabs = () => {
     const resultData = tab?.result?.data ?? [];
-    const resultMeta = tab?.result?.meta ?? [];
+    // Metadata removed
     const hasData = resultData.length > 0;
-    const hasMeta = resultMeta.length > 0;
 
     return (
       <Tabs
@@ -226,35 +245,30 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         onValueChange={setActiveTab}
         className="h-full flex flex-col"
       >
-        <TabsList className="rounded-none border-b border-white/5 bg-black/20 backdrop-blur-md px-4">
-          <TabsTrigger value="results">
+        <TabsList className="rounded-none border-b border-white/5 bg-black/20 backdrop-blur-md px-4 w-full justify-start h-10">
+          <TabsTrigger value="results" className="data-[state=active]:bg-white/5">
             Results
             {hasData && (
-              <div className="ml-2 text-muted-foreground items-center flex">
-                ({resultData.length} rows)
-                <DownloadDialog data={resultData} />
+              <div className="ml-2 text-muted-foreground items-center flex gap-2">
+                <span className="text-xs">({resultData.length} rows)</span>
+                <DownloadDialog data={resultData} trigger={
+                  <Button variant="ghost" size="icon" className="h-5 w-5 hover:bg-white/10 p-0 rounded-sm">
+                    <Download className="h-3 w-3" />
+                  </Button>
+                } />
               </div>
             )}
           </TabsTrigger>
-          <TabsTrigger value="metadata">
-            Metadata
-            {hasMeta && (
-              <div className="ml-2 text-muted-foreground items-center flex">
-                ({resultMeta.length} columns)
-                <DownloadDialog data={resultMeta} />
-              </div>
-            )}
+          {/* Metadata Tab Removed */}
+          <TabsTrigger value="statistics" className="data-[state=active]:bg-white/5">
+            Statistics
           </TabsTrigger>
-          <TabsTrigger value="statistics">Statistics</TabsTrigger>
         </TabsList>
-        <div className="flex-1 overflow-hidden w-full">
-          <TabsContent value="results" className="h-full m-0 flex flex-col overflow-hidden w-full">
+        <div className="flex-1 overflow-hidden w-full relative">
+          <TabsContent value="results" className="h-full m-0 flex flex-col overflow-hidden w-full data-[state=inactive]:hidden absolute inset-0">
             {renderResultsTab()}
           </TabsContent>
-          <TabsContent value="metadata" className="h-full m-0 flex flex-col overflow-hidden w-full">
-            {renderMetadataTab()}
-          </TabsContent>
-          <TabsContent value="statistics" className="h-full m-0 overflow-auto">
+          <TabsContent value="statistics" className="h-full m-0 overflow-auto data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm p-4">
             {renderStatisticsResults()}
           </TabsContent>
         </div>
@@ -276,12 +290,12 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   if (!tab) return null;
 
   return (
-    <div className="h-full">
+    <div className="h-full bg-white/[0.02]">
       <ResizablePanelGroup direction="vertical">
         <ResizablePanel defaultSize={50} minSize={25}>
           <SQLEditor tabId={tabId} onRunQuery={handleRunQuery} />
         </ResizablePanel>
-        <ResizableHandle withHandle />
+        <ResizableHandle withHandle className="bg-white/5 hover:bg-white/10 transition-colors" />
         <ResizablePanel defaultSize={50} minSize={25}>
           {renderResults()}
         </ResizablePanel>

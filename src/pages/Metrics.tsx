@@ -33,6 +33,11 @@ import {
   GitMerge,
   HardDriveDownload,
   Disc,
+  Cpu,
+  FileText,
+  Wifi,
+  Cloud,
+  List,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,7 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
 import { useMetrics, useProductionMetrics } from "@/hooks";
-import { cn, formatBytes as formatBytesUtil, formatCompactNumber } from "@/lib/utils";
+import { cn, formatBytes as formatBytesUtil, formatCompactNumber, formatNumber } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
 interface StatCardProps {
@@ -118,14 +123,22 @@ const StatCard: React.FC<StatCardProps> = ({
   );
 };
 
+interface MetricData {
+  timestamps: number[];
+  values: number[] | number[][]; // Support both single and multi-series
+  labels?: string[]; // Labels for each series
+  colors?: string[]; // Explicit colors for each series
+}
+
 interface MetricChartCardProps {
   title: string;
   subtitle?: string;
   icon: React.ElementType;
   color: string;
-  data?: { timestamps: number[]; values: number[] };
+  data?: MetricData;
   isLoading: boolean;
   chartTitle: string;
+  hideLatestValues?: boolean;
 }
 
 const MetricChartCard: React.FC<MetricChartCardProps> = ({
@@ -136,6 +149,7 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
   data,
   isLoading,
   chartTitle,
+  hideLatestValues = false,
 }) => {
   const colorMap: Record<string, string> = {
     amber: "bg-amber-500/20 text-amber-400",
@@ -150,6 +164,34 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
 
   const iconColors = colorMap[color] || colorMap.blue;
   const [bgClass, textClass] = iconColors.split(" ");
+
+  // Normalize data to multi-series format
+  const normalizedValues = data ? (Array.isArray(data.values[0]) ? data.values as number[][] : [data.values as number[]]) : [];
+  const normalizedLabels = data?.labels || [chartTitle];
+  // Generate colors if not provided
+  const baseColorHex = {
+    amber: "#f59e0b",
+    purple: "#a855f7",
+    blue: "#3b82f6",
+    emerald: "#10b981",
+    red: "#ef4444",
+    cyan: "#06b6d4",
+    orange: "#f97316",
+    pink: "#ec4899",
+  }[color] || "#3b82f6";
+
+  const normalizedColors = data?.colors || [baseColorHex];
+
+  const formatValue = (val: number | undefined) => {
+    if (val === undefined) return "-";
+    if (chartTitle.includes("Bytes")) return formatBytes(val);
+    if (chartTitle.includes("%")) return `${val?.toFixed(1)}%`;
+    if (chartTitle.includes("ms")) return `${val?.toFixed(1)}ms`;
+    if (chartTitle.includes("Connections") || chartTitle === "Conn") return Math.round(val).toString();
+    return formatCompactNumber(val);
+  };
+
+  const unit = chartTitle.replace("Bytes", "").replace("%", "").replace("ms", "");
 
   return (
     <motion.div
@@ -172,10 +214,42 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
             {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
           </div>
         </div>
-        {data && data.values.length > 0 && (
-          <Badge variant="secondary" className="bg-white/10 text-gray-300">
-            Latest: {data.values[data.values.length - 1]?.toFixed(2)}
-          </Badge>
+
+        {/* Render Latest Value Cards */}
+        {data && normalizedValues.length > 0 && !hideLatestValues && (
+          <div className="flex items-center gap-3">
+            {normalizedValues.map((series, idx) => {
+              const latestVal = series[series.length - 1];
+              // For single series, don't show label unless it differs from chart title
+              const showLabel = normalizedValues.length > 1;
+
+              return (
+                <div key={idx} className="flex flex-col items-end">
+                  {showLabel && (
+                    <span className="text-xs text-gray-500 mb-0.5" style={{ color: normalizedColors[idx % normalizedColors.length] }}>
+                      {normalizedLabels[idx] || `Series ${idx + 1}`}
+                    </span>
+                  )}
+                  <div className={cn(
+                    "flex items-baseline gap-1 px-2 py-1 rounded-md bg-white/5 border border-white/10",
+                    !showLabel && "bg-transparent border-none p-0"
+                  )}>
+                    {!showLabel && (
+                      <Badge variant="outline" className="mr-2 bg-white/5 text-gray-400 border-white/10 font-mono text-[10px] px-1 h-5">
+                        Latest
+                      </Badge>
+                    )}
+                    <span className={cn("font-bold text-white", showLabel ? "text-sm" : "text-xl")}>
+                      {formatValue(latestVal)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-normal">
+                      {unit}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -188,7 +262,16 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
             </div>
           </div>
         ) : data && data.timestamps.length > 0 ? (
-          <UPlotMetricItemComponent data={data} title={chartTitle} />
+          <UPlotMetricItemComponent
+            data={{
+              ...data,
+              values: normalizedValues,
+              labels: normalizedLabels,
+              colors: normalizedColors
+            }}
+            title={chartTitle}
+            colors={normalizedColors}
+          />
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center gap-3 text-gray-500">
@@ -351,8 +434,264 @@ export default function Metrics({
     };
   }, [prodMetrics?.insertThroughput]);
 
+  // Transform memory history data for chart
+  const memoryHistoryData = useMemo(() => {
+    if (!prodMetrics?.memory_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.memory_history.map(d => d.timestamp),
+      values: prodMetrics.memory_history.map(d => d.memory_resident_gb),
+    };
+  }, [prodMetrics?.memory_history]);
+
+  // Transform System history data for charts
+  const activeQueriesData = useMemo(() => {
+    if (!prodMetrics?.system_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.system_history.map(d => d.timestamp),
+      values: prodMetrics.system_history.map(d => d.queries),
+    };
+  }, [prodMetrics?.system_history]);
+
+  const activePartsData = useMemo(() => {
+    if (!prodMetrics?.system_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.system_history.map(d => d.timestamp),
+      values: prodMetrics.system_history.map(d => d.parts),
+    };
+  }, [prodMetrics?.system_history]);
+
+  const activeMergesData = useMemo(() => {
+    if (!prodMetrics?.system_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.system_history.map(d => d.timestamp),
+      values: prodMetrics.system_history.map(d => d.merges),
+    };
+  }, [prodMetrics?.system_history]);
+
+  const activeMutationsData = useMemo(() => {
+    if (!prodMetrics?.system_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.system_history.map(d => d.timestamp),
+      values: prodMetrics.system_history.map(d => d.mutations),
+    };
+  }, [prodMetrics?.system_history]);
+
+
+
   // Get primary disk stats
   const primaryDisk = prodMetrics?.disks?.[0];
+
+  // ===== NEW COMPREHENSIVE METRICS DATA TRANSFORMATIONS =====
+
+  // CPU Breakdown Data (for stacked area chart)
+  const cpuBreakdownData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.performance_history.map(d => d.cpu_user * 100),
+        prodMetrics.performance_history.map(d => d.cpu_system * 100),
+        prodMetrics.performance_history.map(d => d.cpu_wait * 100),
+        prodMetrics.performance_history.map(d => d.cpu_io_wait * 100),
+      ],
+      labels: ['User', 'System', 'Wait', 'IO Wait'],
+      colors: ['#10b981', '#3b82f6', '#ef4444', '#f59e0b'],
+    };
+  }, [prodMetrics?.performance_history]);
+
+  // Query Throughput Data
+  const queryThroughputData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.performance_history.map(d => d.queries_per_sec),
+        prodMetrics.performance_history.map(d => d.selected_rows_per_sec),
+      ],
+      labels: ['Queries/s', 'Rows/s'],
+      colors: ['#3b82f6', '#10b981'],
+    };
+  }, [prodMetrics?.performance_history]);
+
+  // Data Throughput (bytes)
+  const dataThroughputData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      datasets: [
+        { label: 'Selected Bytes/sec', values: prodMetrics.performance_history.map(d => d.selected_bytes_per_sec) },
+        { label: 'Inserted Bytes/sec', values: prodMetrics.performance_history.map(d => d.inserted_bytes_per_sec) },
+        { label: 'Read from Disk', values: prodMetrics.performance_history.map(d => d.read_from_disk_bytes_per_sec) },
+        { label: 'Read from FS', values: prodMetrics.performance_history.map(d => d.read_from_fs_bytes_per_sec) },
+      ],
+    };
+  }, [prodMetrics?.performance_history]);
+
+  // Process Throughput (rows)
+  const processThroughputData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.performance_history.map(d => d.inserted_rows_per_sec),
+        prodMetrics.performance_history.map(d => d.merged_rows_per_sec),
+      ],
+      labels: ['Inserted Rows/s', 'Merged Rows/s'],
+      colors: ['#10b981', '#3b82f6'],
+    };
+  }, [prodMetrics?.performance_history]);
+
+  //  Detailed Memory Breakdown Data
+  const memoryBreakdownData = useMemo(() => {
+    if (!prodMetrics?.detailed_memory_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.detailed_memory_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.detailed_memory_history.map(d => d.memory_resident),
+        prodMetrics.detailed_memory_history.map(d => d.memory_tracking),
+        prodMetrics.detailed_memory_history.map(d => d.cache_bytes),
+        prodMetrics.detailed_memory_history.map(d => d.primary_key_memory),
+        prodMetrics.detailed_memory_history.map(d => d.index_granularity_memory),
+      ],
+      labels: ['OS RSS', 'Tracked', 'Cache', 'Primary Keys', 'Index Granularity'],
+      colors: ['#a855f7', '#3b82f6', '#10b981', '#ec4899', '#f59e0b'],
+    };
+  }, [prodMetrics?.detailed_memory_history]);
+
+  // Allocator Memory Data
+  const allocatorMemoryData = useMemo(() => {
+    if (!prodMetrics?.detailed_memory_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.detailed_memory_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.detailed_memory_history.map(d => d.jemalloc_allocated),
+        prodMetrics.detailed_memory_history.map(d => d.jemalloc_resident),
+      ],
+      labels: ['Allocated', 'Resident'],
+      colors: ['#10b981', '#06b6d4'],
+    };
+  }, [prodMetrics?.detailed_memory_history]);
+
+  // Storage/Cache Metrics
+  const s3TrafficData = useMemo(() => {
+    if (!prodMetrics?.storage_cache_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.storage_cache_history.map(d => d.timestamp),
+      values: prodMetrics.storage_cache_history.map(d => d.s3_read_bytes_per_sec),
+    };
+  }, [prodMetrics?.storage_cache_history]);
+
+  const s3LatencyData = useMemo(() => {
+    if (!prodMetrics?.storage_cache_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.storage_cache_history.map(d => d.timestamp),
+      values: prodMetrics.storage_cache_history.map(d => d.s3_read_microseconds / 1000), // Convert to ms
+    };
+  }, [prodMetrics?.storage_cache_history]);
+
+  const cacheHitRateData = useMemo(() => {
+    if (!prodMetrics?.storage_cache_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.storage_cache_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.storage_cache_history.map(d => d.fs_cache_hit_rate * 100),
+        prodMetrics.storage_cache_history.map(d => d.page_cache_hit_rate * 100),
+      ],
+      labels: ['FS Cache', 'Page Cache'],
+      colors: ['#10b981', '#06b6d4'],
+    };
+  }, [prodMetrics?.storage_cache_history]);
+
+  // Concurrency Metrics
+  const concurrencyData = useMemo(() => {
+    if (!prodMetrics?.concurrency_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.concurrency_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.concurrency_history.map(d => d.running_queries),
+        prodMetrics.concurrency_history.map(d => d.running_merges),
+      ],
+      labels: ['Running Queries', 'Running Merges'],
+      colors: ['#a855f7', '#3b82f6'],
+    };
+  }, [prodMetrics?.concurrency_history]);
+
+  const networkConnectionsData = useMemo(() => {
+    if (!prodMetrics?.concurrency_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.concurrency_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.concurrency_history.map(d => d.tcp_connections),
+        prodMetrics.concurrency_history.map(d => d.http_connections),
+        prodMetrics.concurrency_history.map(d => d.interserver_connections),
+        prodMetrics.concurrency_history.map(d => d.mysql_connections || 0),
+      ],
+      labels: ['TCP', 'HTTP', 'Interserver', 'MySQL'],
+      colors: ['#3b82f6', '#10b981', '#f59e0b', '#06b6d4'],
+    };
+  }, [prodMetrics?.concurrency_history]);
+
+  const diskUsageStats = useMemo(() => {
+    if (!prodMetrics?.disks) return { total: 0, used: 0 };
+    return prodMetrics.disks.reduce((acc, disk) => ({
+      total: acc.total + disk.total_space,
+      used: acc.used + disk.used_space
+    }), { total: 0, used: 0 });
+  }, [prodMetrics?.disks]);
+
+  const networkThroughputData = useMemo(() => {
+    if (!prodMetrics?.network_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.network_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.network_history.map(d => d.network_send_speed || 0), // Bytes/s
+        prodMetrics.network_history.map(d => d.network_receive_speed || 0), // Bytes/s
+      ],
+      labels: ['Sent (Bytes/s)', 'Received (Bytes/s)'],
+      colors: ['#3b82f6', '#10b981'],
+    };
+  }, [prodMetrics?.network_history]);
+
+  const partsData = useMemo(() => {
+    if (!prodMetrics?.concurrency_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.concurrency_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.concurrency_history.map(d => d.total_mergetree_parts),
+        prodMetrics.concurrency_history.map(d => d.max_parts_per_partition),
+      ],
+      labels: ['Total Parts', 'Max Parts/Partition'],
+      colors: ['#a855f7', '#ef4444'],
+    };
+  }, [prodMetrics?.concurrency_history]);
+
+  const mergeQueueData = useMemo(() => {
+    if (!prodMetrics?.merges_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.merges_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.merges_history.map(d => d.merges_running),
+        prodMetrics.merges_history.map(d => d.mutations_running),
+      ],
+      labels: ['Merges', 'Mutations'],
+      colors: ['#a855f7', '#f59e0b'],
+    };
+  }, [prodMetrics?.merges_history]);
+
+  const mergeThroughputData = useMemo(() => {
+    if (!prodMetrics?.merges_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.merges_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.merges_history.map(d => d.merged_rows_per_sec),
+      ],
+      labels: ['Rows/s'],
+      colors: ['#06b6d4'],
+    };
+  }, [prodMetrics?.merges_history]);
+
+
+
 
   return (
     <div className="h-full overflow-auto">
@@ -454,83 +793,7 @@ export default function Metrics({
           )}
         </AnimatePresence>
 
-        {/* Key Metrics Row */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3"
-        >
-          <StatCard
-            title="Queries/sec"
-            value={metrics?.queriesPerSecond?.values.slice(-1)[0]?.toFixed(1) || "0"}
-            unit="qps"
-            icon={Zap}
-            color="text-amber-400"
-            bgColor="bg-amber-500/20"
-            trend={qpsTrend}
-            isLoading={isLoading}
-          />
-          <StatCard
-            title="p95 Latency"
-            value={formatMs(prodMetrics?.latency?.p95_ms || 0)}
-            icon={Gauge}
-            color="text-orange-400"
-            bgColor="bg-orange-500/20"
-            isLoading={prodLoading}
-          />
-          <StatCard
-            title="p99 Latency"
-            value={formatMs(prodMetrics?.latency?.p99_ms || 0)}
-            icon={Gauge}
-            color="text-red-400"
-            bgColor="bg-red-500/20"
-            isLoading={prodLoading}
-          />
-          <StatCard
-            title="Memory"
-            value={stats?.memoryUsage.toFixed(2) || "0"}
-            unit="GB"
-            icon={MemoryStick}
-            color="text-purple-400"
-            bgColor="bg-purple-500/20"
-            isLoading={isLoading}
-          />
-          <StatCard
-            title="Disk Used"
-            value={primaryDisk ? `${primaryDisk.used_percent.toFixed(0)}` : "0"}
-            unit="%"
-            icon={HardDrive}
-            color="text-cyan-400"
-            bgColor="bg-cyan-500/20"
-            isLoading={prodLoading}
-            subtitle={primaryDisk ? formatBytes(primaryDisk.free_space) + " free" : undefined}
-          />
-          <StatCard
-            title="Active Merges"
-            value={String(prodMetrics?.merges?.active_merges || 0)}
-            icon={GitMerge}
-            color="text-blue-400"
-            bgColor="bg-blue-500/20"
-            isLoading={prodLoading}
-          />
-          <StatCard
-            title="Connections"
-            value={String(stats?.connections || 0)}
-            icon={Users}
-            color="text-green-400"
-            bgColor="bg-green-500/20"
-            isLoading={isLoading}
-          />
-          <StatCard
-            title="Uptime"
-            value={formatUptime(stats?.uptime || 0)}
-            icon={Server}
-            color="text-emerald-400"
-            bgColor="bg-emerald-500/20"
-            isLoading={isLoading}
-          />
-        </motion.div>
+
 
         {/* Tabs for different metric views */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -557,695 +820,1405 @@ export default function Metrics({
                   <AlertCircle className="h-4 w-4" />
                   Errors
                 </TabsTrigger>
+                <TabsTrigger value="system" className="data-[state=active]:bg-white/10 gap-2">
+                  <Cpu className="h-4 w-4" />
+                  System
+                </TabsTrigger>
+
+                <TabsTrigger value="network" className="data-[state=active]:bg-white/10 gap-2">
+                  <Network className="h-4 w-4" />
+                  Network
+                </TabsTrigger>
               </>
             )}
           </TabsList>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4">
+            {/* System Health Grid - Refactored */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="grid grid-cols-2 md:grid-cols-4 gap-3"
+            >
+              <StatCard
+                title="Active Queries"
+                value={String(stats?.activeQueries || 0)}
+                icon={Zap}
+                color="text-amber-400"
+                bgColor="bg-amber-500/20"
+                isLoading={isLoading}
+              />
+              <StatCard
+                title="Active Connections"
+                value={String(stats?.connections || 0)}
+                icon={Server}
+                color="text-blue-400"
+                bgColor="bg-blue-500/20"
+                isLoading={isLoading}
+              />
+              <StatCard
+                title="Failed Queries"
+                value={String(stats?.failedQueries || 0)}
+                icon={AlertCircle}
+                color="text-red-400"
+                bgColor="bg-red-500/20"
+                isLoading={isLoading}
+              />
+              <StatCard
+                title="Uptime"
+                value={formatUptime(stats?.uptime || 0)}
+                icon={Timer}
+                color="text-emerald-400"
+                bgColor="bg-emerald-500/20"
+                isLoading={isLoading}
+              />
+            </motion.div>
             {/* Secondary Stats Row */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.15 }}
+              transition={{ delay: 0.2 }}
               className="grid grid-cols-2 md:grid-cols-4 gap-3"
             >
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <Database className="h-5 w-5 text-blue-400" />
-                <div>
-                  <p className="text-xs text-gray-400">Databases</p>
-                  <p className="text-lg font-semibold text-white">{stats?.databasesCount || 0}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <Layers className="h-5 w-5 text-green-400" />
-                <div>
-                  <p className="text-xs text-gray-400">Tables</p>
-                  <p className="text-lg font-semibold text-white">{stats?.tablesCount || 0}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <HardDrive className="h-5 w-5 text-orange-400" />
-                <div>
-                  <p className="text-xs text-gray-400">Size</p>
-                  <p className="text-lg font-semibold text-white">{formatBytes(stats?.totalBytes || 0)}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <Server className="h-5 w-5 text-purple-400" />
-                <div>
-                  <p className="text-xs text-gray-400">Total Rows</p>
-                  <p className="text-lg font-semibold text-white">{formatCompactNumber(stats?.totalRows || 0)}</p>
-                </div>
-              </div>
+              <StatCard
+                title="Databases"
+                value={String(stats?.databasesCount || 0)}
+                icon={Database}
+                color="text-blue-400"
+                bgColor="bg-blue-500/20"
+                isLoading={isLoading}
+              />
+              <StatCard
+                title="Tables"
+                value={String(stats?.tablesCount || 0)}
+                icon={Layers}
+                color="text-green-400"
+                bgColor="bg-green-500/20"
+                isLoading={isLoading}
+              />
+              <StatCard
+                title="Size"
+                value={formatBytes(stats?.totalBytes || 0)}
+                icon={HardDrive}
+                color="text-orange-400"
+                bgColor="bg-orange-500/20"
+                isLoading={isLoading}
+              />
+              <StatCard
+                title="Total Rows"
+                value={formatCompactNumber(stats?.totalRows || 0)}
+                icon={Server}
+                color="text-purple-400"
+                bgColor="bg-purple-500/20"
+                isLoading={isLoading}
+              />
             </motion.div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <MetricChartCard
-                title="Total Queries per Second"
-                subtitle="All query types combined"
-                icon={Zap}
-                color="amber"
-                data={metrics?.queriesPerSecond}
-                isLoading={isLoading}
-                chartTitle="Queries/s"
-              />
-              <MetricChartCard
-                title="Insert Throughput"
-                subtitle="Rows inserted per second"
-                icon={HardDriveDownload}
-                color="emerald"
-                data={insertThroughputData}
-                isLoading={prodLoading}
-                chartTitle="Rows/s"
-              />
-            </div>
+            {/* Resource & Activity Summary */}
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Resource Utilization */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 h-full"
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 rounded-lg bg-blue-500/20">
+                    <Activity className="h-5 w-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Resource Utilization</h3>
+                    <p className="text-xs text-gray-500">Current system resource usage</p>
+                  </div>
+                </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <MetricChartCard
-                title="SELECT Queries"
-                subtitle="Read operations per second"
-                icon={Database}
-                color="blue"
-                data={metrics?.selectQueries}
-                isLoading={isLoading}
-                chartTitle="Select/s"
-              />
-              <MetricChartCard
-                title="INSERT Queries"
-                subtitle="Write operations per second"
-                icon={HardDrive}
-                color="emerald"
-                data={metrics?.insertQueries}
-                isLoading={isLoading}
-                chartTitle="Insert/s"
-              />
+                <div className="space-y-4">
+                  {/* CPU */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">CPU Usage</span>
+                      <span className="text-white font-medium">
+                        {((cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)).toFixed(1)}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={(cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)}
+                      className={cn(
+                        "h-2 bg-white/10",
+                        ((cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)) > 80 ? "[&>div]:bg-red-500" :
+                          ((cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)) > 60 ? "[&>div]:bg-orange-500" : "[&>div]:bg-emerald-500"
+                      )}
+                    />
+                  </div>
+
+                  {/* Disk */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Disk Usage</span>
+                      <span className="text-white font-medium">
+                        {primaryDisk ? primaryDisk.used_percent.toFixed(1) : "0"}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={primaryDisk?.used_percent || 0}
+                      className={cn(
+                        "h-2 bg-white/10",
+                        (primaryDisk?.used_percent || 0) > 90 ? "[&>div]:bg-red-500" :
+                          (primaryDisk?.used_percent || 0) > 75 ? "[&>div]:bg-orange-500" : "[&>div]:bg-cyan-500"
+                      )}
+                    />
+                  </div>
+
+                  {/* Memory */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Memory Usage</span>
+                      <span className="text-white font-medium">
+                        {stats?.memoryPercentage?.toFixed(1) || 0}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={stats?.memoryPercentage || 0}
+                      className={cn(
+                        "h-2 bg-white/10",
+                        (stats?.memoryPercentage || 0) > 90 ? "[&>div]:bg-red-500" :
+                          (stats?.memoryPercentage || 0) > 75 ? "[&>div]:bg-orange-500" : "[&>div]:bg-purple-500"
+                      )}
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>{stats?.memoryUsage?.toFixed(2) || "0"} GB used</span>
+                      <span>{stats?.memoryTotal?.toFixed(2) || "0"} GB total</span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Activity Summary */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 h-full"
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 rounded-lg bg-amber-500/20">
+                    <Zap className="h-5 w-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Activity Summary</h3>
+                    <p className="text-xs text-gray-500">Real-time system activity</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-2xl font-bold text-white mb-1">
+                      {formatCompactNumber(metrics?.queriesPerSecond?.values?.slice(-1)[0] || 0)}
+                    </div>
+                    <div className="text-xs text-gray-500">Queries/s</div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-2xl font-bold text-white mb-1">
+                      {Number(prodMetrics?.merges?.merges_running || 0).toFixed(2)}
+                    </div>
+                    <div className="text-xs text-gray-500">Active Merges</div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-2xl font-bold text-white mb-1">
+                      {prodMetrics?.resources?.background_pool_tasks || 0}
+                    </div>
+                    <div className="text-xs text-gray-500">Background Tasks</div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-2xl font-bold text-white mb-1">
+                      {formatCompactNumber(prodMetrics?.merges?.merged_rows_per_sec || 0)}
+                    </div>
+                    <div className="text-xs text-gray-500">Merged Rows/s</div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Recent Errors */}
+              {prodMetrics?.errors && prodMetrics.errors.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="rounded-2xl border border-red-500/20 bg-red-500/5 backdrop-blur-xl p-6 h-full"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-red-400" />
+                      <h3 className="font-semibold text-white">Recent Errors</h3>
+                    </div>
+                    <Badge variant="destructive" className="bg-red-500/20 text-red-400 hover:bg-red-500/30">
+                      {prodMetrics.errors.length} Issues
+                    </Badge>
+                  </div>
+                  <div className="space-y-3">
+                    {prodMetrics.errors.slice(0, 3).map((err, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-red-500/10 border border-red-500/10">
+                        <span className="text-sm font-medium text-red-400 truncate max-w-[180px]" title={err.exception_name}>
+                          {err.exception_name}
+                        </span>
+                        <Badge variant="secondary" className="bg-red-950/30 text-red-300">
+                          {err.count}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Largest Tables */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className={cn(
+                  "rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 h-full",
+                  (prodMetrics?.errors && prodMetrics.errors.length > 0) ? "" : "md:col-span-2"
+                )}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Table2 className="h-5 w-5 text-purple-400" />
+                    <h3 className="font-semibold text-white">Largest Tables</h3>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {prodMetrics?.topTables?.slice(0, 5).map((table, idx) => (
+                    <div key={idx} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500 w-4">{idx + 1}.</span>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-white">{table.table}</span>
+                          <span className="text-xs text-gray-500">{table.database}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-xs text-gray-400">{formatCompactNumber(table.rows)} rows</span>
+                        <Badge variant="secondary" className="bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                          {table.compressed_size}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                  {(!prodMetrics?.topTables || prodMetrics.topTables.length === 0) && (
+                    <div className="text-center py-4 text-gray-500 text-sm">No tables found</div>
+                  )}
+                </div>
+              </motion.div>
             </div>
           </TabsContent>
 
           {/* Performance Tab - Advanced only */}
           {hasAdvancedMetrics && (
-            <TabsContent value="performance" className="space-y-4">
-              {/* Latency Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <StatCard
-                  title="Avg Latency"
-                  value={formatMs(prodMetrics?.latency?.avg_ms || 0)}
-                  icon={Timer}
-                  color="text-blue-400"
-                  bgColor="bg-blue-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="p50 Latency"
-                  value={formatMs(prodMetrics?.latency?.p50_ms || 0)}
-                  icon={Gauge}
-                  color="text-green-400"
-                  bgColor="bg-green-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="p95 Latency"
-                  value={formatMs(prodMetrics?.latency?.p95_ms || 0)}
-                  icon={Gauge}
-                  color="text-orange-400"
-                  bgColor="bg-orange-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="p99 Latency"
-                  value={formatMs(prodMetrics?.latency?.p99_ms || 0)}
-                  icon={Gauge}
-                  color="text-red-400"
-                  bgColor="bg-red-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="Slow Queries"
-                  value={String(prodMetrics?.latency?.slow_queries_count || 0)}
-                  subtitle=">1 second"
-                  icon={AlertTriangle}
-                  color="text-amber-400"
-                  bgColor="bg-amber-500/20"
-                  isLoading={prodLoading}
-                />
-              </div>
+            <TabsContent value="performance" className="grid gap-6 md:grid-cols-2">
 
-              {/* Cache Performance */}
+
+              {/* Query Latency Group */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                transition={{ delay: 0.2 }}
+                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-1 h-full"
               >
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-cyan-500/20">
-                    <Zap className="h-5 w-5 text-cyan-400" />
+                  <div className="p-2 rounded-lg bg-blue-500/20">
+                    <Timer className="h-5 w-5 text-blue-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-white">Cache Performance</h3>
-                    <p className="text-xs text-gray-500">Hit ratios indicate cache efficiency</p>
+                    <h3 className="font-semibold text-white">Query Latency</h3>
+                    <p className="text-xs text-gray-500">Response time analysis</p>
                   </div>
                 </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Mark Cache Hit Ratio</span>
-                      <span className="text-white font-medium">
-                        {prodMetrics?.cache?.mark_cache_hit_ratio?.toFixed(1) || 0}%
-                      </span>
-                    </div>
-                    <Progress
-                      value={prodMetrics?.cache?.mark_cache_hit_ratio || 0}
-                      className="h-2 bg-white/10"
-                    />
-                    <p className="text-xs text-gray-500">
-                      {(prodMetrics?.cache?.mark_cache_hits || 0).toLocaleString()} hits / {(prodMetrics?.cache?.mark_cache_misses || 0).toLocaleString()} misses
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Uncompressed Cache Hit Ratio</span>
-                      <span className="text-white font-medium">
-                        {prodMetrics?.cache?.uncompressed_cache_hit_ratio?.toFixed(1) || 0}%
-                      </span>
-                    </div>
-                    <Progress
-                      value={prodMetrics?.cache?.uncompressed_cache_hit_ratio || 0}
-                      className="h-2 bg-white/10"
-                    />
-                    <p className="text-xs text-gray-500">
-                      {(prodMetrics?.cache?.uncompressed_cache_hits || 0).toLocaleString()} hits / {(prodMetrics?.cache?.uncompressed_cache_misses || 0).toLocaleString()} misses
-                    </p>
-                  </div>
+                <div className="grid gap-4 grid-cols-2">
+                  <StatCard
+                    title="Avg Latency"
+                    value={formatMs(prodMetrics?.latency?.avg_ms || 0)}
+                    icon={Timer}
+                    color="text-blue-400"
+                    bgColor="bg-blue-500/20"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="p50 Latency"
+                    value={formatMs(prodMetrics?.latency?.p50_ms || 0)}
+                    icon={Gauge}
+                    color="text-green-400"
+                    bgColor="bg-green-500/20"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Max Latency"
+                    value={formatMs(prodMetrics?.latency?.max_ms || 0)}
+                    icon={AlertTriangle}
+                    color="text-red-400"
+                    bgColor="bg-red-500/20"
+                    isLoading={prodLoading}
+                    subtitle="Worst case"
+                  />
+                  <StatCard
+                    title="Slow Queries"
+                    value={String(prodMetrics?.latency?.slow_queries_count || 0)}
+                    subtitle=">1 second"
+                    icon={AlertTriangle}
+                    color="text-amber-400"
+                    bgColor="bg-amber-500/20"
+                    isLoading={prodLoading}
+                  />
                 </div>
               </motion.div>
 
-              {/* Resource Usage */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatCard
-                  title="Read Rate"
-                  value={formatBytes(prodMetrics?.resources?.read_rate || 0)}
-                  unit="/s"
-                  icon={HardDriveDownload}
-                  color="text-cyan-400"
-                  bgColor="bg-cyan-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="Memory Resident"
-                  value={prodMetrics?.resources?.memory_resident?.toFixed(2) || "0"}
-                  unit="GB"
-                  icon={MemoryStick}
-                  color="text-purple-400"
-                  bgColor="bg-purple-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="Global Threads"
-                  value={String(prodMetrics?.resources?.global_threads || 0)}
-                  icon={Network}
-                  color="text-blue-400"
-                  bgColor="bg-blue-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="Background Tasks"
-                  value={String(prodMetrics?.resources?.background_pool_tasks || 0)}
-                  icon={Layers}
-                  color="text-green-400"
-                  bgColor="bg-green-500/20"
-                  isLoading={prodLoading}
-                />
-              </div>
+
+
+              {/* Throughput & IO Group */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-1"
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 rounded-lg bg-orange-500/20">
+                    <Activity className="h-5 w-5 text-orange-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Throughput & IO</h3>
+                    <p className="text-xs text-gray-500">Read/Write operations and background tasks</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard
+                    title="Read Rate"
+                    value={formatBytes(prodMetrics?.resources?.read_rate || 0)}
+                    unit="/s"
+                    icon={HardDriveDownload}
+                    color="text-cyan-400"
+                    bgColor="bg-cyan-500/20"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Background Tasks"
+                    value={String(prodMetrics?.resources?.background_pool_tasks || 0)}
+                    icon={Layers}
+                    color="text-green-400"
+                    bgColor="bg-green-500/20"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Rows Selected"
+                    value={formatCompactNumber(queryThroughputData?.values[1]?.slice(-1)[0] || 0)}
+                    unit="/s"
+                    icon={Database}
+                    color="text-cyan-400"
+                    bgColor="bg-cyan-500/20"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Rows Inserted"
+                    value={formatCompactNumber(processThroughputData?.values[0]?.slice(-1)[0] || 0)}
+                    unit="/s"
+                    icon={HardDriveDownload}
+                    color="text-emerald-400"
+                    bgColor="bg-emerald-500/20"
+                    isLoading={prodLoading}
+                  />
+                </div>
+              </motion.div>
+
+              {/* Detailed Analysis Group */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-2"
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 rounded-lg bg-indigo-500/20">
+                    <Activity className="h-5 w-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Detailed Analysis</h3>
+                    <p className="text-xs text-gray-500">Historical throughput trends</p>
+                  </div>
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <MetricChartCard
+                    title="Query Throughput"
+                    subtitle="Queries and rows processed per second"
+                    icon={Activity}
+                    color="blue"
+                    data={queryThroughputData}
+                    isLoading={prodLoading}
+                    chartTitle="Queries/s"
+                    hideLatestValues
+                  />
+                  <MetricChartCard
+                    title="Process Throughput"
+                    subtitle="Rows inserted and merged per second"
+                    icon={HardDriveDownload}
+                    color="emerald"
+                    data={processThroughputData}
+                    isLoading={prodLoading}
+                    chartTitle="Rows/s"
+                    hideLatestValues
+                  />
+                </div>
+              </motion.div>
             </TabsContent>
           )}
 
           {/* Storage Tab - Advanced only */}
           {hasAdvancedMetrics && (
-            <TabsContent value="storage" className="space-y-4">
+            <TabsContent value="storage" className="grid gap-6 md:grid-cols-3">
               {/* Loading State */}
               {prodLoading && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-8 text-center"
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-8 text-center md:col-span-3"
                 >
                   <RefreshCw className="h-8 w-8 text-gray-500 mx-auto mb-4 animate-spin" />
                   <p className="text-gray-400">Loading storage metrics...</p>
                 </motion.div>
               )}
 
-              {/* Disk Stats */}
-              {!prodLoading && prodMetrics?.disks && prodMetrics.disks.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
-                >
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-cyan-500/20">
-                      <Disc className="h-5 w-5 text-cyan-400" />
+              {!prodLoading && (
+                <>
+                  {/* SECTION 1: DISK CAPACITY */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                  >
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 rounded-lg bg-cyan-500/20">
+                        <HardDrive className="h-5 w-5 text-cyan-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">Disk Capacity</h3>
+                        <p className="text-xs text-gray-500">Volume usage and availability</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Disk Usage</h3>
-                      <p className="text-xs text-gray-500">Storage space across all disks</p>
-                    </div>
-                  </div>
 
-                  <div className="space-y-4">
-                    {prodMetrics.disks.map((disk) => (
-                      <div key={disk.name} className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <HardDrive className="h-4 w-4 text-gray-400" />
-                            <span className="text-white font-medium">{disk.name}</span>
-                            <span className="text-xs text-gray-500">{disk.path}</span>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <StatCard
+                        title="Total Storage"
+                        value={formatBytes(prodMetrics?.disks?.reduce((sum, d) => sum + d.total_space, 0) || 0)}
+                        icon={HardDrive}
+                        color="text-cyan-400"
+                        bgColor="bg-cyan-500/20"
+                        isLoading={false}
+                      />
+                      <StatCard
+                        title="Used Storage"
+                        value={formatBytes(prodMetrics?.disks?.reduce((sum, d) => sum + d.used_space, 0) || 0)}
+                        icon={Database}
+                        color="text-orange-400"
+                        bgColor="bg-orange-500/20"
+                        isLoading={false}
+                      />
+                      <StatCard
+                        title="Free Storage"
+                        value={formatBytes(prodMetrics?.disks?.reduce((sum, d) => sum + d.free_space, 0) || 0)}
+                        icon={Server}
+                        color="text-green-400"
+                        bgColor="bg-green-500/20"
+                        isLoading={false}
+                      />
+                      <StatCard
+                        title="Disk Count"
+                        value={String(prodMetrics?.disks?.length || 0)}
+                        icon={Disc}
+                        color="text-purple-400"
+                        bgColor="bg-purple-500/20"
+                        isLoading={false}
+                      />
+                    </div>
+                  </motion.div>
+
+                  {/* SECTION 2: MERJETREE HEALTH */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                  >
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 rounded-lg bg-indigo-500/20">
+                        <Layers className="h-5 w-5 text-indigo-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">MergeTree Diagnostics</h3>
+                        <p className="text-xs text-gray-500">Parts count and partition health</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      <StatCard
+                        title="Total Parts"
+                        value={formatCompactNumber(prodMetrics?.resources?.total_parts || 0)}
+                        icon={Layers}
+                        color="text-indigo-400"
+                        bgColor="bg-indigo-500/20"
+                        isLoading={prodLoading}
+                      />
+                      <StatCard
+                        title="Max Parts/Partition"
+                        value={formatCompactNumber(prodMetrics?.resources?.max_parts_per_partition || 0)}
+                        icon={AlertTriangle}
+                        color={(prodMetrics?.resources?.max_parts_per_partition || 0) > 3000 ? "text-red-400" : "text-gray-400"}
+                        bgColor={(prodMetrics?.resources?.max_parts_per_partition || 0) > 3000 ? "bg-red-500/20" : "bg-gray-500/20"}
+                        isLoading={prodLoading}
+                      />
+
+                      {/* Total Rows Context */}
+                      <StatCard
+                        title="Total Rows"
+                        value={formatCompactNumber(prodMetrics?.topTables?.reduce((sum, t) => sum + (t.rows || 0), 0) || 0)}
+                        icon={List}
+                        color="text-blue-400"
+                        bgColor="bg-blue-500/20"
+                        isLoading={prodLoading}
+                      />
+                    </div>
+                  </motion.div>
+
+                  {/* SECTION 3: DETAILED BREAKDOWN */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                  >
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 rounded-lg bg-white/5">
+                        <List className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">Detailed Breakdown</h3>
+                        <p className="text-xs text-gray-500">Per-disk usage and largest tables</p>
+                      </div>
+                    </div>
+
+                    {/* Disk Usage & Top Tables Grid */}
+                    <div className="grid gap-6 lg:grid-cols-2">
+                      {/* Disk Usage */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                          <Disc className="h-4 w-4 text-cyan-400" />
+                          Disk Usage
+                        </h4>
+                        {prodMetrics?.disks && prodMetrics.disks.length > 0 ? (
+                          <div className="space-y-4">
+                            {prodMetrics.disks.map((disk) => (
+                              <div key={disk.name} className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <div className="flex items-center gap-2">
+                                    <HardDrive className="h-4 w-4 text-gray-400" />
+                                    <span className="text-white font-medium text-sm">{disk.name}</span>
+                                    <span className="text-xs text-gray-500">{disk.path}</span>
+                                  </div>
+                                  <span className={cn(
+                                    "text-sm font-medium",
+                                    disk.used_percent > 90 ? "text-red-400" :
+                                      disk.used_percent > 75 ? "text-orange-400" : "text-green-400"
+                                  )}>
+                                    {disk.used_percent.toFixed(1)}%
+                                  </span>
+                                </div>
+                                <Progress
+                                  value={disk.used_percent}
+                                  className={cn(
+                                    "h-2 bg-white/10",
+                                    disk.used_percent > 90 && "[&>div]:bg-red-500",
+                                    disk.used_percent > 75 && disk.used_percent <= 90 && "[&>div]:bg-orange-500"
+                                  )}
+                                />
+                                <div className="flex justify-between text-xs text-gray-500">
+                                  <span>Used: {formatBytes(disk.used_space)}</span>
+                                  <span>Free: {formatBytes(disk.free_space)}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                          <span className={cn(
-                            "text-sm font-medium",
-                            disk.used_percent > 90 ? "text-red-400" :
-                              disk.used_percent > 75 ? "text-orange-400" : "text-green-400"
-                          )}>
-                            {disk.used_percent.toFixed(1)}% used
-                          </span>
+                        ) : (
+                          <div className="text-center py-8">
+                            <HardDrive className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
+                            <p className="text-sm text-gray-400">No disk metrics available</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Top Tables */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                          <Table2 className="h-4 w-4 text-purple-400" />
+                          Top Tables by Size
+                        </h4>
+                        {prodMetrics?.topTables && prodMetrics.topTables.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b border-white/10">
+                                  <th className="text-left text-xs text-gray-400 font-medium pb-2">Table</th>
+                                  <th className="text-right text-xs text-gray-400 font-medium pb-2">Size</th>
+                                  <th className="text-right text-xs text-gray-400 font-medium pb-2">Parts</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {prodMetrics.topTables.slice(0, 5).map((table, idx) => (
+                                  <tr key={`${table.database}.${table.table}`} className="border-b border-white/5">
+                                    <td className="py-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-gray-500 text-xs w-4">{idx + 1}.</span>
+                                        <span className="text-white text-sm truncate max-w-[150px]" title={`${table.database}.${table.table}`}>
+                                          {table.database}.<span className="text-blue-400">{table.table}</span>
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="text-right text-gray-300 text-sm">{table.compressed_size}</td>
+                                    <td className="text-right">
+                                      <Badge variant="secondary" className={cn(
+                                        "bg-white/10 text-xs",
+                                        table.parts_count > 100 ? "text-orange-400" : "text-gray-300"
+                                      )}>
+                                        {table.parts_count}
+                                      </Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <Table2 className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
+                            <p className="text-sm text-gray-400">No table data available</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* Cache Performance Group - Complete */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.5 }}
+                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                  >
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 rounded-lg bg-emerald-500/20">
+                        <Zap className="h-5 w-5 text-emerald-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">Cache Performance</h3>
+                        <p className="text-xs text-gray-500">Filesystem and page cache efficiency</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-6 lg:grid-cols-5">
+                      {/* Cache Quick Stats - Clean sidebar */}
+                      <div className="lg:col-span-1 flex flex-col justify-center gap-4">
+                        <div className="flex-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Zap className="h-4 w-4 text-emerald-400" />
+                            <span className="text-xs text-gray-400">FS Cache</span>
+                          </div>
+                          <div className="text-lg font-semibold text-white">
+                            {cacheHitRateData?.values[0]?.slice(-1)[0]?.toFixed(1) || "0"}
+                            <span className="text-xs text-gray-400">%</span>
+                          </div>
                         </div>
-                        <Progress
-                          value={disk.used_percent}
-                          className={cn(
-                            "h-3 bg-white/10",
-                            disk.used_percent > 90 && "[&>div]:bg-red-500",
-                            disk.used_percent > 75 && disk.used_percent <= 90 && "[&>div]:bg-orange-500"
-                          )}
-                        />
-                        <div className="flex justify-between text-xs text-gray-500">
-                          <span>Used: {formatBytes(disk.used_space)}</span>
-                          <span>Free: {formatBytes(disk.free_space)}</span>
-                          <span>Total: {formatBytes(disk.total_space)}</span>
+                        <div className="flex-1 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Zap className="h-4 w-4 text-cyan-400" />
+                            <span className="text-xs text-gray-400">Page Cache</span>
+                          </div>
+                          <div className="text-lg font-semibold text-white">
+                            {cacheHitRateData?.values[1]?.slice(-1)[0]?.toFixed(1) || "0"}
+                            <span className="text-xs text-gray-400">%</span>
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
 
-              {/* Empty disk state */}
-              {!prodLoading && (!prodMetrics?.disks || prodMetrics.disks.length === 0) && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
-                >
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-cyan-500/20">
-                      <Disc className="h-5 w-5 text-cyan-400" />
+                      {/* Cache Chart - Wider */}
+                      <div className="lg:col-span-4">
+                        <MetricChartCard
+                          title="Cache Hit Rates"
+                          subtitle="Filesystem and Page cache hit rates"
+                          icon={Zap}
+                          color="emerald"
+                          data={cacheHitRateData}
+                          isLoading={prodLoading}
+                          chartTitle="Hit Rate (%)"
+                          hideLatestValues
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Disk Usage</h3>
-                      <p className="text-xs text-gray-500">Storage space across all disks</p>
-                    </div>
-                  </div>
-                  <div className="text-center py-8">
-                    <HardDrive className="h-12 w-12 text-gray-500 mx-auto mb-4 opacity-50" />
-                    <p className="text-gray-400">No disk metrics available</p>
-                    <p className="text-xs text-gray-500 mt-2">Check your ClickHouse permissions or connection</p>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Top Tables by Size */}
-              {!prodLoading && prodMetrics?.topTables && prodMetrics.topTables.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
-                >
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-purple-500/20">
-                      <Table2 className="h-5 w-5 text-purple-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Top Tables by Size</h3>
-                      <p className="text-xs text-gray-500">Largest tables in your cluster</p>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-white/10">
-                          <th className="text-left text-xs text-gray-400 font-medium pb-3">Table</th>
-                          <th className="text-right text-xs text-gray-400 font-medium pb-3">Rows</th>
-                          <th className="text-right text-xs text-gray-400 font-medium pb-3">Size</th>
-                          <th className="text-right text-xs text-gray-400 font-medium pb-3">Parts</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {prodMetrics.topTables.map((table, idx) => (
-                          <tr key={`${table.database}.${table.table}`} className="border-b border-white/5">
-                            <td className="py-3">
-                              <div className="flex items-center gap-2">
-                                <span className="text-gray-500 text-xs w-5">{idx + 1}.</span>
-                                <span className="text-white">{table.database}.<span className="text-blue-400">{table.table}</span></span>
-                              </div>
-                            </td>
-                            <td className="text-right text-gray-300">{table.rows.toLocaleString()}</td>
-                            <td className="text-right text-gray-300">{table.compressed_size}</td>
-                            <td className="text-right">
-                              <Badge variant="secondary" className={cn(
-                                "bg-white/10",
-                                table.parts_count > 100 ? "text-orange-400" : "text-gray-300"
-                              )}>
-                                {table.parts_count}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Empty tables state */}
-              {!prodLoading && (!prodMetrics?.topTables || prodMetrics.topTables.length === 0) && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
-                >
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-purple-500/20">
-                      <Table2 className="h-5 w-5 text-purple-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Top Tables by Size</h3>
-                      <p className="text-xs text-gray-500">Largest tables in your cluster</p>
-                    </div>
-                  </div>
-                  <div className="text-center py-8">
-                    <Table2 className="h-12 w-12 text-gray-500 mx-auto mb-4 opacity-50" />
-                    <p className="text-gray-400">No tables found</p>
-                    <p className="text-xs text-gray-500 mt-2">Create some tables to see storage metrics</p>
-                  </div>
-                </motion.div>
+                  </motion.div>
+                </>
               )}
             </TabsContent>
           )}
 
           {/* Merges Tab - Advanced only */}
           {hasAdvancedMetrics && (
-            <TabsContent value="merges" className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <StatCard
-                  title="Active Merges"
-                  value={String(prodMetrics?.merges?.active_merges || 0)}
-                  icon={GitMerge}
-                  color="text-blue-400"
-                  bgColor="bg-blue-500/20"
+            <TabsContent value="merges" className="space-y-6">
+
+
+              {/* SECTION 1: KPI COMMAND CENTER */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 rounded-lg bg-indigo-500/20">
+                    <Layers className="h-5 w-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Merge Command Center</h3>
+                    <p className="text-xs text-gray-500">Real-time background processing health & throughput</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <StatCard
+                    title="Running Merges"
+                    value={Number(prodMetrics?.merges?.merges_running || 0).toFixed(2)}
+                    icon={GitMerge}
+                    color="text-purple-400"
+                    bgColor="bg-purple-500/10"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Active Mutations"
+                    value={Number(prodMetrics?.merges?.mutations_running || 0).toFixed(2)}
+                    icon={Zap}
+                    color="text-amber-400"
+                    bgColor="bg-amber-500/10"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Pending Mutations"
+                    value={String(prodMetrics?.merges?.pending_mutations || 0)}
+                    icon={Combine}
+                    color="text-orange-400"
+                    bgColor="bg-orange-500/10"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Merged Rows/s"
+                    value={formatCompactNumber(prodMetrics?.merges?.merged_rows_per_sec || 0)}
+                    icon={FileStack}
+                    color="text-cyan-400"
+                    bgColor="bg-cyan-500/10"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Merged Bytes/s"
+                    value={formatBytes(prodMetrics?.merges?.merged_bytes_per_sec || 0)}
+                    icon={HardDrive}
+                    color="text-emerald-400"
+                    bgColor="bg-emerald-500/10"
+                    isLoading={prodLoading}
+                  />
+                  <StatCard
+                    title="Merge Memory"
+                    value={formatBytes(prodMetrics?.merges?.merges_mutations_memory || 0)}
+                    icon={MemoryStick}
+                    color="text-blue-400"
+                    bgColor="bg-blue-500/10"
+                    isLoading={prodLoading}
+                  />
+                </div>
+              </motion.div>
+
+              {/* SECTION 2: THROUGHPUT TREND (FULL WIDTH) */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                <MetricChartCard
+                  title="Merge Throughput Trend"
+                  subtitle="Rows processed by background merges (avg over 5m buckets)"
+                  icon={Activity}
+                  color="cyan"
+                  data={mergeThroughputData}
                   isLoading={prodLoading}
+                  chartTitle="Rows/s"
+                  hideLatestValues
                 />
-                <StatCard
-                  title="Merge Queue"
-                  value={String(prodMetrics?.merges?.merge_queue_size || 0)}
-                  icon={FileStack}
-                  color="text-purple-400"
-                  bgColor="bg-purple-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="Pending Mutations"
-                  value={String(prodMetrics?.merges?.pending_mutations || 0)}
-                  icon={Combine}
-                  color="text-orange-400"
-                  bgColor="bg-orange-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="Parts to Merge"
-                  value={String(prodMetrics?.merges?.parts_to_merge || 0)}
+              </motion.div>
+
+              {/* SECTION 3: ACTIVITY QUEUE & PARTS TRENDS */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+              >
+                <MetricChartCard
+                  title="Task Queue Depth"
+                  subtitle="Concurrent merges and mutations in progress"
                   icon={Layers}
-                  color="text-cyan-400"
-                  bgColor="bg-cyan-500/20"
+                  color="purple"
+                  data={mergeQueueData}
                   isLoading={prodLoading}
+                  chartTitle="Tasks"
+                  hideLatestValues
                 />
-                <StatCard
-                  title="Active Parts"
-                  value={String(stats?.partsCount || 0)}
-                  icon={CircleDot}
-                  color="text-green-400"
-                  bgColor="bg-green-500/20"
+                <MetricChartCard
+                  title="Parts Analysis"
+                  subtitle="Total MergeTree parts and partition density"
+                  icon={Layers}
+                  color="amber"
+                  data={partsData}
                   isLoading={isLoading}
+                  chartTitle="Parts"
+                  hideLatestValues
                 />
-              </div>
+              </motion.div>
 
-              {/* Replication Status */}
-              {prodMetrics?.replication && prodMetrics.replication.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
-                >
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-blue-500/20">
-                      <Network className="h-5 w-5 text-blue-400" />
+              {/* SECTION 4: REPLICATION STATUS DATA */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+              >
+                {prodMetrics?.replication && prodMetrics.replication.length > 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 rounded-lg bg-blue-500/20">
+                        <Network className="h-5 w-5 text-blue-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">Replication & Consistency</h3>
+                        <p className="text-xs text-gray-500">Real-time health of replicated table clusters</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Replication Status</h3>
-                      <p className="text-xs text-gray-500">ReplicatedMergeTree tables status</p>
-                    </div>
-                  </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-white/10">
-                          <th className="text-left text-xs text-gray-400 font-medium pb-3">Table</th>
-                          <th className="text-center text-xs text-gray-400 font-medium pb-3">Leader</th>
-                          <th className="text-center text-xs text-gray-400 font-medium pb-3">Readonly</th>
-                          <th className="text-right text-xs text-gray-400 font-medium pb-3">Delay</th>
-                          <th className="text-right text-xs text-gray-400 font-medium pb-3">Queue</th>
-                          <th className="text-right text-xs text-gray-400 font-medium pb-3">Replicas</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {prodMetrics.replication.map((rep) => (
-                          <tr key={`${rep.database}.${rep.table}`} className="border-b border-white/5">
-                            <td className="py-3">
-                              <span className="text-white">{rep.database}.<span className="text-blue-400">{rep.table}</span></span>
-                            </td>
-                            <td className="text-center">
-                              {rep.is_leader ? (
-                                <CheckCircle2 className="h-4 w-4 text-green-400 mx-auto" />
-                              ) : (
-                                <Minus className="h-4 w-4 text-gray-500 mx-auto" />
-                              )}
-                            </td>
-                            <td className="text-center">
-                              {rep.is_readonly ? (
-                                <XCircle className="h-4 w-4 text-red-400 mx-auto" />
-                              ) : (
-                                <CheckCircle2 className="h-4 w-4 text-green-400 mx-auto" />
-                              )}
-                            </td>
-                            <td className="text-right">
-                              <span className={cn(
-                                rep.absolute_delay > 300 ? "text-red-400" :
-                                  rep.absolute_delay > 60 ? "text-orange-400" : "text-gray-300"
-                              )}>
-                                {rep.absolute_delay}s
-                              </span>
-                            </td>
-                            <td className="text-right text-gray-300">{rep.queue_size}</td>
-                            <td className="text-right">
-                              <span className={cn(
-                                rep.active_replicas < rep.total_replicas ? "text-orange-400" : "text-green-400"
-                              )}>
-                                {rep.active_replicas}/{rep.total_replicas}
-                              </span>
-                            </td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-white/10">
+                            <th className="text-left text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Table</th>
+                            <th className="text-center text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Leader</th>
+                            <th className="text-center text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Status</th>
+                            <th className="text-right text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Delay</th>
+                            <th className="text-right text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Queue</th>
+                            <th className="text-right text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Replicas</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {prodMetrics.replication.map((rep) => (
+                            <tr key={`${rep.database}.${rep.table}`} className="group hover:bg-white/[0.02] transition-colors">
+                              <td className="py-4">
+                                <div className="flex flex-col">
+                                  <span className="text-xs text-gray-500">{rep.database}</span>
+                                  <span className="text-sm text-white font-medium group-hover:text-blue-400 transition-colors">{rep.table}</span>
+                                </div>
+                              </td>
+                              <td className="text-center">
+                                {rep.is_leader ? (
+                                  <CheckCircle2 className="h-4 w-4 text-green-400 mx-auto" />
+                                ) : (
+                                  <Minus className="h-4 w-4 text-gray-500 mx-auto" />
+                                )}
+                              </td>
+                              <td className="text-center">
+                                {rep.is_readonly ? (
+                                  <Badge variant="outline" className="border-red-500/50 text-red-500 bg-red-500/10 text-[10px]">READONLY</Badge>
+                                ) : (
+                                  <Badge variant="outline" className="border-green-500/50 text-green-500 bg-green-500/10 text-[10px]">HEALTHY</Badge>
+                                )}
+                              </td>
+                              <td className="text-right">
+                                <span className={cn(
+                                  "font-mono text-xs font-medium",
+                                  rep.absolute_delay > 300 ? "text-red-400" :
+                                    rep.absolute_delay > 60 ? "text-orange-400" : "text-gray-300"
+                                )}>
+                                  {rep.absolute_delay}s
+                                </span>
+                              </td>
+                              <td className="text-right text-gray-400 font-mono text-xs">{rep.queue_size}</td>
+                              <td className="text-right">
+                                <span className={cn(
+                                  "font-mono text-xs font-semibold",
+                                  rep.active_replicas < rep.total_replicas ? "text-orange-400" : "text-green-400"
+                                )}>
+                                  {rep.active_replicas}/{rep.total_replicas}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </motion.div>
-              )}
-
-              {/* No replicated tables message */}
-              {(!prodMetrics?.replication || prodMetrics.replication.length === 0) && !prodLoading && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-8 text-center"
-                >
-                  <Network className="h-12 w-12 text-gray-500 mx-auto mb-4 opacity-50" />
-                  <p className="text-gray-400">No replicated tables found</p>
-                  <p className="text-xs text-gray-500 mt-2">ReplicatedMergeTree tables will appear here</p>
-                </motion.div>
-              )}
+                ) : (
+                  !prodLoading && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-16 text-center">
+                      <Network className="h-12 w-12 text-gray-500 mx-auto mb-4 opacity-50" />
+                      <p className="text-sm text-gray-400 max-w-[200px] mx-auto">No replicated tables found in this cluster</p>
+                    </div>
+                  )
+                )}
+              </motion.div>
             </TabsContent>
           )}
 
           {/* Errors Tab - Advanced only */}
-          {hasAdvancedMetrics && (
-            <TabsContent value="errors" className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <StatCard
-                  title="Failed Queries"
-                  value={String(stats?.failedQueries || 0)}
-                  icon={XCircle}
-                  color="text-red-400"
-                  bgColor="bg-red-500/20"
-                  isLoading={isLoading}
-                  subtitle={`of ${stats?.totalQueries || 0} total`}
-                />
-                <StatCard
-                  title="Error Types"
-                  value={String(prodMetrics?.errors?.length || 0)}
-                  icon={AlertCircle}
-                  color="text-orange-400"
-                  bgColor="bg-orange-500/20"
-                  isLoading={prodLoading}
-                />
-                <StatCard
-                  title="Slow Queries"
-                  value={String(prodMetrics?.latency?.slow_queries_count || 0)}
-                  subtitle=">1 second"
-                  icon={AlertTriangle}
-                  color="text-amber-400"
-                  bgColor="bg-amber-500/20"
-                  isLoading={prodLoading}
-                />
-              </div>
-
-              <MetricChartCard
-                title="Failed Queries Over Time"
-                subtitle="Queries with errors"
-                icon={XCircle}
-                color="red"
-                data={metrics?.failedQueries}
-                isLoading={isLoading}
-                chartTitle="Failed"
-              />
-
-              {/* Error Breakdown Table */}
-              {prodMetrics?.errors && prodMetrics.errors.length > 0 && (
+          {
+            hasAdvancedMetrics && (
+              <TabsContent value="errors" className="grid gap-6 md:grid-cols-3">
+                {/* SECTION 1: CRITICAL ALERTS */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                  transition={{ delay: 0.1 }}
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
                 >
                   <div className="flex items-center gap-3 mb-6">
                     <div className="p-2 rounded-lg bg-red-500/20">
-                      <AlertCircle className="h-5 w-5 text-red-400" />
+                      <AlertTriangle className="h-5 w-5 text-red-400" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-white">Error Breakdown</h3>
-                      <p className="text-xs text-gray-500">Grouped by exception type</p>
+                      <h3 className="font-semibold text-white">Critical Alerts</h3>
+                      <p className="text-xs text-gray-500">Query failures and exceptions</p>
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    {prodMetrics.errors.map((err) => (
-                      <div key={err.exception_code} className="p-4 rounded-lg bg-white/5 border border-white/10">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge variant="secondary" className="bg-red-500/20 text-red-400">
-                                {err.exception_name}
-                              </Badge>
-                              <span className="text-xs text-gray-500">Code: {err.exception_code}</span>
-                            </div>
-                            <p className="text-xs text-gray-400 truncate">{err.sample_error}</p>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <p className="text-xl font-bold text-white">{err.count}</p>
-                            <p className="text-xs text-gray-500">occurrences</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <StatCard
+                      title="Failed Queries"
+                      value={String(stats?.failedQueries || 0)}
+                      icon={XCircle}
+                      color="text-red-400"
+                      bgColor="bg-red-500/20"
+                      isLoading={isLoading}
+                      subtitle={`of ${stats?.totalQueries || 0} total`}
+                    />
+                    <StatCard
+                      title="Error Types"
+                      value={String(prodMetrics?.errors?.length || 0)}
+                      icon={AlertCircle}
+                      color="text-orange-400"
+                      bgColor="bg-orange-500/20"
+                      isLoading={prodLoading}
+                    />
+                    {prodMetrics?.errors?.[0] ? (
+                      <StatCard
+                        title="Top Error"
+                        value={String(prodMetrics.errors[0].count)}
+                        icon={AlertTriangle}
+                        color="text-red-400"
+                        bgColor="bg-red-500/20"
+                        isLoading={prodLoading}
+                        subtitle={prodMetrics.errors[0].exception_name}
+                      />
+                    ) : (
+                      <StatCard
+                        title="Top Error"
+                        value="None"
+                        icon={CheckCircle2}
+                        color="text-green-400"
+                        bgColor="bg-green-500/20"
+                        isLoading={prodLoading}
+                        subtitle="System healthy"
+                      />
+                    )}
                   </div>
                 </motion.div>
-              )}
 
-              {/* No errors message */}
-              {(!prodMetrics?.errors || prodMetrics.errors.length === 0) && !prodLoading && (
+                {/* SECTION 2: FAILURE ANALYSIS */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-8 text-center"
+                  transition={{ delay: 0.2 }}
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
                 >
-                  <CheckCircle2 className="h-12 w-12 text-green-400 mx-auto mb-4" />
-                  <p className="text-green-400 font-medium">No errors in the selected time range</p>
-                  <p className="text-xs text-gray-500 mt-2">All queries completed successfully</p>
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 rounded-lg bg-orange-500/20">
+                      <Activity className="h-5 w-5 text-orange-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white">Failure Analysis</h3>
+                      <p className="text-xs text-gray-500">Trends and distribution over time</p>
+                    </div>
+                  </div>
+
+                  <MetricChartCard
+                    title="Failed Queries Over Time"
+                    subtitle="Queries with errors"
+                    icon={XCircle}
+                    color="red"
+                    data={metrics?.failedQueries as any}
+                    isLoading={isLoading}
+                    chartTitle="Failed"
+                    hideLatestValues
+                  />
                 </motion.div>
-              )}
-            </TabsContent>
-          )}
-        </Tabs>
+
+                {/* SECTION 3: EXCEPTION LOG */}
+                {prodMetrics?.errors && prodMetrics.errors.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                  >
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 rounded-lg bg-white/5">
+                        <List className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">Exception Log</h3>
+                        <p className="text-xs text-gray-500">Detailed error breakdown</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {prodMetrics.errors.map((err) => (
+                        <div key={err.exception_code} className="p-4 rounded-lg bg-white/5 border border-white/10 transition-colors hover:bg-white/10">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant="secondary" className="bg-red-500/20 text-red-400 hover:bg-red-500/30">
+                                  {err.exception_name}
+                                </Badge>
+                                <code className="text-xs text-gray-500 bg-black/20 px-1.5 py-0.5 rounded">Code: {err.exception_code}</code>
+                              </div>
+                              <p className="text-xs text-gray-400 truncate font-mono bg-black/20 p-2 rounded mt-2 border border-white/5">
+                                {err.sample_error}
+                              </p>
+                            </div>
+                            <div className="text-right flex-shrink-0 flex flex-col items-end">
+                              <span className="text-xl font-bold text-white tabular-nums">{err.count}</span>
+                              <span className="text-xs text-gray-500">occurrences</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* No errors message */}
+                {(!prodMetrics?.errors || prodMetrics.errors.length === 0) && !prodLoading && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-8 text-center md:col-span-3"
+                  >
+                    <CheckCircle2 className="h-12 w-12 text-green-400 mx-auto mb-4" />
+                    <p className="text-green-400 font-medium">No errors in the selected time range</p>
+                    <p className="text-xs text-gray-500 mt-2">All queries completed successfully</p>
+                  </motion.div>
+                )}
+              </TabsContent>
+            )
+          }
+
+          {/* System Tab - Advanced only */}
+          {
+            hasAdvancedMetrics && (
+              <TabsContent value="system" className="space-y-6">
+
+                {/* SECTION 1: SYSTEM RESOURCES */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                >
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 rounded-lg bg-blue-500/20">
+                      <Server className="h-5 w-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white">System Resources</h3>
+                      <p className="text-xs text-gray-500">CPU usage, load, and thread pools</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-6 lg:grid-cols-2 mb-6">
+                    {/* CPU Breakdown Chart - Prominent */}
+                    <MetricChartCard
+                      title="CPU Breakdown"
+                      subtitle="User, System, Wait, I/O Wait"
+                      icon={Cpu}
+                      color="emerald"
+                      data={cpuBreakdownData}
+                      isLoading={prodLoading}
+                      chartTitle="%"
+                      hideLatestValues
+                    />
+                    {/* Concurrency Chart - Prominent */}
+                    <MetricChartCard
+                      title="Concurrency"
+                      subtitle="Active and queued requests"
+                      icon={Gauge}
+                      color="purple"
+                      data={concurrencyData}
+                      isLoading={prodLoading}
+                      chartTitle="Reqs"
+                      hideLatestValues
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <StatCard
+                      title="Load Average (15m)"
+                      value={prodMetrics?.resources?.load_average_15?.toFixed(2) || "0.00"}
+                      icon={Activity}
+                      color={(prodMetrics?.resources?.load_average_15 || 0) > 4 ? "text-red-400" : "text-emerald-400"}
+                      bgColor={(prodMetrics?.resources?.load_average_15 || 0) > 4 ? "bg-red-500/20" : "bg-emerald-500/20"}
+                      isLoading={prodLoading}
+                    />
+                    <StatCard
+                      title="Global Threads"
+                      value={String(prodMetrics?.resources?.global_threads || 0)}
+                      icon={Network}
+                      color="text-blue-400"
+                      bgColor="bg-blue-500/20"
+                      isLoading={prodLoading}
+                    />
+                    <StatCard
+                      title="Schedule Pool"
+                      value={String(prodMetrics?.resources?.background_schedule_pool_tasks || 0)}
+                      icon={Clock}
+                      color="text-purple-400"
+                      bgColor="bg-purple-500/20"
+                      isLoading={prodLoading}
+                    />
+                    <StatCard
+                      title="File Descriptors"
+                      value={String(prodMetrics?.resources?.file_descriptors_used || 0)}
+                      icon={FileText}
+                      color="text-yellow-400"
+                      bgColor="bg-yellow-500/20"
+                      isLoading={prodLoading}
+                    />
+                  </div>
+                </motion.div>
+
+
+                {/* SECTION 3: MEMORY ANALYSIS */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                >
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 rounded-lg bg-purple-500/20">
+                      <MemoryStick className="h-5 w-5 text-purple-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white">Memory Analysis</h3>
+                      <p className="text-xs text-gray-500">Detailed memory usage, caches, and allocators</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-6 lg:grid-cols-2 mb-6">
+                    {/* Detailed Memory Breakdown */}
+                    <MetricChartCard
+                      title="Detailed Memory Breakdown"
+                      subtitle="Memory usage by component (resident and virtual)"
+                      icon={MemoryStick}
+                      color="purple"
+                      data={memoryBreakdownData}
+                      isLoading={prodLoading}
+                      chartTitle="Bytes"
+                      hideLatestValues
+                    />
+
+                    {/* Allocator Memory */}
+                    <MetricChartCard
+                      title="Allocator Memory (jemalloc)"
+                      subtitle="Memory usage by jemalloc allocator"
+                      icon={Database}
+                      color="emerald"
+                      data={allocatorMemoryData}
+                      isLoading={prodLoading}
+                      chartTitle="Bytes"
+                      hideLatestValues
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <StatCard
+                      title="Memory Cache"
+                      value={formatBytes(memoryBreakdownData?.values[2]?.slice(-1)[0] || 0)}
+                      icon={Zap}
+                      color="text-emerald-400"
+                      bgColor="bg-emerald-500/20"
+                      isLoading={prodLoading}
+                    />
+                    <StatCard
+                      title="Jemalloc Allocated"
+                      value={formatBytes(allocatorMemoryData?.values[0]?.slice(-1)[0] || 0)}
+                      icon={Database}
+                      color="text-emerald-400"
+                      bgColor="bg-emerald-500/20"
+                      isLoading={prodLoading}
+                    />
+                    <StatCard
+                      title="Jemalloc Resident"
+                      value={formatBytes(allocatorMemoryData?.values[1]?.slice(-1)[0] || 0)}
+                      icon={HardDrive}
+                      color="text-cyan-400"
+                      bgColor="bg-cyan-500/20"
+                      isLoading={prodLoading}
+                    />
+                  </div>
+                </motion.div>
+
+              </TabsContent>
+            )
+          }
+
+
+
+          {/* Network Tab - Advanced only */}
+          {
+            hasAdvancedMetrics && (
+              <TabsContent value="network" className="grid gap-6 md:grid-cols-3">
+                {/* SECTION 1: TRAFFIC OVERVIEW */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                >
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 rounded-lg bg-indigo-500/20">
+                      <Activity className="h-5 w-5 text-indigo-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white">Network Traffic</h3>
+                      <p className="text-xs text-gray-500">Real-time bandwidth usage</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <StatCard
+                      title="Total Traffic"
+                      value={formatBytesUtil((prodMetrics?.network?.network_receive_speed || 0) + (prodMetrics?.network?.network_send_speed || 0)) + "/s"}
+                      icon={Activity}
+                      color="text-indigo-400"
+                      bgColor="bg-indigo-500/20"
+                      isLoading={prodLoading}
+                      subtitle="Inbound + Outbound"
+                    />
+                    <StatCard
+                      title="Inbound"
+                      value={formatBytesUtil(prodMetrics?.network?.network_receive_speed || 0) + "/s"}
+                      icon={TrendingDown}
+                      color="text-green-400"
+                      bgColor="bg-green-500/20"
+                      isLoading={prodLoading}
+                    />
+                    <StatCard
+                      title="Outbound"
+                      value={formatBytesUtil(prodMetrics?.network?.network_send_speed || 0) + "/s"}
+                      icon={TrendingUp}
+                      color="text-blue-400"
+                      bgColor="bg-blue-500/20"
+                      isLoading={prodLoading}
+                    />
+                  </div>
+
+                  <div className="mt-6">
+                    <MetricChartCard
+                      title="Network Throughput"
+                      subtitle="Data transfer rate (Bytes/s)"
+                      icon={Activity}
+                      color="indigo"
+                      data={networkThroughputData}
+                      isLoading={prodLoading}
+                      chartTitle="Bytes/s"
+                      hideLatestValues
+                    />
+                  </div>
+                </motion.div>
+              </TabsContent>
+            )
+          }
+        </Tabs >
 
         {/* Quick Actions */}
         {/* Quick Actions Footer - Hidden when embedded */}
-        {!embedded && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="flex items-center justify-center gap-4 pt-4 pb-8"
-          >
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
-              onClick={() => setInternalTimeRange("15m")}
+        {
+          !embedded && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="flex items-center justify-center gap-4 pt-4 pb-8"
             >
-              15min
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
-              onClick={() => setInternalTimeRange("1h")}
-            >
-              1 Hour
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
-              onClick={() => setInternalTimeRange("24h")}
-            >
-              24 Hours
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className={cn(
-                "gap-2 border-white/10",
-                refreshInterval > 0
-                  ? "bg-green-500/20 border-green-500/30 text-green-400"
-                  : "bg-white/5 hover:bg-white/10"
-              )}
-              onClick={() => setInternalRefreshInterval(refreshInterval > 0 ? 0 : 30)}
-            >
-              {refreshInterval > 0 ? (
-                <>
-                  <Pause className="h-3 w-3" />
-                  Stop Auto
-                </>
-              ) : (
-                <>
-                  <Play className="h-3 w-3" />
-                  Auto (30s)
-                </>
-              )}
-            </Button>
-          </motion.div>
-        )}
-      </div>
-    </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+                onClick={() => setInternalTimeRange("15m")}
+              >
+                15min
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+                onClick={() => setInternalTimeRange("1h")}
+              >
+                1 Hour
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+                onClick={() => setInternalTimeRange("24h")}
+              >
+                24 Hours
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "gap-2 border-white/10",
+                  refreshInterval > 0
+                    ? "bg-green-500/20 border-green-500/30 text-green-400"
+                    : "bg-white/5 hover:bg-white/10"
+                )}
+                onClick={() => setInternalRefreshInterval(refreshInterval > 0 ? 0 : 30)}
+              >
+                {refreshInterval > 0 ? (
+                  <>
+                    <Pause className="h-3 w-3" />
+                    Stop Auto
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-3 w-3" />
+                    Auto (30s)
+                  </>
+                )}
+              </Button>
+            </motion.div>
+          )
+        }
+      </div >
+    </div >
   );
 }

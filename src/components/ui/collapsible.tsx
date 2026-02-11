@@ -2,6 +2,8 @@ import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 
+import { Slot } from "@radix-ui/react-slot"
+
 // Context
 interface CollapsibleContextValue {
     open: boolean;
@@ -34,16 +36,22 @@ const Collapsible = React.forwardRef<
 })
 Collapsible.displayName = "Collapsible"
 
+interface CollapsibleTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+    asChild?: boolean
+}
+
 const CollapsibleTrigger = React.forwardRef<
     HTMLButtonElement,
-    React.ButtonHTMLAttributes<HTMLButtonElement>
->(({ children, className, onClick, ...props }, ref) => {
+    CollapsibleTriggerProps
+>(({ children, className, onClick, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button"
+
     return (
         <CollapsibleContext.Consumer>
             {({ open, onOpenChange }) => (
-                <button
+                <Comp
                     ref={ref}
-                    type="button"
+                    type={asChild ? undefined : "button"}
                     onClick={(e) => {
                         onOpenChange?.(!open)
                         onClick?.(e)
@@ -52,7 +60,7 @@ const CollapsibleTrigger = React.forwardRef<
                     {...props}
                 >
                     {children}
-                </button>
+                </Comp>
             )}
         </CollapsibleContext.Consumer>
     )
