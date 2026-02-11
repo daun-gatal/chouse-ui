@@ -181,6 +181,57 @@ export class ClickHouseService {
     }
   }
 
+  /**
+   * Stream data insertion into a table
+   * @param database Target database
+   * @param table Target table
+   * @param stream Node.js readable stream (e.g. file stream)
+   * @param format Data format (CSV, JSONEachRow, etc.)
+   */
+  async insertStream(
+    database: string,
+    table: string,
+    stream: any,
+    format: string = "CSV",
+    settings?: Record<string, string | number>
+  ): Promise<{ queryId: string }> {
+    try {
+      const escapedDatabase = this.escapeIdentifier(database);
+      const escapedTable = this.escapeIdentifier(table);
+
+      const clickhouse_settings: Record<string, string | number> = {
+        input_format_null_as_default: 1,
+        date_time_input_format: "best_effort",
+        ...settings,
+      };
+
+      if (this.rbacUserId) {
+        clickhouse_settings.log_comment = JSON.stringify({ rbac_user_id: this.rbacUserId });
+      }
+
+      const result = await this.client.insert({
+        table: `${escapedDatabase}.${escapedTable}`,
+        values: stream,
+        format: format as any,
+        clickhouse_settings,
+      });
+
+      return {
+        queryId: result.query_id,
+      };
+    } catch (error) {
+      throw this.handleError(error, "Streaming insert failed");
+    }
+  }
+
+  // Helper to escape identifiers manually if needed
+  private escapeIdentifier(identifier: string): string {
+    if (!identifier) return "";
+    return identifier.includes(".") || identifier.includes("-")
+      ? `"${identifier.replace(/"/g, '""')}"`
+      : identifier;
+  }
+
   private isCommand(query: string): boolean {
     const commandPatterns = [
       /^\s*CREATE\s+/i,
@@ -792,12 +843,14 @@ export class ClickHouseService {
 
         maxPartsQuery = `(SELECT max(value) FROM system.asynchronous_metric_log 
                          WHERE metric = 'MaxPartCountForPartition' AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE)`;
-      } else {
         // Fallback for parts count if async metric log is missing
         totalPartsQuery = "(SELECT count() FROM system.parts)";
       }
 
       // Get current resource metrics
+      // ... (implementation of the rest of the method would be here, assuming it continues)
+
+
       const metricsResult = await this.client.query({
         query: `
             SELECT 
