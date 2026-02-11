@@ -511,8 +511,7 @@ const DatabaseExplorer: React.FC = () => {
                     )}
                     {hasPermission(RBAC_PERMISSIONS.TABLE_CREATE) && (
                       <DropdownMenuItem onClick={() => {
-                        const firstDb = databases[0]?.name;
-                        if (firstDb) openCreateTableModal(firstDb);
+                        openCreateTableModal("");
                       }}>
                         <Table2 className="w-4 h-4 mr-2" />
                         New Table
@@ -524,8 +523,7 @@ const DatabaseExplorer: React.FC = () => {
                           <DropdownMenuSeparator />
                         )}
                         <DropdownMenuItem onClick={() => {
-                          const firstDb = databases[0]?.name;
-                          if (firstDb) openUploadFileModal(firstDb);
+                          openUploadFileModal("");
                         }}>
                           <FileUp className="w-4 h-4 mr-2" />
                           Upload File
