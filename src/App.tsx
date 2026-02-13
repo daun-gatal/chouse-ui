@@ -19,7 +19,7 @@ import EditUser from "@/features/admin/components/EditUser";
 import { RBAC_PERMISSIONS } from "@/stores/rbac";
 import { PageTitleUpdater } from "@/components/common/PageTitleUpdater";
 
-// Storage key for dock mode (to sync with FloatingDock)
+// Storage key for dock mode (to sync with FloatingDock).
 const DOCK_MODE_KEY = "chouseui-dock-mode";
 
 // Layout for the main application (authenticated routes) - Floating Dock Design
