@@ -57,7 +57,7 @@ interface ASTStyle {
   color: string;
   bgColor: string;
   borderColor: string;
-  icon: React.FC<{ className?: string }>;
+  icon: React.FC<{ className?: string; style?: React.CSSProperties }>;
   label: string;
 }
 
