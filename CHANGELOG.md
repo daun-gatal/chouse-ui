@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.9.0] - 2026-02-11
+
+### Added
+
+- **Data Import Wizard**: Replaced the simple file upload with a comprehensive wizard (Issue #102).
+  - **Schema Inference**: Automatically detects column names, types, and nullability from CSV, TSV, and JSON files.
+  - **Interactive Editor**: Review and modify the inferred schema before import.
+  - **Data Preview**: Visualize the dataset structure and sample values.
+  - **Streaming Upload**: Efficiently handles large file uploads using streaming inserts.
+  - **Progress Tracking**: Real-time status updates for table creation and data insertion.
+- **Visual Query Explain Plan**: Added visual representation of query execution plans (Issue #101).
+  - **Explain Tab**: New tab in SQL Editor to visualize the query plan.
+  - **Interactive Graph**: Uses ReactFlow and Dagre for DAG visualization of query steps with execution order numbering.
+  - **Tear-out Window**: Support for popping out the explain plan into a standalone window via button or drag-and-drop.
+  - **JSON Output**: Supports `EXPLAIN JSON` for detailed plan analysis.
+- **Collapsible Explorer Sidebar**: Added ability to collapse/expand the database explorer sidebar to maximize workspace.
+- **Floating Dock Navigation**: Replaced traditional sidebar with a modern floating dock.
+  - **Draggable Dock**: Move the navigation dock anywhere on screen with drag-and-drop.
+  - **Orientation Toggle**: Switch between horizontal and vertical dock layouts.
+  - **Auto-Hide**: Dock automatically hides after inactivity with smooth reveal on hover.
+  - **Sidebar Mode**: Option to pin the dock as a fixed sidebar on the left edge.
+  - **Preferences Sync**: Dock configuration (mode, orientation, position, auto-hide) persists to database for cross-device sync.
+
+### Changed
+
+- **Overview Page Redesign**: Completely redesigned home page with bento-style layout.
+  - **Server Stats Cards**: At-a-glance view of databases, tables, total rows, storage, connections, and active queries.
+  - **Connection Info Header**: Displays active connection name, ClickHouse version, and server uptime.
+  - **Quick Actions**: One-click access to New Query, Import, Monitor, and Query History.
+  - **Quick Access Section**: Tabbed view for favorites and recently visited tables/databases.
+  - **Saved Queries Panel**: Easy access to saved queries with public/private badges.
+  - **Recent Activity**: Grid view of recent query executions with status indicators.
+  - **ClickHouse Resources**: Quick links to official documentation, SQL reference, and best practices.
+
 ## [v2.8.7] - 2026-02-08
 
 ### Added

@@ -382,7 +382,7 @@ export default function ConnectionSelector({
                   {conn.name}
                 </span>
                 <span className="text-xs text-gray-500 truncate">
-                  {isConnected ? `Connected · ${conn.host}` : `Click to connect · ${conn.host}`}
+                  {isConnected ? 'Connected' : 'Click to connect'}
                 </span>
               </div>
             )}
@@ -426,7 +426,7 @@ export default function ConnectionSelector({
                   {activeConnection.name}
                 </span>
                 <span className="text-xs text-gray-500 truncate">
-                  {isConnected ? `Connected · ${activeConnection.host}` : 'Not connected'}
+                  {isConnected ? 'Connected' : 'Not connected'}
                 </span>
               </div>
             )}
@@ -472,7 +472,7 @@ export default function ConnectionSelector({
                   )}
                 </div>
                 <span className="text-xs text-gray-500 truncate">
-                  {conn.username}@{conn.host}:{conn.port}
+                  {conn.username}
                 </span>
               </div>
             </div>

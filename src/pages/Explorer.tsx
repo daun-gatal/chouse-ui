@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Database, Table2, ChevronRight, Home, Command, Layers } from "lucide-react";
+import { Database, Table2, ChevronRight, Home, Command, Layers, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import DatabaseExplorer from "@/features/explorer/components/DataExplorer";
 import WorkspaceTabs from "@/features/workspace/components/WorkspaceTabs";
 import {
@@ -9,7 +9,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import type { PanelGroupStorage } from "react-resizable-panels";
+import type { PanelGroupStorage, ImperativePanelHandle } from "react-resizable-panels";
 import CreateTable from "@/features/explorer/components/CreateTable";
 import CreateDatabase from "@/features/explorer/components/CreateDatabase";
 import UploadFromFile from "@/features/explorer/components/UploadFile";
@@ -32,6 +32,19 @@ const ExplorerPage = () => {
   const [rightPanelSize, setRightPanelSize] = useState(65);
   const [hasFetchedPanelSizes, setHasFetchedPanelSizes] = useState(false);
   const panelGroupRef = useRef<{ getPanelGroup: () => PanelGroupStorage | null } | null>(null);
+  const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  const toggleSidebar = () => {
+    const panel = sidebarPanelRef.current;
+    if (panel) {
+      if (isSidebarCollapsed) {
+        panel.expand();
+      } else {
+        panel.collapse();
+      }
+    }
+  };
 
   // Get current database and table from URL
   const currentDatabase = searchParams.get("database") || "";
@@ -105,6 +118,13 @@ const ExplorerPage = () => {
       setLeftPanelSize(clampedLeft);
       setRightPanelSize(clampedRight);
 
+      // Update collapsed state based on size
+      if (left < 10) {
+        setIsSidebarCollapsed(true);
+      } else {
+        setIsSidebarCollapsed(false);
+      }
+
       if (panelSizeSyncTimeoutRef.current) {
         clearTimeout(panelSizeSyncTimeoutRef.current);
       }
@@ -177,6 +197,17 @@ const ExplorerPage = () => {
       <div className="flex-none h-11 px-4 flex items-center justify-between border-b border-white/10">
         {/* Left: Breadcrumbs */}
         <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={toggleSidebar}
+            className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-white/5 transition-colors mr-1"
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            {isSidebarCollapsed ? (
+              <PanelLeftOpen className="w-4 h-4" />
+            ) : (
+              <PanelLeftClose className="w-4 h-4" />
+            )}
+          </button>
           {breadcrumbs.length > 0 && (
             <button
               onClick={() => navigate('/explorer')}
@@ -247,10 +278,15 @@ const ExplorerPage = () => {
         >
           {/* Left Panel - Sidebar */}
           <ResizablePanel
+            ref={sidebarPanelRef}
             className="overflow-hidden"
             defaultSize={leftPanelSize}
-            minSize={20}
+            minSize={15}
             maxSize={50}
+            collapsible={true}
+            collapsedSize={0}
+            onCollapse={() => setIsSidebarCollapsed(true)}
+            onExpand={() => setIsSidebarCollapsed(false)}
           >
             <DatabaseExplorer />
           </ResizablePanel>

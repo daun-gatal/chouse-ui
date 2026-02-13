@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { Loader2, FileX2, Maximize2, Download } from "lucide-react";
+import { Loader2, FileX2, Maximize2, Download, ExternalLink } from "lucide-react";
 import DOMPurify from "dompurify";
 import { format as formatDate } from "date-fns";
 import { DataTable } from "@/components/ui/data-table";
@@ -20,12 +20,16 @@ import { Button } from "@/components/ui/button";
 import DownloadDialog from "@/components/common/DownloadDialog";
 import EmptyQueryResult from "./EmptyQueryResult";
 import StatisticsDisplay from "./StatisticsDisplay";
+import ExplainTab from "./ExplainTab";
 
 // Store
 import { useWorkspaceStore } from "@/stores";
 import { useDatabases } from "@/hooks";
+import { queryApi } from "@/api";
 
 // Types
+import { ExplainType, ExplainResult } from "@/types/explain";
+
 interface SqlTabProps {
   tabId: string;
 }
@@ -97,6 +101,14 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const tab = getTabById(tabId);
   const [activeTab, setActiveTab] = useState<string>("results");
 
+  // Explain state
+  const [explainPlan, setExplainPlan] = useState<ExplainResult | null>(null);
+  const [isExplainLoading, setIsExplainLoading] = useState(false);
+  const [explainError, setExplainError] = useState<string | null>(null);
+  const [explainType, setExplainType] = useState<ExplainType>('plan');
+  const [explainRefreshKey, setExplainRefreshKey] = useState(0);
+  const lastExplainQueryRef = useRef<string>('');
+
   // Detect schema-changing queries to refresh database explorer
   const isSchemaModifyingQuery = (query: string): boolean => {
     return /^\s*(CREATE|DROP|ALTER|TRUNCATE|RENAME|INSERT|UPDATE|DELETE)\s+/i.test(
@@ -107,6 +119,10 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   // Handle query execution
   const handleRunQuery = useCallback(
     async (query: string) => {
+      setExplainPlan(null);
+      setExplainError(null);
+      setActiveTab("results");
+
       try {
         const shouldRefresh = isSchemaModifyingQuery(query);
         const result = await runQuery(query, tabId);
@@ -125,6 +141,71 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     },
     [runQuery, tabId, refetchDatabases]
   );
+
+  // Handle explain query
+  const handleExplain = useCallback(
+    async (query: string, type?: ExplainType) => {
+      // If no type specified, use the current explainType (preserve user's view)
+      const targetType = type || explainType;
+
+      setIsExplainLoading(true);
+      setExplainError(null);
+      setActiveTab("explain");
+      setExplainType(targetType);
+      setExplainRefreshKey(prev => prev + 1); // Increment to trigger refresh
+      lastExplainQueryRef.current = query;
+
+      try {
+        const plan = await queryApi.explainQuery(query, targetType);
+        setExplainPlan(plan);
+      } catch (error: any) {
+        console.error("Error explaining query:", error);
+        setExplainError(error.message || "Failed to explain query");
+        setExplainPlan(null);
+      } finally {
+        setIsExplainLoading(false);
+      }
+    },
+    [explainType]
+  );
+
+  // Handle explain type change (re-explain with different type)
+  const handleExplainTypeChange = useCallback(
+    async (type: ExplainType) => {
+      if (lastExplainQueryRef.current) {
+        await handleExplain(lastExplainQueryRef.current, type);
+      }
+    },
+    [handleExplain]
+  );
+
+  // Handle popout explain plan
+  const handlePopout = useCallback(() => {
+    if (!explainPlan) return;
+
+    try {
+      // Store both the explain result and the query for Analysis view
+      const popoutData = {
+        explainResult: explainPlan,
+        query: lastExplainQueryRef.current
+      };
+      localStorage.setItem('explain_popout_data', JSON.stringify(popoutData));
+
+      const width = 1200;
+      const height = 800;
+      const left = (window.screen.width - width) / 2;
+      const top = (window.screen.height - height) / 2;
+
+      window.open(
+        '/explain-popout',
+        'ExplainPlanVisualizer',
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
+      );
+    } catch (error) {
+      console.error("Failed to popout explain plan:", error);
+      toast.error("Failed to open explain plan in new window");
+    }
+  }, [explainPlan]);
 
   // Generate TanStack columns from result metadata
   const columns = useMemo<ColumnDef<IRow>[]>(() => {
@@ -239,6 +320,71 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     // Metadata removed
     const hasData = resultData.length > 0;
 
+    // If explain is active, strictly show only explain tab content and trigger
+    if (activeTab === "explain" || (explainPlan && !tab?.result)) {
+      return (
+        <Tabs
+          value="explain"
+          onValueChange={(val) => {
+            // Allow switching back to results if we have them
+            if (val !== "explain") {
+              setActiveTab(val);
+              // Optional: Clear explain plan if switching away?
+              // setExplainPlan(null); 
+            }
+          }}
+          className="h-full flex flex-col"
+        >
+          <TabsList className="rounded-none border-b border-white/5 bg-black/20 backdrop-blur-md px-4 w-full justify-start h-10">
+            {/* Show Results trigger to allow going back, but defaulting to Explain view */}
+            <TabsTrigger value="results" className="data-[state=active]:bg-white/5">
+              Results
+              {hasData && <span className="ml-2 text-xs text-muted-foreground">({resultData.length})</span>}
+            </TabsTrigger>
+            <TabsTrigger value="statistics" className="data-[state=active]:bg-white/5">
+              Statistics
+            </TabsTrigger>
+            <TabsTrigger
+              value="explain"
+              className="data-[state=active]:bg-white/5 group relative flex items-center gap-2"
+              draggable
+              onDragEnd={(e) => {
+                if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
+                  handlePopout();
+                }
+              }}
+            >
+              Explain
+              <span
+                role="button"
+                className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white/10 rounded p-0.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePopout();
+                }}
+                title="Open in new window"
+              >
+                <ExternalLink size={12} className="text-white" />
+              </span>
+            </TabsTrigger>
+          </TabsList>
+          <div className="flex-1 overflow-hidden w-full relative">
+            <TabsContent value="explain" className="h-full m-0 overflow-hidden data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm">
+              <ExplainTab
+                plan={explainPlan}
+                isLoading={isExplainLoading}
+                error={explainError}
+                currentType={explainType}
+                onTypeChange={handleExplainTypeChange}
+                query={lastExplainQueryRef.current}
+                refreshKey={explainRefreshKey}
+              />
+            </TabsContent>
+          </div>
+        </Tabs>
+      );
+    }
+
     return (
       <Tabs
         value={activeTab}
@@ -263,6 +409,31 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           <TabsTrigger value="statistics" className="data-[state=active]:bg-white/5">
             Statistics
           </TabsTrigger>
+          {(explainPlan || isExplainLoading || explainError) && (
+            <TabsTrigger
+              value="explain"
+              className="data-[state=active]:bg-white/5 group relative flex items-center gap-2"
+              draggable
+              onDragEnd={(e) => {
+                if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
+                  handlePopout();
+                }
+              }}
+            >
+              Explain
+              <span
+                role="button"
+                className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white/10 rounded p-0.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePopout();
+                }}
+                title="Open in new window"
+              >
+                <ExternalLink size={12} className="text-white" />
+              </span>
+            </TabsTrigger>
+          )}
         </TabsList>
         <div className="flex-1 overflow-hidden w-full relative">
           <TabsContent value="results" className="h-full m-0 flex flex-col overflow-hidden w-full data-[state=inactive]:hidden absolute inset-0">
@@ -270,6 +441,16 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           </TabsContent>
           <TabsContent value="statistics" className="h-full m-0 overflow-auto data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm p-4">
             {renderStatisticsResults()}
+          </TabsContent>
+          <TabsContent value="explain" className="h-full m-0 overflow-hidden data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm">
+            <ExplainTab
+              plan={explainPlan}
+              isLoading={isExplainLoading}
+              error={explainError}
+              currentType={explainType}
+              onTypeChange={handleExplainTypeChange}
+              query={lastExplainQueryRef.current}
+            />
           </TabsContent>
         </div>
       </Tabs>
@@ -280,6 +461,20 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const renderResults = () => {
     if (tab?.isLoading) return renderLoading();
     if (tab?.error) return renderError(tab.error);
+
+    // Always show tabs if explain is active or we have results/statistics
+    // This allows switching back to explain even if the query resulted in an error or empty result later?
+    // Actually, traditionally Explain is a separate action.
+    // If I click Explain, I want to see the Explain tab.
+    // If I click Run, I want to see Results.
+
+    // If explain is loading or has data/error and active tab is explain, show tabs
+    const isExplainActive = activeTab === "explain" || explainPlan || isExplainLoading || explainError;
+
+    if (isExplainActive) {
+      return renderResultTabs();
+    }
+
     if (!tab?.result) return renderEmpty();
     if (tab.result.error) return renderError(tab.result.error);
 
@@ -293,7 +488,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     <div className="h-full bg-white/[0.02]">
       <ResizablePanelGroup direction="vertical">
         <ResizablePanel defaultSize={50} minSize={25}>
-          <SQLEditor tabId={tabId} onRunQuery={handleRunQuery} />
+          <SQLEditor tabId={tabId} onRunQuery={handleRunQuery} onExplain={handleExplain} />
         </ResizablePanel>
         <ResizableHandle withHandle className="bg-white/5 hover:bg-white/10 transition-colors" />
         <ResizablePanel defaultSize={50} minSize={25}>
