@@ -235,11 +235,11 @@ export class InferenceService {
             }
         }
 
-        if (isBool) return 'Bool';
         if (isInt) {
             // Check range for Int32 vs Int64? Default to Int64 usually safe but Int32 is standard
             return 'Int64';
         }
+        if (isBool) return 'Bool';
         if (isFloat) return 'Float64';
         if (isDate) return 'Date';
         if (isDateTime) return 'DateTime';
