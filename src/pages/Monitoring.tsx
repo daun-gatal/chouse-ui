@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
     InfoIcon,
@@ -168,8 +169,19 @@ function TabCard({
 }
 
 export default function Monitoring() {
+    const [searchParams] = useSearchParams();
     const [isInfoOpen, setIsInfoOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<TabKey>("live-queries");
+
+    // Get initial tab from URL or default to live-queries
+    const getInitialTab = (): TabKey => {
+        const tabParam = searchParams.get("tab");
+        if (tabParam && (tabParam === "logs" || tabParam === "metrics" || tabParam === "live-queries")) {
+            return tabParam;
+        }
+        return "live-queries";
+    };
+
+    const [activeTab, setActiveTab] = useState<TabKey>(getInitialTab);
     const [refreshKey, setRefreshKey] = useState(0);
     const [autoRefresh, setAutoRefresh] = useState(false);
     const [timeRange, setTimeRange] = useState("1h");
@@ -208,18 +220,13 @@ export default function Monitoring() {
         }
     }, [activeTab]);
 
-    // Determine default tab based on permissions
-    const getDefaultTab = (): TabKey => {
-        if (canViewLiveQueries) return "live-queries";
-        if (canViewLogs) return "logs";
-        if (canViewMetrics) return "metrics";
-        return "live-queries";
-    };
-
-    // Set initial tab on mount
-    useState(() => {
-        setActiveTab(getDefaultTab());
-    });
+    // Sync tab from URL params when they change
+    useEffect(() => {
+        const tabParam = searchParams.get("tab");
+        if (tabParam && (tabParam === "logs" || tabParam === "metrics" || tabParam === "live-queries")) {
+            setActiveTab(tabParam);
+        }
+    }, [searchParams]);
 
     const availableTabs = [
         ...(canViewLiveQueries ? ["live-queries" as const] : []),
