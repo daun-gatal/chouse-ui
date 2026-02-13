@@ -10,6 +10,7 @@ import { createAuditLog } from "../rbac/services/rbac";
 import { userHasPermission } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
+import { analyzeQuery } from "../services/queryAnalyzer";
 
 type Variables = {
   sessionId?: string;
@@ -434,6 +435,11 @@ const QueryRequestSchemaWithType = z.object({
   queryId: z.string().optional(),
 });
 
+const ExplainRequestSchema = z.object({
+  query: z.string().min(1, "Query is required"),
+  type: z.enum(["plan", "ast", "syntax", "pipeline", "estimate"]).optional().default("plan"),
+});
+
 /**
  * POST /query/execute
  * Generic endpoint for executing any SQL query
@@ -458,9 +464,10 @@ query.post("/execute", zValidator("json", QueryRequestSchemaWithType), async (c)
 /**
  * POST /query/explain
  * Get Visual Explain Plan for a query
+ * Supports multiple explain types: plan, ast, syntax, pipeline, estimate
  */
-query.post("/explain", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql } = c.req.valid("json");
+query.post("/explain", zValidator("json", ExplainRequestSchema), async (c) => {
+  const { query: sql, type: explainType } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -487,11 +494,35 @@ query.post("/explain", zValidator("json", QueryRequestSchemaWithType), async (c)
   }
 
   const service = c.get("service");
-  const plan = await service.getExplainPlan(sql);
+  const plan = await service.getExplainPlan(sql, explainType);
 
   return c.json({
     success: true,
     data: plan,
+  });
+});
+
+/**
+ * POST /query/analyze
+ * Analyze query complexity and get performance recommendations
+ */
+const AnalyzeRequestSchema = z.object({
+  query: z.string().min(1, "Query is required"),
+});
+
+query.post("/analyze", zValidator("json", AnalyzeRequestSchema), async (c) => {
+  const { query: sql } = c.req.valid("json");
+
+  // Validate it's a SELECT or compatible query
+  if (!validateSqlType(sql, ['SELECT', 'WITH'])) {
+    throw AppError.badRequest('Query analysis is only available for SELECT or WITH queries.');
+  }
+
+  const analysis = analyzeQuery(sql);
+
+  return c.json({
+    success: true,
+    data: analysis,
   });
 });
 

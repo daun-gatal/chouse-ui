@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { Loader2, FileX2, Maximize2, Download, ExternalLink } from "lucide-react";
 import DOMPurify from "dompurify";
@@ -28,6 +28,8 @@ import { useDatabases } from "@/hooks";
 import { queryApi } from "@/api";
 
 // Types
+import { ExplainType, ExplainResult } from "@/types/explain";
+
 interface SqlTabProps {
   tabId: string;
 }
@@ -100,9 +102,12 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const [activeTab, setActiveTab] = useState<string>("results");
 
   // Explain state
-  const [explainPlan, setExplainPlan] = useState<any>(null);
+  const [explainPlan, setExplainPlan] = useState<ExplainResult | null>(null);
   const [isExplainLoading, setIsExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
+  const [explainType, setExplainType] = useState<ExplainType>('plan');
+  const [explainRefreshKey, setExplainRefreshKey] = useState(0);
+  const lastExplainQueryRef = useRef<string>('');
 
   // Detect schema-changing queries to refresh database explorer
   const isSchemaModifyingQuery = (query: string): boolean => {
@@ -139,13 +144,19 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
 
   // Handle explain query
   const handleExplain = useCallback(
-    async (query: string) => {
+    async (query: string, type?: ExplainType) => {
+      // If no type specified, use the current explainType (preserve user's view)
+      const targetType = type || explainType;
+
       setIsExplainLoading(true);
       setExplainError(null);
       setActiveTab("explain");
+      setExplainType(targetType);
+      setExplainRefreshKey(prev => prev + 1); // Increment to trigger refresh
+      lastExplainQueryRef.current = query;
 
       try {
-        const plan = await queryApi.explainQuery(query);
+        const plan = await queryApi.explainQuery(query, targetType);
         setExplainPlan(plan);
       } catch (error: any) {
         console.error("Error explaining query:", error);
@@ -155,7 +166,17 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         setIsExplainLoading(false);
       }
     },
-    []
+    [explainType]
+  );
+
+  // Handle explain type change (re-explain with different type)
+  const handleExplainTypeChange = useCallback(
+    async (type: ExplainType) => {
+      if (lastExplainQueryRef.current) {
+        await handleExplain(lastExplainQueryRef.current, type);
+      }
+    },
+    [handleExplain]
   );
 
   // Handle popout explain plan
@@ -163,7 +184,12 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     if (!explainPlan) return;
 
     try {
-      localStorage.setItem('explain_popout_data', JSON.stringify(explainPlan));
+      // Store both the explain result and the query for Analysis view
+      const popoutData = {
+        explainResult: explainPlan,
+        query: lastExplainQueryRef.current
+      };
+      localStorage.setItem('explain_popout_data', JSON.stringify(popoutData));
 
       const width = 1200;
       const height = 800;
@@ -344,7 +370,15 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           </TabsList>
           <div className="flex-1 overflow-hidden w-full relative">
             <TabsContent value="explain" className="h-full m-0 overflow-hidden data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm">
-              <ExplainTab plan={explainPlan} isLoading={isExplainLoading} error={explainError} />
+              <ExplainTab
+                plan={explainPlan}
+                isLoading={isExplainLoading}
+                error={explainError}
+                currentType={explainType}
+                onTypeChange={handleExplainTypeChange}
+                query={lastExplainQueryRef.current}
+                refreshKey={explainRefreshKey}
+              />
             </TabsContent>
           </div>
         </Tabs>
@@ -409,7 +443,14 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
             {renderStatisticsResults()}
           </TabsContent>
           <TabsContent value="explain" className="h-full m-0 overflow-hidden data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm">
-            <ExplainTab plan={explainPlan} isLoading={isExplainLoading} error={explainError} />
+            <ExplainTab
+              plan={explainPlan}
+              isLoading={isExplainLoading}
+              error={explainError}
+              currentType={explainType}
+              onTypeChange={handleExplainTypeChange}
+              query={lastExplainQueryRef.current}
+            />
           </TabsContent>
         </div>
       </Tabs>

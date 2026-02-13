@@ -265,10 +265,23 @@ export async function getIntellisenseData(): Promise<IntellisenseData> {
 
 /**
  * Get Visual Explain Plan for a query
+ * @param query - The SQL query to explain
+ * @param type - The type of explain (plan, ast, syntax, pipeline, estimate)
  */
-export async function explainQuery<T = any>(
+export async function explainQuery(
+  query: string,
+  type: 'plan' | 'ast' | 'syntax' | 'pipeline' | 'estimate' = 'plan'
+): Promise<import('@/types/explain').ExplainResult> {
+  return api.post<import('@/types/explain').ExplainResult>('/query/explain', { query, type });
+}
+
+/**
+ * Analyze query complexity and get performance recommendations
+ * @param query - The SQL query to analyze
+ */
+export async function analyzeQuery(
   query: string
-): Promise<T> {
-  return api.post<T>('/query/explain', { query });
+): Promise<{ complexity: import('@/types/explain').QueryComplexity; recommendations: import('@/types/explain').PerformanceRecommendation[] }> {
+  return api.post<{ complexity: import('@/types/explain').QueryComplexity; recommendations: import('@/types/explain').PerformanceRecommendation[] }>('/query/analyze', { query });
 }
 

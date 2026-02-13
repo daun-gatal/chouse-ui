@@ -560,24 +560,73 @@ export class ClickHouseService {
   }
 
   /**
-   * Get Visual Query Explain Plan
+   * Get Visual Query Explain Plan with support for multiple EXPLAIN types
+   * @param query - The SQL query to explain
+   * @param explainType - The type of explain (plan, ast, syntax, pipeline, estimate)
    */
-  async getExplainPlan(query: string): Promise<any> {
+  async getExplainPlan(query: string, explainType: 'plan' | 'ast' | 'syntax' | 'pipeline' | 'estimate' = 'plan'): Promise<any> {
     try {
-      const explainQuery = `EXPLAIN json = 1 ${query}`;
+      let explainQuery: string;
+
+      switch (explainType) {
+        case 'plan':
+          explainQuery = `EXPLAIN json = 1 ${query}`;
+          break;
+        case 'ast':
+          explainQuery = `EXPLAIN AST ${query}`;
+          break;
+        case 'syntax':
+          explainQuery = `EXPLAIN SYNTAX ${query}`;
+          break;
+        case 'pipeline':
+          explainQuery = `EXPLAIN PIPELINE ${query}`;
+          break;
+        case 'estimate':
+          explainQuery = `EXPLAIN ESTIMATE ${query}`;
+          break;
+        default:
+          explainQuery = `EXPLAIN json = 1 ${query}`;
+      }
+
+      // For text-based explain types (AST, SYNTAX, PIPELINE), get raw text
+      if (explainType === 'ast' || explainType === 'syntax' || explainType === 'pipeline') {
+        const result = await this.client.query({
+          query: explainQuery,
+          format: 'TabSeparatedRaw',
+        });
+        const text = await result.text();
+        return {
+          type: explainType,
+          [explainType]: text.trim(),
+          raw: text
+        };
+      }
+
+      // For JSON-based explain types (plan, estimate), use executeQuery
       const result = await this.executeQuery(explainQuery, 'JSON');
 
-      if (result.data && result.data.length > 0) {
-        // EXPLAIN json = 1 returns a single row with 'explain' column containing the JSON string
-        const planJson = (result.data[0] as any).explain;
-        if (typeof planJson === 'string') {
-          return JSON.parse(planJson);
+      if (explainType === 'plan') {
+        if (result.data && result.data.length > 0) {
+          const planJson = (result.data[0] as any).explain;
+          if (typeof planJson === 'string') {
+            return { type: 'plan', plan: JSON.parse(planJson), raw: result.data };
+          }
+          return { type: 'plan', plan: planJson, raw: result.data };
         }
-        return planJson;
+        return { type: 'plan', plan: null, raw: null };
       }
-      return null;
+
+      if (explainType === 'estimate') {
+        return {
+          type: 'estimate',
+          estimate: result.data,
+          raw: result.data
+        };
+      }
+
+      return { type: explainType, [explainType]: null, raw: null };
     } catch (error) {
-      throw this.handleError(error, "Failed to get explain plan");
+      throw this.handleError(error, `Failed to get ${explainType} explain`);
     }
   }
 
