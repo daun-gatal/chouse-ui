@@ -334,10 +334,27 @@ const transformPlanToGraph = (plan: ExplainResult): { nodes: Node[], edges: Edge
     };
 
     // Get the root plan node from ExplainResult
-    const rootPlan = plan.plan;
+    // Handle different ClickHouse EXPLAIN JSON formats:
+    // 1. Direct plan node: { "Node Type": "...", "Plans": [...] }
+    // 2. Wrapped in Plan: { "Plan": { "Node Type": "...", "Plans": [...] } }
+    // 3. Array format: [{ "Plan": {...} }] or [{ "Node Type": "..." }]
+    let rootPlan = plan.plan;
 
     if (rootPlan) {
-        processNode(rootPlan);
+        // If rootPlan is an array, get the first element
+        if (Array.isArray(rootPlan)) {
+            rootPlan = rootPlan[0] as ExplainPlanNode;
+        }
+
+        // If the plan is wrapped in a "Plan" property, unwrap it
+        if (rootPlan && typeof rootPlan === 'object' && 'Plan' in rootPlan && !('Node Type' in rootPlan)) {
+            rootPlan = (rootPlan as unknown as { Plan: ExplainPlanNode }).Plan;
+        }
+
+        // Now process the node if it has a Node Type
+        if (rootPlan && rootPlan["Node Type"]) {
+            processNode(rootPlan);
+        }
     }
 
     return { nodes, edges };
