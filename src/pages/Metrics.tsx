@@ -694,9 +694,9 @@ export default function Metrics({
 
 
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-hidden">
       <div className={cn(
-        "container mx-auto space-y-6",
+        "mx-auto space-y-6 flex flex-col h-full",
         embedded ? "p-4" : "p-6"
       )}>
         {/* Header - hidden when embedded */}
@@ -795,46 +795,102 @@ export default function Metrics({
 
 
 
-        {/* Tabs for different metric views */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="bg-white/5 border border-white/10 p-1">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-white/10 gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Overview
-            </TabsTrigger>
-            {hasAdvancedMetrics && (
+        {/* Tabs for different metric views - hidden if only Overview is available */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 space-y-4">
+          {hasAdvancedMetrics && (
+            <TabsList className="bg-white/10 border border-white/10 p-1 w-fit rounded-xl justify-start backdrop-blur-md self-start">
+              <TabsTrigger
+                value="overview"
+                className={cn(
+                  "rounded-lg gap-2 px-4 transition-all duration-300",
+                  "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
+                  "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
+                  "hover:bg-white/5 active:scale-95"
+                )}
+              >
+                <BarChart3 className="h-4 w-4" />
+                Overview
+              </TabsTrigger>
               <>
-                <TabsTrigger value="performance" className="data-[state=active]:bg-white/10 gap-2">
+                <TabsTrigger
+                  value="performance"
+                  className={cn(
+                    "rounded-lg gap-2 px-4 transition-all duration-300",
+                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
+                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
+                    "hover:bg-white/5 active:scale-95"
+                  )}
+                >
                   <Gauge className="h-4 w-4" />
                   Performance
                 </TabsTrigger>
-                <TabsTrigger value="storage" className="data-[state=active]:bg-white/10 gap-2">
+                <TabsTrigger
+                  value="storage"
+                  className={cn(
+                    "rounded-lg gap-2 px-4 transition-all duration-300",
+                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
+                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
+                    "hover:bg-white/5 active:scale-95"
+                  )}
+                >
                   <HardDrive className="h-4 w-4" />
                   Storage
                 </TabsTrigger>
-                <TabsTrigger value="merges" className="data-[state=active]:bg-white/10 gap-2">
+                <TabsTrigger
+                  value="merges"
+                  className={cn(
+                    "rounded-lg gap-2 px-4 transition-all duration-300",
+                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
+                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
+                    "hover:bg-white/5 active:scale-95"
+                  )}
+                >
                   <GitMerge className="h-4 w-4" />
                   Merges
                 </TabsTrigger>
-                <TabsTrigger value="errors" className="data-[state=active]:bg-white/10 gap-2">
+                <TabsTrigger
+                  value="errors"
+                  className={cn(
+                    "rounded-lg gap-2 px-4 transition-all duration-300",
+                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
+                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
+                    "hover:bg-white/5 active:scale-95"
+                  )}
+                >
                   <AlertCircle className="h-4 w-4" />
                   Errors
                 </TabsTrigger>
-                <TabsTrigger value="system" className="data-[state=active]:bg-white/10 gap-2">
+                <TabsTrigger
+                  value="system"
+                  className={cn(
+                    "rounded-lg gap-2 px-4 transition-all duration-300",
+                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
+                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
+                    "hover:bg-white/5 active:scale-95"
+                  )}
+                >
                   <Cpu className="h-4 w-4" />
                   System
                 </TabsTrigger>
 
-                <TabsTrigger value="network" className="data-[state=active]:bg-white/10 gap-2">
+                <TabsTrigger
+                  value="network"
+                  className={cn(
+                    "rounded-lg gap-2 px-4 transition-all duration-300",
+                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
+                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
+                    "hover:bg-white/5 active:scale-95"
+                  )}
+                >
                   <Network className="h-4 w-4" />
                   Network
                 </TabsTrigger>
               </>
-            )}
-          </TabsList>
+            </TabsList>
+          )}
 
           {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="overview" className="flex-1 overflow-auto space-y-4 pr-1 min-h-0 data-[state=active]:flex flex-col">
             {/* System Health Grid - Refactored */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -1117,7 +1173,7 @@ export default function Metrics({
 
           {/* Performance Tab - Advanced only */}
           {hasAdvancedMetrics && (
-            <TabsContent value="performance" className="grid gap-6 md:grid-cols-2">
+            <TabsContent value="performance" className="flex-1 overflow-auto grid gap-6 md:grid-cols-2 pr-1 min-h-0">
 
 
               {/* Query Latency Group */}
@@ -1275,7 +1331,7 @@ export default function Metrics({
 
           {/* Storage Tab - Advanced only */}
           {hasAdvancedMetrics && (
-            <TabsContent value="storage" className="grid gap-6 md:grid-cols-3">
+            <TabsContent value="storage" className="flex-1 overflow-auto grid gap-6 md:grid-cols-3 pr-1 min-h-0">
               {/* Loading State */}
               {prodLoading && (
                 <motion.div
@@ -1571,7 +1627,7 @@ export default function Metrics({
 
           {/* Merges Tab - Advanced only */}
           {hasAdvancedMetrics && (
-            <TabsContent value="merges" className="space-y-6">
+            <TabsContent value="merges" className="flex-1 overflow-auto space-y-6 pr-1 min-h-0 data-[state=active]:flex flex-col">
 
 
               {/* SECTION 1: KPI COMMAND CENTER */}
@@ -1781,7 +1837,7 @@ export default function Metrics({
           {/* Errors Tab - Advanced only */}
           {
             hasAdvancedMetrics && (
-              <TabsContent value="errors" className="grid gap-6 md:grid-cols-3">
+              <TabsContent value="errors" className="flex-1 overflow-auto grid gap-6 md:grid-cols-3 pr-1 min-h-0">
                 {/* SECTION 1: CRITICAL ALERTS */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -1933,7 +1989,7 @@ export default function Metrics({
           {/* System Tab - Advanced only */}
           {
             hasAdvancedMetrics && (
-              <TabsContent value="system" className="space-y-6">
+              <TabsContent value="system" className="flex-1 overflow-auto space-y-6 pr-1 min-h-0 data-[state=active]:flex flex-col">
 
                 {/* SECTION 1: SYSTEM RESOURCES */}
                 <motion.div
@@ -2094,7 +2150,7 @@ export default function Metrics({
           {/* Network Tab - Advanced only */}
           {
             hasAdvancedMetrics && (
-              <TabsContent value="network" className="grid gap-6 md:grid-cols-3">
+              <TabsContent value="network" className="flex-1 overflow-auto grid gap-6 md:grid-cols-3 pr-1 min-h-0">
                 {/* SECTION 1: TRAFFIC OVERVIEW */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}

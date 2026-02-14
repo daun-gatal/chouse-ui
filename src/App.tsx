@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from "react-
 import FloatingDock from "@/components/common/FloatingDock";
 import HomePage from "@/pages/Home";
 import MonitoringPage from "@/pages/Monitoring";
-import SettingsPage from "@/pages/Settings";
+import PreferencesPage from "@/pages/Preferences";
 import { DefaultRedirect } from "@/components/common/DefaultRedirect";
 import { ThemeProvider } from "@/components/common/theme-provider";
 import AppInitializer from "@/components/common/AppInit";
@@ -165,15 +165,18 @@ export default function App() {
                 }
               />
 
-              {/* Settings */}
+              {/* Preferences */}
               <Route
-                path="/settings"
+                path="/preferences"
                 element={
-                  <AdminRoute requiredPermission={RBAC_PERMISSIONS.SETTINGS_VIEW}>
-                    <SettingsPage />
-                  </AdminRoute>
+                  <PrivateRoute>
+                    <PreferencesPage />
+                  </PrivateRoute>
                 }
               />
+
+              {/* Backward compatibility redirects */}
+              <Route path="/settings" element={<Navigate to="/preferences" replace />} />
 
               {/* 404 */}
               <Route path="*" element={<NotFound />} />

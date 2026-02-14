@@ -18,9 +18,20 @@ export interface RbacUser {
   avatarUrl: string | null;
   isActive: boolean;
   roles: string[];
+  rolesMetadata?: Array<{
+    name: string;
+    displayName: string;
+    description: string | null;
+  }>;
   permissions: string[];
   lastLoginAt: string | null;
   createdAt: string;
+}
+
+export interface ProfileResponse {
+  user: RbacUser;
+  connections: any[]; // ClickHouseConnection[] - already defined but kept simple for now
+  dataAccessRules: any[]; // DataAccessRule[]
 }
 
 export interface RbacRole {
@@ -292,8 +303,15 @@ export const rbacAuthApi = {
    * Get current user info
    */
   async getCurrentUser(): Promise<RbacUser> {
-    const result = await rbacFetch<{ user: RbacUser }>('/auth/me');
-    return result.user;
+    const response = await rbacFetch<{ user: RbacUser }>('/auth/me');
+    return response.user;
+  },
+
+  /**
+   * Get aggregated profile for preferences
+   */
+  async getProfile(): Promise<ProfileResponse> {
+    return rbacFetch('/auth/profile');
   },
 
   /**
@@ -1416,6 +1434,8 @@ export const rbacDataAccessApi = {
       body: JSON.stringify({ userId, rules }),
     });
   },
+
+
 
   /**
    * Check if current user has access to a database/table

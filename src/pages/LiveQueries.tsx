@@ -405,154 +405,156 @@ export default function LiveQueriesTable({
     }
 
     return (
-        <div className={cn("space-y-6", embedded ? "p-4" : "p-6")}>
-            {/* Header - hidden when embedded */}
-            {!embedded && (
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-amber-500/20">
-                            <Zap className="w-5 h-5 text-amber-400" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-semibold text-white">Live Queries</h2>
-                            <p className="text-sm text-gray-400">
-                                Real-time view of running ClickHouse queries
-                            </p>
+        <div className={cn("h-full flex flex-col overflow-hidden", embedded ? "p-4" : "p-6")}>
+            <div className="flex-1 flex flex-col gap-6 min-h-0">
+                {/* Header - hidden when embedded */}
+                {!embedded && (
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-amber-500/20">
+                                <Zap className="w-5 h-5 text-amber-400" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-semibold text-white">Live Queries</h2>
+                                <p className="text-sm text-gray-400">
+                                    Real-time view of running ClickHouse queries
+                                </p>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatsCard
-                    icon={Zap}
-                    label="Active Queries"
-                    value={stats.totalQueries}
-                    color="amber"
-                />
-                <StatsCard
-                    icon={Clock}
-                    label="Longest Running"
-                    value={stats.longestRunning > 0 ? formatDuration(stats.longestRunning) : '-'}
-                    color="purple"
-                />
-                <StatsCard
-                    icon={MemoryStick}
-                    label="Total Memory"
-                    value={formatBytes(stats.totalMemory)}
-                    color="cyan"
-                />
-                <StatsCard
-                    icon={Hash}
-                    label="Rows Read"
-                    value={formatNumber(stats.totalReadRows)}
-                    color="green"
-                />
-            </div>
-
-            {/* Toolbar: Search + Controls */}
-            <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                    <Input
-                        placeholder="Search by query ID, user, or query text..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10 bg-white/5 border-white/10 focus:border-amber-500/50 transition-colors"
+                {/* Stats Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <StatsCard
+                        icon={Zap}
+                        label="Active Queries"
+                        value={stats.totalQueries}
+                        color="amber"
+                    />
+                    <StatsCard
+                        icon={Clock}
+                        label="Longest Running"
+                        value={stats.longestRunning > 0 ? formatDuration(stats.longestRunning) : '-'}
+                        color="purple"
+                    />
+                    <StatsCard
+                        icon={MemoryStick}
+                        label="Total Memory"
+                        value={formatBytes(stats.totalMemory)}
+                        color="cyan"
+                    />
+                    <StatsCard
+                        icon={Hash}
+                        label="Rows Read"
+                        value={formatNumber(stats.totalReadRows)}
+                        color="green"
                     />
                 </div>
 
-                <div className="flex items-center gap-3">
-                    {/* Refresh Interval Selector */}
-                    {!embedded && (
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 whitespace-nowrap hidden sm:inline">Auto-refresh:</span>
-                            <Select
-                                value={internalRefreshInterval.toString()}
-                                onValueChange={(v) => setInternalRefreshInterval(parseInt(v))}
-                            >
-                                <SelectTrigger className="w-24 h-10 bg-white/5 border-white/10">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {REFRESH_INTERVALS.map((interval) => (
-                                        <SelectItem key={interval.value} value={interval.value.toString()}>
-                                            {interval.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
+                {/* Toolbar: Search + Controls */}
+                <div className="flex flex-col md:flex-row gap-4">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                        <Input
+                            placeholder="Search by query ID, user, or query text..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 bg-white/5 border-white/10 focus:border-amber-500/50 transition-colors"
+                        />
+                    </div>
 
-                    {/* Manual Refresh */}
-                    {!embedded && (
-                        <Button
-                            variant="outline"
-                            onClick={() => refetch()}
-                            disabled={isFetching}
-                            className="h-10 px-4 bg-white/5 border-white/10 hover:bg-white/10"
-                        >
-                            <RefreshCw className={cn(
-                                "w-4 h-4 mr-2",
-                                isFetching && "animate-spin"
-                            )} />
-                            Refresh
-                        </Button>
+                    <div className="flex items-center gap-3">
+                        {/* Refresh Interval Selector */}
+                        {!embedded && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500 whitespace-nowrap hidden sm:inline">Auto-refresh:</span>
+                                <Select
+                                    value={internalRefreshInterval.toString()}
+                                    onValueChange={(v) => setInternalRefreshInterval(parseInt(v))}
+                                >
+                                    <SelectTrigger className="w-24 h-10 bg-white/5 border-white/10">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {REFRESH_INTERVALS.map((interval) => (
+                                            <SelectItem key={interval.value} value={interval.value.toString()}>
+                                                {interval.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+
+                        {/* Manual Refresh */}
+                        {!embedded && (
+                            <Button
+                                variant="outline"
+                                onClick={() => refetch()}
+                                disabled={isFetching}
+                                className="h-10 px-4 bg-white/5 border-white/10 hover:bg-white/10"
+                            >
+                                <RefreshCw className={cn(
+                                    "w-4 h-4 mr-2",
+                                    isFetching && "animate-spin"
+                                )} />
+                                Refresh
+                            </Button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Table */}
+                <div className="flex-1 min-h-0 border border-gray-700/50 rounded-lg overflow-hidden">
+                    {isLoading ? (
+                        <div className="p-12 text-center">
+                            <Loader2 className="w-8 h-8 animate-spin text-amber-400 mx-auto mb-4" />
+                            <p className="text-gray-400">Loading live queries...</p>
+                        </div>
+                    ) : filteredQueries.length === 0 ? (
+                        <div className="p-12 text-center">
+                            <div className="inline-flex items-center justify-center p-4 rounded-full bg-gray-800/50 mb-4">
+                                <Database className="w-8 h-8 text-gray-500" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-white mb-2">
+                                {searchQuery ? 'No matching queries' : 'No running queries'}
+                            </h3>
+                            <p className="text-gray-400">
+                                {searchQuery
+                                    ? 'Try adjusting your search criteria'
+                                    : 'There are currently no queries running on the active connection'}
+                            </p>
+                        </div>
+                    ) : (
+                        <ScrollArea className="h-full">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-gray-800/50 hover:bg-gray-800/50">
+                                        <TableHead className="text-gray-400 font-medium">Query ID</TableHead>
+                                        <TableHead className="text-gray-400 font-medium">User</TableHead>
+                                        <TableHead className="text-gray-400 font-medium">Query</TableHead>
+                                        <TableHead className="text-gray-400 font-medium">Duration</TableHead>
+                                        <TableHead className="text-gray-400 font-medium">Memory</TableHead>
+                                        <TableHead className="text-gray-400 font-medium">Rows</TableHead>
+                                        <TableHead className="text-gray-400 font-medium w-[80px]">Action</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredQueries.map((query) => (
+                                        <QueryRow
+                                            key={query.query_id}
+                                            query={query}
+                                            onKill={handleKillQuery}
+                                            canKill={canGlobalKill}
+                                            isKilling={killQuery.isPending && queryToKill === query.query_id}
+                                        />
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </ScrollArea>
                     )}
                 </div>
-            </div>
-
-            {/* Table */}
-            <div className="border border-gray-700/50 rounded-lg overflow-hidden">
-                {isLoading ? (
-                    <div className="p-12 text-center">
-                        <Loader2 className="w-8 h-8 animate-spin text-amber-400 mx-auto mb-4" />
-                        <p className="text-gray-400">Loading live queries...</p>
-                    </div>
-                ) : filteredQueries.length === 0 ? (
-                    <div className="p-12 text-center">
-                        <div className="inline-flex items-center justify-center p-4 rounded-full bg-gray-800/50 mb-4">
-                            <Database className="w-8 h-8 text-gray-500" />
-                        </div>
-                        <h3 className="text-lg font-semibold text-white mb-2">
-                            {searchQuery ? 'No matching queries' : 'No running queries'}
-                        </h3>
-                        <p className="text-gray-400">
-                            {searchQuery
-                                ? 'Try adjusting your search criteria'
-                                : 'There are currently no queries running on the active connection'}
-                        </p>
-                    </div>
-                ) : (
-                    <ScrollArea className="max-h-[500px]">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="bg-gray-800/50 hover:bg-gray-800/50">
-                                    <TableHead className="text-gray-400 font-medium">Query ID</TableHead>
-                                    <TableHead className="text-gray-400 font-medium">User</TableHead>
-                                    <TableHead className="text-gray-400 font-medium">Query</TableHead>
-                                    <TableHead className="text-gray-400 font-medium">Duration</TableHead>
-                                    <TableHead className="text-gray-400 font-medium">Memory</TableHead>
-                                    <TableHead className="text-gray-400 font-medium">Rows</TableHead>
-                                    <TableHead className="text-gray-400 font-medium w-[80px]">Action</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredQueries.map((query) => (
-                                    <QueryRow
-                                        key={query.query_id}
-                                        query={query}
-                                        onKill={handleKillQuery}
-                                        canKill={canGlobalKill}
-                                        isKilling={killQuery.isPending && queryToKill === query.query_id}
-                                    />
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </ScrollArea>
-                )}
             </div>
 
             {/* Kill Confirmation Dialog */}

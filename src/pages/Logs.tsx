@@ -704,9 +704,9 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : "--:--:--";
 
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-hidden">
       <div className={cn(
-        "container mx-auto space-y-6 flex flex-col h-full",
+        "mx-auto space-y-6 flex flex-col h-full",
         embedded ? "p-4" : "p-6"
       )}>
         {/* Header - separate title and controls */}
@@ -949,6 +949,7 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
+          className="flex-1 min-h-0"
         >
           <div className={cn(
             "relative overflow-hidden rounded-2xl border border-white/10 flex flex-col h-full",

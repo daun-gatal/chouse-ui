@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  UserCog,
   PanelLeft,
   Dock,
 } from "lucide-react";
@@ -335,14 +336,14 @@ export default function FloatingDock() {
     RBAC_PERMISSIONS.TABLE_VIEW,
   ]);
 
-  const canViewSettings = hasPermission(RBAC_PERMISSIONS.SETTINGS_VIEW);
+  const canViewSettings = true;
 
   const navItems = [
     ...(canViewOverview ? [{ icon: LayoutDashboard, label: "Home", to: "/overview", shortcut: "⌘1" }] : []),
     ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer", shortcut: "⌘2" }] : []),
     ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring", shortcut: "⌘3" }] : []),
     ...(canViewAdmin ? [{ icon: Shield, label: "Admin", to: "/admin", shortcut: "⌘4" }] : []),
-    ...(canViewSettings ? [{ icon: Settings, label: "Settings", to: "/settings", shortcut: "⌘5" }] : []),
+    ...(canViewSettings ? [{ icon: UserCog, label: "Preferences", to: "/preferences", shortcut: "⌘5" }] : []),
   ];
 
   // Auto-hide logic
