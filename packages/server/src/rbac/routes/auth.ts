@@ -15,15 +15,18 @@ import {
   updateUserPassword,
   getUserById,
   createAuditLog,
+  listRoles,
 } from '../services/rbac';
+import { getUserConnections } from '../services/connections';
+import { getRulesForUser } from '../services/dataAccess';
 import { validatePasswordStrength } from '../services/password';
 import { verifyRefreshToken } from '../services/jwt';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
-import { 
-  rbacAuthMiddleware, 
-  getClientIp, 
+import {
+  rbacAuthMiddleware,
+  getClientIp,
   getRbacUser,
-  requirePermission 
+  requirePermission
 } from '../middleware/rbacAuth';
 import { AppError } from '../../types';
 
@@ -193,9 +196,9 @@ authRoutes.post('/logout-all', rbacAuthMiddleware, async (c) => {
  */
 authRoutes.get('/me', rbacAuthMiddleware, async (c) => {
   const user = getRbacUser(c);
-  
+
   const fullUser = await getUserById(user.sub);
-  
+
   if (!fullUser) {
     throw AppError.notFound('User not found');
   }
@@ -203,6 +206,48 @@ authRoutes.get('/me', rbacAuthMiddleware, async (c) => {
   return c.json({
     success: true,
     data: { user: fullUser },
+  });
+});
+
+/**
+ * GET /rbac/auth/profile
+ * Get aggregated system profile for the current user (used by Preferences page)
+ */
+authRoutes.get('/profile', rbacAuthMiddleware, async (c) => {
+  const user = getRbacUser(c);
+
+  // 1. Fetch all data in parallel
+  const [fullUser, connections, allRules, allRoles] = await Promise.all([
+    getUserById(user.sub),
+    getUserConnections(user.sub),
+    getRulesForUser(user.sub),
+    listRoles(),
+  ]);
+
+  if (!fullUser) {
+    throw AppError.notFound('User not found');
+  }
+
+  // 2. Map role names to full role metadata for display
+  const userRoles = fullUser.roles.map(roleName => {
+    const roleMetadata = allRoles.find(r => r.name === roleName);
+    return {
+      name: roleName,
+      displayName: roleMetadata?.displayName || roleName,
+      description: roleMetadata?.description,
+    };
+  });
+
+  return c.json({
+    success: true,
+    data: {
+      user: {
+        ...fullUser,
+        rolesMetadata: userRoles,
+      },
+      connections,
+      dataAccessRules: allRules,
+    },
   });
 });
 
@@ -226,7 +271,7 @@ authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', Chang
 
   // Verify current password by attempting login
   const verification = await authenticateUser(user.email, currentPassword);
-  
+
   if (!verification) {
     await createAuditLog(AUDIT_ACTIONS.PASSWORD_CHANGE, user.sub, {
       ipAddress,
@@ -272,7 +317,7 @@ authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', Chang
  */
 authRoutes.get('/validate', rbacAuthMiddleware, async (c) => {
   const user = getRbacUser(c);
-  
+
   return c.json({
     success: true,
     data: {

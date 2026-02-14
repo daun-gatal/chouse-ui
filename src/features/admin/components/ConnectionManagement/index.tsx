@@ -388,8 +388,8 @@ function ConnectionFormDialog({
             {testResult && (
               <div
                 className={`p-3 rounded-lg border ${testResult.success
-                    ? 'bg-green-500/10 border-green-500/20'
-                    : 'bg-red-500/10 border-red-500/20'
+                  ? 'bg-green-500/10 border-green-500/20'
+                  : 'bg-red-500/10 border-red-500/20'
                   }`}
               >
                 <div className="flex items-center gap-2">
@@ -710,57 +710,57 @@ export default function ConnectionManagement() {
                         </Tooltip>
 
                         {canEdit && (
-                            <>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleToggleActive(conn)}
-                                    className="h-8 w-8"
-                                  >
-                                    {conn.isActive ? (
-                                      <Unlock className="w-4 h-4" />
-                                    ) : (
-                                      <Lock className="w-4 h-4" />
-                                    )}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {conn.isActive ? 'Deactivate' : 'Activate'}
-                                </TooltipContent>
-                              </Tooltip>
-
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => openEditDialog(conn)}
-                                    className="h-8 w-8"
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Edit</TooltipContent>
-                              </Tooltip>
-                            </>
-                        )}
-
-                        {canDelete && (
+                          <>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  onClick={() => setDeleteConnection(conn)}
-                                  className="h-8 w-8 text-red-400 hover:text-red-300"
+                                  onClick={() => handleToggleActive(conn)}
+                                  className="h-8 w-8"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  {conn.isActive ? (
+                                    <Unlock className="w-4 h-4" />
+                                  ) : (
+                                    <Lock className="w-4 h-4" />
+                                  )}
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Delete</TooltipContent>
+                              <TooltipContent>
+                                {conn.isActive ? 'Deactivate' : 'Activate'}
+                              </TooltipContent>
                             </Tooltip>
+
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEditDialog(conn)}
+                                  className="h-8 w-8"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit</TooltipContent>
+                            </Tooltip>
+                          </>
+                        )}
+
+                        {canDelete && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setDeleteConnection(conn)}
+                                className="h-8 w-8 text-red-400 hover:text-red-300"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Delete</TooltipContent>
+                          </Tooltip>
                         )}
                       </div>
                     </TableCell>

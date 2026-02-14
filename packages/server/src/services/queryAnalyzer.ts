@@ -81,27 +81,25 @@ function extractQueryMetrics(sql: string): QueryComplexity['metrics'] {
   const tables = extractUniqueTableNames(sqlWithoutComments, cteNames);
   const tableCount = tables.size;
 
-  // Count JOIN keywords in main query only (not CTEs)
-  const joinCount = countJoins(mainQuery);
+  // Count JOIN keywords in the ENTIRE query
+  const joinCount = countJoins(sqlWithoutComments);
 
-  // Count subqueries in main query only (CTEs are not subqueries)
-  const subqueryDepth = countSubqueryDepth(mainQuery);
+  // Count subqueries in the ENTIRE query (CTEs will be included in the depth analysis)
+  const subqueryDepth = countSubqueryDepth(sqlWithoutComments);
 
-  // Count aggregations in main query only
-  const aggregationCount = countAggregations(mainQuery);
+  // Count aggregations in the ENTIRE query
+  const aggregationCount = countAggregations(sqlWithoutComments);
 
-  // Check for specific clauses in the main query only
-  const hasDistinct = /\bSELECT\s+DISTINCT\b/i.test(mainQuery);
-  const hasGroupBy = /\bGROUP\s+BY\b/i.test(mainQuery);
-  const hasOrderBy = /\bORDER\s+BY\b/i.test(mainQuery);
+  // Check for specific clauses in the ENTIRE query where it makes sense
+  const hasDistinct = /\bSELECT\s+DISTINCT\b/i.test(sqlWithoutComments);
+  const hasGroupBy = /\bGROUP\s+BY\b/i.test(sqlWithoutComments);
+  const hasOrderBy = /\bORDER\s+BY\b/i.test(sqlWithoutComments);
+  const hasWhere = /\bWHERE\b/i.test(sqlWithoutComments);
+  const hasPrewhere = /\bPREWHERE\b/i.test(sqlWithoutComments);
+
+  // Keep these metrics restricted to the main outer query
   const hasLimit = /\bLIMIT\b/i.test(mainQuery);
-  const hasPrewhere = /\bPREWHERE\b/i.test(mainQuery);
-  const hasWhere = /\bWHERE\b/i.test(mainQuery);
-
-  // Check for SELECT * in main query
   const isSelectStar = /\bSELECT\s+\*/i.test(mainQuery);
-
-  // Count columns in main query's SELECT clause
   const columnCount = countSelectColumns(mainQuery);
 
   return {
@@ -373,8 +371,6 @@ function countAggregations(sql: string): number {
 
 /**
  * Count subquery nesting depth
- * Note: This should be called with the main query (after CTEs)
- * so CTE definitions are not counted as subqueries
  */
 function countSubqueryDepth(sql: string): number {
   let depth = 0;

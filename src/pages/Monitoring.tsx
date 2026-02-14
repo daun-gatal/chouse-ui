@@ -169,36 +169,9 @@ function TabCard({
 }
 
 export default function Monitoring() {
+    const { hasPermission, hasAnyPermission } = useRbacStore();
     const [searchParams] = useSearchParams();
     const [isInfoOpen, setIsInfoOpen] = useState(false);
-
-    // Get initial tab from URL or default to live-queries
-    const getInitialTab = (): TabKey => {
-        const tabParam = searchParams.get("tab");
-        if (tabParam && (tabParam === "logs" || tabParam === "metrics" || tabParam === "live-queries")) {
-            return tabParam;
-        }
-        return "live-queries";
-    };
-
-    const [activeTab, setActiveTab] = useState<TabKey>(getInitialTab);
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [autoRefresh, setAutoRefresh] = useState(false);
-    const [timeRange, setTimeRange] = useState("1h");
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    // In a real app, lastUpdated would be synced from the child components or a shared store
-    // For now, we'll update it when refresh is triggered
-    const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
-
-    const handleRefresh = () => {
-        setRefreshKey(prev => prev + 1);
-        setLastUpdated(new Date().toLocaleTimeString());
-    };
-
-    const handleAutoRefreshChange = (value: boolean) => {
-        setAutoRefresh(value);
-    };
-    const { hasPermission, hasAnyPermission } = useRbacStore();
 
     // Permission checks for tabs
     const canViewLiveQueries = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_VIEW);
@@ -210,6 +183,53 @@ export default function Monitoring() {
         RBAC_PERMISSIONS.METRICS_VIEW,
         RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
     ]);
+
+    // Tab keys in priority order: logs, metrics, then live-queries
+    const availableTabs = [
+        ...(canViewLogs ? ["logs" as const] : []),
+        ...(canViewMetrics ? ["metrics" as const] : []),
+        ...(canViewLiveQueries ? ["live-queries" as const] : []),
+    ];
+
+    // Get initial tab from URL or default based on permissions
+    const getInitialTab = (): TabKey => {
+        const tabParam = searchParams.get("tab") as TabKey | null;
+
+        // 1. If URL param exists and user has permission, use it
+        if (tabParam && availableTabs.includes(tabParam)) {
+            return tabParam;
+        }
+
+        // 2. Otherwise default to the first available tab (prioritizes live-queries, then logs, then metrics)
+        return availableTabs[0] || "live-queries";
+    };
+
+    const [activeTab, setActiveTab] = useState<TabKey>(getInitialTab);
+
+    // Ensure user is redirected if permissions change or they land on a forbidden tab
+    useEffect(() => {
+        if (!availableTabs.includes(activeTab)) {
+            const firstAvailable = availableTabs[0];
+            if (firstAvailable) {
+                setActiveTab(firstAvailable);
+            }
+        }
+    }, [availableTabs, activeTab]);
+
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [autoRefresh, setAutoRefresh] = useState(false);
+    const [timeRange, setTimeRange] = useState("1h");
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
+
+    const handleRefresh = () => {
+        setRefreshKey(prev => prev + 1);
+        setLastUpdated(new Date().toLocaleTimeString());
+    };
+
+    const handleAutoRefreshChange = (value: boolean) => {
+        setAutoRefresh(value);
+    };
 
     // Enable auto-refresh when switching to Live Queries
     useEffect(() => {
@@ -224,15 +244,12 @@ export default function Monitoring() {
     useEffect(() => {
         const tabParam = searchParams.get("tab");
         if (tabParam && (tabParam === "logs" || tabParam === "metrics" || tabParam === "live-queries")) {
-            setActiveTab(tabParam);
+            // Only set if user has permission
+            if (availableTabs.includes(tabParam as TabKey)) {
+                setActiveTab(tabParam as TabKey);
+            }
         }
-    }, [searchParams]);
-
-    const availableTabs = [
-        ...(canViewLiveQueries ? ["live-queries" as const] : []),
-        ...(canViewLogs ? ["logs" as const] : []),
-        ...(canViewMetrics ? ["metrics" as const] : []),
-    ];
+    }, [searchParams, availableTabs]);
 
     const currentTabConfig = TAB_CONFIG[activeTab];
 
@@ -295,7 +312,7 @@ export default function Monitoring() {
                 </div>
 
                 {/* Tab Navigation Cards */}
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="flex gap-3 overflow-x-auto px-1 pt-2 pb-2 scrollbar-hide">
                     {availableTabs.map((tabKey) => (
                         <TabCard
                             key={tabKey}
@@ -319,7 +336,7 @@ export default function Monitoring() {
                         className="h-full"
                     >
                         {activeTab === "live-queries" && canViewLiveQueries && (
-                            <div className="h-full overflow-auto rounded-xl bg-white/5 border border-white/10">
+                            <div className="h-full overflow-hidden rounded-xl bg-white/5 border border-white/10">
                                 <LiveQueriesTable
                                     embedded
                                     refreshKey={refreshKey}
@@ -330,7 +347,7 @@ export default function Monitoring() {
                         )}
 
                         {activeTab === "logs" && canViewLogs && (
-                            <div className="h-full overflow-auto rounded-xl bg-white/5 border border-white/10">
+                            <div className="h-full overflow-hidden rounded-xl bg-white/5 border border-white/10">
                                 <LogsPage
                                     embedded
                                     refreshKey={refreshKey}
@@ -341,7 +358,7 @@ export default function Monitoring() {
                         )}
 
                         {activeTab === "metrics" && canViewMetrics && (
-                            <div className="h-full overflow-auto rounded-xl bg-white/5 border border-white/10">
+                            <div className="h-full overflow-hidden rounded-xl bg-white/5 border border-white/10">
                                 <MetricsPage
                                     embedded
                                     refreshKey={refreshKey}

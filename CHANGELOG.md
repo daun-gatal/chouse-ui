@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.9.2] - 2026-02-14
+
+### Added
+
+- **Preferences Page**: Completely redesigned user preferences interface with enhanced visual design.
+  - **Profile Hero Section**: Large profile card displaying user avatar, display name, email, join date, and assigned roles with gradient styling.
+  - **Identity & Access Card**: Shows username, RBAC ID, and session status with visual indicators.
+  - **Connection Details Card**: Displays ClickHouse endpoint and version with copy-to-clipboard functionality.
+  - **Data Access Card**: Collapsible hierarchical view of data access rules organized by connection and database with expand/collapse functionality.
+  - **Functional Access Card**: Categorized display of all user permissions grouped by category (e.g., queries, databases, tables).
+  - **Premium Glass Morphism Design**: Modern glassmorphic cards with backdrop blur, gradient accents, and smooth animations.
+  - **Responsive Grid Layout**: 3-column grid layout that adapts to different screen sizes.
+
+### Changed
+
+- **Settings → Preferences Rename**: Renamed "Settings" page to "Preferences" throughout the application for better clarity.
+  - Updated route from `/settings` to `/preferences` with backward compatibility redirect.
+  - Changed navigation icon from `Settings` to `UserCog` in FloatingDock.
+  - Updated navigation label from "Settings" to "Preferences".
+  - Removed `SETTINGS_VIEW` permission requirement (now accessible to all authenticated users).
+- **Admin Page Redesign**: Completely redesigned admin page with modern card-based tab navigation.
+  - **Tab Cards**: Replaced traditional tab list with large, interactive tab cards showing icon, label, and description.
+  - **Visual Feedback**: Added hover effects, active state indicators, and smooth animations for tab switching.
+  - **Color-Coded Tabs**: Each tab has a unique color scheme (purple for Users, blue for Roles, cyan for Connections, indigo for ClickHouse Users, green for Audit).
+  - **Improved Layout**: Better spacing, glassmorphic design, and visual hierarchy.
+- **Home Page Layout Improvements**: Enhanced Quick Access and Saved Queries sections.
+  - **Fixed Heights**: Set consistent height (450px) for Quick Access and Saved Queries cards.
+  - **Scrollable Content**: Added overflow scrolling to handle large lists without breaking layout.
+  - **Full List Display**: Removed arbitrary limits (previously showed only 6 items), now displays all items with scrolling.
+  - **Better Flex Layout**: Improved flex container structure for proper content distribution.
+- **Monitoring Page Consolidation**: Unified Live Queries, Logs, and Metrics into a single Monitoring page.
+  - Added backward compatibility redirects from `/logs` and `/metrics` to `/monitoring`.
+  - Streamlined navigation with single entry point for all monitoring features.
+- **Typography Refinements**: Improved text styling across Preferences page.
+  - Changed labels to bold semibold font for better readability.
+  - Enhanced contrast with proper color hierarchy (white for values, gray for labels).
+  - Improved badge styling with proper padding and border radius.
+
+### Fixed
+
+- **Query Analyzer Type Safety**: Improved type handling in query analyzer service.
+  - Fixed potential type errors in query pattern matching.
+  - Added proper null checks and type guards.
+- **RBAC Auth Route**: Enhanced authentication route error handling.
+  - Improved session validation logic.
+  - Better error messages for authentication failures.
+- **Connection Management UI**: Fixed layout issues in connection management component.
+  - Improved responsive behavior.
+  - Fixed button alignment and spacing.
+- **ClickHouse Users Management**: Refined user management interface.
+  - Better error handling for user operations.
+  - Improved loading states and feedback.
+
+### Removed
+
+- **Settings Page**: Removed old Settings page (`src/pages/Settings.tsx`) in favor of new Preferences page.
+  - Old Settings page had limited functionality and outdated design.
+  - New Preferences page provides comprehensive user profile and access information.
+
 ## [v2.9.1] - 2026-02-13
 
 ### Added

@@ -87,12 +87,12 @@ const BentoCard: React.FC<{
     className={cn(
       "relative overflow-hidden rounded-2xl border border-white/10",
       "bg-gradient-to-br from-white/[0.07] to-white/[0.02] backdrop-blur-xl",
-      "hover:border-white/20 transition-all duration-300",
+      "hover:border-white/20 transition-all duration-300 flex flex-col",
       className
     )}
   >
     <div className={cn("absolute -top-20 -right-20 w-40 h-40 rounded-full blur-3xl opacity-30 pointer-events-none", glowColor)} />
-    <div className="relative z-10 h-full">{children}</div>
+    <div className="relative z-10 h-full flex flex-col">{children}</div>
   </motion.div>
 );
 
@@ -530,7 +530,7 @@ export default function HomePage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Quick Access (Favorites/Recent) */}
-          <BentoCard glowColor={tablesTab === "favorites" ? "bg-amber-500/30" : "bg-blue-500/30"} className="p-5">
+          <BentoCard glowColor={tablesTab === "favorites" ? "bg-amber-500/30" : "bg-blue-500/30"} className="p-5 h-[450px]">
             <SectionHeader
               icon={tablesTab === "favorites" ? Star : History}
               title="Quick Access"
@@ -547,34 +547,36 @@ export default function HomePage() {
                 />
               }
             />
-            {tablesToShow.length === 0 ? (
-              <EmptyState
-                icon={tablesTab === "favorites" ? Star : Table2}
-                message={tablesTab === "favorites" ? "Star tables in Explorer for quick access" : "Recently visited tables will appear here"}
-                actionLabel="Browse Explorer"
-                onAction={() => navigate("/explorer")}
-              />
-            ) : (
-              <div className="space-y-1.5">
-                {tablesToShow.slice(0, 6).map((item) => (
-                  <ListItem
-                    key={item.id}
-                    icon={item.table ? Table2 : Database}
-                    iconBgColor={item.table ? "bg-blue-500/20" : "bg-indigo-500/20"}
-                    iconColor={item.table ? "text-blue-400" : "text-indigo-400"}
-                    title={item.table || item.database}
-                    subtitle={item.table ? item.database : undefined}
-                    meta={tablesTab === "recent" ? formatRelativeTime((item as RecentItem).accessedAt) : undefined}
-                    badge={tablesTab === "favorites" ? <Star className="w-3 h-3 text-amber-400 fill-amber-400" /> : undefined}
-                    onClick={() => handleTableClick(item.database, item.table)}
-                  />
-                ))}
-              </div>
-            )}
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+              {tablesToShow.length === 0 ? (
+                <EmptyState
+                  icon={tablesTab === "favorites" ? Star : Table2}
+                  message={tablesTab === "favorites" ? "Star tables in Explorer for quick access" : "Recently visited tables will appear here"}
+                  actionLabel="Browse Explorer"
+                  onAction={() => navigate("/explorer")}
+                />
+              ) : (
+                <div className="space-y-1.5 pb-2">
+                  {tablesToShow.map((item) => (
+                    <ListItem
+                      key={item.id}
+                      icon={item.table ? Table2 : Database}
+                      iconBgColor={item.table ? "bg-blue-500/20" : "bg-indigo-500/20"}
+                      iconColor={item.table ? "text-blue-400" : "text-indigo-400"}
+                      title={item.table || item.database}
+                      subtitle={item.table ? item.database : undefined}
+                      meta={tablesTab === "recent" ? formatRelativeTime((item as RecentItem).accessedAt) : undefined}
+                      badge={tablesTab === "favorites" ? <Star className="w-3 h-3 text-amber-400 fill-amber-400" /> : undefined}
+                      onClick={() => handleTableClick(item.database, item.table)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </BentoCard>
 
           {/* Saved Queries */}
-          <BentoCard glowColor="bg-purple-500/30" className="p-5">
+          <BentoCard glowColor="bg-purple-500/30" className="p-5 h-[450px]">
             <SectionHeader
               icon={FileCode}
               title="Saved Queries"
@@ -594,30 +596,32 @@ export default function HomePage() {
                 )
               }
             />
-            {savedQueries.length === 0 ? (
-              <EmptyState
-                icon={FileCode}
-                message="Save your frequently used queries for quick access"
-                actionLabel="Create Query"
-                onAction={() => navigate("/explorer")}
-              />
-            ) : (
-              <div className="space-y-1.5">
-                {savedQueries.slice(0, 6).map((sq) => (
-                  <ListItem
-                    key={sq.id}
-                    icon={FileCode}
-                    iconBgColor="bg-purple-500/20"
-                    iconColor="text-purple-400"
-                    title={sq.name}
-                    subtitle={sq.query.slice(0, 50)}
-                    badge={sq.isPublic ? <Badge className="text-[8px] px-1 py-0 h-3.5 bg-emerald-500/20 text-emerald-400 border-0">Public</Badge> : undefined}
-                    onClick={() => handleSavedQueryClick(sq.query, sq.name)}
-                    actionIcon={Play}
-                  />
-                ))}
-              </div>
-            )}
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+              {savedQueries.length === 0 ? (
+                <EmptyState
+                  icon={FileCode}
+                  message="Save your frequently used queries for quick access"
+                  actionLabel="Create Query"
+                  onAction={() => navigate("/explorer")}
+                />
+              ) : (
+                <div className="space-y-1.5 pb-2">
+                  {savedQueries.map((sq) => (
+                    <ListItem
+                      key={sq.id}
+                      icon={FileCode}
+                      iconBgColor="bg-purple-500/20"
+                      iconColor="text-purple-400"
+                      title={sq.name}
+                      subtitle={sq.query.slice(0, 50)}
+                      badge={sq.isPublic ? <Badge className="text-[8px] px-1 py-0 h-3.5 bg-emerald-500/20 text-emerald-400 border-0">Public</Badge> : undefined}
+                      onClick={() => handleSavedQueryClick(sq.query, sq.name)}
+                      actionIcon={Play}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </BentoCard>
         </div>
 
