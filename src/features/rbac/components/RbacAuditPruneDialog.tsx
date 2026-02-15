@@ -29,6 +29,9 @@ import { rbacAuditApi } from '@/api/rbac';
 interface RbacAuditPruneDialogProps {
     onPruneSuccess: () => void;
     actionFilter?: string;
+    usernameFilter?: string;
+    emailFilter?: string;
+    statusFilter?: 'all' | 'success' | 'failed' | 'failure';
     dateRange?: { start?: Date; end?: Date };
 }
 
@@ -37,6 +40,9 @@ type RetentionPeriod = '7d' | '30d' | '90d' | 'all' | 'custom' | 'current_filter
 export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
     onPruneSuccess,
     actionFilter,
+    usernameFilter,
+    emailFilter,
+    statusFilter,
     dateRange,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -88,6 +94,9 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
             if (retentionPeriod === 'current_filter') {
                 // Use current filters from props
                 if (actionFilter !== 'all') deleteOptions.action = actionFilter;
+                if (usernameFilter) deleteOptions.username = usernameFilter;
+                if (emailFilter) deleteOptions.email = emailFilter;
+                if (statusFilter !== 'all') deleteOptions.status = statusFilter;
                 if (dateRange?.start) deleteOptions.startDate = dateRange.start.toISOString();
                 if (dateRange?.end) deleteOptions.endDate = new Date(new Date(dateRange.end).setHours(23, 59, 59, 999)).toISOString();
             } else {
@@ -98,10 +107,13 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
                 }
                 // For retention policies, we generally ignore action filters unless specifically requested.
                 // But to be safe and consistent with previous "Delete Logs" behavior which respected filters,
-                // we might want to respect it if the user expects it. 
+                // we might want to respect it if the user expects it.
                 // However, "Retention" usually implies "Clean up old stuff regardless of type".
                 // The previous implementation of Prune respected actionFilter if provided.
                 if (actionFilter !== 'all') deleteOptions.action = actionFilter;
+                if (usernameFilter) deleteOptions.username = usernameFilter;
+                if (emailFilter) deleteOptions.email = emailFilter;
+                if (statusFilter !== 'all') deleteOptions.status = statusFilter;
             }
 
             const result = await rbacAuditApi.delete(deleteOptions);
@@ -214,6 +226,9 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
                                 {actionFilter !== 'all' ? (
                                     <span> matching action <span className="font-bold text-white">{actionFilter}</span></span>
                                 ) : ''}
+                                {usernameFilter && <span>, user <span className="font-bold text-white">{usernameFilter}</span></span>}
+                                {emailFilter && <span>, email <span className="font-bold text-white">{emailFilter}</span></span>}
+                                {statusFilter !== 'all' && statusFilter && <span>, status <span className="font-bold text-white">{statusFilter}</span></span>}
                                 .
                             </p>
                             <p className="mt-2 text-xs opacity-75">
@@ -233,6 +248,9 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
                             </p>
                             <ul className="list-disc list-inside mt-2 opacity-75 space-y-1">
                                 <li>Action: <span className="font-bold text-white">{actionFilter === 'all' || !actionFilter ? 'All Actions' : actionFilter}</span></li>
+                                {usernameFilter && <li>Username: <span className="font-bold text-white">{usernameFilter}</span></li>}
+                                {emailFilter && <li>Email: <span className="font-bold text-white">{emailFilter}</span></li>}
+                                {statusFilter !== 'all' && statusFilter && <li>Status: <span className="font-bold text-white uppercase">{statusFilter}</span></li>}
                                 <li>Date: <span className="font-bold text-white">
                                     {dateRange?.start ? (
                                         dateRange.end ?

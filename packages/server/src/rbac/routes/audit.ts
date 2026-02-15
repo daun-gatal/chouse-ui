@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getAuditLogs, deleteAuditLogs, createAuditLog } from '../services/rbac';
+import { getAuditLogs, deleteAuditLogs, createAuditLog, getAuditMetadata } from '../services/rbac';
 import { PERMISSIONS, AUDIT_ACTIONS } from '../schema/base';
 import { requirePermission, requireAnyPermission, rbacAuthMiddleware } from '../middleware/rbacAuth';
 import { AppError } from '../../types';
@@ -22,7 +22,10 @@ const ListAuditLogsSchema = z.object({
   page: z.string().transform(Number).optional(),
   limit: z.string().transform(Number).optional(),
   userId: z.string().optional(),
+  username: z.string().optional(),
+  email: z.string().optional(),
   action: z.string().optional(),
+  status: z.enum(['success', 'failed', 'failure']).optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
 });
@@ -72,7 +75,10 @@ auditRoutes.get('/', zValidator('query', ListAuditLogsSchema), async (c) => {
       page: query.page || 1,
       limit: query.limit || 50,
       userId: effectiveUserId,
+      username: query.username,
+      email: query.email,
       action: query.action,
+      status: query.status,
       startDate: query.startDate ? new Date(query.startDate) : undefined,
       endDate: query.endDate ? new Date(query.endDate) : undefined,
     });
@@ -114,6 +120,23 @@ auditRoutes.get('/actions', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c)
 });
 
 /**
+ * GET /rbac/audit/metadata
+ * Get distinct values for filters
+ */
+auditRoutes.get('/metadata', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c) => {
+  try {
+    const metadata = await getAuditMetadata();
+    return c.json({
+      success: true,
+      data: metadata,
+    });
+  } catch (error) {
+    console.error('[Audit] Failed to fetch metadata:', error);
+    throw AppError.internal('Failed to fetch audit metadata');
+  }
+});
+
+/**
  * GET /rbac/audit/export
  * Export audit logs as CSV
  */
@@ -125,7 +148,10 @@ auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidat
     page: 1,
     limit: 10000, // Export limit
     userId: query.userId,
+    username: query.username,
+    email: query.email,
     action: query.action,
+    status: query.status,
     startDate: query.startDate ? new Date(query.startDate) : undefined,
     endDate: query.endDate ? new Date(query.endDate) : undefined,
   });
@@ -176,7 +202,7 @@ auditRoutes.get('/stats', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c) =
     totalEvents: result.total,
     last24Hours: result.logs.length,
     byAction: {} as Record<string, number>,
-    byStatus: { success: 0, failure: 0 } as Record<string, number>,
+    byStatus: { success: 0, failed: 0 } as Record<string, number>,
     byHour: {} as Record<string, number>,
   };
 
@@ -209,7 +235,10 @@ auditRoutes.delete('/', requirePermission(PERMISSIONS.AUDIT_DELETE), zValidator(
   try {
     const result = await deleteAuditLogs({
       userId: query.userId,
+      username: query.username,
+      email: query.email,
       action: query.action,
+      status: query.status,
       startDate: query.startDate ? new Date(query.startDate) : undefined,
       endDate: query.endDate ? new Date(query.endDate) : undefined,
     });

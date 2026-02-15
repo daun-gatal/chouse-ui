@@ -196,9 +196,9 @@ const ConnectionDetailsCard: React.FC<{ url: string | null; version: string | nu
 const DataAccessCard: React.FC<{
   rules: any[];
   connections: any[];
-  isSuperAdmin: boolean;
-}> = ({ rules: allRules, connections, isSuperAdmin }) => {
-  const superAdmin = isSuperAdmin;
+  isAdmin: boolean;
+}> = ({ rules: allRules, connections, isAdmin }) => {
+  const admin = isAdmin;
 
   // State for expanded sections - default to all expanded
   const [expandedConnections, setExpandedConnections] = useState<Record<string, boolean>>({});
@@ -256,9 +256,9 @@ const DataAccessCard: React.FC<{
     >
       <div className="flex flex-col h-full">
         <div className="flex-1 min-h-0">
-          {allRules.length === 0 ? (
+          {admin || allRules.length === 0 ? (
             <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 text-center">
-              {superAdmin ? (
+              {admin ? (
                 <>
                   <div className="flex justify-center mb-2">
                     <div className="p-2 rounded-full bg-indigo-500/20 ring-1 ring-indigo-500/40">
@@ -266,7 +266,7 @@ const DataAccessCard: React.FC<{
                     </div>
                   </div>
                   <p className="text-xs text-indigo-400 font-black tracking-wider">Full Global Access</p>
-                  <p className="text-[10px] text-gray-500 mt-1 font-bold">Super Admin Bypass Active</p>
+                  <p className="text-[10px] text-gray-500 mt-1 font-bold">Admin Access Active</p>
                 </>
               ) : (
                 <p className="text-xs text-gray-500 font-bold tracking-wide">No matching rules</p>
@@ -450,7 +450,7 @@ const EffectivePermissionsCard: React.FC<{ permissions: string[] }> = ({ permiss
 export default function Preferences() {
   const navigate = useNavigate();
   const { url, version } = useAuthStore();
-  const { logout: rbacLogout, user: storeUser, isSuperAdmin } = useRbacStore();
+  const { logout: rbacLogout, user: storeUser, isSuperAdmin, isAdmin } = useRbacStore();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -621,7 +621,7 @@ export default function Preferences() {
             <DataAccessCard
               rules={allRules}
               connections={connections}
-              isSuperAdmin={isSuperAdmin()}
+              isAdmin={isAdmin()}
             />
             <EffectivePermissionsCard permissions={user?.permissions || []} />
           </div>

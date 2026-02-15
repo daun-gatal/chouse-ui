@@ -15,12 +15,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Diff View**: Visual comparison between original and optimized SQL.
   - **Detailed Analysis**: Provides markdown-formatted explanations, performance summaries, and actionable tips.
   - **RBAC Protection**: Restricted to users with `AI_OPTIMIZE` permission.
+- **Audit Log Export**: Added ability to export audit logs to CSV with comprehensive filtering options.
+  - Supports filtering by Date Range, Action, Username, Email, and Status.
+  - Export respects current active filters.
+
 
 ### Changed
 
 - **Explain Tab Enhancements**: Refactored Explain tab to distinct view types (Plan, AST, Syntax, Pipeline).
 - **RBAC Roles UI**: Improved role management interface with better permission grouping and visual feedback.
 - **SQL Editor**: Added direct access to AI Optimizer and improved save functionality.
+- **Audit Log Filters**: Enhanced Audit Logs page with granular filtering by Username, Email, and Status.
+  - Added dynamic metadata fetching for filter dropdowns.
+  - Improved status visualization (Success vs Failed).
+
+
+### Fixed
+
+- **Home Page Navigation**: Fixed issue where clicking Favorites, Recent items, or Saved Queries from a different connection would fail.
+  - Filtered Favorites, Recent items, and Saved Queries in the Home page to only show those belonging to the currently active connection (Issue #125).
+  - Prevents "table not found" errors by ensure context matches the selected item.
+- **Data Access Display**: Fixed "Data Access" card in Preferences to correctly show "Full Global Access" for all admin users.
+  - Previously only updated for super admins, now correctly reflects promoted admin status immediately.
+- **Audit Log Logic**: Fixed backend filtering logic for audit logs.
+  - Ensure filters for username, email, and status are correctly applied in listing, export, and pruning operations.
+
 
 ## [v2.9.2] - 2026-02-14
 
@@ -74,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ClickHouse Users Management**: Refined user management interface.
   - Better error handling for user operations.
   - Improved loading states and feedback.
+- **Preferences Page Access**: Fixed `DataAccessCard` to correctly display admin access status for non-super-admin administrators (Issue #124).
 
 ### Removed
 
