@@ -1,0 +1,359 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, Lightbulb, FileText, ArrowRight } from 'lucide-react';
+import { optimizeQuery } from '@/api/query';
+import { toast } from 'sonner';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { DiffEditor } from './DiffEditor';
+import { Badge } from '@/components/ui/badge';
+import ReactMarkdown from 'react-markdown';
+
+interface OptimizeQueryDialogProps {
+    isOpen: boolean;
+    onClose: () => void;
+    query: string;
+    database?: string;
+    onAccept: (optimizedQuery: string) => void;
+}
+
+const DEFAULT_OPTIMIZATION_PROMPT = "Explain your changes deeply using markdown, summarize the improvements in one line, and provide a list of performance tips. Focus on index usage, partition pruning, and efficient data retrieval.";
+
+export function OptimizeQueryDialog({
+    isOpen,
+    onClose,
+    query,
+    database,
+    onAccept,
+}: OptimizeQueryDialogProps) {
+    const [isOptimizing, setIsOptimizing] = useState(false);
+    const [result, setResult] = useState<{
+        optimizedQuery: string;
+        explanation: string;
+        summary: string;
+        tips: string[];
+        originalQuery: string;
+    } | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [additionalPrompt, setAdditionalPrompt] = useState(DEFAULT_OPTIMIZATION_PROMPT);
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Reset when dialog closes
+    useEffect(() => {
+        if (!isOpen) {
+            setResult(null);
+            setError(null);
+            setAdditionalPrompt(DEFAULT_OPTIMIZATION_PROMPT);
+            setIsOptimizing(false);
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+        }
+    }, [isOpen]);
+
+    const handleOptimize = async () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        setIsOptimizing(true);
+        // We keep the previous result visible while optimizing for better UX, or clear it?
+        // Let's clear it to show we are working on new data, or keep it as "stale"? 
+        // Clearing is safer to avoid confusion.
+        setResult(null);
+        setError(null);
+
+        try {
+            const response = await optimizeQuery(query, database, additionalPrompt, controller.signal);
+            setResult({
+                optimizedQuery: response.optimizedQuery,
+                explanation: response.explanation,
+                summary: response.summary,
+                tips: response.tips,
+                originalQuery: response.originalQuery,
+            });
+        } catch (error: any) {
+            if (error.name === 'CanceledError' || error.name === 'AbortError') return;
+            setError(error.message || 'Optimization failed');
+        } finally {
+            if (abortControllerRef.current === controller) {
+                setIsOptimizing(false);
+                abortControllerRef.current = null;
+            }
+        }
+    };
+
+    const handleAccept = () => {
+        if (result) {
+            onAccept(result.optimizedQuery);
+            toast.success('Query optimized successfully');
+            onClose();
+        }
+    };
+
+    const handleCancel = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        onClose();
+    };
+
+    // Auto-optimize on first open if no result
+    useEffect(() => {
+        if (isOpen && !result && !isOptimizing && query?.trim()) {
+            // Optional: Auto-start optimization?
+            // handleOptimize(); 
+            // Let's wait for user to click "Optimize" to allow them to adjust prompt first?
+            // Or maybe just run it. The previous implementation had it commented out.
+            // Let's stick to manual trigger for now to give users control over the prompt.
+        }
+    }, [isOpen]);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={(open) => {
+            if (!open) handleCancel();
+        }}>
+            <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 gap-0 bg-[#0F1117] border-gray-800 text-white flex flex-col overflow-hidden">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-[#14141a]">
+                    <DialogHeader className="space-y-1">
+                        <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+                            <div className="p-1.5 rounded-md bg-purple-500/10 border border-purple-500/20">
+                                <Sparkles className="w-5 h-5 text-purple-400" />
+                            </div>
+                            AI Query Optimizer
+                        </DialogTitle>
+                        <p className="text-sm text-gray-400 font-normal">
+                            Optimize your ClickHouse queries with intelligent analysis and recommendations.
+                        </p>
+                    </DialogHeader>
+                    <div className="flex items-center gap-2">
+                        {result && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20 px-3 py-1">
+                                Optimization Complete
+                            </Badge>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-hidden relative">
+                    {/* Main Content Area */}
+                    <ResizablePanelGroup direction="horizontal" className="h-full">
+
+                        {/* Left Panel: Diff Editor */}
+                        <ResizablePanel defaultSize={65} minSize={30} className="bg-[#1e1e1e] flex flex-col">
+                            <div className="flex-1 relative">
+                                {result ? (
+                                    <DiffEditor
+                                        original={query}
+                                        modified={result.optimizedQuery}
+                                        language="sql"
+                                        className="absolute inset-0"
+                                    />
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-[#0F1117]">
+                                        {isOptimizing ? (
+                                            <div className="flex flex-col items-center gap-4 text-center p-8">
+                                                <div className="relative">
+                                                    <div className="absolute inset-0 bg-purple-500 blur-xl opacity-20 animate-pulse rounded-full"></div>
+                                                    <Loader2 className="w-12 h-12 text-purple-500 animate-spin relative z-10" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <h3 className="text-lg font-medium text-white">Analyzing Query Structure...</h3>
+                                                    <p className="text-sm text-gray-400 max-w-xs">
+                                                        Examining schema, indexes, and execution plan to find improvements.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : error ? (
+                                            <div className="text-center p-8 max-w-md">
+                                                <div className="inline-flex p-3 rounded-full bg-red-500/10 mb-4">
+                                                    <AlertCircle className="w-8 h-8 text-red-500" />
+                                                </div>
+                                                <h3 className="text-lg font-medium text-white mb-2">Optimization Failed</h3>
+                                                <p className="text-sm text-gray-400 mb-6">{error}</p>
+                                                <Button onClick={handleOptimize} variant="secondary">
+                                                    Retry Optimization
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <div className="text-center p-8 max-w-md">
+                                                <div className="inline-flex p-3 rounded-full bg-slate-800 mb-4">
+                                                    <Sparkles className="w-8 h-8 text-slate-400" />
+                                                </div>
+                                                <h3 className="text-lg font-medium text-white mb-2">Ready to Optimize</h3>
+                                                <p className="text-sm text-gray-400 mb-6">
+                                                    Click "Optimize Query" to analyze your SQL and get performance recommendations.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </ResizablePanel>
+
+                        <ResizableHandle withHandle />
+
+                        {/* Right Panel: Controls & Analysis */}
+                        <ResizablePanel defaultSize={35} minSize={20} className="bg-[#0F1117] flex flex-col border-l border-white/5">
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+                                {/* Controls Section */}
+                                <div className="space-y-3">
+                                    <Label htmlFor="prompt" className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        Optimization Goal
+                                    </Label>
+                                    <Textarea
+                                        id="prompt"
+                                        value={additionalPrompt}
+                                        onChange={(e) => setAdditionalPrompt(e.target.value)}
+                                        placeholder="Specific instructions (e.g., 'Use PREWHERE', 'Avoid JOINs')..."
+                                        className="bg-[#1a1c24] border-white/10 text-sm min-h-[80px] focus:border-purple-500/50 transition-colors"
+                                    />
+                                    <Button
+                                        onClick={handleOptimize}
+                                        disabled={isOptimizing}
+                                        className={cn(
+                                            "w-full font-medium transition-all",
+                                            isOptimizing
+                                                ? "bg-purple-500/10 text-purple-400"
+                                                : "bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-500/20"
+                                        )}
+                                    >
+                                        {isOptimizing ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Optimizing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                {result ? <RefreshCw className="w-4 h-4 mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                                                {result ? "Re-Optimize" : "Optimize Query"}
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+
+                                {/* Analysis Results */}
+                                {result && (
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+                                        {/* Summary Card */}
+                                        <div className="p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/20 space-y-2">
+                                            <div className="flex items-center gap-2 text-purple-400 font-medium text-sm">
+                                                <Sparkles className="w-4 h-4" />
+                                                <span>Summary</span>
+                                            </div>
+                                            <p className="text-sm text-gray-200 leading-relaxed font-medium">
+                                                {result.summary}
+                                            </p>
+                                        </div>
+
+                                        {/* Detailed Explanation */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2 text-gray-400 text-xs font-semibold uppercase tracking-wider">
+                                                <FileText className="w-3.5 h-3.5" />
+                                                Changes Explanation
+                                            </div>
+                                            <div className="prose prose-invert prose-sm max-w-none text-gray-300 text-sm leading-relaxed">
+                                                <ReactMarkdown components={{
+                                                    h1: ({ node, ...props }) => <h1 className="text-lg font-bold text-purple-400 mt-4 mb-2" {...props} />,
+                                                    h2: ({ node, ...props }) => <h2 className="text-base font-bold text-purple-300 mt-3 mb-2" {...props} />,
+                                                    h3: ({ node, ...props }) => <h3 className="text-sm font-bold text-white mt-3 mb-1" {...props} />,
+                                                    p: ({ node, ...props }) => <p className="text-gray-300 leading-relaxed mb-3 last:mb-0" {...props} />,
+                                                    ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1" {...props} />,
+                                                    ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1" {...props} />,
+                                                    li: ({ node, ...props }) => <li className="text-gray-300" {...props} />,
+                                                    strong: ({ node, ...props }) => <strong className="text-purple-200 font-semibold" {...props} />,
+                                                    code({ node, className, children, ...props }) {
+                                                        const match = /language-(\w+)/.exec(className || '')
+                                                        return match ? (
+                                                            <code className="bg-black/30 rounded px-1.5 py-0.5 text-purple-300 font-mono text-xs" {...props}>
+                                                                {children}
+                                                            </code>
+                                                        ) : (
+                                                            <code className="bg-black/30 rounded px-1.5 py-0.5 text-purple-300 font-mono text-xs" {...props}>
+                                                                {children}
+                                                            </code>
+                                                        )
+                                                    }
+                                                }}>
+                                                    {result.explanation}
+                                                </ReactMarkdown>
+                                            </div>
+                                        </div>
+
+                                        {/* Performance Tips */}
+                                        {result.tips?.length > 0 && (
+                                            <div className="space-y-3">
+                                                <div className="flex items-center gap-2 text-gray-400 text-xs font-semibold uppercase tracking-wider">
+                                                    <Lightbulb className="w-3.5 h-3.5" />
+                                                    Performance Tips
+                                                </div>
+                                                <ul className="space-y-2">
+                                                    {result.tips?.map((tip, idx) => (
+                                                        <li key={idx} className="flex gap-3 text-sm text-gray-400 bg-white/5 p-3 rounded-lg border border-white/5">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-yellow-500/50 mt-1.5 shrink-0" />
+                                                            <span>{tip}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </ResizablePanel>
+                    </ResizablePanelGroup>
+                </div>
+
+                {/* Footer */}
+                <DialogFooter className="px-6 py-4 border-t border-white/10 bg-[#14141a]">
+                    <Button
+                        variant="ghost"
+                        onClick={handleCancel}
+                        className="text-gray-400 hover:text-white hover:bg-white/5"
+                    >
+                        Close
+                    </Button>
+                    {result && (
+                        <div className="flex gap-2">
+                            <Button
+                                variant="secondary"
+                                onClick={() => {
+                                    navigator.clipboard.writeText(result.optimizedQuery);
+                                    toast.success('Copied to clipboard');
+                                }}
+                                className="gap-2"
+                            >
+                                <Copy className="w-4 h-4" />
+                                Copy Code
+                            </Button>
+                            <Button
+                                onClick={handleAccept}
+                                className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-lg shadow-green-500/20"
+                            >
+                                <Check className="w-4 h-4" />
+                                Apply Changes
+                            </Button>
+                        </div>
+                    )}
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}

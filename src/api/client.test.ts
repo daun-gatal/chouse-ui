@@ -39,6 +39,9 @@ describe('ApiClient', () => {
                 app: {
                     name: 'CHouse UI',
                     version: '2.7.5'
+                },
+                features: {
+                    aiOptimizer: true
                 }
             });
         });

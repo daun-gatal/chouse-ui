@@ -421,3 +421,21 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Base Monaco Editor Styles */
+.monaco-editor .margin-view-overlays .line-numbers {
+  @apply text-muted-foreground/50;
+}
+
+.monaco-editor .current-line {
+  @apply !border-none !bg-accent/10;
+}
+
+/* Custom Diff Editor Styles - requested by user */
+.my-added-line {
+  background-color: rgba(46, 160, 67, 0.15) !important;
+}
+
+.my-removed-line {
+  background-color: rgba(248, 81, 73, 0.15) !important;
+}

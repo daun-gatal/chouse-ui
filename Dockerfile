@@ -94,7 +94,12 @@ ENV NODE_ENV=production \
     JWT_REFRESH_EXPIRY=7d \
     CLICKHOUSE_DEFAULT_URL="" \
     CLICKHOUSE_PRESET_URLS="" \
-    CLICKHOUSE_DEFAULT_USER=""
+    CLICKHOUSE_DEFAULT_USER="" \
+    AI_OPTIMIZER_ENABLED=false \
+    AI_PROVIDER=openai \
+    AI_API_KEY="" \
+    AI_MODEL_NAME="" \
+    AI_BASE_URL=""
 
 # Volume for persistent RBAC data (SQLite database)
 VOLUME ["/app/data"]

@@ -74,7 +74,7 @@ export interface RbacAuditLog {
   resourceId: string | null;
   details: Record<string, unknown> | null;
   ipAddress: string | null;
-  status: 'success' | 'failure';
+  status: 'success' | 'failed' | 'failure';
   errorMessage: string | null;
   createdAt: string;
   usernameSnapshot?: string | null;
@@ -503,7 +503,10 @@ export const rbacAuditApi = {
     page?: number;
     limit?: number;
     userId?: string;
+    username?: string;
+    email?: string;
     action?: string;
+    status?: 'success' | 'failed' | 'failure';
     startDate?: string;
     endDate?: string;
   }): Promise<{ logs: RbacAuditLog[]; total: number }> {
@@ -511,7 +514,10 @@ export const rbacAuditApi = {
     if (options?.page) params.set('page', String(options.page));
     if (options?.limit) params.set('limit', String(options.limit));
     if (options?.userId) params.set('userId', options.userId);
+    if (options?.username) params.set('username', options.username);
+    if (options?.email) params.set('email', options.email);
     if (options?.action) params.set('action', options.action);
+    if (options?.status) params.set('status', options.status);
     if (options?.startDate) params.set('startDate', options.startDate);
     if (options?.endDate) params.set('endDate', options.endDate);
 
@@ -523,6 +529,17 @@ export const rbacAuditApi = {
    */
   async getActions(): Promise<{ actions: string[]; groupedActions: Record<string, string[]> }> {
     return rbacFetch('/audit/actions');
+  },
+
+  /**
+   * Get audit metadata for filters
+   */
+  async getMetadata(): Promise<{
+    usernames: string[];
+    emails: string[];
+    statuses: string[];
+  }> {
+    return rbacFetch('/audit/metadata');
   },
 
   /**
@@ -545,13 +562,19 @@ export const rbacAuditApi = {
    */
   async exportLogs(options?: {
     userId?: string;
+    username?: string;
+    email?: string;
     action?: string;
+    status?: 'success' | 'failed' | 'failure';
     startDate?: string;
     endDate?: string;
   }): Promise<Blob> {
     const params = new URLSearchParams();
     if (options?.userId) params.set('userId', options.userId);
+    if (options?.username) params.set('username', options.username);
+    if (options?.email) params.set('email', options.email);
     if (options?.action) params.set('action', options.action);
+    if (options?.status) params.set('status', options.status);
     if (options?.startDate) params.set('startDate', options.startDate);
     if (options?.endDate) params.set('endDate', options.endDate);
 
@@ -565,13 +588,19 @@ export const rbacAuditApi = {
    */
   async delete(options?: {
     userId?: string;
+    username?: string;
+    email?: string;
     action?: string;
+    status?: 'success' | 'failed' | 'failure';
     startDate?: string;
     endDate?: string;
   }): Promise<{ deletedCount: number }> {
     const params = new URLSearchParams();
     if (options?.userId) params.set('userId', options.userId);
+    if (options?.username) params.set('username', options.username);
+    if (options?.email) params.set('email', options.email);
     if (options?.action) params.set('action', options.action);
+    if (options?.status) params.set('status', options.status);
     if (options?.startDate) params.set('startDate', options.startDate);
     if (options?.endDate) params.set('endDate', options.endDate);
 

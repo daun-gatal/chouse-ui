@@ -285,3 +285,28 @@ export async function analyzeQuery(
   return api.post<{ complexity: import('@/types/explain').QueryComplexity; recommendations: import('@/types/explain').PerformanceRecommendation[] }>('/query/analyze', { query });
 }
 
+/**
+ * Optimize a SQL query using AI
+ * @param query - The SQL query to optimize
+ * @param database - Optional database context
+ */
+export async function optimizeQuery(
+  query: string,
+  database?: string,
+  additionalPrompt?: string,
+  signal?: AbortSignal
+): Promise<{
+  originalQuery: string;
+  optimizedQuery: string;
+  explanation: string;
+  summary: string;
+  tips: string[];
+}> {
+  return api.post<{
+    originalQuery: string;
+    optimizedQuery: string;
+    explanation: string;
+    summary: string;
+    tips: string[];
+  }>('/query/optimize', { query, database, additionalPrompt }, { signal });
+}

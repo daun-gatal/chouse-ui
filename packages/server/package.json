@@ -18,14 +18,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.44",
+    "@ai-sdk/google": "^3.0.29",
+    "@ai-sdk/huggingface": "^1.0.32",
+    "@ai-sdk/openai": "^3.0.29",
     "@clickhouse/client": "^1.16.0",
     "@hono/zod-validator": "^0.7.6",
+    "ai": "^6.0.86",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.11.4",
     "hono-rate-limiter": "^0.5.3",
     "jose": "^5.9.6",
     "node-sql-parser": "^5.3.13",
     "postgres": "^3.4.5",
+    "sql-formatter": "^15.7.1",
     "zod": "^3.23.0"
   },
   "devDependencies": {

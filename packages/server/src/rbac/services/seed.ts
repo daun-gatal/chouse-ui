@@ -96,6 +96,9 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.CONNECTIONS_EDIT,
     PERMISSIONS.CONNECTIONS_DELETE,
   ],
+  'AI Assistant': [
+    PERMISSIONS.AI_OPTIMIZE,
+  ],
 };
 
 // Human-readable permission names
@@ -130,6 +133,7 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.QUERY_EXECUTE_MISC]: 'Execute Misc Queries (SHOW, DESCRIBE)',
   [PERMISSIONS.QUERY_HISTORY_VIEW]: 'View Own Query History',
   [PERMISSIONS.QUERY_HISTORY_VIEW_ALL]: 'View All Query History',
+  [PERMISSIONS.AI_OPTIMIZE]: 'AI Query Optimization',
   [PERMISSIONS.SAVED_QUERIES_VIEW]: 'View Saved Queries',
   [PERMISSIONS.SAVED_QUERIES_CREATE]: 'Create Saved Queries',
   [PERMISSIONS.SAVED_QUERIES_UPDATE]: 'Update Saved Queries',

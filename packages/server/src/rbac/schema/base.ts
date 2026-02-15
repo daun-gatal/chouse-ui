@@ -104,6 +104,9 @@ export const PERMISSIONS = {
   CONNECTIONS_VIEW: 'connections:view',
   CONNECTIONS_EDIT: 'connections:edit',
   CONNECTIONS_DELETE: 'connections:delete',
+
+  // AI Features
+  AI_OPTIMIZE: 'ai:optimize',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -155,6 +158,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AUDIT_VIEW,
     PERMISSIONS.LIVE_QUERIES_VIEW,
     PERMISSIONS.LIVE_QUERIES_KILL,
+    PERMISSIONS.AI_OPTIMIZE,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -179,6 +183,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SAVED_QUERIES_UPDATE,
     PERMISSIONS.SAVED_QUERIES_DELETE,
     PERMISSIONS.METRICS_VIEW,
+    PERMISSIONS.AI_OPTIMIZE,
   ],
 
   [SYSTEM_ROLES.ANALYST]: [
@@ -197,6 +202,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SAVED_QUERIES_UPDATE,
     PERMISSIONS.SAVED_QUERIES_DELETE,
     PERMISSIONS.METRICS_VIEW,
+    PERMISSIONS.AI_OPTIMIZE,
   ],
 
   [SYSTEM_ROLES.VIEWER]: [

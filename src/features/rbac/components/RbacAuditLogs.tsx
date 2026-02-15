@@ -19,6 +19,10 @@ import {
   Trash2,
   AlertTriangle,
   X,
+  Mail,
+  User as UserIcon,
+  Activity,
+  Info,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { format, subDays, startOfToday, endOfToday, startOfYesterday, endOfYesterday } from 'date-fns';
@@ -61,6 +65,7 @@ import { rbacAuditApi, type RbacAuditLog } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
 import { cn } from '@/lib/utils';
 import { RbacAuditPruneDialog } from './RbacAuditPruneDialog';
+import { RbacAuditExportDialog } from './RbacAuditExportDialog';
 
 // ============================================
 // Action Colors
@@ -89,15 +94,21 @@ export const RbacAuditLogs: React.FC = () => {
   // State
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState<string>('all');
+  const [usernameFilter, setUsernameFilter] = useState('');
+  const [emailFilter, setEmailFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failed' | 'failure'>('all');
   const [dateRange, setDateRange] = useState<{ start?: Date; end?: Date }>({});
 
   // Queries
   const { data: logsData, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['rbac-audit-logs', page, actionFilter, dateRange],
+    queryKey: ['rbac-audit-logs', page, actionFilter, usernameFilter, emailFilter, statusFilter, dateRange],
     queryFn: () => rbacAuditApi.list({
       page,
       limit: 50,
       action: actionFilter !== 'all' ? actionFilter : undefined,
+      username: usernameFilter || undefined,
+      email: emailFilter || undefined,
+      status: statusFilter !== 'all' ? statusFilter : undefined,
       startDate: dateRange.start?.toISOString(),
       endDate: dateRange.end ? new Date(new Date(dateRange.end).setHours(23, 59, 59, 999)).toISOString() : undefined,
     }),
@@ -114,48 +125,21 @@ export const RbacAuditLogs: React.FC = () => {
     refetchInterval: 60000, // Refresh every minute
   });
 
+  const { data: metadataData } = useQuery({
+    queryKey: ['rbac-audit-metadata'],
+    queryFn: () => rbacAuditApi.getMetadata(),
+  });
+
   const logs = logsData?.logs || [];
   const total = logsData?.total || 0;
   const totalPages = Math.ceil(total / 50);
   const actions = actionsData?.groupedActions || {};
   const stats = statsData?.stats;
+  const metadata = metadataData || { usernames: [], emails: [], statuses: [] };
 
   const canExport = hasPermission(RBAC_PERMISSIONS.AUDIT_EXPORT);
 
-  const [isExporting, setIsExporting] = useState(false);
 
-  const handleExport = async () => {
-    try {
-      setIsExporting(true);
-      const uniqueId = `rbac_export_${Date.now()}`;
-      toast.loading('Exporting audit logs...', { id: uniqueId });
-
-      const blob = await rbacAuditApi.exportLogs({
-        action: actionFilter !== 'all' ? actionFilter : undefined,
-        startDate: dateRange.start?.toISOString(),
-        endDate: dateRange.end ? new Date(new Date(dateRange.end).setHours(23, 59, 59, 999)).toISOString() : undefined,
-      });
-
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `audit-logs-${format(new Date(), 'yyyy-MM-dd-HH-mm')}.csv`;
-      document.body.appendChild(a);
-      a.click();
-
-      // Cleanup
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast.success('Export completed successfully', { id: uniqueId });
-    } catch (error) {
-      console.error('Export failed:', error);
-      toast.error('Failed to export audit logs', { id: `rbac_export_error` });
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   const canDelete = hasPermission(RBAC_PERMISSIONS.AUDIT_DELETE);
 
@@ -185,22 +169,22 @@ export const RbacAuditLogs: React.FC = () => {
             Refresh
           </Button>
           {canExport && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExport}
-              disabled={isExporting}
-              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
-            >
-              <Download className={cn("h-4 w-4", isExporting && "animate-spin")} />
-              {isExporting ? 'Exporting...' : 'Export CSV'}
-            </Button>
+            <RbacAuditExportDialog
+              actionFilter={actionFilter}
+              usernameFilter={usernameFilter}
+              emailFilter={emailFilter}
+              statusFilter={statusFilter}
+              dateRange={dateRange}
+            />
           )}
 
           {canDelete && (
             <RbacAuditPruneDialog
               onPruneSuccess={() => refetch()}
               actionFilter={actionFilter}
+              usernameFilter={usernameFilter}
+              emailFilter={emailFilter}
+              statusFilter={statusFilter}
               dateRange={dateRange}
             />
           )}
@@ -220,7 +204,9 @@ export const RbacAuditLogs: React.FC = () => {
           </div>
           <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
             <p className="text-sm text-gray-400">Failed</p>
-            <p className="text-2xl font-bold text-red-400">{stats.byStatus.failure || 0}</p>
+            <p className="text-2xl font-bold text-red-400">
+              {(stats.byStatus.failed || 0) + (stats.byStatus.failure || 0)}
+            </p>
           </div>
           <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
             <p className="text-sm text-gray-400">Logins</p>
@@ -232,11 +218,70 @@ export const RbacAuditLogs: React.FC = () => {
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={usernameFilter} onValueChange={(v) => { setUsernameFilter(v === 'all' ? '' : v); setPage(1); }}>
+          <SelectTrigger className="w-[160px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
+            <UserIcon className="h-4 w-4 mr-2 text-gray-500" />
+            <SelectValue placeholder="Username" />
+            {usernameFilter && (
+              <span className="absolute right-8 top-1/2 -translate-y-1/2" onClick={(e) => {
+                e.stopPropagation();
+                setUsernameFilter('');
+                setPage(1);
+              }}>
+                <X className="h-3 w-3 text-gray-500 hover:text-white" />
+              </span>
+            )}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Usernames</SelectItem>
+            {metadata.usernames.map((username) => (
+              <SelectItem key={username} value={username}>{username}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={emailFilter} onValueChange={(v) => { setEmailFilter(v === 'all' ? '' : v); setPage(1); }}>
+          <SelectTrigger className="w-[180px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
+            <Mail className="h-4 w-4 mr-2 text-gray-500" />
+            <SelectValue placeholder="Email" />
+            {emailFilter && (
+              <span className="absolute right-8 top-1/2 -translate-y-1/2" onClick={(e) => {
+                e.stopPropagation();
+                setEmailFilter('');
+                setPage(1);
+              }}>
+                <X className="h-3 w-3 text-gray-500 hover:text-white" />
+              </span>
+            )}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Emails</SelectItem>
+            {metadata.emails.map((email) => (
+              <SelectItem key={email} value={email}>{email}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={statusFilter} onValueChange={(v: any) => { setStatusFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[130px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
+            <Activity className="h-4 w-4 mr-2 text-cyan-400" />
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            {metadata.statuses.map((status) => (
+              <SelectItem key={status} value={status}>
+                {status === 'success' ? 'Success' : (status === 'failed' || status === 'failure') ? 'Failed' : status}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[200px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors">
+          <SelectTrigger className="w-[180px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
             <Filter className="h-4 w-4 mr-2 text-cyan-400" />
-            <SelectValue placeholder="Filter by action" />
+            <SelectValue placeholder="Action" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Actions</SelectItem>
@@ -255,7 +300,7 @@ export const RbacAuditLogs: React.FC = () => {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2 bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors">
+            <Button variant="outline" className="gap-2 bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
               <Calendar className="h-4 w-4 text-cyan-400" />
               {dateRange.start ? (
                 dateRange.end && format(dateRange.start, 'MMM d, yyyy') !== format(dateRange.end, 'MMM d, yyyy')
@@ -352,19 +397,22 @@ export const RbacAuditLogs: React.FC = () => {
           </PopoverContent>
         </Popover>
 
-        {(dateRange.start || actionFilter !== 'all') && (
+        {(dateRange.start || actionFilter !== 'all' || usernameFilter || emailFilter || statusFilter !== 'all') && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
               setActionFilter('all');
+              setUsernameFilter('');
+              setEmailFilter('');
+              setStatusFilter('all');
               setDateRange({});
               setPage(1);
             }}
-            className="text-gray-400 hover:text-white hover:bg-white/5 rounded-xl px-4"
+            className="text-gray-400 hover:text-white hover:bg-white/5 rounded-xl px-4 h-9"
           >
             <X className="h-4 w-4 mr-2" />
-            Reset Filters
+            Reset
           </Button>
         )}
       </div>
@@ -454,10 +502,15 @@ export const RbacAuditLogs: React.FC = () => {
                           <CheckCircle className="h-3 w-3 mr-1" />
                           Success
                         </Badge>
-                      ) : (
+                      ) : (log.status === 'failed' || log.status === 'failure') ? (
                         <Badge variant="outline" className="bg-red-500/20 text-red-300 border-red-500/30">
                           <XCircle className="h-3 w-3 mr-1" />
                           Failed
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-gray-500/20 text-gray-300 border-gray-500/30">
+                          <Info className="h-3 w-3 mr-1" />
+                          Unknown
                         </Badge>
                       )}
                     </TableCell>

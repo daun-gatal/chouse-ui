@@ -863,7 +863,7 @@ export async function createAuditLog(
     details?: Record<string, unknown>;
     ipAddress?: string;
     userAgent?: string;
-    status?: 'success' | 'failure';
+    status?: 'success' | 'failed' | 'failure';
     errorMessage?: string;
   }
 ): Promise<void> {
@@ -914,7 +914,10 @@ export async function getAuditLogs(options: {
   page?: number;
   limit?: number;
   userId?: string;
+  username?: string;
+  email?: string;
   action?: string;
+  status?: 'success' | 'failed' | 'failure';
   startDate?: Date;
   endDate?: Date;
   // Internal flag to allow higher limits for system operations
@@ -936,8 +939,20 @@ export async function getAuditLogs(options: {
     conditions.push(eq(schema.auditLogs.userId, options.userId));
   }
 
+  if (options.username) {
+    conditions.push(like(schema.auditLogs.usernameSnapshot, `%${options.username.toLowerCase()}%`));
+  }
+
+  if (options.email) {
+    conditions.push(like(schema.auditLogs.emailSnapshot, `%${options.email.toLowerCase()}%`));
+  }
+
   if (options.action) {
     conditions.push(eq(schema.auditLogs.action, options.action));
+  }
+
+  if (options.status) {
+    conditions.push(eq(schema.auditLogs.status, options.status));
   }
 
   // Add date range filtering
@@ -973,7 +988,10 @@ export async function getAuditLogs(options: {
  */
 export async function deleteAuditLogs(options: {
   userId?: string;
+  username?: string;
+  email?: string;
   action?: string;
+  status?: 'success' | 'failed' | 'failure';
   startDate?: Date;
   endDate?: Date;
 } = {}): Promise<{ deletedCount: number }> {
@@ -986,8 +1004,20 @@ export async function deleteAuditLogs(options: {
     conditions.push(eq(schema.auditLogs.userId, options.userId));
   }
 
+  if (options.username) {
+    conditions.push(like(schema.auditLogs.usernameSnapshot, `%${options.username.toLowerCase()}%`));
+  }
+
+  if (options.email) {
+    conditions.push(like(schema.auditLogs.emailSnapshot, `%${options.email.toLowerCase()}%`));
+  }
+
   if (options.action) {
     conditions.push(eq(schema.auditLogs.action, options.action));
+  }
+
+  if (options.status) {
+    conditions.push(eq(schema.auditLogs.status, options.status));
   }
 
   if (options.startDate) {
@@ -1009,6 +1039,38 @@ export async function deleteAuditLogs(options: {
 
   return {
     deletedCount: result.rowsAffected || 0,
+  };
+}
+
+/**
+ * Get audit metadata (distinct values for filters)
+ */
+export async function getAuditMetadata(): Promise<{
+  usernames: string[];
+  emails: string[];
+  statuses: string[];
+}> {
+  const db = getDatabase() as any;
+  const schema = getSchema();
+
+  const [usernames, emails, statuses] = await Promise.all([
+    db.selectDistinct({ value: schema.auditLogs.usernameSnapshot })
+      .from(schema.auditLogs)
+      .where(sql`${schema.auditLogs.usernameSnapshot} IS NOT NULL`)
+      .orderBy(asc(schema.auditLogs.usernameSnapshot)),
+    db.selectDistinct({ value: schema.auditLogs.emailSnapshot })
+      .from(schema.auditLogs)
+      .where(sql`${schema.auditLogs.emailSnapshot} IS NOT NULL`)
+      .orderBy(asc(schema.auditLogs.emailSnapshot)),
+    db.selectDistinct({ value: schema.auditLogs.status })
+      .from(schema.auditLogs)
+      .orderBy(asc(schema.auditLogs.status)),
+  ]);
+
+  return {
+    usernames: usernames.map((r: any) => r.value).filter(Boolean),
+    emails: emails.map((r: any) => r.value).filter(Boolean),
+    statuses: statuses.map((r: any) => r.value).filter(Boolean),
   };
 }
 

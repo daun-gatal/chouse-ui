@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.10.1';
+export const APP_VERSION = '1.12.0';
 
 // ============================================
 // Migration Registry
@@ -1266,6 +1266,105 @@ const MIGRATIONS: Migration[] = [
         `);
         console.log('[Migration 1.11.0] Removed snapshot columns from PostgreSQL audit logs table');
       }
+    },
+  },
+  {
+    version: '1.12.0',
+    name: 'ai_optimize_permission',
+    description: 'Add ai:optimize permission and assign to default roles (Admin, Developer, Analyst)',
+    up: async (db) => {
+      // Use the existing seed function which is idempotent
+      const { seedPermissions } = await import('../services/seed');
+
+      // First ensure all permissions exist (including the new ai:optimize)
+      const permissionIdMap = await seedPermissions();
+
+      console.log('[Migration 1.12.0] AI optimize permission created/updated');
+
+      // Get permission ID
+      const aiOptimizeId = permissionIdMap.get('ai:optimize');
+
+      if (!aiOptimizeId) {
+        console.error('[Migration 1.12.0] Failed to get ai:optimize permission ID');
+        return;
+      }
+
+      // Import database functions
+      const { getDatabaseType } = await import('./index');
+      const { SYSTEM_ROLES } = await import('../schema/base');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+
+      const dbType = getDatabaseType();
+
+      // Grant to Super Admin, Admin, Developer, and Analyst
+      const rolesToUpdate = [
+        SYSTEM_ROLES.SUPER_ADMIN,
+        SYSTEM_ROLES.ADMIN,
+        SYSTEM_ROLES.DEVELOPER,
+        SYSTEM_ROLES.ANALYST
+      ];
+
+      for (const roleName of rolesToUpdate) {
+        let roleResult: Array<{ id: string }>;
+
+        if (dbType === 'sqlite') {
+          roleResult = (db as SqliteDb).all(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `) as Array<{ id: string }>;
+        } else {
+          const rows = await (db as PostgresDb).execute(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `);
+          const raw = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          roleResult = raw as Array<{ id: string }>;
+        }
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          let existing: Array<unknown>;
+
+          if (dbType === 'sqlite') {
+            existing = (db as SqliteDb).all(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${aiOptimizeId} LIMIT 1
+            `);
+          } else {
+            const rows = await (db as PostgresDb).execute(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${aiOptimizeId} LIMIT 1
+            `);
+            existing = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          }
+
+          if (existing.length === 0) {
+            const id = randomUUID();
+            const createdAt = new Date();
+
+            if (dbType === 'sqlite') {
+              (db as SqliteDb).run(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${aiOptimizeId}, ${Math.floor(createdAt.getTime() / 1000)})
+              `);
+            } else {
+              // Postgres driver expects string/Buffer for bind params, not Date
+              await (db as PostgresDb).execute(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${aiOptimizeId}, ${createdAt.toISOString()})
+              `);
+            }
+            console.log(`[Migration 1.12.0] Assigned permission ${aiOptimizeId} to role ${roleName}`);
+          } else {
+            console.log(`[Migration 1.12.0] Permission ${aiOptimizeId} already assigned to role ${roleName}`);
+          }
+        }
+      }
+
+      console.log('[Migration 1.12.0] AI optimize permission sync completed');
+    },
+    down: async (db) => {
+      console.log('[Migration 1.12.0] Down migration: AI optimization permission will remain (idempotent seed)');
     },
   },
 ];

@@ -33,6 +33,10 @@ config.get("/", (c) => {
         name: "CHouse UI",
         version: process.env.VERSION || "dev",
       },
+      // Feature flags
+      features: {
+        aiOptimizer: process.env.AI_OPTIMIZER_ENABLED === 'true',
+      },
     },
   });
 });

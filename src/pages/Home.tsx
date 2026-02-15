@@ -26,6 +26,7 @@ import {
   Lightbulb,
   type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -278,6 +279,11 @@ export default function HomePage() {
   const { data: recentQueries = [] } = useRecentQueries(10, usernameFilter);
   const { data: savedQueries = [] } = useSavedQueries(activeConnectionId || undefined);
 
+  // Filter saved queries by active connection
+  const filteredSavedQueries = useMemo(() => {
+    return savedQueries.filter((sq) => sq.connectionId === activeConnectionId);
+  }, [savedQueries, activeConnectionId]);
+
   // UI State
   const [tablesTab, setTablesTab] = useState<string>("favorites");
 
@@ -314,7 +320,13 @@ export default function HomePage() {
     }
   };
 
-  const handleTableClick = (database: string, table?: string) => {
+  const handleTableClick = (database: string, table?: string, targetConnectionId?: string | null, targetConnectionName?: string | null) => {
+    // Check if we need to switch connections
+    if (targetConnectionId && targetConnectionId !== activeConnectionId) {
+      useAuthStore.getState().setActiveConnection(targetConnectionId, targetConnectionName);
+      toast.success(`Switched to connection: ${targetConnectionName || "target connection"}`);
+    }
+
     // Expand the database node in the tree
     expandNode(database);
 
@@ -359,7 +371,10 @@ export default function HomePage() {
   };
 
   const userDisplayName = rbacUser?.displayName || rbacUser?.username || "User";
-  const tablesToShow = tablesTab === "favorites" ? favorites : recentItems;
+  const tablesToShow = useMemo(() => {
+    const items = tablesTab === "favorites" ? favorites : recentItems;
+    return items.filter((item) => item.connectionId === activeConnectionId);
+  }, [tablesTab, favorites, recentItems, activeConnectionId]);
   const greeting = getGreeting();
 
   return (
@@ -567,7 +582,7 @@ export default function HomePage() {
                       subtitle={item.table ? item.database : undefined}
                       meta={tablesTab === "recent" ? formatRelativeTime((item as RecentItem).accessedAt) : undefined}
                       badge={tablesTab === "favorites" ? <Star className="w-3 h-3 text-amber-400 fill-amber-400" /> : undefined}
-                      onClick={() => handleTableClick(item.database, item.table)}
+                      onClick={() => handleTableClick(item.database, item.table, item.connectionId, item.connectionName)}
                     />
                   ))}
                 </div>
@@ -582,9 +597,9 @@ export default function HomePage() {
               title="Saved Queries"
               iconColor="text-purple-400"
               iconBgColor="bg-purple-500/20"
-              count={savedQueries.length}
+              count={filteredSavedQueries.length}
               action={
-                savedQueries.length > 6 && (
+                filteredSavedQueries.length > 6 && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -597,7 +612,7 @@ export default function HomePage() {
               }
             />
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-              {savedQueries.length === 0 ? (
+              {filteredSavedQueries.length === 0 ? (
                 <EmptyState
                   icon={FileCode}
                   message="Save your frequently used queries for quick access"
@@ -606,7 +621,7 @@ export default function HomePage() {
                 />
               ) : (
                 <div className="space-y-1.5 pb-2">
-                  {savedQueries.map((sq) => (
+                  {filteredSavedQueries.map((sq) => (
                     <ListItem
                       key={sq.id}
                       icon={FileCode}
