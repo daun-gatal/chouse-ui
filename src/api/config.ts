@@ -14,6 +14,9 @@ export interface AppConfig {
     name: string;
     version: string;
   };
+  features?: {
+    aiOptimizer: boolean;
+  };
 }
 
 /**

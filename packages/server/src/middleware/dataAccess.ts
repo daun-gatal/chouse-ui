@@ -265,7 +265,7 @@ async function validateSingleStatement(
   permissions: string[],
   defaultDatabase: string | undefined,
   connectionId: string | undefined
-): Promise<{ allowed: boolean; reason?: string; statementIndex?: number }> {
+): Promise<{ allowed: boolean; reason?: string; statementIndex?: number; warnings?: string[] }> {
   // Parse statement using AST parser for robust analysis
   let parsed: ParsedStatement;
   try {
@@ -431,7 +431,7 @@ async function validateSingleStatement(
     }
   }
 
-  return { allowed: true };
+  return { allowed: true, warnings: parsed.warnings };
 }
 
 /**
@@ -467,7 +467,7 @@ export async function validateQueryAccess(
   sql: string,
   defaultDatabase?: string,
   connectionId?: string
-): Promise<{ allowed: boolean; reason?: string; statementIndex?: number }> {
+): Promise<{ allowed: boolean; reason?: string; statementIndex?: number; warnings?: string[] }> {
   // Admins have full access
   if (isAdmin) return { allowed: true };
 
@@ -491,6 +491,7 @@ export async function validateQueryAccess(
   }
 
   // Validate each statement individually
+  const allWarnings: string[] = [];
   for (let i = 0; i < statements.length; i++) {
     const statement = statements[i];
     const validation = await validateSingleStatement(
@@ -511,8 +512,33 @@ export async function validateQueryAccess(
         statementIndex: validation.statementIndex,
       };
     }
+
+    if (validation.warnings) {
+      allWarnings.push(...validation.warnings);
+    }
   }
 
   // All statements passed validation
-  return { allowed: true };
+  return { allowed: true, warnings: allWarnings.length > 0 ? allWarnings : undefined };
+}
+
+/**
+ * Extract distinct tables from EXPLAIN ESTIMATE result
+ */
+export function extractTablesFromExplainEstimate(estimateData: any[]): { database: string; table: string }[] {
+  const tables = new Set<string>();
+  const result: { database: string; table: string }[] = [];
+
+  if (!Array.isArray(estimateData)) return [];
+
+  for (const row of estimateData) {
+    if (row.database && row.table) {
+      const key = `${row.database}.${row.table}`;
+      if (!tables.has(key)) {
+        tables.add(key);
+        result.push({ database: row.database, table: row.table });
+      }
+    }
+  }
+  return result;
 }

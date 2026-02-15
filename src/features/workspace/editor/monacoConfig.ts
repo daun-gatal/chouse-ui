@@ -1,6 +1,7 @@
 //monacoConfig.ts
 import { createClient } from "@clickhouse/client-web";
 import * as monaco from "monaco-editor";
+// import 'monaco-editor/min/vs/editor/editor.main.css';
 import { format } from "sql-formatter";
 import { appQueries } from "./appQueries";
 
@@ -273,11 +274,9 @@ function parseQueryContext(
 
 // Initialize Monaco editor with ClickHouse SQL language features
 export const initializeMonacoGlobally = async () => {
-  if (isInitialized) return;
-
   ensureMonacoEnvironment();
 
-  // Define custom dark theme
+  // Define custom dark theme - Always define/update to ensure colors are correct
   monaco.editor.defineTheme('chouse-dark', {
     base: 'vs-dark',
     inherit: true,
@@ -287,8 +286,13 @@ export const initializeMonacoGlobally = async () => {
       'editor.lineHighlightBackground': '#ffffff0a',
       'editorLineNumber.foreground': '#ffffff20',
       'editorLineNumber.activeForeground': '#ffffff60',
+      'diffEditor.insertedTextBackground': '#2ea04330',
+      'diffEditor.removedTextBackground': '#da363330',
+      'diffEditor.diagonalFill': '#ffffff10',
     }
   });
+
+  if (isInitialized) return;
 
   // Register the SQL language
   monaco.languages.register({ id: "sql" });
@@ -597,4 +601,28 @@ export const createMonacoEditor = async (
   });
 
   return editor;
+};
+
+// Create a Monaco Diff Editor instance
+export const createMonacoDiffEditor = async (
+  container: HTMLElement,
+  theme: string,
+  options: monaco.editor.IDiffEditorConstructionOptions = {}
+): Promise<monaco.editor.IStandaloneDiffEditor> => {
+  const monacoOptions = await getMonacoEditorOptions();
+
+  const diffEditor = monaco.editor.createDiffEditor(container, {
+    theme: theme === 'vs-dark' ? 'chouse-dark' : theme || "vs-dark",
+    automaticLayout: true,
+    fontSize: monacoOptions.fontSize,
+    wordWrap: monacoOptions.wordWrap,
+    minimap: monacoOptions.minimap,
+    padding: monacoOptions.padding,
+    readOnly: false, // Allow interaction, but we can set specific models to read-only if needed
+    originalEditable: false,
+    renderSideBySide: true,
+    ...options, // Spread passed options to override defaults
+  });
+
+  return diffEditor;
 };

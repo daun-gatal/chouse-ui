@@ -27,5 +27,6 @@ describe('Config API', () => {
 
         expect(config.app.name).toBe('CHouse UI');
         expect(config.app.version).toBe('2.7.5');
+        expect(config.features?.aiOptimizer).toBe(true);
     });
 });

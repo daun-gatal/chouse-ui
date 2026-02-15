@@ -31,7 +31,9 @@ describe("Config Route", () => {
         expect(body.data.clickhouse.presetUrls).toEqual([]);
         expect(body.data.clickhouse.defaultUrl).toBe("");
         expect(body.data.clickhouse.defaultUser).toBe("default");
+        expect(body.data.clickhouse.defaultUser).toBe("default");
         expect(body.data.app.version).toBe("dev");
+        expect(body.data.features.aiOptimizer).toBe(false);
     });
 
     it("should parse preset URLs and other env vars", async () => {
@@ -39,6 +41,7 @@ describe("Config Route", () => {
         process.env.CLICKHOUSE_DEFAULT_URL = "http://localhost:8123";
         process.env.CLICKHOUSE_DEFAULT_USER = "admin";
         process.env.VERSION = "1.0.0";
+        process.env.AI_OPTIMIZER_ENABLED = "true";
 
         const res = await app.request("/config");
         expect(res.status).toBe(200);
@@ -48,5 +51,6 @@ describe("Config Route", () => {
         expect(body.data.clickhouse.defaultUrl).toBe("http://localhost:8123");
         expect(body.data.clickhouse.defaultUser).toBe("admin");
         expect(body.data.app.version).toBe("1.0.0");
+        expect(body.data.features.aiOptimizer).toBe(true);
     });
 });

@@ -1007,6 +1007,222 @@ query.post("/system", zValidator("json", QueryRequestSchemaWithType), async (c) 
 });
 
 // ============================================
+// AI Query Optimizer
+// ============================================
+
+const OptimizeQuerySchema = z.object({
+  query: z.string().min(1, "Query is required"),
+  database: z.string().optional(),
+  additionalPrompt: z.string().optional(),
+});
+
+query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
+  const { query: sql, database, additionalPrompt } = c.req.valid("json");
+  const service = c.get("service");
+  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const isRbacAdmin = c.get("isRbacAdmin");
+  const rbacPermissions = c.get("rbacPermissions");
+  const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
+  const defaultDatabase = database || session?.connectionConfig?.database;
+
+  try {
+    // Import AI optimizer service
+    const { optimizeQuery, isOptimizerEnabled } = await import("../services/aiOptimizer");
+
+    // Check if optimizer is enabled
+    if (!isOptimizerEnabled()) {
+      return c.json({
+        success: false,
+        error: {
+          code: "FEATURE_DISABLED",
+          message: "AI optimizer is not enabled. Please contact your administrator.",
+        },
+      }, 503 as any);
+    }
+
+    // Check AI optimizer permission
+    await checkQueryPermission(
+      rbacUserId,
+      rbacPermissions,
+      isRbacAdmin,
+      PERMISSIONS.AI_OPTIMIZE
+    );
+
+    // Validate query type - only allow SELECT and WITH queries
+    const trimmedQuery = sql.trim().toUpperCase();
+    if (!trimmedQuery.startsWith("SELECT") && !trimmedQuery.startsWith("WITH")) {
+      return c.json({
+        success: false,
+        error: {
+          code: "INVALID_QUERY_TYPE",
+          message: "AI optimizer only supports SELECT and WITH queries (read-only operations)",
+        },
+      }, 400 as any);
+    }
+
+    // Validate table access
+    const accessCheck = await validateQueryAccess(
+      rbacUserId,
+      isRbacAdmin,
+      rbacPermissions,
+      sql,
+      defaultDatabase,
+      connectionId
+    );
+
+    if (!accessCheck.allowed) {
+      return c.json({
+        success: false,
+        error: {
+          code: "FORBIDDEN",
+          message: accessCheck.reason || "Access denied to one or more tables in query",
+        },
+      }, 403 as any);
+    }
+
+    // Extract table names
+    // @ts-ignore
+    const { extractTablesFromQuery, extractTablesFromExplainEstimate } = await import("../middleware/dataAccess");
+    let usedTables: { database: string; table: string }[] = [];
+
+    // Try to get used tables from EXPLAIN ESTIMATE first as it's more accurate for views and underlying tables
+    try {
+      const explainEstimate = await service.getExplainPlan(sql, 'estimate');
+      if (explainEstimate && explainEstimate.estimate) {
+        usedTables = extractTablesFromExplainEstimate(explainEstimate.estimate);
+      }
+    } catch (error) {
+      // If the error is a syntax error or missing identifier, abort optimization and report it to the user
+      // This prevents confusion where the user sees a 500 error later
+      const errorMessage = (error instanceof Error ? error.message : String(error)).toUpperCase();
+      const isUserError = errorMessage.includes("UNKNOWN_IDENTIFIER") ||
+        errorMessage.includes("SYNTAX_ERROR") ||
+        errorMessage.includes("SYNTAX ERROR") ||
+        errorMessage.includes("CANNOT BE RESOLVED") ||
+        errorMessage.includes("UNKNOWN TABLE"); // ClickHouse user errors
+
+      if (isUserError) {
+        return c.json({
+          success: false,
+          error: {
+            code: "INVALID_QUERY",
+            message: `Optimization stopped: Your query contains errors. ${error instanceof Error ? error.message : String(error)}`,
+          },
+        }, 400 as any);
+      }
+
+      console.warn('Failed to get explain estimate for table extraction:', error);
+    }
+
+    // Fallback to regex-based extraction if estimate failed or returned nothing
+    if (usedTables.length === 0) {
+      const tables = extractTablesFromQuery(sql);
+      usedTables = tables
+        .filter((t): t is { database?: string; table: string } => !!t.table)
+        .map(t => ({
+          database: t.database || defaultDatabase || 'default',
+          table: t.table
+        }));
+    }
+
+    // Deduplicate tables
+    const uniqueTables = new Map<string, { database: string; table: string }>();
+    usedTables.forEach(t => {
+      const db = t.database || defaultDatabase || 'default';
+      if (t.table) {
+        uniqueTables.set(`${db}.${t.table}`, { database: db, table: t.table });
+      }
+    });
+
+    const tableDetails = await Promise.all(
+      Array.from(uniqueTables.values()).map(async (tableRef) => {
+        return service.getTableDetails(tableRef.database, tableRef.table).catch(() => null);
+      })
+    ).then(results => results.filter((r): r is Awaited<ReturnType<typeof service.getTableDetails>> => r !== null));
+
+    // Call AI optimizer
+    const result = await optimizeQuery(sql, tableDetails, additionalPrompt);
+
+    // Create audit log
+    if (rbacUserId) {
+      try {
+        await createAuditLog(
+          AUDIT_ACTIONS.CH_QUERY_EXECUTE,
+          rbacUserId,
+          {
+            details: {
+              action: 'ai_optimize',
+              query: sql.substring(0, 1000),
+              database: defaultDatabase,
+              connectionId,
+            },
+            status: 'success',
+          }
+        );
+      } catch (auditError) {
+        console.error('[Query] Failed to create audit log:', auditError);
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        originalQuery: result.originalQuery,
+        optimizedQuery: result.optimizedQuery,
+        explanation: result.explanation,
+        summary: result.summary,
+        tips: result.tips,
+        warnings: accessCheck.warnings,
+      },
+    });
+  } catch (error) {
+    // Log error for debugging
+    console.error('[Query] Optimization failed:', error instanceof Error ? error.message : String(error));
+
+    // Create audit log for failure
+    if (rbacUserId) {
+      try {
+        await createAuditLog(
+          AUDIT_ACTIONS.CH_QUERY_EXECUTE,
+          rbacUserId,
+          {
+            details: {
+              action: 'ai_optimize',
+              query: sql.substring(0, 1000),
+              database: defaultDatabase,
+              connectionId,
+            },
+            status: 'failure',
+            errorMessage: error instanceof Error ? error.message : String(error),
+          }
+        );
+      } catch (auditError) {
+        console.error('[Query] Failed to create audit log:', auditError);
+      }
+    }
+
+    if (error instanceof AppError) {
+      return c.json({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      }, error.statusCode as any);
+    }
+
+    return c.json({
+      success: false,
+      error: {
+        code: "OPTIMIZATION_FAILED",
+        message: error instanceof Error ? error.message : "Failed to optimize query. Please try again or contact your administrator.",
+      },
+    }, 500 as 500);
+  }
+});
+
+// ============================================
 // Mount Nested Routers
 // ============================================
 

@@ -11,6 +11,7 @@ import PipelineView from './PipelineView';
 import ExplainInfoHeader from './ExplainInfoHeader';
 import { ExplainResult, ExplainEstimate, ExplainType, EXPLAIN_TYPES, QueryComplexity, PerformanceRecommendation } from '@/types/explain';
 import { queryApi } from '@/api';
+import { useConfig } from '@/hooks';
 
 // Extended type to include analysis
 type ViewType = ExplainType | 'analysis';
@@ -123,6 +124,9 @@ const ExplainTab: React.FC<ExplainTabProps> = ({
 
   // Track the last refresh key to detect when a new explain is requested
   const [lastRefreshKey, setLastRefreshKey] = useState<number>(refreshKey);
+
+  const { data: config } = useConfig();
+  const showAnalysisTab = !config?.features?.aiOptimizer;
 
   // Sync activeView with currentType when it changes from parent
   useEffect(() => {
@@ -270,13 +274,14 @@ const ExplainTab: React.FC<ExplainTabProps> = ({
   };
 
   // All view types including analysis
+  // All view types including analysis
   const viewTypes: { key: ViewType; label: string; description: string }[] = [
     ...Object.entries(EXPLAIN_TYPES).map(([key, value]) => ({
       key: key as ExplainType,
       label: value.label,
       description: value.description
     })),
-    { key: 'analysis', label: 'Analysis', description: 'Query complexity and performance recommendations' }
+    ...(showAnalysisTab ? [{ key: 'analysis' as ViewType, label: 'Analysis', description: 'Query complexity and performance recommendations' }] : [])
   ];
 
   return (

@@ -388,6 +388,9 @@ export const RBAC_PERMISSIONS = {
   CONNECTIONS_VIEW: 'connections:view',
   CONNECTIONS_EDIT: 'connections:edit',
   CONNECTIONS_DELETE: 'connections:delete',
+
+  // AI Features
+  AI_OPTIMIZE: 'ai:optimize',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

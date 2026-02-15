@@ -19,6 +19,7 @@ export interface ParsedStatement {
   type: 'select' | 'insert' | 'update' | 'delete' | 'create' | 'drop' | 'alter' | 'truncate' | 'show' | 'describe' | 'use' | 'set' | 'explain' | 'exists' | 'check' | 'kill' | 'unknown';
   tables: Array<{ database?: string; table: string }>;
   ast?: AST | AST[];
+  warnings?: string[];
 }
 
 export type AccessType = 'read' | 'write' | 'admin' | 'misc';
@@ -162,9 +163,11 @@ export function parseStatement(statement: string): ParsedStatement {
   } catch (error) {
     // If parsing fails, fall back to simple pattern matching
     // This handles edge cases like system queries, ClickHouse-specific syntax, etc.
-    console.warn('[SQL Parser] Failed to parse statement, using fallback:', error instanceof Error ? error.message : String(error));
+    // Suppress warning for common parse errors as fallback is robust
+    // console.warn('[SQL Parser] Failed to parse statement, using fallback:', error instanceof Error ? error.message : String(error));
     result.type = getStatementTypeFallback(statement);
     result.tables = extractTablesFallback(statement);
+    result.warnings = [`Failed to parse statement (using fallback): ${error instanceof Error ? error.message : String(error)}`];
   }
 
   return result;

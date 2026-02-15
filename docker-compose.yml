@@ -83,6 +83,15 @@ services:
       CLICKHOUSE_DEFAULT_URL: ${CLICKHOUSE_DEFAULT_URL:-}
       CLICKHOUSE_PRESET_URLS: ${CLICKHOUSE_PRESET_URLS:-}
       CLICKHOUSE_DEFAULT_USER: ${CLICKHOUSE_DEFAULT_USER:-}
+      # ============================================
+      # AI Features (Optional)
+      # ============================================
+      AI_OPTIMIZER_ENABLED: ${AI_OPTIMIZER_ENABLED:-false}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL_NAME: ${AI_MODEL_NAME:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+
     depends_on:
       clickhouse:
         condition: service_healthy

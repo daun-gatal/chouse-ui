@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.10.0] - 2026-02-15
+
+### Added
+
+- **AI Query Optimizer**: Integrated intelligent query optimization directly into the SQL Editor (Issue #115).
+  - **Multi-Provider Support**: Supports OpenAI, Anthropic, Google Gemini, and HuggingFace models.
+  - **Interactive Dialog**: Dedicated interface to optimize queries with custom prompts.
+  - **Diff View**: Visual comparison between original and optimized SQL.
+  - **Detailed Analysis**: Provides markdown-formatted explanations, performance summaries, and actionable tips.
+  - **RBAC Protection**: Restricted to users with `AI_OPTIMIZE` permission.
+
+### Changed
+
+- **Explain Tab Enhancements**: Refactored Explain tab to distinct view types (Plan, AST, Syntax, Pipeline).
+- **RBAC Roles UI**: Improved role management interface with better permission grouping and visual feedback.
+- **SQL Editor**: Added direct access to AI Optimizer and improved save functionality.
+
 ## [v2.9.2] - 2026-02-14
 
 ### Added

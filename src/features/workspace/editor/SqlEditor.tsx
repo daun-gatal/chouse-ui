@@ -7,7 +7,8 @@ import {
   createMonacoEditor,
 } from "@/features/workspace/editor/monacoConfig";
 import { Button } from "@/components/ui/button";
-import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database, Network } from "lucide-react";
+import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database, Network, Sparkles } from "lucide-react";
+import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -66,6 +67,9 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
   const canUpdateQuery = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_UPDATE);
   const canManageSavedQueries = canSaveQuery || canUpdateQuery;
 
+  // Check permission for AI optimizer
+  const canOptimizeQuery = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+
   const editorRef = useRef<HTMLDivElement>(null);
   const monacoRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const tab = getTabById(tabId);
@@ -74,6 +78,9 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
   const [saveMode, setSaveMode] = useState<SaveMode>("save");
   const [queryName, setQueryName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  // Optimizer dialog state
+  const [isOptimizerOpen, setIsOptimizerOpen] = useState(false);
 
   // Permissions for live queries
   const canKillQuery = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_KILL);
@@ -180,6 +187,22 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
       }
     }
   }, [onExplain, getCurrentQuery]);
+
+  const handleOptimizeQuery = useCallback(() => {
+    const content = getCurrentQuery();
+    if (content.trim()) {
+      setIsOptimizerOpen(true);
+    } else {
+      toast.error("Please enter a query to optimize");
+    }
+  }, [getCurrentQuery]);
+
+  const handleAcceptOptimizedQuery = useCallback((optimizedQuery: string) => {
+    if (monacoRef.current) {
+      monacoRef.current.setValue(optimizedQuery);
+      updateTab(tabId, { content: optimizedQuery });
+    }
+  }, [tabId, updateTab]);
 
   const isSavingRef = useRef(false);
 
@@ -579,6 +602,28 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
                 </>
               )}
 
+              {/* AI Optimizer Button - Only show if user has permission */}
+              {canOptimizeQuery && (
+                <>
+                  <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleOptimizeQuery}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:bg-gradient-to-r hover:from-purple-600 hover:to-pink-600 hover:text-white transition-all duration-200"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" align="center">
+                      <p>Optimize Query with AI</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              )}
+
               <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
 
               {/* Save Dropdown - Only show if user has permission to save queries */}
@@ -690,6 +735,16 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI Optimizer Dialog */}
+      <OptimizeQueryDialog
+        isOpen={isOptimizerOpen}
+        onClose={() => setIsOptimizerOpen(false)}
+        query={getCurrentQuery()}
+        database={undefined}
+        onAccept={handleAcceptOptimizedQuery}
+      />
+
       {/* Kill Query Confirmation Dialog */}
       <AlertDialog open={isKillDialogOpen} onOpenChange={setIsKillDialogOpen}>
         <AlertDialogContent>
