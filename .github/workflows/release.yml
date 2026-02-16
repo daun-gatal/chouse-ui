@@ -10,7 +10,7 @@ on:
 # Prevent parallel runs to avoid version conflicts
 concurrency:
   group: release-workflow
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   tag-and-release:
