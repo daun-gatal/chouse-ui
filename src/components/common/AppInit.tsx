@@ -53,6 +53,11 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
   // Listen for unauthorized events (e.g. 401 from API)
   useEffect(() => {
     const handleUnauthorized = () => {
+      // Prevent infinite loop if we are already on the login page
+      if (window.location.pathname === "/login") {
+        return;
+      }
+
       logout().catch((err) => {
         console.error("[AppInit] Logout error:", err);
       });

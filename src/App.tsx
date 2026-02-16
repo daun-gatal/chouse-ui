@@ -18,6 +18,9 @@ import CreateUser from "@/features/admin/components/CreateUser";
 import EditUser from "@/features/admin/components/EditUser";
 import { RBAC_PERMISSIONS } from "@/stores/rbac";
 import { PageTitleUpdater } from "@/components/common/PageTitleUpdater";
+import { api, rbacConnectionsApi } from "@/api";
+import { useAuthStore } from "@/stores/auth";
+import { toast } from "sonner";
 
 // Storage key for dock mode (to sync with FloatingDock).
 const DOCK_MODE_KEY = "chouseui-dock-mode";
@@ -66,6 +69,43 @@ const MainLayout = () => {
 };
 
 export default function App() {
+  // Session Recovery Logic
+  useEffect(() => {
+    api.setOnSessionExpired(async () => {
+      const activeConnectionId = useAuthStore.getState().activeConnectionId;
+      console.warn("[App] ClickHouse session expired. Attempting to reconnect...", activeConnectionId);
+
+      if (activeConnectionId) {
+        try {
+          const result = await rbacConnectionsApi.connect(activeConnectionId);
+          if (result && result.sessionId) {
+            useAuthStore.getState().setConnectionInfo({
+              sessionId: result.sessionId,
+              username: result.username,
+              url: `${result.host}:${result.port}`,
+              version: result.version,
+              isAdmin: result.isAdmin,
+              permissions: result.permissions,
+              activeConnectionId: activeConnectionId,
+              activeConnectionName: result.connectionName,
+            });
+            console.log("[App] Session recovered successfully.");
+            toast.success("Session recovered");
+          }
+        } catch (e) {
+          console.error("[App] Failed to recover session:", e);
+          toast.error("Session expired. Please reconnect.");
+        }
+      } else {
+        toast.error("Session expired. Please select a connection.");
+      }
+    });
+
+    return () => {
+      api.setOnSessionExpired(() => { }); // Cleanup
+    };
+  }, []);
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <Router basename={import.meta.env.BASE_URL}>

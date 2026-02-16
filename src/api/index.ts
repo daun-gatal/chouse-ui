@@ -52,6 +52,7 @@ export {
   rbacUsersApi,
   rbacRolesApi,
   rbacAuditApi,
+  rbacConnectionsApi,
   rbacUserPreferencesApi,
   checkRbacHealth,
 } from './rbac';

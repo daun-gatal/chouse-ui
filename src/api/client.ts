@@ -109,35 +109,49 @@ export function clearRbacTokens(): void {
   localStorage.removeItem(RBAC_REFRESH_TOKEN_KEY);
 }
 
+let globalRefreshPromise: Promise<boolean> | null = null;
+
 export async function refreshTokens(): Promise<boolean> {
+  // Return existing promise if refresh is already in progress
+  if (globalRefreshPromise) {
+    return globalRefreshPromise;
+  }
+
   const refreshToken = getRbacRefreshToken();
   if (!refreshToken) return false;
 
-  try {
-    const response = await fetch('/api/rbac/auth/refresh', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      body: JSON.stringify({ refreshToken }),
-    });
+  globalRefreshPromise = (async () => {
+    try {
+      const response = await fetch('/api/rbac/auth/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        clearRbacTokens();
+        return false;
+      }
+
+      const data = await response.json();
+      if (data.success && data.data?.tokens) {
+        setRbacTokens(data.data.tokens);
+        return true;
+      }
+      return false;
+    } catch {
       clearRbacTokens();
       return false;
+    } finally {
+      // Clear the promise after completion so future calls can refresh again
+      globalRefreshPromise = null;
     }
+  })();
 
-    const data = await response.json();
-    if (data.success && data.data?.tokens) {
-      setRbacTokens(data.data.tokens);
-      return true;
-    }
-    return false;
-  } catch {
-    clearRbacTokens();
-    return false;
-  }
+  return globalRefreshPromise;
 }
 
 // ============================================
@@ -146,9 +160,16 @@ export async function refreshTokens(): Promise<boolean> {
 
 class ApiClient {
   private baseUrl: string;
+  private isRefreshing = false;
+  private refreshPromise: Promise<boolean> | null = null;
+  private sessionExpiredHandler: (() => void) | null = null;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
+  }
+
+  public setOnSessionExpired(handler: () => void) {
+    this.sessionExpiredHandler = handler;
   }
 
   private buildUrl(path: string, params?: Record<string, string | number | boolean | undefined>): string {
@@ -172,49 +193,44 @@ class ApiClient {
   ): Promise<T> {
     const { body, params, headers: customHeaders, ...rest } = options;
 
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      // Required header to prove request comes from JavaScript, not direct browser navigation
-      'X-Requested-With': 'XMLHttpRequest',
-      ...customHeaders,
+    const getHeaders = () => {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        // Required header to prove request comes from JavaScript, not direct browser navigation
+        'X-Requested-With': 'XMLHttpRequest',
+        ...customHeaders,
+      };
+
+      // Add session ID if available
+      const currentSessionId = getSessionId();
+      if (currentSessionId) {
+        (headers as Record<string, string>)['X-Session-ID'] = currentSessionId;
+      }
+
+      // Add RBAC access token if available
+      const rbacToken = getRbacAccessToken();
+      if (rbacToken) {
+        (headers as Record<string, string>)['Authorization'] = `Bearer ${rbacToken}`;
+      }
+      return headers;
     };
-
-    // Add session ID if available
-    const currentSessionId = getSessionId();
-    if (currentSessionId) {
-      (headers as Record<string, string>)['X-Session-ID'] = currentSessionId;
-    }
-
-    // Add RBAC access token if available (for data access filtering)
-    // SECURITY WARNING: Storing tokens in localStorage is vulnerable to XSS attacks.
-    // If an XSS vulnerability exists, attackers can steal tokens from localStorage.
-    // Consider migrating to httpOnly cookies for better security (requires server-side changes).
-    // For now, we rely on XSS prevention measures (DOMPurify, CSP headers) to protect tokens.
-    const rbacToken = getRbacAccessToken();
-    if (rbacToken) {
-      (headers as Record<string, string>)['Authorization'] = `Bearer ${rbacToken}`;
-    }
 
     // Retry logic for 429 Too Many Requests and 401 Unauthorized (Refresh)
     const maxRetries = 3;
     let attempt = 0;
-    let isRetryAfterRefresh = false;
 
     while (attempt <= maxRetries) {
       try {
         const url = this.buildUrl(path, params);
 
-        // If this is a retry after refresh, make sure we use the new token
-        if (isRetryAfterRefresh) {
-          const newToken = getRbacAccessToken();
-          if (newToken) {
-            (headers as Record<string, string>)['Authorization'] = `Bearer ${newToken}`;
-          }
+        // Wait if a refresh is in progress
+        if (this.isRefreshing && this.refreshPromise) {
+          await this.refreshPromise;
         }
 
         const response = await fetch(url, {
           method,
-          headers,
+          headers: getHeaders(),
           body: body ? JSON.stringify(body) : undefined,
           credentials: 'include',
           ...rest,
@@ -228,22 +244,51 @@ class ApiClient {
             data = JSON.parse(text);
           }
         } catch (e) {
-          // If response is not JSON, we'll handle it below based on status code
-          // This happens for 429s or other errors that return plain text
+          // If response is not JSON, handle based on status code
         }
 
         if (!response.ok || !data || !data.success) {
-          // Handle 401 Unauthorized with Token Refresh
-          // Skip if this request was already a retry after refresh to prevent infinite loops
-          if (response.status === 401 && !isRetryAfterRefresh) {
-            const refreshed = await refreshTokens();
-            if (refreshed) {
-              isRetryAfterRefresh = true;
-              // Don't increment attempt count for refresh retry, or do? 
-              // Let's treat it as a special retry.
-              continue;
+          // Handle 401 Unauthorized with Token Refresh (Concurrency Safe)
+          if (response.status === 401) {
+            // If we already tried refreshing in this request loop, don't try again
+            // But we need to check if a refresh happened while we were waiting?
+            // Simplified: try to refresh if not already refreshing
+
+            if (!this.isRefreshing) {
+              this.isRefreshing = true;
+              this.refreshPromise = refreshTokens().finally(() => {
+                this.isRefreshing = false;
+                this.refreshPromise = null;
+              });
             }
-            // If refresh failed, fall through to error handling which triggers logout
+
+            const refreshed = await this.refreshPromise;
+            if (refreshed) {
+              // Retry the request with new token
+              // The next iteration will pick up the new token via getHeaders()
+              // We increment attempt to avoid infinite loops if refresh succeeds but request still fails
+              attempt++;
+              continue;
+            } else {
+              // Refresh failed - logout
+              clearSession();
+              clearRbacTokens();
+              window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+              throw new ApiError('Session expired', 401, 'UNAUTHORIZED', 'authentication');
+            }
+          }
+
+          // Handle Session Not Found (400 NO_SESSION)
+          // If we get a NO_SESSION error, it means RBAC is fine but ClickHouse session is gone
+          if (data?.error?.code === 'NO_SESSION' && this.sessionExpiredHandler) {
+            // Trigger transparent reconnection
+            // We throw a special error that the UI/Store can catch if needed, 
+            // but mostly we rely on the handler to fix it background
+            this.sessionExpiredHandler();
+            // We could retry here, but reconnection might take time.
+            // For now, let's throw and let the store retry or UI show loading
+            // Actually, better to retry if possible?
+            // Let's just throw for now to avoid complexity in this loop
           }
 
           // Handle 429 Too Many Requests with backoff
@@ -254,7 +299,6 @@ class ApiClient {
             if (retryAfterHeader) {
               const retryAfter = parseInt(retryAfterHeader, 10);
               if (!isNaN(retryAfter)) {
-                // If header is seconds, convert to ms
                 waitTime = retryAfter * 1000;
               }
             }
@@ -273,13 +317,6 @@ class ApiClient {
             data?.error?.details
           );
 
-          // Handle authentication errors
-          if (response.status === 401) {
-            clearSession();
-            clearRbacTokens();
-            window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-          }
-
           throw error;
         }
 
@@ -296,7 +333,6 @@ class ApiClient {
       }
     }
 
-    // Should not reach here, but TS needs a return or throw
     throw new ApiError('Max retries exceeded', 429, 'RATE_LIMIT_EXCEEDED', 'network');
   }
 

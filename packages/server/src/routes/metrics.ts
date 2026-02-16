@@ -39,7 +39,10 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
 
       // If session has rbacUserId, validate ownership
       if (sessionData.session.rbacUserId) {
-        if (!rbacUserId || sessionData.session.rbacUserId !== rbacUserId) {
+        if (!rbacUserId) {
+          throw AppError.unauthorized("Authentication required to verify session ownership.");
+        }
+        if (sessionData.session.rbacUserId !== rbacUserId) {
           throw AppError.forbidden("Session does not belong to current user. Please reconnect.");
         }
       } else {

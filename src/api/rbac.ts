@@ -7,6 +7,7 @@
 import {
   ApiError,
   getSessionId,
+  clearSession,
   setRbacTokens,
   getRbacAccessToken,
   getRbacRefreshToken,
@@ -168,11 +169,18 @@ async function rbacFetch<T>(
 
   if (!response.ok) {
     // Try to refresh token on 401
-    if (response.status === 401 && accessToken) {
+    // We try to refresh even if we didn't send an access token (e.g. it was deleted), 
+    // because we might still have a valid refresh token.
+    if (response.status === 401) {
       const refreshed = await refreshTokens();
       if (refreshed) {
         // Retry with new token
         return rbacFetch<T>(endpoint, options);
+      } else {
+        // Refresh failed (or no refresh token) - trigger logout
+        clearSession();
+        clearRbacTokens();
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
       }
     }
 

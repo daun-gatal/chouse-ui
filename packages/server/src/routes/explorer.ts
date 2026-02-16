@@ -1,12 +1,12 @@
 import { Hono, Context, Next } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { 
-  optionalRbacMiddleware, 
-  filterDatabases, 
+import {
+  optionalRbacMiddleware,
+  filterDatabases,
   filterTables,
   checkDatabaseAccess,
-  checkTableAccess 
+  checkTableAccess
 } from "../middleware/dataAccess";
 import { PERMISSIONS } from "../rbac/schema/base";
 import { userHasPermission } from "../rbac/services/rbac";
@@ -44,18 +44,23 @@ function getCookie(c: Context, name: string): string | undefined {
 async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next: Next) {
   // First try ClickHouse session auth (but still require RBAC)
   const sessionId = c.req.header("X-Session-ID") || getCookie(c, "ch_session");
-  
+
   if (sessionId) {
     const sessionData = getSession(sessionId);
     if (sessionData) {
       // Add RBAC context to validate session ownership
-      await optionalRbacMiddleware(c, async () => {});
-      
+      await optionalRbacMiddleware(c, async () => { });
+
       const rbacUserId = c.get("rbacUserId");
-      
+
       // If session has rbacUserId, validate ownership
       if (sessionData.session.rbacUserId) {
-        if (!rbacUserId || sessionData.session.rbacUserId !== rbacUserId) {
+        if (!rbacUserId) {
+          // If we have a session but no RBAC user, it means the RBAC token is missing/expired.
+          // We return 401 so the client interprets it as an auth failure and tries to refresh/logout.
+          throw AppError.unauthorized("Authentication required to verify session ownership.");
+        }
+        if (sessionData.session.rbacUserId !== rbacUserId) {
           throw AppError.forbidden("Session does not belong to current user. Please reconnect.");
         }
       } else {
@@ -64,26 +69,26 @@ async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next
           throw AppError.unauthorized('RBAC authentication is required. Please login with RBAC credentials.');
         }
       }
-      
+
       c.set("sessionId", sessionId);
       c.set("service", sessionData.service);
       c.set("session", sessionData.session);
-      
+
       await next();
       return;
     }
   }
 
   // If no ClickHouse session, try RBAC auth
-  await optionalRbacMiddleware(c, async () => {});
-  
+  await optionalRbacMiddleware(c, async () => { });
+
   const rbacUserId = c.get("rbacUserId");
   const rbacRoles = c.get("rbacRoles");
   const isSuperAdmin = rbacRoles?.includes('super_admin') || false;
-  
+
   if (rbacUserId) {
     let service: ClickHouseService | null = null;
-    
+
     try {
       // Super admins get all active connections, regular users get their assigned connections
       let connections: Awaited<ReturnType<typeof getUserConnections>>;
@@ -94,18 +99,18 @@ async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next
       } else {
         connections = await getUserConnections(rbacUserId);
       }
-      
+
       if (connections.length === 0) {
         if (isSuperAdmin) {
           throw AppError.unauthorized("No ClickHouse connections are configured in the system. Please create a connection first.");
         }
         throw AppError.unauthorized("No ClickHouse connection configured. Please contact an administrator to grant you access to a ClickHouse connection.");
       }
-      
+
       // Try to find default connection first, then any active connection
       const defaultConnection = connections.find((conn) => conn.isDefault && conn.isActive);
       const activeConnection = defaultConnection || connections.find((conn) => conn.isActive);
-      
+
       if (!activeConnection) {
         if (isSuperAdmin) {
           throw AppError.unauthorized("No active ClickHouse connections found. Please activate a connection or create a new one.");
@@ -115,7 +120,7 @@ async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next
 
       // Get connection with password
       const connection = await getConnectionWithPassword(activeConnection.id);
-      
+
       if (!connection) {
         throw AppError.unauthorized("Connection not found or access denied.");
       }
@@ -141,7 +146,7 @@ async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next
 
       // Create a temporary session ID for this request
       const tempSessionId = `rbac_${rbacUserId}_${Date.now()}`;
-      
+
       // Create a temporary session-like object
       const session: Session = {
         id: tempSessionId,
@@ -166,7 +171,7 @@ async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next
       c.set("service", service);
       c.set("session", session);
       c.set("rbacConnectionId", connection.id);
-      
+
       try {
         await next();
       } finally {
@@ -185,7 +190,7 @@ async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next
           console.error('[Explorer] Failed to close service on error:', err);
         });
       }
-      
+
       if (error instanceof AppError) {
         throw error;
       }
@@ -242,7 +247,7 @@ explorer.get("/databases", async (c) => {
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
-  
+
   // Check RBAC permission for viewing databases/tables
   await checkExplorerPermission(
     rbacUserId,
@@ -250,7 +255,7 @@ explorer.get("/databases", async (c) => {
     isRbacAdmin,
     PERMISSIONS.DB_VIEW
   );
-  
+
   // Get the RBAC connection ID from the session (if session was created from RBAC connection)
   const connectionId = session?.rbacConnectionId;
 
@@ -267,7 +272,7 @@ explorer.get("/databases", async (c) => {
   if (rbacUserId && !isRbacAdmin) {
     const { getUserConnections } = await import('../rbac/services/connections');
     const userConnections = await getUserConnections(rbacUserId);
-    
+
     // If user has no connections assigned, return empty
     if (userConnections.length === 0) {
       console.log(`[Explorer] User ${rbacUserId} has no connections assigned - returning empty`);
@@ -276,7 +281,7 @@ explorer.get("/databases", async (c) => {
         data: [],
       });
     }
-    
+
     // If connectionId is set but user doesn't have access to it, return empty
     if (connectionId && !userConnections.some(conn => conn.id === connectionId)) {
       console.log(`[Explorer] User ${rbacUserId} doesn't have access to connection ${connectionId} - returning empty`);
@@ -304,7 +309,7 @@ explorer.get("/databases", async (c) => {
         // Filter tables within each database
         const tableNames = db.children.map((t) => t.name);
         const allowedTables = await filterTables(rbacUserId, isRbacAdmin, db.name, tableNames, connectionId);
-        
+
         return {
           ...db,
           children: db.children.filter((t) => allowedTables.includes(t.name)),
@@ -313,7 +318,7 @@ explorer.get("/databases", async (c) => {
   );
 
   console.log('[Explorer] Returning databases:', filteredDatabases.map((db: any) => db.name));
-  
+
   return c.json({
     success: true,
     data: filteredDatabases,
@@ -463,11 +468,11 @@ explorer.post(
     }
 
     let query = `CREATE DATABASE IF NOT EXISTS ${escapedName}`;
-    
+
     if (escapedCluster) {
       query += ` ON CLUSTER ${escapedCluster}`;
     }
-    
+
     if (engine) {
       // Engine names should also be validated, but for now we'll escape it
       // Note: Engine names in ClickHouse can contain special characters, so this is a basic check
@@ -597,32 +602,32 @@ explorer.post(
         }
 
         let def = `${escapedColName} ${col.type}`;
-        
+
         // Escape default value (if it's a string literal)
         if (col.default) {
           // For string defaults, escape single quotes
           const escapedDefault = col.default.replace(/'/g, "''");
           def += ` DEFAULT '${escapedDefault}'`;
         }
-        
+
         // Escape comment
         if (col.comment) {
           const escapedComment = col.comment.replace(/'/g, "''");
           def += ` COMMENT '${escapedComment}'`;
         }
-        
+
         return def;
       })
       .join(",\n  ");
 
     let query = `CREATE TABLE IF NOT EXISTS ${escapedDatabase}.${escapedName}`;
-    
+
     if (escapedCluster) {
       query += ` ON CLUSTER ${escapedCluster}`;
     }
-    
+
     query += ` (\n  ${columnDefs}\n) ENGINE = ${engine}`;
-    
+
     // Validate and escape ORDER BY, PARTITION BY, PRIMARY KEY
     if (orderBy) {
       // ORDER BY can contain multiple columns, so we need to parse and escape each
@@ -640,7 +645,7 @@ explorer.post(
       }).join(', ');
       query += `\nORDER BY ${escapedOrderBy}`;
     }
-    
+
     if (partitionBy) {
       // Similar validation for PARTITION BY
       if (/[;`'"]/.test(partitionBy)) {
@@ -651,7 +656,7 @@ explorer.post(
       }
       query += `\nPARTITION BY ${partitionBy}`;
     }
-    
+
     if (primaryKey) {
       // Similar validation for PRIMARY KEY
       if (/[;`'"]/.test(primaryKey)) {
