@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.10.2] - 2026-02-16
+
+### Fixed
+
+- **Authentication Stability**: Fixed critical race condition in token refresh logic that caused random logouts.
+  - Implemented global concurrency lock for token refreshes.
+  - Updated all server routes (`explorer`, `query`, `metrics`, `live-queries`, `saved-queries`) to correctly return `401 Unauthorized` instead of `403 Forbidden` when RBAC tokens are missing, ensuring automatic session recovery.
+  - Prevented infinite redirect loops on the login page.
+
 ## [v2.10.1] - 2026-02-16
 
 ### Added
