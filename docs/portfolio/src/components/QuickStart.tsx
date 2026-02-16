@@ -7,7 +7,7 @@ const steps = [
   {
     number: 1,
     title: 'Prerequisites',
-    description: 'Make sure you have Docker installed',
+    description: 'Minimal requirements',
     icon: CheckCircle2,
     content: (
       <div className="space-y-3">
@@ -15,11 +15,11 @@ const steps = [
         <ul className="space-y-2 text-sm text-gray-400">
           <li className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-green-400" />
-            <span>Docker 20.10+ and Docker Compose</span>
+            <span>Docker & Docker Compose</span>
           </li>
           <li className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-green-400" />
-            <span>Ports 5521, 8123, 9000, 5432 available</span>
+            <span>Ports 5521 & 8123 available</span>
           </li>
           <li className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-green-400" />
@@ -31,20 +31,37 @@ const steps = [
   },
   {
     number: 2,
-    title: 'Clone & Run',
-    description: 'Get started in seconds',
+    title: 'Docker Compose',
+    description: 'Full stack with ClickHouse',
     icon: Terminal,
     content: (
       <div className="space-y-3">
-        <p className="text-gray-300 text-sm mb-3">Run these commands:</p>
+        <p className="text-gray-300 text-sm mb-3">Create <code className="text-purple-300">docker-compose.yml</code>:</p>
         <CodeBlock
-          code={`git clone https://github.com/daun-gatal/chouse-ui.git
-cd chouse-ui
-docker-compose up -d`}
+          code={`services:
+  chouse-ui:
+    image: ghcr.io/daun-gatal/chouse-ui:latest
+    ports:
+      - "5521:5521"
+    environment:
+      - RBAC_DB_TYPE=sqlite
+    volumes:
+      - chouse_data:/app/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123:8123"
+    environment:
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=password
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+
+volumes:
+  chouse_data:`}
         />
-        <p className="text-xs text-gray-500 mt-3">
-          This starts ClickHouse, PostgreSQL, and CHouse UI automatically
-        </p>
+        <p className="text-gray-300 text-sm mt-3 mb-2">Then run:</p>
+        <CodeBlock code="docker-compose up -d" />
       </div>
     ),
   },

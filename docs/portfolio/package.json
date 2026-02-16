@@ -5,8 +5,9 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && bun run copy-404 && bun run generate-sitemap",
+    "dev": "bun run sync-screenshots && vite",
+    "build": "bun run sync-screenshots && vite build && bun run copy-404 && bun run generate-sitemap",
+    "sync-screenshots": "bun scripts/sync-screenshots.js",
     "generate-sitemap": "bun scripts/generate-sitemap.js",
     "copy-404": "bun scripts/copy-404.js",
     "preview": "vite preview"

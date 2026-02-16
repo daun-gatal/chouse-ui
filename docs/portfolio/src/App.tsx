@@ -1,6 +1,7 @@
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Features from './components/Features';
+import ScreenshotGallery from './components/ScreenshotGallery';
 import Highlights from './components/Highlights';
 import QuickStart from './components/QuickStart';
 import DockerDeploy from './components/DockerDeploy';
@@ -15,6 +16,7 @@ function App() {
       <Navbar />
       <Hero />
       <Features />
+      <ScreenshotGallery />
       <Highlights />
       <QuickStart />
       <DockerDeploy />

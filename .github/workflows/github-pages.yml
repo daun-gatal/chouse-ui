@@ -50,6 +50,34 @@ jobs:
             exit 1
           fi
 
+      - name: Sync Screenshots
+        run: |
+          echo "Syncing screenshots..."
+          mkdir -p docs/portfolio/public/screenshots
+          if [ -d "public/screenshots" ]; then
+            cp -r public/screenshots/* docs/portfolio/public/screenshots/
+            echo "✓ Screenshots copied"
+            
+            echo "Generating screenshots.json..."
+            echo "[" > docs/portfolio/public/screenshots.json
+            first=true
+            for f in docs/portfolio/public/screenshots/*; do
+              if [ "$first" = true ]; then
+                first=false
+              else
+                echo "," >> docs/portfolio/public/screenshots.json
+              fi
+              filename=$(basename "$f")
+              echo "\"$filename\"" >> docs/portfolio/public/screenshots.json
+            done
+            echo "]" >> docs/portfolio/public/screenshots.json
+            
+            echo "✓ screenshots.json generated:"
+            cat docs/portfolio/public/screenshots.json
+          else
+            echo "⚠ public/screenshots not found, skipping sync"
+          fi
+
       - name: Install Dependencies
         working-directory: docs/portfolio
         run: bun install
