@@ -98,7 +98,7 @@ export default function Footer() {
           className="border-t border-white/10 pt-8 text-center"
         >
           <p className="text-gray-500 text-sm mb-2">
-            © 2025 CHouse UI
+            © {new Date().getFullYear()} CHouse UI
           </p>
           <p className="text-gray-500 text-xs mb-2">
             Licensed under{' '}
