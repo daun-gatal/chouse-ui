@@ -4,7 +4,16 @@
  * Frontend API client for the Role-Based Access Control system.
  */
 
-import { ApiError, getSessionId } from './client';
+import {
+  ApiError,
+  getSessionId,
+  setRbacTokens,
+  getRbacAccessToken,
+  getRbacRefreshToken,
+  clearRbacTokens,
+  refreshTokens,
+  type RbacTokens
+} from './client';
 
 // ============================================
 // Types
@@ -54,12 +63,7 @@ export interface RbacPermission {
   category: string;
 }
 
-export interface RbacTokens {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  tokenType: 'Bearer';
-}
+// RbacTokens imported from client.ts
 
 export interface RbacLoginResponse {
   user: RbacUser;
@@ -119,26 +123,7 @@ export interface UpdateRoleInput {
 // Token Management
 // ============================================
 
-const RBAC_ACCESS_TOKEN_KEY = 'rbac_access_token';
-const RBAC_REFRESH_TOKEN_KEY = 'rbac_refresh_token';
-
-export function setRbacTokens(tokens: RbacTokens): void {
-  localStorage.setItem(RBAC_ACCESS_TOKEN_KEY, tokens.accessToken);
-  localStorage.setItem(RBAC_REFRESH_TOKEN_KEY, tokens.refreshToken);
-}
-
-export function getRbacAccessToken(): string | null {
-  return localStorage.getItem(RBAC_ACCESS_TOKEN_KEY);
-}
-
-export function getRbacRefreshToken(): string | null {
-  return localStorage.getItem(RBAC_REFRESH_TOKEN_KEY);
-}
-
-export function clearRbacTokens(): void {
-  localStorage.removeItem(RBAC_ACCESS_TOKEN_KEY);
-  localStorage.removeItem(RBAC_REFRESH_TOKEN_KEY);
-}
+// Token management functions imported from client.ts
 
 // ============================================
 // API Client with Auth Header
@@ -214,33 +199,7 @@ async function rbacFetch<T>(
   return data.data;
 }
 
-async function refreshTokens(): Promise<boolean> {
-  const refreshToken = getRbacRefreshToken();
-  if (!refreshToken) return false;
-
-  try {
-    const response = await fetch('/api/rbac/auth/refresh', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    if (!response.ok) {
-      clearRbacTokens();
-      return false;
-    }
-
-    const data = await response.json();
-    setRbacTokens(data.data.tokens);
-    return true;
-  } catch {
-    clearRbacTokens();
-    return false;
-  }
-}
+// refreshTokens imported from client.ts
 
 // ============================================
 // Auth API

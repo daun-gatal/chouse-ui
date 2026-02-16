@@ -80,6 +80,18 @@ If you're using AI coding assistants (like Cursor, GitHub Copilot, ChatGPT, etc.
 
 These rules ensure production-grade code quality and consistency. See the [README.md](README.md#for-ai-agents-and-contributors) for more details.
 
+
+## Documentation
+
+We strive to keep our documentation up-to-date and visually appealing.
+
+### Screenshots
+
+- **Directory**: Store all screenshots in `public/screenshots/`.
+- **Naming Convention**: Use kebab-case for filenames, e.g., `feature-name.png` or `metrics-dashboard.png`.
+- **Usage**: Embed images using standard Markdown syntax: `![Description](public/screenshots/feature-name.png)`.
+- **Quality**: Ensure screenshots are clear, focused, and representative of the current UI.
+
 ## Reporting Issues
 
 When reporting bugs or requesting features:

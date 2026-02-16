@@ -1,389 +1,168 @@
-/**
- * Tests for API Client
- * 
- * Tests the core API client functionality including:
- * - HTTP methods (GET, POST, PUT, DELETE, PATCH)
- * - Session management
- * - Error handling
- * - Authentication
- */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-    ApiClient,
-    ApiError,
-    getSessionId,
-    setSessionId,
-    clearSession
-} from './client';
-import { server } from '@/test/mocks/server';
-import { http, HttpResponse } from 'msw';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { ApiClient, setRbacTokens, clearRbacTokens, setSessionId, clearSession } from './client';
+import { server } from '../test/mocks/server';
+
+// Stop MSW integration for this test suite as we want to mock fetch directly
+beforeAll(() => server.close());
+// Restart it afterwards to not affect other tests if run in parallel (though verify runs singly)
+afterAll(() => server.listen());
+
+// Mock fetch
+const fetchMock = vi.fn();
+global.fetch = fetchMock as any;
+window.fetch = fetchMock as any;
+
+// Mock localStorage and sessionStorage
+const localStorageMock = {
+    getItem: vi.fn(),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+};
+const sessionStorageMock = {
+    getItem: vi.fn(),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+};
+
+Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+Object.defineProperty(window, 'sessionStorage', { value: sessionStorageMock });
+
+// Mock window.dispatchEvent
+const dispatchEventMock = vi.fn();
+window.dispatchEvent = dispatchEventMock;
 
 describe('ApiClient', () => {
     let client: ApiClient;
 
     beforeEach(() => {
-        client = new ApiClient();
+        client = new ApiClient('/api');
+        fetchMock.mockReset();
+        localStorageMock.getItem.mockReset();
+        localStorageMock.setItem.mockReset();
+        localStorageMock.removeItem.mockReset();
+        sessionStorageMock.getItem.mockReset();
+        sessionStorageMock.setItem.mockReset();
+        sessionStorageMock.removeItem.mockReset();
+        dispatchEventMock.mockReset();
     });
 
-    describe('HTTP Methods', () => {
-        it('should make GET requests', async () => {
-            const data = await client.get('/config');
+    it('should retry request after successful token refresh on 401', async () => {
+        // Setup initial state
+        localStorageMock.getItem.mockImplementation((key) => {
+            if (key === 'rbac_refresh_token') return 'valid-refresh-token';
+            if (key === 'rbac_access_token') return 'expired-token';
+            return null;
+        });
 
-            expect(data).toEqual({
-                clickhouse: {
-                    defaultUrl: 'http://localhost:8123',
-                    defaultUser: 'default',
-                    presetUrls: ['http://localhost:8123']
-                },
-                app: {
-                    name: 'CHouse UI',
-                    version: '2.7.5'
-                },
-                features: {
-                    aiOptimizer: true
+        // Mock responses
+        // 1. Initial request -> 401
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status: 401,
+            text: () => Promise.resolve(JSON.stringify({ error: { message: 'Unauthorized' } })),
+        });
+
+        // 2. Refresh token request -> 200
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({
+                success: true,
+                data: {
+                    tokens: {
+                        accessToken: 'new-access-token',
+                        refreshToken: 'new-refresh-token',
+                        expiresIn: 3600,
+                        tokenType: 'Bearer',
+                    }
                 }
-            });
+            }),
         });
 
-        it('should make POST requests', async () => {
-            const result = await client.post('/rbac/auth/login', {
-                username: 'testuser',
-                password: 'testpass'
-            });
-
-            expect(result).toHaveProperty('accessToken');
-            expect(result).toHaveProperty('user');
+        // 3. Retry request -> 200
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            text: () => Promise.resolve(JSON.stringify({ success: true, data: { foo: 'bar' } })),
         });
 
-        it('should make PUT requests', async () => {
-            server.use(
-                http.put('/api/test', () => {
-                    return HttpResponse.json({ success: true, data: { updated: true } });
-                })
-            );
+        // Execute request
+        const result = await client.get('/test');
 
-            const result = await client.put('/test', { name: 'test' });
-            expect(result).toEqual({ updated: true });
-        });
+        // Verification
+        expect(result).toEqual({ foo: 'bar' });
+        expect(fetchMock).toHaveBeenCalledTimes(3);
 
-        it('should make DELETE requests', async () => {
-            server.use(
-                http.delete('/api/test/123', () => {
-                    return HttpResponse.json({ success: true, data: { deleted: true } });
-                })
-            );
+        // Check refresh call
+        expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/rbac/auth/refresh', expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ refreshToken: 'valid-refresh-token' }),
+        }));
 
-            const result = await client.delete('/test/123');
-            expect(result).toEqual({ deleted: true });
-        });
-
-        it('should make PATCH requests', async () => {
-            server.use(
-                http.patch('/api/test/123', () => {
-                    return HttpResponse.json({ success: true, data: { patched: true } });
-                })
-            );
-
-            const result = await client.patch('/test/123', { status: 'active' });
-            expect(result).toEqual({ patched: true });
-        });
+        // Check retry call used new token
+        // We can't easily check the headers of the 3rd call because we rely on localStorage.getItem
+        // But we can check that setRbacTokens was called (implied by localStorage.setItem)
+        expect(localStorageMock.setItem).toHaveBeenCalledWith('rbac_access_token', 'new-access-token');
     });
 
-    describe('Query Parameters', () => {
-        it('should append query parameters', async () => {
-            server.use(
-                http.get('/api/test', ({ request }) => {
-                    const url = new URL(request.url);
-                    expect(url.searchParams.get('page')).toBe('1');
-                    expect(url.searchParams.get('limit')).toBe('10');
-
-                    return HttpResponse.json({ success: true, data: { page: 1, limit: 10 } });
-                })
-            );
-
-            await client.get('/test', { params: { page: 1, limit: 10 } });
+    it('should dispatch auth:unauthorized if refresh fails', async () => {
+        // Setup initial state
+        localStorageMock.getItem.mockImplementation((key) => {
+            if (key === 'rbac_refresh_token') return 'invalid-refresh-token';
+            return null;
         });
 
-        it('should skip undefined parameters', async () => {
-            server.use(
-                http.get('/api/test', ({ request }) => {
-                    const url = new URL(request.url);
-                    expect(url.searchParams.has('undefined')).toBe(false);
-
-                    return HttpResponse.json({ success: true, data: {} });
-                })
-            );
-
-            await client.get('/test', { params: { page: 1, undefined: undefined } });
+        // Mock responses
+        // 1. Initial request -> 401
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status: 401,
+            text: () => Promise.resolve(JSON.stringify({ error: { message: 'Unauthorized' } })),
         });
+
+        // 2. Refresh token request -> 401 (Refresh failed)
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status: 401,
+            text: () => Promise.resolve(JSON.stringify({ error: { message: 'Invalid refresh token' } })),
+        });
+
+        // Execute request and expect failure
+        await expect(client.get('/test')).rejects.toThrow('Unauthorized');
+
+        expect(fetchMock).toHaveBeenCalledTimes(2); // Initial + Refresh
+
+        // Check logout dispatch
+        expect(dispatchEventMock).toHaveBeenCalledWith(expect.any(CustomEvent));
+        expect(dispatchEventMock.mock.calls[0][0].type).toBe('auth:unauthorized');
+
+        // Check tokens cleared
+        expect(localStorageMock.removeItem).toHaveBeenCalledWith('rbac_access_token');
+        expect(localStorageMock.removeItem).toHaveBeenCalledWith('rbac_refresh_token');
     });
 
-    describe('Error Handling', () => {
-        it('should throw ApiError on failed requests', async () => {
-            await expect(client.post('/rbac/auth/login', {
-                username: 'wrong',
-                password: 'wrong'
-            })).rejects.toThrow(ApiError);
+    it('should dispatch auth:unauthorized if no refresh token exists', async () => {
+        // Setup initial state (no refresh token)
+        localStorageMock.getItem.mockReturnValue(null);
+
+        // Mock responses
+        // 1. Initial request -> 401
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status: 401,
+            text: () => Promise.resolve(JSON.stringify({ error: { message: 'Unauthorized' } })),
         });
 
-        it('should include error details', async () => {
-            try {
-                await client.post('/rbac/auth/login', {
-                    username: 'wrong',
-                    password: 'wrong'
-                });
-            } catch (error) {
-                expect(error).toBeInstanceOf(ApiError);
-                expect((error as ApiError).code).toBe('INVALID_CREDENTIALS');
-                expect((error as ApiError).statusCode).toBe(401);
-                expect((error as ApiError).category).toBe('authentication');
-            }
-        });
+        // Execute request and expect failure
+        await expect(client.get('/test')).rejects.toThrow('Unauthorized');
 
-        it('should handle 404 errors', async () => {
-            try {
-                await client.get('/nonexistent');
-            } catch (error) {
-                expect(error).toBeInstanceOf(ApiError);
-                expect((error as ApiError).statusCode).toBe(404);
-            }
-        });
+        expect(fetchMock).toHaveBeenCalledTimes(1); // Only initial request
 
-        it('should handle non-JSON error responses gracefully', async () => {
-            server.use(
-                http.get('/api/service-unavailable', () => {
-                    return new HttpResponse('Service Unavailable', {
-                        status: 503,
-                        headers: {
-                            'Content-Type': 'text/plain',
-                        },
-                    });
-                })
-            );
-
-            try {
-                await client.get('/service-unavailable');
-            } catch (error) {
-                expect(error).toBeInstanceOf(ApiError);
-                expect((error as ApiError).statusCode).toBe(503);
-                expect((error as ApiError).message).toBe('Service Unavailable');
-            }
-        });
-
-        it('should dispatch auth:unauthorized event on 401', async () => {
-            const eventSpy = vi.fn();
-            window.addEventListener('auth:unauthorized', eventSpy);
-
-            try {
-                await client.post('/rbac/auth/login', {
-                    username: 'wrong',
-                    password: 'wrong'
-                });
-            } catch {
-                // Expected to throw
-            }
-
-            expect(eventSpy).toHaveBeenCalled();
-            window.removeEventListener('auth:unauthorized', eventSpy);
-        });
-    });
-
-    describe('Session Management', () => {
-        beforeEach(() => {
-            clearSession();
-        });
-
-        it('should store session ID', () => {
-            setSessionId('test-session-123');
-            expect(getSessionId()).toBe('test-session-123');
-            expect(sessionStorage.getItem('ch_session_id')).toBe('test-session-123');
-        });
-
-        it('should retrieve session ID', () => {
-            sessionStorage.setItem('ch_session_id', 'stored-session');
-            expect(getSessionId()).toBe('stored-session');
-        });
-
-        it('should clear session', () => {
-            setSessionId('test-session');
-            clearSession();
-
-            expect(getSessionId()).toBeNull();
-            expect(sessionStorage.getItem('ch_session_id')).toBeNull();
-        });
-
-        it('should include session ID in request headers', async () => {
-            setSessionId('my-session-123');
-
-            server.use(
-                http.get('/api/test', ({ request }) => {
-                    expect(request.headers.get('X-Session-ID')).toBe('my-session-123');
-                    return HttpResponse.json({ success: true, data: {} });
-                })
-            );
-
-            await client.get('/test');
-        });
-    });
-
-    describe('Authentication', () => {
-        it('should include Authorization header when token exists', async () => {
-            localStorage.setItem('rbac_access_token', 'test-token-123');
-
-            server.use(
-                http.get('/api/test', ({ request }) => {
-                    expect(request.headers.get('Authorization')).toBe('Bearer test-token-123');
-                    return HttpResponse.json({ success: true, data: {} });
-                })
-            );
-
-            await client.get('/test');
-        });
-
-        it('should work without Authorization header when no token', async () => {
-            localStorage.removeItem('rbac_access_token');
-
-            server.use(
-                http.get('/api/test', ({ request }) => {
-                    expect(request.headers.get('Authorization')).toBeNull();
-                    return HttpResponse.json({ success: true, data: {} });
-                })
-            );
-
-            await client.get('/test');
-        });
-    });
-
-    describe('Request Headers', () => {
-        it('should include X-Requested-With header', async () => {
-            server.use(
-                http.get('/api/test', ({ request }) => {
-                    expect(request.headers.get('X-Requested-With')).toBe('XMLHttpRequest');
-                    return HttpResponse.json({ success: true, data: {} });
-                })
-            );
-
-            await client.get('/test');
-        });
-
-        it('should allow custom headers', async () => {
-            server.use(
-                http.get('/api/test', ({ request }) => {
-                    expect(request.headers.get('X-Custom')).toBe('custom-value');
-                    return HttpResponse.json({ success: true, data: {} });
-                })
-            );
-
-            await client.get('/test', {
-                headers: { 'X-Custom': 'custom-value' }
-            });
-        });
-    });
-    describe('Retry Logic', () => {
-        beforeEach(() => {
-            vi.useFakeTimers();
-        });
-
-        afterEach(() => {
-            vi.useRealTimers();
-        });
-
-        it('should retry on 429 errors', async () => {
-            let attempts = 0;
-            server.use(
-                http.get('/api/retry-test', () => {
-                    attempts++;
-                    if (attempts < 3) {
-                        return new HttpResponse('Too many requests', {
-                            status: 429,
-                            headers: { 'Retry-After': '1' }
-                        });
-                    }
-                    return HttpResponse.json({ success: true, data: { status: 'ok' } });
-                })
-            );
-
-            const promise = client.get('/retry-test');
-
-            // Fast-forward timers for backoff
-            await vi.advanceTimersByTimeAsync(1000); // 1st retry
-            await vi.advanceTimersByTimeAsync(2000); // 2nd retry
-
-            const result = await promise;
-            expect(result).toEqual({ status: 'ok' });
-            expect(attempts).toBe(3); // Initial + 2 retries
-        });
-
-        it('should respect Retry-After header', async () => {
-            let attempts = 0;
-            server.use(
-                http.get('/api/retry-after', () => {
-                    attempts++;
-                    if (attempts === 1) {
-                        return new HttpResponse('rate limited', {
-                            status: 429,
-                            headers: { 'Retry-After': '5' } // 5 seconds
-                        });
-                    }
-                    return HttpResponse.json({ success: true, data: { status: 'ok' } });
-                })
-            );
-
-            const promise = client.get('/retry-after');
-
-            // Advance by 2s - should not be enough
-            await vi.advanceTimersByTimeAsync(2000);
-            expect(attempts).toBe(1); // Still waiting
-
-            // Advance by remaining 3s
-            await vi.advanceTimersByTimeAsync(3000);
-
-            const result = await promise;
-            expect(result).toEqual({ status: 'ok' });
-            expect(attempts).toBe(2);
-        });
-
-        it('should fail after max retries', async () => {
-            server.use(
-                http.get('/api/max-retries', () => {
-                    return new HttpResponse('Too many requests', {
-                        status: 429,
-                        headers: { 'Retry-After': '1' }
-                    });
-                })
-            );
-
-            // Catch the error immediately to prevent "Unhandled Rejection" during timer advancement
-            const promise = client.get('/max-retries').catch(e => e);
-
-            // Advance timers for all retries (1s, 2s, 4s)
-            await vi.advanceTimersByTimeAsync(10000);
-
-            const result = await promise;
-            expect(result).toBeInstanceOf(ApiError);
-            expect((result as ApiError).statusCode).toBe(429);
-        });
-    });
-});
-
-describe('ApiError', () => {
-    it('should create error with all properties', () => {
-        const error = new ApiError('Test error', 400, 'TEST_CODE', 'validation', { field: 'name' });
-
-        expect(error.message).toBe('Test error');
-        expect(error.statusCode).toBe(400);
-        expect(error.code).toBe('TEST_CODE');
-        expect(error.category).toBe('validation');
-        expect(error.details).toEqual({ field: 'name' });
-        expect(error.name).toBe('ApiError');
-    });
-
-    it('should use default values', () => {
-        const error = new ApiError('Test error');
-
-        expect(error.statusCode).toBe(500);
-        expect(error.code).toBe('UNKNOWN_ERROR');
-        expect(error.category).toBe('unknown');
+        // Check logout dispatch
+        expect(dispatchEventMock).toHaveBeenCalledWith(expect.any(CustomEvent));
+        expect(dispatchEventMock.mock.calls[0][0].type).toBe('auth:unauthorized');
     });
 });

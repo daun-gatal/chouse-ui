@@ -8,7 +8,7 @@ import { eq, and, inArray, sql, desc, asc, like, or, gte, lte } from 'drizzle-or
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema, isSqlite, type RbacDb } from '../db';
 import { hashPassword, verifyPassword, needsRehash } from './password';
-import { generateTokenPair, type TokenPair } from './jwt';
+import { generateTokenPair, getRefreshTokenExpiryMs, type TokenPair } from './jwt';
 import {
   SYSTEM_ROLES,
   DEFAULT_ROLE_PERMISSIONS,
@@ -730,7 +730,7 @@ export async function authenticateUser(
     refreshToken: tokens.refreshToken,
     ipAddress,
     userAgent,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    expiresAt: new Date(Date.now() + getRefreshTokenExpiryMs()),
     createdAt: new Date(),
   });
 
@@ -806,7 +806,7 @@ export async function refreshAccessToken(
     refreshToken: tokens.refreshToken,
     ipAddress: sessionData.ipAddress,
     userAgent: sessionData.userAgent,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    expiresAt: new Date(Date.now() + getRefreshTokenExpiryMs()),
     createdAt: new Date(),
   });
 

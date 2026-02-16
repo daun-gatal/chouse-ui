@@ -43,7 +43,7 @@ const JWT_ISSUER = process.env.JWT_ISSUER || 'chouseui';
 const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'chouseui-client';
 
 // Token expiration times
-const ACCESS_TOKEN_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '15m';
+const ACCESS_TOKEN_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '4h';
 const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
 
 // ============================================
@@ -95,8 +95,8 @@ export async function generateAccessToken(payload: Omit<TokenPayload, 'type' | '
  * Generate a refresh token
  */
 export async function generateRefreshToken(userId: string, sessionId: string): Promise<string> {
-  const token = await new SignJWT({ 
-    sub: userId, 
+  const token = await new SignJWT({
+    sub: userId,
     sessionId,
     type: 'refresh',
     jti: randomUUID(), // Unique token ID for revocation
@@ -183,15 +183,15 @@ export async function verifyToken(token: string): Promise<DecodedToken> {
  */
 export async function verifyAccessToken(token: string): Promise<TokenPayload> {
   const decoded = await verifyToken(token);
-  
+
   if (decoded.expired) {
     throw new Error('Token expired');
   }
-  
+
   if (decoded.payload.type !== 'access') {
     throw new Error('Invalid token type');
   }
-  
+
   return decoded.payload;
 }
 
@@ -200,15 +200,15 @@ export async function verifyAccessToken(token: string): Promise<TokenPayload> {
  */
 export async function verifyRefreshToken(token: string): Promise<TokenPayload> {
   const decoded = await verifyToken(token);
-  
+
   if (decoded.expired) {
     throw new Error('Refresh token expired');
   }
-  
+
   if (decoded.payload.type !== 'refresh') {
     throw new Error('Invalid token type');
   }
-  
+
   return decoded.payload;
 }
 
@@ -222,10 +222,10 @@ export async function verifyRefreshToken(token: string): Promise<TokenPayload> {
 function parseExpiryToSeconds(expiry: string): number {
   const match = expiry.match(/^(\d+)([smhd])$/);
   if (!match) return 900; // Default 15 minutes
-  
+
   const value = parseInt(match[1], 10);
   const unit = match[2];
-  
+
   switch (unit) {
     case 's': return value;
     case 'm': return value * 60;
@@ -240,12 +240,12 @@ function parseExpiryToSeconds(expiry: string): number {
  */
 export function extractTokenFromHeader(authHeader: string | undefined): string | null {
   if (!authHeader) return null;
-  
+
   const parts = authHeader.split(' ');
   if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
     return null;
   }
-  
+
   return parts[1];
 }
 
@@ -256,10 +256,10 @@ export function getTokenExpiration(token: string): Date | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    
+
     const payload = JSON.parse(atob(parts[1]));
     if (!payload.exp) return null;
-    
+
     return new Date(payload.exp * 1000);
   } catch {
     return null;
@@ -272,10 +272,10 @@ export function getTokenExpiration(token: string): Date | null {
 export function isTokenExpiringSoon(token: string, thresholdSeconds: number = 300): boolean {
   const expiration = getTokenExpiration(token);
   if (!expiration) return true;
-  
+
   const now = new Date();
   const threshold = new Date(now.getTime() + thresholdSeconds * 1000);
-  
+
   return expiration <= threshold;
 }
 

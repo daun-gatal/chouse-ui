@@ -52,9 +52,11 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
 // Configuration
 // ============================================
 
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const SESSION_STORAGE_KEY = 'ch_session_id';
-const RBAC_ACCESS_TOKEN_KEY = 'rbac_access_token';
+export const RBAC_ACCESS_TOKEN_KEY = 'rbac_access_token';
+export const RBAC_REFRESH_TOKEN_KEY = 'rbac_refresh_token';
 
 // ============================================
 // Session Management
@@ -76,6 +78,66 @@ export function setSessionId(id: string): void {
 export function clearSession(): void {
   sessionId = null;
   sessionStorage.removeItem(SESSION_STORAGE_KEY);
+}
+
+// ============================================
+// Token Management
+// ============================================
+
+export interface RbacTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  tokenType: 'Bearer';
+}
+
+export function setRbacTokens(tokens: RbacTokens): void {
+  localStorage.setItem(RBAC_ACCESS_TOKEN_KEY, tokens.accessToken);
+  localStorage.setItem(RBAC_REFRESH_TOKEN_KEY, tokens.refreshToken);
+}
+
+export function getRbacAccessToken(): string | null {
+  return localStorage.getItem(RBAC_ACCESS_TOKEN_KEY);
+}
+
+export function getRbacRefreshToken(): string | null {
+  return localStorage.getItem(RBAC_REFRESH_TOKEN_KEY);
+}
+
+export function clearRbacTokens(): void {
+  localStorage.removeItem(RBAC_ACCESS_TOKEN_KEY);
+  localStorage.removeItem(RBAC_REFRESH_TOKEN_KEY);
+}
+
+export async function refreshTokens(): Promise<boolean> {
+  const refreshToken = getRbacRefreshToken();
+  if (!refreshToken) return false;
+
+  try {
+    const response = await fetch('/api/rbac/auth/refresh', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) {
+      clearRbacTokens();
+      return false;
+    }
+
+    const data = await response.json();
+    if (data.success && data.data?.tokens) {
+      setRbacTokens(data.data.tokens);
+      return true;
+    }
+    return false;
+  } catch {
+    clearRbacTokens();
+    return false;
+  }
 }
 
 // ============================================
@@ -128,18 +190,27 @@ class ApiClient {
     // If an XSS vulnerability exists, attackers can steal tokens from localStorage.
     // Consider migrating to httpOnly cookies for better security (requires server-side changes).
     // For now, we rely on XSS prevention measures (DOMPurify, CSP headers) to protect tokens.
-    const rbacToken = localStorage.getItem(RBAC_ACCESS_TOKEN_KEY);
+    const rbacToken = getRbacAccessToken();
     if (rbacToken) {
       (headers as Record<string, string>)['Authorization'] = `Bearer ${rbacToken}`;
     }
 
-    // Retry logic for 429 Too Many Requests
+    // Retry logic for 429 Too Many Requests and 401 Unauthorized (Refresh)
     const maxRetries = 3;
     let attempt = 0;
+    let isRetryAfterRefresh = false;
 
     while (attempt <= maxRetries) {
       try {
         const url = this.buildUrl(path, params);
+
+        // If this is a retry after refresh, make sure we use the new token
+        if (isRetryAfterRefresh) {
+          const newToken = getRbacAccessToken();
+          if (newToken) {
+            (headers as Record<string, string>)['Authorization'] = `Bearer ${newToken}`;
+          }
+        }
 
         const response = await fetch(url, {
           method,
@@ -162,6 +233,19 @@ class ApiClient {
         }
 
         if (!response.ok || !data || !data.success) {
+          // Handle 401 Unauthorized with Token Refresh
+          // Skip if this request was already a retry after refresh to prevent infinite loops
+          if (response.status === 401 && !isRetryAfterRefresh) {
+            const refreshed = await refreshTokens();
+            if (refreshed) {
+              isRetryAfterRefresh = true;
+              // Don't increment attempt count for refresh retry, or do? 
+              // Let's treat it as a special retry.
+              continue;
+            }
+            // If refresh failed, fall through to error handling which triggers logout
+          }
+
           // Handle 429 Too Many Requests with backoff
           if (response.status === 429 && attempt < maxRetries) {
             const retryAfterHeader = response.headers.get('Retry-After');
@@ -192,6 +276,7 @@ class ApiClient {
           // Handle authentication errors
           if (response.status === 401) {
             clearSession();
+            clearRbacTokens();
             window.dispatchEvent(new CustomEvent('auth:unauthorized'));
           }
 

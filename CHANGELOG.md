@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.10.1] - 2026-02-16
+
+### Added
+
+- **Documentation Standards**: Standardized screenshot guidelines and updated documentation with new visuals (Issue #130).
+
+### Changed
+
+- **Session Timeout**: Increased session expiration duration from 15 minutes to 4 hours to reduce frequent logouts (Issue #128).
+
+### Fixed
+
+- **Session Redirection**: Fixed issue where the application failed to redirect to the login page when a session expired.
+  - Added global `auth:unauthorized` listener to `AppInitializer` for automatic redirection on 401 Unauthorized errors (Issue #128).
+- **Session Expiry Enforcement**: Fixed a critical bug in `rbac.ts` where database sessions were hardcoded to 7 days, ignoring configuration. (v2.10.1)
+- **Explain Popout**: Fixed issue where "Analysis" tab was visible in the Explain Popout even when `AI_OPTIMIZER_ENABLED` was false (Issue #129).
+
 ## [v2.10.0] - 2026-02-15
 
 ### Added
