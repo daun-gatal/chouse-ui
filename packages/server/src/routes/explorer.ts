@@ -137,12 +137,8 @@ async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next
         database: connection.database || undefined,
       });
 
-      // Test connection
-      const isConnected = await service.ping();
-      if (!isConnected) {
-        await service.close();
-        throw AppError.unauthorized("Failed to connect to ClickHouse server.");
-      }
+      // Validating connection via ping is skipped for performance.
+      // If the connection is invalid, subsequent queries will fail properly.
 
       // Create a temporary session ID for this request
       const tempSessionId = `rbac_${rbacUserId}_${Date.now()}`;
@@ -172,25 +168,10 @@ async function explorerAuthMiddleware(c: Context<{ Variables: Variables }>, next
       c.set("session", session);
       c.set("rbacConnectionId", connection.id);
 
-      try {
-        await next();
-      } finally {
-        // Cleanup: Always close service after request completes (success or error)
-        if (service) {
-          await service.close().catch((err) => {
-            console.error('[Explorer] Failed to close service:', err);
-          });
-        }
-      }
+      await next();
       return;
     } catch (error) {
-      // Ensure service is closed on error
-      if (service) {
-        await service.close().catch((err) => {
-          console.error('[Explorer] Failed to close service on error:', err);
-        });
-      }
-
+      // Service close is handled by ClientManager, no manual close needed here
       if (error instanceof AppError) {
         throw error;
       }

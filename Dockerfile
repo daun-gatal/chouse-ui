@@ -1,4 +1,4 @@
-# Production Dockerfile for CHouse UI!
+# Production Dockerfile for CHouse UI
 # Uses Bun for both building and running
 
 # ============================================

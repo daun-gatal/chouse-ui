@@ -7,6 +7,7 @@ import { rateLimiter } from "hono-rate-limiter";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { cleanupExpiredSessions, getSessionCount } from "./services/clickhouse";
 import { initializeRbac, shutdownRbac } from "./rbac";
+import { requestId } from "./middleware/requestId";
 
 // Configuration
 const PORT = parseInt(process.env.PORT || "5521", 10);
@@ -118,6 +119,8 @@ const app = new Hono();
 // ============================================
 // Global Middleware
 // ============================================
+
+app.use("*", requestId);
 
 // Security headers (XSS protection, clickjacking prevention, etc.)
 app.use("*", async (c, next) => {

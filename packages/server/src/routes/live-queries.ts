@@ -157,6 +157,7 @@ async function liveQueriesAuthMiddleware(c: Context<{ Variables: Variables }>, n
         const url = `${protocol}://${connection.host}:${connection.port}`;
 
         // Create ClickHouse service
+        // Create ClickHouse service
         service = new ClickHouseService({
             url,
             username: connection.username,
@@ -164,35 +165,16 @@ async function liveQueriesAuthMiddleware(c: Context<{ Variables: Variables }>, n
             database: connection.database || undefined,
         }, { rbacUserId });
 
-        // Test connection
-        const isConnected = await service.ping();
-        if (!isConnected) {
-            await service.close();
-            throw AppError.unauthorized("Failed to connect to ClickHouse server.");
-        }
+        // Validating connection via ping is skipped for performance.
+        // If the connection is invalid, subsequent queries will fail properly.
 
         c.set("service", service);
         c.set("rbacConnectionId", connection.id);
 
-        try {
-            await next();
-        } finally {
-            // Cleanup: Close service after request
-            if (service) {
-                await service.close().catch((err) => {
-                    console.error('[LiveQueries] Failed to close service:', err);
-                });
-            }
-        }
+        await next();
         return;
     } catch (error) {
-        // Ensure service is closed on error
-        if (service) {
-            await service.close().catch((err) => {
-                console.error('[LiveQueries] Failed to close service on error:', err);
-            });
-        }
-
+        // Service close is handled by ClientManager, no manual close needed here
         if (error instanceof AppError) {
             throw error;
         }

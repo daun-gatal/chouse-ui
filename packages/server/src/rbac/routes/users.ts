@@ -75,7 +75,7 @@ const ListUsersSchema = z.object({
  */
 userRoutes.get('/', requirePermission(PERMISSIONS.USERS_VIEW), zValidator('query', ListUsersSchema), async (c) => {
   const query = c.req.valid('query');
-  
+
   const result = await listUsers({
     page: query.page || 1,
     limit: query.limit || 20,
@@ -100,21 +100,21 @@ userRoutes.get('/', requirePermission(PERMISSIONS.USERS_VIEW), zValidator('query
  */
 userRoutes.get('/:id', rbacAuthMiddleware, async (c) => {
   const id = c.req.param('id');
-  
+
   // Validate user ID format (basic UUID validation)
   if (!id || typeof id !== 'string' || id.trim().length === 0) {
     throw AppError.badRequest('Invalid user ID format');
   }
-  
+
   const currentUser = getRbacUser(c);
   const permissions = c.get('rbacPermissions');
   const hasUsersView = permissions.includes(PERMISSIONS.USERS_VIEW);
-  
+
   // If user doesn't have USERS_VIEW permission, they can only view their own profile
   if (!hasUsersView && id !== currentUser.sub) {
     throw AppError.forbidden(`Permission '${PERMISSIONS.USERS_VIEW}' required to view other users' profiles`);
   }
-  
+
   let user;
   try {
     user = await getUserById(id);
@@ -173,8 +173,8 @@ userRoutes.post('/', requirePermission(PERMISSIONS.USERS_CREATE), zValidator('js
     await createAuditLog(AUDIT_ACTIONS.USER_CREATE, currentUser.sub, {
       resourceType: 'user',
       resourceId: user.id,
-      details: { 
-        email: user.email, 
+      details: {
+        email: user.email,
         username: user.username,
         roles: user.roles,
       },
@@ -184,7 +184,7 @@ userRoutes.post('/', requirePermission(PERMISSIONS.USERS_CREATE), zValidator('js
 
     return c.json({
       success: true,
-      data: { 
+      data: {
         user,
         generatedPassword, // Only included if password was generated
       },
@@ -350,7 +350,7 @@ userRoutes.post('/:id/reset-password', requirePermission(PERMISSIONS.USERS_UPDAT
 
   return c.json({
     success: true,
-    data: { 
+    data: {
       message: 'Password reset successfully',
       generatedPassword, // Only included if password was generated
     },

@@ -510,73 +510,65 @@ connectionsRoutes.post(
       // Create ClickHouse service to test connection
       const testService = new ClickHouseService(config);
 
-      try {
-        // Test connection first
-        const isConnected = await testService.ping();
-        if (!isConnected) {
-          await testService.close();
-          return c.json({
-            success: false,
-            error: {
-              code: 'CONNECTION_FAILED',
-              message: 'Failed to connect to ClickHouse server',
-            },
-          }, 503);
-        }
+      // Test connection first
+      const isConnected = await testService.ping();
+      if (!isConnected) {
+        return c.json({
+          success: false,
+          error: {
+            code: 'CONNECTION_FAILED',
+            message: 'Failed to connect to ClickHouse server',
+          },
+        }, 503);
+      }
 
-        // Get version and admin status
-        const [version, adminStatus] = await Promise.all([
-          testService.getVersion(),
-          testService.checkIsAdmin(),
-        ]);
+      // Get version and admin status
+      const [version, adminStatus] = await Promise.all([
+        testService.getVersion(),
+        testService.checkIsAdmin(),
+      ]);
 
-        // Close temporary service
-        await testService.close();
+      // Create session with RBAC connection ID and user ID
+      const sessionId = randomUUID();
+      createSession(sessionId, config, {
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        isAdmin: adminStatus.isAdmin,
+        permissions: adminStatus.permissions,
+        version,
+        rbacConnectionId: connection.id, // Store which RBAC connection this session uses
+        rbacUserId: user.sub, // Store which RBAC user owns this session
+      });
 
-        // Create session with RBAC connection ID and user ID
-        const sessionId = randomUUID();
-        createSession(sessionId, config, {
-          createdAt: new Date(),
-          lastUsedAt: new Date(),
+      // Log audit event
+      await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+        resourceType: 'connection',
+        resourceId: connection.id,
+        details: {
+          operation: 'connect',
+          connectionName: connection.name,
+          host: connection.host,
+        },
+        ipAddress: getClientIp(c),
+        userAgent: c.req.header('User-Agent'),
+      });
+
+      return c.json({
+        success: true,
+        data: {
+          sessionId,
+          connectionId: connection.id,
+          connectionName: connection.name,
+          host: connection.host,
+          port: connection.port,
+          username: connection.username,
+          database: connection.database,
           isAdmin: adminStatus.isAdmin,
           permissions: adminStatus.permissions,
           version,
-          rbacConnectionId: connection.id, // Store which RBAC connection this session uses
-          rbacUserId: user.sub, // Store which RBAC user owns this session
-        });
+        },
+      });
 
-        // Log audit event
-        await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
-          resourceType: 'connection',
-          resourceId: connection.id,
-          details: {
-            operation: 'connect',
-            connectionName: connection.name,
-            host: connection.host,
-          },
-          ipAddress: getClientIp(c),
-          userAgent: c.req.header('User-Agent'),
-        });
-
-        return c.json({
-          success: true,
-          data: {
-            sessionId,
-            connectionId: connection.id,
-            connectionName: connection.name,
-            host: connection.host,
-            port: connection.port,
-            username: connection.username,
-            database: connection.database,
-            isAdmin: adminStatus.isAdmin,
-            permissions: adminStatus.permissions,
-            version,
-          },
-        });
-      } catch (error) {
-        await testService.close();
-        throw error;
-      }
     } catch (error) {
       console.error('[Connections] Connect error:', error);
       return c.json({

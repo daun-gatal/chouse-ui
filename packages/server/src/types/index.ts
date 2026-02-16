@@ -1,4 +1,4 @@
-import { z } from "zod";
+import z from "zod";
 
 // ============================================
 // Authentication & Session Types
@@ -395,6 +395,8 @@ export type ErrorCategory =
   | "unknown";
 
 export class AppError extends Error {
+  public id?: string;
+
   constructor(
     message: string,
     public readonly code: string,
@@ -422,12 +424,25 @@ export class AppError extends Error {
     return new AppError(message, "NOT_FOUND", "unknown", 404);
   }
 
+  static conflict(message: string, details?: unknown): AppError {
+    return new AppError(message, "CONFLICT", "validation", 409, details);
+  }
+
+  static validation(details: unknown): AppError {
+    return new AppError("Validation failed", "VALIDATION_ERROR", "validation", 400, details);
+  }
+
   static internal(message: string, details?: unknown): AppError {
     return new AppError(message, "INTERNAL_ERROR", "unknown", 500, details);
   }
 
+  static unavailable(message: string = "Service unavailable"): AppError {
+    return new AppError(message, "SERVICE_UNAVAILABLE", "timeout", 503);
+  }
+
   toJSON() {
     return {
+      id: this.id,
       code: this.code,
       message: this.message,
       category: this.category,

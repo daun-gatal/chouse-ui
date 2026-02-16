@@ -8,7 +8,8 @@ import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
-import { createClient, type ClickHouseClient } from '@clickhouse/client';
+import { type ClickHouseClient } from '@clickhouse/client';
+import { ClientManager } from '../../services/clientManager';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -510,12 +511,11 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
     const protocol = input.sslEnabled ? 'https' : 'http';
     const url = `${protocol}://${input.host}:${input.port || 8123}`;
 
-    client = createClient({
+    client = ClientManager.getInstance().getClient({
       url,
       username: input.username,
       password: input.password || '',
       database: input.database || 'default',
-      request_timeout: 10000, // 10 second timeout for test
     });
 
     // Test query
@@ -548,10 +548,6 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
       error: error instanceof Error ? error.message : 'Connection failed',
       latencyMs: Date.now() - startTime,
     };
-  } finally {
-    if (client) {
-      await client.close();
-    }
   }
 }
 

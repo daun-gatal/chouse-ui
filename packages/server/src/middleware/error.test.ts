@@ -1,86 +1,120 @@
-
-import { describe, it, expect, mock, beforeEach } from "bun:test";
-import { errorHandler, notFoundHandler } from "./error";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Hono } from "hono";
+import { errorHandler } from "./error";
 import { AppError } from "../types";
+import { requestId } from "./requestId";
+import { ZodError } from "zod";
 
-describe("Error Middleware", () => {
-    let mockContext: any;
+describe("Error Handler Middleware", () => {
+    let app: Hono;
 
     beforeEach(() => {
-        mockContext = {
-            json: mock(),
-            req: {
-                method: "GET",
-                path: "/unknown"
-            }
-        };
+        app = new Hono();
+        // Simplified request ID for testing
+        app.use("*", async (c, next) => {
+            c.set('requestId', 'test-req-id');
+            await next();
+        });
+        // Register error handler
+        app.onError(errorHandler);
     });
 
-    describe("errorHandler", () => {
-        it("should handle AppError", () => {
-            const error = new AppError("Test error", "TEST_ERR", "validation", 400);
-            errorHandler(error, mockContext);
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
 
-            expect(mockContext.json).toHaveBeenCalledTimes(1);
-            const [body, status] = mockContext.json.mock.calls[0];
-
-            expect(status).toBe(400);
-            expect(body.success).toBe(false);
-            expect(body.error.code).toBe("TEST_ERR");
-            expect(body.error.message).toBe("Test error");
+    it("should handle AppError correctly", async () => {
+        app.get("/error", () => {
+            throw AppError.badRequest("Bad Request Test");
         });
 
-        it("should handle ZodError", () => {
-            const error = {
-                name: "ZodError",
-                errors: [{ path: ["field"], message: "Invalid" }]
-            } as any;
+        const res = await app.request("/error");
+        const data = await res.json();
 
-            errorHandler(error, mockContext);
-
-            const [body, status] = mockContext.json.mock.calls[0];
-            expect(status).toBe(400);
-            expect(body.error.code).toBe("VALIDATION_ERROR");
-            expect(body.error.details).toBeDefined();
-        });
-
-        it("should handle generic Error in production (masking)", () => {
-            // Mock NODE_ENV production
-            const originalEnv = process.env.NODE_ENV;
-            process.env.NODE_ENV = "production";
-
-            const error = new Error("Secret DB failed");
-            errorHandler(error, mockContext);
-
-            const [body, status] = mockContext.json.mock.calls[0];
-            expect(status).toBe(500);
-            expect(body.error.message).toBe("An unexpected error occurred");
-            expect(body.error.message).not.toContain("Secret");
-
-            process.env.NODE_ENV = originalEnv;
-        });
-
-        it("should show generic Error message in development", () => {
-            const originalEnv = process.env.NODE_ENV;
-            process.env.NODE_ENV = "development";
-
-            const error = new Error("Visible error");
-            errorHandler(error, mockContext);
-
-            const [body] = mockContext.json.mock.calls[0];
-            expect(body.error.message).toBe("Visible error");
-
-            process.env.NODE_ENV = originalEnv;
+        expect(res.status).toBe(400);
+        expect(data).toEqual({
+            success: false,
+            error: {
+                id: 'test-req-id',
+                code: "BAD_REQUEST",
+                message: "Bad Request Test",
+                category: "validation",
+                details: undefined,
+                stack: undefined, // Stack hidden by default in test env (unless explicitly enabled)
+            },
         });
     });
 
-    describe("notFoundHandler", () => {
-        it("should return 404", () => {
-            notFoundHandler(mockContext);
-
-            const [body, status] = mockContext.json.mock.calls[0];
-            expect(status).toBe(404);
-            expect(body.error.code).toBe("NOT_FOUND");
+    it("should handle ZodError correctly", async () => {
+        app.get("/zod", () => {
+            throw new ZodError([{
+                code: "invalid_type",
+                expected: "string",
+                received: "number",
+                path: ["username"],
+                message: "Expected string, received number"
+            }]);
         });
+
+        const res = await app.request("/zod");
+        const data = await res.json();
+
+        expect(res.status).toBe(400);
+        expect(data.error.code).toBe("VALIDATION_ERROR");
+        expect(data.error.category).toBe("validation");
+        expect(data.error.details).toHaveLength(1);
+        expect(data.error.details[0].path).toEqual(["username"]);
+    });
+
+    it("should handle generic Error as Internal Server Error", async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        app.get("/crash", () => {
+            throw new Error("Something blew up");
+        });
+
+        const res = await app.request("/crash");
+        const data = await res.json();
+
+        expect(res.status).toBe(500);
+        expect(data.error.code).toBe("INTERNAL_ERROR");
+        expect(consoleSpy).toHaveBeenCalled();
+    });
+
+    it("should suppress 404 logs loudness", async () => {
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        app.get("/not-found", () => {
+            throw AppError.notFound("Resource missing");
+        });
+
+        const res = await app.request("/not-found");
+
+        expect(res.status).toBe(404);
+        expect(consoleWarnSpy).toHaveBeenCalled();
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it("should mask internal details in production", async () => {
+        const originalEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = "production";
+
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        try {
+            app.get("/prod-crash", () => {
+                throw new Error("Secret database details");
+            });
+
+            const res = await app.request("/prod-crash");
+            const data = await res.json();
+
+            expect(res.status).toBe(500);
+            expect(data.error.message).toBe("An unexpected error occurred");
+            expect(data.error.stack).toBeUndefined();
+        } finally {
+            process.env.NODE_ENV = originalEnv;
+        }
     });
 });

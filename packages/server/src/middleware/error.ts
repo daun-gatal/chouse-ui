@@ -5,53 +5,78 @@ import { AppError } from "../types";
  * Global error handler middleware
  */
 export function errorHandler(err: Error, c: Context) {
-  console.error("Error:", err);
+  const requestId = c.get('requestId');
+  const method = c.req.method;
+  const path = c.req.path;
+  const user = c.get('rbacUser');
+
+  // Determine error details
+  let statusCode = 500;
+  let errorCode = 'INTERNAL_ERROR';
+  let message = 'An unexpected error occurred';
+  let category = 'unknown';
+  let details: unknown = undefined;
 
   if (err instanceof AppError) {
-    return c.json(
-      {
-        success: false,
-        error: {
-          code: err.code,
-          message: err.message,
-          category: err.category,
-          details: err.details,
-        },
-      },
-      err.statusCode as 400 | 401 | 403 | 404 | 500
-    );
+    statusCode = err.statusCode;
+    errorCode = err.code;
+    message = err.message;
+    category = err.category;
+    details = err.details;
+  } else if (err.name === 'ZodError') {
+    statusCode = 400;
+    errorCode = 'VALIDATION_ERROR';
+    message = 'Validation failed';
+    category = 'validation';
+    details = (err as any).errors;
+  } else {
+    // For non-AppErrors (unexpected), use the actual message in dev
+    if (process.env.NODE_ENV !== 'production') {
+      message = err.message;
+    }
   }
 
-  // Handle Zod validation errors
-  if (err.name === "ZodError") {
-    const zodError = err as { errors?: { path: string[]; message: string }[] };
-    return c.json(
-      {
-        success: false,
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "Request validation failed",
-          category: "validation",
-          details: zodError.errors,
-        },
-      },
-      400
-    );
+  // Structured Log Entry
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    requestId,
+    level: statusCode >= 500 ? 'error' : 'warn',
+    statusCode,
+    errorCode,
+    method,
+    path,
+    userId: user?.sub,
+    message: err.message, // Always log full message internally
+    stack: statusCode >= 500 ? err.stack : undefined, // Only log stack for server errors
+  };
+
+  // Log to console (could be sent to external logger)
+  if (statusCode >= 500) {
+    console.error(JSON.stringify(logEntry));
+  } else if (statusCode !== 404) {
+    // Warn for non-404 client errors
+    console.warn(JSON.stringify(logEntry));
+  } else {
+    // Simple log for 404 to avoid noise
+    // We already have a specific 404 handler, but this catches AppError.notFound() thrown in logic
+    console.warn(`[NOT_FOUND] ${message}: ${method} ${path} (${requestId})`);
   }
 
-  // Generic error
+  // Response Construction
   return c.json(
     {
       success: false,
       error: {
-        code: "INTERNAL_ERROR",
-        message: process.env.NODE_ENV === "production" 
-          ? "An unexpected error occurred" 
-          : err.message,
-        category: "unknown",
+        id: requestId,
+        code: errorCode,
+        message,
+        category,
+        details,
+        // Include stack trace only in development and for 500s
+        stack: process.env.NODE_ENV !== 'production' && statusCode === 500 ? err.stack : undefined,
       },
     },
-    500
+    statusCode as any
   );
 }
 

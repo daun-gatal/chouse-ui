@@ -623,12 +623,30 @@ export function useQueryLogs(
 
         const allAuditLogs = auditResult.logs;
 
-        // Create a map of timestamp -> Array<{ userId, connectionId, query }>
+        // Create a map of timestamp -> Array<{ userId, connectionId, query, usernameSnapshot, emailSnapshot, displayNameSnapshot }>
         // Match audit logs with query logs by timestamp (within 60 seconds for better matching)
         // Use the timestamp from audit log details if available, otherwise use createdAt
-        const auditMap = new Map<number, Array<{ userId: string | null, connectionId: string | null, query: string | null }>>();
+        const auditMap = new Map<number, Array<{
+          userId: string | null,
+          connectionId: string | null,
+          query: string | null,
+          usernameSnapshot?: string,
+          emailSnapshot?: string,
+          displayNameSnapshot?: string
+        }>>();
+
+        const userMap = new Map<string, { username: string; email: string; displayName: string | null }>();
+
         for (const auditLog of allAuditLogs) {
           if (auditLog.userId) {
+            // Populate userMap from snapshots if available
+            if (auditLog.usernameSnapshot && auditLog.emailSnapshot) {
+              userMap.set(auditLog.userId, {
+                username: auditLog.usernameSnapshot,
+                email: auditLog.emailSnapshot,
+                displayName: auditLog.displayNameSnapshot || null,
+              });
+            }
             // Prefer timestamp from details (stored when query was executed)
             // Fall back to createdAt if details.timestamp is not available
             const detailsTimestamp = auditLog.details?.timestamp as number | undefined;
@@ -646,7 +664,10 @@ export function useQueryLogs(
             const data = {
               userId: auditLog.userId,
               connectionId: connectionId || null,
-              query: queryText || null
+              query: queryText || null,
+              usernameSnapshot: auditLog.usernameSnapshot || undefined,
+              emailSnapshot: auditLog.emailSnapshot || undefined,
+              displayNameSnapshot: auditLog.displayNameSnapshot || undefined
             };
 
             // Helper to add data to map array
@@ -682,22 +703,23 @@ export function useQueryLogs(
         }).filter(Boolean) as string[];
 
         const uniqueUserIds = Array.from(new Set([...auditUserIds, ...logCommentUserIds]));
-        const userMap = new Map<string, { username: string; email: string; displayName: string | null }>();
-
-        // Fetch user details in parallel
+        // Fetch user details in parallel ONLY for users not already in userMap (from snapshots)
         await Promise.all(
-          uniqueUserIds.map(async (userId) => {
-            try {
-              const user = await rbacUsersApi.get(userId);
-              userMap.set(userId, {
-                username: user.username,
-                email: user.email,
-                displayName: user.displayName,
-              });
-            } catch (error) {
-              console.warn(`Failed to fetch user ${userId}:`, error);
-            }
-          })
+          uniqueUserIds
+            .filter(userId => !userMap.has(userId))
+            .map(async (userId) => {
+              try {
+                const user = await rbacUsersApi.get(userId);
+                userMap.set(userId, {
+                  username: user.username,
+                  email: user.email,
+                  displayName: user.displayName,
+                });
+              } catch (error) {
+                // If the user fetching fails (e.g. 404), we still might have basic info from logs or can just skip
+                console.warn(`Failed to fetch user details for ${userId}:`, error);
+              }
+            })
         );
 
         // Match query logs with audit logs
@@ -713,7 +735,14 @@ export function useQueryLogs(
             let rbacUserInfo: { username: string; email: string; displayName: string | null } | undefined = undefined;
 
             // Find best match among candidates
-            const findBestMatch = (candidates: Array<{ userId: string | null, connectionId: string | null, query: string | null }>) => {
+            const findBestMatch = (candidates: Array<{
+              userId: string | null,
+              connectionId: string | null,
+              query: string | null,
+              usernameSnapshot?: string,
+              emailSnapshot?: string,
+              displayNameSnapshot?: string
+            }>) => {
               // 1. Try to match by query text content
               // The audit log stores truncated query (500 chars), so check if log.query starts with or includes it
               const queryMatch = candidates.find(c => c.query && log.query.includes(c.query));

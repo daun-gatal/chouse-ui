@@ -1,4 +1,5 @@
-import { createClient, ClickHouseClient, ClickHouseSettings } from "@clickhouse/client";
+import { ClickHouseClient } from "@clickhouse/client";
+import { ClientManager } from "./clientManager";
 import type {
   ConnectionConfig,
   QueryResult,
@@ -32,29 +33,21 @@ function extractData<T>(response: JsonResponse<T>): T[] {
 // ============================================
 
 export class ClickHouseService {
-  private client: ClickHouseClient;
   private config: ConnectionConfig;
   private rbacUserId?: string;
 
   constructor(config: ConnectionConfig, options?: { rbacUserId?: string }) {
     this.config = config;
     this.rbacUserId = options?.rbacUserId;
-    this.client = createClient({
-      url: config.url,
-      username: config.username,
-      password: config.password || "",
-      database: config.database,
-      request_timeout: 300000,
-      clickhouse_settings: {
-        max_result_rows: "10000",
-        max_result_bytes: "10000000",
-        result_overflow_mode: "break",
-      } as ClickHouseSettings,
-    });
+  }
+
+  private get client(): ClickHouseClient {
+    return ClientManager.getInstance().getClient(this.config);
   }
 
   async close(): Promise<void> {
-    await this.client.close();
+    // No-op: Client is managed by ClientManager
+    // We don't close the shared client here
   }
 
   // ============================================

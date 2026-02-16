@@ -11,22 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Documentation Standards**: Standardized screenshot guidelines and updated documentation with new visuals (Issue #130).
+- **Documentation Standards**: Standardized screenshot guidelines and updated documentation with new visual assets for all major features (Issue #130).
+- **Portfolio SEO**: Added automated sitemap generation and improved meta descriptions for the portfolio site.
 
 ### Changed
 
-- **Session Timeout**: Increased session expiration duration from 15 minutes to 4 hours to reduce frequent logouts (Issue #128).
+- **Authentication Resilience**: Completely refactored the API client to support robust token refreshing and session recovery.
+  - Centralized token management in `src/api/client.ts`.
+  - Added global `auth:unauthorized` event for immediate redirection on session loss.
+- **Server Performance**: Introduced `ClientManager` to pool ClickHouse connections, reducing overhead and improving stability.
+- **Session Duration**: Increased session expiration duration from 15 minutes to 4 hours (Issue #128).
+- **Portfolio UI**: Updated portfolio text to prioritize "UI" over "Interface" and added dynamic copyright years.
 
 ### Fixed
 
-- **Authentication Stability**: Fixed critical race condition in token refresh logic that caused random logouts.
+- **Authentication Stability**: Fixed critical race conditions in token refresh logic that caused random logouts.
   - Implemented global concurrency lock for token refreshes.
-  - Updated all server routes (`explorer`, `query`, `metrics`, `live-queries`, `saved-queries`) to correctly return `401 Unauthorized` instead of `403 Forbidden` when RBAC tokens are missing, ensuring automatic session recovery.
-  - Prevented infinite redirect loops on the login page.
-- **Session Redirection**: Fixed issue where the application failed to redirect to the login page when a session expired.
-  - Added global `auth:unauthorized` listener to `AppInitializer` for automatic redirection on 401 Unauthorized errors (Issue #128).
-- **Session Expiry Enforcement**: Fixed a critical bug in `rbac.ts` where database sessions were hardcoded to 7 days, ignoring configuration. (v2.10.1)
-- **Explain Popout**: Fixed issue where "Analysis" tab was visible in the Explain Popout even when `AI_OPTIMIZER_ENABLED` was false (Issue #129).
+  - Updated all server routes to correctly return `401 Unauthorized` instead of `403 Forbidden` for expired sessions, enabling automatic recovery.
+- **Audit Log Snapshots**: Enhanced query history to use user snapshots from audit logs, ensuring correct user display even for deleted or modified accounts.
+- **Explain Popout**: Fixed "Analysis" tab visibility to correctly respect AI Optimizer configuration (Issue #129).
+- **Session Enforcement**: Fixed a bug where database sessions were hardcoded to 7 days, ignoring configuration (Issue #128).
+- **CI/CD**: Fixed release triggers for Dockerfile changes and enabled concurrent job cancellation to prevent build redundancy.
+
 
 ## [v2.10.0] - 2026-02-15
 
