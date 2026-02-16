@@ -6,7 +6,7 @@ import { GlassCard, GlassCardContent } from './GlassCard';
 const faqs = [
   {
     question: 'What is CHouse UI?',
-    answer: 'CHouse UI is an open-source web interface for managing ClickHouse databases. It provides a secure, user-friendly way to interact with ClickHouse through a modern web browser, featuring built-in Role-Based Access Control (RBAC), encrypted credential storage, SQL query editor, and comprehensive database management tools.',
+    answer: 'CHouse UI is an open-source web UI for managing ClickHouse databases. It provides a secure, user-friendly way to interact with ClickHouse through a modern web browser, featuring built-in Role-Based Access Control (RBAC), encrypted credential storage, SQL query editor, and comprehensive database management tools.',
   },
   {
     question: 'How is CHouse UI different from other ClickHouse management tools?',
@@ -30,7 +30,7 @@ const faqs = [
   },
   {
     question: 'How do I deploy CHouse UI?',
-    answer: 'CHouse UI can be deployed using Docker Compose in minutes. Simply clone the repository, run docker-compose up -d, and access the interface at http://localhost:5521. For production deployments (v2.6.1+), you must configure three required environment variables: JWT_SECRET (min 32 chars), RBAC_ENCRYPTION_KEY (min 32 chars), and RBAC_ENCRYPTION_SALT (exactly 64 hex chars). See the Quick Start section for detailed instructions.',
+    answer: 'CHouse UI can be deployed using Docker Compose in minutes. Simply clone the repository, run docker-compose up -d, and access the UI at http://localhost:5521. For production deployments (v2.6.1+), you must configure three required environment variables: JWT_SECRET (min 32 chars), RBAC_ENCRYPTION_KEY (min 32 chars), and RBAC_ENCRYPTION_SALT (exactly 64 hex chars). See the Quick Start section for detailed instructions.',
   },
   {
     question: 'Does CHouse UI require direct ClickHouse access from the browser?',
@@ -76,7 +76,7 @@ export default function FAQ() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
-      
+
       <section id="faq" className="py-24 px-4 relative overflow-hidden" aria-label="Frequently asked questions" ref={ref}>
         {/* Background decoration */}
         <div className="absolute inset-0 opacity-5">
@@ -126,11 +126,10 @@ export default function FAQ() {
                     aria-expanded={isExpanded}
                     aria-controls={`faq-answer-${index}`}
                   >
-                    <GlassCard className={`overflow-hidden transition-all ${
-                      isExpanded 
-                        ? 'border-purple-500/40 shadow-lg shadow-purple-500/20' 
+                    <GlassCard className={`overflow-hidden transition-all ${isExpanded
+                        ? 'border-purple-500/40 shadow-lg shadow-purple-500/20'
                         : 'hover:border-white/20'
-                    }`}>
+                      }`}>
                       <GlassCardContent className="p-6">
                         <div className="flex items-start gap-4">
                           <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">

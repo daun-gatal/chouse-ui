@@ -91,7 +91,7 @@ export default function Hero() {
           >
             <img
               src={`${import.meta.env.BASE_URL}logo.svg`}
-              alt="CHouse UI Logo - ClickHouse Database Management Interface"
+              alt="CHouse UI Logo - ClickHouse Database Management UI"
               className="w-40 h-40 md:w-48 md:h-48 drop-shadow-[0_0_30px_rgba(255,200,0,0.6)]"
               width="192"
               height="192"
@@ -127,7 +127,7 @@ export default function Hero() {
           className="mb-6"
         >
           <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-medium">
-            Open-source ClickHouse web interface with built-in RBAC and enterprise security
+            Open-source ClickHouse web UI with built-in RBAC and enterprise security
           </p>
           {latestVersion && (
             <motion.div
@@ -151,11 +151,11 @@ export default function Hero() {
           className="mb-8 max-w-4xl mx-auto"
         >
           <p className="text-xl md:text-2xl text-gray-300 mb-6 leading-relaxed font-light">
-            Built from the ground up to solve real-world challenges in ClickHouse database management. 
-            This project combines modern web technologies with enterprise-grade security to deliver a 
-            powerful yet intuitive interface for teams.
+            Built from the ground up to solve real-world challenges in ClickHouse database management.
+            This project combines modern web technologies with enterprise-grade security to deliver a
+            powerful yet intuitive UI for teams.
           </p>
-          
+
           {/* Interactive Feature Pills */}
           <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
             {[
@@ -226,7 +226,7 @@ export default function Hero() {
               →
             </motion.span>
           </motion.button>
-          
+
           <motion.a
             href="https://github.com/daun-gatal/chouse-ui"
             target="_blank"

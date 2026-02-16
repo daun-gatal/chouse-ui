@@ -118,7 +118,7 @@ const envVars = [
     name: 'PORT',
     required: false,
     default: '5521',
-    desc: 'Port for the web interface',
+    desc: 'Port for the web UI',
   },
   {
     name: 'CORS_ORIGIN',
@@ -207,11 +207,10 @@ export default function DockerDeploy() {
                       onClick={() => setActiveTab(tab.id)}
                       whileHover={{ y: -2 }}
                       whileTap={{ scale: 0.98 }}
-                      className={`flex-1 min-w-[150px] px-6 py-4 flex items-center justify-center gap-2 transition-all duration-300 relative ${
-                        isActive
+                      className={`flex-1 min-w-[150px] px-6 py-4 flex items-center justify-center gap-2 transition-all duration-300 relative ${isActive
                           ? 'bg-gradient-to-br from-purple-500/20 to-blue-500/20 border-b-2 border-purple-400 text-white'
                           : 'text-gray-400 hover:text-white hover:bg-white/5'
-                      }`}
+                        }`}
                     >
                       <Icon className={`w-5 h-5 ${isActive ? 'text-purple-400' : ''}`} />
                       <span className="font-medium">{tab.label}</span>
@@ -244,10 +243,10 @@ export default function DockerDeploy() {
                     <div className="space-y-6">
                       <div className="prose prose-invert max-w-none">
                         <p className="text-gray-300 leading-relaxed text-lg mb-6">
-                          For production deployments, follow these essential security and configuration steps. 
+                          For production deployments, follow these essential security and configuration steps.
                           The quick start guide above covers basic setup - this section focuses on production best practices.
                         </p>
-                        
+
                         {/* Production Checklist */}
                         <div className="space-y-4 mb-6">
                           <h4 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
@@ -286,16 +285,14 @@ export default function DockerDeploy() {
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: idx * 0.1 }}
-                                className={`p-4 rounded-lg border ${
-                                  item.critical
+                                className={`p-4 rounded-lg border ${item.critical
                                     ? 'bg-red-500/10 border-red-500/30'
                                     : 'bg-white/5 border-white/10'
-                                }`}
+                                  }`}
                               >
                                 <div className="flex items-start gap-3">
-                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                    item.critical ? 'bg-red-500/20' : 'bg-blue-500/20'
-                                  }`}>
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${item.critical ? 'bg-red-500/20' : 'bg-blue-500/20'
+                                    }`}>
                                     {item.critical ? (
                                       <AlertCircle className="w-4 h-4 text-red-400" />
                                     ) : (
@@ -361,8 +358,8 @@ export default function DockerDeploy() {
                     </h3>
                     <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                       <p className="text-sm text-gray-300">
-                        <strong className="text-white">Note:</strong> This is the production-ready docker-compose configuration. 
-                        For a quick start, see the "Quick Start" section above. This version includes PostgreSQL for RBAC storage 
+                        <strong className="text-white">Note:</strong> This is the production-ready docker-compose configuration.
+                        For a quick start, see the "Quick Start" section above. This version includes PostgreSQL for RBAC storage
                         and production environment variables.
                       </p>
                     </div>

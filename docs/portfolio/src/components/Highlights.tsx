@@ -24,7 +24,7 @@ const highlights = [
   {
     icon: Database,
     title: 'Multi-Connection',
-    description: 'Manage multiple ClickHouse servers from one interface. Switch connections instantly.',
+    description: 'Manage multiple ClickHouse servers from one UI. Switch connections instantly.',
     color: 'from-green-500 to-green-700',
   },
   {
