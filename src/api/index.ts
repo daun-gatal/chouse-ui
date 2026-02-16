@@ -6,8 +6,17 @@
  */
 
 // Client and utilities
-export { api, getSessionId, setSessionId, clearSession } from './client';
-export type { ApiResponse, ApiError, RequestOptions } from './client';
+export {
+  api,
+  getSessionId,
+  setSessionId,
+  clearSession,
+  setRbacTokens,
+  getRbacAccessToken,
+  getRbacRefreshToken,
+  clearRbacTokens
+} from './client';
+export type { ApiResponse, ApiError, RequestOptions, RbacTokens } from './client';
 
 // Query execution
 export * as queryApi from './query';
@@ -45,16 +54,11 @@ export {
   rbacAuditApi,
   rbacUserPreferencesApi,
   checkRbacHealth,
-  setRbacTokens,
-  getRbacAccessToken,
-  getRbacRefreshToken,
-  clearRbacTokens,
 } from './rbac';
 export type {
   RbacUser,
   RbacRole,
   RbacPermission,
-  RbacTokens,
   RbacLoginResponse,
   RbacAuditLog,
   UserFavorite,

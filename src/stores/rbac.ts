@@ -14,7 +14,7 @@ import {
   getRbacAccessToken,
   type RbacUser,
   type RbacTokens,
-} from '@/api/rbac';
+} from '@/api';
 
 // ============================================
 // Types

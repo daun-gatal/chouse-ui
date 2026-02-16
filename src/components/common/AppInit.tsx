@@ -1,5 +1,6 @@
 import { useEffect, useState, ReactNode } from "react";
 import { MultiStepLoader as Loader } from "@/components/ui/multi-step-loader";
+import { useNavigate } from "react-router-dom";
 import { useRbacStore } from "@/stores";
 import { toast } from "sonner";
 import { listenForUserChanges } from "@/utils/sessionCleanup";
@@ -14,6 +15,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
 
   const { checkAuth, error, isInitialized, logout } = useRbacStore();
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const init = async () => {
@@ -47,6 +49,19 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
 
     return cleanup;
   }, [logout]);
+
+  // Listen for unauthorized events (e.g. 401 from API)
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout().catch((err) => {
+        console.error("[AppInit] Logout error:", err);
+      });
+      navigate("/login");
+    };
+
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
+  }, [logout, navigate]);
 
   useEffect(() => {
     if (error) {

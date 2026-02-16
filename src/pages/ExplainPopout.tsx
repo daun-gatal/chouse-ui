@@ -11,6 +11,7 @@ import QueryAnalysisView from "@/features/workspace/components/QueryAnalysisView
 import ExplainInfoHeader from "@/features/workspace/components/ExplainInfoHeader";
 import { ExplainResult, ExplainType, EXPLAIN_TYPES, QueryComplexity, PerformanceRecommendation } from '@/types/explain';
 import { queryApi } from '@/api';
+import { useConfig } from '@/hooks';
 
 // Extended type to include analysis
 type ViewType = ExplainType | 'analysis';
@@ -120,6 +121,9 @@ const ExplainPopout = () => {
     const [analysisLoading, setAnalysisLoading] = useState(false);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
 
+    const { data: config, isLoading: configLoading } = useConfig();
+    const showAnalysisTab = !config?.features?.aiOptimizer;
+
     // Load initial data from localStorage
     useEffect(() => {
         try {
@@ -144,11 +148,14 @@ const ExplainPopout = () => {
                     setActiveView(type);
                     setExplainCache({ [type]: parsed });
                 } else {
-                    // Old format: just the plan object
-                    setQuery('');
                     setInitialType('plan');
                     setActiveView('plan');
                     setExplainCache({ plan: { type: 'plan', query: '', plan: parsed } });
+                }
+
+                // If currently set to analysis but it's disabled, switch to plan
+                if (activeView === 'analysis' && !showAnalysisTab && !configLoading) {
+                    setActiveView('plan');
                 }
 
                 document.title = "Query Explain - ClickHouse";
@@ -334,7 +341,7 @@ const ExplainPopout = () => {
             label: value.label,
             description: value.description
         })),
-        { key: 'analysis', label: 'Analysis', description: 'Query complexity and performance recommendations' }
+        ...(showAnalysisTab ? [{ key: 'analysis' as ViewType, label: 'Analysis', description: 'Query complexity and performance recommendations' }] : [])
     ];
 
     if (error) {

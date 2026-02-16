@@ -89,6 +89,29 @@ CHouse UI provides security and access control features for teams that need:
 
 ---
 
+## Screenshots
+
+### Home Page
+![Home Page](public/screenshots/home-page.png)
+
+### SQL Editor
+![SQL Editor](public/screenshots/sql-editor-ui.png)
+
+### Monitoring
+![Monitoring Page](public/screenshots/monitoring-page.png)
+
+### AI Optimizer
+![AI Optimizer](public/screenshots/ai-optimizer.png)
+
+### Visual Explain Plan
+![Visual Explain Plan](public/screenshots/explainer-feature.png)
+
+### Admin Settings
+![Admin Page](public/screenshots/admin-page.png)
+
+### User Preferences
+![Preferences Page](public/screenshots/preference-page.png)
+
 ## Quick Start
 
 ### Prerequisites
