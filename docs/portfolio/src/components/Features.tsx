@@ -17,9 +17,20 @@ import {
   ChevronRight,
   Activity,
   Star,
+  Sparkles,
+  Bot,
 } from 'lucide-react';
 
 const features = [
+  {
+    category: 'AI & Automation',
+    icon: Sparkles,
+    color: 'from-amber-500 to-amber-700',
+    items: [
+      { icon: Zap, title: 'AI Query Optimizer', desc: 'Intelligent query rewriting for performance' },
+      { icon: Bot, title: 'Smart Query Debugging', desc: 'Automated error analysis and fix suggestions' },
+    ],
+  },
   {
     category: 'Security & Access Control',
     icon: Shield,
@@ -122,8 +133,8 @@ export default function Features() {
                 whileTap={{ scale: 0.99 }}
               >
                 <GlassCard className={`overflow-hidden transition-all ${expandedCategory === category.category
-                    ? 'border-purple-500/40 shadow-lg shadow-purple-500/20'
-                    : 'hover:border-white/20'
+                  ? 'border-purple-500/40 shadow-lg shadow-purple-500/20'
+                  : 'hover:border-white/20'
                   }`}>
                   <div className="p-6 flex items-center justify-between">
                     <div className="flex items-center gap-4">
