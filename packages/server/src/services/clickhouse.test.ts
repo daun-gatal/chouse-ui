@@ -120,7 +120,8 @@ describe("ClickHouse Service", () => {
             expect(result[1].compressed_size).toBe("256 B");
             expect(result[1].parts_count).toBe(0);
             expect(mockQueryFn).toHaveBeenCalledTimes(1);
-            const call = mockQueryFn.mock.calls[0];
+            const calls = (mockQueryFn as any).mock.calls;
+            const call = calls[0];
             if (!call) throw new Error("mockQueryFn not called");
             const queryParams = call[0] as any;
             expect(queryParams.query).toContain("system.tables");
