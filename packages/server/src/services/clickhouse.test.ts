@@ -120,10 +120,12 @@ describe("ClickHouse Service", () => {
             expect(result[1].compressed_size).toBe("256 B");
             expect(result[1].parts_count).toBe(0);
             expect(mockQueryFn).toHaveBeenCalledTimes(1);
-            const call = mockQueryFn.mock.calls[0][0];
-            expect(call.query).toContain("system.tables");
-            expect(call.query).toContain("database NOT IN");
-            expect(call.format).toBe("JSON");
+            const call = mockQueryFn.mock.calls[0];
+            if (!call) throw new Error("mockQueryFn not called");
+            const queryParams = call[0] as any;
+            expect(queryParams.query).toContain("system.tables");
+            expect(queryParams.query).toContain("database NOT IN");
+            expect(queryParams.format).toBe("JSON");
         });
 
         it("should return empty array when no tables", async () => {
@@ -143,9 +145,9 @@ describe("ClickHouse Service", () => {
     });
 
     describe("cleanup", () => {
-        it("should close client", async () => {
+        it("should not close client automatically (managed by ClientManager)", async () => {
             await service.close();
-            expect(mockCloseFn).toHaveBeenCalled();
+            expect(mockCloseFn).not.toHaveBeenCalled();
         });
     });
 });
