@@ -1942,6 +1942,15 @@ export class ClickHouseService {
       );
     }
 
+    if (message.includes("ECONNREFUSED")) {
+      return new AppError(
+        `Connection refused. Is the server running at this address?`,
+        "CONNECTION_REFUSED",
+        "connection",
+        503
+      );
+    }
+
     return AppError.internal(message, error);
   }
 }

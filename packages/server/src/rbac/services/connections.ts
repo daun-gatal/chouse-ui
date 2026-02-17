@@ -8,7 +8,7 @@ import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
-import { type ClickHouseClient } from '@clickhouse/client';
+import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { ClientManager } from '../../services/clientManager';
 
 // Type helper for working with dual database setup
@@ -503,20 +503,34 @@ export async function getDefaultConnection(): Promise<ConnectionResponse | null>
 /**
  * Test a connection (without saving)
  */
+// Helper to create a client without caching
+const createEphemeralClient = (input: ConnectionInput) => {
+  const protocol = input.sslEnabled ? 'https' : 'http';
+  const url = `${protocol}://${input.host}:${input.port || 8123}`;
+
+  return createClient({
+    url,
+    username: input.username,
+    password: input.password || '',
+    database: input.database || 'default',
+    request_timeout: 10000, // Short timeout for testing
+    clickhouse_settings: {
+      // Fail fast
+      max_execution_time: 10,
+    },
+  });
+};
+
+/**
+ * Test a connection (without saving)
+ */
 export async function testConnection(input: ConnectionInput): Promise<TestConnectionResult> {
   const startTime = Date.now();
-  let client: ClickHouseClient | null = null;
 
   try {
-    const protocol = input.sslEnabled ? 'https' : 'http';
-    const url = `${protocol}://${input.host}:${input.port || 8123}`;
-
-    client = ClientManager.getInstance().getClient({
-      url,
-      username: input.username,
-      password: input.password || '',
-      database: input.database || 'default',
-    });
+    // Strategy: Bypass ClientManager to ensure a fresh connection test
+    // This avoids using cached clients that might be in a bad state or have old config
+    const client = createEphemeralClient(input);
 
     // Test query
     const versionResult = await client.query({
@@ -534,6 +548,8 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
     const dbData = await dbResult.json() as { name: string }[];
     const databases = dbData.map((d: { name: string }) => d.name);
 
+    await client.close();
+
     const latencyMs = Date.now() - startTime;
 
     return {
@@ -543,10 +559,54 @@ export async function testConnection(input: ConnectionInput): Promise<TestConnec
       latencyMs,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Connection failed';
+    const latencyMs = Date.now() - startTime;
+
+    // Smart Probing: If localhost failed with connection refused, try alternatives
+    // This helps users running in Docker who might need to use host.docker.internal or 127.0.0.1
+    if (
+      (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('Connection refused')) &&
+      (input.host === 'localhost' || input.host === '127.0.0.1')
+    ) {
+      const alternatives = [
+        { host: '127.0.0.1', label: '127.0.0.1' },
+        { host: 'host.docker.internal', label: 'host.docker.internal (Docker Host)' },
+        { host: 'clickhouse', label: 'clickhouse (Docker Service)' },
+      ];
+
+      // Filter out the one we just tried
+      const candidates = alternatives.filter(a => a.host !== input.host);
+
+      for (const candidate of candidates) {
+        try {
+          // Try probing candidate
+          const probeClient = createEphemeralClient({ ...input, host: candidate.host });
+          await probeClient.ping(); // Just ping to check connectivity
+          await probeClient.close();
+
+          // If probe succeeds, return a helpful error message
+          return {
+            success: false,
+            error: `Connection failed to "${input.host}". However, the server appears to be reachable at "${candidate.label}". Try creating the connection with that host instead.`,
+            latencyMs,
+          };
+        } catch (ignored) {
+          // Probe failed, continue to next candidate
+        }
+      }
+
+      // If we are here, no alternatives worked, but we can still give a hint for Docker users
+      return {
+        success: false,
+        error: `${errorMsg}. If ClickHouse is running on your host machine and you are using Docker, try using "host.docker.internal" instead of "localhost".`,
+        latencyMs,
+      };
+    }
+
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Connection failed',
-      latencyMs: Date.now() - startTime,
+      error: errorMsg,
+      latencyMs,
     };
   }
 }

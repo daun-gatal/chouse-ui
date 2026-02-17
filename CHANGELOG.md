@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Server Performance**: Introduced `ClientManager` to pool ClickHouse connections, reducing overhead and improving stability.
 - **Session Duration**: Increased session expiration duration from 15 minutes to 4 hours (Issue #128).
 - **Portfolio UI**: Updated portfolio text to prioritize "UI" over "Interface" and added dynamic copyright years.
+- **Connection Troubleshooting**:
+  - Implemented "smart" connection probing to automatically check alternative hosts (`127.0.0.1`, `host.docker.internal`) when `localhost` fails with `ECONNREFUSED`.
+  - Improved error messages to suggest actionable fixes for connection refusal issues.
+  - Bypass `ClientManager` caching during connection tests to ensure fresh connection attempts.
 
 ### Fixed
 
