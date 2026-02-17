@@ -131,7 +131,7 @@ describe('ApiClient', () => {
         });
 
         // Execute request and expect failure
-        await expect(client.get('/test')).rejects.toThrow('Unauthorized');
+        await expect(client.get('/test')).rejects.toThrow('Session expired');
 
         expect(fetchMock).toHaveBeenCalledTimes(2); // Initial + Refresh
 
@@ -157,7 +157,7 @@ describe('ApiClient', () => {
         });
 
         // Execute request and expect failure
-        await expect(client.get('/test')).rejects.toThrow('Unauthorized');
+        await expect(client.get('/test')).rejects.toThrow('Session expired');
 
         expect(fetchMock).toHaveBeenCalledTimes(1); // Only initial request
 
