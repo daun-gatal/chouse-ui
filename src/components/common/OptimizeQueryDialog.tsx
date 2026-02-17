@@ -24,6 +24,15 @@ interface OptimizeQueryDialogProps {
     query: string;
     database?: string;
     onAccept: (optimizedQuery: string) => void;
+    initialResult?: {
+        optimizedQuery: string;
+        explanation: string;
+        summary: string;
+        tips: string[];
+        originalQuery: string;
+    } | null;
+    autoStart?: boolean;
+    initialPrompt?: string;
 }
 
 const DEFAULT_OPTIMIZATION_PROMPT = "Explain your changes deeply using markdown, summarize the improvements in one line, and provide a list of performance tips. Focus on index usage, partition pruning, and efficient data retrieval.";
@@ -34,6 +43,9 @@ export function OptimizeQueryDialog({
     query,
     database,
     onAccept,
+    initialResult,
+    autoStart = false,
+    initialPrompt,
 }: OptimizeQueryDialogProps) {
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [result, setResult] = useState<{
@@ -44,22 +56,44 @@ export function OptimizeQueryDialog({
         originalQuery: string;
     } | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [additionalPrompt, setAdditionalPrompt] = useState(DEFAULT_OPTIMIZATION_PROMPT);
+    const [additionalPrompt, setAdditionalPrompt] = useState(initialPrompt || DEFAULT_OPTIMIZATION_PROMPT);
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // Reset when dialog closes
+
+
+    // Reset or Initialize when dialog opens
     useEffect(() => {
-        if (!isOpen) {
-            setResult(null);
+        if (isOpen) {
+            if (initialResult) {
+                setResult(initialResult);
+            } else {
+                setResult(null);
+            }
             setError(null);
-            setAdditionalPrompt(DEFAULT_OPTIMIZATION_PROMPT);
+
+            // Respect initialPrompt if provided, otherwise default
+            if (initialPrompt) {
+                setAdditionalPrompt(initialPrompt + "\n\n" + DEFAULT_OPTIMIZATION_PROMPT);
+            } else {
+                setAdditionalPrompt(DEFAULT_OPTIMIZATION_PROMPT);
+            }
+
             setIsOptimizing(false);
+        } else {
+            // Cleanup on close
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
                 abortControllerRef.current = null;
             }
         }
-    }, [isOpen]);
+    }, [isOpen, initialResult, initialPrompt]);
+
+    // Auto-start optimization if requested
+    useEffect(() => {
+        if (isOpen && autoStart && !result && !isOptimizing && !initialResult) {
+            handleOptimize();
+        }
+    }, [isOpen, autoStart, result, isOptimizing, initialResult]);
 
     const handleOptimize = async () => {
         if (abortControllerRef.current) {

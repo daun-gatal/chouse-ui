@@ -206,8 +206,9 @@ function getStatementTypeFromAST(ast: AST): ParsedStatement['type'] {
 /**
  * Extract tables from AST
  */
-function extractTablesFromAST(ast: AST): Array<{ database?: string; table: string }> {
+function extractTablesFromAST(ast: AST, scopedCtes?: Set<string>): Array<{ database?: string; table: string }> {
   const tables: Array<{ database?: string; table: string }> = [];
+  const localCtes = new Set(scopedCtes);
 
   if (!ast || typeof ast !== 'object') {
     return tables;
@@ -215,25 +216,41 @@ function extractTablesFromAST(ast: AST): Array<{ database?: string; table: strin
 
   const astAny = ast as any;
 
+  // Handle WITH clause (CTEs)
+  if (astAny.with) {
+    const withClause = Array.isArray(astAny.with) ? astAny.with : [astAny.with];
+    for (const cte of withClause) {
+      if (cte.name && cte.name.value) {
+        // Add CTE name to local scope to avoid treating it as a real table
+        localCtes.add(String(cte.name.value).toLowerCase());
+      }
+      if (cte.stmt && cte.stmt.ast) {
+        // Recursively extract tables from the CTE query itself
+        const cteTables = extractTablesFromAST(cte.stmt.ast, localCtes);
+        tables.push(...cteTables);
+      }
+    }
+  }
+
   // Handle different statement types
   // SELECT: from, join
   if (astAny.from) {
-    extractTablesFromFromClause(astAny.from, tables);
+    extractTablesFromFromClause(astAny.from, tables, localCtes);
   }
 
   // INSERT: into
   if (astAny.table) {
-    extractTableFromTableClause(astAny.table, tables);
+    extractTableFromTableClause(astAny.table, tables, localCtes);
   }
 
   // UPDATE: table
   if (astAny.table && astAny.type?.toLowerCase().includes('update')) {
-    extractTableFromTableClause(astAny.table, tables);
+    extractTableFromTableClause(astAny.table, tables, localCtes);
   }
 
   // DELETE: from
   if (astAny.from && astAny.type?.toLowerCase().includes('delete')) {
-    extractTablesFromFromClause(astAny.from, tables);
+    extractTablesFromFromClause(astAny.from, tables, localCtes);
   }
 
   // DDL: table name in various places
@@ -241,7 +258,7 @@ function extractTablesFromAST(ast: AST): Array<{ database?: string; table: strin
     astAny.type?.toLowerCase().includes('drop') ||
     astAny.type?.toLowerCase().includes('alter') ||
     astAny.type?.toLowerCase().includes('truncate'))) {
-    extractTableFromTableClause(astAny.table, tables);
+    extractTableFromTableClause(astAny.table, tables, localCtes);
   }
 
   return tables;
@@ -250,18 +267,20 @@ function extractTablesFromAST(ast: AST): Array<{ database?: string; table: strin
 /**
  * Extract tables from FROM clause (handles joins, subqueries, etc.)
  */
-function extractTablesFromFromClause(from: any, tables: Array<{ database?: string; table: string }>): void {
+function extractTablesFromFromClause(from: any, tables: Array<{ database?: string; table: string }>, scopedCtes: Set<string>): void {
   if (!from) return;
 
   // Handle array of tables (JOINs)
   if (Array.isArray(from)) {
-    from.forEach(item => extractTablesFromFromClause(item, tables));
+    from.forEach(item => extractTablesFromFromClause(item, tables, scopedCtes));
     return;
   }
 
   // Handle subquery first (before table extraction to avoid duplicates)
-  if (from.ast) {
-    const subqueryTables = extractTablesFromAST(from.ast);
+  // node-sql-parser may put subquery AST in .ast or .expr.ast
+  const subqueryAst = from.ast || (from.expr && from.expr.ast);
+  if (subqueryAst) {
+    const subqueryTables = extractTablesFromAST(subqueryAst, scopedCtes);
     tables.push(...subqueryTables);
   }
 
@@ -270,27 +289,33 @@ function extractTablesFromFromClause(from: any, tables: Array<{ database?: strin
     const db = from.db ? String(from.db).replace(/[`"]/g, '') : undefined;
     const table = from.table ? String(from.table).replace(/[`"]/g, '') : undefined;
     if (table) {
-      tables.push({ database: db, table });
+      // ONLY add if it's NOT a CTE
+      if (!scopedCtes.has(table.toLowerCase())) {
+        tables.push({ database: db, table });
+      }
     }
   } else if (from.table) {
     // Fallback: if db is not directly available, use recursive extraction
-    extractTableFromTableClause(from.table, tables);
+    extractTableFromTableClause(from.table, tables, scopedCtes);
   }
 }
 
 /**
  * Extract table from table clause
  */
-function extractTableFromTableClause(table: any, tables: Array<{ database?: string; table: string }>): void {
+function extractTableFromTableClause(table: any, tables: Array<{ database?: string; table: string }>, scopedCtes: Set<string>): void {
   if (!table) return;
 
   if (Array.isArray(table)) {
-    table.forEach(t => extractTableFromTableClause(t, tables));
+    table.forEach(t => extractTableFromTableClause(t, tables, scopedCtes));
     return;
   }
 
   if (typeof table === 'string') {
-    tables.push({ table: table.replace(/[`"]/g, '') });
+    const tableName = table.replace(/[`"]/g, '');
+    if (!scopedCtes.has(tableName.toLowerCase())) {
+      tables.push({ table: tableName });
+    }
     return;
   }
 
@@ -300,7 +325,9 @@ function extractTableFromTableClause(table: any, tables: Array<{ database?: stri
       table.name ? String(table.name).replace(/[`"]/g, '') : undefined;
 
     if (tableName) {
-      tables.push({ database: db, table: tableName });
+      if (!scopedCtes.has(tableName.toLowerCase())) {
+        tables.push({ database: db, table: tableName });
+      }
     }
   }
 }
@@ -340,6 +367,9 @@ function extractTablesFallback(statement: string): Array<{ database?: string; ta
   const tables: Array<{ database?: string; table: string }> = [];
   const normalizedSql = statement.replace(/\s+/g, ' ').trim();
 
+  // Extract CTE names to filter them out
+  const cteNames = extractCTENamesFallback(statement);
+
   const patterns = [
     /FROM\s+([`"]?[\w]+[`"]?)\.([`"]?[\w]+[`"]?)/gi,
     /FROM\s+([`"]?[\w]+[`"]?)/gi,
@@ -359,15 +389,92 @@ function extractTablesFallback(statement: string): Array<{ database?: string; ta
     let match;
     while ((match = pattern.exec(normalizedSql)) !== null) {
       const clean = (s: string) => s.replace(/[`"]/g, '');
-      if (match[2]) {
-        tables.push({ database: clean(match[1]), table: clean(match[2]) });
-      } else {
-        tables.push({ table: clean(match[1]) });
+      const db = match[2] ? clean(match[1]) : undefined;
+      const table = match[2] ? clean(match[2]) : clean(match[1]);
+
+      // Filter out CTE names
+      if (!cteNames.has(table.toLowerCase())) {
+        if (db) {
+          tables.push({ database: db, table });
+        } else {
+          tables.push({ table });
+        }
       }
     }
   }
 
   return tables;
+}
+
+/**
+ * Fallback helper to extract CTE names when AST parsing fails
+ */
+function extractCTENamesFallback(sql: string): Set<string> {
+  const cteNames = new Set<string>();
+
+  // Remove comments and strings to avoid false matches
+  const cleanSql = sql
+    .replace(/--[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/'[^']*'/g, "''")
+    .replace(/"[^"]*"/g, '""');
+
+  // Find WITH clause
+  const withMatch = cleanSql.match(/\bWITH\s+/i);
+  if (!withMatch) return cteNames;
+
+  const startIdx = withMatch.index! + withMatch[0].length;
+  let i = startIdx;
+  let depth = 0;
+  let currentCteName = '';
+  let lookingForName = true;
+  let lookingForAs = false;
+
+  while (i < cleanSql.length) {
+    const char = cleanSql[i];
+
+    if (char === '(') {
+      depth++;
+      if (lookingForAs && depth === 1) {
+        if (currentCteName) {
+          cteNames.add(currentCteName.toLowerCase());
+        }
+        lookingForName = false;
+        lookingForAs = false;
+      }
+    } else if (char === ')') {
+      depth--;
+      if (depth === 0) {
+        lookingForName = true;
+        currentCteName = '';
+      }
+    } else if (depth === 0) {
+      if (lookingForName && /[a-zA-Z_]/.test(char)) {
+        let word = '';
+        while (i < cleanSql.length && /[a-zA-Z0-9_]/.test(cleanSql[i])) {
+          word += cleanSql[i];
+          i++;
+        }
+        i--;
+
+        const upperWord = word.toUpperCase();
+        if (upperWord === 'SELECT') break;
+        if (upperWord === 'AS') {
+          lookingForAs = true;
+          lookingForName = false;
+        } else if (upperWord !== 'WITH' && upperWord !== 'RECURSIVE') {
+          currentCteName = word;
+          lookingForAs = false;
+        }
+      } else if (char === ',') {
+        lookingForName = true;
+        currentCteName = '';
+      }
+    }
+    i++;
+  }
+
+  return cteNames;
 }
 
 /**

@@ -310,3 +310,41 @@ export async function optimizeQuery(
     tips: string[];
   }>('/query/optimize', { query, database, additionalPrompt }, { signal });
 }
+
+/**
+ * Debug a failed SQL query using AI
+ * @param query - The failed SQL query
+ * @param error - The error message
+ * @param database - Optional database context
+ */
+export async function debugQuery(
+  query: string,
+  error: string,
+  database?: string,
+  additionalPrompt?: string,
+  signal?: AbortSignal
+): Promise<{
+  fixedQuery: string;
+  originalQuery: string;
+  errorAnalysis: string;
+  explanation: string;
+  summary: string;
+}> {
+  return api.post<{
+    fixedQuery: string;
+    originalQuery: string;
+    errorAnalysis: string;
+    explanation: string;
+    summary: string;
+  }>('/query/debug', { query, error, database, additionalPrompt }, { signal });
+}
+
+/**
+ * Check if a query can be optimized (Lightweight check)
+ * @param query - The SQL query to check
+ */
+export async function checkQueryOptimization(
+  query: string
+): Promise<{ canOptimize: boolean; reason: string }> {
+  return api.post<{ canOptimize: boolean; reason: string }>('/query/check-optimization', { query });
+}

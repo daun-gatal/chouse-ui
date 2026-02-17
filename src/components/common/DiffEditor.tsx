@@ -89,12 +89,11 @@ export const DiffEditor: React.FC<DiffEditorProps> = ({
             const editorTheme = theme === "light" ? "vs-light" : "chouse-dark";
 
             const editor = await createMonacoDiffEditor(containerRef.current, editorTheme, {
-                ...options,
-                renderSideBySide: true, // Force side-by-side for Git-like view
+                renderSideBySide: true, // Default to side-by-side
                 originalEditable: false,
-                readOnly: true, // Make modified read-only too for now (it's a diff view)
-                // Use native indicators as well for gutter icons
+                readOnly: true,
                 renderIndicators: true,
+                ...options, // Allow overriding options (e.g., renderSideBySide: false)
             });
 
             if (!isMounted) {

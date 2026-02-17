@@ -7,17 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [v2.10.1] - 2026-02-16
+## [v2.10.1] - 2026-02-17
 
 ### Added
 
-- **Documentation Standards**: Standardized screenshot guidelines and updated documentation with new visual assets for all major features (Issue #130).
-- **Portfolio SEO**: Added automated sitemap generation and improved meta descriptions for the portfolio site.
+- **AI Query Debugger**:
+  - Introduced AI-powered Query Debugger to automatically analyze and suggest fixes for failed SQL queries (Issue #138).
+  - Added frontend support with a new `DebugQueryDialog`.
+- **SQL Parser**:
+  - Replaced legacy regex-based parsing with a full Abstract Syntax Tree (AST) parser using `node-sql-parser`.
+  - Added support for Common Table Expressions (CTE) in SQL analysis.
+  - Improved table and column extraction for complex queries.
 
 ### Changed
 
-- **Authentication Resilience**: Completely refactored the API client to support robust token refreshing and session recovery.
-  - Centralized token management in `src/api/client.ts`.
+- **AI Query Optimizer**:
+  - Improved robustness with specialized system prompts to prevent infinite optimization loops.
+  - Enhanced permission checks for AI features (Optimizer and Debugger) to follow RBAC.
+- **UI/UX Refinement**:
+  - Optimized the Explain popup and tab by conditionally hiding the Analysis tab when the AI Optimizer is enabled.
+  - Resolved "Double Icon" bug in `ExplainPopout`, `RoleFormDialog`, and `ExplainTab` by leveraging automatic icon rendering in the standardized `Alert` component.
+  - Refined visuals for SQL editor and query optimization dialogs.
+- **Documentation Standards**: Standardized screenshot guidelines and updated documentation with new visual assets for all major features (Issue #130).
+- **Portfolio Enhancements**:
+  - Enhanced gallery with marquee scroll for a smoother experience.
+  - Updated Quick Start guides and Docker Compose configurations.
+  - Fixed various SEO and meta-tag issues.
+  - Refactored API client for better resilience.
   - Added global `auth:unauthorized` event for immediate redirection on session loss.
 - **Server Performance**: Introduced `ClientManager` to pool ClickHouse connections, reducing overhead and improving stability.
 - **Session Duration**: Increased session expiration duration from 15 minutes to 4 hours (Issue #128).

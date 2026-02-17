@@ -8,7 +8,6 @@ import {
 } from "@/features/workspace/editor/monacoConfig";
 import { Button } from "@/components/ui/button";
 import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database, Network, Sparkles } from "lucide-react";
-import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -50,6 +49,7 @@ interface SQLEditorProps {
   tabId: string;
   onRunQuery: (query: string) => void;
   onExplain?: (query: string) => void;
+  onOptimize?: (query: string) => void;
 }
 
 type SaveMode = "save" | "save-as";
@@ -57,7 +57,7 @@ type SaveStatus = "idle" | "saving" | "saved" | "unsaved";
 
 const AUTO_SAVE_DELAY = 2000; // 2 seconds after user stops typing
 
-const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) => {
+const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onOptimize }) => {
   const { getTabById, updateTab, saveQuery, updateSavedQuery } = useWorkspaceStore();
   const { activeConnectionId } = useAuthStore();
   const { hasPermission, hasAnyPermission } = useRbacStore();
@@ -79,8 +79,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
   const [queryName, setQueryName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Optimizer dialog state
-  const [isOptimizerOpen, setIsOptimizerOpen] = useState(false);
+
 
   // Permissions for live queries
   const canKillQuery = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_KILL);
@@ -158,6 +157,19 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
     getCurrentQueryRef.current = getCurrentQuery;
   }, [getCurrentQuery]);
 
+  // Sync editor content when tab content changes externally (e.g. from Debugger or Optimizer)
+  useEffect(() => {
+    if (monacoRef.current && tab?.content) {
+      const currentEditorValue = monacoRef.current.getValue();
+      const newContent = typeof tab.content === "string" ? tab.content : "";
+      // Only update if content is different to avoid cursor jumping or infinite loops
+      // (though onDidChangeModelContent updates store, which triggers this, so check is crucial)
+      if (currentEditorValue !== newContent) {
+        monacoRef.current.setValue(newContent);
+      }
+    }
+  }, [tab?.content]);
+
   const handleRunQuery = useCallback(() => {
     const content = getCurrentQuery();
     if (content.trim()) {
@@ -191,18 +203,15 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
   const handleOptimizeQuery = useCallback(() => {
     const content = getCurrentQuery();
     if (content.trim()) {
-      setIsOptimizerOpen(true);
+      if (onOptimize) {
+        onOptimize(content);
+      }
     } else {
       toast.error("Please enter a query to optimize");
     }
-  }, [getCurrentQuery]);
+  }, [getCurrentQuery, onOptimize]);
 
-  const handleAcceptOptimizedQuery = useCallback((optimizedQuery: string) => {
-    if (monacoRef.current) {
-      monacoRef.current.setValue(optimizedQuery);
-      updateTab(tabId, { content: optimizedQuery });
-    }
-  }, [tabId, updateTab]);
+
 
   const isSavingRef = useRef(false);
 
@@ -736,14 +745,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain }) =
         </DialogContent>
       </Dialog>
 
-      {/* AI Optimizer Dialog */}
-      <OptimizeQueryDialog
-        isOpen={isOptimizerOpen}
-        onClose={() => setIsOptimizerOpen(false)}
-        query={getCurrentQuery()}
-        database={undefined}
-        onAccept={handleAcceptOptimizedQuery}
-      />
+
 
       {/* Kill Query Confirmation Dialog */}
       <AlertDialog open={isKillDialogOpen} onOpenChange={setIsKillDialogOpen}>

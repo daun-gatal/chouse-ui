@@ -4,6 +4,7 @@ import {
     getSystemPrompt,
     buildOptimizationPrompt,
     optimizeQuery,
+    debugQuery,
     type TableSchema,
 } from "./aiOptimizer";
 import type { TableDetails } from "../types";
@@ -158,6 +159,54 @@ describe("aiOptimizer", () => {
         // Note: Testing actual AI optimization would require mocking the AI SDK
         // or using integration tests with a real API key. For unit tests, we focus
         // on configuration validation and error handling.
+    });
+
+    describe("debugQuery", () => {
+        it("should throw error when debug is disabled", async () => {
+            const originalEnabled = process.env.AI_OPTIMIZER_ENABLED;
+            process.env.AI_OPTIMIZER_ENABLED = "false";
+
+            const query = "SELECT * FROM users";
+            const errorMsg = "Table not found";
+
+            try {
+                await debugQuery(query, errorMsg);
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error).toBeDefined();
+            }
+
+            if (originalEnabled !== undefined) {
+                process.env.AI_OPTIMIZER_ENABLED = originalEnabled;
+            }
+        });
+
+        it("should throw error when API key is missing", async () => {
+            const originalEnabled = process.env.AI_OPTIMIZER_ENABLED;
+            process.env.AI_API_KEY = ""; // Ensure empty
+
+            process.env.AI_OPTIMIZER_ENABLED = "true";
+
+            const query = "SELECT * FROM users";
+            const errorMsg = "Table not found";
+
+            try {
+                await debugQuery(query, errorMsg);
+                expect(true).toBe(false); // Should not reach here
+            } catch (error) {
+                expect(error).toBeDefined();
+                if (error instanceof Error) {
+                    expect(error.message).toContain("not configured");
+                }
+            }
+
+            // Restore
+            if (originalEnabled !== undefined) {
+                process.env.AI_OPTIMIZER_ENABLED = originalEnabled;
+            } else {
+                delete process.env.AI_OPTIMIZER_ENABLED;
+            }
+        });
     });
 
 });
