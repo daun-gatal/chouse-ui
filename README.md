@@ -91,29 +91,35 @@ CHouse UI provides security and access control features for teams that need:
 
 ## Screenshots
 
-### Home Page
-![Home Page](public/screenshots/home-page.png)
-
-### SQL Editor
+### 🚀 SQL Workspace
 ![SQL Editor](public/screenshots/sql-editor-ui.png)
 
-### Monitoring
-![Monitoring Page](public/screenshots/monitoring-page.png)
+### ✨ Core Features
+<table width="100%">
+  <tr>
+    <td width="25%" align="center"><b>Analytics</b></td>
+    <td width="25%" align="center"><b>Optimization</b></td>
+    <td width="25%" align="center"><b>Debugging</b></td>
+    <td width="25%" align="center"><b>Visualization</b></td>
+  </tr>
+  <tr>
+    <td><img src="public/screenshots/monitoring-page.png" alt="Monitoring" /></td>
+    <td><img src="public/screenshots/ai-optimizer.png" alt="AI Optimizer" /></td>
+    <td><img src="public/screenshots/ai-debugger.png" alt="AI Debugger" /></td>
+    <td><img src="public/screenshots/explainer-feature.png" alt="Visual Explain" /></td>
+  </tr>
+</table>
 
-### AI Optimizer
-![AI Optimizer](public/screenshots/ai-optimizer.png)
+---
 
-### AI Debugger
-![AI Debugger](public/screenshots/ai-debugger.png)
+<details>
+<summary><b>🛠️ Management & Administration</b></summary>
 
-### Visual Explain Plan
-![Visual Explain Plan](public/screenshots/explainer-feature.png)
+| Dashboard | Admin | Preferences |
+|:---:|:---:|:---:|
+| ![Home](public/screenshots/home-page.png) | ![Admin](public/screenshots/admin-page.png) | ![Prefs](public/screenshots/preference-page.png) |
 
-### Admin Settings
-![Admin Page](public/screenshots/admin-page.png)
-
-### User Preferences
-![Preferences Page](public/screenshots/preference-page.png)
+</details>
 
 ## Quick Start
 
@@ -264,7 +270,7 @@ spec:
 |----------|-------------|---------|
 | `PORT` | Server port | `5521` |
 | `NODE_ENV` | Environment (`development`/`production`) | `development` |
-| `CORS_ORIGIN` | Allowed CORS origins | `*` |
+| `CORS_ORIGIN` | Allowed CORS origins (comma-separated or `*`) | `*` |
 | `STATIC_PATH` | Path to frontend build | `./dist` |
 
 #### RBAC Database
@@ -273,8 +279,8 @@ spec:
 |----------|-------------|---------|
 | `RBAC_DB_TYPE` | Database type (`sqlite`/`postgres`) | `sqlite` |
 | `RBAC_SQLITE_PATH` | SQLite file path | `./data/rbac.db` |
-| `RBAC_POSTGRES_URL` | PostgreSQL connection URL | - |
-| `RBAC_POSTGRES_POOL_SIZE` | Connection pool size | `10` |
+| `RBAC_POSTGRES_URL` | PostgreSQL connection URL (or use `DATABASE_URL`) | - |
+| `RBAC_POSTGRES_POOL_SIZE` | Connection pool size for PostgreSQL | `10` |
 
 **PostgreSQL Permissions**: When using PostgreSQL, the database user specified in `RBAC_POSTGRES_URL` must have the following permissions:
 - `CREATEDB` privilege to create the database if it doesn't exist
@@ -290,21 +296,31 @@ ALTER USER your_user WITH CREATEDB;
 GRANT CONNECT, CREATE ON DATABASE your_database TO your_user;
 ```
 
-#### Authentication
+#### Authentication (JWT)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `JWT_SECRET` | JWT signing secret | **Required in production** |
-| `JWT_ACCESS_EXPIRY` | Access token expiry | `15m` |
-| `JWT_REFRESH_EXPIRY` | Refresh token expiry | `7d` |
+| `JWT_SECRET` | JWT signing secret | **Required** |
+| `JWT_ACCESS_EXPIRY` | Access token expiry (e.g., `15m`, `4h`) | `4h` |
+| `JWT_REFRESH_EXPIRY` | Refresh token expiry (e.g., `7d`) | `7d` |
+| `RBAC_ADMIN_EMAIL` | Initial admin email | `admin@localhost` |
 | `RBAC_ADMIN_PASSWORD` | Initial admin password | `admin123!` |
 
-#### Security
+#### Security & Encryption
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RBAC_ENCRYPTION_KEY` | AES-256 key for passwords | **Required in production** |
-| `SESSION_TTL` | Session timeout (ms) | `3600000` |
+| `RBAC_ENCRYPTION_KEY` | AES-256 key for passwords (32-byte hex) | **Required** |
+| `RBAC_ENCRYPTION_SALT` | Salt for key derivation (32-byte hex) | **Required** |
+
+#### AI Features Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AI_OPTIMIZER_ENABLED` | Enable AI features (Optimizer, Debugger) | `false` |
+| `AI_PROVIDER` | AI provider (`openai`, `anthropic`, `google`, `huggingface`) | `openai` |
+| `AI_API_KEY` | API Key for the selected provider | - |
+| `AI_MODEL_NAME` | Model to use (e.g., `gpt-4o`, `gemini-1.5-pro`) | - |
 
 ### Generating Secrets
 
