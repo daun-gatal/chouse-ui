@@ -21,10 +21,13 @@ import DownloadDialog from "@/components/common/DownloadDialog";
 import EmptyQueryResult from "./EmptyQueryResult";
 import StatisticsDisplay from "./StatisticsDisplay";
 import ExplainTab from "./ExplainTab";
+import { DebugQueryDialog } from "@/components/common/DebugQueryDialog";
+import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
+import { Sparkles, Lightbulb } from "lucide-react";
 
-// Store
-import { useWorkspaceStore } from "@/stores";
-import { useDatabases } from "@/hooks";
+// Store and Hooks
+import { useWorkspaceStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { useDatabases, useConfig } from "@/hooks";
 import { queryApi } from "@/api";
 
 // Types
@@ -95,7 +98,7 @@ const formatCellValue = (value: unknown): { html: string; className?: string; ty
  * Metadata tab removed as requested.
  */
 const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
-  const { getTabById, runQuery } = useWorkspaceStore();
+  const { getTabById, runQuery, updateTab } = useWorkspaceStore();
   // Using refetch to handle side effects
   const { refetch: refetchDatabases } = useDatabases();
   const tab = getTabById(tabId);
@@ -109,12 +112,82 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const [explainRefreshKey, setExplainRefreshKey] = useState(0);
   const lastExplainQueryRef = useRef<string>('');
 
+  // Debugger state
+  const [isDebugDialogOpen, setIsDebugDialogOpen] = useState(false);
+  const [debugError, setDebugError] = useState<string>("");
+  const [debugQueryString, setDebugQueryString] = useState<string>("");
+
+  // Optimizer state
+  const [isOptimizerOpen, setIsOptimizerOpen] = useState(false);
+  const [optimizerAutoStart, setOptimizerAutoStart] = useState(false);
+  const [optimizationResult, setOptimizationResult] = useState<{
+    optimizedQuery: string;
+    explanation: string;
+    summary: string;
+    tips: string[];
+    originalQuery: string;
+  } | null>(null);
+  const [optimizationReason, setOptimizationReason] = useState<string>("");
+
+  // Feature Flags & Permissions
+  const { data: config } = useConfig();
+  const { hasPermission } = useRbacStore();
+  const canDebug = config?.features?.aiOptimizer && hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+  // Separate check for cleaner logic, though currently identical to canDebug
+  const canOptimize = config?.features?.aiOptimizer && hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+
   // Detect schema-changing queries to refresh database explorer
   const isSchemaModifyingQuery = (query: string): boolean => {
     return /^\s*(CREATE|DROP|ALTER|TRUNCATE|RENAME|INSERT|UPDATE|DELETE)\s+/i.test(
       query
     );
   };
+
+  // Background optimization check
+  const checkOptimization = useCallback(async (query: string) => {
+    if (!canOptimize) return;
+
+    // reset previous result when running new query
+    // reset previous result when running new query
+    setOptimizationResult(null);
+    setOptimizerAutoStart(false);
+    setOptimizationReason("");
+
+    try {
+      // Light-weight boolean check
+      queryApi.checkQueryOptimization(query)
+        .then(result => {
+          console.log("[DEBUG] checkQueryOptimization result:", result);
+          if (result.canOptimize) {
+            toast("Your query can be optimized", {
+              description: "AI analysis found potential improvements.",
+              duration: Infinity,
+              action: {
+                label: "View",
+                onClick: () => {
+                  setOptimizerAutoStart(true);
+                  setOptimizationReason(result.reason);
+                  setIsOptimizerOpen(true);
+                }
+              },
+              icon: <Lightbulb className="w-4 h-4 text-amber-400" />
+            });
+          }
+        })
+        .catch(err => {
+          // Silent fail for background check
+          console.debug("Background optimization check failed", err);
+        });
+    } catch (e) {
+      // ignore
+    }
+  }, [canOptimize]);
+
+  // Handle manual optimization trigger
+  const handleOptimize = useCallback((query: string) => {
+    setOptimizerAutoStart(false); // Manual trigger usually implies fresh start or we can set true
+    setIsOptimizerOpen(true);
+  }, []);
 
   // Handle query execution
   const handleRunQuery = useCallback(
@@ -123,9 +196,18 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
       setExplainError(null);
       setActiveTab("results");
 
+      // Save valid query for debugging context if needed later
+      setDebugQueryString(query);
+
+      setDebugQueryString(query);
+
       try {
         const shouldRefresh = isSchemaModifyingQuery(query);
         const result = await runQuery(query, tabId);
+
+        if (!result.error) {
+          checkOptimization(query);
+        }
 
         if (!result.error && shouldRefresh) {
           // Trigger refetch but don't await blocking UI
@@ -139,8 +221,20 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         );
       }
     },
-    [runQuery, tabId, refetchDatabases]
+    [runQuery, tabId, refetchDatabases, canOptimize, checkOptimization]
   );
+
+  // Background optimization check
+  // We use a useEffect or just fire it in handleRunQuery?
+  // Since handleRunQuery is async, we can fire it there but NOT await it.
+
+
+
+  // Wrap handleRunQuery to include optimization check
+  // Wrap handleRunQuery - NO, pass explicitly
+  // const wrappedHandleRunQuery = ... REMOVED code ...
+
+  // Handle explain query
 
   // Handle explain query
   const handleExplain = useCallback(
@@ -269,11 +363,37 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
 
   const renderError = (errorMessage: string) => (
     <div className="m-4">
-      <Alert variant="destructive">
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{errorMessage}</AlertDescription>
-      </Alert>
-    </div>
+      <Alert variant="destructive" className="flex flex-col gap-4">
+        <div>
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription className="font-mono text-xs mt-1 whitespace-pre-wrap">
+            {errorMessage}
+          </AlertDescription>
+        </div>
+        <div className="flex justify-end">
+          {canDebug && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-red-950/20 hover:bg-red-900/40 border-red-800 text-red-200"
+              onClick={() => {
+                setDebugError(errorMessage);
+                // Ensure we have the query that caused the error. If handleRunQuery set it, good.
+                // Use current content if debugQueryString is empty (fallback)
+                const currentContent = typeof tab?.content === 'string' ? tab.content : '';
+                if (!debugQueryString && currentContent) {
+                  setDebugQueryString(currentContent);
+                }
+                setIsDebugDialogOpen(true);
+              }}
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-2" />
+              Debug with AI
+            </Button>
+          )}
+        </div>
+      </Alert >
+    </div >
   );
 
   const renderEmpty = () => (
@@ -488,13 +608,42 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     <div className="h-full bg-white/[0.02]">
       <ResizablePanelGroup direction="vertical">
         <ResizablePanel defaultSize={50} minSize={25}>
-          <SQLEditor tabId={tabId} onRunQuery={handleRunQuery} onExplain={handleExplain} />
+          <SQLEditor
+            tabId={tabId}
+            onRunQuery={handleRunQuery}
+            onExplain={handleExplain}
+            onOptimize={handleOptimize}
+          />
         </ResizablePanel>
         <ResizableHandle withHandle className="bg-white/5 hover:bg-white/10 transition-colors" />
         <ResizablePanel defaultSize={50} minSize={25}>
           {renderResults()}
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <DebugQueryDialog
+        isOpen={isDebugDialogOpen}
+        onClose={() => setIsDebugDialogOpen(false)}
+        query={debugQueryString}
+        error={debugError}
+        database={typeof tab?.content === 'object' ? tab.content.database : undefined} // Not fully accurate if content struct changed
+        onAccept={(fixedQuery) => {
+          updateTab(tabId, { content: fixedQuery });
+        }}
+      />
+
+      <OptimizeQueryDialog
+        isOpen={isOptimizerOpen}
+        onClose={() => setIsOptimizerOpen(false)}
+        query={debugQueryString || (typeof tab?.content === 'string' ? tab.content : '')}
+        database={typeof tab?.content === 'object' ? tab.content.database : undefined}
+        initialResult={optimizationResult}
+        autoStart={optimizerAutoStart}
+        initialPrompt={optimizationReason ? `Detected potential issue: ${optimizationReason}` : undefined}
+        onAccept={(optimizedQuery) => {
+          updateTab(tabId, { content: optimizedQuery });
+        }}
+      />
     </div>
   );
 };

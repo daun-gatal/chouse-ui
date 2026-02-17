@@ -1,5 +1,5 @@
 import { ClientManager } from "./clientManager";
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
 import type { ConnectionConfig } from "../types";
 import type { ClickHouseClient } from "@clickhouse/client";
 
@@ -19,17 +19,17 @@ describe("ClientManager", () => {
     };
 
     // Simple factory that returns a unique mock object each time
-    const mockFactory = vi.fn((_config) => ({
-        query: vi.fn(),
-        close: vi.fn().mockResolvedValue(undefined),
-        ping: vi.fn().mockResolvedValue({ success: true }),
+    const mockFactory = mock((_config) => ({
+        query: mock(),
+        close: mock(async () => { }),
+        ping: mock(async () => ({ success: true })),
     } as unknown as ClickHouseClient));
 
     beforeEach(async () => {
         // Reset singleton instance to ensure fresh start with our mock factory
         // @ts-ignore - Accessing private static property for testing
         ClientManager.instance = undefined;
-        vi.clearAllMocks();
+        mockFactory.mockClear();
     });
 
     afterEach(async () => {
@@ -70,44 +70,34 @@ describe("ClientManager", () => {
     it("should close idle clients during cleanup", async () => {
         const manager = ClientManager.getInstance(mockFactory);
         const client = manager.getClient(config1);
-        const closeSpy = vi.spyOn(client, 'close');
 
-        const now = Date.now();
-        vi.useFakeTimers();
-        vi.setSystemTime(now);
-
-        // Re-access client to update lastUsed (though getClient sets it to now)
-        // But test logic:
-        // 1. getClient (t = now)
-        // 2. advance time
-        // 3. cleanup
+        let currentTime = Date.now();
+        const dateNowSpy = spyOn(Date, 'now').mockImplementation(() => currentTime);
 
         // Advance time past idle timeout (10 mins + 1 sec)
-        vi.setSystemTime(now + 10 * 60 * 1000 + 1000);
+        currentTime += 10 * 60 * 1000 + 1000;
 
         const closedCount = await manager.cleanup();
         expect(closedCount).toBe(1);
-        expect(closeSpy).toHaveBeenCalled();
+        expect(client.close).toHaveBeenCalled();
 
-        vi.useRealTimers();
+        dateNowSpy.mockRestore();
     });
 
     it("should not close active clients during cleanup", async () => {
         const manager = ClientManager.getInstance(mockFactory);
         const client = manager.getClient(config1);
-        const closeSpy = vi.spyOn(client, 'close');
 
-        const now = Date.now();
-        vi.useFakeTimers();
-        vi.setSystemTime(now);
+        let currentTime = Date.now();
+        const dateNowSpy = spyOn(Date, 'now').mockImplementation(() => currentTime);
 
         // Advance time only 5 mins
-        vi.setSystemTime(now + 5 * 60 * 1000);
+        currentTime += 5 * 60 * 1000;
 
         const closedCount = await manager.cleanup();
         expect(closedCount).toBe(0);
-        expect(closeSpy).not.toHaveBeenCalled();
+        expect(client.close).not.toHaveBeenCalled();
 
-        vi.useRealTimers();
+        dateNowSpy.mockRestore();
     });
 });

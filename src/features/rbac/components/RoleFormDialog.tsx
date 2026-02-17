@@ -369,7 +369,6 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                     exit={{ opacity: 0, height: 0 }}
                   >
                     <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
-                      <Lock className="h-4 w-4 text-red-400" />
                       <AlertDescription className="text-red-300">
                         This is a system role. Only super admins can modify system roles.
                       </AlertDescription>
@@ -548,7 +547,6 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                   </div>
                 ) : !filteredCategories || Object.keys(filteredCategories).length === 0 ? (
                   <Alert className="border-gray-700 bg-gray-800/50">
-                    <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
                       {searchQuery ? 'No permissions found matching your search.' : 'No permissions available'}
                     </AlertDescription>

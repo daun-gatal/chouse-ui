@@ -103,6 +103,9 @@ CHouse UI provides security and access control features for teams that need:
 ### AI Optimizer
 ![AI Optimizer](public/screenshots/ai-optimizer.png)
 
+### AI Debugger
+![AI Debugger](public/screenshots/ai-debugger.png)
+
 ### Visual Explain Plan
 ![Visual Explain Plan](public/screenshots/explainer-feature.png)
 

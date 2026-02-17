@@ -538,7 +538,7 @@ export class ClickHouseService {
         slow_queries_count: number;
       }>;
 
-      const data = response.data[0] || {};
+      const data = (response.data[0] || {}) as any;
       return {
         p50_ms: Number(data.p50_ms) || 0,
         p95_ms: Number(data.p95_ms) || 0,
@@ -708,7 +708,7 @@ export class ClickHouseService {
         merges_running: number;
         merges_mutations_memory: number;
       }>;
-      const logData = logResponse.data[0] || {
+      const logData = (logResponse.data[0] as any) || {
         merged_rows_per_sec: 0,
         merged_bytes_per_sec: 0,
         merges_running: 0,
@@ -844,7 +844,7 @@ export class ClickHouseService {
         compiled_cache: number;
       }>;
 
-      const data = response.data[0] || {};
+      const data = (response.data[0] || {}) as any;
       const markHits = Number(data.mark_hits) || 0;
       const markMisses = Number(data.mark_misses) || 0;
       const uncompHits = Number(data.uncomp_hits) || 0;
