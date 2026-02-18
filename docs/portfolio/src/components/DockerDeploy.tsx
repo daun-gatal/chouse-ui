@@ -1,85 +1,169 @@
 import { motion } from 'framer-motion';
 import { GlassCard, GlassCardContent } from './GlassCard';
-import { Copy, Check, Terminal, Package, AlertCircle, Key, Settings, Info } from 'lucide-react';
+import { Copy, Check, Terminal, Package, AlertCircle, Key, Settings, Info, Cloud } from 'lucide-react';
 import { useState } from 'react';
+
+
+const kubernetesCode = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chouse-ui
+  namespace: default
+  labels:
+    app: chouse-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chouse-ui
+  template:
+    metadata:
+      labels:
+        app: chouse-ui
+    spec:
+      containers:
+        - name: chouse-ui
+          image: ghcr.io/daun-gatal/chouse-ui:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5521
+              name: http
+          env:
+            # Core
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "5521"
+            - name: STATIC_PATH
+              value: "./dist"
+            - name: CORS_ORIGIN
+              value: "*"
+            
+            # RBAC Database
+            - name: RBAC_DB_TYPE
+              value: "sqlite"
+            - name: RBAC_SQLITE_PATH
+              value: "/app/data/rbac.db"
+            - name: RBAC_POSTGRES_URL
+              value: ""
+            - name: RBAC_POSTGRES_POOL_SIZE
+              value: "10"
+            
+            # Security (REQUIRED)
+            - name: JWT_SECRET
+              value: "change-me-in-production"
+            - name: RBAC_ENCRYPTION_KEY
+              value: "change-me-in-production"
+            - name: RBAC_ENCRYPTION_SALT
+              value: "change-me-in-production"
+            
+            # JWT Expiry
+            - name: JWT_ACCESS_EXPIRY
+              value: "4h"
+            - name: JWT_REFRESH_EXPIRY
+              value: "7d"
+            
+            # Admin Seeding (First run only)
+            - name: RBAC_ADMIN_EMAIL
+              value: "admin@localhost"
+            - name: RBAC_ADMIN_USERNAME
+              value: "admin"
+            - name: RBAC_ADMIN_PASSWORD
+              value: "admin123!"
+            
+            # AI Configuration
+            - name: AI_OPTIMIZER_ENABLED
+              value: "false"
+            - name: AI_PROVIDER
+              value: "openai"
+            - name: AI_API_KEY
+              value: ""
+            - name: AI_MODEL_NAME
+              value: ""
+            - name: AI_BASE_URL
+              value: ""
+          volumeMounts:
+            - name: rbac-data
+              mountPath: /app/data
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 5521
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5521
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: rbac-data
+          emptyDir: {} # Use PersistentVolumeClaim in production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chouse-ui
+  namespace: default
+  labels:
+    app: chouse-ui
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 5521
+      protocol: TCP
+      name: http
+  selector:
+    app: chouse-ui`;
+
 
 
 const dockerComposeCode = `version: '3.8'
 
 services:
-  # ClickHouse Database Server
-  clickhouse:
-    image: clickhouse/clickhouse-server:24-alpine
-    container_name: clickhouse
-    ports:
-      - "8123:8123"   # HTTP interface
-      - "9000:9000"   # Native TCP interface
-    volumes:
-      - clickhouse_data:/var/lib/clickhouse
-    environment:
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: \${CLICKHOUSE_PASSWORD:-clickhouse123}
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    restart: unless-stopped
-    networks:
-      - clickhouse-network
-
-  # PostgreSQL for RBAC (Production)
-  postgres:
-    image: postgres:16-alpine
-    container_name: postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: clickhouse_studio
-      POSTGRES_USER: chstudio
-      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-changeme}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    networks:
-      - clickhouse-network
-
-  # CHouse UI Application
-  clickhouse-studio:
+  chouse-ui:
     image: ghcr.io/daun-gatal/chouse-ui:latest
-    container_name: clickhouse-studio
+    container_name: chouse-ui
     ports:
       - "5521:5521"
     volumes:
-      - rbac_data:/app/data
+      - ./data:/app/data
     environment:
+      # Core
       NODE_ENV: production
       PORT: 5521
-      # RBAC Configuration
-      RBAC_DB_TYPE: \${RBAC_DB_TYPE:-postgres}
-      RBAC_POSTGRES_URL: postgres://chstudio:\${POSTGRES_PASSWORD:-changeme}@postgres:5432/clickhouse_studio
-      # Security (REQUIRED in production v2.6.1+ - change these!)
+      STATIC_PATH: ./dist
+      CORS_ORIGIN: \${CORS_ORIGIN:-*}
+      
+      # RBAC Database
+      RBAC_DB_TYPE: \${RBAC_DB_TYPE:-sqlite}
+      RBAC_SQLITE_PATH: \${RBAC_SQLITE_PATH:-/app/data/rbac.db}
+      RBAC_POSTGRES_URL: \${RBAC_POSTGRES_URL:-}
+      RBAC_POSTGRES_POOL_SIZE: \${RBAC_POSTGRES_POOL_SIZE:-10}
+      
+      # Security (REQUIRED)
       JWT_SECRET: \${JWT_SECRET:-change-me-in-production}
       RBAC_ENCRYPTION_KEY: \${RBAC_ENCRYPTION_KEY:-change-me-in-production}
       RBAC_ENCRYPTION_SALT: \${RBAC_ENCRYPTION_SALT:-change-me-in-production}
-      # Optional
-      RBAC_ADMIN_PASSWORD: \${RBAC_ADMIN_PASSWORD:-}
-      CORS_ORIGIN: \${CORS_ORIGIN:-*}
-      # Optional
-      RBAC_ADMIN_PASSWORD: \${RBAC_ADMIN_PASSWORD:-}
-      CORS_ORIGIN: \${CORS_ORIGIN:-*}
-    depends_on:
-      - clickhouse
-      - postgres
-    restart: unless-stopped
-    networks:
-      - clickhouse-network
-
-networks:
-  clickhouse-network:
-    driver: bridge
-
-volumes:
-  clickhouse_data:
-  postgres_data:
-  rbac_data:`;
+      
+      # JWT Expiry
+      JWT_ACCESS_EXPIRY: \${JWT_ACCESS_EXPIRY:-4h}
+      JWT_REFRESH_EXPIRY: \${JWT_REFRESH_EXPIRY:-7d}
+      
+      # Admin Seeding (First run only)
+      RBAC_ADMIN_EMAIL: \${RBAC_ADMIN_EMAIL:-admin@localhost}
+      RBAC_ADMIN_USERNAME: \${RBAC_ADMIN_USERNAME:-admin}
+      RBAC_ADMIN_PASSWORD: \${RBAC_ADMIN_PASSWORD:-admin123!}
+      
+      # AI Configuration
+      AI_OPTIMIZER_ENABLED: \${AI_OPTIMIZER_ENABLED:-false}
+      AI_PROVIDER: \${AI_PROVIDER:-openai}
+      AI_API_KEY: \${AI_API_KEY:-}
+      AI_MODEL_NAME: \${AI_MODEL_NAME:-}
+      AI_BASE_URL: \${AI_BASE_URL:-}
+    restart: unless-stopped`;
 
 const dockerComposeNote = 'Save as docker-compose.yml and run:\n\n  docker-compose up -d\n\nAccess at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123!\n\n⚠️ In production, change JWT_SECRET, RBAC_ENCRYPTION_KEY, and RBAC_ENCRYPTION_SALT!';
 
@@ -103,16 +187,40 @@ const envVars = [
     desc: 'Encryption salt for password derivation. Generate with: openssl rand -hex 32 (exactly 64 hex characters). Required in production.',
   },
   {
+    name: 'JWT_ACCESS_EXPIRY',
+    required: false,
+    default: '4h',
+    desc: 'JWT access token expiration time (e.g., 15m, 1h)',
+  },
+  {
+    name: 'JWT_REFRESH_EXPIRY',
+    required: false,
+    default: '7d',
+    desc: 'JWT refresh token expiration time (e.g., 7d, 30d)',
+  },
+  {
     name: 'RBAC_DB_TYPE',
     required: false,
     default: 'sqlite',
     desc: 'Database type: "sqlite" (default) or "postgres"',
   },
   {
+    name: 'RBAC_SQLITE_PATH',
+    required: false,
+    default: './data/rbac.db',
+    desc: 'Path to SQLite database file',
+  },
+  {
     name: 'RBAC_POSTGRES_URL',
     required: false,
     default: '',
     desc: 'PostgreSQL connection URL (if using postgres). Format: postgres://user:pass@host:5432/dbname',
+  },
+  {
+    name: 'RBAC_POSTGRES_POOL_SIZE',
+    required: false,
+    default: '10',
+    desc: 'Maximum number of connections in the PostgreSQL pool',
   },
   {
     name: 'PORT',
@@ -127,17 +235,67 @@ const envVars = [
     desc: 'CORS allowed origin. Use your domain in production (e.g., https://yourdomain.com)',
   },
   {
+    name: 'STATIC_PATH',
+    required: false,
+    default: './dist',
+    desc: 'Path to static files',
+  },
+  {
+    name: 'RBAC_ADMIN_EMAIL',
+    required: false,
+    default: 'admin@localhost',
+    desc: 'Initial admin email (seeding only)',
+  },
+  {
+    name: 'RBAC_ADMIN_USERNAME',
+    required: false,
+    default: 'admin',
+    desc: 'Initial admin username (seeding only)',
+  },
+  {
     name: 'RBAC_ADMIN_PASSWORD',
     required: false,
+    default: 'admin123!',
+    desc: 'Initial admin password (seeding only)',
+  },
+  {
+    name: 'AI_OPTIMIZER_ENABLED',
+    required: false,
+    default: 'false',
+    desc: 'Enable AI-powered query optimization features',
+  },
+  {
+    name: 'AI_PROVIDER',
+    required: false,
+    default: 'openai',
+    desc: 'AI Provider: "openai", "anthropic", "google", etc.',
+  },
+  {
+    name: 'AI_API_KEY',
+    required: false,
     default: '',
-    desc: 'Default admin password (only used on first run). Email: admin@localhost',
+    desc: 'API Key for the chosen AI provider',
+  },
+  {
+    name: 'AI_MODEL_NAME',
+    required: false,
+    default: '',
+    desc: 'Model name (e.g., gpt-4o, claude-3-5-sonnet-20241022)',
+  },
+  {
+    name: 'AI_BASE_URL',
+    required: false,
+    default: '',
+    desc: 'Base URL for AI provider (e.g., for Ollama or OpenAI proxies)',
   },
 ];
 
-type TabType = 'overview' | 'dockercompose' | 'envvars';
+type TabType = 'overview' | 'deployment' | 'envvars';
+type DeploymentType = 'docker' | 'kubernetes';
 
 export default function DockerDeploy() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [deploymentType, setDeploymentType] = useState<DeploymentType>('docker');
   const [copied, setCopied] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {
@@ -150,7 +308,7 @@ export default function DockerDeploy() {
   const tabs = [
     { id: 'overview' as TabType, label: 'Production Setup', icon: Settings },
     { id: 'envvars' as TabType, label: 'Environment Variables', icon: Key },
-    { id: 'dockercompose' as TabType, label: 'Docker Compose', icon: Terminal },
+    { id: 'deployment' as TabType, label: 'Deployment', icon: Terminal },
   ];
 
   return (
@@ -208,11 +366,11 @@ export default function DockerDeploy() {
                       whileHover={{ y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       className={`flex-1 min-w-[150px] px-6 py-4 flex items-center justify-center gap-2 transition-all duration-300 relative ${isActive
-                          ? 'bg-gradient-to-br from-purple-500/20 to-blue-500/20 border-b-2 border-purple-400 text-white'
-                          : 'text-gray-400 hover:text-white hover:bg-white/5'
-                        }`}
+                        ? 'bg-gradient-to-br from-purple-500/20 to-blue-500/20 border-b-2 border-purple-400 text-white'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        } `}
                     >
-                      <Icon className={`w-5 h-5 ${isActive ? 'text-purple-400' : ''}`} />
+                      <Icon className={`w-5 h-5 ${isActive ? 'text-purple-400' : ''} `} />
                       <span className="font-medium">{tab.label}</span>
                       {isActive && (
                         <motion.div
@@ -256,7 +414,7 @@ export default function DockerDeploy() {
                           <div className="grid md:grid-cols-2 gap-4">
                             {[
                               {
-                                title: 'Generate Secure Secrets (v2.6.1+)',
+                                title: 'Generate Secure Secrets',
                                 desc: 'Create strong JWT_SECRET (min 32 chars), RBAC_ENCRYPTION_KEY (min 32 hex chars), and RBAC_ENCRYPTION_SALT (exactly 64 hex chars) using openssl. All three are now required in production.',
                                 critical: true,
                                 command: 'JWT_SECRET=$(openssl rand -base64 32)\nRBAC_ENCRYPTION_KEY=$(openssl rand -hex 32)\nRBAC_ENCRYPTION_SALT=$(openssl rand -hex 32)',
@@ -286,13 +444,13 @@ export default function DockerDeploy() {
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: idx * 0.1 }}
                                 className={`p-4 rounded-lg border ${item.critical
-                                    ? 'bg-red-500/10 border-red-500/30'
-                                    : 'bg-white/5 border-white/10'
-                                  }`}
+                                  ? 'bg-red-500/10 border-red-500/30'
+                                  : 'bg-white/5 border-white/10'
+                                  } `}
                               >
                                 <div className="flex items-start gap-3">
                                   <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${item.critical ? 'bg-red-500/20' : 'bg-blue-500/20'
-                                    }`}>
+                                    } `}>
                                     {item.critical ? (
                                       <AlertCircle className="w-4 h-4 text-red-400" />
                                     ) : (
@@ -302,7 +460,7 @@ export default function DockerDeploy() {
                                   <div className="flex-1">
                                     <h5 className="text-white font-semibold mb-1">{item.title}</h5>
                                     <p className="text-sm text-gray-400 mb-2">{item.desc}</p>
-                                    <code className="text-xs bg-black/30 px-2 py-1 rounded text-purple-300">
+                                    <code className="text-xs bg-black/30 px-3 py-2 rounded text-purple-300 block whitespace-pre-wrap font-mono">
                                       {item.command}
                                     </code>
                                   </div>
@@ -345,69 +503,186 @@ export default function DockerDeploy() {
                   </motion.div>
                 )}
 
-                {/* Docker Compose Tab */}
-                {activeTab === 'dockercompose' && (
+                {/* Deployment Tab */}
+                {activeTab === 'deployment' && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                      <Terminal className="w-6 h-6 text-purple-400" />
-                      Production Docker Compose
-                    </h3>
-                    <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                      <p className="text-sm text-gray-300">
-                        <strong className="text-white">Note:</strong> This is the production-ready docker-compose configuration.
-                        For a quick start, see the "Quick Start" section above. This version includes PostgreSQL for RBAC storage
-                        and production environment variables.
-                      </p>
-                    </div>
-                    <div className="relative">
-                      <div className="flex justify-between items-center mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 uppercase font-semibold tracking-wider">docker-compose.yml</span>
-                          <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">Production Ready</span>
-                        </div>
-                        <motion.button
-                          onClick={() => copyToClipboard(dockerComposeCode, 'dockercompose')}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 transition-colors group"
+                    <div className="flex justify-center mb-8">
+                      <div className="bg-white/5 p-1 rounded-lg border border-white/10 flex">
+                        <button
+                          onClick={() => setDeploymentType('docker')}
+                          className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${deploymentType === 'docker'
+                            ? 'bg-purple-500 text-white shadow-lg'
+                            : 'text-gray-400 hover:text-white'
+                            } `}
                         >
-                          {copied === 'dockercompose' ? (
-                            <>
-                              <Check className="w-4 h-4 text-green-400" />
-                              <span className="text-sm text-green-400">Copied!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
-                              <span className="text-sm group-hover:text-purple-400 transition-colors">Copy</span>
-                            </>
-                          )}
-                        </motion.button>
+                          <div className="flex items-center gap-2">
+                            <Terminal className="w-4 h-4" />
+                            Docker Compose
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => setDeploymentType('kubernetes')}
+                          className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${deploymentType === 'kubernetes'
+                            ? 'bg-purple-500 text-white shadow-lg'
+                            : 'text-gray-400 hover:text-white'
+                            } `}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Cloud className="w-4 h-4" />
+                            Kubernetes
+                          </div>
+                        </button>
                       </div>
-                      <div className="bg-black/60 backdrop-blur-sm p-6 rounded-xl border border-white/10 overflow-x-auto hover:border-purple-500/30 transition-colors">
-                        <pre className="text-sm">
-                          <code className="text-gray-300 font-mono">{dockerComposeCode}</code>
-                        </pre>
+                    </div>
+
+                    {deploymentType === 'docker' ? (
+                      <div>
+                        <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
+                          <Terminal className="w-6 h-6 text-purple-400" />
+                          Docker Compose Deployment
+                        </h3>
+                        <p className="text-gray-400 text-sm mb-4">
+                          Run the application with all production configuration options.
+                        </p>
+
+                        <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                          <p className="text-sm text-gray-300">
+                            <strong className="text-white">Note:</strong> This configuration assumes you have an external ClickHouse server.
+                            Update the environment variables to point to your database.
+                          </p>
+                        </div>
+                        <div className="relative">
+                          <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500 uppercase font-semibold tracking-wider">docker-compose.yml</span>
+                              <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">Production Ready</span>
+                            </div>
+                            <motion.button
+                              onClick={() => copyToClipboard(dockerComposeCode, 'dockercompose')}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 transition-colors group"
+                            >
+                              {copied === 'dockercompose' ? (
+                                <>
+                                  <Check className="w-4 h-4 text-green-400" />
+                                  <span className="text-sm text-green-400">Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
+                                  <span className="text-sm group-hover:text-purple-400 transition-colors">Copy</span>
+                                </>
+                              )}
+                            </motion.button>
+                          </div>
+                          <div className="bg-black/60 backdrop-blur-sm p-6 rounded-xl border border-white/10 overflow-x-auto hover:border-purple-500/30 transition-colors">
+                            <pre className="text-sm">
+                              <code className="text-gray-300 font-mono">{dockerComposeCode}</code>
+                            </pre>
+                          </div>
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2 }}
+                            className="mt-6 p-5 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg"
+                          >
+                            <div className="flex items-start gap-3 mb-3">
+                              <Terminal className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <h4 className="text-white font-semibold mb-2">Quick Commands</h4>
+                                <p className="text-sm text-gray-300 whitespace-pre-line leading-relaxed">{dockerComposeNote}</p>
+                              </div>
+                            </div>
+                          </motion.div>
+                        </div>
                       </div>
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="mt-6 p-5 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg"
-                      >
-                        <div className="flex items-start gap-3 mb-3">
-                          <Terminal className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <h4 className="text-white font-semibold mb-2">Quick Commands</h4>
-                            <p className="text-sm text-gray-300 whitespace-pre-line leading-relaxed">{dockerComposeNote}</p>
+                    ) : (
+                      <div>
+                        <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
+                          <Cloud className="w-6 h-6 text-purple-400" />
+                          Kubernetes Deployment
+                        </h3>
+
+                        <div className="mb-6">
+                          <p className="text-gray-300 mb-4">
+                            Deploy CHouse UI to your Kubernetes cluster using the standard manifest below.
+                          </p>
+
+                          <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg mb-6">
+                            <h4 className="text-white font-semibold mb-2 flex items-center gap-2">
+                              <Info className="w-4 h-4 text-purple-400" />
+                              Prerequisites
+                            </h4>
+                            <ul className="text-sm text-gray-400 list-disc list-inside space-y-1">
+                              <li>A running Kubernetes cluster</li>
+                              <li><code className="text-purple-300">kubectl</code> configured</li>
+                              <li>(Optional) Ingress controller for external access</li>
+                            </ul>
+                          </div>
+
+                          <div className="relative">
+                            <div className="flex justify-between items-center mb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500 uppercase font-semibold tracking-wider">chouse-ui.yaml</span>
+                                <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">K8s Manifest</span>
+                              </div>
+                              <motion.button
+                                onClick={() => copyToClipboard(kubernetesCode, 'kubernetes')}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 transition-colors group"
+                              >
+                                {copied === 'kubernetes' ? (
+                                  <>
+                                    <Check className="w-4 h-4 text-green-400" />
+                                    <span className="text-sm text-green-400">Copied!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
+                                    <span className="text-sm group-hover:text-purple-400 transition-colors">Copy</span>
+                                  </>
+                                )}
+                              </motion.button>
+                            </div>
+                            <div className="bg-black/60 backdrop-blur-sm p-6 rounded-xl border border-white/10 overflow-x-auto hover:border-purple-500/30 transition-colors">
+                              <pre className="text-sm">
+                                <code className="text-gray-300 font-mono">{kubernetesCode}</code>
+                              </pre>
+                            </div>
+                          </div>
+
+                          <div className="mt-8">
+                            <h4 className="text-lg font-semibold text-white mb-3">Deployment Steps</h4>
+                            <div className="space-y-4">
+                              <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-sm">1</div>
+                                  <h5 className="text-white font-medium">Apply the manifest</h5>
+                                </div>
+                                <code className="block bg-black/30 p-2 rounded text-sm text-gray-300 font-mono">
+                                  kubectl apply -f chouse-ui.yaml
+                                </code>
+                              </div>
+                              <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-sm">2</div>
+                                  <h5 className="text-white font-medium">Verify deployment</h5>
+                                </div>
+                                <code className="block bg-black/30 p-2 rounded text-sm text-gray-300 font-mono">
+                                  kubectl get pods -l app=chouse-ui
+                                </code>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </motion.div>
-                    </div>
+                      </div>
+                    )}
                   </motion.div>
                 )}
 

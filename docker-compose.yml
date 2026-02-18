@@ -1,124 +1,27 @@
-# Docker Compose for CHouse UI
-# Includes both ClickHouse server and the UI with RBAC
-
 version: '3.8'
 
 services:
-  # ============================================
-  # ClickHouse Database Server
-  # ============================================
-  clickhouse:
-    image: clickhouse/clickhouse-server:24-alpine
-    container_name: clickhouse
-    hostname: clickhouse
-    ports:
-      - "8123:8123"   # HTTP interface
-      - "9000:9000"   # Native TCP interface
-    volumes:
-      - clickhouse_data:/var/lib/clickhouse
-      - clickhouse_logs:/var/log/clickhouse-server
-      # Optional: Mount custom config
-      # - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/custom.xml
-    environment:
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse123}
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
-    networks:
-      - clickhouse-network
-
-  # ============================================
-  # CHouse UI Application
-  # ============================================
-  clickhouse-studio:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        VERSION: ${VERSION:-2.0.0}
-        COMMIT_SHA: ${COMMIT_SHA:-dev}
-        BUILD_DATE: ${BUILD_DATE:-unknown}
-    container_name: clickhouse-studio
+  chouse-ui:
+    image: ghcr.io/daun-gatal/chouse-ui:latest
+    container_name: chouse-ui
     ports:
       - "5521:5521"
-    volumes:
-      # Persist RBAC SQLite database
-      - rbac_data:/app/data
     environment:
       NODE_ENV: production
-      PORT: 5521
-      STATIC_PATH: /app/dist
-      # Session configuration
-      SESSION_TTL: ${SESSION_TTL:-3600000}
-      # CORS settings
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      # ============================================
-      # RBAC Configuration
-      # ============================================
-      # Database type: 'sqlite' (default) or 'postgres'
-      RBAC_DB_TYPE: ${RBAC_DB_TYPE:-sqlite}
-      # SQLite database path
-      RBAC_SQLITE_PATH: /app/data/rbac.db
-      # PostgreSQL connection (if using postgres)
-      RBAC_POSTGRES_URL: ${RBAC_POSTGRES_URL:-}
-      RBAC_POSTGRES_POOL_SIZE: ${RBAC_POSTGRES_POOL_SIZE:-10}
-      # JWT secret for authentication (CHANGE IN PRODUCTION!)
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
-      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
-      # Encryption key for connection passwords (CHANGE IN PRODUCTION!)
-      RBAC_ENCRYPTION_KEY: ${RBAC_ENCRYPTION_KEY:-change-me-in-production}
-      # Default admin password (only used on first run)
-      RBAC_ADMIN_PASSWORD: ${RBAC_ADMIN_PASSWORD:-}
-      # ============================================
-      # Legacy ClickHouse settings (deprecated - use RBAC connections)
-      # ============================================
-      CLICKHOUSE_DEFAULT_URL: ${CLICKHOUSE_DEFAULT_URL:-}
-      CLICKHOUSE_PRESET_URLS: ${CLICKHOUSE_PRESET_URLS:-}
-      CLICKHOUSE_DEFAULT_USER: ${CLICKHOUSE_DEFAULT_USER:-}
-      # ============================================
-      # AI Features (Optional)
-      # ============================================
-      AI_OPTIMIZER_ENABLED: ${AI_OPTIMIZER_ENABLED:-false}
-      AI_PROVIDER: ${AI_PROVIDER:-openai}
-      AI_API_KEY: ${AI_API_KEY:-}
-      AI_MODEL_NAME: ${AI_MODEL_NAME:-}
-      AI_BASE_URL: ${AI_BASE_URL:-}
-
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5521/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      JWT_SECRET: dev-secret-change-me
+      RBAC_ENCRYPTION_KEY: dev-key-change-me
+      RBAC_ENCRYPTION_SALT: dev-salt-change-me
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped
-    networks:
-      - clickhouse-network
 
-# ============================================
-# Networks
-# ============================================
-networks:
-  clickhouse-network:
-    driver: bridge
-
-# ============================================
-# Volumes
-# ============================================
-volumes:
-  clickhouse_data:
-    driver: local
-  clickhouse_logs:
-    driver: local
-  rbac_data:
-    driver: local
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-server
+    ports:
+      - "8123:8123"
+    environment:
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    restart: unless-stopped

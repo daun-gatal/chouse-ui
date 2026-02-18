@@ -4,10 +4,12 @@ import { GlassCard, GlassCardContent } from './GlassCard';
 
 const techStack = [
   { name: 'ClickHouse', icon: 'simple-icons:clickhouse', fallback: 'mdi:database', desc: 'Analytics database', url: 'https://clickhouse.com/', category: 'Database' },
+  { name: 'PostgreSQL', icon: 'simple-icons:postgresql', fallback: 'mdi:database', desc: 'RBAC Storage', url: 'https://www.postgresql.org/', category: 'Database' },
   { name: 'Bun', icon: 'simple-icons:bun', fallback: 'mdi:language-javascript', desc: 'JavaScript runtime', url: 'https://bun.sh/', category: 'Runtime' },
   { name: 'Hono', icon: 'simple-icons:hono', fallback: 'mdi:web', desc: 'Web framework', url: 'https://hono.dev/', category: 'Framework' },
   { name: 'React', icon: 'simple-icons:react', fallback: 'mdi:react', desc: 'UI library', url: 'https://react.dev/', category: 'Frontend' },
   { name: 'Tailwind CSS', icon: 'simple-icons:tailwindcss', fallback: 'mdi:tailwind', desc: 'Styling', url: 'https://tailwindcss.com/', category: 'Styling' },
+  { name: 'AI Models', icon: 'simple-icons:openai', fallback: 'mdi:robot', desc: 'Query Optimization', url: 'https://openai.com/', category: 'AI' },
 ];
 
 const categoryColors: Record<string, string> = {
@@ -21,6 +23,7 @@ const categoryColors: Record<string, string> = {
   State: 'from-indigo-500 to-purple-500',
   Data: 'from-cyan-500 to-blue-500',
   Styling: 'from-teal-500 to-cyan-500',
+  AI: 'from-orange-500 to-red-500',
 };
 
 export default function TechStack() {
@@ -32,7 +35,7 @@ export default function TechStack() {
       {/* Animated background */}
       <div className="absolute inset-0 opacity-10">
         <motion.div
-          animate={{ 
+          animate={{
             x: [0, 100, 0],
             y: [0, 50, 0],
             scale: [1, 1.2, 1],
@@ -41,7 +44,7 @@ export default function TechStack() {
           className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500 rounded-full blur-3xl"
         />
         <motion.div
-          animate={{ 
+          animate={{
             x: [0, -80, 0],
             y: [0, -40, 0],
             scale: [1, 1.3, 1],

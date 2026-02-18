@@ -41,24 +41,28 @@ const steps = [
           code={`services:
   chouse-ui:
     image: ghcr.io/daun-gatal/chouse-ui:latest
+    container_name: chouse-ui
     ports:
       - "5521:5521"
     environment:
-      - RBAC_DB_TYPE=sqlite
+      NODE_ENV: production
+      JWT_SECRET: dev-secret-change-me
+      RBAC_ENCRYPTION_KEY: dev-key-change-me
+      RBAC_ENCRYPTION_SALT: dev-salt-change-me
     volumes:
-      - chouse_data:/app/data
+      - ./data:/app/data
+    restart: unless-stopped
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-server
     ports:
       - "8123:8123"
     environment:
-      - CLICKHOUSE_USER=admin
-      - CLICKHOUSE_PASSWORD=password
-      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
-
-volumes:
-  chouse_data:`}
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    restart: unless-stopped`}
         />
         <p className="text-gray-300 text-sm mt-3 mb-2">Then run:</p>
         <CodeBlock code="docker-compose up -d" />

@@ -63,6 +63,7 @@ CHouse UI provides security and access control features for teams that need:
 - **JWT Authentication** - Secure token-based sessions with access and refresh tokens
 - **Data Access Rules** - Granular database/table permissions per user or role
 - **Audit Logging** - Track all user actions and query history
+- **AI-Powered Analysis** - Built-in query optimizer and debugger to improve performance and security
 
 ### 🗄️ Database Management
 - **Multi-Connection Support** - Manage multiple ClickHouse servers
@@ -157,106 +158,29 @@ This starts:
 
 On first run, an admin user is created:
 - **Email**: `admin@localhost`
+- **Username**: `admin`
 - **Password**: `admin123!`
 
 > ⚠️ **Change this password immediately in production!**
 
 ---
 
-## Deployment
-
-### Docker (Recommended)
-
-#### Quick Start with SQLite
+### Deployment (Docker)
 
 ```bash
-# Clone and run
+# Clone the repository
 git clone https://github.com/daun-gatal/chouse-ui.git
 cd chouse-ui
+
+# Run with Docker Compose
 docker-compose up -d
 ```
 
 Access at http://localhost:5521
 
-#### Production with PostgreSQL
+#### Production Deployment
 
-```bash
-# Use the PostgreSQL compose file
-docker-compose -f docker-compose.postgres.yml up -d
-```
-
-#### Custom Docker Run
-
-```bash
-# Build image
-docker build -t chouseui .
-
-# Run with environment variables
-docker run -d \
-  -p 5521:5521 \
-  -v chouseui-data:/app/data \
-  -e JWT_SECRET=$(openssl rand -base64 32) \
-  -e RBAC_ENCRYPTION_KEY=$(openssl rand -hex 32) \
-  -e RBAC_ADMIN_PASSWORD="YourSecurePassword123!" \
-  chouseui
-```
-
-### Manual Deployment
-
-```bash
-# Build frontend
-bun run build:web
-
-# Start production server
-NODE_ENV=production \
-JWT_SECRET=your-secret \
-RBAC_ENCRYPTION_KEY=your-key \
-bun run packages/server/src/index.ts
-```
-
-### Kubernetes
-
-Example deployment manifest:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: chouseui
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: chouseui
-  template:
-    metadata:
-      labels:
-        app: chouseui
-    spec:
-      containers:
-      - name: chouseui
-        image: chouseui:latest
-        ports:
-        - containerPort: 5521
-        env:
-        - name: RBAC_DB_TYPE
-          value: "postgres"
-        - name: RBAC_POSTGRES_URL
-          valueFrom:
-            secretKeyRef:
-              name: chouseui-secrets
-              key: postgres-url
-        - name: JWT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: chouseui-secrets
-              key: jwt-secret
-        - name: RBAC_ENCRYPTION_KEY
-          valueFrom:
-            secretKeyRef:
-              name: chouseui-secrets
-              key: encryption-key
-```
+For production, we recommend using an external highly-available PostgreSQL database for RBAC storage. See the [Configuration](#configuration) section for details on how to configure `RBAC_POSTGRES_URL`.
 
 ---
 
@@ -304,6 +228,7 @@ GRANT CONNECT, CREATE ON DATABASE your_database TO your_user;
 | `JWT_ACCESS_EXPIRY` | Access token expiry (e.g., `15m`, `4h`) | `4h` |
 | `JWT_REFRESH_EXPIRY` | Refresh token expiry (e.g., `7d`) | `7d` |
 | `RBAC_ADMIN_EMAIL` | Initial admin email | `admin@localhost` |
+| `RBAC_ADMIN_USERNAME` | Initial admin username | `admin` |
 | `RBAC_ADMIN_PASSWORD` | Initial admin password | `admin123!` |
 
 #### Security & Encryption
@@ -321,6 +246,7 @@ GRANT CONNECT, CREATE ON DATABASE your_database TO your_user;
 | `AI_PROVIDER` | AI provider (`openai`, `anthropic`, `google`, `huggingface`) | `openai` |
 | `AI_API_KEY` | API Key for the selected provider | - |
 | `AI_MODEL_NAME` | Model to use (e.g., `gpt-4o`, `gemini-1.5-pro`) | - |
+| `AI_BASE_URL` | Custom API base URL (e.g., for Ollama or LocalAI) | - |
 
 ### Generating Secrets
 
@@ -398,7 +324,7 @@ Features:
 ## Project Structure
 
 ```
-chouseui/
+chouse-ui/
 ├── packages/
 │   └── server/                 # Backend (Bun + Hono)
 │       ├── src/
@@ -445,6 +371,7 @@ If you discover a security vulnerability, please see [SECURITY.md](SECURITY.md) 
 
 - [ ] Generate unique `JWT_SECRET` (min 32 bytes)
 - [ ] Generate unique `RBAC_ENCRYPTION_KEY` (32 bytes hex)
+- [ ] Generate unique `RBAC_ENCRYPTION_SALT` (32 bytes hex)
 - [ ] Change default admin password
 - [ ] Set `CORS_ORIGIN` to your domain
 - [ ] Use PostgreSQL for multi-instance deployments
@@ -528,7 +455,7 @@ docker pull ghcr.io/daun-gatal/chouse-ui:latest
 docker-compose up -d
 
 # 3. Check logs for migration status
-docker logs chouseui | grep RBAC
+docker logs chouse-ui | grep RBAC
 ```
 
 Expected output on upgrade:

@@ -18,7 +18,7 @@ const faqs = [
   },
   {
     question: 'What security features does CHouse UI provide?',
-    answer: 'CHouse UI includes multiple security layers: AES-256-GCM encryption for ClickHouse passwords, Argon2id password hashing for user accounts, JWT-based authentication with refresh tokens, comprehensive RBAC system with 6 predefined roles (Super Admin, Admin, Developer, Analyst, Viewer, Guest), granular data access rules, complete audit logging, SQL injection protection, XSS protection with DOMPurify, and PBKDF2 key derivation for encryption keys.',
+    answer: 'CHouse UI includes multiple security layers: AES-256-GCM encryption for ClickHouse passwords, Argon2id password hashing for user accounts, JWT-based authentication with refresh tokens, comprehensive RBAC system with 6 predefined roles, granular data access rules, complete audit logging, and AI-powered query analysis to identify potential performance bottlenecks or security risks.',
   },
   {
     question: 'Can I use CHouse UI with multiple ClickHouse servers?',
@@ -30,7 +30,7 @@ const faqs = [
   },
   {
     question: 'How do I deploy CHouse UI?',
-    answer: 'CHouse UI can be deployed using Docker Compose in minutes. Simply clone the repository, run docker-compose up -d, and access the UI at http://localhost:5521. For production deployments (v2.6.1+), you must configure three required environment variables: JWT_SECRET (min 32 chars), RBAC_ENCRYPTION_KEY (min 32 chars), and RBAC_ENCRYPTION_SALT (exactly 64 hex chars). See the Quick Start section for detailed instructions.',
+    answer: 'CHouse UI can be deployed using Docker Compose or Kubernetes in minutes. For production deployments, you must configure three required environment variables: JWT_SECRET (min 32 chars), RBAC_ENCRYPTION_KEY (min 32 chars), and RBAC_ENCRYPTION_SALT (exactly 64 hex chars). See the Deployment section for detailed instructions.',
   },
   {
     question: 'Does CHouse UI require direct ClickHouse access from the browser?',
@@ -43,6 +43,10 @@ const faqs = [
   {
     question: 'Can I integrate CHouse UI with my existing infrastructure?',
     answer: 'Yes, CHouse UI is designed to integrate seamlessly with existing infrastructure. It can connect to any ClickHouse server (cloud or self-hosted), supports Docker deployments, Kubernetes, and can be deployed behind reverse proxies with HTTPS.',
+  },
+  {
+    question: 'What is the AI Optimizer feature?',
+    answer: 'The AI Optimizer is an advanced feature that uses Large Language Models (LLMs) to analyze your SQL queries. It can suggest performance optimizations, explain complex queries in plain language, and help debug errors. It supports multiple providers including OpenAI, Anthropic, and local models via Ollama.',
   },
 ];
 
@@ -127,8 +131,8 @@ export default function FAQ() {
                     aria-controls={`faq-answer-${index}`}
                   >
                     <GlassCard className={`overflow-hidden transition-all ${isExpanded
-                        ? 'border-purple-500/40 shadow-lg shadow-purple-500/20'
-                        : 'hover:border-white/20'
+                      ? 'border-purple-500/40 shadow-lg shadow-purple-500/20'
+                      : 'hover:border-white/20'
                       }`}>
                       <GlassCardContent className="p-6">
                         <div className="flex items-start gap-4">
