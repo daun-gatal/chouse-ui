@@ -9,7 +9,8 @@ const techStack = [
   { name: 'Hono', icon: 'simple-icons:hono', fallback: 'mdi:web', desc: 'Web framework', url: 'https://hono.dev/', category: 'Framework' },
   { name: 'React', icon: 'simple-icons:react', fallback: 'mdi:react', desc: 'UI library', url: 'https://react.dev/', category: 'Frontend' },
   { name: 'Tailwind CSS', icon: 'simple-icons:tailwindcss', fallback: 'mdi:tailwind', desc: 'Styling', url: 'https://tailwindcss.com/', category: 'Styling' },
-  { name: 'AI Models', icon: 'simple-icons:openai', fallback: 'mdi:robot', desc: 'Query Optimization', url: 'https://openai.com/', category: 'AI' },
+  { name: 'AI Models', icon: 'mdi:brain', fallback: 'mdi:robot', desc: 'Query Optimization', url: 'https://chouse-ui.com', category: 'AI' },
+  { name: 'Vite', icon: 'simple-icons:vite', fallback: 'mdi:lightning-bolt', desc: 'Build tool', url: 'https://vitejs.dev/', category: 'Tooling' },
 ];
 
 const categoryColors: Record<string, string> = {
@@ -18,10 +19,6 @@ const categoryColors: Record<string, string> = {
   Framework: 'from-green-500 to-emerald-500',
   Frontend: 'from-blue-500 to-indigo-500',
   Tooling: 'from-orange-500 to-red-500',
-  Editor: 'from-yellow-500 to-orange-500',
-  UI: 'from-pink-500 to-rose-500',
-  State: 'from-indigo-500 to-purple-500',
-  Data: 'from-cyan-500 to-blue-500',
   Styling: 'from-teal-500 to-cyan-500',
   AI: 'from-orange-500 to-red-500',
 };
@@ -30,10 +27,13 @@ export default function TechStack() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
 
+  // Duplicate for seamless marquee effect
+  const seamlessStack = [...techStack, ...techStack, ...techStack, ...techStack];
+
   return (
-    <section id="tech-stack" className="py-24 px-4 bg-gradient-to-b from-transparent via-blue-500/5 to-transparent relative overflow-hidden">
-      {/* Animated background */}
-      <div className="absolute inset-0 opacity-10">
+    <section id="tech-stack" className="py-24 px-4 bg-gradient-to-b from-transparent via-blue-500/5 to-transparent relative overflow-hidden group/stack">
+      {/* Animated background background decoration */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none">
         <motion.div
           animate={{
             x: [0, 100, 0],
@@ -61,73 +61,71 @@ export default function TechStack() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <h2 className="text-5xl md:text-6xl font-bold mb-4">
+          <h2 className="text-5xl md:text-6xl font-bold mb-4 tracking-tight">
             <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
               Built With
             </span>
           </h2>
-          <p className="text-gray-400 text-xl mb-2">Modern technologies and best practices</p>
-          <p className="text-gray-500 text-sm">Click any technology to learn more</p>
+          <p className="text-gray-400 text-xl font-medium">Modern technologies and best practices</p>
         </motion.div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 max-w-5xl mx-auto">
-          {techStack.map((tech, index) => {
-            const categoryColor = categoryColors[tech.category] || 'from-gray-500 to-gray-700';
-            return (
-              <motion.a
-                key={tech.name}
-                href={tech.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                initial={{ opacity: 0, y: 30, scale: 0.9 }}
-                animate={isInView ? { opacity: 1, y: 0, scale: 1 } : {}}
-                transition={{ duration: 0.5, delay: index * 0.05 }}
-                whileHover={{ y: -8, scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <GlassCard className="h-full bg-gradient-to-br from-white/10 to-white/5 border-purple-500/20 hover:border-purple-400/50 transition-all duration-300 group">
-                  <GlassCardContent className="p-5">
-                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${categoryColor} mb-3 flex items-center justify-center p-2`}>
-                      <img
-                        src={`https://api.iconify.design/${tech.icon}.svg?color=ffffff`}
-                        alt={`${tech.name} logo`}
-                        className="w-full h-full object-contain"
-                        loading="lazy"
-                        onError={(e) => {
-                          // Fallback to alternative icon
-                          const target = e.target as HTMLImageElement;
-                          if (tech.fallback) {
-                            target.src = `https://api.iconify.design/${tech.fallback}.svg?color=ffffff`;
-                            target.onerror = () => {
-                              // Final fallback: show a generic icon
-                              target.style.display = 'none';
-                              const parent = target.parentElement;
-                              if (parent) {
-                                parent.innerHTML = '<div class="w-6 h-6 bg-white/30 rounded"></div>';
+        <div className="relative w-full overflow-hidden pause-on-hover py-12">
+          {/* Gradient Masks */}
+          <div className="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-[#0a0a0a] to-transparent z-20 pointer-events-none" />
+          <div className="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-[#0a0a0a] to-transparent z-20 pointer-events-none" />
+
+          <div className="flex w-max animate-marquee gap-6">
+            {seamlessStack.map((tech, index) => {
+              const categoryColor = categoryColors[tech.category] || 'from-gray-500 to-gray-700';
+              return (
+                <motion.a
+                  key={`${tech.name}-${index}`}
+                  href={tech.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-[280px] flex-shrink-0"
+                  whileHover={{ y: -8 }}
+                >
+                  <GlassCard className="h-full bg-white/[0.03] border-white/10 hover:border-purple-500/30 hover:bg-white/[0.05] transition-all duration-300">
+                    <GlassCardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${categoryColor} flex items-center justify-center p-2.5 shadow-lg`}>
+                          <img
+                            src={`https://api.iconify.design/${tech.icon}.svg?color=ffffff`}
+                            alt={tech.name}
+                            className="w-full h-full object-contain"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              if (tech.fallback) {
+                                target.src = `https://api.iconify.design/${tech.fallback}.svg?color=ffffff`;
+                              } else {
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if (parent) parent.innerHTML = '<div class="w-6 h-6 bg-white/20 rounded"></div>';
                               }
-                            };
-                          } else {
-                            target.style.display = 'none';
-                            const parent = target.parentElement;
-                            if (parent) {
-                              parent.innerHTML = '<div class="w-6 h-6 bg-white/30 rounded"></div>';
-                            }
-                          }
-                        }}
-                      />
-                    </div>
-                    <h3 className="font-bold text-white mb-1 group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-blue-400 group-hover:bg-clip-text transition-all duration-300">
-                      {tech.name}
-                    </h3>
-                    <p className="text-sm text-gray-400">{tech.desc}</p>
-                    <div className="mt-2 text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      {tech.category}
-                    </div>
-                  </GlassCardContent>
-                </GlassCard>
-              </motion.a>
-            );
-          })}
+                            }}
+                          />
+                        </div>
+                        <span className="text-[10px] uppercase font-black tracking-widest text-gray-500 group-hover:text-purple-400 transition-colors">
+                          {tech.category}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold text-white mb-2 group-hover:text-purple-400 transition-colors">
+                        {tech.name}
+                      </h3>
+                      <p className="text-sm text-gray-400 leading-relaxed line-clamp-2">
+                        {tech.desc}
+                      </p>
+                    </GlassCardContent>
+                  </GlassCard>
+                </motion.a>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-8 text-center">
+          <p className="text-gray-500 text-sm">Hover to pause • Click to learn more</p>
         </div>
       </div>
     </section>
