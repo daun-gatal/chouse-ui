@@ -243,10 +243,35 @@ GRANT CONNECT, CREATE ON DATABASE your_database TO your_user;
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AI_OPTIMIZER_ENABLED` | Enable AI features (Optimizer, Debugger) | `false` |
-| `AI_PROVIDER` | AI provider (`openai`, `anthropic`, `google`, `huggingface`) | `openai` |
+| `AI_PROVIDER` | AI provider (`openai`, `anthropic`, `google`, `huggingface`, `openai-compatible`) | `openai` |
 | `AI_API_KEY` | API Key for the selected provider | - |
 | `AI_MODEL_NAME` | Model to use (e.g., `gpt-4o`, `gemini-1.5-pro`) | - |
-| `AI_BASE_URL` | Custom API base URL (e.g., for Ollama or LocalAI) | - |
+| `AI_BASE_URL` | Custom API base URL (required for `openai-compatible`) | - |
+| `AI_OPENAI_COMPATIBLE_HEADERS` | JSON string for custom auth headers | - |
+
+#### OpenAI-Compatible Providers
+
+You can use self-hosted or alternative AI providers that are compatible with the OpenAI API format (e.g., Ollama, Together AI, LocalAI). 
+
+**Example: Self-Hosted Ollama**
+```bash
+AI_OPTIMIZER_ENABLED=true
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=http://localhost:11434/v1
+AI_MODEL_NAME=llama3:70b
+AI_API_KEY=ollama  # Some providers require a dummy key
+```
+
+**Example: Together AI**
+```bash
+AI_OPTIMIZER_ENABLED=true
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=https://api.together.xyz/v1
+AI_MODEL_NAME=meta-llama/Llama-3-70b-chat-hf
+AI_API_KEY=your-together-api-key
+```
+
+**Security Consideration for `AI_BASE_URL`**: Only `http:` and `https:` protocols are permitted for SSRF protection.
 
 ### Generating Secrets
 

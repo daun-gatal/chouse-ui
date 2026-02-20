@@ -2,6 +2,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { format } from "sql-formatter";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createHuggingFace } from "@ai-sdk/huggingface";
@@ -44,7 +45,7 @@ export interface OptimizationCheckResult {
     reason: string;
 }
 
-export type AIProvider = "openai" | "anthropic" | "google" | "huggingface";
+export type AIProvider = "openai" | "anthropic" | "google" | "huggingface" | "openai-compatible";
 
 interface AIConfiguration {
     enabled: boolean;
@@ -52,6 +53,7 @@ interface AIConfiguration {
     apiKey: string | undefined;
     modelName: string | undefined;
     baseUrl: string | undefined;
+    headers: Record<string, string> | undefined;
 }
 
 // ============================================
@@ -109,7 +111,13 @@ You must strictly return a JSON object with the following fields:
 
 const OPTIMIZER_CHECK_SYSTEM_PROMPT = `You are an expert ClickHouse SQL optimizer.
 Your goal is to quickly determine if a given SQL query has ANY potential for optimization.
-Return true if:
+
+## OUPUT FORMAT INSTRUCTIONS
+You must strictly return a JSON object with the following fields:
+1. "canOptimize": boolean (true or false).
+2. "reason": string (a brief reason for the decision).
+
+Set canOptimize to true if:
 1. The query scans a large table without a partition key or primary key filter.
 2. It uses SELECT * on a wide table WITHOUT a LIMIT.
 3. It uses standard SQL functions where ClickHouse specialized functions exist (e.g. COUNT(DISTINCT) vs uniq).
@@ -118,13 +126,13 @@ Return true if:
 6. It is missing FINAL on ReplacingMergeTree (if relevant).
 7. It could benefit from PREWHERE.
 
-Return false if:
+Set canOptimize to false if:
 1. The query is already highly optimized (e.g. uses PREWHERE, partition pruning keys).
 2. The query is trivial (SELECT 1).
 3. The query appears to be the result of a recent optimization (e.g. follows best practices strictly).
 4. The query uses SELECT * BUT has a small LIMIT (e.g. LIMIT 100).
 
-Be biased towards returning FALSE if the query looks structured and deliberate. Return TRUE only for obvious inefficiencies.`;
+Be biased towards returning canOptimize as false if the query looks structured and deliberate. Return true only for obvious inefficiencies.`;
 
 const DEBUGGER_SYSTEM_PROMPT = `
 You are an expert ClickHouse Database Administrator and Query Debugger.
@@ -168,6 +176,9 @@ function getConfiguration(): AIConfiguration {
         apiKey: process.env.AI_API_KEY,
         modelName: process.env.AI_MODEL_NAME,
         baseUrl: process.env.AI_BASE_URL,
+        headers: process.env.AI_OPENAI_COMPATIBLE_HEADERS
+            ? JSON.parse(process.env.AI_OPENAI_COMPATIBLE_HEADERS)
+            : undefined,
     };
 }
 
@@ -195,12 +206,39 @@ function validateConfiguration(): { valid: boolean; error?: string } {
     }
 
     // Validate provider
-    const validProviders: AIProvider[] = ["openai", "anthropic", "google", "huggingface"];
+    const validProviders: AIProvider[] = ["openai", "anthropic", "google", "huggingface", "openai-compatible"];
     if (!validProviders.includes(config.provider)) {
         return {
             valid: false,
             error: `Invalid AI provider: ${config.provider}.Supported: ${validProviders.join(", ")}`,
         };
+    }
+
+    // Validate baseUrl protocol for openai-compatible
+    if (config.provider === "openai-compatible") {
+        if (!config.baseUrl) {
+            return {
+                valid: false,
+                error: "AI_BASE_URL is required when using the openai-compatible provider",
+            };
+        }
+    }
+
+    if (config.baseUrl) {
+        try {
+            const url = new URL(config.baseUrl);
+            if (url.protocol !== "http:" && url.protocol !== "https:") {
+                return {
+                    valid: false,
+                    error: "AI_BASE_URL must be a valid HTTP/HTTPS URL",
+                };
+            }
+        } catch (e) {
+            return {
+                valid: false,
+                error: "AI_BASE_URL must be a valid URL",
+            };
+        }
     }
 
     return { valid: true };
@@ -243,6 +281,19 @@ function initializeAIModel(config: AIConfiguration) {
             const provider = createHuggingFace({
                 apiKey: config.apiKey,
                 baseURL: config.baseUrl,
+            });
+            return provider(modelName);
+        }
+        case "openai-compatible": {
+            if (!config.baseUrl) {
+                // Should be caught by validation, but TS requires it for createOpenAICompatible
+                throw new AppError("AI_BASE_URL is required for openai-compatible", "AI_CONFIGURATION_ERROR", "validation", 500);
+            }
+            const provider = createOpenAICompatible({
+                name: "openai-compatible",
+                baseURL: config.baseUrl,
+                apiKey: config.apiKey,
+                headers: config.headers,
             });
             return provider(modelName);
         }

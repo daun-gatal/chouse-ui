@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
     InfoIcon,
@@ -170,7 +170,8 @@ function TabCard({
 
 export default function Monitoring() {
     const { hasPermission, hasAnyPermission } = useRbacStore();
-    const [searchParams] = useSearchParams();
+    const { tab } = useParams<{ tab: string }>();
+    const navigate = useNavigate();
     const [isInfoOpen, setIsInfoOpen] = useState(false);
 
     // Permission checks for tabs
@@ -193,28 +194,23 @@ export default function Monitoring() {
 
     // Get initial tab from URL or default based on permissions
     const getInitialTab = (): TabKey => {
-        const tabParam = searchParams.get("tab") as TabKey | null;
-
-        // 1. If URL param exists and user has permission, use it
-        if (tabParam && availableTabs.includes(tabParam)) {
-            return tabParam;
+        if (tab && availableTabs.includes(tab as TabKey)) {
+            return tab as TabKey;
         }
-
-        // 2. Otherwise default to the first available tab (prioritizes live-queries, then logs, then metrics)
         return availableTabs[0] || "live-queries";
     };
 
-    const [activeTab, setActiveTab] = useState<TabKey>(getInitialTab);
+    const activeTab = getInitialTab();
 
-    // Ensure user is redirected if permissions change or they land on a forbidden tab
+    // Ensure user is redirected if permissions change, they land on a forbidden tab, or no tab is provided
     useEffect(() => {
-        if (!availableTabs.includes(activeTab)) {
+        if (!tab || !availableTabs.includes(tab as TabKey)) {
             const firstAvailable = availableTabs[0];
             if (firstAvailable) {
-                setActiveTab(firstAvailable);
+                navigate(`/monitoring/${firstAvailable}`, { replace: true });
             }
         }
-    }, [availableTabs, activeTab]);
+    }, [tab, availableTabs, navigate]);
 
     const [refreshKey, setRefreshKey] = useState(0);
     const [autoRefresh, setAutoRefresh] = useState(false);
@@ -240,16 +236,7 @@ export default function Monitoring() {
         }
     }, [activeTab]);
 
-    // Sync tab from URL params when they change
-    useEffect(() => {
-        const tabParam = searchParams.get("tab");
-        if (tabParam && (tabParam === "logs" || tabParam === "metrics" || tabParam === "live-queries")) {
-            // Only set if user has permission
-            if (availableTabs.includes(tabParam as TabKey)) {
-                setActiveTab(tabParam as TabKey);
-            }
-        }
-    }, [searchParams, availableTabs]);
+    // (This useEffect block was removed since we use params exclusively now)
 
     const currentTabConfig = TAB_CONFIG[activeTab];
 
@@ -318,7 +305,7 @@ export default function Monitoring() {
                             key={tabKey}
                             tabKey={tabKey}
                             isActive={activeTab === tabKey}
-                            onClick={() => setActiveTab(tabKey)}
+                            onClick={() => navigate(`/monitoring/${tabKey}`)}
                         />
                     ))}
                 </div>

@@ -25,17 +25,38 @@ interface ImportWizardProps {
     database: string;
 }
 
+export type ImportMode = 'create' | 'append';
+
 const STEPS = [
     { id: 'upload', label: 'Upload File', icon: Upload },
     { id: 'preview', label: 'Preview Schema', icon: Table2 },
     { id: 'progress', label: 'Import Data', icon: CheckCircle2 },
 ] as const;
 
+export const ENGINES = [
+    { value: "MergeTree", label: "MergeTree", description: "Default engine for analytics", requiresOrderBy: true },
+    { value: "ReplacingMergeTree", label: "ReplacingMergeTree", description: "Deduplicates by ORDER BY", requiresOrderBy: true },
+    { value: "SummingMergeTree", label: "SummingMergeTree", description: "Pre-aggregates numeric columns", requiresOrderBy: true },
+    { value: "AggregatingMergeTree", label: "AggregatingMergeTree", description: "Stores aggregate states", requiresOrderBy: true },
+    { value: "CollapsingMergeTree", label: "CollapsingMergeTree", description: "For collapsing rows", requiresOrderBy: true },
+    { value: "Log", label: "Log", description: "Simple append-only", requiresOrderBy: false },
+    { value: "TinyLog", label: "TinyLog", description: "Minimal storage", requiresOrderBy: false },
+    { value: "Memory", label: "Memory", description: "In-memory only", requiresOrderBy: false },
+];
+
 export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
     const [step, setStep] = useState<'upload' | 'preview' | 'progress'>('upload');
+    const [importMode, setImportMode] = useState<ImportMode>('create');
     const [file, setFile] = useState<File | null>(null);
     const [columns, setColumns] = useState<ColumnDefinition[]>([]);
     const [previewData, setPreviewData] = useState<any[]>([]);
+
+    // Advanced settings state
+    const [engine, setEngine] = useState('MergeTree');
+    const [orderByColumns, setOrderByColumns] = useState<string[]>([]);
+    const [partitionBy, setPartitionBy] = useState('');
+    const [ttlExpression, setTtlExpression] = useState('');
+    const [comment, setComment] = useState('');
 
     // Database selection state
     const { data: databases = [] } = useDatabases();
@@ -62,12 +83,18 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
 
     const reset = () => {
         setStep('upload');
+        setImportMode('create');
         setFile(null);
         setColumns([]);
         setPreviewData([]);
         setTableName('');
         setImportStatus(null);
         setErrorDetails(null);
+        setEngine('MergeTree');
+        setOrderByColumns([]);
+        setPartitionBy('');
+        setTtlExpression('');
+        setComment('');
     };
 
     const handleClose = () => {
@@ -120,7 +147,8 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
             // Normalize column names
             const normalizedColumns = result.data.columns.map((col: any) => ({
                 ...col,
-                name: normalizeColumnName(col.name)
+                name: normalizeColumnName(col.name),
+                mappedTo: normalizeColumnName(col.name)
             }));
 
             setColumns(normalizedColumns);
@@ -154,19 +182,46 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
         setColumns(newCols);
     };
 
+    const handleToggleOrderBy = (columnName: string) => {
+        if (orderByColumns.includes(columnName)) {
+            setOrderByColumns(orderByColumns.filter(c => c !== columnName));
+        } else {
+            setOrderByColumns([...orderByColumns, columnName]);
+        }
+    };
+
     const handleImport = async () => {
         if (!file || !tableName || !selectedDb) return;
+
+        if (importMode === 'create') {
+            const selectedEngine = ENGINES.find(e => e.value === engine);
+            if (selectedEngine?.requiresOrderBy && orderByColumns.length === 0) {
+                toast.error(`${engine} engine requires at least one ORDER BY column`);
+                return;
+            }
+        }
 
         setStep('progress');
         setImportStatus('creating_table');
         setErrorDetails(null);
 
         try {
-            // 1. Create Table via Query API
-            const createTableQuery = generateCreateTableQuery(selectedDb, tableName, columns);
+            if (importMode === 'create') {
+                // 1. Create Table via Query API
+                const createTableQuery = generateCreateTableQuery(
+                    selectedDb,
+                    tableName,
+                    columns,
+                    engine,
+                    orderByColumns,
+                    partitionBy,
+                    ttlExpression,
+                    comment
+                );
 
-            // Use api client which handles session and RBAC headers automatically
-            await api.post('/query/execute', { query: createTableQuery });
+                // Use api client which handles session and RBAC headers automatically
+                await api.post('/query/execute', { query: createTableQuery });
+            }
 
             // 2. Upload Data
             setImportStatus('uploading');
@@ -176,7 +231,17 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
             if (file.name.toLowerCase().endsWith('.tsv')) format = 'TSV';
             else if (file.name.toLowerCase().endsWith('.json')) format = 'JSON';
 
-            const uploadUrl = `/api/upload/create?database=${encodeURIComponent(selectedDb)}&table=${encodeURIComponent(tableName)}&format=${format}&hasHeader=${hasHeader}`;
+            let uploadUrl = `/api/upload/create?database=${encodeURIComponent(selectedDb)}&table=${encodeURIComponent(tableName)}&format=${format}&hasHeader=${hasHeader}`;
+
+            if (importMode === 'append') {
+                const mappedColumns = columns
+                    .filter(c => c.mappedTo)
+                    .map(c => c.mappedTo);
+
+                if (mappedColumns.length > 0) {
+                    uploadUrl += `&columns=${encodeURIComponent(mappedColumns.join(','))}`;
+                }
+            }
 
             const session = getSessionId();
             const rbacToken = localStorage.getItem('rbac_access_token');
@@ -314,6 +379,9 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                             className="h-full"
                         >
                             <StepPreview
+                                importMode={importMode}
+                                onImportModeChange={setImportMode}
+                                selectedDb={selectedDb}
                                 columns={columns}
                                 previewData={previewData}
                                 tableName={tableName}
@@ -323,6 +391,16 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                                 onHasHeaderChange={handleHasHeaderChange}
                                 format={file?.name.toLowerCase().endsWith('.json') ? 'JSON' :
                                     file?.name.toLowerCase().endsWith('.tsv') ? 'TSV' : 'CSV'}
+                                engine={engine}
+                                orderByColumns={orderByColumns}
+                                onToggleOrderBy={handleToggleOrderBy}
+                                onEngineChange={setEngine}
+                                partitionBy={partitionBy}
+                                onPartitionByChange={setPartitionBy}
+                                ttlExpression={ttlExpression}
+                                onTtlExpressionChange={setTtlExpression}
+                                comment={comment}
+                                onCommentChange={setComment}
                             />
                         </motion.div>
                     )}
@@ -368,15 +446,48 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
     );
 }
 
-function generateCreateTableQuery(db: string, table: string, columns: ColumnDefinition[]): string {
+function generateCreateTableQuery(
+    db: string,
+    table: string,
+    columns: ColumnDefinition[],
+    engine: string,
+    orderByColumns: string[],
+    partitionBy: string,
+    ttlExpression: string,
+    comment: string
+): string {
     const colDefs = columns.map(c => {
         let type = c.type;
         if (c.nullable) type = `Nullable(${type})`;
-        return `\`${c.name}\` ${type}`;
+        let def = `\`${c.name}\` ${type}`;
+        if (c.description) {
+            def += ` COMMENT '${c.description.replace(/'/g, "\\'")}'`;
+        }
+        return def;
     }).join(',\n  ');
 
-    return `CREATE TABLE \`${db}\`.\`${table}\` (
+    let query = `CREATE TABLE \`${db}\`.\`${table}\` (
   ${colDefs}
-) ENGINE = MergeTree()
-ORDER BY tuple()`;
+) ENGINE = ${engine}`;
+
+    const selectedEngine = ENGINES.find(e => e.value === engine);
+    if (selectedEngine?.requiresOrderBy && orderByColumns.length > 0) {
+        query += `\nORDER BY (${orderByColumns.map(c => `\`${c}\``).join(', ')})`;
+    } else if (engine === 'MergeTree' && orderByColumns.length === 0) {
+        query += `\nORDER BY tuple()`;
+    }
+
+    if (partitionBy) {
+        query += `\nPARTITION BY ${partitionBy}`;
+    }
+
+    if (ttlExpression) {
+        query += `\nTTL ${ttlExpression}`;
+    }
+
+    if (comment) {
+        query += `\nCOMMENT '${comment.replace(/'/g, "\\'")}'`;
+    }
+
+    return query;
 }

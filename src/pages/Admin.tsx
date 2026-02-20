@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import UserTable from "@/features/admin/components/UserManagement/index";
 import { InfoIcon, ShieldCheck, Users, Shield, FileText, Server, UserCog } from "lucide-react";
@@ -169,6 +170,9 @@ export default function Admin() {
   const canViewConnections = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canViewClickHouseUsers = hasPermission(RBAC_PERMISSIONS.CH_USERS_VIEW);
 
+  const { tab } = useParams<{ tab: string }>();
+  const navigate = useNavigate();
+
   const availableTabs: AdminTabKey[] = [
     ...(canViewUsers ? ["users" as const] : []),
     ...(canViewRoles ? ["roles" as const] : []),
@@ -177,7 +181,23 @@ export default function Admin() {
     ...(canViewAudit ? ["audit" as const] : []),
   ];
 
-  const [activeTab, setActiveTab] = useState<AdminTabKey>(availableTabs[0] || "users");
+  const getInitialTab = (): AdminTabKey => {
+    if (tab && availableTabs.includes(tab as AdminTabKey)) {
+      return tab as AdminTabKey;
+    }
+    return availableTabs[0] || "users";
+  };
+
+  const activeTab = getInitialTab();
+
+  useEffect(() => {
+    // If there's no tab in the URL, or it's invalid, redirect to the first available tab
+    if (!tab || !availableTabs.includes(tab as AdminTabKey)) {
+      if (availableTabs.length > 0) {
+        navigate(`/admin/${availableTabs[0]}`, { replace: true });
+      }
+    }
+  }, [tab, availableTabs, navigate]);
 
   const currentTabConfig = ADMIN_TAB_CONFIG[activeTab];
 
@@ -227,14 +247,14 @@ export default function Admin() {
                 key={tabKey}
                 tabKey={tabKey}
                 isActive={activeTab === tabKey}
-                onClick={() => setActiveTab(tabKey)}
+                onClick={() => navigate(`/admin/${tabKey}`)}
               />
             ))}
           </div>
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AdminTabKey)} className="flex-1 flex flex-col min-h-0">
+      <Tabs value={activeTab} onValueChange={(v) => navigate(`/admin/${v}`)} className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar px-6 py-6 pb-24">
           <AnimatePresence mode="wait">
             <motion.div

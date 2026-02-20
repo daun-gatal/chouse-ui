@@ -35,7 +35,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useExplorerStore, type RecentItem } from "@/stores/explorer";
 import { useWorkspaceStore, genTabId } from "@/stores/workspace";
 import { useRbacStore } from "@/stores/rbac";
-import { cn } from "@/lib/utils";
+import { cn, formatCompactNumber } from "@/lib/utils";
 import UploadFromFile from "@/features/explorer/components/UploadFile";
 
 // --- Helper Functions ---
@@ -63,15 +63,7 @@ function formatUptime(seconds: number): string {
   return `${minutes}m`;
 }
 
-function formatNumber(num: number | string): string {
-  const n = typeof num === "string" ? parseFloat(num) : num;
-  if (isNaN(n)) return "0";
-  if (n >= 1e12) return (n / 1e12).toFixed(1) + "T";
-  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
-  return n.toLocaleString();
-}
+
 
 // --- Bento Card Base ---
 const BentoCard: React.FC<{
@@ -439,7 +431,7 @@ export default function HomePage() {
             <StatCard
               icon={Layers}
               label="Total Rows"
-              value={formatNumber(stats.totalRows)}
+              value={stats.totalRows !== undefined ? formatCompactNumber(stats.totalRows) : "0"}
               color="text-emerald-400"
               bgColor="bg-emerald-500/20"
             />

@@ -250,7 +250,7 @@ userRoutes.patch('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator
 
 /**
  * DELETE /rbac/users/:id
- * Delete user (soft delete)
+ * Delete user
  */
 userRoutes.delete('/:id', requirePermission(PERMISSIONS.USERS_DELETE), async (c) => {
   const id = c.req.param('id');

@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.10.2] - 2026-02-20
+
+### Added
+
+- **AI Query Optimizer Support**: Added support for OpenAI-compatible AI providers using the `@ai-sdk/openai-compatible` package (Issue #143).
+  - Enables integration with self-hosted models via Ollama, LocalAI, Together AI, etc.
+  - Added `AI_OPENAI_COMPATIBLE_HEADERS` for custom authentication headers support.
+- **Import Wizard Append Feature**: Enhanced Import Wizard to support appending data to existing ClickHouse tables (Issue #147).
+  - Users can select existing tables via dropdown mapping in "Append to Existing Table" mode.
+  - Fetch target table schema and provide interactive Column Mapping.
+  - Skip "Create Table" process when appending and explicitly match columns upon insertion.
+
+### Changed
+
+- **Import Wizard**: Enhanced the schema preview step with advanced table configuration options (Issue #146).
+  - Admins can now configure Table Engine, Partition By, TTL Expression, and Table Comments directly before importing.
+  - Added support for column-level descriptions and Sort Key (`ORDER BY`) toggles depending on the Engine.
+- **Create Table UI**: Redesigned the Database Explorer's column definition interface (Issue #144).
+  - Replaced single-row flex layouts with responsive, multi-row cards.
+  - Added native toggles for `Nullable` types and input fields for `Default Value` and `Description`.
+  - Integrated `ORDER BY` and primary key selection inside column cards with visual highlighting.
+
+### Fixed
+
+- **Server Stat Display**: Fixed `totalRows` statistic formatting issue on the Home page (Issue #148).
+- **AI Query Debugger**: Added UI error handling to gracefully display API failure messages with a retry option in the Debug Query Dialog (Issue #145).
 
 ## [v2.10.1] - 2026-02-17
 

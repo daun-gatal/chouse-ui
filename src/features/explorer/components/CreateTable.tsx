@@ -50,6 +50,7 @@ interface Column {
   type: string;
   nullable: boolean;
   defaultValue: string;
+  description: string;
 }
 
 const COMMON_TYPES = [
@@ -93,7 +94,7 @@ const CreateTable: React.FC = () => {
   const [tableName, setTableName] = useState("");
   const [engine, setEngine] = useState("MergeTree");
   const [columns, setColumns] = useState<Column[]>([
-    { id: generateId(), name: "", type: "String", nullable: false, defaultValue: "" },
+    { id: generateId(), name: "", type: "String", nullable: false, defaultValue: "", description: "" },
   ]);
   const [orderByColumns, setOrderByColumns] = useState<string[]>([]);
   const [partitionBy, setPartitionBy] = useState("");
@@ -116,7 +117,7 @@ const CreateTable: React.FC = () => {
   const handleAddColumn = () => {
     setColumns([
       ...columns,
-      { id: generateId(), name: "", type: "String", nullable: false, defaultValue: "" },
+      { id: generateId(), name: "", type: "String", nullable: false, defaultValue: "", description: "" },
     ]);
   };
 
@@ -179,6 +180,9 @@ const CreateTable: React.FC = () => {
         if (col.defaultValue) {
           def += ` DEFAULT ${col.defaultValue}`;
         }
+        if (col.description) {
+          def += ` COMMENT '${col.description.replace(/'/g, "\\'")}'`;
+        }
         return def;
       })
       .join(",\n    ");
@@ -223,7 +227,7 @@ const CreateTable: React.FC = () => {
     setDatabase(selectedDatabase || "");
     setTableName("");
     setEngine("MergeTree");
-    setColumns([{ id: generateId(), name: "", type: "String", nullable: false, defaultValue: "" }]);
+    setColumns([{ id: generateId(), name: "", type: "String", nullable: false, defaultValue: "", description: "" }]);
     setOrderByColumns([]);
     setPartitionBy("");
     setUseCluster(false);
@@ -254,6 +258,9 @@ const CreateTable: React.FC = () => {
         def += col.nullable ? `Nullable(${col.type})` : col.type;
         if (col.defaultValue) {
           def += ` DEFAULT ${col.defaultValue}`;
+        }
+        if (col.description) {
+          def += ` COMMENT '${col.description.replace(/'/g, "\\'")}'`;
         }
         return def;
       })
@@ -405,180 +412,249 @@ const CreateTable: React.FC = () => {
                 </Button>
               </div>
 
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                 <AnimatePresence>
                   {columns.map((column, index) => (
                     <motion.div
                       key={column.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      className="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.2 }}
+                      className={`flex flex-col gap-3 p-4 rounded-xl border transition-all ${orderByColumns.includes(column.name)
+                        ? "bg-blue-500/10 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]"
+                        : "bg-white/5 border-white/10 hover:border-white/20"
+                        }`}
                     >
-                      <span className="text-xs text-gray-500 w-6">{index + 1}</span>
-                      <Input
-                        placeholder="Column name"
-                        value={column.name}
-                        onChange={(e) => handleColumnChange(column.id, "name", e.target.value)}
-                        className="flex-1 bg-white/5 border-white/10 h-9"
-                      />
-                      <Select
-                        value={column.type}
-                        onValueChange={(value) => handleColumnChange(column.id, "type", value)}
-                      >
-                        <SelectTrigger className="w-44 bg-white/5 border-white/10 h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {COMMON_TYPES.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              <span className="flex items-center gap-2">
-                                <span>{type.icon}</span>
-                                <span>{type.label}</span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {selectedEngine?.requiresOrderBy && column.name && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={orderByColumns.includes(column.name) ? "default" : "outline"}
-                          className={`text-xs h-9 ${orderByColumns.includes(column.name) ? "bg-blue-600" : ""}`}
-                          onClick={() => toggleOrderByColumn(column.name)}
-                        >
-                          {orderByColumns.includes(column.name) ? `#${orderByColumns.indexOf(column.name) + 1}` : "PK"}
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleRemoveColumn(column.id)}
-                        disabled={columns.length === 1}
-                        className="h-9 w-9 text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-black/40 text-xs text-gray-400 font-mono shrink-0 mt-6">
+                            {index + 1}
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs text-gray-400">Column Name</Label>
+                              <Input
+                                placeholder="name"
+                                value={column.name}
+                                onChange={(e) => handleColumnChange(column.id, "name", e.target.value)}
+                                className="bg-black/20 border-white/10 h-9 transition-colors focus-visible:ring-1 focus-visible:ring-purple-500"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs text-gray-400">Type</Label>
+                              <Select
+                                value={column.type}
+                                onValueChange={(value) => handleColumnChange(column.id, "type", value)}
+                              >
+                                <SelectTrigger className="w-full bg-black/20 border-white/10 h-9 transition-colors focus:ring-1 focus:ring-purple-500">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {COMMON_TYPES.map((type) => (
+                                    <SelectItem key={type.value} value={type.value}>
+                                      <span className="flex items-center gap-2">
+                                        <span className="w-4 text-center">{type.icon}</span>
+                                        <span>{type.label}</span>
+                                      </span>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-7 shrink-0">
+                          {selectedEngine?.requiresOrderBy && column.name && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={orderByColumns.includes(column.name) ? "default" : "outline"}
+                              className={`h-9 px-3 transition-all ${orderByColumns.includes(column.name)
+                                ? "bg-blue-600 hover:bg-blue-700 shadow-[0_0_10px_rgba(37,99,235,0.4)] text-white border-transparent"
+                                : "bg-black/20 border-white/10 hover:bg-white/10 text-gray-300"
+                                }`}
+                              onClick={() => toggleOrderByColumn(column.name)}
+                              title="Toggle ORDER BY inclusion"
+                            >
+                              <Database className={`h-3.5 w-3.5 mr-1.5 ${orderByColumns.includes(column.name) ? "text-white" : "text-gray-400"}`} />
+                              {orderByColumns.includes(column.name) ? `Sort Key #${orderByColumns.indexOf(column.name) + 1}` : "Sort Key"}
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleRemoveColumn(column.id)}
+                            disabled={columns.length === 1}
+                            className="h-9 w-9 text-red-400/70 hover:text-red-300 hover:bg-red-500/20 disabled:opacity-30 disabled:hover:bg-transparent"
+                            title="Remove column"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Advanced Column Settings (Nullable & Default Value) */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pl-9 pt-1.5 border-t border-white/5 mx-[-1rem] px-[1rem] sm:mx-0 sm:px-0 sm:border-0 sm:pt-0">
+                        <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                          <Switch
+                            id={`nullable-${column.id}`}
+                            checked={column.nullable}
+                            onCheckedChange={(checked) => handleColumnChange(column.id, "nullable", checked)}
+                            className="data-[state=checked]:bg-purple-500 scale-90"
+                          />
+                          <Label htmlFor={`nullable-${column.id}`} className="text-xs text-gray-400 cursor-pointer hover:text-gray-200 transition-colors">
+                            Nullable
+                          </Label>
+                        </div>
+
+                        <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
+
+                        <div className="flex-1 w-full flex items-center gap-2 pb-1 sm:pb-0">
+                          <Label className="text-xs text-gray-400 whitespace-nowrap hidden sm:block">Default</Label>
+                          <Input
+                            placeholder="Default value (e.g. '', 0, now())"
+                            value={column.defaultValue}
+                            onChange={(e) => handleColumnChange(column.id, "defaultValue", e.target.value)}
+                            className="flex-1 bg-black/20 border-white/10 h-8 text-xs transition-colors focus-visible:ring-1 focus-visible:ring-purple-500 pl-2.5"
+                          />
+                        </div>
+
+                        <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
+
+                        <div className="flex-1 w-full flex items-center gap-2 pb-1 sm:pb-0">
+                          <Label className="text-xs text-gray-400 whitespace-nowrap hidden sm:block">Description</Label>
+                          <Input
+                            placeholder="Column description (optional)"
+                            value={column.description}
+                            onChange={(e) => handleColumnChange(column.id, "description", e.target.value)}
+                            className="flex-1 bg-black/20 border-white/10 h-8 text-xs transition-colors focus-visible:ring-1 focus-visible:ring-purple-500 pl-2.5"
+                          />
+                        </div>
+                      </div>
                     </motion.div>
                   ))}
                 </AnimatePresence>
               </div>
-
-              {selectedEngine?.requiresOrderBy && orderByColumns.length > 0 && (
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <span>ORDER BY:</span>
-                  {orderByColumns.map((col, i) => (
-                    <Badge key={col} variant="secondary" className="bg-blue-500/20 text-blue-300">
-                      {i + 1}. {col}
-                    </Badge>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Query Preview */}
             <Collapsible open={queryPreviewOpen} onOpenChange={setQueryPreviewOpen}>
               <CollapsibleTrigger className="w-full">
-                <div className="flex items-center justify-between w-full p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
-                  <span className="flex items-center gap-2">
-                    <Code className="h-4 w-4" />
+                <div className={`flex items-center justify-between w-full p-3 rounded-xl border transition-all ${queryPreviewOpen
+                    ? "bg-blue-500/10 border-blue-500/30 text-white shadow-[0_0_15px_rgba(59,130,246,0.1)]"
+                    : "bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20"
+                  }`}>
+                  <span className="flex items-center gap-2 font-medium">
+                    <Code className={`h-4 w-4 ${queryPreviewOpen ? "text-blue-400" : ""}`} />
                     CREATE TABLE Query
                   </span>
                   {queryPreviewOpen ? (
-                    <ChevronUp className="h-4 w-4 transition-transform" />
+                    <ChevronUp className="h-4 w-4 transition-transform text-blue-400" />
                   ) : (
                     <ChevronDown className="h-4 w-4 transition-transform" />
                   )}
                 </div>
               </CollapsibleTrigger>
-              <CollapsibleContent className="pt-4">
-                <Textarea
-                  readOnly
-                  value={queryPreview}
-                  className="min-h-[100px] max-h-[300px] font-mono text-xs sm:text-sm text-gray-300 bg-black/40 border-white/10 resize-none overflow-auto"
-                  style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-                />
+              <CollapsibleContent className="pt-3">
+                <div className="rounded-xl border border-white/10 overflow-hidden bg-black/40">
+                  <div className="p-3 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                    <span className="text-xs text-gray-400 font-mono">SQL Preview</span>
+                  </div>
+                  <Textarea
+                    readOnly
+                    value={queryPreview}
+                    className="min-h-[120px] max-h-[300px] font-mono text-xs sm:text-sm text-blue-300 bg-transparent border-none resize-none overflow-auto p-4 focus-visible:ring-0"
+                    style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                  />
+                </div>
               </CollapsibleContent>
             </Collapsible>
 
             {/* Advanced Settings */}
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger className="w-full">
-                <div className="flex items-center justify-between w-full p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
-                  <span className="flex items-center gap-2">
-                    <Settings2 className="h-4 w-4" />
+                <div className={`flex items-center justify-between w-full p-3 rounded-xl border transition-all ${advancedOpen
+                    ? "bg-purple-500/10 border-purple-500/30 text-white shadow-[0_0_15px_rgba(168,85,247,0.1)]"
+                    : "bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20"
+                  }`}>
+                  <span className="flex items-center gap-2 font-medium">
+                    <Settings2 className={`h-4 w-4 ${advancedOpen ? "text-purple-400" : ""}`} />
                     Advanced Settings
                   </span>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180 text-purple-400" : ""}`} />
                 </div>
               </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Partition By</Label>
-                  <Input
-                    value={partitionBy}
-                    onChange={(e) => setPartitionBy(e.target.value)}
-                    placeholder="e.g., toYYYYMM(created_at) or leave empty for none"
-                    className="bg-white/5 border-white/10"
-                  />
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <span className="text-xs text-gray-500">Quick:</span>
-                    {validColumnNames.map((col) => (
-                      <button
-                        key={col}
-                        type="button"
-                        onClick={() => setPartitionBy(col)}
-                        className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 text-gray-300 transition-colors"
-                      >
-                        {col}
-                      </button>
-                    ))}
-                    {validColumnNames
-                      .filter(c => {
-                        const colType = columns.find(col => col.name === c)?.type.toLowerCase() || "";
-                        return colType.includes('date') || colType.includes('time');
-                      })
-                      .flatMap(col => [
-                        <button
-                          key={`${col}-yyyymm`}
-                          type="button"
-                          onClick={() => setPartitionBy(`toYYYYMM(${col})`)}
-                          className="px-2 py-1 text-xs rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors"
-                        >
-                          toYYYYMM({col})
-                        </button>,
-                        <button
-                          key={`${col}-yyyymmdd`}
-                          type="button"
-                          onClick={() => setPartitionBy(`toYYYYMMDD(${col})`)}
-                          className="px-2 py-1 text-xs rounded bg-green-500/20 hover:bg-green-500/30 text-green-300 transition-colors"
-                        >
-                          toYYYYMMDD({col})
-                        </button>,
-                      ])
-                    }
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+              <CollapsibleContent className="pt-3">
+                <div className="p-5 rounded-xl border border-white/10 bg-white/5 space-y-5">
                   <div className="space-y-2">
-                    <Label className="text-gray-300">TTL Expression</Label>
+                    <Label className="text-gray-300">Partition By</Label>
                     <Input
-                      value={ttlExpression}
-                      onChange={(e) => setTtlExpression(e.target.value)}
-                      placeholder="e.g., created_at + INTERVAL 30 DAY"
-                      className="bg-white/5 border-white/10"
+                      value={partitionBy}
+                      onChange={(e) => setPartitionBy(e.target.value)}
+                      placeholder="e.g., toYYYYMM(created_at) or leave empty for none"
+                      className="bg-black/20 border-white/10 focus-visible:ring-1 focus-visible:ring-purple-500"
                     />
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span className="text-xs text-gray-500 font-medium mr-1">Quick Picks:</span>
+                      {validColumnNames.map((col) => (
+                        <button
+                          key={col}
+                          type="button"
+                          onClick={() => setPartitionBy(col)}
+                          className="px-2.5 py-1 text-xs rounded-md bg-white/10 hover:bg-white/20 text-gray-300 transition-colors border border-white/5"
+                        >
+                          {col}
+                        </button>
+                      ))}
+                      {validColumnNames
+                        .filter(c => {
+                          const colType = columns.find(col => col.name === c)?.type.toLowerCase() || "";
+                          return colType.includes('date') || colType.includes('time');
+                        })
+                        .flatMap(col => [
+                          <button
+                            key={`${col}-yyyymm`}
+                            type="button"
+                            onClick={() => setPartitionBy(`toYYYYMM(${col})`)}
+                            className="px-2.5 py-1 text-xs rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors border border-blue-500/20"
+                          >
+                            toYYYYMM({col})
+                          </button>,
+                          <button
+                            key={`${col}-yyyymmdd`}
+                            type="button"
+                            onClick={() => setPartitionBy(`toYYYYMMDD(${col})`)}
+                            className="px-2.5 py-1 text-xs rounded-md bg-green-500/20 hover:bg-green-500/30 text-green-300 transition-colors border border-green-500/20"
+                          >
+                            toYYYYMMDD({col})
+                          </button>,
+                        ])
+                      }
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-gray-300">Table Comment</Label>
-                    <Input
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      placeholder="Description of this table"
-                      className="bg-white/5 border-white/10"
-                    />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-white/10">
+                    <div className="space-y-2">
+                      <Label className="text-gray-300">TTL Expression</Label>
+                      <Input
+                        value={ttlExpression}
+                        onChange={(e) => setTtlExpression(e.target.value)}
+                        placeholder="e.g., created_at + INTERVAL 30 DAY"
+                        className="bg-black/20 border-white/10 focus-visible:ring-1 focus-visible:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-gray-300">Table Comment</Label>
+                      <Input
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        placeholder="Optional description for the table"
+                        className="bg-black/20 border-white/10 focus-visible:ring-1 focus-visible:ring-purple-500"
+                      />
+                    </div>
                   </div>
                 </div>
               </CollapsibleContent>
