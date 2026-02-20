@@ -45,6 +45,7 @@ interface StepPreviewProps {
     tableName: string;
     onTableNameChange: (name: string) => void;
     onColumnChange: (index: number, field: keyof ColumnDefinition, value: any) => void;
+    onColumnsChange?: (columns: ColumnDefinition[]) => void;
     hasHeader: boolean;
     onHasHeaderChange: (checked: boolean) => void;
     format: string;
@@ -81,6 +82,7 @@ export function StepPreview({
     tableName,
     onTableNameChange,
     onColumnChange,
+    onColumnsChange,
     hasHeader,
     onHasHeaderChange,
     format,
@@ -101,10 +103,38 @@ export function StepPreview({
 
     const { data: databases = [] } = useDatabases();
     const existingTables = databases.find(db => db.name === selectedDb)?.children || [];
+    const isTableExisting = existingTables.some(t => t.name === tableName);
 
     const { data: tableSchema } = useTableSchema(selectedDb, importMode === 'append' ? tableName : '', {
-        enabled: importMode === 'append' && !!tableName,
+        enabled: importMode === 'append' && !!tableName && isTableExisting,
     });
+
+    const prevSchemaRef = React.useRef(tableSchema);
+
+    React.useEffect(() => {
+        if (importMode === 'append' && tableSchema && tableSchema !== prevSchemaRef.current) {
+            prevSchemaRef.current = tableSchema;
+
+            const validColumnNames = new Set(tableSchema.map(c => c.name));
+            let changed = false;
+            const newCols = columns.map(col => {
+                // Clear mappedTo if the target column does not exist in the new schema
+                if (col.mappedTo && !validColumnNames.has(col.mappedTo)) {
+                    changed = true;
+                    return { ...col, mappedTo: '' };
+                }
+                return col;
+            });
+
+            if (changed && onColumnsChange) {
+                onColumnsChange(newCols);
+            }
+        }
+        // Also update ref if mode changes or schema becomes undefined
+        if (tableSchema !== prevSchemaRef.current) {
+            prevSchemaRef.current = tableSchema;
+        }
+    }, [tableSchema, importMode, columns, onColumnsChange]);
 
     return (
         <div className="flex flex-col h-full space-y-6">

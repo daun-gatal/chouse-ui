@@ -69,6 +69,12 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
 
     const queryClient = useQueryClient();
 
+    // Fetch schema for existing table to validate mappings
+    const isTableExisting = databases.find(db => db.name === selectedDb)?.children?.some(t => t.name === tableName) ?? false;
+
+    // We import this at the top:
+    // import { useDatabases, useTableSchema } from '@/hooks';
+
     // Sync prop changes to state
     useEffect(() => {
         if (isOpen) {
@@ -180,6 +186,10 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
         const newCols = [...columns];
         newCols[index] = { ...newCols[index], [field]: value };
         setColumns(newCols);
+    };
+
+    const handleColumnsChange = (newColumns: ColumnDefinition[]) => {
+        setColumns(newColumns);
     };
 
     const handleToggleOrderBy = (columnName: string) => {
@@ -387,6 +397,7 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                                 tableName={tableName}
                                 onTableNameChange={setTableName}
                                 onColumnChange={handleColumnChange}
+                                onColumnsChange={handleColumnsChange}
                                 hasHeader={hasHeader}
                                 onHasHeaderChange={handleHasHeaderChange}
                                 format={file?.name.toLowerCase().endsWith('.json') ? 'JSON' :
