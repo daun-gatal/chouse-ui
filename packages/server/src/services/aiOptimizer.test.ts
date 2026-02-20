@@ -161,6 +161,61 @@ describe("aiOptimizer", () => {
         // on configuration validation and error handling.
     });
 
+    describe("validateConfiguration (via optimizeQuery)", () => {
+        it("should throw error if openai-compatible is missing baseUrl", async () => {
+            const originalEnabled = process.env.AI_OPTIMIZER_ENABLED;
+            const originalProvider = process.env.AI_PROVIDER;
+            const originalApiKey = process.env.AI_API_KEY;
+
+            process.env.AI_OPTIMIZER_ENABLED = "true";
+            process.env.AI_PROVIDER = "openai-compatible";
+            process.env.AI_API_KEY = "test-key";
+            delete process.env.AI_BASE_URL;
+
+            try {
+                await optimizeQuery("SELECT 1", []);
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error instanceof Error && error.message.includes("AI_BASE_URL is required")).toBe(true);
+            }
+
+            if (originalEnabled !== undefined) process.env.AI_OPTIMIZER_ENABLED = originalEnabled;
+            else delete process.env.AI_OPTIMIZER_ENABLED;
+            if (originalProvider !== undefined) process.env.AI_PROVIDER = originalProvider;
+            else delete process.env.AI_PROVIDER;
+            if (originalApiKey !== undefined) process.env.AI_API_KEY = originalApiKey;
+            else delete process.env.AI_API_KEY;
+        });
+
+        it("should throw error if openai-compatible baseUrl is invalid protocol", async () => {
+            const originalEnabled = process.env.AI_OPTIMIZER_ENABLED;
+            const originalProvider = process.env.AI_PROVIDER;
+            const originalApiKey = process.env.AI_API_KEY;
+            const originalBaseUrl = process.env.AI_BASE_URL;
+
+            process.env.AI_OPTIMIZER_ENABLED = "true";
+            process.env.AI_PROVIDER = "openai-compatible";
+            process.env.AI_API_KEY = "test-key";
+            process.env.AI_BASE_URL = "ftp://localhost:11434"; // Invalid protocol
+
+            try {
+                await optimizeQuery("SELECT 1", []);
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error instanceof Error && error.message.includes("HTTP/HTTPS URL")).toBe(true);
+            }
+
+            if (originalEnabled !== undefined) process.env.AI_OPTIMIZER_ENABLED = originalEnabled;
+            else delete process.env.AI_OPTIMIZER_ENABLED;
+            if (originalProvider !== undefined) process.env.AI_PROVIDER = originalProvider;
+            else delete process.env.AI_PROVIDER;
+            if (originalApiKey !== undefined) process.env.AI_API_KEY = originalApiKey;
+            else delete process.env.AI_API_KEY;
+            if (originalBaseUrl !== undefined) process.env.AI_BASE_URL = originalBaseUrl;
+            else delete process.env.AI_BASE_URL;
+        });
+    });
+
     describe("debugQuery", () => {
         it("should throw error when debug is disabled", async () => {
             const originalEnabled = process.env.AI_OPTIMIZER_ENABLED;

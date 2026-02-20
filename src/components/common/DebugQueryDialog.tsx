@@ -19,6 +19,7 @@ import ReactMarkdown from 'react-markdown';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 interface DebugQueryDialogProps {
     isOpen: boolean;
@@ -142,8 +143,12 @@ export function DebugQueryDialog({
                             <Badge variant="outline" className="bg-indigo-500/10 text-indigo-300 border-indigo-500/20 px-3 py-1 font-medium rounded-full">
                                 Fix Available
                             </Badge>
+                        ) : apiError ? (
+                            <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20 px-3 py-1 font-medium rounded-full">
+                                Failed
+                            </Badge>
                         ) : (
-                            <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-3 py-1 font-medium rounded-fullanimate-pulse">
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-3 py-1 font-medium rounded-full animate-pulse">
                                 Analyzing...
                             </Badge>
                         )}
@@ -155,7 +160,27 @@ export function DebugQueryDialog({
                     <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none" />
 
                     <div className="max-w-4xl mx-auto space-y-10 relative z-10">
-                        {!result ? (
+                        {apiError ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+                                <div className="max-w-md w-full">
+                                    <Alert variant="destructive" className="bg-red-500/10 border-red-500/20 text-left">
+                                        <AlertTitle className="text-red-400 font-semibold flex items-center gap-2">
+                                            Analysis Failed
+                                        </AlertTitle>
+                                        <AlertDescription className="text-red-300/80 mt-2">
+                                            {apiError}
+                                        </AlertDescription>
+                                    </Alert>
+                                </div>
+                                <Button
+                                    onClick={handleDebug}
+                                    className="bg-white/5 hover:bg-white/10 text-white border border-white/10 gap-2 mt-4"
+                                >
+                                    <RefreshCw className="w-4 h-4" />
+                                    Try Again
+                                </Button>
+                            </div>
+                        ) : !result ? (
                             <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
                                 <div className="relative p-6 rounded-full bg-indigo-500/10 mb-4">
                                     <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full animate-pulse" />

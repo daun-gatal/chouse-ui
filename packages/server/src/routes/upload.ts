@@ -15,6 +15,7 @@ const createParams = z.object({
     table: z.string().min(1),
     format: z.string().default("CSV"),
     hasHeader: z.string().optional().default("true"),
+    columns: z.string().optional(),
 });
 
 /**
@@ -67,9 +68,11 @@ upload.post(
     "/create",
     zValidator("query", createParams),
     async (c) => {
-        const { database, table, format, hasHeader } = c.req.valid("query");
+        const { database, table, format, hasHeader, columns } = c.req.valid("query");
         const sessionId = c.req.header("x-clickhouse-session-id");
         const hasHeaderBool = hasHeader !== "false";
+
+        const columnArray = columns ? columns.split(',') : undefined;
 
         if (!sessionId) {
             throw AppError.unauthorized("Session ID required");
@@ -143,7 +146,8 @@ upload.post(
                 table,
                 nodeStream,
                 insertFormat,
-                settings
+                settings,
+                columnArray
             );
 
             return c.json({

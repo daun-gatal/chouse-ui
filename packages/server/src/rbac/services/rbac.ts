@@ -230,7 +230,7 @@ export async function updateUserPassword(
 }
 
 /**
- * Delete user (soft delete by deactivating)
+ * Delete user (hard delete)
  */
 export async function deleteUser(id: string): Promise<void> {
   const db = getDatabase() as AnyDb;
@@ -246,8 +246,8 @@ export async function deleteUser(id: string): Promise<void> {
     throw new Error('Cannot delete system user');
   }
 
-  await db.update(schema.users)
-    .set({ isActive: false, updatedAt: new Date() })
+  // Delete the user (cascading deletes will handle related records like userRoles, sessions, apiKeys)
+  await db.delete(schema.users)
     .where(eq(schema.users.id, id));
 }
 

@@ -133,7 +133,7 @@ export default function App() {
 
               {/* Monitoring - Live Queries, Logs, Metrics */}
               <Route
-                path="/monitoring"
+                path="/monitoring/:tab?"
                 element={
                   <AdminRoute
                     requiredPermission={[
@@ -170,7 +170,7 @@ export default function App() {
 
               {/* Administration - RBAC User Management */}
               <Route
-                path="/admin"
+                path="/admin/:tab?"
                 element={
                   <AdminRoute
                     requiredPermission={[

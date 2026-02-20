@@ -101,6 +101,7 @@
         "@ai-sdk/google": "^3.0.29",
         "@ai-sdk/huggingface": "^1.0.32",
         "@ai-sdk/openai": "^3.0.29",
+        "@ai-sdk/openai-compatible": "^2.0.30",
         "@clickhouse/client": "^1.16.0",
         "@hono/zod-validator": "^0.7.6",
         "ai": "^6.0.86",

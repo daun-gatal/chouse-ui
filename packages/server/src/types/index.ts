@@ -133,7 +133,7 @@ export interface SystemStats {
   uptime: number;
   databaseCount: number;
   tableCount: number;
-  totalRows: string;
+  totalRows: number;
   totalSize: string;
   memoryUsage: string;
   memoryTotal: string;

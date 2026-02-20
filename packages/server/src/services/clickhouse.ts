@@ -186,7 +186,8 @@ export class ClickHouseService {
     table: string,
     stream: any,
     format: string = "CSV",
-    settings?: Record<string, string | number>
+    settings?: Record<string, string | number>,
+    columns?: string[]
   ): Promise<{ queryId: string }> {
     try {
       const escapedDatabase = this.escapeIdentifier(database);
@@ -207,6 +208,7 @@ export class ClickHouseService {
         values: stream,
         format: format as any,
         clickhouse_settings,
+        ...(columns && columns.length > 0 ? { columns: columns as any } : {})
       });
 
       return {
@@ -446,7 +448,7 @@ export class ClickHouseService {
         uptime: uptime.data[0]?.["uptime()"] || 0,
         databaseCount: Number(dbCount.data[0]?.["count()"] || 0),
         tableCount: Number(tableCount.data[0]?.["count()"] || 0),
-        totalRows: this.formatLargeNumber(Number(sizeData.data[0]?.rows || 0)),
+        totalRows: Number(sizeData.data[0]?.rows || 0),
         totalSize: sizeData.data[0]?.size || "0 B",
         memoryUsage: formatSize(memResident),
         memoryTotal: formatSize(memTotal),
@@ -1839,14 +1841,7 @@ export class ClickHouseService {
       .replace(/\r/g, "\\r");
   }
 
-  private formatLargeNumber(num: number): string {
-    if (isNaN(num) || num === 0) return "0";
-    if (num >= 1e12) return `${(num / 1e12).toFixed(2)}T`;
-    if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
-    if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
-    if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
-    return num.toLocaleString();
-  }
+
 
   /**
    * Get network metrics
