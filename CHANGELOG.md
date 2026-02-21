@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.10.3] - 2026-02-21
+
+### Added
+
+- **New Monitoring Metrics**: Added 7 new metrics to the Metrics Dashboard aligned with ClickHouse system tables.
+  - **Performance Tab**: CPU Usage (Cores), Data Throughput (Bytes), Write I/O (disk/filesystem bytes/sec).
+  - **Merges Tab**: Merged Bytes Throughput, Delayed Inserts (backpressure indicator with wait time).
+  - **System Tab**: Load Average (15min) history chart, ZooKeeper Transactions/sec, ZooKeeper Traffic (bytes sent/received).
+- **Home Page Refresh Button**: Added a global refresh button to the Home page header for refreshing all dashboard data (system stats, databases, queries, favorites) with a 3-second cooldown and spin animation.
+
+### Changed
+
+- **Home Page Layout**: Updated Home page to use full-width layout matching Admin, Monitoring, and Preference pages (removed `max-w-7xl` constraint).
+- **Home Page Background**: Removed custom dark gradient background so the Home page inherits the same glass-style background as other pages.
+- **Chart Y-Axis Formatting**: Improved value formatting for metrics with small decimal values (Cores, Load, Txn/s, Delayed) using adaptive precision instead of compact notation that rounded to zero.
+
+### Fixed
+
+- **ClickHouse Users Refresh Button**: Fixed "Check Connection" button on the ClickHouse Users tab doing nothing when no active session exists. The button now performs a server-side session check and provides feedback via toast notification.
+- **Cache Bytes Calculation**: Fixed `cache_bytes` metric to correctly sum all in-memory cache types (mark cache, uncompressed cache, compiled expression cache, etc.) using `arraySum(COLUMNS('CurrentMetric_.*CacheBytes'))` instead of only `PrimaryIndexCacheBytes`.
+- **System History Queries**: Fixed `getSystemMetricsHistory` to correctly query `system.metric_log` for `CurrentMetric_Query/Merge/PartMutation` and `system.asynchronous_metric_log` for `TotalPartsOfMergeTreeTables` (was incorrectly querying async log for all metrics).
+- **Network History Metrics**: Updated `getNetworkMetricsHistory` to use `system.asynchronous_metric_log` with `LIKE` patterns for network send/receive bytes (matching ClickHouse monitoring dashboards), with fallback to `system.metric_log`.
+
 ## [v2.10.2] - 2026-02-20
 
 ### Added

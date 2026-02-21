@@ -1568,7 +1568,8 @@ export default function ClickHouseUsersManagement() {
   const canDelete = hasPermission(RBAC_PERMISSIONS.CH_USERS_DELETE);
 
   // Check for active ClickHouse session by trying to fetch users
-  const checkSessionAndFetchUsers = async () => {
+  // Returns true if a valid session was found, false otherwise
+  const checkSessionAndFetchUsers = async (): Promise<boolean> => {
     setIsCheckingSession(true);
     setIsLoading(true);
 
@@ -1580,10 +1581,23 @@ export default function ClickHouseUsersManagement() {
 
       if (!sessionId) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] No session ID found');
+          console.log('[ClickHouse Users] No session ID found, checking server-side session status...');
+        }
+        // No local session ID — try server-side session check as fallback
+        try {
+          const status = await rbacConnectionsApi.getSessionStatus();
+          if (status.connected) {
+            // Server has a session we didn't know about — fetch users
+            const result = await rbacClickHouseUsersApi.list();
+            setUsers(result);
+            setHasClickHouseSession(true);
+            return true;
+          }
+        } catch {
+          // Server check failed — no session available
         }
         setHasClickHouseSession(false);
-        return;
+        return false;
       }
 
       // Try to fetch users - this will verify the session is valid
@@ -1594,6 +1608,7 @@ export default function ClickHouseUsersManagement() {
         if (process.env.NODE_ENV === 'development') {
           console.log('[ClickHouse Users] Successfully fetched users, session is valid');
         }
+        return true;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Failed to load ClickHouse users';
         console.error('[ClickHouse Users] Failed to fetch users:', errorMsg);
@@ -1607,15 +1622,18 @@ export default function ClickHouseUsersManagement() {
           if (process.env.NODE_ENV === 'development') {
             console.log('[ClickHouse Users] Session error detected');
           }
+          return false;
         } else {
           // Other error - still show as connected but show error toast
           setHasClickHouseSession(true);
           toast.error(errorMsg);
+          return true;
         }
       }
     } catch (error) {
       console.error('[ClickHouse Users] Error checking session:', error);
       setHasClickHouseSession(false);
+      return false;
     } finally {
       setIsCheckingSession(false);
       setIsLoading(false);
@@ -1737,7 +1755,12 @@ export default function ClickHouseUsersManagement() {
               </div>
               <Button
                 variant="outline"
-                onClick={checkSessionAndFetchUsers}
+                onClick={async () => {
+                  const found = await checkSessionAndFetchUsers();
+                  if (!found) {
+                    toast.info('No active connection found. Please connect to a ClickHouse server first.');
+                  }
+                }}
                 disabled={isCheckingSession || isLoading}
                 className="mt-4 border-gray-700"
               >

@@ -24,6 +24,8 @@ import {
   BookOpen,
   Code2,
   Lightbulb,
+  RefreshCw,
+  Clock,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { useRecentQueries, useSavedQueries, useSystemStats, useDatabases } from "@/hooks";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/auth";
 import { useExplorerStore, type RecentItem } from "@/stores/explorer";
 import { useWorkspaceStore, genTabId } from "@/stores/workspace";
@@ -278,6 +281,8 @@ export default function HomePage() {
 
   // UI State
   const [tablesTab, setTablesTab] = useState<string>("favorites");
+  const [refreshCooldown, setRefreshCooldown] = useState(false);
+  const queryClient = useQueryClient();
 
   // Fetch data on mount
   useEffect(() => {
@@ -291,6 +296,16 @@ export default function HomePage() {
     [tabs]
   );
   const unsavedTabs = useMemo(() => sqlTabs.filter((tab) => tab.isDirty), [sqlTabs]);
+
+  // Global refresh handler
+  const handleRefresh = () => {
+    if (refreshCooldown) return;
+    setRefreshCooldown(true);
+    queryClient.invalidateQueries();
+    fetchFavorites();
+    fetchRecentItems(8);
+    setTimeout(() => setRefreshCooldown(false), 3000);
+  };
 
   // Navigation handlers
   const handleNewQuery = () => {
@@ -370,11 +385,11 @@ export default function HomePage() {
   const greeting = getGreeting();
 
   return (
-    <div className="h-full overflow-y-auto bg-gradient-to-b from-[#0c0c14] via-[#0a0a10] to-[#08080c]">
+    <div className="h-full overflow-y-auto">
       {/* Import Wizard Modal */}
       <UploadFromFile />
 
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="mx-auto p-6 space-y-6">
 
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -388,27 +403,43 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Connection Info */}
-          {activeConnectionName && (
-            <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-sm font-medium text-white">{activeConnectionName}</span>
+          {/* Connection Info + Refresh */}
+          <div className="flex items-center gap-3">
+            {activeConnectionName && (
+              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-sm font-medium text-white">{activeConnectionName}</span>
+                </div>
+                {version && (
+                  <>
+                    <div className="w-px h-4 bg-white/20" />
+                    <span className="text-xs text-zinc-500">v{version}</span>
+                  </>
+                )}
+                {stats?.uptime && (
+                  <>
+                    <div className="w-px h-4 bg-white/20" />
+                    <span className="text-xs text-zinc-500">up {formatUptime(stats.uptime)}</span>
+                  </>
+                )}
               </div>
-              {version && (
-                <>
-                  <div className="w-px h-4 bg-white/20" />
-                  <span className="text-xs text-zinc-500">v{version}</span>
-                </>
+            )}
+
+            <button
+              onClick={handleRefresh}
+              disabled={refreshCooldown}
+              className={cn(
+                "p-2 rounded-xl border transition-all",
+                refreshCooldown
+                  ? "bg-white/5 border-white/5 text-zinc-600 cursor-not-allowed"
+                  : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 hover:border-white/20 hover:text-white"
               )}
-              {stats?.uptime && (
-                <>
-                  <div className="w-px h-4 bg-white/20" />
-                  <span className="text-xs text-zinc-500">up {formatUptime(stats.uptime)}</span>
-                </>
-              )}
-            </div>
-          )}
+              title="Refresh all data"
+            >
+              <RefreshCw className={cn("w-4 h-4", refreshCooldown && "animate-spin")} />
+            </button>
+          </div>
         </div>
 
         {/* Server Stats Row */}
@@ -481,7 +512,7 @@ export default function HomePage() {
             icon={Activity}
             label="Monitor"
             description="View performance"
-            onClick={() => navigate("/monitoring?tab=metrics")}
+            onClick={() => navigate("/monitoring/metrics")}
             color="text-purple-400"
             bgColor="bg-gradient-to-br from-purple-500 to-pink-600"
           />
@@ -489,7 +520,7 @@ export default function HomePage() {
             icon={History}
             label="Query History"
             description="View past queries"
-            onClick={() => navigate("/monitoring?tab=logs")}
+            onClick={() => navigate("/monitoring/logs")}
             color="text-cyan-400"
             bgColor="bg-gradient-to-br from-cyan-500 to-teal-600"
           />
@@ -644,7 +675,7 @@ export default function HomePage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate("/monitoring?tab=logs")}
+                  onClick={() => navigate("/monitoring/logs")}
                   className="text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
                 >
                   View All <ArrowRight className="w-3 h-3 ml-1" />

@@ -1194,6 +1194,7 @@ export class ClickHouseService {
       storageCacheHistory,
       concurrencyHistory,
       mergeHistory,
+      zookeeperHistory,
     ] = await Promise.all([
       this.getQueryLatencyMetrics(intervalMinutes).catch(() => defaultLatency),
       this.getDiskMetrics().catch(() => []),
@@ -1213,6 +1214,7 @@ export class ClickHouseService {
       this.getStorageCacheMetricsHistory(intervalMinutes).catch(() => []),
       this.getConcurrencyMetricsHistory(intervalMinutes).catch(() => []),
       this.getMergeHistory(intervalMinutes).catch(() => []),
+      this.getZooKeeperMetricsHistory(intervalMinutes).catch(() => []),
     ]);
 
 
@@ -1240,6 +1242,7 @@ export class ClickHouseService {
       storage_cache_history: storageCacheHistory,
       concurrency_history: concurrencyHistory,
       merges_history: mergeHistory,
+      zookeeper_history: zookeeperHistory,
     };
   }
 
@@ -1249,48 +1252,85 @@ export class ClickHouseService {
    */
   async getSystemMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").SystemHistoryMetric[]> {
     try {
-      // Check if system.metric_log exists first
-      const checkTable = await this.client.query({
-        query: "EXISTS TABLE system.metric_log",
-      });
-      const checkResponse = await checkTable.json() as JsonResponse<{ result: number }>;
+      // Check table availability
+      const [hasMetricLog, hasAsyncMetricLog] = await Promise.all([
+        this.checkTableExists('system.metric_log'),
+        this.checkTableExists('system.asynchronous_metric_log')
+      ]);
 
-      if (!checkResponse.data[0] || checkResponse.data[0].result !== 1) {
+      if (!hasMetricLog && !hasAsyncMetricLog) {
         return [];
       }
 
-      // Determine appropriate time bucket based on interval
-      let bucketSeconds = 60; // Default 1 minute
+      let bucketSeconds = 60;
       if (intervalMinutes <= 15) bucketSeconds = 10;
       else if (intervalMinutes <= 60) bucketSeconds = 60;
       else if (intervalMinutes <= 360) bucketSeconds = 300;
       else bucketSeconds = 1800;
 
-      const result = await this.client.query({
-        query: `
-          SELECT
-            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
-            avgIf(value, metric = 'Query') as queries,
-            avgIf(value, metric = 'Merge') as merges,
-            avgIf(value, metric = 'Mutation') as mutations,
-            avgIf(value, metric = 'PartsCommitted') as parts
-          FROM system.asynchronous_metric_log
-          WHERE metric IN ('Query', 'Merge', 'Mutation', 'PartsCommitted')
-            AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
-          GROUP BY ts
-          ORDER BY ts
-        `,
-      });
+      let metricMap = new Map<number, { queries: number; merges: number; mutations: number }>();
+      let asyncMap = new Map<number, { parts: number }>();
 
-      const response = await result.json() as JsonResponse<{ ts: number; queries: number; merges: number; mutations: number; parts: number }>;
+      // Query metric_log for CurrentMetric_Query, CurrentMetric_Merge, CurrentMetric_PartMutation
+      if (hasMetricLog) {
+        const metricResult = await this.client.query({
+          query: `
+            SELECT
+              toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+              avg(CurrentMetric_Query) as queries,
+              avg(CurrentMetric_Merge) as merges,
+              avg(CurrentMetric_PartMutation) as mutations
+            FROM system.metric_log
+            WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+            GROUP BY ts
+            ORDER BY ts
+          `,
+        });
+        const metricResponse = await metricResult.json() as JsonResponse<{ ts: number; queries: number; merges: number; mutations: number }>;
+        metricMap = new Map(metricResponse.data.map(d => [Number(d.ts), {
+          queries: Number(d.queries) || 0,
+          merges: Number(d.merges) || 0,
+          mutations: Number(d.mutations) || 0,
+        }]));
+      }
 
-      return response.data.map(d => ({
-        timestamp: Number(d.ts),
-        queries: Number(d.queries) || 0,
-        merges: Number(d.merges) || 0,
-        mutations: Number(d.mutations) || 0,
-        parts: Number(d.parts) || 0,
-      }));
+      // Query asynchronous_metric_log for TotalPartsOfMergeTreeTables
+      if (hasAsyncMetricLog) {
+        const asyncResult = await this.client.query({
+          query: `
+            SELECT
+              toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+              avg(value) as parts
+            FROM system.asynchronous_metric_log
+            WHERE metric = 'TotalPartsOfMergeTreeTables'
+              AND event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+            GROUP BY ts
+            ORDER BY ts
+          `,
+        });
+        const asyncResponse = await asyncResult.json() as JsonResponse<{ ts: number; parts: number }>;
+        asyncMap = new Map(asyncResponse.data.map(d => [Number(d.ts), {
+          parts: Number(d.parts) || 0,
+        }]));
+      }
+
+      const allTimestamps = new Set([...metricMap.keys(), ...asyncMap.keys()]);
+      const result: import("../types").SystemHistoryMetric[] = [];
+
+      for (const ts of Array.from(allTimestamps).sort((a, b) => a - b)) {
+        const metricData = metricMap.get(ts) || { queries: 0, merges: 0, mutations: 0 };
+        const asyncData = asyncMap.get(ts) || { parts: 0 };
+
+        result.push({
+          timestamp: ts,
+          queries: metricData.queries,
+          merges: metricData.merges,
+          mutations: metricData.mutations,
+          parts: asyncData.parts,
+        });
+      }
+
+      return result;
     } catch (error) {
       return [];
     }
@@ -1318,6 +1358,38 @@ export class ClickHouseService {
       else if (intervalMinutes <= 60) bucketSeconds = 60;
       else if (intervalMinutes <= 360) bucketSeconds = 300;
       else bucketSeconds = 1800;
+
+      // Try asynchronous_metric_log first (matches CSV approach)
+      const hasAsyncLog = await this.checkTableExists('system.asynchronous_metric_log');
+
+      if (hasAsyncLog) {
+        const asyncResult = await this.client.query({
+          query: `
+            SELECT
+              toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+              sumIf(value, metric LIKE 'NetworkSendBytes%') as network_send_speed,
+              sumIf(value, metric LIKE 'NetworkReceiveBytes%') as network_receive_speed
+            FROM system.asynchronous_metric_log
+            WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+              AND (metric LIKE 'NetworkSendBytes%' OR metric LIKE 'NetworkReceiveBytes%')
+            GROUP BY ts
+            ORDER BY ts
+          `,
+        });
+        const asyncResponse = await asyncResult.json() as JsonResponse<{ ts: number; network_send_speed: number; network_receive_speed: number }>;
+
+        if (asyncResponse.data.length > 0) {
+          return asyncResponse.data.map(d => ({
+            timestamp: Number(d.ts),
+            network_send_speed: Number(d.network_send_speed) || 0,
+            network_receive_speed: Number(d.network_receive_speed) || 0,
+          }));
+        }
+      }
+
+      // Fallback to metric_log ProfileEvents if async metrics returned no data
+      const hasMetricLog = await this.checkTableExists('system.metric_log');
+      if (!hasMetricLog) return [];
 
       const result = await this.client.query({
         query: `
@@ -1365,11 +1437,12 @@ export class ClickHouseService {
       else if (intervalMinutes <= 360) bucketSeconds = 300;
       else bucketSeconds = 1800;
 
-      // Query metric_log for ProfileEvents
+      // Query metric_log for ProfileEvents including new write I/O and delayed inserts
       const metricResult = await this.client.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000 as cpu_cores,
             avg(ProfileEvent_OSCPUWaitMicroseconds) / 1000000 as cpu_wait,
             avg(ProfileEvent_OSIOWaitMicroseconds) / 1000000 as cpu_io_wait,
             avg(ProfileEvent_Query) as queries_per_sec,
@@ -1378,8 +1451,12 @@ export class ClickHouseService {
             avg(ProfileEvent_InsertedBytes) as inserted_bytes_per_sec,
             avg(ProfileEvent_OSReadBytes) as read_from_disk_bytes_per_sec,
             avg(ProfileEvent_OSReadChars) as read_from_fs_bytes_per_sec,
+            avg(ProfileEvent_OSWriteBytes) as write_to_disk_bytes_per_sec,
+            avg(ProfileEvent_OSWriteChars) as write_to_fs_bytes_per_sec,
             avg(ProfileEvent_InsertedRows) as inserted_rows_per_sec,
-            avg(ProfileEvent_MergedRows) as merged_rows_per_sec
+            avg(ProfileEvent_MergedRows) as merged_rows_per_sec,
+            avg(ProfileEvent_DelayedInserts) as delayed_inserts_per_sec,
+            avg(ProfileEvent_DelayedInsertsMilliseconds) / 1000 as delayed_inserts_wait_sec
           FROM system.metric_log
           WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
           GROUP BY ts
@@ -1387,16 +1464,17 @@ export class ClickHouseService {
         `,
       });
 
-      // Query asynchronous_metric_log for OS CPU metrics (Normalized)
+      // Query asynchronous_metric_log for OS CPU metrics (Normalized) and Load Average
       const asyncResult = await this.client.query({
         query: `
           SELECT
             toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
             avgIf(value, metric = 'OSUserTimeNormalized') as cpu_user,
-            avgIf(value, metric = 'OSSystemTimeNormalized') as cpu_system
+            avgIf(value, metric = 'OSSystemTimeNormalized') as cpu_system,
+            avgIf(value, metric = 'LoadAverage15') as load_average_15
           FROM system.asynchronous_metric_log
           WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
-            AND metric IN ('OSUserTimeNormalized', 'OSSystemTimeNormalized')
+            AND metric IN ('OSUserTimeNormalized', 'OSSystemTimeNormalized', 'LoadAverage15')
           GROUP BY ts
           ORDER BY ts
         `,
@@ -1422,14 +1500,20 @@ export class ClickHouseService {
           cpu_system: Number(asyncData.cpu_system) || 0,
           cpu_wait: Number(metricData.cpu_wait) || 0,
           cpu_io_wait: Number(metricData.cpu_io_wait) || 0,
+          cpu_cores: Number(metricData.cpu_cores) || 0,
+          load_average_15: Number(asyncData.load_average_15) || 0,
           queries_per_sec: Number(metricData.queries_per_sec) || 0,
           selected_rows_per_sec: Number(metricData.selected_rows_per_sec) || 0,
           selected_bytes_per_sec: Number(metricData.selected_bytes_per_sec) || 0,
           inserted_bytes_per_sec: Number(metricData.inserted_bytes_per_sec) || 0,
           read_from_disk_bytes_per_sec: Number(metricData.read_from_disk_bytes_per_sec) || 0,
           read_from_fs_bytes_per_sec: Number(metricData.read_from_fs_bytes_per_sec) || 0,
+          write_to_disk_bytes_per_sec: Number(metricData.write_to_disk_bytes_per_sec) || 0,
+          write_to_fs_bytes_per_sec: Number(metricData.write_to_fs_bytes_per_sec) || 0,
           inserted_rows_per_sec: Number(metricData.inserted_rows_per_sec) || 0,
           merged_rows_per_sec: Number(metricData.merged_rows_per_sec) || 0,
+          delayed_inserts_per_sec: Number(metricData.delayed_inserts_per_sec) || 0,
+          delayed_inserts_wait_sec: Number(metricData.delayed_inserts_wait_sec) || 0,
         });
       }
 
@@ -1471,7 +1555,7 @@ export class ClickHouseService {
               toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
               avg(CurrentMetric_MemoryTracking) as memory_tracking,
               avg(CurrentMetric_MergesMutationsMemoryTracking) as merges_mutations_memory,
-              avg(CurrentMetric_PrimaryIndexCacheBytes) as primary_key_cache_bytes
+              arraySum([COLUMNS('CurrentMetric_.*CacheBytes') EXCEPT 'CurrentMetric_FilesystemCache.*' APPLY avg]) as cache_bytes
             FROM system.metric_log
             WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
             GROUP BY ts
@@ -1520,7 +1604,7 @@ export class ClickHouseService {
           primary_key_memory: Number(asyncData.primary_key_memory) || 0,
           index_granularity_memory: Number(asyncData.index_granularity_memory) || 0,
           merges_mutations_memory: Number(metricData.merges_mutations_memory) || 0,
-          cache_bytes: Number(metricData.primary_key_cache_bytes) || 0,
+          cache_bytes: Number(metricData.cache_bytes) || 0,
         });
       }
 
@@ -1626,6 +1710,57 @@ export class ClickHouseService {
       }));
     } catch (error) {
       console.error("Failed to fetch merge history", error);
+      return [];
+    }
+  }
+
+  /**
+   * Get ZooKeeper metrics history (transactions, wait times, byte throughput)
+   * Only returns data if ZooKeeper/Keeper is in use (ReplicatedMergeTree)
+   * @param intervalMinutes - Time interval in minutes (default: 60)
+   */
+  async getZooKeeperMetricsHistory(intervalMinutes: number = 60): Promise<import("../types").ZooKeeperMetric[]> {
+    try {
+      const hasMetricLog = await this.checkTableExists('system.metric_log');
+      if (!hasMetricLog) return [];
+
+      let bucketSeconds = 60;
+      if (intervalMinutes <= 15) bucketSeconds = 10;
+      else if (intervalMinutes <= 60) bucketSeconds = 60;
+      else if (intervalMinutes <= 360) bucketSeconds = 300;
+      else bucketSeconds = 1800;
+
+      const result = await this.client.query({
+        query: `
+          SELECT
+            toUnixTimestamp(toStartOfInterval(event_time, INTERVAL ${bucketSeconds} SECOND)) as ts,
+            avg(ProfileEvent_ZooKeeperTransactions) as transactions_per_sec,
+            avg(ProfileEvent_ZooKeeperWaitMicroseconds) / 1000000 as wait_seconds,
+            avg(ProfileEvent_ZooKeeperBytesSent) as bytes_sent_per_sec,
+            avg(ProfileEvent_ZooKeeperBytesReceived) as bytes_received_per_sec
+          FROM system.metric_log
+          WHERE event_time >= now() - INTERVAL ${intervalMinutes} MINUTE
+          GROUP BY ts
+          ORDER BY ts
+        `,
+      });
+
+      const response = await result.json() as JsonResponse<{
+        ts: number;
+        transactions_per_sec: number;
+        wait_seconds: number;
+        bytes_sent_per_sec: number;
+        bytes_received_per_sec: number;
+      }>;
+
+      return response.data.map(d => ({
+        timestamp: Number(d.ts),
+        transactions_per_sec: Number(d.transactions_per_sec) || 0,
+        wait_seconds: Number(d.wait_seconds) || 0,
+        bytes_sent_per_sec: Number(d.bytes_sent_per_sec) || 0,
+        bytes_received_per_sec: Number(d.bytes_received_per_sec) || 0,
+      }));
+    } catch (error) {
       return [];
     }
   }
