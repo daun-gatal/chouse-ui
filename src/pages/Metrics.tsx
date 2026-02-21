@@ -188,6 +188,13 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
     if (chartTitle.includes("%")) return `${val?.toFixed(1)}%`;
     if (chartTitle.includes("ms")) return `${val?.toFixed(1)}ms`;
     if (chartTitle.includes("Connections") || chartTitle === "Conn") return Math.round(val).toString();
+    // For metrics that commonly have small decimal values, use fixed precision
+    if (chartTitle === "Cores" || chartTitle === "Load" || chartTitle === "Txn/s" || chartTitle === "Delayed") {
+      if (val < 0.01) return val.toFixed(4);
+      if (val < 1) return val.toFixed(3);
+      if (val < 100) return val.toFixed(2);
+      return val.toFixed(1);
+    }
     return formatCompactNumber(val);
   };
 
@@ -690,7 +697,97 @@ export default function Metrics({
     };
   }, [prodMetrics?.merges_history]);
 
+  // CPU Cores (actual CPU time in cores)
+  const cpuCoresData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      values: prodMetrics.performance_history.map(d => d.cpu_cores),
+    };
+  }, [prodMetrics?.performance_history]);
 
+  // Load Average (15 min) History
+  const loadAverageData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      values: prodMetrics.performance_history.map(d => d.load_average_15),
+    };
+  }, [prodMetrics?.performance_history]);
+
+  // Write I/O Throughput
+  const writeIOData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.performance_history.map(d => d.write_to_disk_bytes_per_sec),
+        prodMetrics.performance_history.map(d => d.write_to_fs_bytes_per_sec),
+      ],
+      labels: ['Write to Disk', 'Write to FS'],
+      colors: ['#f97316', '#ef4444'],
+    };
+  }, [prodMetrics?.performance_history]);
+
+  // Data Throughput (Bytes) - select + insert + read
+  const dataThroughputBytesData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.performance_history.map(d => d.selected_bytes_per_sec),
+        prodMetrics.performance_history.map(d => d.inserted_bytes_per_sec),
+        prodMetrics.performance_history.map(d => d.read_from_disk_bytes_per_sec),
+      ],
+      labels: ['Selected', 'Inserted', 'Read from Disk'],
+      colors: ['#3b82f6', '#10b981', '#f59e0b'],
+    };
+  }, [prodMetrics?.performance_history]);
+
+  // Delayed Inserts
+  const delayedInsertsData = useMemo(() => {
+    if (!prodMetrics?.performance_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.performance_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.performance_history.map(d => d.delayed_inserts_per_sec),
+        prodMetrics.performance_history.map(d => d.delayed_inserts_wait_sec),
+      ],
+      labels: ['Delayed/s', 'Wait (s)'],
+      colors: ['#ef4444', '#f59e0b'],
+    };
+  }, [prodMetrics?.performance_history]);
+
+  // Merged Bytes/sec
+  const mergedBytesData = useMemo(() => {
+    if (!prodMetrics?.merges_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.merges_history.map(d => d.timestamp),
+      values: prodMetrics.merges_history.map(d => d.merged_bytes_per_sec),
+    };
+  }, [prodMetrics?.merges_history]);
+
+  // ZooKeeper metrics
+  const zookeeperTransactionsData = useMemo(() => {
+    if (!prodMetrics?.zookeeper_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.zookeeper_history.map(d => d.timestamp),
+      values: prodMetrics.zookeeper_history.map(d => d.transactions_per_sec),
+    };
+  }, [prodMetrics?.zookeeper_history]);
+
+  const zookeeperBytesData = useMemo(() => {
+    if (!prodMetrics?.zookeeper_history?.length) return undefined;
+    return {
+      timestamps: prodMetrics.zookeeper_history.map(d => d.timestamp),
+      values: [
+        prodMetrics.zookeeper_history.map(d => d.bytes_sent_per_sec),
+        prodMetrics.zookeeper_history.map(d => d.bytes_received_per_sec),
+      ],
+      labels: ['Sent', 'Received'],
+      colors: ['#3b82f6', '#10b981'],
+    };
+  }, [prodMetrics?.zookeeper_history]);
 
 
   return (
@@ -1324,6 +1421,35 @@ export default function Metrics({
                     chartTitle="Rows/s"
                     hideLatestValues
                   />
+                  <MetricChartCard
+                    title="CPU Usage (Cores)"
+                    subtitle="Total CPU time consumed in core-seconds/sec"
+                    icon={Cpu}
+                    color="amber"
+                    data={cpuCoresData}
+                    isLoading={prodLoading}
+                    chartTitle="Cores"
+                  />
+                  <MetricChartCard
+                    title="Data Throughput (Bytes)"
+                    subtitle="Selected, inserted, and disk read bytes/sec"
+                    icon={HardDriveDownload}
+                    color="blue"
+                    data={dataThroughputBytesData}
+                    isLoading={prodLoading}
+                    chartTitle="Bytes"
+                    hideLatestValues
+                  />
+                  <MetricChartCard
+                    title="Write I/O"
+                    subtitle="Bytes written to disk and filesystem per second"
+                    icon={HardDrive}
+                    color="orange"
+                    data={writeIOData}
+                    isLoading={prodLoading}
+                    chartTitle="Bytes"
+                    hideLatestValues
+                  />
                 </div>
               </motion.div>
             </TabsContent>
@@ -1831,6 +1957,34 @@ export default function Metrics({
                   )
                 )}
               </motion.div>
+
+              {/* SECTION 5: MERGE BYTES THROUGHPUT & DELAYED INSERTS */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+              >
+                <MetricChartCard
+                  title="Merged Bytes Throughput"
+                  subtitle="Bytes processed by background merges per second"
+                  icon={HardDrive}
+                  color="emerald"
+                  data={mergedBytesData}
+                  isLoading={prodLoading}
+                  chartTitle="Bytes"
+                />
+                <MetricChartCard
+                  title="Delayed Inserts"
+                  subtitle="Insert backpressure: delayed inserts/sec and wait time"
+                  icon={AlertTriangle}
+                  color="red"
+                  data={delayedInsertsData}
+                  isLoading={prodLoading}
+                  chartTitle="Delayed"
+                  hideLatestValues
+                />
+              </motion.div>
             </TabsContent>
           )}
 
@@ -2139,6 +2293,60 @@ export default function Metrics({
                       isLoading={prodLoading}
                     />
                   </div>
+                </motion.div>
+
+                {/* SECTION 4: LOAD AVERAGE & ZOOKEEPER */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                >
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 rounded-lg bg-emerald-500/20">
+                      <Activity className="h-5 w-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white">System Load & ZooKeeper</h3>
+                      <p className="text-xs text-gray-500">Load average history and ZooKeeper/Keeper metrics</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    <MetricChartCard
+                      title="Load Average (15min)"
+                      subtitle="System load average over time"
+                      icon={Activity}
+                      color="emerald"
+                      data={loadAverageData}
+                      isLoading={prodLoading}
+                      chartTitle="Load"
+                    />
+                    <MetricChartCard
+                      title="ZooKeeper Transactions"
+                      subtitle="Keeper transactions per second (if using replicated tables)"
+                      icon={Network}
+                      color="blue"
+                      data={zookeeperTransactionsData}
+                      isLoading={prodLoading}
+                      chartTitle="Txn/s"
+                    />
+                  </div>
+
+                  {zookeeperBytesData && (
+                    <div className="mt-6">
+                      <MetricChartCard
+                        title="ZooKeeper Traffic"
+                        subtitle="Bytes sent and received from ZooKeeper/Keeper"
+                        icon={Network}
+                        color="cyan"
+                        data={zookeeperBytesData}
+                        isLoading={prodLoading}
+                        chartTitle="Bytes"
+                        hideLatestValues
+                      />
+                    </div>
+                  )}
                 </motion.div>
 
               </TabsContent>

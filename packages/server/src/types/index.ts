@@ -288,11 +288,15 @@ export interface MergeHistoryMetric {
 
 export interface PerformanceHistoryMetric {
   timestamp: number;
-  // CPU metrics (in cores)
+  // CPU metrics (normalized ratio)
   cpu_user: number;
   cpu_system: number;
   cpu_wait: number;
   cpu_io_wait: number;
+  // CPU usage in cores
+  cpu_cores: number;
+  // Load average
+  load_average_15: number;
   // Query throughput
   queries_per_sec: number;
   selected_rows_per_sec: number;
@@ -301,9 +305,14 @@ export interface PerformanceHistoryMetric {
   inserted_bytes_per_sec: number;
   read_from_disk_bytes_per_sec: number;
   read_from_fs_bytes_per_sec: number;
+  write_to_disk_bytes_per_sec: number;
+  write_to_fs_bytes_per_sec: number;
   // Process throughput
   inserted_rows_per_sec: number;
   merged_rows_per_sec: number;
+  // Delayed inserts (backpressure indicator)
+  delayed_inserts_per_sec: number;
+  delayed_inserts_wait_sec: number;
 }
 
 
@@ -336,6 +345,14 @@ export interface ConcurrencyMetric {
   max_parts_per_partition: number;
 }
 
+export interface ZooKeeperMetric {
+  timestamp: number;
+  transactions_per_sec: number;
+  wait_seconds: number;
+  bytes_sent_per_sec: number;
+  bytes_received_per_sec: number;
+}
+
 export interface ProductionMetrics {
   latency: QueryLatencyMetrics;
   disks: DiskMetrics[];
@@ -350,12 +367,13 @@ export interface ProductionMetrics {
   memory_history: MemoryHistoryMetric[];
   system_history: SystemHistoryMetric[];
   network_history: NetworkHistoryMetric[];
-  // New comprehensive metrics
+  // Comprehensive metrics
   performance_history: PerformanceHistoryMetric[];
   detailed_memory_history: DetailedMemoryMetric[];
   storage_cache_history: StorageCacheMetric[];
   concurrency_history: ConcurrencyMetric[];
   merges_history: MergeHistoryMetric[];
+  zookeeper_history: ZooKeeperMetric[];
 }
 
 // ============================================

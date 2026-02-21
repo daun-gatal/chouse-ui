@@ -37,6 +37,13 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
     if (title.includes("%")) return `${val.toFixed(1)}%`;
     if (title.includes("ms")) return `${val.toFixed(1)}ms`;
     if (title.includes("Connections") || title === "Conn") return Math.round(val).toString();
+    // For metrics that commonly have small decimal values, use fixed precision
+    if (title === "Cores" || title === "Load" || title === "Txn/s" || title === "Delayed") {
+      if (val < 0.01) return val.toFixed(4);
+      if (val < 1) return val.toFixed(3);
+      if (val < 100) return val.toFixed(2);
+      return val.toFixed(1);
+    }
     return formatCompactNumber(val);
   };
 
