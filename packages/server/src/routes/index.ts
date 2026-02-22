@@ -8,6 +8,7 @@ import config from "./config";
 import liveQueries from "./live-queries";
 import { rbacRoutes } from "../rbac";
 import upload from "./upload";
+import aiChat from "./ai-chat";
 
 const api = new Hono();
 
@@ -67,6 +68,7 @@ api.route("/metrics", metrics);
 api.route("/saved-queries", savedQueries);
 api.route("/live-queries", liveQueries);
 api.route("/upload", upload);
+api.route("/ai-chat", aiChat);
 
 // RBAC routes (Role-Based Access Control)
 api.route("/rbac", rbacRoutes);

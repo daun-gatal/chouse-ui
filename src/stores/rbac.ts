@@ -392,6 +392,7 @@ export const RBAC_PERMISSIONS = {
 
   // AI Features
   AI_OPTIMIZE: 'ai:optimize',
+  AI_CHAT: 'ai:chat',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

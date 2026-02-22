@@ -78,6 +78,7 @@
     "react-router-dom": "^7.10.0",
     "reactflow": "^11.11.4",
     "recharts": "^3.6.0",
+    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "sql-formatter": "^15.6.10",
     "tailwind-merge": "^3.4.0",

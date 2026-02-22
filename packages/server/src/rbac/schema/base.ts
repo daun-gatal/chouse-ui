@@ -108,6 +108,7 @@ export const PERMISSIONS = {
 
   // AI Features
   AI_OPTIMIZE: 'ai:optimize',
+  AI_CHAT: 'ai:chat',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -161,6 +162,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.LIVE_QUERIES_KILL,
     PERMISSIONS.LIVE_QUERIES_KILL_ALL,
     PERMISSIONS.AI_OPTIMIZE,
+    PERMISSIONS.AI_CHAT,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -186,6 +188,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SAVED_QUERIES_DELETE,
     PERMISSIONS.METRICS_VIEW,
     PERMISSIONS.AI_OPTIMIZE,
+    PERMISSIONS.AI_CHAT,
   ],
 
   [SYSTEM_ROLES.ANALYST]: [
@@ -205,6 +208,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SAVED_QUERIES_DELETE,
     PERMISSIONS.METRICS_VIEW,
     PERMISSIONS.AI_OPTIMIZE,
+    PERMISSIONS.AI_CHAT,
   ],
 
   [SYSTEM_ROLES.VIEWER]: [

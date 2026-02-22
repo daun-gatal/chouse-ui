@@ -99,6 +99,7 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
   ],
   'AI Assistant': [
     PERMISSIONS.AI_OPTIMIZE,
+    PERMISSIONS.AI_CHAT,
   ],
 };
 
@@ -135,6 +136,7 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.QUERY_HISTORY_VIEW]: 'View Own Query History',
   [PERMISSIONS.QUERY_HISTORY_VIEW_ALL]: 'View All Query History',
   [PERMISSIONS.AI_OPTIMIZE]: 'AI Query Optimization',
+  [PERMISSIONS.AI_CHAT]: 'AI Chat Assistant',
   [PERMISSIONS.SAVED_QUERIES_VIEW]: 'View Saved Queries',
   [PERMISSIONS.SAVED_QUERIES_CREATE]: 'Create Saved Queries',
   [PERMISSIONS.SAVED_QUERIES_UPDATE]: 'Update Saved Queries',
