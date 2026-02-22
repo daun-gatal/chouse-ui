@@ -34,15 +34,22 @@ const MainLayout = () => {
       return false;
     }
   });
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     const handleModeChange = (event: CustomEvent<{ mode: string }>) => {
       setIsSidebarMode(event.detail.mode === "sidebar");
     };
 
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
     window.addEventListener("dock:mode-change", handleModeChange as EventListener);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => {
       window.removeEventListener("dock:mode-change", handleModeChange as EventListener);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
   }, []);
 
@@ -54,8 +61,8 @@ const MainLayout = () => {
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl opacity-50" />
       </div>
 
-      {/* Spacer for sidebar mode */}
-      {isSidebarMode && <div className="w-14 flex-shrink-0" />}
+      {/* Spacer for sidebar mode (hidden during fullscreen) */}
+      {isSidebarMode && !isFullscreen && <div className="w-14 flex-shrink-0" />}
 
       {/* Main Content - Adjusts for sidebar mode */}
       <main className="h-full flex-1 overflow-auto z-10 relative transition-all duration-300">

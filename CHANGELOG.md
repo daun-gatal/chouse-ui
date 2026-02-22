@@ -15,12 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Merges Tab**: Merged Bytes Throughput, Delayed Inserts (backpressure indicator with wait time).
   - **System Tab**: Load Average (15min) history chart, ZooKeeper Transactions/sec, ZooKeeper Traffic (bytes sent/received).
 - **Home Page Refresh Button**: Added a global refresh button to the Home page header for refreshing all dashboard data (system stats, databases, queries, favorites) with a 3-second cooldown and spin animation.
+- **Full-Screen Mode**: Added global full-screen toggle to the Floating Dock using the native Browser Fullscreen API. Sidebar mode auto-switches to floating during full-screen for maximum content space. Toggle between `Maximize2`/`Minimize2` icons with ESC key support.
+- **Dock Settings Popover**: Consolidated dock control buttons (auto-hide, orientation, dock mode, reset position) into a single `⚙` gear popover with labeled rows. Fullscreen and manual hide buttons remain inline. Redesigned auto-hide indicator to show current page icon/label with a pulsing connection dot.
 
 ### Changed
 
 - **Home Page Layout**: Updated Home page to use full-width layout matching Admin, Monitoring, and Preference pages (removed `max-w-7xl` constraint).
 - **Home Page Background**: Removed custom dark gradient background so the Home page inherits the same glass-style background as other pages.
 - **Chart Y-Axis Formatting**: Improved value formatting for metrics with small decimal values (Cores, Load, Txn/s, Delayed) using adaptive precision instead of compact notation that rounded to zero.
+- **Dock UX Improvements**: Increased auto-hide delay to 3.5s for better reliability, replaced Eye/EyeOff with Pin/PinOff icons for the auto-hide toggle, and removed keyboard shortcut labels (⌘1–⌘5) from dock tooltips.
 
 ### Fixed
 

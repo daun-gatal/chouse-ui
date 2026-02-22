@@ -17,6 +17,10 @@ import {
   UserCog,
   PanelLeft,
   Dock,
+  Maximize2,
+  Minimize2,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -25,6 +29,7 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { motion, useDragControls, PanInfo, AnimatePresence } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
@@ -168,11 +173,10 @@ interface DockItemProps {
   label: string;
   to: string;
   isActive?: boolean;
-  shortcut?: string;
   isVertical?: boolean;
 }
 
-const DockItem = ({ icon: Icon, label, to, isActive, shortcut, isVertical }: DockItemProps) => {
+const DockItem = ({ icon: Icon, label, to, isActive, isVertical }: DockItemProps) => {
   return (
     <TooltipProvider delayDuration={0}>
       <Tooltip>
@@ -212,11 +216,6 @@ const DockItem = ({ icon: Icon, label, to, isActive, shortcut, isVertical }: Doc
         >
           <div className="flex items-center gap-2">
             <span>{label}</span>
-            {shortcut && (
-              <kbd className="px-1 py-0.5 rounded bg-white/10 text-[9px] font-mono text-gray-400">
-                {shortcut}
-              </kbd>
-            )}
           </div>
         </TooltipContent>
       </Tooltip>
@@ -250,6 +249,32 @@ export default function FloatingDock() {
   const [isVisible, setIsVisible] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [dockMode, setDockMode] = useState<DockMode>(loadDockModeFromLocal);
+  const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+
+  // Sync fullscreen state with browser
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const fs = !!document.fullscreenElement;
+      setIsFullscreen(fs);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  // Toggle fullscreen
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        window.dispatchEvent(new CustomEvent("fullscreen:change", { detail: { active: true } }));
+      } else {
+        await document.exitFullscreen();
+        window.dispatchEvent(new CustomEvent("fullscreen:change", { detail: { active: false } }));
+      }
+    } catch (err) {
+      console.error("[FloatingDock] Fullscreen toggle failed:", err);
+    }
+  }, []);
 
   // Use RBAC store for all authentication
   const {
@@ -339,16 +364,16 @@ export default function FloatingDock() {
   const canViewSettings = true;
 
   const navItems = [
-    ...(canViewOverview ? [{ icon: LayoutDashboard, label: "Home", to: "/overview", shortcut: "⌘1" }] : []),
-    ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer", shortcut: "⌘2" }] : []),
-    ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring", shortcut: "⌘3" }] : []),
-    ...(canViewAdmin ? [{ icon: Shield, label: "Admin", to: "/admin", shortcut: "⌘4" }] : []),
-    ...(canViewSettings ? [{ icon: UserCog, label: "Preferences", to: "/preferences", shortcut: "⌘5" }] : []),
+    ...(canViewOverview ? [{ icon: LayoutDashboard, label: "Home", to: "/overview" }] : []),
+    ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer" }] : []),
+    ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring" }] : []),
+    ...(canViewAdmin ? [{ icon: Shield, label: "Admin", to: "/admin" }] : []),
+    ...(canViewSettings ? [{ icon: UserCog, label: "Preferences", to: "/preferences" }] : []),
   ];
 
   // Auto-hide logic
   useEffect(() => {
-    if (!autoHide || isHovered || isDragging) {
+    if (!autoHide || isDragging) {
       setIsVisible(true);
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
@@ -357,10 +382,21 @@ export default function FloatingDock() {
       return;
     }
 
-    // Start hide timer
+    if (isHovered) {
+      // Mouse is on the dock — stay visible and cancel any hide timer
+      setIsVisible(true);
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+        hideTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    // Mouse left the dock — start hide timer with a generous delay
+    // to avoid flickering when moving between dock items
     hideTimeoutRef.current = setTimeout(() => {
       setIsVisible(false);
-    }, 2000);
+    }, 3500);
 
     return () => {
       if (hideTimeoutRef.current) {
@@ -431,8 +467,8 @@ export default function FloatingDock() {
   const hiddenOffset = isVertical ? { x: 50 } : { y: 60 };
   const visibleOffset = { x: position?.x || 0, y: position?.y || 0 };
 
-  // Sidebar mode rendering
-  if (isSidebar) {
+  // Sidebar mode rendering (hidden during fullscreen — falls through to floating dock)
+  if (isSidebar && !isFullscreen) {
     return (
       <motion.div
         initial={{ x: -80, opacity: 0 }}
@@ -468,7 +504,6 @@ export default function FloatingDock() {
                 label={item.label}
                 to={item.to}
                 isActive={location.pathname.startsWith(item.to)}
-                shortcut={item.shortcut}
                 isVertical={true}
               />
             ))}
@@ -485,6 +520,23 @@ export default function FloatingDock() {
           </div>
 
           <DockSeparator isVertical={true} />
+
+          {/* Fullscreen Toggle */}
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={toggleFullscreen}
+                  className="flex items-center justify-center w-8 h-8 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                >
+                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+                {isFullscreen ? "Exit full screen" : "Enter full screen"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           {/* Switch to Floating Mode */}
           <TooltipProvider delayDuration={0}>
@@ -517,41 +569,72 @@ export default function FloatingDock() {
       <AnimatePresence>
         {autoHide && !isVisible && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onMouseEnter={() => setIsVisible(true)}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.3 }}
+            onMouseEnter={() => {
+              setIsHovered(false); // Reset so auto-hide timer starts for the dock
+              setIsVisible(true);
+            }}
             className={cn(
-              "fixed z-50 cursor-pointer",
+              "fixed z-[60] cursor-pointer",
               isVertical
                 ? "right-0 top-1/2 -translate-y-1/2 w-16 h-64"
-                : "bottom-0 left-1/2 -translate-x-1/2 h-16 w-80"
+                : "bottom-3 left-1/2 -translate-x-1/2 min-w-[280px]"
             )}
           >
             <div className={cn(
               "flex items-center justify-center h-full w-full",
-              isVertical ? "pr-2" : "pb-2"
+              isVertical ? "pr-2" : ""
             )}>
               <motion.div
                 animate={{
-                  opacity: [0.3, 0.5, 0.3],
-                  scale: [1, 1.02, 1]
+                  opacity: [0.6, 0.9, 0.6],
                 }}
-                transition={{ duration: 2.5, repeat: Infinity }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                 className={cn(
-                  "rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center gap-1 border border-white/10",
-                  isVertical ? "w-6 h-24 flex-col py-2" : "h-6 w-40 px-3"
+                  "rounded-2xl bg-black/60 backdrop-blur-xl flex items-center gap-2.5 border border-white/15 shadow-xl shadow-black/40",
+                  isVertical ? "flex-col py-3 px-2 w-10" : "px-4 py-2"
                 )}
               >
                 {isVertical ? (
                   <>
-                    <ChevronLeft className="w-3 h-3 text-white/50" />
-                    <span className="text-[9px] text-white/50 font-medium writing-vertical">Menu</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    {(() => {
+                      const currentNav = navItems.find(item => location.pathname.startsWith(item.to));
+                      if (currentNav) {
+                        const NavIcon = currentNav.icon;
+                        return <NavIcon className="w-3.5 h-3.5 text-white/70" />;
+                      }
+                      return null;
+                    })()}
+                    <div className="h-px w-4 bg-white/15" />
+                    <ChevronLeft className="w-3 h-3 text-white/60" />
                   </>
                 ) : (
                   <>
-                    <ChevronUp className="w-3 h-3 text-white/50" />
-                    <span className="text-[9px] text-white/50 font-medium">Hover for menu</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      {(() => {
+                        const currentNav = navItems.find(item => location.pathname.startsWith(item.to));
+                        if (currentNav) {
+                          const NavIcon = currentNav.icon;
+                          return (
+                            <>
+                              <NavIcon className="w-3.5 h-3.5 text-white/70" />
+                              <span className="text-[11px] text-white/60 font-medium">{currentNav.label}</span>
+                            </>
+                          );
+                        }
+                        return <span className="text-[11px] text-white/60 font-medium">CHouse</span>;
+                      })()}
+                    </div>
+                    <div className="w-px h-3.5 bg-white/15" />
+                    <div className="flex items-center gap-1.5">
+                      <ChevronUp className="w-3 h-3 text-white/50" />
+                      <span className="text-[10px] text-white/50 font-medium">Hover to show menu</span>
+                    </div>
                   </>
                 )}
               </motion.div>
@@ -657,7 +740,6 @@ export default function FloatingDock() {
                 label={item.label}
                 to={item.to}
                 isActive={location.pathname.startsWith(item.to)}
-                shortcut={item.shortcut}
                 isVertical={isVertical}
               />
             ))}
@@ -683,103 +765,162 @@ export default function FloatingDock() {
             "flex items-center gap-0.5",
             isVertical ? "flex-col" : "flex-row"
           )}>
-            {/* Toggle Auto-Hide */}
+            {/* Fullscreen Toggle — always visible */}
             <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={toggleAutoHide}
+                    onClick={toggleFullscreen}
                     className={cn(
-                      "flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all",
+                      "flex items-center justify-center rounded transition-all",
                       isVertical ? "w-8 h-8" : "w-8 h-8",
-                      autoHide && "text-purple-400"
+                      isFullscreen
+                        ? "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+                        : "text-gray-400 hover:text-white hover:bg-white/10"
                     )}
                   >
-                    {isVertical ? (
-                      autoHide ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />
-                    ) : (
-                      autoHide ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />
-                    )}
+                    {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side={isVertical ? "right" : "top"} className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
-                  {autoHide ? "Auto-hide on" : "Auto-hide off"}
+                  {isFullscreen ? "Exit full screen" : "Enter full screen"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
-            {/* Toggle Orientation */}
-            {!isSidebar && (
+            {/* Manual Hide — only when auto-hide is enabled */}
+            {autoHide && (
               <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={toggleOrientation}
+                      onClick={() => {
+                        setIsHovered(false);
+                        setIsVisible(false);
+                      }}
                       className={cn(
                         "flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all",
                         isVertical ? "w-8 h-8" : "w-8 h-8"
                       )}
                     >
                       {isVertical ? (
-                        <Rows className="w-3.5 h-3.5" />
+                        <ChevronRight className="w-3.5 h-3.5" />
                       ) : (
-                        <Columns className="w-3.5 h-3.5" />
+                        <ChevronDown className="w-3.5 h-3.5" />
                       )}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side={isVertical ? "right" : "top"} className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
-                    {isVertical ? "Horizontal" : "Vertical"}
+                    Hide dock
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
 
-            {/* Toggle Dock Mode (Floating <-> Sidebar) */}
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={toggleDockMode}
-                    className={cn(
-                      "flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all",
-                      isSidebar ? "w-8 h-8" : "w-8 h-8",
-                      isSidebar && "text-purple-400"
-                    )}
-                  >
-                    {isSidebar ? (
-                      <Dock className="w-3.5 h-3.5" />
-                    ) : (
-                      <PanelLeft className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side={isSidebar ? "right" : isVertical ? "right" : "top"} className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
-                  {isSidebar ? "Switch to floating" : "Switch to sidebar"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Reset Position */}
-            {position && !isSidebar && (
+            {/* Settings Popover — all other dock controls */}
+            <Popover>
               <TooltipProvider delayDuration={0}>
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={resetPosition}
-                      className={cn(
-                        "flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all",
-                        isVertical ? "w-8 h-8" : "w-8 h-8"
-                      )}
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-                  </TooltipTrigger>
+                  <PopoverTrigger asChild>
+                    <TooltipTrigger asChild>
+                      <button
+                        className={cn(
+                          "flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all",
+                          isVertical ? "w-8 h-8" : "w-8 h-8"
+                        )}
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                  </PopoverTrigger>
                   <TooltipContent side={isVertical ? "right" : "top"} className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
-                    Reset position
+                    Dock settings
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
+              <PopoverContent
+                side={isVertical ? "right" : "top"}
+                sideOffset={12}
+                className="w-56 p-2 bg-black/90 backdrop-blur-2xl border-white/10 rounded-xl shadow-2xl shadow-black/50"
+              >
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold px-2 py-1">Dock Settings</p>
+
+                  {/* Pin / Unpin */}
+                  <button
+                    onClick={toggleAutoHide}
+                    className="flex items-center gap-3 w-full px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
+                  >
+                    <div className={cn(
+                      "p-1.5 rounded-md transition-colors",
+                      autoHide ? "bg-emerald-500/20" : "bg-white/5"
+                    )}>
+                      {autoHide ? <PinOff className="w-3.5 h-3.5 text-emerald-400" /> : <Pin className="w-3.5 h-3.5 text-gray-400" />}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-xs font-medium text-zinc-200">Auto-hide</p>
+                      <p className="text-[10px] text-zinc-500">{autoHide ? "Dock hides when inactive" : "Dock always visible"}</p>
+                    </div>
+                    <div className={cn(
+                      "w-1.5 h-1.5 rounded-full",
+                      autoHide ? "bg-emerald-400" : "bg-zinc-600"
+                    )} />
+                  </button>
+
+                  {/* Orientation */}
+                  {!isSidebar && !isFullscreen && (
+                    <button
+                      onClick={toggleOrientation}
+                      className="flex items-center gap-3 w-full px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
+                    >
+                      <div className="p-1.5 rounded-md bg-white/5">
+                        {isVertical ? <Rows className="w-3.5 h-3.5 text-gray-400" /> : <Columns className="w-3.5 h-3.5 text-gray-400" />}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-xs font-medium text-zinc-200">Orientation</p>
+                        <p className="text-[10px] text-zinc-500">{isVertical ? "Vertical layout" : "Horizontal layout"}</p>
+                      </div>
+                      <span className="text-[10px] text-zinc-500 font-mono">{isVertical ? "V" : "H"}</span>
+                    </button>
+                  )}
+
+                  {/* Dock Mode */}
+                  {!isFullscreen && (
+                    <button
+                      onClick={toggleDockMode}
+                      className="flex items-center gap-3 w-full px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
+                    >
+                      <div className="p-1.5 rounded-md bg-white/5">
+                        {isSidebar ? <Dock className="w-3.5 h-3.5 text-gray-400" /> : <PanelLeft className="w-3.5 h-3.5 text-gray-400" />}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-xs font-medium text-zinc-200">Dock Mode</p>
+                        <p className="text-[10px] text-zinc-500">{isSidebar ? "Sidebar mode" : "Floating mode"}</p>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* Reset Position */}
+                  {position && !isSidebar && (
+                    <>
+                      <div className="h-px bg-white/5 mx-1" />
+                      <button
+                        onClick={resetPosition}
+                        className="flex items-center gap-3 w-full px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
+                      >
+                        <div className="p-1.5 rounded-md bg-white/5">
+                          <RotateCcw className="w-3.5 h-3.5 text-gray-400" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-xs font-medium text-zinc-200">Reset Position</p>
+                          <p className="text-[10px] text-zinc-500">Move dock to default spot</p>
+                        </div>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </motion.div>
