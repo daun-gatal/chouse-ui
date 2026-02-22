@@ -1367,6 +1367,99 @@ const MIGRATIONS: Migration[] = [
       console.log('[Migration 1.12.0] Down migration: AI optimization permission will remain (idempotent seed)');
     },
   },
+  {
+    version: '1.13.0',
+    name: 'live_queries_kill_all_permission',
+    description: 'Add live_queries:kill_all permission for admin-level kill access. Existing live_queries:kill now means kill own queries only. Fixes privilege escalation where non-admin users could see and kill admin queries.',
+    up: async (db) => {
+      const { seedPermissions } = await import('../services/seed');
+
+      // Seed all permissions (including new live_queries:kill_all)
+      const permissionIdMap = await seedPermissions();
+
+      console.log('[Migration 1.13.0] live_queries:kill_all permission created');
+
+      const killAllId = permissionIdMap.get('live_queries:kill_all');
+
+      if (!killAllId) {
+        console.error('[Migration 1.13.0] Failed to get live_queries:kill_all permission ID');
+        return;
+      }
+
+      const { getDatabaseType } = await import('./index');
+      const { SYSTEM_ROLES } = await import('../schema/base');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+
+      const dbType = getDatabaseType();
+
+      // Grant to Super Admin and Admin (backward compatible — they previously had unrestricted kill)
+      const rolesToUpdate = [
+        SYSTEM_ROLES.SUPER_ADMIN,
+        SYSTEM_ROLES.ADMIN,
+      ];
+
+      for (const roleName of rolesToUpdate) {
+        let roleResult: Array<{ id: string }>;
+
+        if (dbType === 'sqlite') {
+          roleResult = (db as SqliteDb).all(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `) as Array<{ id: string }>;
+        } else {
+          const rows = await (db as PostgresDb).execute(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `);
+          const raw = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          roleResult = raw as Array<{ id: string }>;
+        }
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          let existing: Array<unknown>;
+
+          if (dbType === 'sqlite') {
+            existing = (db as SqliteDb).all(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${killAllId} LIMIT 1
+            `);
+          } else {
+            const rows = await (db as PostgresDb).execute(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${killAllId} LIMIT 1
+            `);
+            existing = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          }
+
+          if (existing.length === 0) {
+            const id = randomUUID();
+            const createdAt = new Date();
+
+            if (dbType === 'sqlite') {
+              (db as SqliteDb).run(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${killAllId}, ${Math.floor(createdAt.getTime() / 1000)})
+              `);
+            } else {
+              await (db as PostgresDb).execute(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${killAllId}, ${createdAt.toISOString()})
+              `);
+            }
+            console.log(`[Migration 1.13.0] Assigned permission ${killAllId} to role ${roleName}`);
+          } else {
+            console.log(`[Migration 1.13.0] Permission ${killAllId} already assigned to role ${roleName}`);
+          }
+        }
+      }
+
+      console.log('[Migration 1.13.0] live_queries:kill_all permission assigned to super_admin and admin roles');
+    },
+    down: async (db) => {
+      console.log('[Migration 1.13.0] Down migration: live_queries:kill_all permission will remain (idempotent seed)');
+    },
+  },
 ];
 
 // ============================================

@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **System History Queries**: Fixed `getSystemMetricsHistory` to correctly query `system.metric_log` for `CurrentMetric_Query/Merge/PartMutation` and `system.asynchronous_metric_log` for `TotalPartsOfMergeTreeTables` (was incorrectly querying async log for all metrics).
 - **Network History Metrics**: Updated `getNetworkMetricsHistory` to use `system.asynchronous_metric_log` with `LIKE` patterns for network send/receive bytes (matching ClickHouse monitoring dashboards), with fallback to `system.metric_log`.
 
+### Security
+
+- **Live Queries RBAC Privilege Escalation**: Fixed security issue where non-admin RBAC users with `live_queries:view` and `live_queries:kill` permissions could see and terminate queries belonging to admin and super_admin users. Non-admin users now only see their own queries. Added new `live_queries:kill_all` permission for admin-level kill privileges; the existing `live_queries:kill` permission now only allows killing own queries.
+
 ## [v2.10.2] - 2026-02-20
 
 ### Added

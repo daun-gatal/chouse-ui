@@ -342,7 +342,8 @@ export default function LiveQueriesTable({
         : internalRefreshInterval;
 
     const { hasPermission, isSuperAdmin, user } = useRbacStore();
-    const canGlobalKill = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_KILL);
+    const canGlobalKill = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_KILL_ALL);
+    const canKillOwn = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_KILL);
 
     const { data, isLoading, error, refetch, isFetching } = useLiveQueries(refreshInterval);
     const killQuery = useKillQuery();
@@ -387,6 +388,13 @@ export default function LiveQueriesTable({
             // Error is handled by the mutation
         }
     }, [queryToKill, killQuery]);
+
+    // Determine if a specific query can be killed by the current user
+    const canKillQuery = useCallback((query: LiveQuery) => {
+        if (canGlobalKill) return true;
+        if (canKillOwn && user && query.rbac_user_id === user.id) return true;
+        return false;
+    }, [canGlobalKill, canKillOwn, user]);
 
     if (error) {
         return (
@@ -546,7 +554,7 @@ export default function LiveQueriesTable({
                                             key={query.query_id}
                                             query={query}
                                             onKill={handleKillQuery}
-                                            canKill={canGlobalKill}
+                                            canKill={canKillQuery(query)}
                                             isKilling={killQuery.isPending && queryToKill === query.query_id}
                                         />
                                     ))}

@@ -96,9 +96,10 @@ export const PERMISSIONS = {
   AUDIT_EXPORT: 'audit:export',
   AUDIT_DELETE: 'audit:delete',
 
-  // Live Query Management (admin only)
+  // Live Query Management
   LIVE_QUERIES_VIEW: 'live_queries:view',
   LIVE_QUERIES_KILL: 'live_queries:kill',
+  LIVE_QUERIES_KILL_ALL: 'live_queries:kill_all',
 
   // Connection Management
   CONNECTIONS_VIEW: 'connections:view',
@@ -158,6 +159,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AUDIT_VIEW,
     PERMISSIONS.LIVE_QUERIES_VIEW,
     PERMISSIONS.LIVE_QUERIES_KILL,
+    PERMISSIONS.LIVE_QUERIES_KILL_ALL,
     PERMISSIONS.AI_OPTIMIZE,
   ],
 

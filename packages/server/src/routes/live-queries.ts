@@ -197,7 +197,14 @@ liveQueries.get("/", async (c) => {
     const service = c.get("service");
     const rbacUserId = c.get("rbacUserId");
     const rbacRoles = c.get("rbacRoles");
+    const rbacPermissions = c.get("rbacPermissions") || [];
     const rbacConnectionId = c.get("rbacConnectionId");
+
+    // Determine if user can see all queries
+    let hasKillAll = rbacPermissions.includes(PERMISSIONS.LIVE_QUERIES_KILL_ALL);
+    if (!hasKillAll && rbacUserId) {
+        hasKillAll = await userHasPermission(rbacUserId, PERMISSIONS.LIVE_QUERIES_KILL_ALL);
+    }
 
     try {
         // Query system.processes for running queries
@@ -225,7 +232,7 @@ liveQueries.get("/", async (c) => {
     `, "JSON");
 
         const rawQueries = (result.data || []) as any[];
-        const queries: LiveQuery[] = rawQueries.map(q => {
+        let queries: LiveQuery[] = rawQueries.map(q => {
             let rbac_user_id: string | undefined;
             try {
                 if (q.log_comment_json) {
@@ -240,6 +247,12 @@ liveQueries.get("/", async (c) => {
                 rbac_user_id
             };
         });
+
+        // SECURITY: Filter queries by ownership for non-admin users
+        // Users without live_queries:kill_all can only see their own queries
+        if (!hasKillAll && rbacUserId) {
+            queries = queries.filter(q => q.rbac_user_id === rbacUserId);
+        }
 
         // Fetch RBAC user details for the queries
         const userIds = new Set<string>();
@@ -313,13 +326,19 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
 
 
     // Check permissions
-    // 1. Check for global kill permission
-    let hasGlobalKill = rbacPermissions.includes(PERMISSIONS.LIVE_QUERIES_KILL);
-    if (!hasGlobalKill && rbacUserId) {
-        hasGlobalKill = await userHasPermission(rbacUserId, PERMISSIONS.LIVE_QUERIES_KILL);
+    // 1. Check for kill_all (admin-level) permission
+    let hasKillAll = rbacPermissions.includes(PERMISSIONS.LIVE_QUERIES_KILL_ALL);
+    if (!hasKillAll && rbacUserId) {
+        hasKillAll = await userHasPermission(rbacUserId, PERMISSIONS.LIVE_QUERIES_KILL_ALL);
     }
 
-    if (!hasGlobalKill) {
+    // 2. Check for basic kill (own queries) permission
+    let hasKillOwn = rbacPermissions.includes(PERMISSIONS.LIVE_QUERIES_KILL);
+    if (!hasKillOwn && rbacUserId) {
+        hasKillOwn = await userHasPermission(rbacUserId, PERMISSIONS.LIVE_QUERIES_KILL);
+    }
+
+    if (!hasKillAll && !hasKillOwn) {
         throw AppError.forbidden("Permission 'live_queries:kill' is required to kill queries.");
     }
 
@@ -357,13 +376,15 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
             // Check failed
         }
 
-        // Execute KILL QUERY command
-        // Note: If queryInfo is undefined, it might mean query already finished or doesn't exist.
-        // We still run KILL just in case (idempotent), but ownership check is bypassed 
-        // (safe because if it doesn't exist, we can't kill it "wrongly").
-        // However, strictly speaking, if we can't verify ownership, maybe we shouldn't kill?
-        // But if it doesn't exist, killing it does nothing.
+        // SECURITY: Ownership check for non-admin users
+        // Users with only live_queries:kill can only kill their own queries
+        if (!hasKillAll && queryInfo) {
+            if (queryInfo.rbac_user_id !== rbacUserId) {
+                throw AppError.forbidden("You can only kill your own queries. Permission 'live_queries:kill_all' is required to kill other users' queries.");
+            }
+        }
 
+        // Execute KILL QUERY command
         await service.executeQuery(
             `KILL QUERY WHERE query_id = '${queryId.replace(/'/g, "''")}'`,
             "JSON"
@@ -383,7 +404,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
                         killedQueryPreview: queryInfo?.query?.substring(0, 500) || 'Query already completed',
                         elapsedSeconds: queryInfo?.elapsed_seconds,
                         connectionId: rbacConnectionId,
-                        killType: hasGlobalKill ? 'global' : 'own_query',
+                        killType: hasKillAll ? 'global' : 'own_query',
                         requestUsername: currentUsername
                     },
                     ipAddress: getClientIp(c),
