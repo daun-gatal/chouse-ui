@@ -68,6 +68,7 @@ function stripScratchpad(text: string): string {
         'assistant\nfinal',     // "assistant\nfinal" with newline
         'assistant final',      // "assistant final" with space
         '\nfinal\n',            // "final" on its own line
+        '\nfinal',              // "final" followed immediately by text (no trailing newline)
     ];
 
     let bestCut = -1;
@@ -83,12 +84,17 @@ function stripScratchpad(text: string): string {
         return text.substring(bestCut).trim();
     }
 
-    // If the text starts with "analysis" (case-insensitive), the model is
-    // emitting reasoning without a clear end-marker.  Try to find where
-    // the actual markdown content starts (tables, headers, bullets, etc.)
+    // Fallback: handle leading CoT markers that appear at the very start of the
+    // buffer without a preceding newline (e.g. "finalBelow is..." or "analysisHere")
     const trimmed = text.trimStart();
-    if (/^analysis/i.test(trimmed)) {
-        // Look for the first markdown-formatted element
+
+    // Strip a bare "final" at the start (5 chars)
+    if (/^final(?=[A-Z\s])/i.test(trimmed)) {
+        return trimmed.slice(5).trim();
+    }
+
+    // Strip leading "analysis..." blocks — look for first markdown element
+    if (/^(analysis|thinking)/i.test(trimmed)) {
         const mdMatch = trimmed.match(/\n\s*(?=[|#\-*>\d])/);
         if (mdMatch && mdMatch.index && mdMatch.index > 0) {
             return trimmed.substring(mdMatch.index).trim();
@@ -339,19 +345,30 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
                                 break;
                             }
 
-                            case 'tool-call':
+                            case 'tool-call': {
                                 // This step uses tools — its text is hallucination
                                 currentStepHasToolCalls = true;
+                                // AI SDK v6 uses `input` for tool arguments (not `args`).
+                                // Fall back through: input → args → {} for backwards compat.
+                                const rawInput = (part as any).input ?? (part as any).args ?? {};
+                                const parsedArgs: Record<string, unknown> = typeof rawInput === 'string'
+                                    ? (() => { try { return JSON.parse(rawInput); } catch { return {}; } })()
+                                    : (rawInput && typeof rawInput === 'object' ? rawInput : {});
                                 // Collect tool call info for persistence
                                 collectedToolCalls.push({
                                     name: (part as any).toolName,
-                                    args: (part as any).args ?? {},
+                                    args: parsedArgs,
                                 });
-                                // Notify frontend that tool is being called
+                                // Notify frontend: tool is being called, include args for display
                                 controller.enqueue(encoder.encode(
-                                    `data: ${JSON.stringify({ type: 'status', status: 'tool-calling', tool: (part as any).toolName })}\n\n`
+                                    `data: ${JSON.stringify({
+                                        type: 'tool-call',
+                                        tool: (part as any).toolName,
+                                        args: parsedArgs,
+                                    })}\n\n`
                                 ));
                                 break;
+                            }
 
                             case 'tool-result': {
                                 // Match result back to the last tool call with the same name
@@ -366,6 +383,28 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
                                 if (matchIdx !== -1) {
                                     collectedToolCalls[matchIdx].result = resultData;
                                 }
+                                // Send completion event with a lightweight result summary
+                                let resultSummary: string | null = null;
+                                if (Array.isArray(resultData)) {
+                                    resultSummary = `${resultData.length} row${resultData.length !== 1 ? 's' : ''} returned`;
+                                } else if (resultData && typeof resultData === 'object') {
+                                    const keys = Object.keys(resultData);
+                                    if (keys.length > 0) {
+                                        const first = (resultData as any)[keys[0]];
+                                        resultSummary = typeof first === 'string' || typeof first === 'number'
+                                            ? String(first).substring(0, 60)
+                                            : `${keys.length} field${keys.length !== 1 ? 's' : ''}`;
+                                    }
+                                } else if (typeof resultData === 'string') {
+                                    resultSummary = resultData.substring(0, 60);
+                                }
+                                controller.enqueue(encoder.encode(
+                                    `data: ${JSON.stringify({
+                                        type: 'tool-complete',
+                                        tool: toolName,
+                                        summary: resultSummary,
+                                    })}\n\n`
+                                ));
                                 break;
                             }
 

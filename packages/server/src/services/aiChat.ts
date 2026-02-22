@@ -77,12 +77,17 @@ const SYSTEM_PROMPT = `You are an expert ClickHouse database assistant embedded 
 - If the user asks you to modify data, explain that you only have read-only access and suggest they use the query editor.
 - The databases and tables you can see are filtered by the user's access permissions.
 
-## Response Style
-- When showing query results, format them as markdown tables when appropriate.
+## CRITICAL: Response Formatting Rules
+- **ALL SQL MUST be wrapped in a fenced code block.** Always use \`\`\`sql ... \`\`\` — no exceptions.
+- NEVER write SQL as plain text, never embed SQL inline in a sentence, and NEVER put SQL inside a markdown table cell.
+- When you include a query example, always present it in its own \`\`\`sql\`\`\` block on its own line.
+- Use markdown tables ONLY for tabular data (like query results or schema comparisons). Do NOT put queries inside table cells.
+- Use proper markdown throughout: headers (\`##\`), bullet points, bold (\`**text**\`), and code blocks (\`\`\`sql or \`\`\`json).
+- When showing query results, format them as markdown tables.
 - Explain your reasoning and findings clearly.
 - If a tool call fails, explain the error to the user helpfully.
-- When generating queries, always explain what the query does.
 `;
+
 
 // ============================================
 // Tool Definitions
@@ -251,12 +256,17 @@ function createTools(ctx: ChatContext) {
         run_select_query: tool({
             description: "Execute a read-only SELECT query. Only SELECT and WITH queries are allowed. Results limited to 100 rows.",
             parameters: z.object({
-                sql: z.string().describe("The SQL SELECT query to execute"),
+                sql: z.string().describe("The SQL SELECT query to execute").optional(),
+                query: z.string().describe("Alias for sql — the SQL SELECT query to execute").optional(),
             }),
-            execute: async ({ sql }: { sql: string }): Promise<Record<string, unknown>> => {
+            execute: async ({ sql, query }: { sql?: string; query?: string }): Promise<Record<string, unknown>> => {
+                const actualSql = sql ?? query ?? '';
+                if (!actualSql.trim()) {
+                    return { error: "No SQL query provided. Pass the query in the 'sql' parameter." };
+                }
                 try {
                     // Validate it's a read-only query
-                    const normalized = sql.trim().toUpperCase();
+                    const normalized = actualSql.trim().toUpperCase();
                     if (!normalized.startsWith('SELECT') && !normalized.startsWith('WITH')) {
                         return { error: "Only SELECT and WITH queries are allowed. DDL/DML operations are not permitted." };
                     }
@@ -264,16 +274,16 @@ function createTools(ctx: ChatContext) {
                     // Validate RBAC access
                     const accessCheck = await validateQueryAccess(
                         ctx.userId, ctx.isAdmin, ctx.permissions,
-                        sql, ctx.defaultDatabase, ctx.connectionId
+                        actualSql, ctx.defaultDatabase, ctx.connectionId
                     );
                     if (!accessCheck.allowed) {
                         return { error: accessCheck.reason || "Access denied" };
                     }
 
                     // Add LIMIT if not present
-                    let limitedSql = sql;
+                    let limitedSql = actualSql;
                     if (!normalized.includes('LIMIT')) {
-                        limitedSql = `${sql.replace(/;\s*$/, '')} LIMIT 100`;
+                        limitedSql = `${actualSql.replace(/;\s*$/, '')} LIMIT 100`;
                     }
 
                     const result = await ctx.clickhouseService.executeQuery(limitedSql, "JSON");

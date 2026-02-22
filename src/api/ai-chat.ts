@@ -34,11 +34,15 @@ export interface ChatStatus {
 }
 
 export interface StreamDelta {
-    type: 'text-delta' | 'done' | 'error' | 'status';
+    type: 'text-delta' | 'done' | 'error' | 'status' | 'tool-call' | 'tool-complete';
     text?: string;
     error?: string;
     status?: string;
     tool?: string;
+    /** Args passed to the tool (present on tool-call events) */
+    args?: Record<string, unknown>;
+    /** Human-readable result summary (present on tool-complete events) */
+    summary?: string | null;
 }
 
 // ============================================
