@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from "react-router-dom";
 import FloatingDock from "@/components/common/FloatingDock";
+import AiChatBubble from "@/components/common/AiChatBubble";
 import HomePage from "@/pages/Home";
 import MonitoringPage from "@/pages/Monitoring";
 import PreferencesPage from "@/pages/Preferences";
@@ -71,6 +72,9 @@ const MainLayout = () => {
 
       {/* Floating Dock / Sidebar Navigation */}
       <FloatingDock />
+
+      {/* AI Chat Assistant Bubble */}
+      <AiChatBubble />
     </div>
   );
 };

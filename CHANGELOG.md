@@ -6,7 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.11.0] - 2026-02-23
+
+### Added
+
+- **AI Chat Assistant**: Introduced a fully integrated AI-powered chat assistant for ClickHouse exploration and analysis.
+  - **Floating Chat Bubble**: New floating `AiChatBubble` component accessible from every page via a persistent button. Opens a resizable chat window with a premium glassmorphic design.
+  - **Multi-turn Conversations**: Supports threaded conversations with full history — create, switch, and delete threads from a collapsible sidebar.
+  - **Live Tool Execution Panel**: Expandable "Thinking" panel shows each tool the AI calls in real-time, including parsed arguments and a brief result summary (e.g. "12 rows returned"). SQL args render in a scrollable `<pre>` block.
+  - **Streaming Responses**: AI text streams token-by-token using Server-Sent Events (SSE) with a live cursor indicator.
+  - **Markdown Rendering**: Full GFM support — tables, fenced `sql` code blocks with syntax highlighting, inline code, headers, and lists. Includes `preprocessMarkdown` to normalise literal `\n` sequences and collapse code fences inside table cells.
+  - **AI Tools**: The assistant has access to 14 ClickHouse tools — `list_databases`, `list_tables`, `get_table_schema`, `get_table_ddl`, `get_table_sample`, `get_table_size`, `run_select_query`, `explain_query`, `analyze_query`, `optimize_query`, `search_columns`, `get_slow_queries`, `get_database_stats`, and `generate_query`.
+  - **RBAC Protection**: AI Chat is gated behind `AI_CHAT` permission; only users with the permission can open and use the assistant.
+  - **Thread Persistence**: Conversations and tool-call results are persisted to the RBAC metadata database, surviving page reloads and sessions.
+  - **Escape Key Support & Accessibility**: Press `Esc` to close the chat window; `aria-label` added for screen readers.
+  - **Retry & Fallback UX**: Error messages include a styled "Retry" button; an empty-response fallback message is shown when the AI returns no content.
+
 ## [v2.10.3] - 2026-02-21
+
 
 ### Added
 

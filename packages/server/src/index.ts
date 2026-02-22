@@ -293,6 +293,7 @@ const cleanupInterval = setInterval(async () => {
 const server = serve({
   port: PORT,
   fetch: app.fetch.bind(app),
+  idleTimeout: 120, // 120s — SSE streams for AI chat can be idle during long tool calls
 });
 
 // Graceful shutdown handler

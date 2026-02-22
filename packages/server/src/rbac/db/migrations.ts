@@ -1460,6 +1460,174 @@ const MIGRATIONS: Migration[] = [
       console.log('[Migration 1.13.0] Down migration: live_queries:kill_all permission will remain (idempotent seed)');
     },
   },
+  {
+    version: '1.14.0',
+    name: 'ai_chat_tables_and_permission',
+    description: 'Add AI chat tables (threads, messages) and ai:chat permission for the AI assistant feature',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+
+      const dbType = getDatabaseType();
+
+      // Create AI chat threads table
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_chat_threads (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            title TEXT,
+            connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_chat_threads_user_id_idx ON rbac_ai_chat_threads(user_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_chat_threads_conn_id_idx ON rbac_ai_chat_threads(connection_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_chat_threads_updated_at_idx ON rbac_ai_chat_threads(updated_at)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_chat_threads (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            title TEXT,
+            connection_id TEXT REFERENCES rbac_clickhouse_connections(id) ON DELETE SET NULL,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_chat_threads_user_id_idx ON rbac_ai_chat_threads(user_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_chat_threads_conn_id_idx ON rbac_ai_chat_threads(connection_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_chat_threads_updated_at_idx ON rbac_ai_chat_threads(updated_at)`);
+      }
+
+      console.log('[Migration 1.14.0] Created rbac_ai_chat_threads table');
+
+      // Create AI chat messages table
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_chat_messages (
+            id TEXT PRIMARY KEY NOT NULL,
+            thread_id TEXT NOT NULL REFERENCES rbac_ai_chat_threads(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            tool_calls TEXT,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_chat_messages_thread_id_idx ON rbac_ai_chat_messages(thread_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_chat_messages_created_at_idx ON rbac_ai_chat_messages(created_at)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_chat_messages (
+            id TEXT PRIMARY KEY NOT NULL,
+            thread_id TEXT NOT NULL REFERENCES rbac_ai_chat_threads(id) ON DELETE CASCADE,
+            role VARCHAR(20) NOT NULL,
+            content TEXT NOT NULL,
+            tool_calls JSONB,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_chat_messages_thread_id_idx ON rbac_ai_chat_messages(thread_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_chat_messages_created_at_idx ON rbac_ai_chat_messages(created_at)`);
+      }
+
+      console.log('[Migration 1.14.0] Created rbac_ai_chat_messages table');
+
+      // Seed ai:chat permission and assign to roles
+      const { seedPermissions } = await import('../services/seed');
+      const permissionIdMap = await seedPermissions();
+
+      const aiChatId = permissionIdMap.get('ai:chat');
+
+      if (!aiChatId) {
+        console.error('[Migration 1.14.0] Failed to get ai:chat permission ID');
+        return;
+      }
+
+      const { SYSTEM_ROLES } = await import('../schema/base');
+      const { randomUUID } = await import('crypto');
+
+      const rolesToUpdate = [
+        SYSTEM_ROLES.SUPER_ADMIN,
+        SYSTEM_ROLES.ADMIN,
+        SYSTEM_ROLES.DEVELOPER,
+        SYSTEM_ROLES.ANALYST
+      ];
+
+      for (const roleName of rolesToUpdate) {
+        let roleResult: Array<{ id: string }>;
+
+        if (dbType === 'sqlite') {
+          roleResult = (db as SqliteDb).all(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `) as Array<{ id: string }>;
+        } else {
+          const rows = await (db as PostgresDb).execute(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `);
+          const raw = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          roleResult = raw as Array<{ id: string }>;
+        }
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          let existing: Array<unknown>;
+
+          if (dbType === 'sqlite') {
+            existing = (db as SqliteDb).all(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${aiChatId} LIMIT 1
+            `);
+          } else {
+            const rows = await (db as PostgresDb).execute(sql`
+              SELECT 1 FROM rbac_role_permissions
+              WHERE role_id = ${roleId} AND permission_id = ${aiChatId} LIMIT 1
+            `);
+            existing = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          }
+
+          if (existing.length === 0) {
+            const id = randomUUID();
+            const createdAt = new Date();
+
+            if (dbType === 'sqlite') {
+              (db as SqliteDb).run(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${aiChatId}, ${Math.floor(createdAt.getTime() / 1000)})
+              `);
+            } else {
+              await (db as PostgresDb).execute(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${aiChatId}, ${createdAt.toISOString()})
+              `);
+            }
+            console.log(`[Migration 1.14.0] Assigned ai:chat permission to role ${roleName}`);
+          } else {
+            console.log(`[Migration 1.14.0] ai:chat permission already assigned to role ${roleName}`);
+          }
+        }
+      }
+
+      console.log('[Migration 1.14.0] AI chat tables and permission setup completed');
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_ai_chat_messages`);
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_ai_chat_threads`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_chat_messages`);
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_chat_threads`);
+      }
+
+      console.log('[Migration 1.14.0] Dropped AI chat tables');
+    },
+  },
 ];
 
 // ============================================

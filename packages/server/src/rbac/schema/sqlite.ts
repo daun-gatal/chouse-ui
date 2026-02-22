@@ -384,6 +384,44 @@ export const userPreferences = sqliteTable('rbac_user_preferences', {
 }));
 
 // ============================================
+// AI Chat Tables
+// Stores AI assistant conversation threads and messages
+// ============================================
+
+/**
+ * AI Chat Threads Table
+ * Each thread represents a conversation session with the AI assistant
+ */
+export const aiChatThreads = sqliteTable('rbac_ai_chat_threads', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title'),
+  connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'set null' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  userIdIdx: index('ai_chat_threads_user_id_idx').on(table.userId),
+  connIdIdx: index('ai_chat_threads_conn_id_idx').on(table.connectionId),
+  updatedAtIdx: index('ai_chat_threads_updated_at_idx').on(table.updatedAt),
+}));
+
+/**
+ * AI Chat Messages Table
+ * Individual messages within a chat thread
+ */
+export const aiChatMessages = sqliteTable('rbac_ai_chat_messages', {
+  id: text('id').primaryKey(),
+  threadId: text('thread_id').notNull().references(() => aiChatThreads.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(), // 'user' | 'assistant'
+  content: text('content').notNull(),
+  toolCalls: text('tool_calls', { mode: 'json' }).$type<Array<{ name: string; args: Record<string, unknown>; result?: unknown }>>(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  threadIdIdx: index('ai_chat_messages_thread_id_idx').on(table.threadId),
+  createdAtIdx: index('ai_chat_messages_created_at_idx').on(table.createdAt),
+}));
+
+// ============================================
 // Type Exports
 // ============================================
 
@@ -410,3 +448,7 @@ export type ClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferSelect
 export type NewClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferInsert;
 export type SavedQuery = typeof savedQueries.$inferSelect;
 export type NewSavedQuery = typeof savedQueries.$inferInsert;
+export type AiChatThread = typeof aiChatThreads.$inferSelect;
+export type NewAiChatThread = typeof aiChatThreads.$inferInsert;
+export type AiChatMessage = typeof aiChatMessages.$inferSelect;
+export type NewAiChatMessage = typeof aiChatMessages.$inferInsert;
