@@ -346,43 +346,47 @@ Features:
 
 ---
 
-## Project Structure
+## Architecture
 
+CHouse UI is a monorepo with two main packages:
+
+- **Frontend** (`src/`) — React 19 + Vite SPA with Zustand stores, TanStack Query, and shadcn/ui
+- **Backend** (`packages/server/`) — Bun + Hono API server with RBAC, ClickHouse proxy, and AI optimizer
+
+```mermaid
+graph TB
+    subgraph Browser["Browser (React 19 SPA)"]
+        UI["Vite 7 + React Router v7"]
+        Stores["Zustand 5 Stores"]
+        RQ["TanStack Query v5"]
+        ApiClient["ApiClient (fetch)"]
+    end
+
+    subgraph Server["Bun Server (packages/server)"]
+        Hono["Hono v4"]
+        MW["Middleware: CORS, Rate Limit, SQL Parser, Data Access"]
+        Routes["API Routes: query, explorer, metrics, saved-queries, live-queries, upload"]
+        Services["Services: ClickHouse proxy, AI Optimizer, Query Analyzer"]
+        RBAC["RBAC: Auth, Users, Roles, Connections, Audit"]
+    end
+
+    subgraph External["External"]
+        CH["ClickHouse"]
+        AI["AI Provider (OpenAI, Anthropic, Google, etc.)"]
+        DB["SQLite / PostgreSQL"]
+    end
+
+    UI --> Stores --> ApiClient
+    UI --> RQ --> ApiClient
+    ApiClient -->|"/api/*"| Hono
+    Hono --> MW --> Routes --> Services
+    Routes --> RBAC
+    Services -->|"@clickhouse/client"| CH
+    Services -->|"AI SDK v6"| AI
+    RBAC -->|"Drizzle ORM"| DB
 ```
-chouse-ui/
-├── packages/
-│   └── server/                 # Backend (Bun + Hono)
-│       ├── src/
-│       │   ├── index.ts        # Server entry point
-│       │   ├── routes/         # API route handlers
-│       │   ├── middleware/     # Auth, CORS, error handling
-│       │   ├── services/       # Business logic
-│       │   ├── rbac/           # RBAC system
-│       │   │   ├── db/         # Database (Drizzle ORM)
-│       │   │   ├── routes/     # RBAC API routes
-│       │   │   ├── services/   # RBAC services
-│       │   │   └── schema/     # DB schemas (SQLite/Postgres)
-│       │   └── types/          # TypeScript types
-│       └── package.json
-├── src/                        # Frontend (React + Vite)
-│   ├── api/                    # API client
-│   ├── components/             # UI components
-│   │   ├── common/             # Shared components
-│   │   └── ui/                 # shadcn/ui components
-│   ├── features/               # Feature modules
-│   │   ├── admin/              # Admin panel
-│   │   ├── explorer/           # Database explorer
-│   │   ├── metrics/            # Metrics dashboard
-│   │   ├── rbac/               # RBAC components
-│   │   └── workspace/          # Query workspace
-│   ├── hooks/                  # Custom React hooks
-│   ├── stores/                 # Zustand state stores
-│   └── pages/                  # Page components
-├── Dockerfile                  # Production Docker image
-├── docker-compose.yml          # SQLite deployment
-├── docker-compose.postgres.yml # PostgreSQL deployment
-└── package.json
-```
+
+> 📖 **[Full architecture documentation →](ARCHITECTURE.md)** — Detailed diagrams for frontend layers, backend services, RBAC subsystem, data flows, permissions catalog, and complete file structure with sizes.
 
 ---
 
