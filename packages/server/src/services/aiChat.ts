@@ -6,7 +6,7 @@
  * All schema/data tools are RBAC-aware via existing dataAccess middleware.
  */
 
-import { streamText, tool, stepCountIs, type ModelMessage } from "ai";
+import { streamText, tool, stepCountIs, zodSchema, type ModelMessage } from "ai";
 import { z } from "zod";
 import { getConfiguration, validateConfiguration, initializeAIModel } from "./aiConfig";
 import { AppError } from "../types";
@@ -98,7 +98,7 @@ function createTools(ctx: ChatContext) {
         // 1. List databases (RBAC-filtered)
         list_databases: tool({
             description: "List all available database names. Results are filtered by user permissions.",
-            parameters: z.object({}),
+            inputSchema: zodSchema(z.object({})),
             execute: async (): Promise<Record<string, unknown>> => {
                 try {
                     const result = await ctx.clickhouseService.executeQuery<{ name: string }>(
@@ -118,9 +118,9 @@ function createTools(ctx: ChatContext) {
         // 2. List tables (RBAC-filtered)
         list_tables: tool({
             description: "List all tables in a specific database. Results are filtered by user permissions.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 database: z.string().describe("Database name to list tables from"),
-            }),
+            })),
             execute: async ({ database }: { database: string }): Promise<Record<string, unknown>> => {
                 try {
                     const hasAccess = await checkDatabaseAccess(
@@ -146,10 +146,10 @@ function createTools(ctx: ChatContext) {
         // 3. Get table schema
         get_table_schema: tool({
             description: "Get column names and types for a specific table.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 database: z.string().describe("Database name"),
                 table: z.string().describe("Table name"),
-            }),
+            })),
             execute: async ({ database, table }: { database: string; table: string }): Promise<Record<string, unknown>> => {
                 try {
                     const hasAccess = await checkTableAccess(
@@ -171,10 +171,10 @@ function createTools(ctx: ChatContext) {
         // 4. Get table DDL
         get_table_ddl: tool({
             description: "Get the CREATE TABLE statement for a specific table.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 database: z.string().describe("Database name"),
                 table: z.string().describe("Table name"),
-            }),
+            })),
             execute: async ({ database, table }: { database: string; table: string }): Promise<Record<string, unknown>> => {
                 try {
                     const hasAccess = await checkTableAccess(
@@ -198,10 +198,10 @@ function createTools(ctx: ChatContext) {
         // 5. Get table size
         get_table_size: tool({
             description: "Get row count and disk size for a specific table.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 database: z.string().describe("Database name"),
                 table: z.string().describe("Table name"),
-            }),
+            })),
             execute: async ({ database, table }: { database: string; table: string }): Promise<Record<string, unknown>> => {
                 try {
                     const hasAccess = await checkTableAccess(
@@ -230,10 +230,10 @@ function createTools(ctx: ChatContext) {
         // 6. Get table sample
         get_table_sample: tool({
             description: "Get first 5 rows of a table to preview the data.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 database: z.string().describe("Database name"),
                 table: z.string().describe("Table name"),
-            }),
+            })),
             execute: async ({ database, table }: { database: string; table: string }): Promise<Record<string, unknown>> => {
                 try {
                     const hasAccess = await checkTableAccess(
@@ -255,10 +255,10 @@ function createTools(ctx: ChatContext) {
         // 7. Run SELECT query (RBAC-validated)
         run_select_query: tool({
             description: "Execute a read-only SELECT query. Only SELECT and WITH queries are allowed. Results limited to 100 rows.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 sql: z.string().describe("The SQL SELECT query to execute").optional(),
                 query: z.string().describe("Alias for sql — the SQL SELECT query to execute").optional(),
-            }),
+            })),
             execute: async ({ sql, query }: { sql?: string; query?: string }): Promise<Record<string, unknown>> => {
                 const actualSql = sql ?? query ?? '';
                 if (!actualSql.trim()) {
@@ -302,9 +302,9 @@ function createTools(ctx: ChatContext) {
         // 8. Explain query
         explain_query: tool({
             description: "Get the EXPLAIN plan for a query to understand how ClickHouse will execute it.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 sql: z.string().describe("The SQL query to explain"),
-            }),
+            })),
             execute: async ({ sql }: { sql: string }): Promise<Record<string, unknown>> => {
                 try {
                     const accessCheck = await validateQueryAccess(
@@ -328,9 +328,9 @@ function createTools(ctx: ChatContext) {
         // 9. Get database info
         get_database_info: tool({
             description: "Get table count and total size for a specific database.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 database: z.string().describe("Database name"),
-            }),
+            })),
             execute: async ({ database }: { database: string }): Promise<Record<string, unknown>> => {
                 try {
                     const hasAccess = await checkDatabaseAccess(
@@ -358,7 +358,7 @@ function createTools(ctx: ChatContext) {
         // 10. Get running queries
         get_running_queries: tool({
             description: "List currently running queries on the ClickHouse server.",
-            parameters: z.object({}),
+            inputSchema: zodSchema(z.object({})),
             execute: async (): Promise<Record<string, unknown>> => {
                 try {
                     const filter = ctx.isAdmin ? '' : `WHERE user = currentUser()`;
@@ -380,7 +380,7 @@ function createTools(ctx: ChatContext) {
         // 11. Get server info
         get_server_info: tool({
             description: "Get ClickHouse server version and uptime.",
-            parameters: z.object({}),
+            inputSchema: zodSchema(z.object({})),
             execute: async (): Promise<Record<string, unknown>> => {
                 try {
                     const result = await ctx.clickhouseService.executeQuery(
@@ -400,9 +400,9 @@ function createTools(ctx: ChatContext) {
         // 12. Search columns
         search_columns: tool({
             description: "Search for columns by name pattern across all accessible tables.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 pattern: z.string().describe("Column name pattern to search for (case-insensitive)"),
-            }),
+            })),
             execute: async ({ pattern }: { pattern: string }): Promise<Record<string, unknown>> => {
                 try {
                     const result = await ctx.clickhouseService.executeQuery<{
@@ -438,10 +438,10 @@ function createTools(ctx: ChatContext) {
         // 13. Generate query (LLM-based via tool)
         generate_query: tool({
             description: "Generate a SQL query based on a natural language description. Use this after gathering schema information from other tools.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 description: z.string().describe("Natural language description of what the query should do"),
                 context: z.string().describe("Relevant schema information gathered from other tools"),
-            }),
+            })),
             execute: async ({ description: desc, context: schemaCtx }: { description: string; context: string }): Promise<Record<string, unknown>> => {
                 return {
                     note: "Generate the SQL query based on the description and schema context. Present it in a ```sql code block.",
@@ -454,9 +454,9 @@ function createTools(ctx: ChatContext) {
         // 14. Analyze query
         analyze_query: tool({
             description: "Analyze a SQL query for complexity, performance characteristics, and get optimization recommendations.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 sql: z.string().describe("The SQL query to analyze"),
-            }),
+            })),
             execute: async ({ sql }: { sql: string }): Promise<Record<string, unknown>> => {
                 try {
                     const analysis = analyzeQuery(sql);
@@ -473,9 +473,9 @@ function createTools(ctx: ChatContext) {
         // 15. Optimize query (AI-powered)
         optimize_query: tool({
             description: "Get AI-powered optimization suggestions for a SQL query.",
-            parameters: z.object({
+            inputSchema: zodSchema(z.object({
                 sql: z.string().describe("The SQL query to optimize"),
-            }),
+            })),
             execute: async ({ sql }: { sql: string }): Promise<Record<string, unknown>> => {
                 try {
                     const result = await aiOptimizeQuery(sql, []);
