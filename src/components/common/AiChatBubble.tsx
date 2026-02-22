@@ -398,84 +398,6 @@ export default function AiChatBubble() {
         abortRef.current?.abort();
     }, []);
 
-    // Auto-hide bubble after 3 seconds → show slim tab
-    const [bubbleCollapsed, setBubbleCollapsed] = useState(false);
-    const [bubbleHovered, setBubbleHovered] = useState(false);
-    const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    // Draggable bubble position (bottom/right offsets from viewport edges)
-    // Initialize to top right (using an approximate height, will clamp correctly)
-    const [bubblePos, setBubblePos] = useState({ bottom: window.innerHeight ? window.innerHeight - 80 : 800, right: 24 });
-    const isDragging = useRef(false);
-    const dragStart = useRef({ x: 0, y: 0, bottom: 0, right: 0 });
-    const didDrag = useRef(false);
-
-    const handleBubbleMouseDown = useCallback((e: React.MouseEvent) => {
-        // Only left click
-        if (e.button !== 0) return;
-        isDragging.current = true;
-        didDrag.current = false;
-        dragStart.current = {
-            x: e.clientX,
-            y: e.clientY,
-            bottom: bubblePos.bottom,
-            right: bubblePos.right,
-        };
-        e.preventDefault();
-    }, [bubblePos]);
-
-    useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
-            if (!isDragging.current) return;
-            const dx = e.clientX - dragStart.current.x;
-            const dy = e.clientY - dragStart.current.y;
-            // Require minimum 5px movement to count as drag
-            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) didDrag.current = true;
-            if (!didDrag.current) return;
-
-            const newRight = Math.max(0, Math.min(window.innerWidth - 60, dragStart.current.right - dx));
-            const newBottom = Math.max(0, Math.min(window.innerHeight - 60, dragStart.current.bottom - dy));
-            setBubblePos({ bottom: newBottom, right: newRight });
-        };
-        const handleMouseUp = () => {
-            isDragging.current = false;
-        };
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, []);
-
-    const handleBubbleClick = useCallback(() => {
-        // Only open if it wasn't a drag
-        if (!didDrag.current) setIsOpen(true);
-    }, []);
-
-    useEffect(() => {
-        if (!isOpen) {
-            collapseTimer.current = setTimeout(() => setBubbleCollapsed(true), 3000);
-            return () => {
-                if (collapseTimer.current) clearTimeout(collapseTimer.current);
-            };
-        } else {
-            setBubbleCollapsed(false);
-        }
-    }, [isOpen]);
-
-    useEffect(() => {
-        if (bubbleHovered) {
-            setBubbleCollapsed(false);
-            if (collapseTimer.current) clearTimeout(collapseTimer.current);
-        } else if (!isOpen) {
-            collapseTimer.current = setTimeout(() => setBubbleCollapsed(true), 2000);
-            return () => {
-                if (collapseTimer.current) clearTimeout(collapseTimer.current);
-            };
-        }
-    }, [bubbleHovered, isOpen]);
-
     // Helper to send a suggested prompt (auto-creates thread if needed)
     const handleSuggestedPrompt = useCallback(async (prompt: string) => {
         if (isStreaming) return;
@@ -594,52 +516,50 @@ export default function AiChatBubble() {
             {/* Floating Bubble / Collapsed Tab */}
             {!isOpen && (
                 <div
-                    className="fixed z-50"
+                    className={`fixed z-50 transition-all duration-300`}
                     style={{
-                        bottom: bubblePos.bottom,
-                        right: bubbleCollapsed && !bubbleHovered ? 0 : bubblePos.right,
+                        // Collapsed: middle-right edge.
+                        top: '50%',
+                        right: 0,
+                        transform: 'translateY(-50%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 48,
+                        height: 120,
                     }}
-                    onMouseEnter={() => setBubbleHovered(true)}
-                    onMouseLeave={() => setBubbleHovered(false)}
                 >
-                    {bubbleCollapsed && !bubbleHovered ? (
-                        <button
-                            onClick={() => setIsOpen(true)}
-                            className="flex items-center gap-1 pl-2 pr-1.5 py-2 
-                                     rounded-l-xl bg-violet-600/80 backdrop-blur-sm
-                                     shadow-lg shadow-violet-500/20
-                                     text-white/90 hover:bg-violet-500
-                                     transition-all duration-200
-                                     border-l border-t border-b border-white/10"
-                            title="CHouse AI"
-                        >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span className="text-[10px] font-bold tracking-wide" style={{ writingMode: 'vertical-lr' }}>AI</span>
-                        </button>
-                    ) : (
-                        <button
-                            onMouseDown={handleBubbleMouseDown}
-                            onClick={handleBubbleClick}
-                            className="w-12 h-12 rounded-full cursor-grab active:cursor-grabbing
-                                     bg-gradient-to-br from-violet-600 to-indigo-700 
-                                     shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50
-                                     flex items-center justify-center 
-                                     transition-shadow duration-300 hover:scale-105
-                                     ring-1 ring-white/10 select-none"
-                            title="CHouse AI — drag to move"
-                        >
-                            <Sparkles className="w-5 h-5 text-white pointer-events-none" />
-                        </button>
-                    )}
+                    <button
+                        onClick={() => setIsOpen(true)}
+                        className={`flex items-center justify-center 
+                                     transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu
+                                     w-10 h-24 rounded-l-xl opacity-60 hover:opacity-100 group gap-1.5 shadow-black/80 ring-white/20 shadow-xl cursor-pointer bg-black/50 hover:bg-black border-y border-l border-white/10`}
+                        title="Open AI Chat"
+                    >
+                        <div className="flex flex-col items-center gap-1.5 py-3">
+                            <Sparkles className="w-4 h-4 text-violet-200" />
+                            <span className="text-xs md:text-sm font-semibold text-white/90 tracking-wide" style={{ writingMode: 'vertical-lr' }}>Ask AI</span>
+                        </div>
+                    </button>
                 </div>
             )}
 
             {/* Chat Window */}
             {isOpen && (
-                <div className="fixed bottom-4 right-4 z-50 w-[1040px] h-[740px] max-h-[88vh] 
-                              rounded-2xl overflow-hidden flex flex-col
-                              bg-[#0c0c12] border border-white/[0.08]
-                              shadow-2xl shadow-black/70">
+                <div
+                    className="fixed z-50 w-[1040px] h-[740px] max-h-[88vh] 
+                               rounded-2xl overflow-hidden flex flex-col
+                               bg-[#0c0c12] border border-white/[0.08]
+                               shadow-2xl shadow-black/70 animate-in zoom-in-95 duration-200"
+                    style={{
+                        // Center vertically and horizontally, biased towards the right half
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        right: 20,
+                        // Animate zooming from the right-middle edge
+                        transformOrigin: `100% 50%`
+                    }}
+                >
 
                     {/* Header */}
                     <div className="flex items-center justify-between px-5 py-3 
