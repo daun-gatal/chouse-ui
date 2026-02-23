@@ -17,10 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Thread Sidebar Redesign**: Threads grouped by recency (Today / Yesterday / Older) with collapsible sections, sticky headers, and thread counts.
 - **Thinking Panel Polish**: Redesigned with glassmorphic background and animated shimmer progress bar during tool execution.
 - **Chat Message Animation**: Added `fadeSlideIn` CSS keyframe animation for incoming messages.
+- **AI Chat Responsiveness**: Optimized chat window for all devices (Mobile/Tablet/Desktop). On mobile, the window opens as a fullscreen overlay with a new Floating Action Button (FAB) trigger.
+- **Resizable Chat Window**: Enabled free-form resizing on desktop from left/bottom edges and corners.
+- **Proportional Scaling**: Implemented hardware-accelerated scaling via `transform: scale()` to ensure all content scales perfectly without layout breakage.
+- **Adaptive UI Logic**: Window intelligently hides the sidebar and simplifies the prompt grid to 1-column when resized to narrow widths on desktop.
+- **Precise Mouse Tracking**: Added coordinate mapping for scale-aware dragging, ensuring smooth resize interaction.
 
 ### Fixed
 
 - **`get_table_size` Query**: Wrapped aggregation in a subquery so `formatReadableSize()` correctly applies to the summed `bytes_on_disk` value.
+- **AI Chat Layout (Fix)**: Pivoted from CSS `zoom` to `transform: scale()` to resolve header clipping and messy layout issues during resize.
 
 ## [v2.11.0] - 2026-02-23
 
