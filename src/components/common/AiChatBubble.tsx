@@ -5,7 +5,7 @@
  * Only renders if the user has ai:chat permission and AI is enabled.
  */
 
-import { useState, useEffect, useRef, useCallback, type FormEvent, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent, type KeyboardEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js/lib/core';
@@ -41,7 +41,16 @@ import {
     RefreshCw,
     AlertCircle,
     ChevronDown,
+    ChevronRight,
     CheckCircle2,
+    Shuffle,
+    Search,
+    BarChart3,
+    Activity,
+    HardDrive,
+    Settings,
+    FileText,
+    Server,
 } from 'lucide-react';
 
 // Register highlight.js languages
@@ -74,13 +83,41 @@ interface UIMessage {
     toolCalls?: ToolCallStep[];
 }
 
-// Suggested prompt chips for the welcome screen
+// Suggested prompt chips — only a random subset is shown at a time
 const SUGGESTED_PROMPTS = [
+    // Discovery
     { icon: Database, label: 'Show my databases', prompt: 'What databases do I have access to?' },
     { icon: Table2, label: 'Explore tables', prompt: 'List all tables with their row counts' },
+    { icon: Search, label: 'Find a column', prompt: 'Search for columns named "user" or "email" across all tables' },
+    { icon: HardDrive, label: 'Disk usage', prompt: 'Show me the disk usage for each table, sorted by size' },
+    // Schema
+    { icon: FileText, label: 'Schema overview', prompt: 'Give me an overview of the database schema' },
+    { icon: Table2, label: 'Table details', prompt: 'Describe the schema of the largest table' },
+    { icon: Database, label: 'Compare databases', prompt: 'Compare the table counts and sizes across all databases' },
+    { icon: Settings, label: 'Table engines', prompt: 'What table engines are used and how many tables use each?' },
+    // Queries & data
+    { icon: BarChart3, label: 'Sample data', prompt: 'Show me a sample of 5 rows from the most populated table' },
+    { icon: Search, label: 'Recent data', prompt: 'Find the most recently inserted rows across all tables' },
+    { icon: MessageSquare, label: 'Write a query', prompt: 'Help me write a query to count rows grouped by date' },
+    { icon: Zap, label: 'Optimize a query', prompt: 'Analyze and optimize this query: SELECT * FROM system.query_log LIMIT 100' },
+    // Performance & monitoring
+    { icon: Activity, label: 'Running queries', prompt: 'Show me all currently running queries' },
     { icon: Zap, label: 'Performance tips', prompt: 'Show me any slow or heavy queries and suggest optimizations' },
-    { icon: MessageSquare, label: 'Schema overview', prompt: 'Give me an overview of the database schema' },
+    { icon: Server, label: 'Server info', prompt: 'What ClickHouse version is running and what is the server uptime?' },
+    { icon: BarChart3, label: 'Query stats', prompt: 'What are the most common query types hitting the server?' },
 ];
+const PROMPTS_VISIBLE = 4;
+
+/** Pick `n` random items from `arr` using a seed-like key for re-randomisation */
+function pickRandom<T>(arr: T[], n: number, seed: number): T[] {
+    const shuffled = [...arr];
+    // Fisher-Yates with seed-derived swaps
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.abs((seed * (i + 1) * 2654435761) | 0) % (i + 1);
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled.slice(0, n);
+}
 
 // Relative time helper
 function timeAgo(dateStr: string): string {
@@ -104,46 +141,150 @@ function formatToolName(name: string): string {
     return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Reusable component for sidebar thread item
+function SidebarThreadButton({
+    thread,
+    activeId,
+    onLoad,
+    onDelete
+}: {
+    thread: ChatThread;
+    activeId: string | null;
+    onLoad: (id: string) => void;
+    onDelete: (id: string, e: React.MouseEvent) => void;
+}) {
+    return (
+        <button
+            onClick={() => onLoad(thread.id)}
+            className={`w-full text-left px-3 py-2.5 rounded-xl text-[14px]
+                      flex items-center justify-between group transition-all duration-200
+                      ${activeId === thread.id
+                    ? 'bg-violet-500/10 text-zinc-100 border-l-2 border-l-violet-400 border border-violet-500/10'
+                    : 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200 border border-transparent'
+                }`}
+        >
+            <div className="flex-1 min-w-0 mr-2">
+                <span className="block truncate">{thread.title || 'New Thread'}</span>
+                <span className="flex items-center gap-1 text-xs text-zinc-600 mt-0.5">
+                    <Clock className="w-2.5 h-2.5" />
+                    {timeAgo(thread.updatedAt)}
+                </span>
+            </div>
+            <button
+                onClick={(e) => onDelete(thread.id, e)}
+                className="p-1 rounded-lg opacity-0 group-hover:opacity-100
+                         hover:bg-red-500/15 text-zinc-600 hover:text-red-400 transition-all"
+                title="Delete chat"
+            >
+                <Trash2 className="w-3 h-3" />
+            </button>
+        </button>
+    );
+}
+
+// Collapsible group for thread sections
+function CollapsibleThreadGroup({
+    title,
+    threads,
+    activeId,
+    onLoad,
+    onDelete,
+    defaultExpanded = true,
+}: {
+    title: string;
+    threads: ChatThread[];
+    activeId: string | null;
+    onLoad: (id: string) => void;
+    onDelete: (id: string, e: React.MouseEvent) => void;
+    defaultExpanded?: boolean;
+}) {
+    const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+
+    if (threads.length === 0) return null;
+
+    return (
+        <div className="mb-4 last:mb-0">
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="sticky top-0 z-10 border-b border-white/[0.06] flex items-center gap-1.5 w-[calc(100%+24px)] -mx-3 px-4 text-xs font-semibold uppercase tracking-wider bg-black/95 backdrop-blur-2xl py-2.5 mb-2 transition-colors text-violet-300/80 hover:text-violet-200"
+            >
+                <div className="flex items-center justify-center p-0.5 rounded transition-colors hover:bg-white/10">
+                    {isExpanded ? (
+                        <ChevronDown className="w-3 h-3 text-zinc-400" />
+                    ) : (
+                        <ChevronRight className="w-3 h-3 text-zinc-400" />
+                    )}
+                </div>
+                {title}
+                <span className="ml-auto text-zinc-600 font-normal normal-case">{threads.length}</span>
+            </button>
+
+            <div
+                className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+            >
+                <div className="overflow-hidden flex flex-col gap-0.5">
+                    {threads.map((t) => (
+                        <SidebarThreadButton
+                            key={t.id}
+                            thread={t}
+                            activeId={activeId}
+                            onLoad={onLoad}
+                            onDelete={onDelete}
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ============================================
+// Component
+// ============================================
+
 function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; isStreaming?: boolean }) {
     const [expanded, setExpanded] = useState(false);
 
     if (!toolCalls || toolCalls.length === 0) return null;
 
     const runningCount = toolCalls.filter((t) => t.status === 'running').length;
-    const label = isStreaming && runningCount > 0
+    const isRunning = isStreaming && runningCount > 0;
+    const label = isRunning
         ? `Thinking… (${toolCalls.length} action${toolCalls.length !== 1 ? 's' : ''})`
         : `Used ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}`;
 
     return (
-        <div className="mb-2 rounded-lg border border-violet-500/15 bg-violet-950/20 overflow-hidden">
+        <div className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm overflow-hidden">
+            {/* Animated shimmer bar while running */}
+            {isRunning && (
+                <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/0 via-violet-400/60 to-violet-500/0 animate-pulse" />
+            )}
             <button
                 onClick={() => setExpanded((v) => !v)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-violet-500/10 transition-colors"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
             >
-                {isStreaming && runningCount > 0
-                    ? <Loader2 className="w-3 h-3 text-violet-400 animate-spin flex-shrink-0" />
-                    : <CheckCircle2 className="w-3 h-3 text-violet-400/60 flex-shrink-0" />
+                {isRunning
+                    ? <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin flex-shrink-0" />
+                    : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/70 flex-shrink-0" />
                 }
-                <span className="text-[11px] text-violet-300/70 font-medium flex-1">{label}</span>
+                <span className="text-[11px] text-zinc-400 font-medium flex-1">{label}</span>
                 <ChevronDown
-                    className={`w-3 h-3 text-violet-400/40 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+                    className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
                 />
             </button>
 
             {expanded && (
-                <div className="px-3 pb-3 space-y-2.5 border-t border-violet-500/10">
+                <div className="px-3.5 pb-3 space-y-2.5 border-t border-white/[0.06]">
                     {toolCalls.map((step, i) => (
-                        <div key={i} className="pt-2 flex gap-2">
+                        <div key={i} className="pt-2.5 flex gap-2.5">
                             <div className="flex-shrink-0 pt-0.5">
                                 {step.status === 'running'
                                     ? <Loader2 className="w-3 h-3 text-violet-400 animate-spin" />
-                                    : <CheckCircle2 className="w-3 h-3 text-emerald-400/60" />
+                                    : <CheckCircle2 className="w-3 h-3 text-emerald-400/70" />
                                 }
                             </div>
                             <div className="flex-1 min-w-0 space-y-1">
-                                {/* Tool name */}
-                                <span className="text-[11px] font-semibold text-violet-200/80">{formatToolName(step.tool)}</span>
-                                {/* Args as key: value — multi-line gets a code block */}
+                                <span className="text-[11px] font-semibold text-zinc-300">{formatToolName(step.tool)}</span>
                                 {Object.entries(step.args)
                                     .filter(([, v]) => v !== undefined && v !== null && v !== '')
                                     .map(([k, v]) => {
@@ -153,19 +294,18 @@ function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; 
                                         const isMultiLine = strVal.includes('\n') || strVal.length > 80;
                                         return (
                                             <div key={k} className={`text-[10px] ${isMultiLine ? '' : 'flex items-baseline gap-1.5'}`}>
-                                                <span className="text-white/30 font-medium shrink-0">{k}:</span>
+                                                <span className="text-zinc-500 font-medium shrink-0">{k}:</span>
                                                 {isMultiLine ? (
-                                                    <pre className="mt-0.5 bg-black/30 rounded px-2 py-1 text-white/55 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-[120px] overflow-y-auto">{strVal.trim()}</pre>
+                                                    <pre className="mt-0.5 bg-black/40 rounded-lg px-2.5 py-1.5 text-zinc-400 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-[120px] overflow-y-auto border border-white/[0.04]">{strVal.trim()}</pre>
                                                 ) : (
-                                                    <span className="text-white/55 font-mono ml-1.5">{strVal}</span>
+                                                    <span className="text-zinc-400 font-mono ml-1.5">{strVal}</span>
                                                 )}
                                             </div>
                                         );
                                     })
                                 }
-                                {/* Result summary */}
                                 {step.status === 'done' && step.summary && (
-                                    <p className="text-[10px] text-emerald-400/60">↳ {step.summary}</p>
+                                    <p className="text-[10px] text-emerald-400/70">↳ {step.summary}</p>
                                 )}
                             </div>
                         </div>
@@ -303,9 +443,41 @@ export default function AiChatBubble() {
     const [input, setInput] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
     const [toolStatus, setToolStatus] = useState<string | null>(null);
+    const [shuffleKey, setShuffleKey] = useState(() => Date.now());
     const abortRef = useRef<AbortController | null>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Random subset of prompts — changes when shuffleKey changes
+    const visiblePrompts = useMemo(
+        () => pickRandom(SUGGESTED_PROMPTS, PROMPTS_VISIBLE, shuffleKey),
+        [shuffleKey]
+    );
+
+    // Group threads by time
+    const groupedThreads = useMemo(() => {
+        const now = Date.now();
+        const HourMs = 60 * 60 * 1000;
+        const DayMs = 24 * 60 * 60 * 1000;
+
+        const recent: ChatThread[] = [];
+        const last24Hours: ChatThread[] = [];
+        const last7Days: ChatThread[] = [];
+
+        for (const thread of threads) {
+            const then = new Date(thread.updatedAt).getTime();
+            const diffHours = (now - then) / HourMs;
+            const diffDays = (now - then) / DayMs;
+
+            if (diffHours <= 4) recent.push(thread);
+            else if (diffDays <= 1) last24Hours.push(thread);
+            else if (diffDays <= 7) last7Days.push(thread);
+            // > 7 days are filtered out
+        }
+
+        return { recent, last24Hours, last7Days };
+    }, [threads]);
 
     // Check AI status on mount
     useEffect(() => {
@@ -322,9 +494,14 @@ export default function AiChatBubble() {
         }
     }, [isOpen, hasPermission, aiEnabled]);
 
-    // Auto-scroll to bottom
+    // Auto-scroll to bottom without bubbling up scroll events to parent
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTo({
+                top: scrollContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
     }, [messages]);
 
     // Focus input when thread loads
@@ -368,7 +545,6 @@ export default function AiChatBubble() {
                     createdAt: m.createdAt,
                 }))
             );
-            setShowSidebar(false);
         } catch (err) {
             console.error('[AiChat] Failed to load thread:', err);
         }
@@ -380,7 +556,6 @@ export default function AiChatBubble() {
             setThreads((prev) => [thread, ...prev]);
             setActiveThreadId(thread.id);
             setMessages([]);
-            setShowSidebar(false);
         } catch (err) {
             console.error('[AiChat] Failed to create thread:', err);
         }
@@ -568,6 +743,10 @@ export default function AiChatBubble() {
 
         setMessages((prev) => [...prev, userMsg, assistantMsg]);
         setInput('');
+        // Reset textarea height back to single line
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto';
+        }
 
         await runStream(activeThreadId, trimmed, messageHistory);
     }, [input, isStreaming, activeThreadId, messages, runStream]);
@@ -677,16 +856,22 @@ export default function AiChatBubble() {
                         onClick={() => setIsOpen(true)}
                         aria-label="Open AI Chat"
                         className="flex items-center justify-center
-                                   transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu
-                                   w-10 h-24 rounded-l-xl opacity-60 hover:opacity-100
-                                   shadow-xl cursor-pointer bg-black/50 hover:bg-black
-                                   border-y border-l border-white/10"
+                                   transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu
+                                   w-10 h-24 rounded-l-xl
+                                   shadow-xl shadow-violet-500/10 cursor-pointer
+                                   bg-black/60 backdrop-blur-xl hover:bg-black/80
+                                   border-y border-l border-white/10 hover:border-violet-500/30
+                                   opacity-70 hover:opacity-100 hover:-translate-x-1
+                                   group"
                         title="Open AI Chat"
                     >
                         <div className="flex flex-col items-center gap-1.5 py-3">
-                            <Sparkles className="w-4 h-4 text-violet-300" />
+                            <div className="relative">
+                                <Sparkles className="w-4 h-4 text-violet-400 group-hover:text-violet-300 transition-colors" />
+                                <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                            </div>
                             <span
-                                className="text-xs font-semibold text-white/90 tracking-wide"
+                                className="text-xs font-semibold text-zinc-300 group-hover:text-white tracking-wide transition-colors"
                                 style={{ writingMode: 'vertical-lr' }}
                             >
                                 Ask AI
@@ -699,10 +884,12 @@ export default function AiChatBubble() {
             {/* Chat Window */}
             {isOpen && (
                 <div
-                    className="fixed z-50 w-[min(1040px,calc(100vw-40px))] h-[min(740px,88vh)]
+                    className="fixed z-50 w-[min(1340px,calc(100vw-40px))] h-[min(840px,94vh)]
                                rounded-2xl overflow-hidden flex flex-col
-                               bg-[#0c0c12] border border-white/[0.08]
-                               shadow-2xl shadow-black/70 animate-in zoom-in-95 duration-200"
+                               bg-black/70 backdrop-blur-2xl
+                               border border-white/10
+                               shadow-2xl shadow-black/60
+                               animate-in zoom-in-95 duration-200"
                     style={{
                         top: '50%',
                         transform: 'translateY(-50%)',
@@ -710,40 +897,46 @@ export default function AiChatBubble() {
                         transformOrigin: '100% 50%',
                     }}
                 >
-                    {/* Header */}
-                    <div className="flex items-center justify-between px-5 py-3
-                                  bg-gradient-to-r from-violet-950/60 via-indigo-950/40 to-[#0c0c12]
+                    {/* Glow orbs behind window */}
+                    <div className="absolute -top-32 -right-32 w-64 h-64 bg-violet-500/15 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                    {/* Header — never shrinks */}
+                    <div className="relative z-10 flex-shrink-0 flex items-center justify-between px-5 py-3
+                                  bg-white/[0.03] backdrop-blur-sm
                                   border-b border-white/[0.06]">
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={() => setShowSidebar(!showSidebar)}
-                                className="p-1.5 rounded-lg hover:bg-white/[0.08] transition-colors text-white/50 hover:text-white/80"
+                                className="p-1.5 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200"
                                 title={showSidebar ? 'Close sidebar' : 'Thread history'}
                             >
                                 {showSidebar ? <PanelLeftClose className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
                             </button>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2.5">
                                 <div className="relative">
-                                    <Bot className="w-5 h-5 text-violet-400" />
-                                    <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#0c0c12]" />
+                                    <div className="p-1.5 rounded-lg bg-gradient-to-br from-violet-500/20 to-indigo-500/20">
+                                        <Bot className="w-4 h-4 text-violet-400" />
+                                    </div>
+                                    <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-black/70 animate-pulse" />
                                 </div>
                                 <div>
-                                    <span className="text-sm font-semibold text-white/90">CHouse AI</span>
-                                    <span className="text-[10px] text-white/30 ml-2">Online</span>
+                                    <span className="text-sm font-semibold text-zinc-100">CHouse AI</span>
+                                    <span className="text-[10px] text-emerald-400/60 ml-2 font-medium">Online</span>
                                 </div>
                             </div>
                         </div>
                         <div className="flex items-center gap-0.5">
                             <button
                                 onClick={handleNewThread}
-                                className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-white/50 hover:text-white/80"
+                                className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200"
                                 title="New chat"
                             >
                                 <Plus className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={() => setIsOpen(false)}
-                                className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-white/50 hover:text-white/80"
+                                className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200"
                                 title="Close (Esc)"
                             >
                                 <X className="w-4 h-4" />
@@ -751,276 +944,319 @@ export default function AiChatBubble() {
                         </div>
                     </div>
 
-                    {/* Body */}
-                    <div className="flex flex-1 min-h-0">
+                    {/* Body — fills remaining space, never overflows */}
+                    <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden">
                         {/* Thread Sidebar */}
                         {showSidebar && (
-                            <div className="w-64 flex-shrink-0 bg-[#09090f] border-r border-white/[0.06] overflow-y-auto">
+                            <div className="w-72 flex-shrink-0 bg-black/40 backdrop-blur-xl border-r border-white/[0.06] overflow-y-auto">
                                 <div className="p-3">
                                     <div className="flex items-center justify-between mb-3 px-1">
-                                        <h3 className="text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+                                        <h3 className="text-[13px] font-semibold text-zinc-500 uppercase tracking-wider">
                                             Conversations
                                         </h3>
-                                        <span className="text-[10px] text-white/20">{threads.length}</span>
+                                        <span className="text-[11px] text-zinc-600">{threads.length}</span>
                                     </div>
                                     {isLoadingThreads ? (
                                         <div className="flex items-center justify-center py-8">
-                                            <Loader2 className="w-4 h-4 text-white/20 animate-spin" />
+                                            <Loader2 className="w-4 h-4 text-zinc-600 animate-spin" />
                                         </div>
                                     ) : threads.length === 0 ? (
-                                        <p className="text-xs text-white/25 text-center py-8">No conversations yet</p>
+                                        <p className="text-sm text-zinc-600 text-center py-8">No conversations yet</p>
                                     ) : (
-                                        <div className="space-y-0.5">
-                                            {threads.map((thread) => (
-                                                <button
-                                                    key={thread.id}
-                                                    onClick={() => loadThread(thread.id)}
-                                                    className={`w-full text-left px-3 py-2.5 rounded-lg text-[13px]
-                                                              flex items-center justify-between group transition-all duration-150
-                                                              ${activeThreadId === thread.id
-                                                            ? 'bg-violet-600/15 text-white border border-violet-500/10'
-                                                            : 'text-white/50 hover:bg-white/[0.04] hover:text-white/70 border border-transparent'
-                                                        }`}
-                                                >
-                                                    <div className="flex-1 min-w-0 mr-2">
-                                                        <span className="block truncate">{thread.title || 'New Thread'}</span>
-                                                        <span className="flex items-center gap-1 text-[10px] text-white/25 mt-0.5">
-                                                            <Clock className="w-2.5 h-2.5" />
-                                                            {timeAgo(thread.updatedAt)}
-                                                        </span>
-                                                    </div>
-                                                    <button
-                                                        onClick={(e) => handleDeleteThread(thread.id, e)}
-                                                        className="p-1 rounded opacity-0 group-hover:opacity-100
-                                                                 hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-all"
-                                                    >
-                                                        <Trash2 className="w-3 h-3" />
-                                                    </button>
-                                                </button>
-                                            ))}
+                                        <div className="py-2">
+                                            <CollapsibleThreadGroup
+                                                title="Recent"
+                                                threads={groupedThreads.recent}
+                                                activeId={activeThreadId}
+                                                onLoad={loadThread}
+                                                onDelete={handleDeleteThread}
+                                                defaultExpanded={true}
+                                            />
+                                            <CollapsibleThreadGroup
+                                                title="Last 24 Hours"
+                                                threads={groupedThreads.last24Hours}
+                                                activeId={activeThreadId}
+                                                onLoad={loadThread}
+                                                onDelete={handleDeleteThread}
+                                                defaultExpanded={true}
+                                            />
+                                            <CollapsibleThreadGroup
+                                                title="Previous 7 Days"
+                                                threads={groupedThreads.last7Days}
+                                                activeId={activeThreadId}
+                                                onLoad={loadThread}
+                                                onDelete={handleDeleteThread}
+                                                defaultExpanded={true}
+                                            />
+                                            {groupedThreads.recent.length === 0 && groupedThreads.last24Hours.length === 0 && groupedThreads.last7Days.length === 0 && (
+                                                <p className="text-sm text-zinc-600 text-center py-8">No recent conversations</p>
+                                            )}
                                         </div>
                                     )}
                                 </div>
                             </div>
                         )}
 
-                        {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
-                            {!activeThreadId ? (
-                                /* Welcome screen */
-                                <div className="flex flex-col items-center justify-center h-full text-center px-8">
-                                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600/20 to-indigo-600/20
-                                                  flex items-center justify-center mb-5 ring-1 ring-white/10">
-                                        <Sparkles className="w-8 h-8 text-violet-400" />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-white/90 mb-2">CHouse AI</h3>
-                                    <p className="text-sm text-white/40 mb-8 leading-relaxed max-w-md">
-                                        Your intelligent ClickHouse assistant. Explore schemas, write queries,
-                                        analyze performance, and get instant insights from your data.
-                                    </p>
-                                    {/* Suggested prompts */}
-                                    <div className="grid grid-cols-2 gap-3 w-full max-w-lg mb-6">
-                                        {SUGGESTED_PROMPTS.map((sp) => (
-                                            <button
-                                                key={sp.label}
-                                                onClick={() => handleSuggestedPrompt(sp.prompt)}
-                                                className="flex items-center gap-3 px-4 py-3 rounded-xl
-                                                         bg-white/[0.03] border border-white/[0.06]
-                                                         hover:bg-violet-600/10 hover:border-violet-500/20
-                                                         text-left transition-all duration-200 group"
-                                            >
-                                                <sp.icon className="w-4 h-4 text-violet-400/60 group-hover:text-violet-400 flex-shrink-0" />
-                                                <span className="text-xs text-white/50 group-hover:text-white/70">{sp.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <button
-                                        onClick={handleNewThread}
-                                        className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500
-                                                 text-white text-sm font-medium transition-colors
-                                                 flex items-center gap-2 shadow-lg shadow-violet-600/20"
-                                    >
-                                        <Plus className="w-4 h-4" />
-                                        Start New Chat
-                                    </button>
-                                </div>
-                            ) : messages.length === 0 ? (
-                                /* Thread selected but empty */
-                                <div className="flex flex-col items-center justify-center h-full text-center px-8">
-                                    <Bot className="w-10 h-10 text-violet-400/40 mb-3" />
-                                    <p className="text-sm text-white/40 mb-6">
-                                        Ask me anything about your ClickHouse databases
-                                    </p>
-                                    <div className="grid grid-cols-2 gap-2 w-full max-w-md">
-                                        {SUGGESTED_PROMPTS.map((sp) => (
-                                            <button
-                                                key={sp.label}
-                                                onClick={() => handleSuggestedPrompt(sp.prompt)}
-                                                className="flex items-center gap-2 px-3 py-2.5 rounded-lg
-                                                         bg-white/[0.03] border border-white/[0.06]
-                                                         hover:bg-violet-600/10 hover:border-violet-500/20
-                                                         text-left transition-all duration-200 group"
-                                            >
-                                                <sp.icon className="w-3.5 h-3.5 text-violet-400/50 group-hover:text-violet-400 flex-shrink-0" />
-                                                <span className="text-xs text-white/45 group-hover:text-white/70">{sp.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : (
-                                /* Message list */
-                                <>
-                                    {messages.map((msg) => (
-                                        <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-                                            {msg.role === 'assistant' && (
-                                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ring-1
-                                                              ${msg.isError
-                                                        ? 'bg-red-600/15 ring-red-500/15'
-                                                        : 'bg-violet-600/15 ring-violet-500/10'}`}>
-                                                    {msg.isError
-                                                        ? <AlertCircle className="w-4 h-4 text-red-400" />
-                                                        : <Bot className="w-4 h-4 text-violet-400" />}
-                                                </div>
-                                            )}
-                                            <div className="flex flex-col gap-0.5 min-w-0" style={{ maxWidth: msg.role === 'user' ? '75%' : '100%' }}>
-                                                <div
-                                                    className={`rounded-2xl px-4 py-3 text-sm leading-relaxed overflow-hidden
-                                                              ${msg.role === 'user'
-                                                            ? 'bg-violet-600/25 text-white/90 border border-violet-500/15'
-                                                            : msg.isError
-                                                                ? 'bg-red-950/30 text-red-300/90 border border-red-700/20'
-                                                                : 'bg-white/[0.03] text-white/80 border border-white/[0.06]'
-                                                        }`}
-                                                >
-                                                    {msg.role === 'assistant' ? (
-                                                        <>
-                                                            {/* Expandable thinking panel — shown when tool calls were made */}
-                                                            {msg.toolCalls && msg.toolCalls.length > 0 && (
-                                                                <ThinkingPanel
-                                                                    toolCalls={msg.toolCalls}
-                                                                    isStreaming={msg.isStreaming}
-                                                                />
-                                                            )}
-                                                            {/* Fallback spinner while streaming with a tool status but no text yet */}
-                                                            {msg.isStreaming && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
-                                                                <div className="flex items-center gap-2 text-violet-400/70 text-xs py-1">
-                                                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                                                    <span>{msg.toolStatus}</span>
-                                                                </div>
-                                                            )}
-                                                            {msg.isError ? (
-                                                                <div className="flex flex-col gap-2">
-                                                                    <p className="text-sm text-red-300/80">{msg.content}</p>
-                                                                    {msg.retryPrompt && (
-                                                                        <button
-                                                                            onClick={() => handleRetry(msg.retryPrompt!)}
-                                                                            disabled={isStreaming}
-                                                                            className="flex items-center gap-1.5 text-xs text-red-400/70 hover:text-red-300
-                                                                                     disabled:opacity-40 transition-colors self-start"
-                                                                        >
-                                                                            <RefreshCw className="w-3 h-3" />
-                                                                            Retry
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="overflow-x-auto max-w-full">
-                                                                    <ReactMarkdown
-                                                                        remarkPlugins={[remarkGfm]}
-                                                                        components={markdownComponents}
-                                                                    >
-                                                                        {preprocessMarkdown(msg.content) + (msg.isStreaming && !msg.toolStatus ? ' ▊' : '')}
-                                                                    </ReactMarkdown>
-                                                                </div>
-                                                            )}
-                                                        </>
-                                                    ) : (
-                                                        <span className="whitespace-pre-wrap">{msg.content}</span>
-                                                    )}
-                                                </div>
-                                                {/* Timestamp */}
-                                                <span className={`text-[10px] text-white/20 px-1 ${msg.role === 'user' ? 'text-right' : ''}`}>
-                                                    {timeAgo(msg.createdAt)}
-                                                </span>
-                                            </div>
-                                            {
-                                                msg.role === 'user' && (
-                                                    <div className="w-7 h-7 rounded-lg bg-indigo-600/15 flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-indigo-500/10">
-                                                        <User className="w-4 h-4 text-indigo-400" />
-                                                    </div>
-                                                )
-                                            }
+                        {/* Main Chat Pane */}
+                        <div className="flex flex-col flex-1 min-w-0">
+                            {/* Messages Area */}
+                            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+                                {!activeThreadId ? (
+                                    /* Welcome screen */
+                                    <div className="flex flex-col items-center justify-center h-full text-center px-8">
+                                        <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20
+                                                  flex items-center justify-center mb-6 ring-1 ring-white/10">
+                                            <Sparkles className="w-9 h-9 text-violet-400" />
+                                            <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-black/50 animate-pulse" />
                                         </div>
-                                    ))}
-                                    <div ref={messagesEndRef} />
-                                </>
+                                        <h3 className="text-2xl font-bold bg-gradient-to-r from-violet-300 via-indigo-300 to-violet-400 bg-clip-text text-transparent mb-2">
+                                            CHouse AI
+                                        </h3>
+                                        <p className="text-sm text-zinc-500 mb-8 leading-relaxed max-w-md">
+                                            Your intelligent ClickHouse assistant. Explore schemas, write queries,
+                                            analyze performance, and get instant insights from your data.
+                                        </p>
+                                        {/* Suggested prompts — random subset with shuffle */}
+                                        <div className="w-full max-w-lg mb-6">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {visiblePrompts.map((sp) => (
+                                                    <button
+                                                        key={sp.label}
+                                                        onClick={async () => { if (!activeThreadId) { await handleNewThread(); } setInput(sp.prompt); setTimeout(() => inputRef.current?.focus(), 100); }}
+                                                        className="flex items-center gap-3 px-4 py-3.5 rounded-xl
+                                                             bg-white/[0.04] border border-white/[0.07]
+                                                             hover:bg-violet-500/10 hover:border-violet-500/20
+                                                             hover:shadow-lg hover:shadow-violet-500/5
+                                                             text-left transition-all duration-300 group"
+                                                    >
+                                                        <div className="p-1.5 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/20 transition-colors">
+                                                            <sp.icon className="w-3.5 h-3.5 text-violet-400/70 group-hover:text-violet-300 transition-colors" />
+                                                        </div>
+                                                        <span className="text-xs text-zinc-400 group-hover:text-zinc-200 transition-colors">{sp.label}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <button
+                                                onClick={() => setShuffleKey(Date.now())}
+                                                className="flex items-center gap-1.5 mx-auto mt-3 px-3 py-1.5 rounded-lg
+                                                     text-[11px] text-zinc-600 hover:text-zinc-300
+                                                     hover:bg-white/[0.04] transition-all duration-200"
+                                                title="Show different suggestions"
+                                            >
+                                                <Shuffle className="w-3 h-3" />
+                                                More suggestions
+                                            </button>
+                                        </div>
+                                        <button
+                                            onClick={handleNewThread}
+                                            className="px-6 py-2.5 rounded-xl
+                                                 bg-gradient-to-r from-violet-500 to-indigo-600
+                                                 hover:from-violet-400 hover:to-indigo-500
+                                                 text-white text-sm font-medium transition-all duration-300
+                                                 flex items-center gap-2
+                                                 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40"
+                                        >
+                                            <Plus className="w-4 h-4" />
+                                            Start New Chat
+                                        </button>
+                                    </div>
+                                ) : messages.length === 0 ? (
+                                    /* Thread selected but empty */
+                                    <div className="flex flex-col items-center justify-center h-full text-center px-8">
+                                        <div className="p-3 rounded-2xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 ring-1 ring-white/[0.06] mb-4">
+                                            <Bot className="w-8 h-8 text-violet-400/60" />
+                                        </div>
+                                        <p className="text-sm text-zinc-500 mb-6">
+                                            Ask me anything about your ClickHouse databases
+                                        </p>
+                                        <div className="w-full max-w-md">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {visiblePrompts.map((sp) => (
+                                                    <button
+                                                        key={sp.label}
+                                                        onClick={async () => { if (!activeThreadId) { await handleNewThread(); } setInput(sp.prompt); setTimeout(() => inputRef.current?.focus(), 100); }}
+                                                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl
+                                                             bg-white/[0.04] border border-white/[0.07]
+                                                             hover:bg-violet-500/10 hover:border-violet-500/20
+                                                             text-left transition-all duration-300 group"
+                                                    >
+                                                        <div className="p-1 rounded-md bg-violet-500/10 group-hover:bg-violet-500/20 transition-colors">
+                                                            <sp.icon className="w-3 h-3 text-violet-400/60 group-hover:text-violet-300 transition-colors" />
+                                                        </div>
+                                                        <span className="text-xs text-zinc-500 group-hover:text-zinc-200 transition-colors">{sp.label}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <button
+                                                onClick={() => setShuffleKey(Date.now())}
+                                                className="flex items-center gap-1.5 mx-auto mt-2.5 px-3 py-1.5 rounded-lg
+                                                     text-[11px] text-zinc-600 hover:text-zinc-300
+                                                     hover:bg-white/[0.04] transition-all duration-200"
+                                                title="Show different suggestions"
+                                            >
+                                                <Shuffle className="w-3 h-3" />
+                                                More suggestions
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* Message list */
+                                    <>
+                                        {messages.map((msg, idx) => (
+                                            <div
+                                                key={msg.id}
+                                                className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}
+                                                style={{ animation: `fadeSlideIn 0.3s ease-out ${Math.min(idx * 0.05, 0.3)}s both` }}
+                                            >
+                                                {msg.role === 'assistant' && (
+                                                    <div className={`w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5
+                                                              ${msg.isError
+                                                            ? 'bg-red-500/15 ring-1 ring-red-500/20'
+                                                            : 'bg-gradient-to-br from-violet-500/20 to-indigo-500/20 ring-1 ring-white/[0.06]'}`}>
+                                                        {msg.isError
+                                                            ? <AlertCircle className="w-3.5 h-3.5 text-red-400" />
+                                                            : <Bot className="w-3.5 h-3.5 text-violet-400" />}
+                                                    </div>
+                                                )}
+                                                <div className="flex flex-col gap-0.5 min-w-0" style={{ maxWidth: msg.role === 'user' ? '75%' : '100%' }}>
+                                                    <div
+                                                        className={`rounded-2xl px-4 py-3 text-sm leading-relaxed overflow-hidden
+                                                              ${msg.role === 'user'
+                                                                ? 'bg-violet-500/15 text-zinc-100 border border-violet-500/15'
+                                                                : msg.isError
+                                                                    ? 'bg-red-500/10 text-red-300 border border-red-500/15'
+                                                                    : 'bg-white/[0.04] text-zinc-200 border border-white/[0.06]'
+                                                            }`}
+                                                    >
+                                                        {msg.role === 'assistant' ? (
+                                                            <>
+                                                                {msg.toolCalls && msg.toolCalls.length > 0 && (
+                                                                    <ThinkingPanel
+                                                                        toolCalls={msg.toolCalls}
+                                                                        isStreaming={msg.isStreaming}
+                                                                    />
+                                                                )}
+                                                                {msg.isStreaming && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
+                                                                    <div className="flex items-center gap-2 text-violet-400/80 text-xs py-1">
+                                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                                        <span>{msg.toolStatus}</span>
+                                                                    </div>
+                                                                )}
+                                                                {msg.isError ? (
+                                                                    <div className="flex flex-col gap-2">
+                                                                        <p className="text-sm text-red-300/90">{msg.content}</p>
+                                                                        {msg.retryPrompt && (
+                                                                            <button
+                                                                                onClick={() => handleRetry(msg.retryPrompt!)}
+                                                                                disabled={isStreaming}
+                                                                                className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300
+                                                                                     disabled:opacity-40 transition-colors self-start
+                                                                                     px-2 py-1 rounded-lg hover:bg-red-500/10"
+                                                                            >
+                                                                                <RefreshCw className="w-3 h-3" />
+                                                                                Retry
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="overflow-x-auto max-w-full">
+                                                                        <ReactMarkdown
+                                                                            remarkPlugins={[remarkGfm]}
+                                                                            components={markdownComponents}
+                                                                        >
+                                                                            {preprocessMarkdown(msg.content) + (msg.isStreaming && !msg.toolStatus ? ' ▊' : '')}
+                                                                        </ReactMarkdown>
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        ) : (
+                                                            <span className="whitespace-pre-wrap">{msg.content}</span>
+                                                        )}
+                                                    </div>
+                                                    <span className={`text-[10px] text-zinc-600 px-1 ${msg.role === 'user' ? 'text-right' : ''}`}>
+                                                        {timeAgo(msg.createdAt)}
+                                                    </span>
+                                                </div>
+                                                {
+                                                    msg.role === 'user' && (
+                                                        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-indigo-500/20 to-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-white/[0.06]">
+                                                            <User className="w-3.5 h-3.5 text-indigo-400" />
+                                                        </div>
+                                                    )
+                                                }
+                                            </div>
+                                        ))}
+                                        <div ref={messagesEndRef} />
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Input Area */}
+                            {activeThreadId && (
+                                <div className="relative z-10 flex-shrink-0 px-5 py-3 border-t border-white/[0.06] bg-black/40 backdrop-blur-sm">
+                                    <form onSubmit={handleSend} className="flex items-end gap-3">
+                                        <textarea
+                                            ref={inputRef}
+                                            value={input}
+                                            onChange={(e) => setInput(e.target.value)}
+                                            onKeyDown={handleKeyDown}
+                                            placeholder="Ask about your databases, schemas, queries…"
+                                            disabled={isStreaming}
+                                            rows={1}
+                                            className="flex-1 resize-none rounded-xl px-4 py-3 text-sm
+                                             bg-white/[0.05] border border-white/[0.08] text-zinc-100
+                                             placeholder:text-zinc-600
+                                             focus:outline-none focus:border-violet-500/30 focus:ring-2 focus:ring-violet-500/10
+                                             disabled:opacity-40 transition-all duration-200
+                                             max-h-[120px] min-h-[44px]"
+                                            style={{ height: 'auto' }}
+                                            onInput={(e) => {
+                                                const target = e.target as HTMLTextAreaElement;
+                                                target.style.height = 'auto';
+                                                target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+                                            }}
+                                        />
+                                        {isStreaming ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleStop}
+                                                className="p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/15
+                                                 text-red-400 transition-all duration-200 flex-shrink-0"
+                                                title="Stop generating"
+                                            >
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="submit"
+                                                disabled={!input.trim()}
+                                                className="p-3 rounded-xl
+                                                 bg-gradient-to-r from-violet-500 to-indigo-600
+                                                 hover:from-violet-400 hover:to-indigo-500
+                                                 disabled:from-white/[0.04] disabled:to-white/[0.04] disabled:text-zinc-600
+                                                 text-white transition-all duration-300 flex-shrink-0
+                                                 shadow-lg shadow-violet-500/20 disabled:shadow-none"
+                                                title="Send message"
+                                            >
+                                                <Send className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </form>
+                                    <div className="flex items-center justify-between mt-1.5 px-1">
+                                        <span className="text-[10px] text-zinc-700">Shift+Enter for new line · Esc to close</span>
+                                        {isStreaming && toolStatus && (
+                                            <span className="text-[10px] text-violet-400/60 flex items-center gap-1">
+                                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                                {toolStatus}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>
-
-                    {/* Input Area */}
-                    {activeThreadId && (
-                        <div className="px-5 py-3 border-t border-white/[0.06] bg-[#09090f]/80">
-                            <form onSubmit={handleSend} className="flex items-end gap-3">
-                                <textarea
-                                    ref={inputRef}
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="Ask about your databases, schemas, queries..."
-                                    disabled={isStreaming}
-                                    rows={1}
-                                    className="flex-1 resize-none rounded-xl px-4 py-3 text-sm
-                                             bg-white/[0.04] border border-white/[0.08] text-white/90
-                                             placeholder:text-white/20
-                                             focus:outline-none focus:border-violet-500/30 focus:ring-1 focus:ring-violet-500/15
-                                             disabled:opacity-40 transition-all
-                                             max-h-[120px] min-h-[44px]"
-                                    style={{ height: 'auto' }}
-                                    onInput={(e) => {
-                                        const target = e.target as HTMLTextAreaElement;
-                                        target.style.height = 'auto';
-                                        target.style.height = Math.min(target.scrollHeight, 120) + 'px';
-                                    }}
-                                />
-                                {isStreaming ? (
-                                    <button
-                                        type="button"
-                                        onClick={handleStop}
-                                        className="p-3 rounded-xl bg-red-500/15 hover:bg-red-500/25
-                                                 text-red-400 transition-colors flex-shrink-0"
-                                        title="Stop generating"
-                                    >
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        type="submit"
-                                        disabled={!input.trim()}
-                                        className="p-3 rounded-xl bg-violet-600 hover:bg-violet-500
-                                                 disabled:bg-white/[0.04] disabled:text-white/15
-                                                 text-white transition-all flex-shrink-0
-                                                 shadow-lg shadow-violet-600/20 disabled:shadow-none"
-                                        title="Send message"
-                                    >
-                                        <Send className="w-4 h-4" />
-                                    </button>
-                                )}
-                            </form>
-                            <div className="flex items-center justify-between mt-1.5 px-1">
-                                <span className="text-[10px] text-white/15">Shift+Enter for new line · Esc to close</span>
-                                {isStreaming && toolStatus && (
-                                    <span className="text-[10px] text-violet-400/50 flex items-center gap-1">
-                                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                        {toolStatus}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div >
-            )
-            }
+                </div>
+            )}
         </>
     );
 }

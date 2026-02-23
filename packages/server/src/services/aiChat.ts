@@ -2,11 +2,13 @@
  * AI Chat Service
  * 
  * Conversational AI assistant for ClickHouse.
- * Uses AI SDK v6 streamText with 15 single-responsibility tools.
+ * Uses AI SDK v6 ToolLoopAgent with 15 single-responsibility tools.
+ * The agent manages the tool loop automatically — calling tools in sequence
+ * until it has enough data to produce a final text response.
  * All schema/data tools are RBAC-aware via existing dataAccess middleware.
  */
 
-import { streamText, tool, stepCountIs, zodSchema, type ModelMessage } from "ai";
+import { ToolLoopAgent, tool, stepCountIs, zodSchema, type ModelMessage } from "ai";
 import { z } from "zod";
 import { getConfiguration, validateConfiguration, initializeAIModel } from "./aiConfig";
 import { AppError } from "../types";
@@ -53,6 +55,7 @@ const SYSTEM_PROMPT = `You are an expert ClickHouse database assistant embedded 
 - Only produce your final response AFTER all tool calls have completed and returned results.
 - If you need multiple tools, call them all before writing any response text.
 - Your text response must be based EXCLUSIVELY on tool results. Never invent data.
+
 
 ## Core Behavior
 - You help users explore their ClickHouse databases, understand schema, write queries, and analyze performance.
@@ -211,13 +214,20 @@ function createTools(ctx: ChatContext) {
                         return { error: `Access denied to table '${database}.${table}'` };
                     }
                     const result = await ctx.clickhouseService.executeQuery(
-                        `SELECT 
-                            sum(rows) as total_rows,
-                            formatReadableSize(sum(bytes_on_disk)) as disk_size,
-                            sum(bytes_on_disk) as bytes_on_disk,
-                            count() as parts_count
-                         FROM system.parts 
-                         WHERE database = '${database}' AND table = '${table}' AND active`,
+                        `
+                        SELECT
+                            total_rows,
+                            formatReadableSize(bytes_on_disk) AS disk_size,
+                            bytes_on_disk,
+                            parts_count
+                        FROM (
+                            SELECT 
+                                sum(rows) as total_rows,
+                                sum(bytes_on_disk) as bytes_on_disk,
+                                count() as parts_count
+                            FROM system.parts 
+                            WHERE database = '${database}' AND table = '${table}' AND active
+                         )`,
                         "JSON"
                     );
                     return { database, table, ...(result.data[0] || {}) };
@@ -498,11 +508,15 @@ function createTools(ctx: ChatContext) {
 // ============================================
 
 /**
- * Stream a chat response using AI SDK v6 streamText.
+ * Stream a chat response using AI SDK v6 ToolLoopAgent.
+ * 
+ * The agent manages the tool loop automatically — it will keep calling tools
+ * until it has gathered enough data to produce a final text response,
+ * or until the step limit (10) is reached.
  * 
  * @param messages - Conversation history (ModelMessage[])
  * @param context - RBAC context with user info and ClickHouse service
- * @returns ReadableStream of SSE-formatted text chunks
+ * @returns StreamTextResult with fullStream for SSE consumption
  */
 export async function streamChat(
     messages: ModelMessage[],
@@ -523,14 +537,20 @@ export async function streamChat(
     const model = initializeAIModel(config);
     const tools = createTools(context);
 
-    const result = streamText({
+    // Create a ToolLoopAgent that manages the tool loop natively.
+    // Unlike streamText + prepareStep, the agent will automatically
+    // keep calling tools until it has enough data for a final response.
+    const agent = new ToolLoopAgent({
         model,
-        system: SYSTEM_PROMPT,
-        messages,
+        instructions: SYSTEM_PROMPT,
         tools,
-        stopWhen: stepCountIs(10),
-        temperature: 0.1,
+        stopWhen: stepCountIs(30),
+        temperature: 0.0,
     });
+
+    // agent.stream() returns a StreamTextResult — same interface as streamText(),
+    // so the route handler's fullStream consumption works unchanged.
+    const result = agent.stream({ messages });
 
     return result;
 }

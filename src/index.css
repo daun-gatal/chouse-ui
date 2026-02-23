@@ -439,3 +439,15 @@
 .my-removed-line {
   background-color: rgba(248, 81, 73, 0.15) !important;
 }
+
+/* AI Chat message entrance animation */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
