@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.11.1] - 2026-02-23
+
+### Changed
+
+- **AI Chat Agent Migration**: Replaced `streamText` + manual `prepareStep` phase controller with AI SDK v6 `ToolLoopAgent` for automatic tool orchestration. Step limit raised from 10 to 30, temperature set to `0.0`.
+- **Message History Cap**: Limited conversation context to newest 50 messages to prevent token overflow on long threads.
+- **Scratchpad Stripping**: Improved CoT marker stripping to preserve real words like "finally" and "finalize".
+- **Suggested Prompts**: Expanded welcome-screen prompt chips from 4 static to a randomized pool of 16 with a shuffle button.
+- **Thread Sidebar Redesign**: Threads grouped by recency (Today / Yesterday / Older) with collapsible sections, sticky headers, and thread counts.
+- **Thinking Panel Polish**: Redesigned with glassmorphic background and animated shimmer progress bar during tool execution.
+- **Chat Message Animation**: Added `fadeSlideIn` CSS keyframe animation for incoming messages.
+
+### Fixed
+
+- **`get_table_size` Query**: Wrapped aggregation in a subquery so `formatReadableSize()` correctly applies to the summed `bytes_on_disk` value.
+
 ## [v2.11.0] - 2026-02-23
 
 ### Added

@@ -88,9 +88,13 @@ function stripScratchpad(text: string): string {
     // buffer without a preceding newline (e.g. "finalBelow is..." or "analysisHere")
     const trimmed = text.trimStart();
 
-    // Strip a bare "final" at the start (5 chars)
-    if (/^final(?=[A-Z\s])/i.test(trimmed)) {
-        return trimmed.slice(5).trim();
+    // Strip a bare "final" CoT marker at the start.
+    // Preserve real words like "finally", "finalize" (lowercase continuation).
+    // Catches: "finalBelow...", "final**text**", "final## ...", "final\n..."
+    if (trimmed.length >= 5 && trimmed.slice(0, 5).toLowerCase() === 'final') {
+        if (trimmed.length === 5 || !/[a-z]/.test(trimmed[5])) {
+            return trimmed.slice(5).trim();
+        }
     }
 
     // Strip leading "analysis..." blocks — look for first markdown element
@@ -271,16 +275,17 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
     // Save user message
     await addMessage(threadId, 'user', message);
 
-    // Build messages array
+    // Build messages array (limit to newest 50 to avoid token overflow)
+    const MAX_MESSAGES = 50;
     let coreMessages: any[];
 
     if (frontendMessages && Array.isArray(frontendMessages) && frontendMessages.length > 0) {
         // Use frontend-provided message history (includes tool calls)
-        coreMessages = frontendMessages;
+        coreMessages = frontendMessages.slice(-MAX_MESSAGES);
     } else {
         // Fall back to DB messages
         const dbMessages = await getMessages(threadId);
-        coreMessages = dbMessages.map(m => ({
+        coreMessages = dbMessages.slice(-MAX_MESSAGES).map(m => ({
             role: m.role,
             content: m.content,
         }));
