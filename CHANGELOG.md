@@ -10,23 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **AI Chat Agent Migration**: Replaced `streamText` + manual `prepareStep` phase controller with AI SDK v6 `ToolLoopAgent` for automatic tool orchestration. Step limit raised from 10 to 30, temperature set to `0.0`.
-- **Message History Cap**: Limited conversation context to newest 50 messages to prevent token overflow on long threads.
-- **Scratchpad Stripping**: Improved CoT marker stripping to preserve real words like "finally" and "finalize".
-- **Suggested Prompts**: Expanded welcome-screen prompt chips from 4 static to a randomized pool of 16 with a shuffle button.
-- **Thread Sidebar Redesign**: Threads grouped by recency (Today / Yesterday / Older) with collapsible sections, sticky headers, and thread counts.
-- **Thinking Panel Polish**: Redesigned with glassmorphic background and animated shimmer progress bar during tool execution.
-- **Chat Message Animation**: Added `fadeSlideIn` CSS keyframe animation for incoming messages.
-- **AI Chat Responsiveness**: Optimized chat window for all devices (Mobile/Tablet/Desktop). On mobile, the window opens as a fullscreen overlay with a new Floating Action Button (FAB) trigger.
-- **Resizable Chat Window**: Enabled free-form resizing on desktop from left/bottom edges and corners.
-- **Proportional Scaling**: Implemented hardware-accelerated scaling via `transform: scale()` to ensure all content scales perfectly without layout breakage.
-- **Adaptive UI Logic**: Window intelligently hides the sidebar and simplifies the prompt grid to 1-column when resized to narrow widths on desktop.
-- **Precise Mouse Tracking**: Added coordinate mapping for scale-aware dragging, ensuring smooth resize interaction.
+- **AI Chat Agent & Core Enhancements**: Migrated to AI SDK v6 `ToolLoopAgent` for automatic tool orchestration (limit raised to 30 steps), capped message history to 50, and improved scratchpad stripping for reliable CoT marker removal.
+- **AI Chat UI & Polish**: Redesigned the thread sidebar with recency grouping, polished the "Thinking" panel with glassmorphism/shimmer effects, and added message arrival animations.
+- **Expanded Suggested Prompts**: Increased welcome-screen prompts to a randomized pool of 16 with a new shuffle button.
+- **Responsive & Resizable Chat Window**: Implemented a fully responsive interface using proportional `transform: scale()` for layout stability across all devices. Includes free-form resizing, adaptive UI logic (auto-hiding sidebar at narrow widths), and a fullscreen mobile overlay with FAB trigger.
+- **Z-Index Optimization**: Refreshed layering for the floating dock and chat components to ensure proper rendering of popups, tooltips, and floating triggers.
+- **Connection Isolation**: Enforced ClickHouse connection isolation across the entire stack, ensuring threads and history are correctly filtered by active connection in both frontend and backend.
+- **Query & API Refinement**: Fixed `get_table_size` aggregation logic and standardized `connectionId` handling in all chat-related API endpoints.
 
 ### Fixed
 
-- **`get_table_size` Query**: Wrapped aggregation in a subquery so `formatReadableSize()` correctly applies to the summed `bytes_on_disk` value.
-- **AI Chat Layout (Fix)**: Pivoted from CSS `zoom` to `transform: scale()` to resolve header clipping and messy layout issues during resize.
+- **Layout & Reset Fixes**: Resolved resizing glitches by pivoting from legacy CSS `zoom` to `transform: scale()`, and fixed the AI Chat sidebar failing to reset during connection changes.
 
 ## [v2.11.0] - 2026-02-23
 

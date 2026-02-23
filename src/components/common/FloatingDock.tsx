@@ -212,7 +212,7 @@ const DockItem = ({ icon: Icon, label, to, isActive, isVertical }: DockItemProps
         <TooltipContent
           side={isVertical ? "right" : "top"}
           sideOffset={8}
-          className="bg-black/90 text-white border-white/10 backdrop-blur-xl px-2.5 py-1.5 text-xs"
+          className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl px-2.5 py-1.5 text-xs"
         >
           <div className="flex items-center gap-2">
             <span>{label}</span>
@@ -474,7 +474,7 @@ export default function FloatingDock() {
         initial={{ x: -80, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed left-0 top-0 h-full w-14 z-50 flex flex-col bg-black/60 backdrop-blur-2xl border-r border-white/10"
+        className="fixed left-0 top-0 h-full w-14 z-[70] flex flex-col bg-black/60 backdrop-blur-2xl border-r border-white/10"
       >
         <div className="flex flex-col items-center gap-2 px-2 py-4 h-full">
           {/* Logo & Branding */}
@@ -532,7 +532,7 @@ export default function FloatingDock() {
                   {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+              <TooltipContent side="right" className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
                 {isFullscreen ? "Exit full screen" : "Enter full screen"}
               </TooltipContent>
             </Tooltip>
@@ -549,7 +549,7 @@ export default function FloatingDock() {
                   <Dock className="w-4 h-4" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+              <TooltipContent side="right" className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
                 Switch to floating dock
               </TooltipContent>
             </Tooltip>
@@ -578,7 +578,7 @@ export default function FloatingDock() {
               setIsVisible(true);
             }}
             className={cn(
-              "fixed z-[60] cursor-pointer",
+              "fixed z-[80] cursor-pointer",
               isVertical
                 ? "right-0 top-1/2 -translate-y-1/2 w-16 h-64"
                 : "bottom-3 left-1/2 -translate-x-1/2 min-w-[280px]"
@@ -664,7 +664,7 @@ export default function FloatingDock() {
         }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className={cn(
-          "fixed z-50 pointer-events-auto",
+          "fixed z-[70] pointer-events-auto",
           !position && (isVertical
             ? "right-3 top-1/2 -translate-y-1/2"
             : "bottom-3 left-1/2 -translate-x-1/2"
@@ -696,7 +696,7 @@ export default function FloatingDock() {
                   <GripVertical className={cn("w-3 h-3", isVertical && "rotate-90")} />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side={isVertical ? "right" : "top"} className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+              <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
                 Drag to move
               </TooltipContent>
             </Tooltip>
@@ -782,7 +782,7 @@ export default function FloatingDock() {
                     {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side={isVertical ? "right" : "top"} className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+                <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
                   {isFullscreen ? "Exit full screen" : "Enter full screen"}
                 </TooltipContent>
               </Tooltip>
@@ -810,7 +810,7 @@ export default function FloatingDock() {
                       )}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side={isVertical ? "right" : "top"} className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+                  <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
                     Hide dock
                   </TooltipContent>
                 </Tooltip>
@@ -833,7 +833,7 @@ export default function FloatingDock() {
                       </button>
                     </TooltipTrigger>
                   </PopoverTrigger>
-                  <TooltipContent side={isVertical ? "right" : "top"} className="bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+                  <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
                     Dock settings
                   </TooltipContent>
                 </Tooltip>
@@ -841,7 +841,7 @@ export default function FloatingDock() {
               <PopoverContent
                 side={isVertical ? "right" : "top"}
                 sideOffset={12}
-                className="w-56 p-2 bg-black/90 backdrop-blur-2xl border-white/10 rounded-xl shadow-2xl shadow-black/50"
+                className="z-[100] w-56 p-2 bg-black/90 backdrop-blur-2xl border-white/10 rounded-xl shadow-2xl shadow-black/50"
               >
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold px-2 py-1">Dock Settings</p>

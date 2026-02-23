@@ -499,8 +499,9 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
  */
 aiChat.get("/threads", async (c) => {
     const rbacUserId = c.get("rbacUserId")!;
+    const connectionId = c.req.query("connectionId");
 
-    const threads = await listThreads(rbacUserId);
+    const threads = await listThreads(rbacUserId, 7, 50, connectionId);
 
     // Trigger async cleanup of old threads
     cleanupOldThreads(7).catch(err => {

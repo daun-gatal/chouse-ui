@@ -13,7 +13,7 @@ import hljs from 'highlight.js/lib/core';
 import sql from 'highlight.js/lib/languages/sql';
 import json from 'highlight.js/lib/languages/json';
 import 'highlight.js/styles/github-dark.min.css';
-import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
+import { useRbacStore, RBAC_PERMISSIONS, useAuthStore } from '@/stores';
 import {
     getChatStatus,
     listThreads,
@@ -444,6 +444,7 @@ function preprocessMarkdown(text: string): string {
 
 export default function AiChatBubble() {
     const hasPermission = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_CHAT));
+    const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
     const [isOpen, setIsOpen] = useState(false);
     const [showSidebar, setShowSidebar] = useState(false);
@@ -581,12 +582,6 @@ export default function AiChatBubble() {
             .catch(() => setAiEnabled(false));
     }, [hasPermission]);
 
-    // Load threads when chat opens
-    useEffect(() => {
-        if (isOpen && hasPermission && aiEnabled) {
-            loadThreads();
-        }
-    }, [isOpen, hasPermission, aiEnabled]);
 
     // Auto-scroll to bottom without bubbling up scroll events to parent
     useEffect(() => {
@@ -618,14 +613,25 @@ export default function AiChatBubble() {
     const loadThreads = useCallback(async () => {
         setIsLoadingThreads(true);
         try {
-            const result = await listThreads();
+            const result = await listThreads(activeConnectionId);
             setThreads(result);
         } catch (err) {
             console.error('[AiChat] Failed to load threads:', err);
         } finally {
             setIsLoadingThreads(false);
         }
-    }, []);
+    }, [activeConnectionId]);
+
+    // Reload threads and reset state when connection or open status changes
+    useEffect(() => {
+        if (isOpen && hasPermission && aiEnabled) {
+            loadThreads();
+            // Only reset if connection actually changed to avoid losing state when just toggling window
+            // But for now, simple implementation to ensure history matches connection
+            setActiveThreadId(null);
+            setMessages([]);
+        }
+    }, [activeConnectionId, isOpen, hasPermission, aiEnabled, loadThreads]);
 
     const loadThread = useCallback(async (threadId: string) => {
         try {
@@ -646,7 +652,7 @@ export default function AiChatBubble() {
 
     const handleNewThread = useCallback(async () => {
         try {
-            const thread = await createThread();
+            const thread = await createThread(undefined, activeConnectionId ?? undefined);
             setThreads((prev) => [thread, ...prev]);
             setActiveThreadId(thread.id);
             setMessages([]);
@@ -894,7 +900,7 @@ export default function AiChatBubble() {
         let threadId = activeThreadId;
         if (!threadId) {
             try {
-                const thread = await createThread();
+                const thread = await createThread(undefined, activeConnectionId ?? undefined);
                 setThreads((prev) => [thread, ...prev]);
                 setActiveThreadId(thread.id);
                 threadId = thread.id;

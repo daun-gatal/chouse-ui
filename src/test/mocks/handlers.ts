@@ -186,6 +186,60 @@ export const handlers = [
     });
   }),
 
+  // AI Chat
+  http.get(`${API_BASE}/ai-chat/status`, () => {
+    return HttpResponse.json({ success: true, data: { enabled: true } });
+  }),
+
+  http.get(`${API_BASE}/ai-chat/threads`, ({ request }) => {
+    const url = new URL(request.url);
+    const connectionId = url.searchParams.get('connectionId');
+
+    let threads = [
+      { id: 'thread-1', userId: 'user-123', title: 'Thread 1', connectionId: 'conn-1', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' },
+      { id: 'thread-2', userId: 'user-123', title: 'Thread 2', connectionId: 'conn-2', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' },
+    ];
+
+    if (connectionId) {
+      threads = threads.filter(t => t.connectionId === connectionId);
+    }
+
+    return HttpResponse.json({ success: true, data: threads });
+  }),
+
+  http.post(`${API_BASE}/ai-chat/threads`, async ({ request }) => {
+    const body = await request.json() as any;
+    return HttpResponse.json({
+      success: true,
+      data: {
+        id: 'new-thread-id',
+        userId: 'user-123',
+        title: body.title || 'New Thread',
+        connectionId: body.connectionId || null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    });
+  }),
+
+  http.get(`${API_BASE}/ai-chat/threads/:id`, ({ params }) => {
+    return HttpResponse.json({
+      success: true,
+      data: {
+        id: params.id as string, userId: 'user-123', title: 'Thread 1', connectionId: 'conn-1',
+        createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z',
+        messages: [
+          { id: 'msg-1', threadId: params.id as string, role: 'user', content: 'Hello', createdAt: '2024-01-01T00:00:00Z' },
+          { id: 'msg-2', threadId: params.id as string, role: 'assistant', content: 'Hi there', createdAt: '2024-01-01T00:00:01Z' }
+        ]
+      }
+    });
+  }),
+
+  http.delete(`${API_BASE}/ai-chat/threads/:id`, () => {
+    return HttpResponse.json({ success: true, data: { message: 'Thread deleted successfully' } });
+  }),
+
   // Default 404
   http.all('*', ({ request }) => {
     console.warn(`Unhandled: ${request.method} ${request.url}`);

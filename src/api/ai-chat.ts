@@ -63,8 +63,9 @@ export async function getChatStatus(): Promise<ChatStatus> {
 /**
  * List chat threads (last 7 days)
  */
-export async function listThreads(): Promise<ChatThread[]> {
-    return api.get<ChatThread[]>('/ai-chat/threads');
+export async function listThreads(connectionId?: string | null): Promise<ChatThread[]> {
+    const params = connectionId ? { connectionId } : undefined;
+    return api.get<ChatThread[]>('/ai-chat/threads', { params });
 }
 
 /**

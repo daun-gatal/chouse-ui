@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { eq, and, desc, gte, lt } from 'drizzle-orm';
+import { eq, and, desc, gte, lt, isNull } from 'drizzle-orm';
 import { getDatabase, getSchema } from '../rbac/db';
 
 // Type helper to avoid TypeScript union type issues with RbacDb
@@ -79,7 +79,8 @@ export async function createThread(
 export async function listThreads(
     userId: string,
     daysBack: number = 7,
-    limit: number = 50
+    limit: number = 50,
+    connectionId?: string | null
 ): Promise<ChatThread[]> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
@@ -87,13 +88,23 @@ export async function listThreads(
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - daysBack);
 
+    const conditions = [
+        eq(schema.aiChatThreads.userId, userId),
+        gte(schema.aiChatThreads.updatedAt, cutoff)
+    ];
+
+    if (connectionId !== undefined) {
+        if (connectionId === null) {
+            conditions.push(isNull(schema.aiChatThreads.connectionId));
+        } else {
+            conditions.push(eq(schema.aiChatThreads.connectionId, connectionId));
+        }
+    }
+
     // @ts-ignore - Union type issue with RbacDb, resolved at runtime
     const threads = await db.select()
         .from(schema.aiChatThreads)
-        .where(and(
-            eq(schema.aiChatThreads.userId, userId),
-            gte(schema.aiChatThreads.updatedAt, cutoff)
-        ))
+        .where(and(...conditions))
         .orderBy(desc(schema.aiChatThreads.updatedAt))
         .limit(limit);
 

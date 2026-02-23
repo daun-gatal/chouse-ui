@@ -435,7 +435,7 @@ export default function ConnectionSelector({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="w-64 bg-gray-900 border-gray-800"
+        className="z-[100] w-64 bg-gray-900 border-gray-800"
         align={isCollapsed ? "start" : "center"}
         side={isCollapsed ? "right" : "bottom"}
       >

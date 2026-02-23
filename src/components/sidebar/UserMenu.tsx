@@ -105,7 +105,7 @@ export default function UserMenu({ isCollapsed }: UserMenuProps) {
                             side="right"
                             align="center"
                             sideOffset={10}
-                            className="bg-black/90 backdrop-blur-xl border-white/10 text-gray-200 p-3"
+                            className="z-[100] bg-black/90 backdrop-blur-xl border-white/10 text-gray-200 p-3"
                         >
                             <div className="flex flex-col gap-1">
                                 <span className="font-medium text-white">{displayName}</span>
