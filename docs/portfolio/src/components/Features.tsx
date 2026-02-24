@@ -19,6 +19,7 @@ import {
   Star,
   Sparkles,
   Bot,
+  MessageSquare,
 } from 'lucide-react';
 
 const features = [
@@ -29,6 +30,7 @@ const features = [
     items: [
       { icon: Zap, title: 'AI Query Optimizer', desc: 'Intelligent query rewriting for performance' },
       { icon: Bot, title: 'Smart Query Debugging', desc: 'Automated error analysis and fix suggestions' },
+      { icon: MessageSquare, title: 'AI Chat Assistant', desc: 'Conversational data exploration and visualization' },
     ],
   },
   {

@@ -29,62 +29,14 @@ spec:
             - containerPort: 5521
               name: http
           env:
-            # Core
-            - name: NODE_ENV
-              value: "production"
-            - name: PORT
-              value: "5521"
-            - name: STATIC_PATH
-              value: "./dist"
-            - name: CORS_ORIGIN
-              value: "*"
-            
-            # RBAC Database
-            - name: RBAC_DB_TYPE
-              value: "sqlite"
-            - name: RBAC_SQLITE_PATH
-              value: "/app/data/rbac.db"
-            - name: RBAC_POSTGRES_URL
-              value: ""
-            - name: RBAC_POSTGRES_POOL_SIZE
-              value: "10"
-            
-            # Security (REQUIRED)
-            - name: JWT_SECRET
-              value: "change-me-in-production"
-            - name: RBAC_ENCRYPTION_KEY
-              value: "change-me-in-production"
-            - name: RBAC_ENCRYPTION_SALT
-              value: "change-me-in-production"
-            
-            # JWT Expiry
-            - name: JWT_ACCESS_EXPIRY
-              value: "4h"
-            - name: JWT_REFRESH_EXPIRY
-              value: "7d"
-            
-            # Admin Seeding (First run only)
-            - name: RBAC_ADMIN_EMAIL
-              value: "admin@localhost"
-            - name: RBAC_ADMIN_USERNAME
-              value: "admin"
-            - name: RBAC_ADMIN_PASSWORD
-              value: "admin123!"
-            
-            # AI Configuration
-            - name: AI_OPTIMIZER_ENABLED
-              value: "false"
-            - name: AI_PROVIDER
-              value: "openai"
-            - name: AI_API_KEY
-              value: ""
-            - name: AI_MODEL_NAME
-              value: ""
-            - name: AI_BASE_URL
-              value: ""
+            - name: CHOUSE_CONFIG_PATH
+              value: "/app/config.yaml"
           volumeMounts:
             - name: rbac-data
               mountPath: /app/data
+            - name: config-volume
+              mountPath: /app/config.yaml
+              subPath: config.yaml
           livenessProbe:
             httpGet:
               path: /api/health
@@ -100,6 +52,9 @@ spec:
       volumes:
         - name: rbac-data
           emptyDir: {} # Use PersistentVolumeClaim in production
+        - name: config-volume
+          configMap:
+            name: chouse-ui-config
 ---
 apiVersion: v1
 kind: Service
@@ -130,167 +85,48 @@ services:
       - "5521:5521"
     volumes:
       - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
     environment:
-      # Core
-      NODE_ENV: production
-      PORT: 5521
-      STATIC_PATH: ./dist
-      CORS_ORIGIN: \${CORS_ORIGIN:-*}
-      
-      # RBAC Database
-      RBAC_DB_TYPE: \${RBAC_DB_TYPE:-sqlite}
-      RBAC_SQLITE_PATH: \${RBAC_SQLITE_PATH:-/app/data/rbac.db}
-      RBAC_POSTGRES_URL: \${RBAC_POSTGRES_URL:-}
-      RBAC_POSTGRES_POOL_SIZE: \${RBAC_POSTGRES_POOL_SIZE:-10}
-      
-      # Security (REQUIRED)
-      JWT_SECRET: \${JWT_SECRET:-change-me-in-production}
-      RBAC_ENCRYPTION_KEY: \${RBAC_ENCRYPTION_KEY:-change-me-in-production}
-      RBAC_ENCRYPTION_SALT: \${RBAC_ENCRYPTION_SALT:-change-me-in-production}
-      
-      # JWT Expiry
-      JWT_ACCESS_EXPIRY: \${JWT_ACCESS_EXPIRY:-4h}
-      JWT_REFRESH_EXPIRY: \${JWT_REFRESH_EXPIRY:-7d}
-      
-      # Admin Seeding (First run only)
-      RBAC_ADMIN_EMAIL: \${RBAC_ADMIN_EMAIL:-admin@localhost}
-      RBAC_ADMIN_USERNAME: \${RBAC_ADMIN_USERNAME:-admin}
-      RBAC_ADMIN_PASSWORD: \${RBAC_ADMIN_PASSWORD:-admin123!}
-      
-      # AI Configuration
-      AI_OPTIMIZER_ENABLED: \${AI_OPTIMIZER_ENABLED:-false}
-      AI_PROVIDER: \${AI_PROVIDER:-openai}
-      AI_API_KEY: \${AI_API_KEY:-}
-      AI_MODEL_NAME: \${AI_MODEL_NAME:-}
-      AI_BASE_URL: \${AI_BASE_URL:-}
+      CHOUSE_CONFIG_PATH: /app/config.yaml
     restart: unless-stopped`;
 
-const dockerComposeNote = 'Save as docker-compose.yml and run:\n\n  docker-compose up -d\n\nAccess at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123!\n\n⚠️ In production, change JWT_SECRET, RBAC_ENCRYPTION_KEY, and RBAC_ENCRYPTION_SALT!';
+const dockerComposeNote = 'Save as docker-compose.yml and run:\n\n  docker-compose up -d\n\nAccess at http://localhost:5521\n\nDefault login:\n• Email: admin@localhost\n• Password: admin123!\n\n⚠️ Ensure your config.yaml is properly configured!';
 
-const envVars = [
-  {
-    name: 'JWT_SECRET',
-    required: true,
-    default: 'change-me-in-production',
-    desc: 'Secret key for JWT token signing. Generate with: openssl rand -base64 32',
-  },
-  {
-    name: 'RBAC_ENCRYPTION_KEY',
-    required: true,
-    default: 'change-me-in-production',
-    desc: 'Encryption key for ClickHouse passwords. Generate with: openssl rand -hex 32 (minimum 32 characters, recommended 64)',
-  },
-  {
-    name: 'RBAC_ENCRYPTION_SALT',
-    required: true,
-    default: 'change-me-in-production',
-    desc: 'Encryption salt for password derivation. Generate with: openssl rand -hex 32 (exactly 64 hex characters). Required in production.',
-  },
-  {
-    name: 'JWT_ACCESS_EXPIRY',
-    required: false,
-    default: '4h',
-    desc: 'JWT access token expiration time (e.g., 15m, 1h)',
-  },
-  {
-    name: 'JWT_REFRESH_EXPIRY',
-    required: false,
-    default: '7d',
-    desc: 'JWT refresh token expiration time (e.g., 7d, 30d)',
-  },
-  {
-    name: 'RBAC_DB_TYPE',
-    required: false,
-    default: 'sqlite',
-    desc: 'Database type: "sqlite" (default) or "postgres"',
-  },
-  {
-    name: 'RBAC_SQLITE_PATH',
-    required: false,
-    default: './data/rbac.db',
-    desc: 'Path to SQLite database file',
-  },
-  {
-    name: 'RBAC_POSTGRES_URL',
-    required: false,
-    default: '',
-    desc: 'PostgreSQL connection URL (if using postgres). Format: postgres://user:pass@host:5432/dbname',
-  },
-  {
-    name: 'RBAC_POSTGRES_POOL_SIZE',
-    required: false,
-    default: '10',
-    desc: 'Maximum number of connections in the PostgreSQL pool',
-  },
-  {
-    name: 'PORT',
-    required: false,
-    default: '5521',
-    desc: 'Port for the web UI',
-  },
-  {
-    name: 'CORS_ORIGIN',
-    required: false,
-    default: '*',
-    desc: 'CORS allowed origin. Use your domain in production (e.g., https://yourdomain.com)',
-  },
-  {
-    name: 'STATIC_PATH',
-    required: false,
-    default: './dist',
-    desc: 'Path to static files',
-  },
-  {
-    name: 'RBAC_ADMIN_EMAIL',
-    required: false,
-    default: 'admin@localhost',
-    desc: 'Initial admin email (seeding only)',
-  },
-  {
-    name: 'RBAC_ADMIN_USERNAME',
-    required: false,
-    default: 'admin',
-    desc: 'Initial admin username (seeding only)',
-  },
-  {
-    name: 'RBAC_ADMIN_PASSWORD',
-    required: false,
-    default: 'admin123!',
-    desc: 'Initial admin password (seeding only)',
-  },
-  {
-    name: 'AI_OPTIMIZER_ENABLED',
-    required: false,
-    default: 'false',
-    desc: 'Enable AI-powered query optimization features',
-  },
-  {
-    name: 'AI_PROVIDER',
-    required: false,
-    default: 'openai',
-    desc: 'AI Provider: "openai", "anthropic", "google", etc.',
-  },
-  {
-    name: 'AI_API_KEY',
-    required: false,
-    default: '',
-    desc: 'API Key for the chosen AI provider',
-  },
-  {
-    name: 'AI_MODEL_NAME',
-    required: false,
-    default: '',
-    desc: 'Model name (e.g., gpt-4o, claude-3-5-sonnet-20241022)',
-  },
-  {
-    name: 'AI_BASE_URL',
-    required: false,
-    default: '',
-    desc: 'Base URL for AI provider (e.g., for Ollama or OpenAI proxies)',
-  },
-];
+const yamlConfigExample = `# ============================================
+# CHouse UI YAML Configuration
+# ============================================
+# Mount this file to /app/config.yaml
 
-type TabType = 'overview' | 'deployment' | 'envvars';
+port: 5521
+node_env: production
+static_path: ./dist
+cors_origin: "*"
+
+rbac:
+  db_type: postgres
+  postgres_url: "postgres://user:password@host:5432/dbname"
+  postgres_pool_size: 10
+  
+  encryption:
+    key: "change-me-in-production"
+    salt: "change-me-in-production"
+    
+  admin:
+    email: admin@localhost
+    username: admin
+    password: admin123!
+
+jwt:
+  secret: "change-me-in-production"
+  access_expiry: 4h
+  refresh_expiry: 7d
+
+ai:
+  optimizer_enabled: false
+  provider: openai
+`;
+
+type TabType = 'overview' | 'deployment' | 'config';
 type DeploymentType = 'docker' | 'kubernetes';
 
 export default function DockerDeploy() {
@@ -307,7 +143,7 @@ export default function DockerDeploy() {
 
   const tabs = [
     { id: 'overview' as TabType, label: 'Production Setup', icon: Settings },
-    { id: 'envvars' as TabType, label: 'Environment Variables', icon: Key },
+    { id: 'config' as TabType, label: 'Configuration (YAML)', icon: Key },
     { id: 'deployment' as TabType, label: 'Deployment', icon: Terminal },
   ];
 
@@ -414,22 +250,10 @@ export default function DockerDeploy() {
                           <div className="grid md:grid-cols-2 gap-4">
                             {[
                               {
-                                title: 'Generate Secure Secrets',
-                                desc: 'Create strong JWT_SECRET (min 32 chars), RBAC_ENCRYPTION_KEY (min 32 hex chars), and RBAC_ENCRYPTION_SALT (exactly 64 hex chars) using openssl. All three are now required in production.',
+                                title: 'Configure YAML settings',
+                                desc: 'Store your YAML config securely and mount it to your container',
                                 critical: true,
-                                command: 'JWT_SECRET=$(openssl rand -base64 32)\nRBAC_ENCRYPTION_KEY=$(openssl rand -hex 32)\nRBAC_ENCRYPTION_SALT=$(openssl rand -hex 32)',
-                              },
-                              {
-                                title: 'Set CORS Origin',
-                                desc: 'Configure CORS_ORIGIN to your production domain (not *)',
-                                critical: true,
-                                command: 'CORS_ORIGIN=https://yourdomain.com',
-                              },
-                              {
-                                title: 'Change Default Passwords',
-                                desc: 'Update admin password and all default credentials',
-                                critical: true,
-                                command: 'RBAC_ADMIN_PASSWORD=your-secure-password',
+                                command: 'CHOUSE_CONFIG_PATH=/app/config.yaml',
                               },
                               {
                                 title: 'Use PostgreSQL',
@@ -686,51 +510,44 @@ export default function DockerDeploy() {
                   </motion.div>
                 )}
 
-                {/* Environment Variables Tab */}
-                {activeTab === 'envvars' && (
+                {/* Configuration Tab */}
+                {activeTab === 'config' && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                      <Key className="w-6 h-6 text-purple-400" />
-                      Environment Variables
-                    </h3>
-                    <div className="space-y-3">
-                      {envVars.map((env, index) => (
-                        <motion.div
-                          key={env.name}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          whileHover={{ scale: 1.01, y: -2 }}
-                          className="p-4 bg-white/5 rounded-lg border border-white/10 hover:border-purple-500/30 transition-all group"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                <code className="text-purple-400 font-mono text-sm font-semibold group-hover:text-purple-300 transition-colors">{env.name}</code>
-                                {env.required && (
-                                  <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded border border-red-500/30">
-                                    Required
-                                  </span>
-                                )}
-                                {!env.required && (
-                                  <span className="px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs rounded border border-gray-500/30">
-                                    Optional
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-400 mb-2 group-hover:text-gray-300 transition-colors">{env.desc}</p>
-                              <div className="text-xs text-gray-500 flex items-center gap-2">
-                                <span className="font-semibold">Default:</span>
-                                <code className="text-gray-400 bg-black/30 px-2 py-0.5 rounded">{env.default || '(none)'}</code>
-                              </div>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-2xl font-bold flex items-center gap-3">
+                        <Key className="w-6 h-6 text-purple-400" />
+                        YAML Configuration
+                      </h3>
+                      <motion.button
+                        onClick={() => copyToClipboard(yamlConfigExample, 'yamlconfig')}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 transition-colors group"
+                      >
+                        {copied === 'yamlconfig' ? (
+                          <>
+                            <Check className="w-4 h-4 text-green-400" />
+                            <span className="text-sm text-green-400">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
+                            <span className="text-sm group-hover:text-purple-400 transition-colors">Copy</span>
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
+                    <p className="text-gray-300 mb-6">
+                      Create a <code className="text-purple-300">.config.yaml</code> file containing your settings and mount it to your deployment.
+                    </p>
+                    <div className="bg-black/60 backdrop-blur-sm p-6 rounded-xl border border-white/10 overflow-x-auto hover:border-purple-500/30 transition-colors">
+                      <pre className="text-sm">
+                        <code className="text-gray-300 font-mono">{yamlConfigExample}</code>
+                      </pre>
                     </div>
                   </motion.div>
                 )}
