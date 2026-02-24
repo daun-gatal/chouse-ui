@@ -415,7 +415,7 @@ export const aiChatMessages = pgTable('rbac_ai_chat_messages', {
   role: varchar('role', { length: 20 }).notNull(), // 'user' | 'assistant'
   content: text('content').notNull(),
   toolCalls: jsonb('tool_calls').$type<Array<{ name: string; args: Record<string, unknown>; result?: unknown }>>(),
-  chartSpec: jsonb('chart_spec').$type<Record<string, unknown>>(),
+  chartSpec: jsonb('chart_spec').$type<Record<string, unknown> | Array<Record<string, unknown>>>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   threadIdIdx: index('ai_chat_messages_thread_id_idx').on(table.threadId),

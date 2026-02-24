@@ -26,7 +26,7 @@ export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }> | null;
-    chartSpec?: ChartSpec | null;
+    chartSpecs?: ChartSpec[] | null;
     createdAt: string;
 }
 

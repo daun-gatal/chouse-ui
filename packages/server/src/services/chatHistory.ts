@@ -32,7 +32,7 @@ export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }> | null;
-    chartSpec?: Record<string, unknown> | null;
+    chartSpecs?: Array<Record<string, unknown>> | null;
     createdAt: Date;
 }
 
@@ -203,7 +203,7 @@ export async function addMessage(
     role: 'user' | 'assistant',
     content: string,
     toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }>,
-    chartSpec?: Record<string, unknown>
+    chartSpecs?: Array<Record<string, unknown>>
 ): Promise<ChatMessage> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
@@ -218,7 +218,7 @@ export async function addMessage(
         role,
         content,
         toolCalls: toolCalls || null,
-        chartSpec: chartSpec || null,
+        chartSpec: chartSpecs || null,
         createdAt: now,
     });
 
@@ -234,7 +234,7 @@ export async function addMessage(
         role: role as 'user' | 'assistant',
         content,
         toolCalls: toolCalls || null,
-        chartSpec: chartSpec || null,
+        chartSpecs: chartSpecs || null,
         createdAt: now,
     };
 }
@@ -258,7 +258,9 @@ export async function getMessages(threadId: string): Promise<ChatMessage[]> {
         role: m.role as 'user' | 'assistant',
         content: m.content,
         toolCalls: m.toolCalls,
-        chartSpec: m.chartSpec,
+        chartSpecs: m.chartSpec
+            ? (Array.isArray(m.chartSpec) ? m.chartSpec : [m.chartSpec])
+            : null,
         createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
     }));
 }
