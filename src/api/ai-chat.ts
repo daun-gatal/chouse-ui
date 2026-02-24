@@ -26,6 +26,7 @@ export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }> | null;
+    chartSpec?: ChartSpec | null;
     createdAt: string;
 }
 
@@ -33,8 +34,29 @@ export interface ChatStatus {
     enabled: boolean;
 }
 
+/**
+ * Chart specification sent from server via a chart-data SSE event.
+ * Used by AiChartRenderer to render an interactive chart inline in the chat.
+ */
+export interface ChartSpec {
+    /** Chart type identifier */
+    chartType: string;
+    /** Optional display title */
+    title?: string;
+    /** Column metadata from the query result */
+    columns: { name: string; type: string }[];
+    /** Row data (max 500 rows) */
+    rows: Record<string, unknown>[];
+    /** Column name for the X axis */
+    xAxis: string;
+    /** Column name(s) for the Y axis */
+    yAxis: string | string[];
+    /** Color palette key: 'violet' | 'blue' | 'green' | 'orange' | 'rainbow' */
+    colorScheme: string;
+}
+
 export interface StreamDelta {
-    type: 'text-delta' | 'done' | 'error' | 'status' | 'tool-call' | 'tool-complete';
+    type: 'text-delta' | 'done' | 'error' | 'status' | 'tool-call' | 'tool-complete' | 'chart-data';
     text?: string;
     error?: string;
     status?: string;
@@ -43,6 +65,8 @@ export interface StreamDelta {
     args?: Record<string, unknown>;
     /** Human-readable result summary (present on tool-complete events) */
     summary?: string | null;
+    /** Chart specification (present on chart-data events) */
+    chartSpec?: ChartSpec;
 }
 
 // ============================================
@@ -164,22 +188,34 @@ export async function* streamChatMessage(
 
             buffer += decoder.decode(value, { stream: true });
 
-            // Parse SSE events from buffer
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+            // SSE events are separated by double newlines (\n\n).
+            // We must split on \n\n — NOT \n — because large payloads like
+            // chart-data contain embedded newlines inside the JSON, and
+            // splitting by \n would break JSON.parse on any multi-line event.
+            const events = buffer.split('\n\n');
+            buffer = events.pop() ?? ''; // Keep the last incomplete event in the buffer
 
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6)) as StreamDelta;
-                        yield data;
+            for (const event of events) {
+                // An SSE event may have multiple "data: ..." lines — join them.
+                const dataLines = event
+                    .split('\n')
+                    .filter((l) => l.startsWith('data: '))
+                    .map((l) => l.slice(6));
 
-                        if (data.type === 'done' || data.type === 'error') {
-                            return;
-                        }
-                    } catch {
-                        // Skip malformed SSE data
+                if (dataLines.length === 0) continue;
+
+                // Re-join multi-line data values (rare but possible)
+                const rawJson = dataLines.join('');
+
+                try {
+                    const data = JSON.parse(rawJson) as StreamDelta;
+                    yield data;
+
+                    if (data.type === 'done' || data.type === 'error') {
+                        return;
                     }
+                } catch {
+                    // Skip malformed SSE events
                 }
             }
         }

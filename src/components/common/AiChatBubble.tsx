@@ -23,7 +23,9 @@ import {
     streamChatMessage,
     type ChatThread,
     type ChatMessage,
+    type ChartSpec,
 } from '@/api/ai-chat';
+import { AiChartRenderer } from '@/components/common/AiChartRenderer';
 import {
     MessageSquare,
     X,
@@ -55,6 +57,9 @@ import {
     GripVertical,
     Maximize2,
     Minimize2,
+    TrendingUp,
+    PieChart,
+    ScatterChart,
 } from 'lucide-react';
 
 // ============================================
@@ -96,6 +101,8 @@ interface UIMessage {
     retryPrompt?: string;
     /** ordered list of tool calls made during this assistant turn */
     toolCalls?: ToolCallStep[];
+    /** chart spec produced by the render_chart tool, if any */
+    chartSpec?: ChartSpec;
 }
 
 // Suggested prompt chips — only a random subset is shown at a time
@@ -120,6 +127,11 @@ const SUGGESTED_PROMPTS = [
     { icon: Zap, label: 'Performance tips', prompt: 'Show me any slow or heavy queries and suggest optimizations' },
     { icon: Server, label: 'Server info', prompt: 'What ClickHouse version is running and what is the server uptime?' },
     { icon: BarChart3, label: 'Query stats', prompt: 'What are the most common query types hitting the server?' },
+    // Charts
+    { icon: BarChart3, label: 'Table sizes chart', prompt: 'Show me a bar chart of disk usage by table, sorted by size descending' },
+    { icon: PieChart, label: 'Engine pie chart', prompt: 'Pie chart of table engines used across all databases' },
+    { icon: TrendingUp, label: 'Query trends', prompt: 'Line chart of query count per hour from system.query_log' },
+    { icon: ScatterChart, label: 'Perf scatter', prompt: 'Scatter plot of query_duration_ms vs memory_usage from system.query_log LIMIT 200' },
 ];
 const PROMPTS_VISIBLE = 4;
 
@@ -169,10 +181,18 @@ function SidebarThreadButton({
     onDelete: (id: string, e: React.MouseEvent) => void;
 }) {
     return (
-        <button
+        <div
+            role="button"
+            tabIndex={0}
             onClick={() => onLoad(thread.id)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onLoad(thread.id);
+                }
+            }}
             className={`w-full text-left px-3 py-2.5 rounded-xl text-[14px]
-                      flex items-center justify-between group transition-all duration-200
+                      flex items-center justify-between group transition-all duration-200 cursor-pointer
                       ${activeId === thread.id
                     ? 'bg-violet-500/10 text-zinc-100 border-l-2 border-l-violet-400 border border-violet-500/10'
                     : 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200 border border-transparent'
@@ -186,14 +206,17 @@ function SidebarThreadButton({
                 </span>
             </div>
             <button
-                onClick={(e) => onDelete(thread.id, e)}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(thread.id, e);
+                }}
                 className="p-1 rounded-lg opacity-0 group-hover:opacity-100
                          hover:bg-red-500/15 text-zinc-600 hover:text-red-400 transition-all"
                 title="Delete chat"
             >
                 <Trash2 className="w-3 h-3" />
             </button>
-        </button>
+        </div>
     );
 }
 
@@ -392,6 +415,8 @@ const markdownComponents = {
     blockquote: ({ children, ...props }: any) => (
         <blockquote className="border-l-2 border-violet-500/40 pl-3 my-2 text-white/60 italic" {...props}>{children}</blockquote>
     ),
+    // Suppress images — the AI sometimes generates ![chart](...) markdown which renders as broken <img>
+    img: () => null,
     br: () => <br />,
 };
 
@@ -642,6 +667,7 @@ export default function AiChatBubble() {
                     id: m.id,
                     role: m.role,
                     content: m.content,
+                    chartSpec: m.chartSpec || undefined,
                     createdAt: m.createdAt,
                 }))
             );
@@ -731,6 +757,16 @@ export default function AiChatBubble() {
                                 toolStatus: `Querying ${label}...`,
                                 toolCalls: [...(last.toolCalls ?? []), newStep],
                             };
+                        }
+                        return updated;
+                    });
+                } else if (delta.type === 'chart-data' && delta.chartSpec) {
+                    // Attach chart spec to the current assistant message
+                    setMessages((prev) => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            updated[updated.length - 1] = { ...last, chartSpec: delta.chartSpec };
                         }
                         return updated;
                     });
@@ -1277,7 +1313,7 @@ export default function AiChatBubble() {
                                                                 : <Bot className="w-3.5 h-3.5 text-violet-400" />}
                                                         </div>
                                                     )}
-                                                    <div className="flex flex-col gap-0.5 min-w-0" style={{ maxWidth: msg.role === 'user' ? '75%' : '100%' }}>
+                                                    <div className={`flex flex-col gap-0.5 min-w-0 ${msg.role === 'assistant' && msg.chartSpec ? 'flex-1' : ''}`} style={{ maxWidth: msg.role === 'user' ? '75%' : '85%' }}>
                                                         <div
                                                             className={`rounded-2xl px-4 py-3 text-sm leading-relaxed overflow-hidden
                                                               ${msg.role === 'user'
@@ -1318,14 +1354,19 @@ export default function AiChatBubble() {
                                                                             )}
                                                                         </div>
                                                                     ) : (
-                                                                        <div className="overflow-x-auto max-w-full">
-                                                                            <ReactMarkdown
-                                                                                remarkPlugins={[remarkGfm]}
-                                                                                components={markdownComponents}
-                                                                            >
-                                                                                {preprocessMarkdown(msg.content) + (msg.isStreaming && !msg.toolStatus ? ' ▊' : '')}
-                                                                            </ReactMarkdown>
-                                                                        </div>
+                                                                        <>
+                                                                            {msg.chartSpec && (
+                                                                                <AiChartRenderer spec={msg.chartSpec} />
+                                                                            )}
+                                                                            <div className="overflow-x-auto max-w-full">
+                                                                                <ReactMarkdown
+                                                                                    remarkPlugins={[remarkGfm]}
+                                                                                    components={markdownComponents}
+                                                                                >
+                                                                                    {preprocessMarkdown(msg.content) + (msg.isStreaming && !msg.toolStatus ? ' ▊' : '')}
+                                                                                </ReactMarkdown>
+                                                                            </div>
+                                                                        </>
                                                                     )}
                                                                 </>
                                                             ) : (

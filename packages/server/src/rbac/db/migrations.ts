@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.12.0';
+export const APP_VERSION = '1.15.0';
 
 // ============================================
 // Migration Registry
@@ -1626,6 +1626,47 @@ const MIGRATIONS: Migration[] = [
       }
 
       console.log('[Migration 1.14.0] Dropped AI chat tables');
+    },
+  },
+  {
+    version: '1.15.0',
+    name: 'add_chart_spec_to_messages',
+    description: 'Add chart_spec column to AI chat messages to persist chart metadata',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        try {
+          (db as SqliteDb).run(sql`
+            ALTER TABLE rbac_ai_chat_messages ADD COLUMN chart_spec TEXT
+          `);
+          console.log('[Migration 1.15.0] Added chart_spec column to SQLite rbac_ai_chat_messages table');
+        } catch (error: any) {
+          if (!error?.message?.includes('duplicate column')) throw error;
+          console.log('[Migration 1.15.0] chart_spec column already exists, skipping');
+        }
+      } else {
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_ai_chat_messages ADD COLUMN IF NOT EXISTS chart_spec JSONB
+        `);
+        console.log('[Migration 1.15.0] Added chart_spec column to PostgreSQL rbac_ai_chat_messages table');
+      }
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        console.log('[Migration 1.15.0] SQLite does not support DROP COLUMN easily, manual intervention required');
+      } else {
+        await (db as PostgresDb).execute(sql`
+          ALTER TABLE rbac_ai_chat_messages DROP COLUMN IF EXISTS chart_spec
+        `);
+        console.log('[Migration 1.15.0] Dropped chart_spec column from PostgreSQL rbac_ai_chat_messages table');
+      }
     },
   },
 ];

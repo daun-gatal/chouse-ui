@@ -1,8 +1,8 @@
 /**
  * AI Chat Service
- * 
+ *
  * Conversational AI assistant for ClickHouse.
- * Uses AI SDK v6 ToolLoopAgent with 15 single-responsibility tools.
+ * Uses AI SDK v6 ToolLoopAgent with 16 single-responsibility tools.
  * The agent manages the tool loop automatically — calling tools in sequence
  * until it has enough data to produce a final text response.
  * All schema/data tools are RBAC-aware via existing dataAccess middleware.
@@ -42,6 +42,27 @@ export interface ChatContext {
     defaultDatabase?: string;
 }
 
+/**
+ * Chart specification returned by the render_chart tool.
+ * Consumed by the browser's AiChartRenderer component.
+ */
+export interface ChartSpec {
+    /** Chart type identifier */
+    chartType: string;
+    /** Optional display title */
+    title?: string;
+    /** Column metadata from the query result */
+    columns: { name: string; type: string }[];
+    /** Row data from the query result (max 500) */
+    rows: Record<string, unknown>[];
+    /** Column name mapped to the X axis */
+    xAxis: string;
+    /** Column name(s) mapped to the Y axis */
+    yAxis: string | string[];
+    /** Color palette key */
+    colorScheme: string;
+}
+
 // ============================================
 // System Prompt
 // ============================================
@@ -72,7 +93,30 @@ const SYSTEM_PROMPT = `You are an expert ClickHouse database assistant embedded 
 - Use \`explain_query\` to analyze query plans.
 - Use \`analyze_query\` to get complexity scoring and performance recommendations.
 - Use \`optimize_query\` to get AI-powered optimization suggestions.
+- Use \`render_chart\` to produce an interactive chart when the user asks to visualize or plot data.
 - Chain tools as needed. For example: list_tables → get_table_schema → run_select_query.
+
+## Chart Rendering (MANDATORY)
+- Use \`render_chart\` IMMEDIATELY when the user asks to visualize, chart, plot, graph, or show trends.
+- **NEVER** use a markdown table or text-based diagram when a chart is requested.
+- **NEVER** describe a chart in text without calling the tool — always use \`render_chart\`.
+- Choose the most appropriate chart type for the data:
+  - Comparisons of categories → \`bar\` or \`horizontal_bar\`
+  - Comparing multiple groups side-by-side → \`grouped_bar\`
+  - Part-to-whole stacked → \`stacked_bar\` or \`stacked_area\`
+  - Trends over time → \`line\` or \`area\`
+  - Multiple metrics over time → \`multi_line\`
+  - Parts of a whole → \`pie\` or \`donut\`
+  - Hierarchical proportions → \`treemap\`
+  - Sequential funnel/conversion → \`funnel\`
+  - Distribution of a single metric → \`histogram\`
+  - Correlation between two metrics → \`scatter\`
+  - Multi-dimensional comparison → \`radar\`
+  - Categorical grid with values → \`heatmap\`
+- **MANDATORY**: Always use \`get_table_schema\` to understand the table structure before calling \`render_chart\`. Never guess column names.
+- ALWAYS call \`render_chart\` with a correct SELECT query. Use fully qualified table names (e.g. \`database.table\`) in the SQL to avoid ambiguity.
+- After \`render_chart\` completes, write one or two sentences summarizing what the chart shows.
+- If the user does not specify a chart type, pick the most insightful one for the data.
 
 ## Constraints
 - You can ONLY execute read-only operations (SELECT, SHOW, DESCRIBE, EXPLAIN).
@@ -91,6 +135,60 @@ const SYSTEM_PROMPT = `You are an expert ClickHouse database assistant embedded 
 - If a tool call fails, explain the error to the user helpfully.
 `;
 
+
+// ============================================
+// Chart Axis Inference Helpers
+// ============================================
+
+/** ClickHouse type prefixes considered numeric (suitable for Y axis) */
+const NUMERIC_TYPE_PREFIXES = [
+    "UInt", "Int", "Float", "Decimal", "Nullable(UInt", "Nullable(Int", "Nullable(Float", "Nullable(Decimal",
+];
+
+/**
+ * Returns true when the column type looks like a number.
+ */
+function isNumericType(type: string): boolean {
+    return NUMERIC_TYPE_PREFIXES.some((prefix) => type.startsWith(prefix));
+}
+
+/**
+ * Infer the best X-axis column: prefer DateTime/Date/String columns, else the first column.
+ */
+function inferXAxis(columns: { name: string; type: string }[]): string {
+    const dateCol = columns.find(
+        (c) => c.type.startsWith("DateTime") || c.type.startsWith("Date") || c.type.startsWith("Nullable(DateTime") || c.type.startsWith("Nullable(Date")
+    );
+    if (dateCol) return dateCol.name;
+
+    const stringCol = columns.find(
+        (c) => c.type.startsWith("String") || c.type.startsWith("Nullable(String") || c.type.startsWith("LowCardinality")
+    );
+    if (stringCol) return stringCol.name;
+
+    // Fallback: use first column
+    return columns[0]?.name ?? "";
+}
+
+/**
+ * Infer Y-axis column(s): all numeric columns that are NOT the X axis.
+ * Returns a single string when only one numeric column exists, else an array.
+ */
+function inferYAxes(
+    columns: { name: string; type: string }[],
+    xAxis: string
+): string | string[] {
+    const numericCols = columns
+        .filter((c) => c.name !== xAxis && isNumericType(c.type))
+        .map((c) => c.name);
+
+    if (numericCols.length === 1) return numericCols[0];
+    if (numericCols.length > 1) return numericCols;
+
+    // Fallback: use the second column if nothing is clearly numeric
+    const fallback = columns.find((c) => c.name !== xAxis);
+    return fallback ? fallback.name : columns[0]?.name ?? "";
+}
 
 // ============================================
 // Tool Definitions
@@ -497,6 +595,104 @@ function createTools(ctx: ChatContext) {
                     };
                 } catch (error: unknown) {
                     return { error: error instanceof Error ? error.message : "Failed to optimize query" };
+                }
+            },
+        }),
+
+        // 16. Render chart — executes a SELECT query and returns a ChartSpec for the browser
+        render_chart: tool({
+            description: [
+                "MANDATORY: Use this whenever the user asks to visualize, chart, plot, graph, or show trends.",
+                "Execute a SELECT query and return an interactive chart specification.",
+                "Available chartType values: bar, horizontal_bar, grouped_bar, stacked_bar, line, multi_line, area, stacked_area, pie, donut, scatter, radar, treemap, funnel, histogram, heatmap.",
+                "xAxis and yAxis can be omitted — they will be inferred from the query result columns.",
+            ].join(" "),
+            inputSchema: zodSchema(z.object({
+                sql: z.string().describe("SELECT query whose result will be charted. Must be read-only."),
+                chartType: z.string().describe(
+                    "Chart type: bar | horizontal_bar | grouped_bar | stacked_bar | line | multi_line | area | stacked_area | pie | donut | scatter | radar | treemap | funnel | histogram | heatmap"
+                ),
+                xAxis: z.string().optional().describe("Column name for the X axis (inferred if omitted)"),
+                yAxis: z.union([z.string(), z.array(z.string())]).optional().describe("Column name(s) for the Y axis (inferred if omitted)"),
+                title: z.string().optional().describe("Optional chart title shown above the chart"),
+                colorScheme: z.enum(["violet", "blue", "green", "orange", "rainbow"]).optional().describe("Color palette (default: violet)"),
+            })),
+            execute: async ({
+                sql,
+                chartType,
+                xAxis,
+                yAxis,
+                title,
+                colorScheme = "violet",
+            }: {
+                sql: string;
+                chartType: string;
+                xAxis?: string;
+                yAxis?: string | string[];
+                title?: string;
+                colorScheme?: string;
+            }): Promise<Record<string, unknown>> => {
+                if (!sql?.trim()) {
+                    return { error: "No SQL query provided." };
+                }
+
+                // Validate read-only
+                const normalized = sql.trim().toUpperCase();
+                if (!normalized.startsWith("SELECT") && !normalized.startsWith("WITH")) {
+                    return { error: "Only SELECT and WITH queries are allowed for charting." };
+                }
+
+                // RBAC access check
+                const accessCheck = await validateQueryAccess(
+                    ctx.userId, ctx.isAdmin, ctx.permissions,
+                    sql, ctx.defaultDatabase, ctx.connectionId
+                );
+                if (!accessCheck.allowed) {
+                    return { error: accessCheck.reason || "Access denied" };
+                }
+
+                try {
+                    // Add LIMIT 500 if not already present (charts don't need more than that)
+                    let chartSql = sql;
+                    if (!normalized.includes("LIMIT")) {
+                        chartSql = `${sql.replace(/;\s*$/, "")} LIMIT 500`;
+                    }
+
+                    const result = await ctx.clickhouseService.executeQuery(chartSql, "JSON");
+
+                    const columns: { name: string; type: string }[] = (result.meta ?? []).map(
+                        (col: { name: string; type: string }) => ({ name: col.name, type: col.type })
+                    );
+                    const rows = result.data as Record<string, unknown>[];
+
+                    if (columns.length === 0 || rows.length === 0) {
+                        return { error: "Query returned no data to chart." };
+                    }
+
+                    // Infer axes from column types when not provided
+                    const resolvedXAxis = xAxis ?? inferXAxis(columns);
+                    const resolvedYAxis = yAxis ?? inferYAxes(columns, resolvedXAxis);
+
+                    if (!resolvedXAxis) {
+                        return { error: "Could not infer X axis column. Please specify xAxis explicitly." };
+                    }
+                    if (!resolvedYAxis || (Array.isArray(resolvedYAxis) && resolvedYAxis.length === 0)) {
+                        return { error: "Could not infer Y axis column. Please specify yAxis explicitly." };
+                    }
+
+                    const chartSpec: ChartSpec = {
+                        chartType,
+                        title,
+                        columns,
+                        rows,
+                        xAxis: resolvedXAxis,
+                        yAxis: resolvedYAxis,
+                        colorScheme: colorScheme ?? "violet",
+                    };
+
+                    return chartSpec as unknown as Record<string, unknown>;
+                } catch (error: unknown) {
+                    return { error: error instanceof Error ? error.message : "Failed to execute chart query" };
                 }
             },
         }),

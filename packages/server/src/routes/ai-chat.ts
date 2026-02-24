@@ -378,7 +378,8 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
                             case 'tool-result': {
                                 // Match result back to the last tool call with the same name
                                 const toolName = (part as any).toolName;
-                                const resultData = (part as any).result;
+                                // AI SDK v6 uses 'output' for tool result, but fall back to 'result' or 'data'.
+                                const resultData = (part as any).output ?? (part as any).result ?? (part as any).data;
                                 const matchIdx = (() => {
                                     for (let i = collectedToolCalls.length - 1; i >= 0; i--) {
                                         if (collectedToolCalls[i].name === toolName && collectedToolCalls[i].result === undefined) return i;
@@ -388,6 +389,20 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
                                 if (matchIdx !== -1) {
                                     collectedToolCalls[matchIdx].result = resultData;
                                 }
+
+                                // Emit a dedicated chart-data event when render_chart succeeds
+                                if (toolName === 'render_chart' && resultData && !(resultData as Record<string, unknown>).error) {
+                                    // Handle BigInt serialization for ClickHouse results
+                                    try {
+                                        const json = JSON.stringify({ type: 'chart-data', chartSpec: resultData }, (_, v) =>
+                                            typeof v === 'bigint' ? (v <= Number.MAX_SAFE_INTEGER ? Number(v) : v.toString()) : v
+                                        );
+                                        controller.enqueue(encoder.encode(`data: ${json}\n\n`));
+                                    } catch (e) {
+                                        console.error('[AI-CHAT] Failed to serialize chart-data:', e);
+                                    }
+                                }
+
                                 // Send completion event with a lightweight result summary
                                 let resultSummary: string | null = null;
                                 if (Array.isArray(resultData)) {
@@ -449,11 +464,16 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
 
                     // Save assistant response to DB (best-effort)
                     if (fullResponse.trim()) {
+                        const chartToolCall = collectedToolCalls.find(tc => tc.name === 'render_chart' && tc.result && !(tc.result as Record<string, unknown>).error);
+                        const chartSpec = chartToolCall ? (chartToolCall.result as Record<string, unknown>) : undefined;
+
                         await addMessage(
                             threadId,
                             'assistant',
                             fullResponse,
-                            collectedToolCalls.length > 0 ? collectedToolCalls : undefined
+                            collectedToolCalls.length > 0 ? collectedToolCalls : undefined,
+                            chartSpec
+
                         ).catch(err => {
                             console.error('[AI Chat] Failed to save assistant message:', err);
                         });
