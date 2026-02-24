@@ -85,7 +85,7 @@ graph TD
 | **Pages** | `src/pages/` | 11 files | Route-level views: Login, Home, Explorer, Monitoring, Admin, Preferences, Logs, Metrics, LiveQueries, ExplainPopout, NotFound |
 | **Features** | `src/features/` | 5 modules | Domain-specific component groups with their own `components/` dirs |
 | **UI Components** | `src/components/ui/` | 34 files | shadcn/ui primitives: button, dialog, dropdown-menu, tabs, data-table, select, etc. |
-| **Common Components** | `src/components/common/` | 20 files | FloatingDock, Sidebar, ConnectionSelector, ErrorBoundary, PermissionGuard, DiffEditor, etc. |
+| **Common Components** | `src/components/common/` | 22 files | FloatingDock, Sidebar, ConnectionSelector, ErrorBoundary, PermissionGuard, DiffEditor, AiChatBubble, AiChartRenderer, etc. |
 | **Sidebar** | `src/components/sidebar/` | 1 file | UserMenu component |
 | **Hooks** | `src/hooks/` | 8 files | ~40 exported hooks (mostly TanStack Query wrappers) |
 | **Stores** | `src/stores/` | 4 stores | Zustand with `persist` middleware and user-specific storage adapters |

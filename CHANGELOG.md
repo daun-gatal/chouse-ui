@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.11.2] - 2026-02-24
+
+### Added
+
+- **Interactive AI Charts**: The AI Chat Assistant can now render interactive charts inline using Recharts.
+  - **Dynamic Visualizations**: Automatically generates charts from ClickHouse query results when requested by the user.
+  - **16 Chart Types Supported**: Includes Bar, Stacked Bar, Grouped Bar, Horizontal Bar, Line, Multi-line, Area, Stacked Area, Pie, Donut, Scatter, Radar, Treemap, Funnel, Histogram, and Heatmap.
+  - **Smart Data Inference**: Automatically infers X and Y axes from ClickHouse column metadata (e.g., DateTime/String for X-axis, numeric for Y-axis).
+  - **Interactive Tooltips**: Polished chart tooltips with clean formatting, hiding unnecessary series labels for single-series data.
+  - **Responsive Layouts**: Charts automatically take up full bubble width while text-only responses gracefully shrink-to-fit, preventing awkward whitespace.
+- **Chart Persistence**: Charts rendered in the AI chat are now permanently saved to chat history.
+  - Added `chart_spec` column to the `rbac_ai_chat_messages` table via migration `1.15.0`.
+  - Seamlessly restores visualizations when switching threads or reloading the application.
+
+### Changed
+
+- **AI Tooling System Prompt**: Upgraded the AI system prompt with strict rules on when to use `render_chart`, including enforcing mandatory schema checks to prevent hallucinated columns.
+- **SSE Stream Handling**: Extended the Server-Sent Events stream with a new `chart-data` delta type to securely transmit large JSON chart definitions in real-time.
+
+### Fixed
+
+- **BigInt Serialization**: Fixed server crashes when returning ClickHouse aggregation results (`BigInt` counts) by adding a custom JSON replacer.
+- **SSE Buffer Truncation**: Fixed the frontend SSE parser splitting payloads by a single `\n` instead of `\n\n`, which caused large chart JSON payloads to break.
+- **Vite HMR Crashes**: Resolved Hot Module Replacement crashes in `AiChartRenderer.tsx` by cleanly separating pure utility functions into `AiChartUtils.ts`.
+- **Sidebar React Hydration Error**: Fixed an invalid HTML nesting error (`<button>` inside `<button>`) in the `SidebarThreadButton` by refactoring the container to a keyboard-accessible `div[role="button"]`.
+
 ## [v2.11.1] - 2026-02-23
 
 ### Changed
