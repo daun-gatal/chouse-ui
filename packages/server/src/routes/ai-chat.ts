@@ -464,15 +464,17 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
 
                     // Save assistant response to DB (best-effort)
                     if (fullResponse.trim()) {
-                        const chartToolCall = collectedToolCalls.find(tc => tc.name === 'render_chart' && tc.result && !(tc.result as Record<string, unknown>).error);
-                        const chartSpec = chartToolCall ? (chartToolCall.result as Record<string, unknown>) : undefined;
+                        const chartToolCalls = collectedToolCalls.filter(tc => tc.name === 'render_chart' && tc.result && !(tc.result as Record<string, unknown>).error);
+                        const chartSpecs = chartToolCalls.length > 0
+                            ? chartToolCalls.map(tc => tc.result as Record<string, unknown>)
+                            : undefined;
 
                         await addMessage(
                             threadId,
                             'assistant',
                             fullResponse,
                             collectedToolCalls.length > 0 ? collectedToolCalls : undefined,
-                            chartSpec
+                            chartSpecs
 
                         ).catch(err => {
                             console.error('[AI Chat] Failed to save assistant message:', err);

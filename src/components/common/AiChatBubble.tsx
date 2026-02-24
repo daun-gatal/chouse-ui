@@ -101,8 +101,8 @@ interface UIMessage {
     retryPrompt?: string;
     /** ordered list of tool calls made during this assistant turn */
     toolCalls?: ToolCallStep[];
-    /** chart spec produced by the render_chart tool, if any */
-    chartSpec?: ChartSpec;
+    /** chart specs produced by the render_chart tool, if any */
+    chartSpecs?: ChartSpec[];
 }
 
 // Suggested prompt chips — only a random subset is shown at a time
@@ -667,7 +667,7 @@ export default function AiChatBubble() {
                     id: m.id,
                     role: m.role,
                     content: m.content,
-                    chartSpec: m.chartSpec || undefined,
+                    chartSpecs: m.chartSpecs || undefined,
                     createdAt: m.createdAt,
                 }))
             );
@@ -766,7 +766,10 @@ export default function AiChatBubble() {
                         const updated = [...prev];
                         const last = updated[updated.length - 1];
                         if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = { ...last, chartSpec: delta.chartSpec };
+                            updated[updated.length - 1] = {
+                                ...last,
+                                chartSpecs: [...(last.chartSpecs || []), delta.chartSpec!]
+                            };
                         }
                         return updated;
                     });
@@ -1313,7 +1316,7 @@ export default function AiChatBubble() {
                                                                 : <Bot className="w-3.5 h-3.5 text-violet-400" />}
                                                         </div>
                                                     )}
-                                                    <div className={`flex flex-col gap-0.5 min-w-0 ${msg.role === 'assistant' && msg.chartSpec ? 'flex-1' : ''}`} style={{ maxWidth: msg.role === 'user' ? '75%' : '85%' }}>
+                                                    <div className={`flex flex-col gap-0.5 min-w-0 ${msg.role === 'assistant' && msg.chartSpecs?.length ? 'flex-1' : ''}`} style={{ maxWidth: msg.role === 'user' ? '75%' : '85%' }}>
                                                         <div
                                                             className={`rounded-2xl px-4 py-3 text-sm leading-relaxed overflow-hidden
                                                               ${msg.role === 'user'
@@ -1355,9 +1358,9 @@ export default function AiChatBubble() {
                                                                         </div>
                                                                     ) : (
                                                                         <>
-                                                                            {msg.chartSpec && (
-                                                                                <AiChartRenderer spec={msg.chartSpec} />
-                                                                            )}
+                                                                            {msg.chartSpecs?.map((spec, i) => (
+                                                                                <AiChartRenderer key={i} spec={spec} />
+                                                                            ))}
                                                                             <div className="overflow-x-auto max-w-full">
                                                                                 <ReactMarkdown
                                                                                     remarkPlugins={[remarkGfm]}

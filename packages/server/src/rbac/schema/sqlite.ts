@@ -415,7 +415,7 @@ export const aiChatMessages = sqliteTable('rbac_ai_chat_messages', {
   role: text('role').notNull(), // 'user' | 'assistant'
   content: text('content').notNull(),
   toolCalls: text('tool_calls', { mode: 'json' }).$type<Array<{ name: string; args: Record<string, unknown>; result?: unknown }>>(),
-  chartSpec: text('chart_spec', { mode: 'json' }).$type<Record<string, unknown>>(),
+  chartSpec: text('chart_spec', { mode: 'json' }).$type<Record<string, unknown> | Array<Record<string, unknown>>>(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => ({
   threadIdIdx: index('ai_chat_messages_thread_id_idx').on(table.threadId),
