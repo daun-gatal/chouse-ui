@@ -37,5 +37,5 @@ packages/server/data/*.db-shm
 packages/server/data/*.db-wal
 data/*
 
-# Local PR description drafts (not part of branch)
-.github/PR_71_DESCRIPTION.md
+# Local config files
+.config.yaml

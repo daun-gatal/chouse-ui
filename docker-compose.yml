@@ -11,8 +11,11 @@ services:
       JWT_SECRET: dev-secret-change-me
       RBAC_ENCRYPTION_KEY: dev-key-change-me
       RBAC_ENCRYPTION_SALT: dev-salt-change-me
+      # Uncomment and provide a config.yaml to use hierarchical configuration
+      # CHOUSE_CONFIG_PATH: /app/config.yaml
     volumes:
       - ./data:/app/data
+      # - ./config.yaml:/app/config.yaml:ro
     restart: unless-stopped
 
   clickhouse:

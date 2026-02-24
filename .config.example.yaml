@@ -1,0 +1,96 @@
+# ============================================
+# CHouse UI YAML Configuration Example
+# ============================================
+# Copy this file to .config.yaml and update with your values
+# Set CHOUSE_CONFIG_PATH=./.config.yaml to use this file.
+#
+# For production, generate secure secrets using:
+#   jwt.secret: openssl rand -base64 32
+#   rbac.encryption.key: openssl rand -hex 32
+#   rbac.encryption.salt: openssl rand -hex 32
+
+# ============================================
+# Core Server Settings
+# ============================================
+port: 5521
+node_env: development
+static_path: ./dist
+cors_origin: "*"
+
+# ============================================
+# RBAC Database Configuration
+# ============================================
+rbac:
+  # Database type: 'sqlite' (default) or 'postgres'
+  db_type: sqlite
+  
+  # SQLite configuration (used when rbac.db_type is sqlite)
+  sqlite_path: ./data/rbac.db
+  
+  # PostgreSQL configuration (used when rbac.db_type is postgres)
+  # Example: postgres://user:password@host:5432/dbname
+  postgres_url: ""
+  postgres_pool_size: 10
+  
+  # ============================================
+  # Encryption
+  # ============================================
+  encryption:
+    # Encryption key for ClickHouse connection passwords (REQUIRED in production)
+    # Should be 32 bytes in hex (64 characters)
+    # Generate with: openssl rand -hex 32
+    key: ""
+    
+    # Salt for encryption key derivation (REQUIRED in production)
+    # Should be 32 bytes in hex (64 characters)
+    # Generate with: openssl rand -hex 32
+    salt: ""
+    
+  # ============================================
+  # Admin User Seeding
+  # ============================================
+  # These are only used when creating the initial admin user during first run
+  admin:
+    email: admin@localhost
+    username: admin
+    password: admin123!
+
+# ============================================
+# JWT Authentication
+# ============================================
+jwt:
+  # JWT signing secret (REQUIRED in production)
+  # Generate with: openssl rand -base64 32
+  secret: your-super-secret-key-change-in-production-min-32-chars!
+  
+  # Token expiration times (m: minutes, h: hours, d: days)
+  access_expiry: 4h
+  refresh_expiry: 7d
+
+# ============================================
+# AI Features Configuration
+# ============================================
+ai:
+  # Enable/disable AI features (Optimizer, Debugger, etc.)
+  optimizer_enabled: false
+  
+  # AI Provider Selection: openai, anthropic, google, huggingface, openai-compatible
+  provider: openai
+  
+  # AI API Key (required when AI features are enabled)
+  api_key: ""
+  
+  # AI Model Name (required if enabled)
+  # Examples: gpt-4o, claude-3-5-sonnet-20241022, gemini-1.5-pro
+  model_name: ""
+  
+  # AI Base URL (optional, for compatible providers like Ollama/LocalAI)
+  # Examples:
+  #   - Self-hosted Ollama: http://localhost:11434/v1
+  #   - Together AI: https://api.together.xyz/v1
+  #   - LocalAI: http://localhost:8080/v1
+  base_url: ""
+  
+  # OpenAI-Compatible Custom Headers (optional JSON string)
+  # Example: {"X-Custom-Header": "value"}
+  openai_compatible_headers: ""

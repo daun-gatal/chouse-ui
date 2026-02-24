@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.11.3] - 2026-02-25
+
+### Added
+
+- **YAML Configuration**: Added support for configuring the application via a `.config.yaml` file (`packages/server/src/utils/configLoader`). Replaced the extensive environment variables tab in the Portfolio UI with a streamlined YAML Configuration tab.
+
+### Fixed
+
+- **Docker Configuration**: Updated and formatted the project Dockerfile.
+
 ## [v2.11.2] - 2026-02-24
 
 ### Added

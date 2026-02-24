@@ -186,6 +186,29 @@ For production, we recommend using an external highly-available PostgreSQL datab
 
 ## Configuration
 
+CHouse UI can be configured using environment variables (`.env` file) or through a grouped YAML configuration file.
+
+### YAML Configuration (Recommended)
+
+You can set all configuration options via a hierarchical YAML file. To use this, set the `CHOUSE_CONFIG_PATH` environment variable pointing to your YAML file:
+
+```bash
+CHOUSE_CONFIG_PATH=./config.yaml bun run packages/server/src/index.ts
+```
+
+The YAML keys map directly to the environment variables by converting the nested paths to uppercase and joining with underscores. For example:
+```yaml
+port: 5521
+node_env: production
+rbac:
+  db_type: sqlite
+  sqlite_path: ./data/rbac.db
+  encryption:
+    key: your-secret-key
+ai:
+  provider: openai
+```
+
 ### Environment Variables
 
 #### Core Settings
@@ -196,6 +219,7 @@ For production, we recommend using an external highly-available PostgreSQL datab
 | `NODE_ENV` | Environment (`development`/`production`) | `development` |
 | `CORS_ORIGIN` | Allowed CORS origins (comma-separated or `*`) | `*` |
 | `STATIC_PATH` | Path to frontend build | `./dist` |
+| `CHOUSE_CONFIG_PATH` | Path to optional YAML configuration file | - |
 
 #### RBAC Database
 

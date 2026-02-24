@@ -86,6 +86,7 @@ ENV NODE_ENV=production \
     STATIC_PATH=/app/dist \
     SESSION_TTL=3600000 \
     CORS_ORIGIN=* \
+    CHOUSE_CONFIG_PATH="" \
     RBAC_DB_TYPE=sqlite \
     RBAC_SQLITE_PATH=/app/data/rbac.db \
     RBAC_POSTGRES_URL="" \

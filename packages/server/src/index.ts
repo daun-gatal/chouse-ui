@@ -1,3 +1,4 @@
+import "./utils/configLoader";
 import { Hono, Context } from "hono";
 import { serve } from "bun";
 import { serveStatic } from "hono/bun";

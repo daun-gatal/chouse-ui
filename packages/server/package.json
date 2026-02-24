@@ -1,6 +1,6 @@
 {
   "name": "@chouseui/server",
-  "version": "2.11.2",
+  "version": "2.11.3",
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
@@ -33,6 +33,7 @@
     "node-sql-parser": "^5.3.13",
     "postgres": "^3.4.5",
     "sql-formatter": "^15.7.1",
+    "yaml": "^2.8.2",
     "zod": "^3.23.0"
   },
   "devDependencies": {
