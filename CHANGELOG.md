@@ -14,7 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Multi-Chart Rendering**: Fully resolved the chart overwrite bug by refactoring the AI chat state and database schema to support arrays of chart specifications (`chartSpecs`), allowing multiple interactive charts to be reliably rendered and persisted in a single assistant response.
 - **Docker Configuration**: Updated and formatted the project Dockerfile.
 
 ## [v2.11.2] - 2026-02-24
