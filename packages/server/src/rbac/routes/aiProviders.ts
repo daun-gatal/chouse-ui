@@ -17,7 +17,7 @@ import {
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLog } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
-import { PROVIDER_TYPES } from '../constants/aiProviders';
+import { PROVIDER_TYPES, type ProviderType } from '../constants/aiProviders';
 
 const aiProvidersRoutes = new Hono();
 
@@ -77,7 +77,10 @@ aiProvidersRoutes.post(
         try {
             const user = getRbacUser(c);
             const input = c.req.valid('json');
-            const provider = await createAiProvider(input);
+            const provider = await createAiProvider({
+                ...input,
+                providerType: input.providerType as ProviderType,
+            });
 
             await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
                 resourceType: 'ai_provider',
@@ -105,7 +108,10 @@ aiProvidersRoutes.patch(
             const id = c.req.param('id');
             const input = c.req.valid('json');
 
-            const provider = await updateAiProvider(id, input);
+            const provider = await updateAiProvider(id, {
+                ...input,
+                ...(input.providerType !== undefined && { providerType: input.providerType as ProviderType }),
+            });
             if (!provider) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
 
             await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
