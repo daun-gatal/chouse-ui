@@ -141,7 +141,10 @@ aiConfigsRoutes.post(
             });
             return c.json({ success: true, data: config }, 201);
         } catch (error) {
-            return c.json({ success: false, error: { code: 'CREATE_FAILED', message: error instanceof Error ? error.message : 'Failed to create config' } }, 500);
+            console.error('[AI Configs] Create error:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Failed to create config';
+            const statusCode = errorMessage.includes('inactive') ? 400 : 500;
+            return c.json({ success: false, error: { code: 'CREATE_FAILED', message: errorMessage } }, statusCode);
         }
     }
 );
@@ -169,7 +172,10 @@ aiConfigsRoutes.patch(
             });
             return c.json({ success: true, data: config });
         } catch (error) {
-            return c.json({ success: false, error: { code: 'UPDATE_FAILED', message: 'Failed to update config' } }, 500);
+            console.error('[AI Configs] Update error:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Failed to update config';
+            const statusCode = errorMessage.includes('inactive') ? 400 : 500;
+            return c.json({ success: false, error: { code: 'UPDATE_FAILED', message: errorMessage } }, statusCode);
         }
     }
 );

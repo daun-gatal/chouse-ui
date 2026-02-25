@@ -17,11 +17,13 @@ import {
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLog } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
+import { PROVIDER_TYPES } from '../constants/aiProviders';
 
 const aiProvidersRoutes = new Hono();
 
 const createProviderSchema = z.object({
     name: z.string().min(1).max(255),
+    providerType: z.enum(PROVIDER_TYPES as unknown as [string, ...string[]]),
     baseUrl: z.string().url().optional().nullable(),
     apiKey: z.string().optional(),
     isActive: z.boolean().default(true),
@@ -29,6 +31,7 @@ const createProviderSchema = z.object({
 
 const updateProviderSchema = z.object({
     name: z.string().min(1).max(255).optional(),
+    providerType: z.enum(PROVIDER_TYPES as unknown as [string, ...string[]]).optional(),
     baseUrl: z.string().url().optional().nullable(),
     apiKey: z.string().optional(),
     isActive: z.boolean().optional(),
@@ -79,13 +82,14 @@ aiProvidersRoutes.post(
             await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
                 resourceType: 'ai_provider',
                 resourceId: provider.id,
-                details: { operation: 'create', name: provider.name },
+                details: { operation: 'create', name: provider.name, providerType: provider.providerType },
                 ipAddress: getClientIp(c),
                 userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: provider }, 201);
         } catch (error) {
-            return c.json({ success: false, error: { code: 'CREATE_FAILED', message: 'Failed to create provider' } }, 500);
+            console.error('[AI Providers] Create error:', error);
+            return c.json({ success: false, error: { code: 'CREATE_FAILED', message: error instanceof Error ? error.message : 'Failed to create provider' } }, 500);
         }
     }
 );
@@ -113,7 +117,8 @@ aiProvidersRoutes.patch(
             });
             return c.json({ success: true, data: provider });
         } catch (error) {
-            return c.json({ success: false, error: { code: 'UPDATE_FAILED', message: 'Failed to update provider' } }, 500);
+            console.error('[AI Providers] Update error:', error);
+            return c.json({ success: false, error: { code: 'UPDATE_FAILED', message: error instanceof Error ? error.message : 'Failed to update provider' } }, 500);
         }
     }
 );

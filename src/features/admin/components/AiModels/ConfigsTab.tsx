@@ -18,6 +18,7 @@ import {
     type AiConfig, type AiBaseModel,
     type CreateAiConfigInput, type UpdateAiConfigInput
 } from '@/api/rbac';
+import { ApiError } from '@/api/client';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
 
 const configSchema = z.object({
@@ -83,7 +84,8 @@ export default function ConfigsTab() {
             fetchData();
             window.dispatchEvent(new CustomEvent('ai-config-updated'));
         } catch (error) {
-            toast.error('Failed to update config status');
+            const errorMessage = error instanceof ApiError ? error.message : 'Failed to update config status';
+            toast.error(errorMessage);
         }
     };
 
@@ -94,7 +96,8 @@ export default function ConfigsTab() {
             fetchData();
             window.dispatchEvent(new CustomEvent('ai-config-updated'));
         } catch (error) {
-            toast.error('Failed to update default config');
+            const errorMessage = error instanceof ApiError ? error.message : 'Failed to update default config';
+            toast.error(errorMessage);
         }
     };
 
@@ -107,7 +110,8 @@ export default function ConfigsTab() {
             fetchData();
             window.dispatchEvent(new CustomEvent('ai-config-updated'));
         } catch (error) {
-            toast.error('Failed to delete Config');
+            const errorMessage = error instanceof ApiError ? error.message : 'Failed to delete Config';
+            toast.error(errorMessage);
         }
     };
 
@@ -130,7 +134,9 @@ export default function ConfigsTab() {
             setIsFormOpen(false);
             window.dispatchEvent(new CustomEvent('ai-config-updated'));
         } catch (error) {
-            toast.error(isEditing ? 'Failed to update' : 'Failed to create');
+            const defaultMessage = isEditing ? 'Failed to update' : 'Failed to create';
+            const errorMessage = error instanceof ApiError ? error.message : defaultMessage;
+            toast.error(errorMessage);
         } finally {
             setIsSubmitting(false);
         }

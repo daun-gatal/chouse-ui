@@ -390,6 +390,7 @@ export const userPreferences = pgTable('rbac_user_preferences', {
 export const aiProviders = pgTable('rbac_ai_providers', {
   id: text('id').primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),
+  providerType: varchar('provider_type', { length: 255 }).notNull(),
   baseUrl: text('base_url'),
   apiKeyEncrypted: text('api_key_encrypted'),
   isActive: boolean('is_active').notNull().default(true),

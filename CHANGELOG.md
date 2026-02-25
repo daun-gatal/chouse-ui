@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.1] - 2026-02-25
+
+### Added
+
+- **Provider-Config Cascade Deactivation**: When an AI provider is deactivated, all AI configs belonging to models under that provider are automatically deactivated to maintain data consistency. This ensures inactive providers cannot have active configs.
+- **Provider Type Constants**: Introduced centralized provider type definitions in `packages/server/src/rbac/constants/aiProviders.ts` and `src/constants/aiProviders.ts` as a single source of truth for all supported provider types (openai, anthropic, google, huggingface, openai-compatible). Adding new provider types now requires minimal code changes.
+- **Database Schema Update**: Added `provider_type` column to `rbac_ai_providers` table to separate provider type (e.g., "openai", "anthropic") from display name (e.g., "OpenAI Production"). Database migration version 1.16.2 automatically adds the `provider_type` column, copies existing `name` values to `provider_type` for backward compatibility, validates all provider types, and makes the column NOT NULL. The `name` field now stores custom display names while `provider_type` stores the actual provider type used for SDK initialization.
+
+### Changed
+
+- **Database Schema**: Updated `rbac_ai_providers` table schema in both PostgreSQL and SQLite to include `provider_type VARCHAR(255) NOT NULL` column. Updated Drizzle ORM schema definitions in `packages/server/src/rbac/schema/postgres.ts` and `packages/server/src/rbac/schema/sqlite.ts`.
+- **Provider Management**: Updated all provider-related services and API routes to use `providerType` field instead of inferring type from `name`. The UI now displays both provider name and provider type separately.
+- **Config Activation Validation**: Enhanced validation to prevent activating or creating AI configs when their associated provider is inactive. Users receive clear error messages indicating which provider needs to be activated first.
+- **Error Handling Improvements**: Updated AI Configs API routes and UI components to display user-readable error messages from the server, replacing generic "Failed to update/create" messages with specific guidance (e.g., "Cannot activate config because its provider 'OpenAI Production' is inactive. Please activate the provider first.").
+
+### Fixed
+
+- **Data Consistency**: Fixed a bug where configs could be activated even when their provider was inactive, which could lead to runtime failures when attempting to use AI features.
+
 ## [v2.12.0] - 2026-02-25
 
 ### ⚠️ BREAKING CHANGE / MIGRATION REQUIRED

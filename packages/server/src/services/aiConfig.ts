@@ -13,12 +13,14 @@ import { createHuggingFace } from "@ai-sdk/huggingface";
 import { AppError } from "../types";
 import { getAiConfigById, getDefaultAiConfig, getAiConfigWithKey } from "../rbac/services/aiModels";
 import type { AiConfigWithKey } from "../rbac/services/aiModels";
+import { ProviderType, PROVIDER_TYPES, PROVIDER_REQUIREMENTS, isValidProviderType } from "../rbac/constants/aiProviders";
 
 // ============================================
 // Types
 // ============================================
 
-export type AIProvider = "openai" | "anthropic" | "google" | "huggingface" | "openai-compatible";
+// Re-export ProviderType for backward compatibility
+export type AIProvider = ProviderType;
 
 // ============================================
 // Configuration
@@ -60,30 +62,30 @@ export function validateConfiguration(config: AiConfigWithKey | null): { valid: 
         };
     }
 
-    if (!config.provider.apiKey) {
+    // Validate provider type
+    if (!isValidProviderType(config.provider.providerType)) {
+        return {
+            valid: false,
+            error: `Invalid AI provider type: ${config.provider.providerType}. Supported: ${PROVIDER_TYPES.join(", ")}`,
+        };
+    }
+
+    const requirements = PROVIDER_REQUIREMENTS[config.provider.providerType];
+
+    // Validate API key requirement
+    if (requirements.requiresApiKey && !config.provider.apiKey) {
         return {
             valid: false,
             error: `API key is missing for provider ${config.provider.name}. Please supply an API key in the Admin UI.`,
         };
     }
 
-    // Validate provider
-    const validProviders: string[] = ["openai", "anthropic", "google", "huggingface", "openai-compatible"];
-    if (!validProviders.includes(config.provider.name)) {
+    // Validate baseUrl requirement
+    if (requirements.requiresBaseUrl && !config.provider.baseUrl) {
         return {
             valid: false,
-            error: `Invalid AI provider: ${config.provider.name}. Supported: ${validProviders.join(", ")}`,
+            error: `Base URL is required when using the ${config.provider.providerType} provider.`,
         };
-    }
-
-    // Validate baseUrl protocol for openai-compatible
-    if (config.provider.name === "openai-compatible") {
-        if (!config.provider.baseUrl) {
-            return {
-                valid: false,
-                error: "Base URL is required when using the openai-compatible provider.",
-            };
-        }
     }
 
     if (config.provider.baseUrl) {
@@ -107,6 +109,61 @@ export function validateConfiguration(config: AiConfigWithKey | null): { valid: 
 }
 
 /**
+ * Provider initialization function type
+ */
+type ProviderInitializer = (config: { apiKey?: string; baseUrl?: string }, modelName: string) => any;
+
+/**
+ * Provider Registry
+ * 
+ * Maps provider types to their initialization functions.
+ * To add a new provider:
+ * 1. Add it to PROVIDER_TYPES in constants/aiProviders.ts
+ * 2. Add initialization logic here
+ */
+const providerRegistry: Record<ProviderType, ProviderInitializer> = {
+    'openai': (config, modelName) => {
+        const OpenAIProvider = createOpenAI({
+            apiKey: config.apiKey || undefined,
+            baseURL: config.baseUrl || undefined,
+        });
+        return OpenAIProvider(modelName);
+    },
+    'anthropic': (config, modelName) => {
+        const AnthropicProvider = createAnthropic({
+            apiKey: config.apiKey || undefined,
+            baseURL: config.baseUrl || undefined,
+        });
+        return AnthropicProvider(modelName);
+    },
+    'google': (config, modelName) => {
+        const GoogleProvider = createGoogleGenerativeAI({
+            apiKey: config.apiKey || undefined,
+            baseURL: config.baseUrl || undefined,
+        });
+        return GoogleProvider(modelName);
+    },
+    'huggingface': (config, modelName) => {
+        const HuggingFaceProvider = createHuggingFace({
+            apiKey: config.apiKey || undefined,
+            baseURL: config.baseUrl || undefined,
+        });
+        return HuggingFaceProvider(modelName);
+    },
+    'openai-compatible': (config, modelName) => {
+        if (!config.baseUrl) {
+            throw new AppError("Base URL is required for openai-compatible", "AI_CONFIGURATION_ERROR", "validation", 500);
+        }
+        const OpenAICompatibleProvider = createOpenAICompatible({
+            name: "openai-compatible",
+            baseURL: config.baseUrl,
+            apiKey: config.apiKey || undefined,
+        });
+        return OpenAICompatibleProvider(modelName);
+    },
+};
+
+/**
  * Initialize AI model based on provider configuration
  */
 export function initializeAIModel(config: AiConfigWithKey) {
@@ -116,54 +173,35 @@ export function initializeAIModel(config: AiConfigWithKey) {
         throw new AppError("AI model ID string is not configured.", "AI_CONFIGURATION_ERROR", "validation", 500);
     }
 
-    switch (config.provider.name) {
-        case "openai": {
-            const OpenAIProvider = createOpenAI({
-                apiKey: config.provider.apiKey || undefined,
-                baseURL: config.provider.baseUrl || undefined,
-            });
-            return OpenAIProvider(modelName);
-        }
-        case "anthropic": {
-            const AnthropicProvider = createAnthropic({
-                apiKey: config.provider.apiKey || undefined,
-                baseURL: config.provider.baseUrl || undefined,
-            });
-            return AnthropicProvider(modelName);
-        }
-        case "google": {
-            const GoogleProvider = createGoogleGenerativeAI({
-                apiKey: config.provider.apiKey || undefined,
-                baseURL: config.provider.baseUrl || undefined,
-            });
-            return GoogleProvider(modelName);
-        }
-        case "huggingface": {
-            const HuggingFaceProvider = createHuggingFace({
-                apiKey: config.provider.apiKey || undefined,
-                baseURL: config.provider.baseUrl || undefined,
-            });
-            return HuggingFaceProvider(modelName);
-        }
-        case "openai-compatible": {
-            if (!config.provider.baseUrl) {
-                throw new AppError("Base URL is required for openai-compatible", "AI_CONFIGURATION_ERROR", "validation", 500);
-            }
-            const OpenAICompatibleProvider = createOpenAICompatible({
-                name: "openai-compatible",
-                baseURL: config.provider.baseUrl,
-                apiKey: config.provider.apiKey || undefined,
-            });
-            return OpenAICompatibleProvider(modelName);
-        }
-        default:
-            throw new AppError(
-                `Unsupported AI provider: ${config.provider.name}`,
-                "CONFIGURATION_ERROR",
-                "unknown",
-                500
-            );
+    // Validate provider type
+    if (!isValidProviderType(config.provider.providerType)) {
+        throw new AppError(
+            `Unsupported AI provider type: ${config.provider.providerType}. Supported: ${PROVIDER_TYPES.join(", ")}`,
+            "CONFIGURATION_ERROR",
+            "unknown",
+            500
+        );
     }
+
+    // Get initializer from registry
+    const initializer = providerRegistry[config.provider.providerType];
+    if (!initializer) {
+        throw new AppError(
+            `Provider initializer not found for type: ${config.provider.providerType}`,
+            "CONFIGURATION_ERROR",
+            "unknown",
+            500
+        );
+    }
+
+    // Initialize provider with config
+    return initializer(
+        {
+            apiKey: config.provider.apiKey || undefined,
+            baseUrl: config.provider.baseUrl || undefined,
+        },
+        modelName
+    );
 }
 
 /**
