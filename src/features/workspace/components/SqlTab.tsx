@@ -165,7 +165,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               action: {
                 label: "View",
                 onClick: () => {
-                  setOptimizerAutoStart(true);
+                  setOptimizerAutoStart(false);
                   setOptimizationReason(result.reason);
                   setIsOptimizerOpen(true);
                 }

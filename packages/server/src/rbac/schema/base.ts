@@ -109,6 +109,12 @@ export const PERMISSIONS = {
   // AI Features
   AI_OPTIMIZE: 'ai:optimize',
   AI_CHAT: 'ai:chat',
+
+  // AI Models Management
+  AI_MODELS_VIEW: 'ai_models:view',
+  AI_MODELS_CREATE: 'ai_models:create',
+  AI_MODELS_UPDATE: 'ai_models:update',
+  AI_MODELS_DELETE: 'ai_models:delete',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -163,6 +169,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.LIVE_QUERIES_KILL_ALL,
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
+    PERMISSIONS.AI_MODELS_VIEW,
+    PERMISSIONS.AI_MODELS_CREATE,
+    PERMISSIONS.AI_MODELS_UPDATE,
+    PERMISSIONS.AI_MODELS_DELETE,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [

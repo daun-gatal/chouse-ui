@@ -69,8 +69,15 @@ export interface StreamDelta {
     chartSpec?: ChartSpec;
 }
 
+export interface AiModelSimple {
+    id: string;
+    name: string;
+    provider: string;
+    isDefault: boolean;
+}
+
 // ============================================
-// Status
+// Status & Models
 // ============================================
 
 /**
@@ -78,6 +85,13 @@ export interface StreamDelta {
  */
 export async function getChatStatus(): Promise<ChatStatus> {
     return api.get<ChatStatus>('/ai-chat/status');
+}
+
+/**
+ * Get available AI models
+ */
+export async function getAiModels(): Promise<AiModelSimple[]> {
+    return api.get<AiModelSimple[]>('/ai-chat/models');
 }
 
 // ============================================
@@ -133,6 +147,7 @@ export async function* streamChatMessage(
     threadId: string,
     message: string,
     messages?: Array<{ role: string; content: string }>,
+    modelId?: string,
     signal?: AbortSignal
 ): AsyncGenerator<StreamDelta> {
     // Build auth headers manually for streaming
@@ -160,6 +175,7 @@ export async function* streamChatMessage(
             threadId,
             message,
             messages,
+            modelId,
         }),
         credentials: 'include',
         signal,

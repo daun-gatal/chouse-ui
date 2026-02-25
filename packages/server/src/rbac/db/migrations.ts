@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.15.0';
+export const APP_VERSION = '1.16.1';
 
 // ============================================
 // Migration Registry
@@ -1669,6 +1669,219 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: '1.16.0',
+    name: 'ai_models_tables',
+    description: 'Add AI Models normalized tables to store providers, models, and configurations',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        // AI Providers
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_providers (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            base_url TEXT,
+            api_key_encrypted TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+        // AI Models
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_models (
+            id TEXT PRIMARY KEY NOT NULL,
+            provider_id TEXT NOT NULL REFERENCES rbac_ai_providers(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_models_provider_id_idx ON rbac_ai_models(provider_id)`);
+        // AI Configs
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_configs (
+            id TEXT PRIMARY KEY NOT NULL,
+            model_id TEXT NOT NULL REFERENCES rbac_ai_models(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_configs_model_id_idx ON rbac_ai_configs(model_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_active_idx ON rbac_ai_configs(is_active)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_default_idx ON rbac_ai_configs(is_default)`);
+      } else {
+        // AI Providers
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_providers (
+            id TEXT PRIMARY KEY NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            base_url TEXT,
+            api_key_encrypted TEXT,
+            is_active BOOLEAN NOT NULL DEFAULT true,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+        // AI Models
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_models (
+            id TEXT PRIMARY KEY NOT NULL,
+            provider_id TEXT NOT NULL REFERENCES rbac_ai_providers(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            model_id VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_models_provider_id_idx ON rbac_ai_models(provider_id)`);
+        // AI Configs
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_configs (
+            id TEXT PRIMARY KEY NOT NULL,
+            model_id TEXT NOT NULL REFERENCES rbac_ai_models(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT true,
+            is_default BOOLEAN NOT NULL DEFAULT false,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_model_id_idx ON rbac_ai_configs(model_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_active_idx ON rbac_ai_configs(is_active)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_default_idx ON rbac_ai_configs(is_default)`);
+      }
+
+      const { seedPermissions, seedRoles } = await import('../services/seed');
+      const permissionIdMap = await seedPermissions();
+      await seedRoles(permissionIdMap);
+
+      console.log('[Migration 1.16.0] Added ai models normalized tables and permissions');
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_ai_configs`);
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_ai_models`);
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_ai_providers`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_configs`);
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_models`);
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_providers`);
+      }
+      console.log('[Migration 1.16.0] Dropped ai models normalized tables');
+    },
+  },
+  {
+    version: '1.16.1',
+    name: 'ai_models_admin_permissions',
+    description: 'Seed AI Models permissions and assign to Admin roles',
+    up: async (db) => {
+      const { seedPermissions } = await import('../services/seed');
+
+      const permissionIdMap = await seedPermissions();
+
+      const aiViewId = permissionIdMap.get('ai_models:view');
+      const aiCreateId = permissionIdMap.get('ai_models:create');
+      const aiUpdateId = permissionIdMap.get('ai_models:update');
+      const aiDeleteId = permissionIdMap.get('ai_models:delete');
+
+      if (!aiViewId || !aiCreateId || !aiUpdateId || !aiDeleteId) {
+        console.error('[Migration 1.16.1] Failed to get AI Models permission IDs');
+        return;
+      }
+
+      const { getDatabaseType } = await import('./index');
+      const { SYSTEM_ROLES } = await import('../schema/base');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+
+      const dbType = getDatabaseType();
+
+      // Grant to both super_admin and admin
+      const rolesToUpdate = [SYSTEM_ROLES.SUPER_ADMIN, SYSTEM_ROLES.ADMIN];
+
+      for (const roleName of rolesToUpdate) {
+        let roleResult: Array<{ id: string }>;
+
+        if (dbType === 'sqlite') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          roleResult = (db as any).all(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `) as Array<{ id: string }>;
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const rows = await (db as any).execute(sql`
+            SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1
+          `);
+          const raw = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+          roleResult = raw as Array<{ id: string }>;
+        }
+
+        if (roleResult.length > 0) {
+          const roleId = roleResult[0].id;
+
+          for (const permId of [aiViewId, aiCreateId, aiUpdateId, aiDeleteId]) {
+            let existing: Array<unknown>;
+
+            if (dbType === 'sqlite') {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              existing = (db as any).all(sql`
+                SELECT 1 FROM rbac_role_permissions
+                WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1
+              `);
+            } else {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const rows = await (db as any).execute(sql`
+                SELECT 1 FROM rbac_role_permissions
+                WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1
+              `);
+              existing = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+            }
+
+            if (existing.length === 0) {
+              const id = randomUUID();
+              const createdAt = new Date();
+
+              if (dbType === 'sqlite') {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (db as any).run(sql`
+                  INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                  VALUES (${id}, ${roleId}, ${permId}, ${Math.floor(createdAt.getTime() / 1000)})
+                `);
+              } else {
+                // Postgres driver expects string/Buffer for bind params, not Date
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (db as any).execute(sql`
+                  INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                  VALUES (${id}, ${roleId}, ${permId}, ${createdAt.toISOString()})
+                `);
+              }
+              console.log(`[Migration 1.16.1] Assigned permission ${permId} to role ${roleName}`);
+            }
+          }
+        }
+      }
+
+      console.log('[Migration 1.16.1] Seeded AI Models permissions to Admin roles');
+    },
+    down: async (db) => {
+      console.log('[Migration 1.16.1] Down migration: AI Models permissions will remain (idempotent seed)');
+    },
+  },
 ];
 
 // ============================================
@@ -2016,6 +2229,51 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
 
   db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
 
+  // AI Providers table
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS rbac_ai_providers (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      base_url TEXT,
+      api_key_encrypted TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // AI Models table
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS rbac_ai_models (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider_id TEXT NOT NULL REFERENCES rbac_ai_providers(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  db.run(sql`CREATE INDEX IF NOT EXISTS ai_models_provider_id_idx ON rbac_ai_models(provider_id)`);
+
+  // AI Configs table
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS rbac_ai_configs (
+      id TEXT PRIMARY KEY NOT NULL,
+      model_id TEXT NOT NULL REFERENCES rbac_ai_models(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL
+    )
+  `);
+
+  db.run(sql`CREATE INDEX IF NOT EXISTS ai_configs_model_id_idx ON rbac_ai_configs(model_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_active_idx ON rbac_ai_configs(is_active)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_default_idx ON rbac_ai_configs(is_default)`);
+
   // Saved Queries table (connectionId is optional - null means shared across all connections)
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_saved_queries (
@@ -2278,6 +2536,51 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   `);
 
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
+
+  // AI Providers table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rbac_ai_providers (
+      id TEXT PRIMARY KEY NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      base_url TEXT,
+      api_key_encrypted TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // AI Models table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rbac_ai_models (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider_id TEXT NOT NULL REFERENCES rbac_ai_providers(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      model_id VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_models_provider_id_idx ON rbac_ai_models(provider_id)`);
+
+  // AI Configs table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rbac_ai_configs (
+      id TEXT PRIMARY KEY NOT NULL,
+      model_id TEXT NOT NULL REFERENCES rbac_ai_models(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      is_default BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL
+    )
+  `);
+
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_model_id_idx ON rbac_ai_configs(model_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_active_idx ON rbac_ai_configs(is_active)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_default_idx ON rbac_ai_configs(is_default)`);
 
   // Saved Queries table (connectionId is optional - null means shared across all connections)
   await db.execute(sql`

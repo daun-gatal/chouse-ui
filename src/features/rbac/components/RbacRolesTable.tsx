@@ -131,6 +131,7 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'audit': 'Audit',
   'live_queries': 'Live Queries',
   'ai': 'AI Assistant',
+  'ai_models': 'AI Models',
 };
 
 const getPermissionCategory = (permission: string): string => {

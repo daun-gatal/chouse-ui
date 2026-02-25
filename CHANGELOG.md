@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.0] - 2026-02-25
+
+### ⚠️ BREAKING CHANGE / MIGRATION REQUIRED
+- **AI Configuration via Environment Variables Removed**: The system no longer reads `AI_API_KEY`, `AI_PROVIDER`, etc. from `.env` or `.config.yaml`.
+  - **Migration**: Log in as an Admin, navigate to **Preferences > AI Models** to manually configure your AI Providers, SDK Models, and Active Deployments via the new interactive UI.
+
+### Added
+
+- **AI Dashboard UI**: Integrated a unified 3-tier management system for AI configurations natively into the application.
+  - **Providers**: Manage API keys and Base URLs for OpenAI, Anthropic, Google, HuggingFace, etc., encrypted at rest.
+  - **SDK Models**: Define the available base models (`gpt-4o`, `claude-3-5-sonnet`) supported by your providers.
+  - **Config Deployments**: Create user-facing active configurations complete with dynamic default selection.
+- **Agent Skills Architecture**: Introduced a new `packages/server/src/skills/` directory to externalize AI instructions into modular `SKILL.md` files.
+  - Dynamically loads complex operating instructions (skills) like data visualization, SQL generation, and query optimization.
+  - Reduces main system prompt size, dramatically improving AI instruction adherence and minimizing token limits.
+  - Added specific skills: `data-visualization`, `data-exploration`, `sql-generation`, `query-optimization`, `system-troubleshooting` (for AI Chat), and `optimizer`, `debugger`, `evaluator` (for AI Optimizer).
+
+### Changed
+
+- **AI Dialogs Refactored**: The "Debug with AI" and "Optimize Query" dialogs now feature an explicitly interactive grid forcing manual user selection of the desired AI Config before execution, instead of auto-running.
+- **AI Chat Window**: Replaced native `<select>` dropdowns for Model Selection with a dynamically styled `DropdownMenu`. Instantly listens to `ai-config-updated` broadcasts for zero-reload updates.
+- **AI Chat Enhancements**: Refactored `aiChat.ts` to utilize a `load_skill` tool and explicit Intent-to-Skill routing framework.
+  - Enforced STRICT TOOL-FIRST rules to prevent text-based hallucinations when charts are requested.
+  - The AI now dynamically loads visualization rules only when a `render_chart` visualization is needed.
+
 ## [v2.11.3] - 2026-02-25
 
 ### Added

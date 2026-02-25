@@ -234,13 +234,44 @@ aiChat.use("*", chatAuthMiddleware);
  * GET /ai-chat/status
  * Check if AI chat is enabled and available
  */
-aiChat.get("/status", (c) => {
+aiChat.get("/status", async (c) => {
     return c.json({
         success: true,
         data: {
-            enabled: isAIEnabled(),
+            enabled: await isAIEnabled(),
         },
     });
+});
+
+/**
+ * GET /ai-chat/models
+ * Get a list of enabled AI models for the frontend dropdown
+ */
+aiChat.get("/models", async (c) => {
+    try {
+        const { listAiConfigs } = await import("../rbac/services/aiModels");
+        const initResult = await listAiConfigs({ activeOnly: true, limit: 100 });
+
+        const models = initResult.configs.map((cfg) => ({
+            id: cfg.id,
+            name: cfg.name,
+            provider: cfg.provider.name,
+            isDefault: cfg.isDefault,
+        }));
+
+        return c.json({
+            success: true,
+            data: models,
+        });
+    } catch (e) {
+        console.error("Failed to load AI models:", e);
+        return c.json({
+            success: false,
+            error: {
+                message: "Failed to load AI models",
+            }
+        }, 500);
+    }
 });
 
 // ============================================
@@ -251,6 +282,7 @@ const StreamRequestSchema = z.object({
     threadId: z.string().min(1, "Thread ID is required"),
     message: z.string().min(1, "Message is required"),
     messages: z.array(z.any()).optional(), // Optional full message history from frontend
+    modelId: z.string().optional(),
 });
 
 /**
@@ -258,7 +290,7 @@ const StreamRequestSchema = z.object({
  * Stream a chat response via SSE
  */
 aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
-    const { threadId, message, messages: frontendMessages } = c.req.valid("json");
+    const { threadId, message, messages: frontendMessages, modelId } = c.req.valid("json");
     const rbacUserId = c.get("rbacUserId")!;
     const isRbacAdmin = c.get("isRbacAdmin") || false;
     const rbacPermissions = c.get("rbacPermissions") || [];
@@ -302,7 +334,7 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
     };
 
     try {
-        const result = await streamChat(coreMessages, chatContext);
+        const result = await streamChat(coreMessages, chatContext, modelId);
 
         // Set up SSE response
         c.header('Content-Type', 'text/event-stream');

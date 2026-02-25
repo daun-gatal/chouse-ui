@@ -1,11 +1,11 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { format } from "sql-formatter";
+import { promises as fs } from "node:fs";
 import type { TableDetails } from "../types";
 import { AppError } from "../types";
 import {
     type AIProvider,
-    type AIConfiguration,
     getConfiguration,
     validateConfiguration,
     initializeAIModel,
@@ -51,113 +51,23 @@ export interface OptimizationCheckResult {
 // AIProvider and AIConfiguration types are now imported from aiConfig.ts
 
 // ============================================
-// Configuration
+// Configuration & Skills Loading
 // ============================================
 
-const OPTIMIZER_SYSTEM_PROMPT = `
-You are an expert ClickHouse Database Administrator and Query Optimizer.
-Your goal is to accept a SQL query (and optional schema/context) and output a strictly structured JSON response containing the optimized SQL and a detailed technical analysis.
-
-## ROLE & PERSONA
-- **Role**: Senior ClickHouse Performance Engineer.
-- **Tone**: Professional, technical, concise, and authoritative. NO conversational filler (e.g., "Here is the optimized query").
-- **Focus**: Latency reduction, resource usage (CPU/Memory/IO) minimization, and scalability.
-
-## OUPUT FORMAT INSTRUCTIONS
-You must strictly return a JSON object with the following fields:
-1. **optimizedQuery**: The fully rewritten SQL query. Use standard formatting.
-2. **explanation**: A Markdown-formatted technical report explaining *why* changes were made.
-   - Use strict Markdown headers (e.g., \`### Analysis\`, \`### Changes\`).
-   - Use bolding for key terms (e.g., **PREWHERE**).
-   - Use bullet points for lists.
-   - Reference specific ClickHouse concepts (e.g., "MergeTree index granularity", "partition pruning").
-   - Compare the original vs. optimized approach (e.g., "Moving the filter to PREWHERE reduces data read by ~50% before joins").
-   - **IMPORTANT**: If a specific issue was detected (e.g., "Missing PREWHERE"), explicitly address it in the explanation.
-3. **summary**: A single, punchy sentence highlighting the primary gain (e.g., "Reduced scan volume by leveraging partition pruning and PREWHERE").
-4. **tips**: An array of strings containing general best practices relevant to this *specific* query type (e.g., "Consider adding a generic index on 'user_id' if this query is frequent").
-
-## OPTIMIZATION STRATEGIES (PRIORITY ORDER)
-1. **Data Pruning**:
-   - Move low-cardinality or indexed filters to **PREWHERE**.
-   - Ensure partition keys are used in WHERE/PREWHERE.
-2. **Index Usage**:
-   - Verify usage of Primary Key and Sorting Keys.
-   - Suggest Data Skipping Indices if pattern matching is heavy.
-3. **Efficient Aggregation**:
-   - Use **-If** combinators (e.g., \`countIf\`) instead of CASE WHEN inside aggregations.
-   - Use \`uniqSketch\` or \`uniqCombined\` for approximate counting instead of \`COUNT(DISTINCT)\` on large sets.
-4. **Join Optimization**:
-   - prefer \`ANY LEFT JOIN\` or \`SEMI JOIN\` if multiplicity allows.
-   - Ensure the smaller table is on the **RIGHT** side of the JOIN.
-   - Use \`GLOBAL\` joins only when necessary for distributed tables.
-5. **Column Handling**:
-   - Remove unused columns (No \`SELECT *\`).
-   - Use specialized functions (e.g., \`parseDateTimeBestEffort\`) over complex casting chains.
-
-## CRITICAL RULES
-- **Do NOT** change the semantic meaning of the result set, UNLESS the query is an unbounded \`SELECT *\` or full table scan. In that case:
-  - Add \`LIMIT 100\` if missing.
-  - Add a commented-out \`PREWHERE\` clause as an example (e.g. \`-- PREWHERE created_at >= now() - INTERVAL 1 DAY\`).
-  - Replace \`SELECT *\` with explicit columns if known, or add a comment advising the user to specify columns.
-- **Do NOT** hallucinate table names or columns not present in the context.
-- If the query is already optimal, return it as-is but provide a confirmation in the summary.
-- If the query uses non-optimized logic (e.g., \`LIKE '%term%'\`), suggest \`tokenbf_v1\` index or inverted index in the **tips** section.`;
-
-const OPTIMIZER_CHECK_SYSTEM_PROMPT = `You are an expert ClickHouse SQL optimizer.
-Your goal is to quickly determine if a given SQL query has ANY potential for optimization.
-
-## OUPUT FORMAT INSTRUCTIONS
-You must strictly return a JSON object with the following fields:
-1. "canOptimize": boolean (true or false).
-2. "reason": string (a brief reason for the decision).
-
-Set canOptimize to true if:
-1. The query scans a large table without a partition key or primary key filter.
-2. It uses SELECT * on a wide table WITHOUT a LIMIT.
-3. It uses standard SQL functions where ClickHouse specialized functions exist (e.g. COUNT(DISTINCT) vs uniq).
-4. It performs high-cardinality GROUP BYs without sampling.
-5. It uses JOINs that could be optimized with IN or dictionaries.
-6. It is missing FINAL on ReplacingMergeTree (if relevant).
-7. It could benefit from PREWHERE.
-
-Set canOptimize to false if:
-1. The query is already highly optimized (e.g. uses PREWHERE, partition pruning keys).
-2. The query is trivial (SELECT 1).
-3. The query appears to be the result of a recent optimization (e.g. follows best practices strictly).
-4. The query uses SELECT * BUT has a small LIMIT (e.g. LIMIT 100).
-
-Be biased towards returning canOptimize as false if the query looks structured and deliberate. Return true only for obvious inefficiencies.`;
-
-const DEBUGGER_SYSTEM_PROMPT = `
-You are an expert ClickHouse Database Administrator and Query Debugger.
-Your goal is to accept a failed SQL query, the error message, and optional schema / context, then output a strictly structured JSON response containing the fixed SQL and a detailed technical analysis of the error.
-
-## ROLE & PERSONA
-- **Role**: Senior ClickHouse Logic & Syntax Expert.
-- **Tone**: Professional, technical, concise, and helpful.
-- **Focus**: Correctness, syntax fixing, and logic correction.
-
-## OUTPUT FORMAT INSTRUCTIONS
-You must strictly return a JSON object with the following fields:
-1. **fixedQuery**: The fully corrected SQL query. Use standard formatting.
-2. **errorAnalysis**: A concise explanation of what caused the error (e.g., "Field 'x' does not exist in table 'y'").
-3. **explanation**: A Markdown-formatted technical report explaining the fix.
-   - Use strict Markdown headers (e.g., \`### Error\`, \`### Fix\`).
-   - Use bolding for key terms.
-   - clearly explain *why* the original query failed and *how* the fix resolves it.
-4. **summary**: A single, punchy sentence summarizing the fix (e.g., "Corrected typo in column name and added missing GROUP BY clause").
-
-## DEBUGGING STRATEGIES
-1. **Syntax Errors**: Fix typos, missing keywords, incorrect punctuation.
-2. **Logic Errors**: Fix incorrect JOIN conditions, missing GROUP BY, incorrect aggregations.
-3. **Type Errors**: Fix type mismatches, add type casting if necessary.
-4. **ClickHouse Specifics**: Ensure valid ClickHouse SQL functions and syntax are used.
-
-## CRITICAL RULES
-- **Do NOT** change the semantic meaning of the result set unless the original meaning was impossible due to the error.
-- **Do NOT** hallucinate table names or columns not present in the context.
-- - If the query cannot be fixed with the given context, allow **fixedQuery** to be the same but explain why in **explanation**.
-`;
+/**
+ * Load skill content from SKILL.md and strip frontmatter
+ */
+async function loadSkillContent(skillName: string): Promise<string> {
+    try {
+        const url = new URL(`../skills/ai-optimizer/${skillName}/SKILL.md`, import.meta.url);
+        const content = await fs.readFile(url.pathname, "utf-8");
+        const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+        return match ? content.slice(match[0].length).trim() : content.trim();
+    } catch (error) {
+        console.error(`[AIOptimizer] Failed to load skill ${skillName}:`, error);
+        return "";
+    }
+}
 
 // Configuration functions (getConfiguration, validateConfiguration, initializeAIModel)
 // are now imported from aiConfig.ts
@@ -169,15 +79,15 @@ You must strictly return a JSON object with the following fields:
 /**
  * Check if AI optimizer is enabled
  */
-export function isOptimizerEnabled(): boolean {
-    return isAIEnabled();
+export async function isOptimizerEnabled(): Promise<boolean> {
+    return await isAIEnabled();
 }
 
 /**
  * Get system prompt for optimization
  */
-export function getSystemPrompt(): string {
-    return OPTIMIZER_SYSTEM_PROMPT;
+export async function getSystemPrompt(): Promise<string> {
+    return await loadSkillContent('optimizer');
 }
 
 export function buildOptimizationPrompt(
@@ -275,24 +185,27 @@ ${additionalPrompt.trim()}`;
 export async function optimizeQuery(
     query: string,
     tableDetails: TableDetails[],
-    additionalPrompt?: string
+    additionalPrompt?: string,
+    modelId?: string
 ): Promise<OptimizationResult> {
+    const config = await getConfiguration(modelId);
+
     // Validate configuration
-    const validation = validateConfiguration();
+    const validation = validateConfiguration(config);
     if (!validation.valid) {
         throw AppError.badRequest(validation.error || "AI optimizer is not available");
     }
-
-    const config = getConfiguration();
 
     try {
         // Build the user prompt
         const userPrompt = buildOptimizationPrompt(query, tableDetails, additionalPrompt);
 
         // Initialize AI model based on provider
-        const model = initializeAIModel(config);
+        const model = initializeAIModel(config!);
 
         // Generate optimization using structured output via generateText
+        const systemPrompt = await loadSkillContent('optimizer');
+
         const result = await generateText({
             model,
             output: Output.object({
@@ -303,7 +216,7 @@ export async function optimizeQuery(
                     tips: z.array(z.string()).describe("A list of general performance tips relevant to this specific query pattern."),
                 }),
             }),
-            system: OPTIMIZER_SYSTEM_PROMPT,
+            system: systemPrompt,
             prompt: userPrompt,
             temperature: 0.0,
         });
@@ -366,24 +279,27 @@ export async function debugQuery(
     query: string,
     error: string,
     tableDetails: TableDetails[] = [],
-    additionalPrompt?: string
+    additionalPrompt?: string,
+    modelId?: string
 ): Promise<DebugResult> {
+    const config = await getConfiguration(modelId);
+
     // Validate configuration
-    const validation = validateConfiguration();
+    const validation = validateConfiguration(config);
     if (!validation.valid) {
         throw AppError.badRequest(validation.error || "AI service is not available");
     }
-
-    const config = getConfiguration();
 
     try {
         // Build the user prompt
         const userPrompt = buildDebugPrompt(query, error, tableDetails, additionalPrompt);
 
         // Initialize AI model based on provider
-        const model = initializeAIModel(config);
+        const model = initializeAIModel(config!);
 
-        // Generate optimization using structured output via generateText
+        // Generate debugging fix using structured output via generateText
+        const systemPrompt = await loadSkillContent('debugger');
+
         const result = await generateText({
             model,
             output: Output.object({
@@ -394,7 +310,7 @@ export async function debugQuery(
                     summary: z.string().describe("One-line summary of the fix"),
                 }),
             }),
-            system: DEBUGGER_SYSTEM_PROMPT,
+            system: systemPrompt,
             prompt: userPrompt,
             temperature: 0.0,
         });
@@ -451,20 +367,23 @@ export async function debugQuery(
  */
 export async function checkQueryOptimization(
     query: string,
-    tableDetails: TableDetails[]
+    tableDetails: TableDetails[],
+    modelId?: string
 ): Promise<OptimizationCheckResult> {
-    const validation = validateConfiguration();
+    const config = await getConfiguration(modelId);
+
+    const validation = validateConfiguration(config);
     if (!validation.valid) {
         // silently fail or return false if not configured, but strictly we might throw
         // For check, let's just return false to avoid noise
-        return { canOptimize: false, reason: "AI not configured" };
+        return { canOptimize: false, reason: validation.error || "AI not configured" };
     }
-
-    const config = getConfiguration();
 
     try {
         const userPrompt = buildOptimizationPrompt(query, tableDetails); // We can reuse the builder
-        const model = initializeAIModel(config);
+        const model = initializeAIModel(config!);
+
+        const systemPrompt = await loadSkillContent('evaluator');
 
         const result = await generateText({
             model,
@@ -474,7 +393,7 @@ export async function checkQueryOptimization(
                     reason: z.string().describe("Brief reason for the decision"),
                 }),
             }),
-            system: OPTIMIZER_CHECK_SYSTEM_PROMPT,
+            system: systemPrompt,
             prompt: userPrompt,
             temperature: 0.0,
         });

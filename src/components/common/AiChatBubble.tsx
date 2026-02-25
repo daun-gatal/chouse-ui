@@ -21,6 +21,8 @@ import {
     getThread,
     deleteThread,
     streamChatMessage,
+    getAiModels,
+    type AiModelSimple,
     type ChatThread,
     type ChatMessage,
     type ChartSpec,
@@ -61,6 +63,13 @@ import {
     PieChart,
     ScatterChart,
 } from 'lucide-react';
+
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // ============================================
 // Resize constants
@@ -471,6 +480,8 @@ export default function AiChatBubble() {
     const hasPermission = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_CHAT));
     const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
+    const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
+    const [selectedModelId, setSelectedModelId] = useState<string>('');
     const [isOpen, setIsOpen] = useState(false);
     const [showSidebar, setShowSidebar] = useState(false);
 
@@ -599,13 +610,40 @@ export default function AiChatBubble() {
         return { recent, last24Hours, last7Days };
     }, [threads]);
 
-    // Check AI status on mount
-    useEffect(() => {
+    // Check AI status
+    const checkStatus = useCallback(() => {
         if (!hasPermission) return;
         getChatStatus()
             .then((status) => setAiEnabled(status.enabled))
             .catch(() => setAiEnabled(false));
     }, [hasPermission]);
+
+    useEffect(() => {
+        checkStatus();
+        window.addEventListener('ai-config-updated', checkStatus);
+        return () => window.removeEventListener('ai-config-updated', checkStatus);
+    }, [checkStatus]);
+
+    // Fetch AI models
+    const fetchModels = useCallback(() => {
+        if (hasPermission && aiEnabled) {
+            getAiModels().then(models => {
+                setAiModels(models);
+                const defaultModel = models.find(m => m.isDefault);
+                if (defaultModel) {
+                    setSelectedModelId(defaultModel.id);
+                } else if (models.length > 0) {
+                    setSelectedModelId(models[0].id);
+                }
+            }).catch(console.error);
+        }
+    }, [hasPermission, aiEnabled]);
+
+    useEffect(() => {
+        fetchModels();
+        window.addEventListener('ai-config-updated', fetchModels);
+        return () => window.removeEventListener('ai-config-updated', fetchModels);
+    }, [fetchModels]);
 
 
     // Auto-scroll to bottom without bubbling up scroll events to parent
@@ -721,6 +759,7 @@ export default function AiChatBubble() {
                 threadId,
                 prompt,
                 messageHistory,
+                selectedModelId || undefined,
                 controller.signal
             );
 
@@ -888,7 +927,7 @@ export default function AiChatBubble() {
         }
 
         await runStream(activeThreadId, trimmed, messageHistory);
-    }, [input, isStreaming, activeThreadId, messages, runStream]);
+    }, [input, isStreaming, activeThreadId, messages, runStream, selectedModelId]);
 
     const handleRetry = useCallback(async (retryPrompt: string) => {
         if (!retryPrompt || isStreaming || !activeThreadId) return;
@@ -920,7 +959,7 @@ export default function AiChatBubble() {
         messageHistory.push({ role: 'user', content: retryPrompt });
 
         await runStream(activeThreadId, retryPrompt, messageHistory);
-    }, [isStreaming, activeThreadId, messages, runStream]);
+    }, [isStreaming, activeThreadId, messages, runStream, selectedModelId]);
 
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -968,7 +1007,7 @@ export default function AiChatBubble() {
         setInput('');
 
         await runStream(threadId, prompt, [{ role: 'user', content: prompt }]);
-    }, [isStreaming, activeThreadId, runStream]);
+    }, [isStreaming, activeThreadId, runStream, activeConnectionId, selectedModelId]);
 
     // Don't render if no permission or AI is not enabled
     if (!hasPermission || aiEnabled === false) return null;
@@ -1113,6 +1152,49 @@ export default function AiChatBubble() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-0.5">
+                                {aiModels.length > 0 && (
+                                    <div className="mr-2 hidden sm:block">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <button className="flex items-center gap-2 bg-black/40 text-xs text-zinc-300 border border-white/10 rounded-lg px-2.5 py-1.5 hover:bg-white/5 hover:border-white/20 transition-colors max-w-[160px]">
+                                                    <span className="truncate">{aiModels.find(m => m.id === selectedModelId)?.name || 'Select Model'}</span>
+                                                    <ChevronDown className="w-3 h-3 opacity-50 flex-shrink-0" />
+                                                </button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="w-[240px] bg-[#1a1c24] border-white/10 p-2 shadow-2xl">
+                                                <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-2 py-1.5 flex flex-col mb-1">
+                                                    AI Models
+                                                </div>
+                                                <div className="flex flex-col gap-1 max-h-[280px] overflow-y-auto custom-scrollbar">
+                                                    {aiModels.map(m => (
+                                                        <DropdownMenuItem
+                                                            key={m.id}
+                                                            onClick={() => setSelectedModelId(m.id)}
+                                                            className={`flex items-start gap-2.5 px-3 py-2 cursor-pointer rounded-lg transition-colors ${selectedModelId === m.id
+                                                                    ? "bg-violet-500/15 text-violet-200"
+                                                                    : "hover:bg-white/5 text-zinc-300"
+                                                                }`}
+                                                        >
+                                                            <div className="mt-0.5 flex-shrink-0">
+                                                                <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${selectedModelId === m.id ? "border-violet-400" : "border-zinc-600"}`}>
+                                                                    {selectedModelId === m.id && <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex flex-col gap-0.5 min-w-0">
+                                                                <span className={`text-[13px] font-medium truncate ${selectedModelId === m.id ? "text-violet-200" : "text-zinc-200"}`}>
+                                                                    {m.name}
+                                                                </span>
+                                                                <span className="text-[10px] text-zinc-500 uppercase font-medium tracking-wide truncate">
+                                                                    {m.provider || 'AI Provider'}
+                                                                </span>
+                                                            </div>
+                                                        </DropdownMenuItem>
+                                                    ))}
+                                                </div>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                )}
                                 {isDesktop && (
                                     <button
                                         onClick={() => setWindowSize(

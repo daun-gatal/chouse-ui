@@ -518,10 +518,11 @@ query.post("/analyze", zValidator("json", AnalyzeRequestSchema), async (c) => {
 const DebugRequestSchema = z.object({
   query: z.string().min(1, "Query is required"),
   error: z.string().min(1, "Error message is required"),
+  modelId: z.string().optional(),
 });
 
 query.post("/debug", zValidator("json", DebugRequestSchema), async (c) => {
-  const { query: sql, error } = c.req.valid("json");
+  const { query: sql, error, modelId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -541,7 +542,7 @@ query.post("/debug", zValidator("json", DebugRequestSchema), async (c) => {
 
   // Validate it's a SELECT or compatible query
   // Debugging only makes sense for queries that are safe to run/analyze
-  const result = await debugQuery(sql, error);
+  const result = await debugQuery(sql, error, [], undefined, modelId);
 
   return c.json({
     success: true,
@@ -555,10 +556,11 @@ query.post("/debug", zValidator("json", DebugRequestSchema), async (c) => {
  */
 const CheckOptimizationRequestSchema = z.object({
   query: z.string().min(1, "Query is required"),
+  modelId: z.string().optional(),
 });
 
 query.post("/check-optimization", zValidator("json", CheckOptimizationRequestSchema), async (c) => {
-  const { query: sql } = c.req.valid("json");
+  const { query: sql, modelId } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -588,7 +590,7 @@ query.post("/check-optimization", zValidator("json", CheckOptimizationRequestSch
   // But let's keep it fast for now as the prompt might discern just from SQL structure 
   // (e.g. SELECT * without LIMIT).
 
-  const result = await checkQueryOptimization(sql, []);
+  const result = await checkQueryOptimization(sql, [], modelId);
 
   return c.json({
     success: true,
@@ -1084,10 +1086,11 @@ const OptimizeQuerySchema = z.object({
   query: z.string().min(1, "Query is required"),
   database: z.string().optional(),
   additionalPrompt: z.string().optional(),
+  modelId: z.string().optional(),
 });
 
 query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
-  const { query: sql, database, additionalPrompt } = c.req.valid("json");
+  const { query: sql, database, additionalPrompt, modelId } = c.req.valid("json");
   const service = c.get("service");
   const session = c.get("session");
   const rbacUserId = c.get("rbacUserId");
@@ -1101,7 +1104,7 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
     const { optimizeQuery, isOptimizerEnabled } = await import("../services/aiOptimizer");
 
     // Check if optimizer is enabled
-    if (!isOptimizerEnabled()) {
+    if (!(await isOptimizerEnabled())) {
       return c.json({
         success: false,
         error: {
@@ -1212,7 +1215,7 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
     ).then(results => results.filter((r): r is Awaited<ReturnType<typeof service.getTableDetails>> => r !== null));
 
     // Call AI optimizer
-    const result = await optimizeQuery(sql, tableDetails, additionalPrompt);
+    const result = await optimizeQuery(sql, tableDetails, additionalPrompt, modelId);
 
     // Create audit log
     if (rbacUserId) {

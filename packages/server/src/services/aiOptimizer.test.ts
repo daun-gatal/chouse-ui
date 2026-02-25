@@ -59,8 +59,8 @@ describe("aiOptimizer", () => {
     });
 
     describe("getSystemPrompt", () => {
-        it("should return a non-empty system prompt", () => {
-            const prompt = getSystemPrompt();
+        it("should return a non-empty system prompt", async () => {
+            const prompt = await getSystemPrompt();
 
             expect(prompt).toBeDefined();
             expect(prompt.length).toBeGreaterThan(0);

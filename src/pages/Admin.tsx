@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import UserTable from "@/features/admin/components/UserManagement/index";
-import { InfoIcon, ShieldCheck, Users, Shield, FileText, Server, UserCog } from "lucide-react";
+// Removed since imported below
 import InfoDialog from "@/components/common/InfoDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GlassCard, GlassCardContent } from "@/components/ui/glass-card";
@@ -10,8 +10,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { RbacRolesTable, RbacAuditLogs } from "@/features/rbac/components";
 import ConnectionManagement from "@/features/admin/components/ConnectionManagement";
 import ClickHouseUsersManagement from "@/features/admin/components/ClickHouseUsers";
+import AiModelsManagement from "@/features/admin/components/AiModels";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { cn } from "@/lib/utils";
+import { Bot, InfoIcon, ShieldCheck, Users, Shield, FileText, Server, UserCog } from "lucide-react";
 
 // Tab configuration for Admin
 const ADMIN_TAB_CONFIG = {
@@ -64,6 +66,16 @@ const ADMIN_TAB_CONFIG = {
     bgGlow: "bg-green-500/10",
     borderColor: "border-green-500/30",
     textColor: "text-green-300",
+  },
+  "ai-models": {
+    icon: Bot,
+    label: "AI Models",
+    description: "Manage AI Assistant models",
+    color: "amber",
+    gradient: "from-amber-500 to-orange-600",
+    bgGlow: "bg-amber-500/10",
+    borderColor: "border-amber-500/30",
+    textColor: "text-amber-300",
   },
 } as const;
 
@@ -169,6 +181,7 @@ export default function Admin() {
   const canViewAudit = hasPermission(RBAC_PERMISSIONS.AUDIT_VIEW);
   const canViewConnections = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canViewClickHouseUsers = hasPermission(RBAC_PERMISSIONS.CH_USERS_VIEW);
+  const canViewAiModels = hasPermission(RBAC_PERMISSIONS.AI_MODELS_VIEW);
 
   const { tab } = useParams<{ tab: string }>();
   const navigate = useNavigate();
@@ -178,6 +191,7 @@ export default function Admin() {
     ...(canViewRoles ? ["roles" as const] : []),
     ...(canViewConnections ? ["connections" as const] : []),
     ...(canViewClickHouseUsers ? ["clickhouse-users" as const] : []),
+    ...(canViewAiModels ? ["ai-models" as const] : []),
     ...(canViewAudit ? ["audit" as const] : []),
   ];
 
@@ -300,6 +314,14 @@ export default function Admin() {
                 </TabsContent>
               )}
 
+              {activeTab === "ai-models" && canViewAiModels && (
+                <TabsContent value="ai-models" className="h-full mt-0 outline-none">
+                  <div className="rounded-xl overflow-hidden bg-white/5 border border-white/10 glass-effect">
+                    <AiModelsManagement />
+                  </div>
+                </TabsContent>
+              )}
+
               {activeTab === "audit" && canViewAudit && (
                 <TabsContent value="audit" className="h-full mt-0 outline-none">
                   <div className="rounded-xl overflow-hidden bg-white/5 border border-white/10 glass-effect">
@@ -327,6 +349,7 @@ export default function Admin() {
             <li>• <strong>Roles</strong> - View roles and their associated permissions</li>
             <li>• <strong>Connections</strong> - Manage ClickHouse server connections</li>
             <li>• <strong>ClickHouse Users</strong> - Create and manage ClickHouse database users</li>
+            <li>• <strong>AI Models</strong> - Configure LLMs for the Assistant</li>
             <li>• <strong>Audit Logs</strong> - Track all system actions for compliance</li>
           </ul>
           <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
