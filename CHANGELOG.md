@@ -6,8 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [v2.12.1] - 2026-02-25
+## [v2.12.2] - 2026-02-25
 
+### Added
+
+- **Draggable AI Chat Window**: The `AiChatBubble` has been upgraded with `framer-motion` capabilities. The desktop chat window can now be freely dragged around the screen using new header drag handles, allowing position anywhere to view underlying query data while chatting.
+- **Context Persistence**: The AI chat bubble window now remembers the last opened chat `activeThreadId` if closed and reopened within **5 minutes** (as long as the connection string stays the same). This allows for easy multithreading and quick navigation without losing chat context during work.
+- **Metadata Sync**: Both the new constrained Floating Dock `placement` and the `AiChatBubble`'s freely dragged position are persisted to the backend user `preferences` table, so your layout configuration persists across sessions and devices.
+
+### Changed
+
+- **Constrained Floating Dock**: The Floating Dock drag behavior was previously based on free `(x, y)` coordinate positioning, which often caused visually disjointed hiding behaviors. The dock has been heavily refactored to snap to the closest **Top, Bottom, Left, or Right edges**. The `autoHide` sliding animation now accurately slides off the screen in the chosen direction. The dock also loads in `sidebar` mode by default.
+
+### Fixed
+
+- **Dialog Close Buttons**: Fixed the 'x' close button inside the `DebugQueryDialog` and `OptimizeQueryDialog` which were previously unclickable due to styling overlaps. They have now been mapped to a custom close button in the header, enabling immediate query cancellation and modal dismissal.
+
+## [v2.12.1] - 2026-02-25
 ### Added
 
 - **Provider-Config Cascade Deactivation**: When an AI provider is deactivated, all AI configs belonging to models under that provider are automatically deactivated to maintain data consistency. This ensures inactive providers cannot have active configs.

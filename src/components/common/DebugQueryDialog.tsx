@@ -7,7 +7,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, Lightbulb, FileText, ArrowRight, Bug, Terminal } from 'lucide-react';
+import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, Lightbulb, FileText, ArrowRight, Bug, Terminal, X } from 'lucide-react';
 import { debugQuery } from '@/api/query';
 import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
@@ -22,6 +22,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 interface DebugQueryDialogProps {
     isOpen: boolean;
@@ -146,7 +153,7 @@ export function DebugQueryDialog({
         <Dialog open={isOpen} onOpenChange={(open) => {
             if (!open) handleCancel();
         }}>
-            <DialogContent className="max-w-4xl w-full h-[85vh] p-0 gap-0 bg-[#0F1117] border-gray-800 text-white flex flex-col overflow-hidden rounded-2xl shadow-2xl shadow-black/50">
+            <DialogContent className="max-w-4xl w-full h-[85vh] p-0 gap-0 bg-[#0F1117] border-gray-800 text-white flex flex-col overflow-hidden rounded-2xl shadow-2xl shadow-black/50 [&>button.absolute]:hidden">
                 {/* Header - Clean & Modern */}
                 <div className="px-8 py-5 flex items-center justify-between bg-transparent relative z-10">
                     <div className="space-y-1">
@@ -173,11 +180,18 @@ export function DebugQueryDialog({
                             </Badge>
                         )}
                         {!isDebugging && result && (
-                            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+                            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 mr-2">
                                 <span className="text-xs text-gray-400">Model:</span>
                                 <span className="text-xs font-medium text-indigo-300">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
                             </div>
                         )}
+                        <button
+                            onClick={handleCancel}
+                            className="p-2 -mr-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                            <span className="sr-only">Close</span>
+                        </button>
                     </div>
                 </div>
 
@@ -219,35 +233,30 @@ export function DebugQueryDialog({
                                 <div className="w-full max-w-lg space-y-5 text-left bg-white/5 border border-white/5 rounded-2xl p-6 shadow-xl shadow-black/20">
                                     <div className="space-y-3">
                                         <Label className="text-gray-300 font-medium ml-1">Select AI Model</Label>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
-                                            {aiModels.map(m => (
-                                                <button
-                                                    key={m.id}
-                                                    onClick={() => setSelectedModelId(m.id)}
-                                                    className={cn(
-                                                        "text-left px-4 py-3 rounded-xl border transition-all duration-200 flex items-start gap-3",
-                                                        selectedModelId === m.id
-                                                            ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.15)] ring-1 ring-indigo-500/20"
-                                                            : "bg-[#0F1117] border-white/5 hover:bg-white/5 hover:border-white/10"
-                                                    )}
-                                                >
-                                                    <div className="mt-0.5">
-                                                        <div className={cn("w-4 h-4 rounded-full border-2 flex items-center justify-center", selectedModelId === m.id ? "border-indigo-400" : "border-gray-600")}>
-                                                            {selectedModelId === m.id && <div className="w-2 h-2 rounded-full bg-indigo-400" />}
-                                                        </div>
+                                        <Select
+                                            value={selectedModelId}
+                                            onValueChange={(value) => setSelectedModelId(value)}
+                                        >
+                                            <SelectTrigger className="w-full bg-[#0F1117] border-white/10 hover:bg-white/5 text-sm h-12 rounded-xl focus:ring-1 focus:ring-indigo-500/50 transition-colors">
+                                                <SelectValue placeholder="Select an AI Model" />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-[#0F1117] border-white/10 rounded-xl max-h-[220px]">
+                                                {aiModels.length === 0 ? (
+                                                    <div className="p-4 text-center text-sm text-gray-500">
+                                                        No AI models configured.<br />Please add one in the Admin UI.
                                                     </div>
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className={cn("font-medium text-sm transition-colors", selectedModelId === m.id ? "text-indigo-200" : "text-gray-300")}>{m.name}</span>
-                                                        <span className="text-[11px] text-gray-500 font-medium tracking-wide uppercase">{m.provider || 'AI Provider'}</span>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                            {aiModels.length === 0 && (
-                                                <div className="col-span-1 border border-dashed border-white/10 p-4 rounded-xl text-center text-sm text-gray-500">
-                                                    No AI models configured.<br />Please add one in the Admin UI.
-                                                </div>
-                                            )}
-                                        </div>
+                                                ) : (
+                                                    aiModels.map(m => (
+                                                        <SelectItem key={m.id} value={m.id} className="focus:bg-indigo-500/10 focus:text-indigo-200 cursor-pointer py-3 rounded-lg mx-1 my-0.5">
+                                                            <div className="flex flex-col gap-1 text-left">
+                                                                <span className="font-medium text-sm text-gray-200">{m.name}</span>
+                                                                <span className="text-[11px] text-gray-500 font-medium tracking-wide uppercase">{m.provider || 'AI Provider'}</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))
+                                                )}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                     <Button
                                         onClick={handleDebug}
