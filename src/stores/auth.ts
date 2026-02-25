@@ -63,6 +63,10 @@ export const useAuthStore = create<ConnectionInfoState>()(
        * Set connection info (called after connecting to ClickHouse via RBAC)
        */
       setConnectionInfo: (info) => {
+        const state = useAuthStore.getState();
+        if (state.activeConnectionId !== info.activeConnectionId) {
+          import('@/features/workspace/editor/monacoConfig').then((m) => m.clearIntellisenseCache());
+        }
         set({
           sessionId: info.sessionId,
           username: info.username,
@@ -96,7 +100,11 @@ export const useAuthStore = create<ConnectionInfoState>()(
        * Set active connection (ID and name)
        */
       setActiveConnection: (connectionId: string | null, connectionName?: string | null) => {
-        set({ 
+        const state = useAuthStore.getState();
+        if (state.activeConnectionId !== connectionId) {
+          import('@/features/workspace/editor/monacoConfig').then((m) => m.clearIntellisenseCache());
+        }
+        set({
           activeConnectionId: connectionId,
           activeConnectionName: connectionName ?? null,
         });

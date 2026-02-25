@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [v2.12.2] - 2026-02-25
+## [v2.12.2] - 2026-02-26
 
 ### Added
+
+- **SQL Editor Auto-Complete**: Optimized completion using the intellisense API (single cache, cleared on logout), trigger characters, context-aware ordering, and column-level suggestions from FROM/JOIN tables (including aliases) in SELECT/WHERE/ON.
 
 - **Draggable AI Chat Window**: The `AiChatBubble` has been upgraded with `framer-motion` capabilities. The desktop chat window can now be freely dragged around the screen using new header drag handles, allowing position anywhere to view underlying query data while chatting.
 - **Context Persistence**: The AI chat bubble window now remembers the last opened chat `activeThreadId` if closed and reopened within **5 minutes** (as long as the connection string stays the same). This allows for easy multithreading and quick navigation without losing chat context during work.

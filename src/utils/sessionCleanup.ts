@@ -12,6 +12,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { useRbacStore } from '@/stores/rbac';
 import { queryKeys } from '@/hooks/useQuery';
 import { queryClient } from '@/providers/QueryProvider';
+import { clearIntellisenseCache } from '@/features/workspace/editor/monacoConfig';
 
 /**
  * Cleanup all user-related state and sessions
@@ -78,6 +79,7 @@ export async function cleanupUserSession(currentUserId: string | null): Promise<
       predicate: (query) => query.queryKey[0] === 'savedQueries'
     });
     queryClient.removeQueries({ queryKey: queryKeys.intellisense });
+    clearIntellisenseCache();
 
     // 4. Clear any user-specific localStorage keys
     if (currentUserId) {
