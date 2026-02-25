@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.16.1';
+export const APP_VERSION = '1.16.2';
 
 // ============================================
 // Migration Registry
@@ -1684,6 +1684,7 @@ const MIGRATIONS: Migration[] = [
           CREATE TABLE IF NOT EXISTS rbac_ai_providers (
             id TEXT PRIMARY KEY NOT NULL,
             name TEXT NOT NULL,
+            provider_type TEXT NOT NULL,
             base_url TEXT,
             api_key_encrypted TEXT,
             is_active INTEGER NOT NULL DEFAULT 1,
@@ -1725,6 +1726,7 @@ const MIGRATIONS: Migration[] = [
           CREATE TABLE IF NOT EXISTS rbac_ai_providers (
             id TEXT PRIMARY KEY NOT NULL,
             name VARCHAR(255) NOT NULL,
+            provider_type VARCHAR(255) NOT NULL,
             base_url TEXT,
             api_key_encrypted TEXT,
             is_active BOOLEAN NOT NULL DEFAULT true,
@@ -1880,6 +1882,194 @@ const MIGRATIONS: Migration[] = [
     },
     down: async (db) => {
       console.log('[Migration 1.16.1] Down migration: AI Models permissions will remain (idempotent seed)');
+    },
+  },
+  {
+    version: '1.16.2',
+    name: 'add_provider_type_column',
+    description: 'Add provider_type column to rbac_ai_providers table to separate provider type from display name',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const { PROVIDER_TYPES, isValidProviderType } = await import('../constants/aiProviders');
+
+      const dbType = getDatabaseType();
+
+      try {
+        // Step 1: Check if provider_type column already exists
+        let columnExists = false;
+        let isNotNull = false;
+        
+        if (dbType === 'sqlite') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const tableInfo = (db as any).all(sql`
+            PRAGMA table_info(rbac_ai_providers)
+          `) as Array<{ name: string; notnull: number }>;
+          const providerTypeCol = tableInfo.find(col => col.name === 'provider_type');
+          columnExists = !!providerTypeCol;
+          isNotNull = providerTypeCol?.notnull === 1;
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await (db as any).execute(sql`
+            SELECT column_name, is_nullable 
+            FROM information_schema.columns 
+            WHERE table_name = 'rbac_ai_providers' AND column_name = 'provider_type'
+          `);
+          const rows = Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? [];
+          columnExists = rows.length > 0;
+          if (rows.length > 0) {
+            const row = rows[0] as { is_nullable: string };
+            isNotNull = row.is_nullable === 'NO';
+          }
+        }
+
+        // Step 2: Add provider_type column as nullable (only if it doesn't exist)
+        if (!columnExists) {
+          if (dbType === 'sqlite') {
+            // SQLite doesn't support ALTER TABLE ADD COLUMN with NOT NULL directly
+            // We'll add it as nullable first, then update, then make it NOT NULL via table recreation
+            (db as SqliteDb).run(sql`
+              ALTER TABLE rbac_ai_providers ADD COLUMN provider_type TEXT
+            `);
+          } else {
+            await (db as PostgresDb).execute(sql`
+              ALTER TABLE rbac_ai_providers ADD COLUMN provider_type VARCHAR(255)
+            `);
+          }
+          console.log('[Migration 1.16.2] Added provider_type column (nullable)');
+        } else {
+          console.log('[Migration 1.16.2] provider_type column already exists, skipping add');
+        }
+
+        // Step 2: Copy name values to provider_type for all existing records
+        if (dbType === 'sqlite') {
+          (db as SqliteDb).run(sql`
+            UPDATE rbac_ai_providers SET provider_type = name WHERE provider_type IS NULL
+          `);
+        } else {
+          await (db as PostgresDb).execute(sql`
+            UPDATE rbac_ai_providers SET provider_type = name WHERE provider_type IS NULL
+          `);
+        }
+
+        console.log('[Migration 1.16.2] Copied name values to provider_type');
+
+        // Step 3: Validate all provider_type values are valid (skip if column was just created and table is empty)
+        let invalidProviders: Array<{ id: string; name: string; provider_type: string }> = [];
+
+        if (dbType === 'sqlite') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const rows = (db as any).all(sql`
+            SELECT id, name, provider_type FROM rbac_ai_providers WHERE provider_type IS NOT NULL
+          `) as Array<{ id: string; name: string; provider_type: string }>;
+          invalidProviders = rows.filter(row => !isValidProviderType(row.provider_type));
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await (db as any).execute(sql`
+            SELECT id, name, provider_type FROM rbac_ai_providers WHERE provider_type IS NOT NULL
+          `);
+          const rows = Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? [];
+          invalidProviders = (rows as Array<{ id: string; name: string; provider_type: string }>).filter(
+            row => !isValidProviderType(row.provider_type)
+          );
+        }
+
+        if (invalidProviders.length > 0) {
+          const invalidList = invalidProviders.map(p => `id=${p.id}, name=${p.name}, provider_type=${p.provider_type}`).join('; ');
+          throw new Error(
+            `[Migration 1.16.2] Found ${invalidProviders.length} providers with invalid provider_type values: ${invalidList}. ` +
+            `Valid types are: ${PROVIDER_TYPES.join(', ')}`
+          );
+        }
+
+        console.log('[Migration 1.16.2] Validated all provider_type values');
+
+        // Step 4: Make provider_type NOT NULL (only if it's currently nullable)
+        if (!isNotNull) {
+          // For SQLite, we need to recreate the table since it doesn't support ALTER COLUMN
+          if (dbType === 'sqlite') {
+            // Create new table with NOT NULL constraint
+            (db as SqliteDb).run(sql`
+              CREATE TABLE rbac_ai_providers_new (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                provider_type TEXT NOT NULL,
+                base_url TEXT,
+                api_key_encrypted TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+              )
+            `);
+
+            // Copy data
+            (db as SqliteDb).run(sql`
+              INSERT INTO rbac_ai_providers_new 
+              SELECT id, name, provider_type, base_url, api_key_encrypted, is_active, created_at, updated_at
+              FROM rbac_ai_providers
+            `);
+
+            // Drop old table
+            (db as SqliteDb).run(sql`DROP TABLE rbac_ai_providers`);
+
+            // Rename new table
+            (db as SqliteDb).run(sql`ALTER TABLE rbac_ai_providers_new RENAME TO rbac_ai_providers`);
+          } else {
+            // PostgreSQL supports ALTER COLUMN SET NOT NULL directly
+            await (db as PostgresDb).execute(sql`
+              ALTER TABLE rbac_ai_providers ALTER COLUMN provider_type SET NOT NULL
+            `);
+          }
+          console.log('[Migration 1.16.2] Made provider_type NOT NULL');
+        } else {
+          console.log('[Migration 1.16.2] provider_type column already has NOT NULL constraint, skipping');
+        }
+        console.log('[Migration 1.16.2] Successfully added provider_type column');
+      } catch (error) {
+        console.error('[Migration 1.16.2] Error during migration:', error);
+        throw error;
+      }
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+
+      const dbType = getDatabaseType();
+
+      try {
+        if (dbType === 'sqlite') {
+          // SQLite doesn't support DROP COLUMN directly, need to recreate table
+          (db as SqliteDb).run(sql`
+            CREATE TABLE rbac_ai_providers_new (
+              id TEXT PRIMARY KEY NOT NULL,
+              name TEXT NOT NULL,
+              base_url TEXT,
+              api_key_encrypted TEXT,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+              updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+            )
+          `);
+
+          (db as SqliteDb).run(sql`
+            INSERT INTO rbac_ai_providers_new 
+            SELECT id, name, base_url, api_key_encrypted, is_active, created_at, updated_at
+            FROM rbac_ai_providers
+          `);
+
+          (db as SqliteDb).run(sql`DROP TABLE rbac_ai_providers`);
+          (db as SqliteDb).run(sql`ALTER TABLE rbac_ai_providers_new RENAME TO rbac_ai_providers`);
+        } else {
+          await (db as PostgresDb).execute(sql`
+            ALTER TABLE rbac_ai_providers DROP COLUMN provider_type
+          `);
+        }
+
+        console.log('[Migration 1.16.2] Rolled back: Removed provider_type column');
+      } catch (error) {
+        console.error('[Migration 1.16.2] Error during rollback:', error);
+        throw error;
+      }
     },
   },
 ];
@@ -2234,6 +2424,7 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
     CREATE TABLE IF NOT EXISTS rbac_ai_providers (
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
+      provider_type TEXT NOT NULL,
       base_url TEXT,
       api_key_encrypted TEXT,
       is_active INTEGER NOT NULL DEFAULT 1,
@@ -2542,6 +2733,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
     CREATE TABLE IF NOT EXISTS rbac_ai_providers (
       id TEXT PRIMARY KEY NOT NULL,
       name VARCHAR(255) NOT NULL,
+      provider_type VARCHAR(255) NOT NULL,
       base_url TEXT,
       api_key_encrypted TEXT,
       is_active BOOLEAN NOT NULL DEFAULT true,

@@ -4,10 +4,11 @@
  * Manages AI Providers, Models, and Configurations with encrypted API key storage.
  */
 
-import { eq, and, desc, asc, like, or, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema } from '../db';
 import { encryptPassword, decryptPassword } from './connections';
+import { ProviderType, isValidProviderType } from '../constants/aiProviders';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,6 +23,7 @@ import type { AiProvider, AiModel, AiConfig } from '../schema';
 export interface AiProviderResponse {
     id: string;
     name: string;
+    providerType: ProviderType;
     baseUrl: string | null;
     isActive: boolean;
     createdAt: Date;
@@ -65,18 +67,24 @@ export interface AiConfigWithKey extends AiConfigFullResponse {
 // ============================================
 
 export async function createAiProvider(
-    input: { name: string; baseUrl?: string | null; apiKey?: string; isActive?: boolean }
+    input: { name: string; providerType: ProviderType; baseUrl?: string | null; apiKey?: string; isActive?: boolean }
 ): Promise<AiProviderResponse> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
     const id = randomUUID();
     const now = new Date();
 
+    // Validate providerType
+    if (!isValidProviderType(input.providerType)) {
+        throw new Error(`Invalid provider type: ${input.providerType}. Valid types are: ${['openai', 'anthropic', 'google', 'huggingface', 'openai-compatible'].join(', ')}`);
+    }
+
     const apiKeyEncrypted = input.apiKey ? encryptPassword(input.apiKey) : null;
 
     await db.insert(schema.aiProviders).values({
         id,
         name: input.name,
+        providerType: input.providerType,
         baseUrl: input.baseUrl || null,
         apiKeyEncrypted,
         isActive: input.isActive ?? true,
@@ -104,6 +112,7 @@ export async function getAiProviderById(id: string): Promise<AiProviderResponse 
     return {
         id: p.id,
         name: p.name,
+        providerType: p.providerType as ProviderType,
         baseUrl: p.baseUrl,
         isActive: p.isActive ?? true,
         createdAt: p.createdAt,
@@ -113,14 +122,20 @@ export async function getAiProviderById(id: string): Promise<AiProviderResponse 
 
 export async function updateAiProvider(
     id: string,
-    input: { name?: string; baseUrl?: string | null; apiKey?: string; isActive?: boolean }
+    input: { name?: string; providerType?: ProviderType; baseUrl?: string | null; apiKey?: string; isActive?: boolean }
 ): Promise<AiProviderResponse | null> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
     const now = new Date();
 
+    // Validate providerType if provided
+    if (input.providerType !== undefined && !isValidProviderType(input.providerType)) {
+        throw new Error(`Invalid provider type: ${input.providerType}. Valid types are: ${['openai', 'anthropic', 'google', 'huggingface', 'openai-compatible'].join(', ')}`);
+    }
+
     const updateData: Record<string, any> = { updatedAt: now };
     if (input.name !== undefined) updateData.name = input.name;
+    if (input.providerType !== undefined) updateData.providerType = input.providerType;
     if (input.baseUrl !== undefined) updateData.baseUrl = input.baseUrl;
     if (input.isActive !== undefined) updateData.isActive = input.isActive;
     if (input.apiKey !== undefined) {
@@ -130,6 +145,34 @@ export async function updateAiProvider(
     await db.update(schema.aiProviders)
         .set(updateData)
         .where(eq(schema.aiProviders.id, id));
+
+    // Cascade deactivation to all configs when provider is deactivated
+    if (input.isActive === false) {
+        // Get all model IDs for this provider
+        const models = await db.select({ id: schema.aiModels.id })
+            .from(schema.aiModels)
+            .where(eq(schema.aiModels.providerId, id));
+
+        const modelIds = models.map((m: { id: string }) => m.id);
+
+        if (modelIds.length > 0) {
+            // Get all config IDs for these models
+            const configs = await db.select({ id: schema.aiConfigs.id })
+                .from(schema.aiConfigs)
+                .where(inArray(schema.aiConfigs.modelId, modelIds));
+
+            const configIds = configs.map((c: { id: string }) => c.id);
+
+            if (configIds.length > 0) {
+                // Deactivate all configs
+                await db.update(schema.aiConfigs)
+                    .set({ isActive: false, updatedAt: now })
+                    .where(inArray(schema.aiConfigs.id, configIds));
+
+                console.log(`[AI Models] Deactivated ${configIds.length} config(s) due to provider deactivation`);
+            }
+        }
+    }
 
     return getAiProviderById(id);
 }
@@ -156,6 +199,7 @@ export async function listAiProviders(): Promise<AiProviderResponse[]> {
     return results.map((p: any) => ({
         id: p.id,
         name: p.name,
+        providerType: p.providerType as ProviderType,
         baseUrl: p.baseUrl,
         isActive: p.isActive ?? true,
         createdAt: p.createdAt,
@@ -274,6 +318,29 @@ export async function createAiConfig(
     const id = randomUUID();
     const now = new Date();
 
+    // Validate: Cannot create active config if provider is inactive
+    const isActive = input.isActive ?? true;
+    if (isActive) {
+        // Get model's provider info via join
+        const modelWithProvider = await db.select({
+            model: schema.aiModels,
+            provider: schema.aiProviders
+        })
+            .from(schema.aiModels)
+            .innerJoin(schema.aiProviders, eq(schema.aiModels.providerId, schema.aiProviders.id))
+            .where(eq(schema.aiModels.id, input.modelId))
+            .limit(1);
+
+        if (modelWithProvider.length === 0) {
+            throw new Error(`Model with id "${input.modelId}" not found`);
+        }
+
+        const provider = modelWithProvider[0].provider;
+        if (!provider.isActive) {
+            throw new Error(`Cannot create active config because the provider "${provider.name}" is inactive. Please activate the provider first or create the config as inactive.`);
+        }
+    }
+
     // Handle isDefault logic
     if (input.isDefault) {
         await db.update(schema.aiConfigs)
@@ -285,7 +352,7 @@ export async function createAiConfig(
         id,
         modelId: input.modelId,
         name: input.name,
-        isActive: input.isActive ?? true,
+        isActive,
         isDefault: input.isDefault ?? false,
         createdBy,
         createdAt: now,
@@ -328,6 +395,30 @@ export async function updateAiConfig(
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
     const now = new Date();
+
+    // Validate: Cannot activate config if provider is inactive
+    if (input.isActive === true) {
+        // Get config's model and provider info via join
+        const configWithProvider = await db.select({
+            config: schema.aiConfigs,
+            model: schema.aiModels,
+            provider: schema.aiProviders
+        })
+            .from(schema.aiConfigs)
+            .innerJoin(schema.aiModels, eq(schema.aiConfigs.modelId, schema.aiModels.id))
+            .innerJoin(schema.aiProviders, eq(schema.aiModels.providerId, schema.aiProviders.id))
+            .where(eq(schema.aiConfigs.id, id))
+            .limit(1);
+
+        if (configWithProvider.length === 0) {
+            return null; // Config not found
+        }
+
+        const provider = configWithProvider[0].provider;
+        if (!provider.isActive) {
+            throw new Error(`Cannot activate config because its provider "${provider.name}" is inactive. Please activate the provider first.`);
+        }
+    }
 
     const updateData: Record<string, any> = { updatedAt: now };
     if (input.name !== undefined) updateData.name = input.name;
@@ -425,6 +516,7 @@ export async function listAiConfigs(options?: {
         provider: {
             id: row.provider.id,
             name: row.provider.name,
+            providerType: row.provider.providerType as ProviderType,
             baseUrl: row.provider.baseUrl,
             isActive: row.provider.isActive ?? true,
             createdAt: row.provider.createdAt,
@@ -488,6 +580,7 @@ export async function getAiConfigWithKey(id: string): Promise<AiConfigWithKey | 
         provider: {
             id: row.provider.id,
             name: row.provider.name,
+            providerType: row.provider.providerType as ProviderType,
             baseUrl: row.provider.baseUrl,
             isActive: row.provider.isActive ?? true,
             apiKey,

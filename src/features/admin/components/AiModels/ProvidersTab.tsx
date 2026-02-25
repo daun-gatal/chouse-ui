@@ -9,14 +9,17 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import ConfirmationDialog from '@/components/common/ConfirmationDialog';
 import { toast } from 'sonner';
 import { rbacAiProvidersApi, type AiProvider, type CreateAiProviderInput, type UpdateAiProviderInput } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
+import { PROVIDER_TYPES, formatProviderType, type ProviderType } from '@/constants/aiProviders';
 
 const providerSchema = z.object({
     name: z.string().min(1, 'Name is required').max(255),
+    providerType: z.enum(PROVIDER_TYPES as unknown as [string, ...string[]]),
     baseUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
     apiKey: z.string().optional(),
 });
@@ -37,7 +40,7 @@ export default function ProvidersTab() {
 
     const form = useForm<ProviderFormData>({
         resolver: zodResolver(providerSchema),
-        defaultValues: { name: '', baseUrl: '', apiKey: '' },
+        defaultValues: { name: '', providerType: 'openai' as const, baseUrl: '', apiKey: '' },
     });
 
     const isEditing = !!editingItem;
@@ -62,6 +65,7 @@ export default function ProvidersTab() {
         if (isFormOpen) {
             form.reset({
                 name: editingItem?.name || '',
+                providerType: editingItem?.providerType || 'openai' as const,
                 baseUrl: editingItem?.baseUrl || '',
                 apiKey: '',
             });
@@ -96,6 +100,7 @@ export default function ProvidersTab() {
             if (isEditing) {
                 const updateData: UpdateAiProviderInput = {
                     name: values.name,
+                    providerType: values.providerType as ProviderType,
                     baseUrl: values.baseUrl || null,
                 };
                 if (values.apiKey) updateData.apiKey = values.apiKey;
@@ -109,6 +114,7 @@ export default function ProvidersTab() {
                 }
                 const createData: CreateAiProviderInput = {
                     name: values.name,
+                    providerType: values.providerType as ProviderType,
                     baseUrl: values.baseUrl || null,
                     apiKey: values.apiKey
                 };
@@ -151,6 +157,7 @@ export default function ProvidersTab() {
                             <TableHeader>
                                 <TableRow className="border-gray-800 hover:bg-transparent">
                                     <TableHead className="text-gray-400">Name</TableHead>
+                                    <TableHead className="text-gray-400">Provider Type</TableHead>
                                     <TableHead className="text-gray-400">Base URL</TableHead>
                                     <TableHead className="text-gray-400">Status</TableHead>
                                     <TableHead className="text-gray-400 text-right">Actions</TableHead>
@@ -160,6 +167,7 @@ export default function ProvidersTab() {
                                 {providers.map(item => (
                                     <TableRow key={item.id} className="border-gray-800">
                                         <TableCell className="font-medium text-white">{item.name}</TableCell>
+                                        <TableCell className="text-gray-300">{formatProviderType(item.providerType)}</TableCell>
                                         <TableCell className="text-gray-400 font-mono text-sm max-w-xs truncate">{item.baseUrl || 'Default'}</TableCell>
                                         <TableCell>
                                             {item.isActive ? (
@@ -224,8 +232,27 @@ export default function ProvidersTab() {
                             <FormField control={form.control} name="name" render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Provider Name</FormLabel>
-                                    <FormControl><Input placeholder="openai" className="bg-gray-800 border-gray-700" {...field} /></FormControl>
-                                    <FormDescription>Must match SDK identifier (openai, anthropic, google, etc.)</FormDescription>
+                                    <FormControl><Input placeholder="OpenAI Production" className="bg-gray-800 border-gray-700" {...field} /></FormControl>
+                                    <FormDescription>Display name for this provider (e.g., "OpenAI Production", "Anthropic Dev")</FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                            <FormField control={form.control} name="providerType" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Provider Type</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isEditing}>
+                                        <FormControl>
+                                            <SelectTrigger className="bg-gray-800 border-gray-700">
+                                                <SelectValue placeholder="Select a provider type" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                                            {PROVIDER_TYPES.map(type => (
+                                                <SelectItem key={type} value={type}>{formatProviderType(type)}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormDescription>{isEditing ? 'Provider type cannot be changed after creation' : 'Select the AI provider SDK type'}</FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )} />

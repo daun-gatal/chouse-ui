@@ -68,9 +68,12 @@ export interface RbacPermission {
 // AI Models API
 // ============================================
 
+import type { ProviderType } from '@/constants/aiProviders';
+
 export interface AiProvider {
   id: string;
   name: string;
+  providerType: ProviderType;
   baseUrl: string | null;
   isActive: boolean;
   createdAt: string;
@@ -79,6 +82,7 @@ export interface AiProvider {
 
 export interface CreateAiProviderInput {
   name: string;
+  providerType: ProviderType;
   baseUrl?: string | null;
   apiKey?: string;
   isActive?: boolean;
@@ -86,6 +90,7 @@ export interface CreateAiProviderInput {
 
 export interface UpdateAiProviderInput {
   name?: string;
+  providerType?: ProviderType;
   baseUrl?: string | null;
   apiKey?: string;
   isActive?: boolean;

@@ -390,6 +390,7 @@ export const userPreferences = sqliteTable('rbac_user_preferences', {
 export const aiProviders = sqliteTable('rbac_ai_providers', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  providerType: text('provider_type').notNull(),
   baseUrl: text('base_url'),
   apiKeyEncrypted: text('api_key_encrypted'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
