@@ -101,6 +101,12 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
   ],
+  'AI Models Management': [
+    PERMISSIONS.AI_MODELS_VIEW,
+    PERMISSIONS.AI_MODELS_CREATE,
+    PERMISSIONS.AI_MODELS_UPDATE,
+    PERMISSIONS.AI_MODELS_DELETE,
+  ],
 };
 
 // Human-readable permission names
@@ -155,6 +161,10 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.CONNECTIONS_VIEW]: 'View Connections',
   [PERMISSIONS.CONNECTIONS_EDIT]: 'Edit Connections',
   [PERMISSIONS.CONNECTIONS_DELETE]: 'Delete Connections',
+  [PERMISSIONS.AI_MODELS_VIEW]: 'View AI Models',
+  [PERMISSIONS.AI_MODELS_CREATE]: 'Create AI Models',
+  [PERMISSIONS.AI_MODELS_UPDATE]: 'Update AI Models',
+  [PERMISSIONS.AI_MODELS_DELETE]: 'Delete AI Models',
 };
 
 // Role display names and descriptions

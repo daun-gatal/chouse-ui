@@ -294,6 +294,7 @@ export async function optimizeQuery(
   query: string,
   database?: string,
   additionalPrompt?: string,
+  modelId?: string,
   signal?: AbortSignal
 ): Promise<{
   originalQuery: string;
@@ -308,7 +309,7 @@ export async function optimizeQuery(
     explanation: string;
     summary: string;
     tips: string[];
-  }>('/query/optimize', { query, database, additionalPrompt }, { signal });
+  }>('/query/optimize', { query, database, additionalPrompt, modelId }, { signal });
 }
 
 /**
@@ -322,6 +323,7 @@ export async function debugQuery(
   error: string,
   database?: string,
   additionalPrompt?: string,
+  modelId?: string,
   signal?: AbortSignal
 ): Promise<{
   fixedQuery: string;
@@ -336,7 +338,7 @@ export async function debugQuery(
     errorAnalysis: string;
     explanation: string;
     summary: string;
-  }>('/query/debug', { query, error, database, additionalPrompt }, { signal });
+  }>('/query/debug', { query, error, database, additionalPrompt, modelId }, { signal });
 }
 
 /**
@@ -344,7 +346,8 @@ export async function debugQuery(
  * @param query - The SQL query to check
  */
 export async function checkQueryOptimization(
-  query: string
+  query: string,
+  modelId?: string
 ): Promise<{ canOptimize: boolean; reason: string }> {
-  return api.post<{ canOptimize: boolean; reason: string }>('/query/check-optimization', { query });
+  return api.post<{ canOptimize: boolean; reason: string }>('/query/check-optimization', { query, modelId });
 }

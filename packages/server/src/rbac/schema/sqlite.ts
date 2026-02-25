@@ -384,6 +384,55 @@ export const userPreferences = sqliteTable('rbac_user_preferences', {
 }));
 
 // ============================================
+// AI Providers Table
+// Stores credentials and base configs for AI providers (e.g., OpenAI, Anthropic)
+// ============================================
+export const aiProviders = sqliteTable('rbac_ai_providers', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  baseUrl: text('base_url'),
+  apiKeyEncrypted: text('api_key_encrypted'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+});
+
+// ============================================
+// AI Models Table
+// Stores available models for each provider (e.g., "gpt-4o")
+// ============================================
+export const aiModels = sqliteTable('rbac_ai_models', {
+  id: text('id').primaryKey(),
+  providerId: text('provider_id').notNull().references(() => aiProviders.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(), // Display name, e.g., "GPT-4o"
+  modelId: text('model_id').notNull(), // String used by SDK, e.g., "gpt-4o"
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  providerIdIdx: index('ai_models_provider_id_idx').on(table.providerId),
+}));
+
+// ============================================
+// AI Configs Table
+// Stores deployments/configurations surfaced to the frontend (e.g., "Main Chat Assistant")
+// ============================================
+
+export const aiConfigs = sqliteTable('rbac_ai_configs', {
+  id: text('id').primaryKey(),
+  modelId: text('model_id').notNull().references(() => aiModels.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(), // Custom display name for frontend
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+}, (table) => ({
+  modelIdIdx: index('ai_configs_model_id_idx').on(table.modelId),
+  isActiveIdx: index('ai_configs_is_active_idx').on(table.isActive),
+  isDefaultIdx: index('ai_configs_is_default_idx').on(table.isDefault),
+}));
+
+// ============================================
 // AI Chat Tables
 // Stores AI assistant conversation threads and messages
 // ============================================
@@ -453,3 +502,9 @@ export type AiChatThread = typeof aiChatThreads.$inferSelect;
 export type NewAiChatThread = typeof aiChatThreads.$inferInsert;
 export type AiChatMessage = typeof aiChatMessages.$inferSelect;
 export type NewAiChatMessage = typeof aiChatMessages.$inferInsert;
+export type AiProvider = typeof aiProviders.$inferSelect;
+export type NewAiProvider = typeof aiProviders.$inferInsert;
+export type AiModel = typeof aiModels.$inferSelect;
+export type NewAiModel = typeof aiModels.$inferInsert;
+export type AiConfig = typeof aiConfigs.$inferSelect;
+export type NewAiConfig = typeof aiConfigs.$inferInsert;

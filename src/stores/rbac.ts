@@ -393,6 +393,12 @@ export const RBAC_PERMISSIONS = {
   // AI Features
   AI_OPTIMIZE: 'ai:optimize',
   AI_CHAT: 'ai:chat',
+
+  // AI Models
+  AI_MODELS_VIEW: 'ai_models:view',
+  AI_MODELS_CREATE: 'ai_models:create',
+  AI_MODELS_UPDATE: 'ai_models:update',
+  AI_MODELS_DELETE: 'ai_models:delete',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

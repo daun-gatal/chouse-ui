@@ -9,7 +9,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, Lightbulb, FileText, ArrowRight, Bug, Terminal } from 'lucide-react';
 import { debugQuery } from '@/api/query';
+import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
+import { format } from 'sql-formatter';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -50,7 +52,24 @@ export function DebugQueryDialog({
     } | null>(null);
     const [apiError, setApiError] = useState<string | null>(null);
     const [additionalPrompt, setAdditionalPrompt] = useState(DEFAULT_DEBUG_PROMPT);
+    const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
+    const [selectedModelId, setSelectedModelId] = useState<string>('');
     const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Fetch AI Models
+    useEffect(() => {
+        if (isOpen) {
+            getAiModels().then(models => {
+                setAiModels(models);
+                const defaultModel = models.find(m => m.isDefault);
+                if (defaultModel) {
+                    setSelectedModelId(defaultModel.id);
+                } else if (models.length > 0) {
+                    setSelectedModelId(models[0].id);
+                }
+            }).catch(console.error);
+        }
+    }, [isOpen]);
 
     // Reset when dialog closes
     useEffect(() => {
@@ -79,9 +98,9 @@ export function DebugQueryDialog({
         setApiError(null);
 
         try {
-            const response = await debugQuery(query, queryError, database, additionalPrompt, controller.signal);
+            const response = await debugQuery(query, queryError, database, additionalPrompt, selectedModelId || undefined, controller.signal);
             setResult({
-                fixedQuery: response.fixedQuery,
+                fixedQuery: format(response.fixedQuery, { language: 'sql' }),
                 explanation: response.explanation,
                 summary: response.summary,
                 errorAnalysis: response.errorAnalysis,
@@ -114,13 +133,14 @@ export function DebugQueryDialog({
         onClose();
     };
 
-    // Auto-optimize on first open if no result
-    // Auto-optimize on first open if no result
+    // Clean up on unmount or close
     useEffect(() => {
-        if (isOpen && !result && !isDebugging && query?.trim()) {
-            handleDebug();
-        }
-    }, [isOpen]);
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
+    }, []);
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => {
@@ -152,6 +172,12 @@ export function DebugQueryDialog({
                                 Analyzing...
                             </Badge>
                         )}
+                        {!isDebugging && result && (
+                            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+                                <span className="text-xs text-gray-400">Model:</span>
+                                <span className="text-xs font-medium text-indigo-300">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -180,15 +206,68 @@ export function DebugQueryDialog({
                                     Try Again
                                 </Button>
                             </div>
-                        ) : !result ? (
+                        ) : !result && !isDebugging ? (
+                            <div className="flex flex-col items-center justify-center py-12 text-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                                <div className="space-y-4">
+                                    <div className="inline-flex items-center justify-center p-4 rounded-full bg-indigo-500/10 mb-2">
+                                        <Bug className="w-8 h-8 text-indigo-400" />
+                                    </div>
+                                    <h3 className="text-2xl font-semibold text-white tracking-tight">Debug this Query</h3>
+                                    <p className="text-gray-400 max-w-md mx-auto leading-relaxed text-sm">Select an AI model to analyze your query for schema compliance, logic errors, and optimization opportunities.</p>
+                                </div>
+
+                                <div className="w-full max-w-lg space-y-5 text-left bg-white/5 border border-white/5 rounded-2xl p-6 shadow-xl shadow-black/20">
+                                    <div className="space-y-3">
+                                        <Label className="text-gray-300 font-medium ml-1">Select AI Model</Label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+                                            {aiModels.map(m => (
+                                                <button
+                                                    key={m.id}
+                                                    onClick={() => setSelectedModelId(m.id)}
+                                                    className={cn(
+                                                        "text-left px-4 py-3 rounded-xl border transition-all duration-200 flex items-start gap-3",
+                                                        selectedModelId === m.id
+                                                            ? "bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.15)] ring-1 ring-indigo-500/20"
+                                                            : "bg-[#0F1117] border-white/5 hover:bg-white/5 hover:border-white/10"
+                                                    )}
+                                                >
+                                                    <div className="mt-0.5">
+                                                        <div className={cn("w-4 h-4 rounded-full border-2 flex items-center justify-center", selectedModelId === m.id ? "border-indigo-400" : "border-gray-600")}>
+                                                            {selectedModelId === m.id && <div className="w-2 h-2 rounded-full bg-indigo-400" />}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className={cn("font-medium text-sm transition-colors", selectedModelId === m.id ? "text-indigo-200" : "text-gray-300")}>{m.name}</span>
+                                                        <span className="text-[11px] text-gray-500 font-medium tracking-wide uppercase">{m.provider || 'AI Provider'}</span>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                            {aiModels.length === 0 && (
+                                                <div className="col-span-1 border border-dashed border-white/10 p-4 rounded-xl text-center text-sm text-gray-500">
+                                                    No AI models configured.<br />Please add one in the Admin UI.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <Button
+                                        onClick={handleDebug}
+                                        className="w-full h-12 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-base shadow-lg shadow-indigo-500/25 transition-all"
+                                        disabled={!selectedModelId || aiModels.length === 0}
+                                    >
+                                        <Sparkles className="w-5 h-5 mr-2" />
+                                        Analyze Query
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : !result && isDebugging ? (
                             <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-                                <div className="relative p-6 rounded-full bg-indigo-500/10 mb-4">
+                                <div className="relative p-7 rounded-full bg-indigo-500/10 mb-2">
                                     <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full animate-pulse" />
                                     <Loader2 className="w-8 h-8 text-indigo-400 animate-spin relative" />
                                 </div>
                                 <div className="space-y-2">
-                                    <h3 className="text-lg font-medium text-white">Running Analysis</h3>
-                                    <p className="text-gray-500 max-w-xs mx-auto">Checking schema compliance, logic errors, and optimization opportunities.</p>
+                                    <h3 className="text-xl font-medium text-white tracking-tight">Running Analysis</h3>
+                                    <p className="text-gray-400 max-w-xs mx-auto text-sm">Checking schema compliance, logic errors, and optimization opportunities...</p>
                                 </div>
                             </div>
                         ) : (
@@ -200,7 +279,7 @@ export function DebugQueryDialog({
                                         Diagnosis
                                     </div>
                                     <div className="text-lg text-gray-100 leading-relaxed font-light">
-                                        {result.errorAnalysis}
+                                        {result?.errorAnalysis}
                                     </div>
                                 </section>
 
@@ -218,7 +297,7 @@ export function DebugQueryDialog({
                                     <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/40 border border-white/5 bg-[#0a0a0c]">
                                         <DiffEditor
                                             original={query}
-                                            modified={result.fixedQuery}
+                                            modified={result?.fixedQuery || ''}
                                             language="sql"
                                             className="h-[320px] w-full"
                                             options={{
@@ -241,7 +320,7 @@ export function DebugQueryDialog({
                                         Why this fixes it
                                     </div>
                                     <div className="text-base text-gray-300 bg-white/5 border border-white/5 p-6 rounded-2xl leading-relaxed">
-                                        {result.summary}
+                                        {result?.summary}
                                     </div>
                                 </section>
 
@@ -292,7 +371,7 @@ export function DebugQueryDialog({
                                                         blockquote: ({ node, ...props }) => <blockquote className="border-l-2 border-indigo-500/30 pl-4 italic text-gray-400 my-4 bg-white/5 py-2 pr-2 rounded-r" {...props} />,
                                                     }}
                                                 >
-                                                    {result.explanation}
+                                                    {result?.explanation || ''}
                                                 </ReactMarkdown>
                                             </div>
 

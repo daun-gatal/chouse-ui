@@ -13,6 +13,9 @@ import connectionsRoutes from './connections';
 import dataAccessRoutes from './dataAccess';
 import clickhouseUsersRoutes from './clickhouseUsers';
 import userPreferencesRoutes from './userPreferences';
+import aiProvidersRoutes from './aiProviders';
+import aiModelsRoutes from './aiModels';
+import aiConfigsRoutes from './aiConfigs';
 
 const rbacRoutes = new Hono();
 
@@ -25,12 +28,15 @@ rbacRoutes.route('/connections', connectionsRoutes);
 rbacRoutes.route('/data-access', dataAccessRoutes);
 rbacRoutes.route('/clickhouse-users', clickhouseUsersRoutes);
 rbacRoutes.route('/user-preferences', userPreferencesRoutes);
+rbacRoutes.route('/ai-providers', aiProvidersRoutes);
+rbacRoutes.route('/ai-base-models', aiModelsRoutes);
+rbacRoutes.route('/ai-models', aiConfigsRoutes);
 
 // Health check for RBAC system
 rbacRoutes.get('/health', async (c) => {
   const { checkDatabaseHealth } = await import('../db');
   const health = await checkDatabaseHealth();
-  
+
   return c.json({
     success: health.healthy,
     data: {
@@ -45,12 +51,12 @@ rbacRoutes.get('/health', async (c) => {
 rbacRoutes.get('/status', async (c) => {
   try {
     const { checkDatabaseHealth, getMigrationStatus, APP_VERSION } = await import('../db');
-    
+
     const [health, migrations] = await Promise.all([
       checkDatabaseHealth(),
       getMigrationStatus(),
     ]);
-    
+
     return c.json({
       success: true,
       data: {
@@ -66,7 +72,7 @@ rbacRoutes.get('/status', async (c) => {
           pendingCount: migrations.pendingMigrations.length,
           pending: migrations.pendingMigrations,
           appliedCount: migrations.appliedMigrations.length,
-          lastApplied: migrations.appliedMigrations.length > 0 
+          lastApplied: migrations.appliedMigrations.length > 0
             ? migrations.appliedMigrations[migrations.appliedMigrations.length - 1]
             : null,
         },

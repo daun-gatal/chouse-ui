@@ -22,6 +22,7 @@ import {
 } from "../middleware/dataAccess";
 import { analyzeQuery } from "./queryAnalyzer";
 import { optimizeQuery as aiOptimizeQuery } from "./aiOptimizer";
+import { discoverSkills, createLoadSkillTool, type SkillMetadata } from "./agentSkills";
 
 // ============================================
 // Types
@@ -67,138 +68,50 @@ export interface ChartSpec {
 // System Prompt
 // ============================================
 
-const SYSTEM_PROMPT = `
-You are an expert ClickHouse assistant embedded inside CHouse UI.
+function buildSystemPrompt(skills: SkillMetadata[]): string {
+    const skillsList = skills
+        .map(s => `- ${s.name}: ${s.description}`)
+        .join("\n");
 
+    return `
+You are an expert ClickHouse assistant embedded inside CHouse UI.
 You operate in STRICT TOOL-FIRST MODE.
+
+## SKILLS
+You have an arsenal of complex operating instructions saved as skills on the filesystem.
+You MUST use the \`load_skill\` tool to retrieve these instructions BEFORE performing complex tasks!
+
+Available skills:
+${skillsList}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CORE OPERATING RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 1. NEVER guess database names, table names, columns, or data.
 2. NEVER fabricate results.
 3. NEVER answer schema/data questions without calling tools first.
-4. NEVER output text before finishing all required tool calls.
-5. NEVER narrate tool usage.
-6. ONLY produce the final answer after all tool calls are complete.
-7. Base your final answer strictly on tool results.
+4. DO NOT DESCRIBE CHARTS IN TEXT. YOU MUST USE THE \`render_chart\` TOOL TO SHOW THEM IN THE UI!
+5. NEVER output markdown tables when a chart is requested. Call \`render_chart\` instead.
 
-If you lack enough information → call more tools.
-If access is denied → explain clearly.
-If tool fails → surface the error clearly.
+## DECISION FRAMEWORK: WHEN TO LOAD SKILLS
+You MUST call \`load_skill\` depending on the user's intent BEFORE taking action:
+- Intent: User wants to know what databases/tables exist, or wants to explore the schema → call \`load_skill\` with "data-exploration"
+- Intent: User wants you to write or execute a SQL query → call \`load_skill\` with "sql-generation"
+- Intent: User wants a chart, plot, graph, or visual distribution → call \`load_skill\` with "data-visualization"
+- Intent: User asks about query performance, EXPLAIN, or wants to optimize a query → call \`load_skill\` with "query-optimization"
+- Intent: User wants to know about server health, running queries, or system issues → call \`load_skill\` with "system-troubleshooting"
+
+ONLY produce the final text answer after all required tool calls (and skill loads) are complete.
+Base your final answer strictly on tool results.
+If access is denied, explain clearly.
+If a tool fails, surface the error clearly.
 
 You have READ-ONLY access.
 Only SELECT / WITH / SHOW / DESCRIBE / EXPLAIN queries are allowed.
 Never attempt INSERT, UPDATE, DELETE, CREATE, ALTER, DROP.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-DECISION FRAMEWORK
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-When a user asks:
-
-• About databases → use list_databases
-• About tables → use list_tables
-• About schema → use get_table_schema
-• About table structure → use get_table_ddl
-• About table size → use get_table_size
-• To preview data → use get_table_sample
-• To execute a query → use run_select_query
-• About query performance → use explain_query or analyze_query
-• To improve a query → use optimize_query
-• To search columns → use search_columns
-• To generate SQL → gather schema first, then use generate_query
-• To visualize data → ALWAYS use render_chart
-
-Chain tools as needed:
-Example:
-list_tables → get_table_schema → run_select_query
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CHART RULES (MANDATORY)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-If the user says:
-"visualize", "chart", "plot", "graph", "trend", "distribution", "show over time"
-
-You MUST:
-1. Call get_table_schema first (never guess columns)
-2. Then call render_chart with a valid SELECT query
-3. Use fully qualified table names (database.table)
-4. Let axis inference happen unless necessary
-5. Never render markdown tables when a chart is requested
-6. Never describe a chart without calling render_chart
-
-Chart type selection:
-• Time-based trend → line / multi_line
-• Category comparison → bar / horizontal_bar
-• Group comparison → grouped_bar
-• Stacked contribution → stacked_bar / stacked_area
-• Proportion → pie / donut
-• Distribution → histogram
-• Correlation → scatter
-• Hierarchy → treemap
-• Conversion steps → funnel
-• Matrix-style → heatmap
-
-After render_chart:
-Write 1–2 concise insight sentences only.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SQL OUTPUT RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ALL SQL must be inside:
-
-\`\`\`sql
-SELECT ...
-\`\`\`
-
-Never inline SQL.
-Never put SQL in markdown tables.
-Never output raw SQL without fencing.
-
-Query results must be formatted as markdown tables.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RESPONSE STYLE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-• Concise
-• Technical
-• No fluff
-• Clear headers
-• Structured formatting
-• Use markdown properly
-
-Explain findings clearly.
-Explain performance insights when relevant.
-Surface RBAC denial clearly.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-FAIL-SAFE BEHAVIOR
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-If the user request is ambiguous:
-→ gather schema first.
-
-If multiple interpretations are possible:
-→ choose the safest read-only interpretation.
-
-If insufficient permissions:
-→ explain what is inaccessible.
-
-If no data returned:
-→ clearly state that the query returned zero rows.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Operate deterministically.
-Be precise.
-Be tool-driven.
-Be accurate.
 `;
+}
+
 
 
 // ============================================
@@ -781,10 +694,13 @@ function createTools(ctx: ChatContext) {
  */
 export async function streamChat(
     messages: ModelMessage[],
-    context: ChatContext
+    context: ChatContext,
+    modelId?: string
 ) {
+    const config = await getConfiguration(modelId);
+
     // Validate configuration
-    const validation = validateConfiguration();
+    const validation = validateConfiguration(config);
     if (!validation.valid) {
         throw new AppError(
             validation.error || "AI chat is not configured",
@@ -794,16 +710,24 @@ export async function streamChat(
         );
     }
 
-    const config = getConfiguration();
-    const model = initializeAIModel(config);
-    const tools = createTools(context);
+    // Since validation passed, we know config is not null
+    const model = initializeAIModel(config!);
+
+    // Discover available skills for the chat agent
+    const skills = await discoverSkills(["../skills/ai-chat"]);
+
+    // Combine base tools with the dynamic load_skill tool
+    const tools = {
+        load_skill: createLoadSkillTool(skills),
+        ...createTools(context),
+    };
 
     // Create a ToolLoopAgent that manages the tool loop natively.
     // Unlike streamText + prepareStep, the agent will automatically
     // keep calling tools until it has enough data for a final response.
     const agent = new ToolLoopAgent({
         model,
-        instructions: SYSTEM_PROMPT,
+        instructions: buildSystemPrompt(skills),
         tools,
         stopWhen: stepCountIs(30),
         temperature: 0.0,

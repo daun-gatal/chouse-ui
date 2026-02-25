@@ -11,6 +11,8 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createHuggingFace } from "@ai-sdk/huggingface";
 import { AppError } from "../types";
+import { getAiConfigById, getDefaultAiConfig, getAiConfigWithKey } from "../rbac/services/aiModels";
+import type { AiConfigWithKey } from "../rbac/services/aiModels";
 
 // ============================================
 // Types
@@ -18,88 +20,85 @@ import { AppError } from "../types";
 
 export type AIProvider = "openai" | "anthropic" | "google" | "huggingface" | "openai-compatible";
 
-export interface AIConfiguration {
-    enabled: boolean;
-    provider: AIProvider;
-    apiKey: string | undefined;
-    modelName: string | undefined;
-    baseUrl: string | undefined;
-    headers: Record<string, string> | undefined;
-}
-
 // ============================================
 // Configuration
 // ============================================
 
 /**
- * Get AI configuration from environment variables
+ * Get AI configuration from the database. 
+ * If a modelId is provided, it fetches that specific config. 
+ * Otherwise, it fetches the default active config.
  */
-export function getConfiguration(): AIConfiguration {
-    const provider = (process.env.AI_PROVIDER || "openai") as AIProvider;
-    return {
-        enabled: process.env.AI_OPTIMIZER_ENABLED === "true",
-        provider,
-        apiKey: process.env.AI_API_KEY,
-        modelName: process.env.AI_MODEL_NAME,
-        baseUrl: process.env.AI_BASE_URL,
-        headers: process.env.AI_OPENAI_COMPATIBLE_HEADERS
-            ? JSON.parse(process.env.AI_OPENAI_COMPATIBLE_HEADERS)
-            : undefined,
-    };
+export async function getConfiguration(configId?: string): Promise<AiConfigWithKey | null> {
+    if (configId) {
+        const config = await getAiConfigById(configId);
+        // We need the key to initialize the SDK
+        if (config) {
+            return getAiConfigWithKey(configId);
+        }
+        return null;
+    }
+
+    return getDefaultAiConfig();
 }
 
 /**
  * Validate AI configuration
  */
-export function validateConfiguration(): { valid: boolean; error?: string } {
-    const config = getConfiguration();
-
-    if (!config.enabled) {
+export function validateConfiguration(config: AiConfigWithKey | null): { valid: boolean; error?: string } {
+    if (!config) {
         return {
             valid: false,
-            error: "AI features are not enabled. Please contact your administrator.",
+            error: "No active AI model found. Please configure an AI model in the Admin page.",
         };
     }
 
-    if (!config.apiKey) {
+    if (!config.isActive) {
         return {
             valid: false,
-            error: "AI features are not configured. Missing AI_API_KEY.",
+            error: "The selected AI model configuration is not active.",
+        };
+    }
+
+    if (!config.provider.apiKey) {
+        return {
+            valid: false,
+            error: `API key is missing for provider ${config.provider.name}. Please supply an API key in the Admin UI.`,
         };
     }
 
     // Validate provider
-    const validProviders: AIProvider[] = ["openai", "anthropic", "google", "huggingface", "openai-compatible"];
-    if (!validProviders.includes(config.provider)) {
+    const validProviders: string[] = ["openai", "anthropic", "google", "huggingface", "openai-compatible"];
+    if (!validProviders.includes(config.provider.name)) {
         return {
             valid: false,
-            error: `Invalid AI provider: ${config.provider}.Supported: ${validProviders.join(", ")}`,
+            error: `Invalid AI provider: ${config.provider.name}. Supported: ${validProviders.join(", ")}`,
         };
     }
 
     // Validate baseUrl protocol for openai-compatible
-    if (config.provider === "openai-compatible") {
-        if (!config.baseUrl) {
+    if (config.provider.name === "openai-compatible") {
+        if (!config.provider.baseUrl) {
             return {
                 valid: false,
-                error: "AI_BASE_URL is required when using the openai-compatible provider",
+                error: "Base URL is required when using the openai-compatible provider.",
             };
         }
     }
 
-    if (config.baseUrl) {
+    if (config.provider.baseUrl) {
         try {
-            const url = new URL(config.baseUrl);
+            const url = new URL(config.provider.baseUrl);
             if (url.protocol !== "http:" && url.protocol !== "https:") {
                 return {
                     valid: false,
-                    error: "AI_BASE_URL must be a valid HTTP/HTTPS URL",
+                    error: "Base URL must be a valid HTTP/HTTPS URL.",
                 };
             }
         } catch (e) {
             return {
                 valid: false,
-                error: "AI_BASE_URL must be a valid URL",
+                error: "Base URL must be a valid URL.",
             };
         }
     }
@@ -110,58 +109,56 @@ export function validateConfiguration(): { valid: boolean; error?: string } {
 /**
  * Initialize AI model based on provider configuration
  */
-export function initializeAIModel(config: AIConfiguration) {
-    // Model name must be provided via env or config
-    const modelName = config.modelName;
+export function initializeAIModel(config: AiConfigWithKey) {
+    const modelName = config.model.modelId;
 
     if (!modelName) {
-        throw new AppError("AI model name is not configured. Please set AI_MODEL_NAME environment variable.", "AI_CONFIGURATION_ERROR", "validation", 500);
+        throw new AppError("AI model ID string is not configured.", "AI_CONFIGURATION_ERROR", "validation", 500);
     }
 
-    switch (config.provider) {
+    switch (config.provider.name) {
         case "openai": {
-            const provider = createOpenAI({
-                apiKey: config.apiKey,
-                baseURL: config.baseUrl,
+            const OpenAIProvider = createOpenAI({
+                apiKey: config.provider.apiKey || undefined,
+                baseURL: config.provider.baseUrl || undefined,
             });
-            return provider(modelName);
+            return OpenAIProvider(modelName);
         }
         case "anthropic": {
-            const provider = createAnthropic({
-                apiKey: config.apiKey,
-                baseURL: config.baseUrl,
+            const AnthropicProvider = createAnthropic({
+                apiKey: config.provider.apiKey || undefined,
+                baseURL: config.provider.baseUrl || undefined,
             });
-            return provider(modelName);
+            return AnthropicProvider(modelName);
         }
         case "google": {
-            const provider = createGoogleGenerativeAI({
-                apiKey: config.apiKey,
-                baseURL: config.baseUrl,
+            const GoogleProvider = createGoogleGenerativeAI({
+                apiKey: config.provider.apiKey || undefined,
+                baseURL: config.provider.baseUrl || undefined,
             });
-            return provider(modelName);
+            return GoogleProvider(modelName);
         }
         case "huggingface": {
-            const provider = createHuggingFace({
-                apiKey: config.apiKey,
-                baseURL: config.baseUrl,
+            const HuggingFaceProvider = createHuggingFace({
+                apiKey: config.provider.apiKey || undefined,
+                baseURL: config.provider.baseUrl || undefined,
             });
-            return provider(modelName);
+            return HuggingFaceProvider(modelName);
         }
         case "openai-compatible": {
-            if (!config.baseUrl) {
-                throw new AppError("AI_BASE_URL is required for openai-compatible", "AI_CONFIGURATION_ERROR", "validation", 500);
+            if (!config.provider.baseUrl) {
+                throw new AppError("Base URL is required for openai-compatible", "AI_CONFIGURATION_ERROR", "validation", 500);
             }
-            const provider = createOpenAICompatible({
+            const OpenAICompatibleProvider = createOpenAICompatible({
                 name: "openai-compatible",
-                baseURL: config.baseUrl,
-                apiKey: config.apiKey,
-                headers: config.headers,
+                baseURL: config.provider.baseUrl,
+                apiKey: config.provider.apiKey || undefined,
             });
-            return provider(modelName);
+            return OpenAICompatibleProvider(modelName);
         }
         default:
             throw new AppError(
-                `Unsupported AI provider: ${config.provider} `,
+                `Unsupported AI provider: ${config.provider.name}`,
                 "CONFIGURATION_ERROR",
                 "unknown",
                 500
@@ -170,8 +167,9 @@ export function initializeAIModel(config: AIConfiguration) {
 }
 
 /**
- * Check if AI features are enabled
+ * Check if AI features are enabled (returns true if a default active model exists)
  */
-export function isAIEnabled(): boolean {
-    return getConfiguration().enabled;
+export async function isAIEnabled(): Promise<boolean> {
+    const config = await getConfiguration();
+    return !!config;
 }

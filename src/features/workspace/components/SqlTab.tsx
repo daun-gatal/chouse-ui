@@ -165,7 +165,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               action: {
                 label: "View",
                 onClick: () => {
-                  setOptimizerAutoStart(true);
+                  setOptimizerAutoStart(false);
                   setOptimizationReason(result.reason);
                   setIsOptimizerOpen(true);
                 }
@@ -366,11 +366,11 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
       <Alert variant="destructive" className="flex flex-col gap-4">
         <div>
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription className="font-mono text-xs mt-1 whitespace-pre-wrap">
+          <AlertDescription className="font-mono text-xs mt-1 whitespace-pre-wrap break-all">
             {errorMessage}
           </AlertDescription>
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-end mt-4">
           {canDebug && (
             <Button
               variant="outline"

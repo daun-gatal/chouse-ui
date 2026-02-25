@@ -64,6 +64,146 @@ export interface RbacPermission {
   category: string;
 }
 
+// ============================================
+// AI Models API
+// ============================================
+
+export interface AiProvider {
+  id: string;
+  name: string;
+  baseUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAiProviderInput {
+  name: string;
+  baseUrl?: string | null;
+  apiKey?: string;
+  isActive?: boolean;
+}
+
+export interface UpdateAiProviderInput {
+  name?: string;
+  baseUrl?: string | null;
+  apiKey?: string;
+  isActive?: boolean;
+}
+
+export interface AiBaseModel {
+  id: string;
+  providerId: string;
+  name: string;
+  modelId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAiBaseModelInput {
+  providerId: string;
+  name: string;
+  modelId: string;
+}
+
+export interface UpdateAiBaseModelInput {
+  name?: string;
+  modelId?: string;
+}
+
+export interface AiConfig {
+  id: string;
+  modelId: string;
+  name: string;
+  isActive: boolean;
+  isDefault: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  model: AiBaseModel;
+  provider: AiProvider;
+}
+
+export interface CreateAiConfigInput {
+  modelId: string;
+  name: string;
+  isActive?: boolean;
+  isDefault?: boolean;
+}
+
+export interface UpdateAiConfigInput {
+  name?: string;
+  isActive?: boolean;
+  isDefault?: boolean;
+}
+
+export const rbacAiProvidersApi = {
+  async list(): Promise<AiProvider[]> {
+    return rbacFetch('/ai-providers');
+  },
+  async getById(id: string): Promise<AiProvider> {
+    return rbacFetch(`/ai-providers/${id}`);
+  },
+  async create(input: CreateAiProviderInput): Promise<AiProvider> {
+    return rbacFetch('/ai-providers', { method: 'POST', body: input });
+  },
+  async update(id: string, input: UpdateAiProviderInput): Promise<AiProvider> {
+    return rbacFetch(`/ai-providers/${id}`, { method: 'PATCH', body: input });
+  },
+  async delete(id: string): Promise<void> {
+    await rbacFetch(`/ai-providers/${id}`, { method: 'DELETE' });
+  },
+};
+
+export const rbacAiBaseModelsApi = {
+  async list(providerId?: string): Promise<AiBaseModel[]> {
+    const query = providerId ? `?providerId=${providerId}` : '';
+    return rbacFetch(`/ai-base-models${query}`);
+  },
+  async getById(id: string): Promise<AiBaseModel> {
+    return rbacFetch(`/ai-base-models/${id}`);
+  },
+  async create(input: CreateAiBaseModelInput): Promise<AiBaseModel> {
+    return rbacFetch('/ai-base-models', { method: 'POST', body: input });
+  },
+  async update(id: string, input: UpdateAiBaseModelInput): Promise<AiBaseModel> {
+    return rbacFetch(`/ai-base-models/${id}`, { method: 'PATCH', body: input });
+  },
+  async delete(id: string): Promise<void> {
+    await rbacFetch(`/ai-base-models/${id}`, { method: 'DELETE' });
+  },
+};
+
+export const rbacAiConfigsApi = {
+  async list(options?: {
+    search?: string;
+    activeOnly?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ configs: AiConfig[]; total: number }> {
+    const params = new URLSearchParams();
+    if (options?.search) params.set('search', options.search);
+    if (options?.activeOnly) params.set('activeOnly', 'true');
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.offset) params.set('offset', String(options.offset));
+
+    const query = params.toString();
+    return rbacFetch(`/ai-models${query ? `?${query}` : ''}`);
+  },
+  async getById(id: string): Promise<AiConfig> {
+    return rbacFetch(`/ai-models/${id}`);
+  },
+  async create(input: CreateAiConfigInput): Promise<AiConfig> {
+    return rbacFetch('/ai-models', { method: 'POST', body: input });
+  },
+  async update(id: string, input: UpdateAiConfigInput): Promise<AiConfig> {
+    return rbacFetch(`/ai-models/${id}`, { method: 'PATCH', body: input });
+  },
+  async delete(id: string): Promise<void> {
+    await rbacFetch(`/ai-models/${id}`, { method: 'DELETE' });
+  },
+};
+
 // RbacTokens imported from client.ts
 
 export interface RbacLoginResponse {

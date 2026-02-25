@@ -67,30 +67,4 @@ jwt:
   access_expiry: 4h
   refresh_expiry: 7d
 
-# ============================================
-# AI Features Configuration
-# ============================================
-ai:
-  # Enable/disable AI features (Optimizer, Debugger, etc.)
-  optimizer_enabled: false
-  
-  # AI Provider Selection: openai, anthropic, google, huggingface, openai-compatible
-  provider: openai
-  
-  # AI API Key (required when AI features are enabled)
-  api_key: ""
-  
-  # AI Model Name (required if enabled)
-  # Examples: gpt-4o, claude-3-5-sonnet-20241022, gemini-1.5-pro
-  model_name: ""
-  
-  # AI Base URL (optional, for compatible providers like Ollama/LocalAI)
-  # Examples:
-  #   - Self-hosted Ollama: http://localhost:11434/v1
-  #   - Together AI: https://api.together.xyz/v1
-  #   - LocalAI: http://localhost:8080/v1
-  base_url: ""
-  
-  # OpenAI-Compatible Custom Headers (optional JSON string)
-  # Example: {"X-Custom-Header": "value"}
-  openai_compatible_headers: ""
+
