@@ -1,7 +1,0 @@
-feat(sql-editor): optimized auto-complete, column-level suggestions, clear cache on connection change
-
-Use intellisense API with single cache cleared on logout and connection change.
-Add trigger chars, sortText/filterText, context-aware ordering.
-Column completion from FROM/JOIN tables with alias support.
-Clear cache in auth store when setActiveConnection or setConnectionInfo changes connection.
-CHANGELOG v2.12.2.

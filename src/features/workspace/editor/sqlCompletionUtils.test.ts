@@ -126,6 +126,11 @@ describe("sqlCompletionUtils", () => {
       const query = "SELECT * FROM users AS u WHERE ";
       expect(getTablesInScope(query, pos(1, query.length))).toEqual([{ table: "users", alias: "u" }]);
     });
+
+    it("should not duplicate the same table ref (e.g. FROM a JOIN a)", () => {
+      const query = "SELECT * FROM a JOIN a ON a.id = a.id WHERE ";
+      expect(getTablesInScope(query, pos(1, query.length))).toEqual([{ table: "a" }]);
+    });
   });
 
   describe("buildDatabaseStructureFromColumns", () => {

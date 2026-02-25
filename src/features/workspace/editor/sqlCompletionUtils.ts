@@ -93,7 +93,9 @@ export function getTablesInScope(
           i += 1;
         }
       }
-      result.push(ref);
+      if (!result.some((r) => r.database === ref.database && r.table === ref.table && r.alias === ref.alias)) {
+        result.push(ref);
+      }
       continue;
     }
     if (lower === "left" || lower === "right" || lower === "inner" || lower === "outer" || lower === "cross") {
@@ -115,7 +117,9 @@ export function getTablesInScope(
             i += 1;
           }
         }
-        result.push(ref);
+        if (!result.some((r) => r.database === ref.database && r.table === ref.table && r.alias === ref.alias)) {
+          result.push(ref);
+        }
       }
       continue;
     }

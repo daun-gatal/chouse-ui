@@ -365,27 +365,35 @@ export const initializeMonacoGlobally = async () => {
         }
       });
 
-      const keywordSuggestions: monaco.languages.CompletionItem[] = data.keywords.map(
-        (keyword) => ({
+      const seenKeywords = new Set<string>();
+      const keywordSuggestions: monaco.languages.CompletionItem[] = [];
+      for (const keyword of data.keywords) {
+        if (seenKeywords.has(keyword)) continue;
+        seenKeywords.add(keyword);
+        keywordSuggestions.push({
           label: keyword,
           kind: monaco.languages.CompletionItemKind.Keyword,
           insertText: keyword,
           filterText: keyword,
           sortText: `0_${keyword}`,
           range,
-        })
-      );
+        });
+      }
 
-      const functionSuggestions: monaco.languages.CompletionItem[] = data.functions.map(
-        (fn) => ({
+      const seenFunctions = new Set<string>();
+      const functionSuggestions: monaco.languages.CompletionItem[] = [];
+      for (const fn of data.functions) {
+        if (seenFunctions.has(fn)) continue;
+        seenFunctions.add(fn);
+        functionSuggestions.push({
           label: fn,
           kind: monaco.languages.CompletionItemKind.Function,
           insertText: `${fn}()`,
           filterText: fn,
           sortText: `1_${fn}`,
           range,
-        })
-      );
+        });
+      }
 
       // Context-aware order: in FROM/JOIN prefer tables; in SELECT/WHERE/ON prefer columns (from scope) and functions
       const contextOrder =
@@ -395,7 +403,16 @@ export const initializeMonacoGlobally = async () => {
             ? [...columnSuggestionsFromScope, ...functionSuggestions, ...suggestions, ...keywordSuggestions]
             : [...keywordSuggestions, ...functionSuggestions, ...suggestions];
 
-      return { suggestions: contextOrder };
+      // Deduplicate by kind+label+detail+insertText so the same suggestion never appears twice (e.g. clear SQL, or API duplicates)
+      const seen = new Set<string>();
+      const deduped = contextOrder.filter((item) => {
+        const key = `${item.kind}:${item.label}:${item.detail ?? ""}:${item.insertText ?? item.label}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      return { suggestions: deduped };
     },
   });
 
