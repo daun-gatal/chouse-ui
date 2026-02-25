@@ -1,9 +1,17 @@
-//monacoConfig.ts
+// monacoConfig.ts
 import { createClient } from "@clickhouse/client-web";
 import * as monaco from "monaco-editor";
-// import 'monaco-editor/min/vs/editor/editor.main.css';
 import { format } from "sql-formatter";
-import { appQueries } from "./appQueries";
+import type { IntellisenseData } from "@/api/query";
+import {
+  buildDatabaseStructureFromColumns,
+  parseQueryContext,
+  type Column,
+  type Database,
+  type ParseQueryContextResult,
+  type QueryContextKind,
+  type Table,
+} from "./sqlCompletionUtils";
 
 // Add this declaration to extend the Window interface
 declare global {
@@ -16,8 +24,16 @@ declare global {
 
 let isInitialized = false;
 
-// Initialize ClickHouse client
-let client: any = null;
+// Credential shape from app-storage (minimal for type safety)
+interface AppCredential {
+  url?: string;
+  username?: string;
+  password?: string;
+  customPath?: string;
+}
+
+// Initialize ClickHouse client (used by retryInitialization; completion uses API)
+let client: ReturnType<typeof createClient> | null = null;
 
 // SECURITY WARNING: Storing ClickHouse credentials in localStorage is vulnerable to XSS attacks.
 // If an XSS vulnerability exists, attackers can steal credentials from localStorage.
@@ -27,37 +43,38 @@ let client: any = null;
 // 3. Never storing passwords in browser storage - use tokens/session IDs instead
 // For now, we rely on XSS prevention measures (DOMPurify, CSP headers) to protect credentials.
 const appStore = localStorage.getItem("app-storage");
-const state = appStore ? JSON.parse(appStore) : {};
-const credential = state.state?.credential || {};
+const state = appStore ? (JSON.parse(appStore) as { state?: { credential?: AppCredential } }) : {};
+const credential: AppCredential = state.state?.credential ?? {};
 
 function initializeClickHouseClient(
-  appStore: any,
-  state: any,
-  credential: any
-) {
+  _appStore: string | null,
+  _state: { state?: { credential?: AppCredential } },
+  cred: AppCredential
+): void {
   if (
-    credential &&
-    typeof credential.url === "string" &&
-    credential.url.trim() !== "" &&
-    typeof credential.username === "string" &&
-    credential.username.trim() !== ""
+    cred &&
+    typeof cred.url === "string" &&
+    cred.url.trim() !== "" &&
+    typeof cred.username === "string" &&
+    cred.username.trim() !== ""
   ) {
     client = createClient({
-      url: credential.url,
-      pathname: credential.customPath,
-      username: credential.username,
-      password: credential.password || "", // Allow empty password
+      url: cred.url,
+      pathname: cred.customPath,
+      username: cred.username,
+      password: cred.password ?? "",
     });
   } else {
-    console.warn("Invalid or missing ClickHouse credentials:", credential);
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[MonacoConfig] Invalid or missing ClickHouse credentials");
+    }
   }
 }
 
-// Call this function at the start of your application
 try {
   initializeClickHouseClient(appStore, state, credential);
 } catch (error) {
-  console.error("Error initializing ClickHouse client:", error);
+  console.error("[MonacoConfig] Error initializing ClickHouse client:", error);
 }
 
 // Retry initialization function
@@ -67,69 +84,53 @@ export async function retryInitialization(
 ): Promise<void> {
   for (let i = 0; i < retries; i++) {
     if (client) {
-      console.log("ClickHouse client is already initialized.");
       return;
     }
-    console.log(`Retrying initialization... Attempt ${i + 1}`);
-    // get the latest app store
-    const appStore = localStorage.getItem("app-storage");
-    const state = appStore ? JSON.parse(appStore) : {};
-    const credential = state.state?.credential || {};
-    initializeClickHouseClient(appStore, state, credential);
+    const latestStore = localStorage.getItem("app-storage");
+    const latestState = latestStore
+      ? (JSON.parse(latestStore) as { state?: { credential?: AppCredential } })
+      : {};
+    const latestCred = latestState.state?.credential ?? {};
+    initializeClickHouseClient(latestStore, latestState, latestCred);
     if (client) {
-      console.log("ClickHouse client initialized successfully.");
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
-  console.error(
-    "Failed to initialize ClickHouse client after multiple attempts."
-  );
+  console.error("[MonacoConfig] Failed to initialize ClickHouse client after multiple attempts.");
 }
 
-// Modify the query execution function
-async function executeQuery(query: string): Promise<any> {
-  if (!client) {
-    throw new Error("ClickHouse client is not initialized");
+// Re-export for consumers that import from monacoConfig
+export type { Column, Database, ParseQueryContextResult, QueryContextKind, Table, TableInScope } from "./sqlCompletionUtils";
+export { buildDatabaseStructureFromColumns, getTablesInScope, parseQueryContext } from "./sqlCompletionUtils";
+export type IntellisenseColumn = IntellisenseData["columns"][number];
+
+// Single cache for intellisense (replaces dbStructureCache, functionsCache, keywordsCache)
+let intellisenseCache: IntellisenseData | null = null;
+
+/**
+ * Clear the intellisense cache. Call on logout/connection change so next completion fetches fresh data.
+ */
+export function clearIntellisenseCache(): void {
+  intellisenseCache = null;
+}
+
+async function getIntellisenseDataCached(): Promise<IntellisenseData | null> {
+  if (intellisenseCache) {
+    return intellisenseCache;
   }
   try {
-    const result = await client.query({
-      query,
-      format: "JSONEachRow",
-    });
-    return await result.json();
-  } catch (error) {
-    console.error("Error executing query:", error);
-    throw error;
+    const { getIntellisenseData } = await import("@/api/query");
+    const data = await getIntellisenseData();
+    intellisenseCache = data;
+    return data;
+  } catch (err) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[MonacoConfig] Failed to fetch intellisense data:", err);
+    }
+    return null;
   }
 }
-
-// Define interfaces for the database structure
-interface Column {
-  name: string;
-  type: string;
-}
-
-interface Table {
-  name: string;
-  type: string;
-  children: Column[];
-}
-
-interface Database {
-  name: string;
-  type: string;
-  children: Table[];
-}
-
-// Cache for database structure
-let dbStructureCache: Database[] | null = null;
-
-// cache for functions
-let functionsCache: string[] | null = null;
-
-// cache for keywords
-let keywordsCache: string[] | null = null;
 
 // Setting up the Monaco Environment to use the editor worker
 window.MonacoEnvironment = {
@@ -140,7 +141,7 @@ window.MonacoEnvironment = {
 };
 
 // Ensure the Monaco Environment is initialized
-function ensureMonacoEnvironment() {
+function ensureMonacoEnvironment(): void {
   if (typeof window.MonacoEnvironment === "undefined") {
     window.MonacoEnvironment = {
       getWorkerUrl() {
@@ -149,127 +150,6 @@ function ensureMonacoEnvironment() {
       },
     };
   }
-}
-
-async function getDatabasesTablesAndColumns(): Promise<Database[]> {
-  if (dbStructureCache) {
-    return dbStructureCache;
-  }
-
-  try {
-    const data = await executeQuery(appQueries.getIntellisense.query);
-
-    // Process the data into the Database structure
-    const databaseMap: Record<string, Database> = {};
-
-    data.forEach((item: any) => {
-      const { database, table, column_name, column_type } = item;
-
-      if (!databaseMap[database]) {
-        databaseMap[database] = {
-          name: database,
-          type: "database",
-          children: [],
-        };
-      }
-
-      let tableObj = databaseMap[database].children.find(
-        (t) => t.name === table
-      );
-      if (!tableObj) {
-        tableObj = {
-          name: table,
-          type: "table",
-          children: [],
-        };
-        databaseMap[database].children.push(tableObj);
-      }
-
-      tableObj.children.push({
-        name: column_name,
-        type: column_type,
-      });
-    });
-
-    // Convert the map to an array
-    dbStructureCache = Object.values(databaseMap);
-    return dbStructureCache;
-  } catch (err) {
-    console.error("Error fetching database data:", err);
-    return [];
-  }
-}
-
-// async function get functions from the API
-async function getFunctions(): Promise<string[]> {
-  if (functionsCache) {
-    return functionsCache || [];
-  }
-
-  try {
-    const data = await executeQuery(appQueries.getClickHouseFunctions.query);
-    functionsCache = data.map((row: any) => row.name);
-    return functionsCache || [];
-  } catch (err) {
-    console.error("Error fetching functions data:", err);
-    return [];
-  }
-}
-
-// async function get keywords from the API
-async function getKeywords(): Promise<string[]> {
-  if (keywordsCache) {
-    return keywordsCache || [];
-  }
-
-  try {
-    const data = await executeQuery(appQueries.getKeywords.query);
-    keywordsCache = data.map((row: any) => row.keyword);
-    return keywordsCache || [];
-  } catch (err) {
-    console.error("Error fetching keywords data:", err);
-    return [];
-  }
-}
-
-// Parse the SQL query to determine the context
-function parseQueryContext(
-  query: string,
-  position: monaco.Position
-): { database?: string; table?: string; isTypingDatabase: boolean } {
-  const lines = query.split("\n");
-  const currentLine = lines[position.lineNumber - 1].substring(
-    0,
-    position.column
-  );
-  const tokens = currentLine.split(/\s+/);
-
-  let database: string | undefined;
-  let table: string | undefined;
-  let isTypingDatabase = false;
-
-  for (let i = tokens.length - 1; i >= 0; i--) {
-    const token = tokens[i];
-    if (token.includes(".")) {
-      const parts = token.split(".");
-      if (parts.length === 2 && parts[1] === "") {
-        database = parts[0];
-        isTypingDatabase = true;
-        break;
-      } else if (parts.length === 2) {
-        [database, table] = parts;
-      } else if (parts.length === 3) {
-        [database, table] = parts.slice(0, 2);
-      }
-      break;
-    }
-    if (token.toLowerCase() === "from" && i + 1 < tokens.length) {
-      table = tokens[i + 1];
-      break;
-    }
-  }
-
-  return { database, table, isTypingDatabase };
 }
 
 // Initialize Monaco editor with ClickHouse SQL language features
@@ -379,6 +259,7 @@ export const initializeMonacoGlobally = async () => {
 
   // Register completion item provider for SQL
   monaco.languages.registerCompletionItemProvider("sql", {
+    triggerCharacters: [".", " "],
     provideCompletionItems: async (model, position) => {
       const word = model.getWordUntilPosition(position);
       const range = {
@@ -388,57 +269,93 @@ export const initializeMonacoGlobally = async () => {
         endColumn: word.endColumn,
       };
 
-      const dbStructure = await getDatabasesTablesAndColumns();
+      const data = await getIntellisenseDataCached();
+      if (!data) {
+        return { suggestions: [] };
+      }
+
+      const dbStructure = buildDatabaseStructureFromColumns(data.columns);
       const queryContext = parseQueryContext(model.getValue(), position);
-      const clickHouseFunctionsArray = await getFunctions();
-      const clickHouseKeywordsArray = await getKeywords(); // Fetch keywords from API
 
       const suggestions: monaco.languages.CompletionItem[] = [];
 
-      dbStructure.forEach((database: Database) => {
+      // Column-level: suggest columns from FROM/JOIN tables when in SELECT/WHERE/ON
+      const columnSuggestionsFromScope: monaco.languages.CompletionItem[] = [];
+      if (
+        (queryContext.kind === "afterSelect" || queryContext.kind === "afterWhere" || queryContext.kind === "afterOn") &&
+        queryContext.tablesInScope.length > 0
+      ) {
+        const usePrefix = queryContext.tablesInScope.length > 1;
+        for (const ref of queryContext.tablesInScope) {
+          const db = dbStructure.find(
+            (d) =>
+              (ref.database ? d.name === ref.database : true) && d.children.some((t) => t.name === ref.table)
+          );
+          const tbl = db?.children.find((t) => t.name === ref.table);
+          if (tbl) {
+            const labelPrefix = usePrefix && ref.alias ? `${ref.alias}.` : "";
+            for (const col of tbl.children) {
+              const label = labelPrefix + col.name;
+              columnSuggestionsFromScope.push({
+                label,
+                kind: monaco.languages.CompletionItemKind.Field,
+                insertText: label,
+                detail: ref.database ? `${ref.database}.${ref.table}.${col.type}` : `${ref.table}.${col.type}`,
+                filterText: col.name,
+                sortText: `4_${label}`,
+                range,
+              });
+            }
+          }
+        }
+      }
+
+      dbStructure.forEach((db: Database) => {
         if (
           !queryContext.database ||
-          database.name
-            .toLowerCase()
-            .startsWith(queryContext.database.toLowerCase())
+          db.name.toLowerCase().startsWith(queryContext.database.toLowerCase())
         ) {
           if (queryContext.isTypingDatabase || !queryContext.database) {
             suggestions.push({
-              label: `${database.name}`,
+              label: db.name,
               kind: monaco.languages.CompletionItemKind.Module,
-              insertText: `${database.name}`,
+              insertText: db.name,
               detail: "Database",
-              range: range,
+              filterText: db.name,
+              sortText: `2_${db.name}`,
+              range,
             });
           }
 
           if (
             queryContext.isTypingDatabase ||
-            database.name === queryContext.database
+            db.name === queryContext.database
           ) {
-            database.children.forEach((table: Table) => {
+            db.children.forEach((tbl: Table) => {
               if (
                 !queryContext.table ||
-                table.name
-                  .toLowerCase()
-                  .startsWith(queryContext.table.toLowerCase())
+                tbl.name.toLowerCase().startsWith(queryContext.table.toLowerCase())
               ) {
                 suggestions.push({
-                  label: `${table.name}`,
+                  label: tbl.name,
                   kind: monaco.languages.CompletionItemKind.Struct,
-                  insertText: `${table.name}`,
-                  detail: `Table in ${database.name}`,
-                  range: range,
+                  insertText: tbl.name,
+                  detail: `Table in ${db.name}`,
+                  filterText: tbl.name,
+                  sortText: `3_${tbl.name}`,
+                  range,
                 });
 
-                if (queryContext.table && table.name === queryContext.table) {
-                  table.children.forEach((column: Column) => {
+                if (queryContext.table && tbl.name === queryContext.table) {
+                  tbl.children.forEach((col: Column) => {
                     suggestions.push({
-                      label: `${column.name}`,
+                      label: col.name,
                       kind: monaco.languages.CompletionItemKind.Field,
-                      insertText: `${column.name}`,
-                      detail: `${database.name}.${table.name}.${column.type}`,
-                      range: range,
+                      insertText: col.name,
+                      detail: `${db.name}.${tbl.name}.${col.type}`,
+                      filterText: col.name,
+                      sortText: `4_${col.name}`,
+                      range,
                     });
                   });
                 }
@@ -448,25 +365,54 @@ export const initializeMonacoGlobally = async () => {
         }
       });
 
-      // Add SQL keyword suggestions from fetched keywords
-      const keywordSuggestions = clickHouseKeywordsArray.map((keyword) => ({
-        label: keyword,
-        kind: monaco.languages.CompletionItemKind.Keyword,
-        insertText: keyword,
-        range: range,
-      }));
+      const seenKeywords = new Set<string>();
+      const keywordSuggestions: monaco.languages.CompletionItem[] = [];
+      for (const keyword of data.keywords) {
+        if (seenKeywords.has(keyword)) continue;
+        seenKeywords.add(keyword);
+        keywordSuggestions.push({
+          label: keyword,
+          kind: monaco.languages.CompletionItemKind.Keyword,
+          insertText: keyword,
+          filterText: keyword,
+          sortText: `0_${keyword}`,
+          range,
+        });
+      }
 
-      // Add ClickHouse functions suggestions
-      const chFunctions = clickHouseFunctionsArray.map((chFunc: string) => ({
-        label: chFunc,
-        kind: monaco.languages.CompletionItemKind.Function,
-        insertText: `${chFunc}()`,
-        range: range,
-      }));
+      const seenFunctions = new Set<string>();
+      const functionSuggestions: monaco.languages.CompletionItem[] = [];
+      for (const fn of data.functions) {
+        if (seenFunctions.has(fn)) continue;
+        seenFunctions.add(fn);
+        functionSuggestions.push({
+          label: fn,
+          kind: monaco.languages.CompletionItemKind.Function,
+          insertText: `${fn}()`,
+          filterText: fn,
+          sortText: `1_${fn}`,
+          range,
+        });
+      }
 
-      return {
-        suggestions: [...suggestions, ...keywordSuggestions, ...chFunctions],
-      };
+      // Context-aware order: in FROM/JOIN prefer tables; in SELECT/WHERE/ON prefer columns (from scope) and functions
+      const contextOrder =
+        queryContext.kind === "afterFrom" || queryContext.kind === "afterJoin"
+          ? [...suggestions, ...functionSuggestions, ...keywordSuggestions]
+          : queryContext.kind === "afterSelect" || queryContext.kind === "afterWhere" || queryContext.kind === "afterOn"
+            ? [...columnSuggestionsFromScope, ...functionSuggestions, ...suggestions, ...keywordSuggestions]
+            : [...keywordSuggestions, ...functionSuggestions, ...suggestions];
+
+      // Deduplicate by kind+label+detail+insertText so the same suggestion never appears twice (e.g. clear SQL, or API duplicates)
+      const seen = new Set<string>();
+      const deduped = contextOrder.filter((item) => {
+        const key = `${item.kind}:${item.label}:${item.detail ?? ""}:${item.insertText ?? item.label}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      return { suggestions: deduped };
     },
   });
 
@@ -496,6 +442,7 @@ export interface MonacoEditorOptions {
   suggestOnTriggerCharacters?: boolean;
   quickSuggestions?: boolean;
   wordBasedSuggestions?: 'off' | 'allDocuments' | 'matchingDocuments' | 'currentDocument';
+  quickSuggestionsDelay?: number;
 }
 
 const DEFAULT_MONACO_OPTIONS: Required<MonacoEditorOptions> = {
@@ -507,6 +454,7 @@ const DEFAULT_MONACO_OPTIONS: Required<MonacoEditorOptions> = {
   suggestOnTriggerCharacters: true,
   quickSuggestions: true,
   wordBasedSuggestions: 'off',
+  quickSuggestionsDelay: 50,
 };
 
 /**
@@ -532,7 +480,6 @@ export async function getMonacoEditorOptions(): Promise<MonacoEditorOptions> {
       return {
         ...DEFAULT_MONACO_OPTIONS,
         ...monacoSettings,
-        // Ensure nested objects are merged properly
         minimap: monacoSettings.minimap !== undefined
           ? { ...DEFAULT_MONACO_OPTIONS.minimap, ...monacoSettings.minimap }
           : DEFAULT_MONACO_OPTIONS.minimap,
@@ -598,6 +545,7 @@ export const createMonacoEditor = async (
     suggestOnTriggerCharacters: options.suggestOnTriggerCharacters,
     quickSuggestions: options.quickSuggestions,
     wordBasedSuggestions: options.wordBasedSuggestions,
+    quickSuggestionsDelay: options.quickSuggestionsDelay,
   });
 
   return editor;

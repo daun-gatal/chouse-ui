@@ -7,7 +7,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, Lightbulb, FileText, ArrowRight } from 'lucide-react';
+import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, Lightbulb, FileText, ArrowRight, X } from 'lucide-react';
 import { optimizeQuery } from '@/api/query';
 import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
@@ -19,6 +19,13 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { DiffEditor } from './DiffEditor';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 interface OptimizeQueryDialogProps {
     isOpen: boolean;
@@ -180,7 +187,7 @@ export function OptimizeQueryDialog({
         <Dialog open={isOpen} onOpenChange={(open) => {
             if (!open) handleCancel();
         }}>
-            <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 gap-0 bg-[#0F1117] border-gray-800 text-white flex flex-col overflow-hidden">
+            <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 gap-0 bg-[#0F1117] border-gray-800 text-white flex flex-col overflow-hidden [&>button.absolute]:hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-[#14141a]">
                     <DialogHeader className="space-y-1">
@@ -196,11 +203,18 @@ export function OptimizeQueryDialog({
                     </DialogHeader>
                     <div className="flex items-center gap-2">
                         {!isOptimizing && result && (
-                            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+                            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 mr-2">
                                 <span className="text-xs text-gray-400">Model:</span>
                                 <span className="text-xs font-medium text-purple-300">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
                             </div>
                         )}
+                        <button
+                            onClick={handleCancel}
+                            className="p-2 -mr-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                            <span className="sr-only">Close</span>
+                        </button>
                     </div>
                 </div>
 
@@ -272,35 +286,30 @@ export function OptimizeQueryDialog({
                                         <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                                             AI Model
                                         </Label>
-                                        <div className="grid grid-cols-1 gap-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
-                                            {aiModels.map(m => (
-                                                <button
-                                                    key={m.id}
-                                                    onClick={() => setSelectedModelId(m.id)}
-                                                    className={cn(
-                                                        "text-left px-3 py-2.5 rounded-lg border transition-all duration-200 flex items-start gap-3",
-                                                        selectedModelId === m.id
-                                                            ? "bg-purple-500/10 border-purple-500/50 ring-1 ring-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.1)]"
-                                                            : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10"
-                                                    )}
-                                                >
-                                                    <div className="mt-0.5">
-                                                        <div className={cn("w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center", selectedModelId === m.id ? "border-purple-400" : "border-gray-600")}>
-                                                            {selectedModelId === m.id && <div className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
-                                                        </div>
+                                        <Select
+                                            value={selectedModelId}
+                                            onValueChange={(value) => setSelectedModelId(value)}
+                                        >
+                                            <SelectTrigger className="w-full bg-[#1a1c24] border-white/10 text-sm focus:ring-1 focus:ring-purple-500/50 transition-colors h-11">
+                                                <SelectValue placeholder="Select an AI Model" />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-[#14141a] border-white/10 rounded-lg">
+                                                {aiModels.length === 0 ? (
+                                                    <div className="p-4 text-center text-[13px] text-gray-500">
+                                                        No AI models configured.<br />Please add one in the Admin UI.
                                                     </div>
-                                                    <div className="flex flex-col gap-0.5">
-                                                        <span className={cn("font-medium text-[13px] transition-colors", selectedModelId === m.id ? "text-purple-200" : "text-gray-300")}>{m.name}</span>
-                                                        <span className="text-[10px] text-gray-500 font-medium tracking-wide uppercase leading-none">{m.provider || 'AI Provider'}</span>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                            {aiModels.length === 0 && (
-                                                <div className="border border-dashed border-white/10 p-4 rounded-lg text-center text-[13px] text-gray-500">
-                                                    No AI models configured.<br />Please add one in the Admin UI.
-                                                </div>
-                                            )}
-                                        </div>
+                                                ) : (
+                                                    aiModels.map(m => (
+                                                        <SelectItem key={m.id} value={m.id} className="focus:bg-purple-500/10 focus:text-purple-200 cursor-pointer py-2.5 rounded-md mx-1 my-0.5">
+                                                            <div className="flex flex-col gap-0.5 text-left">
+                                                                <span className="font-medium text-[13px] text-gray-200">{m.name}</span>
+                                                                <span className="text-[10px] text-gray-500 font-medium tracking-wide uppercase leading-none">{m.provider || 'AI Provider'}</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))
+                                                )}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
 
                                     <div className="space-y-3">

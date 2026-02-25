@@ -39,16 +39,12 @@ import { version } from "../../../package.json";
 import { rbacUserPreferencesApi } from "@/api/rbac";
 
 // Storage keys for dock preferences (localStorage fallback)
-const DOCK_POSITION_KEY = "chouseui-dock-position";
+const DOCK_PLACEMENT_KEY = "chouseui-dock-placement";
 const DOCK_ORIENTATION_KEY = "chouseui-dock-orientation";
 const DOCK_AUTOHIDE_KEY = "chouseui-dock-autohide";
 const DOCK_MODE_KEY = "chouseui-dock-mode";
 
-interface DockPosition {
-  x: number;
-  y: number;
-}
-
+type DockPlacement = "bottom" | "top" | "left" | "right";
 type DockOrientation = "horizontal" | "vertical";
 type DockMode = "floating" | "sidebar";
 
@@ -56,29 +52,25 @@ interface DockPreferences {
   mode?: DockMode;
   orientation?: DockOrientation;
   autoHide?: boolean;
-  position?: DockPosition | null;
+  placement?: DockPlacement;
 }
 
 // Load dock preferences from localStorage (fallback)
-function loadDockPositionFromLocal(): DockPosition | null {
+function loadDockPlacementFromLocal(): DockPlacement {
   try {
-    const saved = localStorage.getItem(DOCK_POSITION_KEY);
-    if (saved) {
-      return JSON.parse(saved);
+    const saved = localStorage.getItem(DOCK_PLACEMENT_KEY);
+    if (saved === "bottom" || saved === "top" || saved === "left" || saved === "right") {
+      return saved as DockPlacement;
     }
   } catch {
     // Ignore errors
   }
-  return null;
+  return "bottom";
 }
 
-function saveDockPositionToLocal(position: DockPosition | null): void {
+function saveDockPlacementToLocal(placement: DockPlacement): void {
   try {
-    if (position) {
-      localStorage.setItem(DOCK_POSITION_KEY, JSON.stringify(position));
-    } else {
-      localStorage.removeItem(DOCK_POSITION_KEY);
-    }
+    localStorage.setItem(DOCK_PLACEMENT_KEY, placement);
   } catch {
     // Ignore errors
   }
@@ -131,7 +123,7 @@ function loadDockModeFromLocal(): DockMode {
   } catch {
     // Ignore errors
   }
-  return "floating";
+  return "sidebar";
 }
 
 function saveDockModeToLocal(mode: DockMode): void {
@@ -243,7 +235,7 @@ export default function FloatingDock() {
 
   // Dock state - initialize from localStorage for quick render
   const [orientation, setOrientation] = useState<DockOrientation>(loadDockOrientationFromLocal);
-  const [position, setPosition] = useState<DockPosition | null>(loadDockPositionFromLocal);
+  const [placement, setPlacement] = useState<DockPlacement>(loadDockPlacementFromLocal);
   const [isDragging, setIsDragging] = useState(false);
   const [autoHide, setAutoHide] = useState(loadAutoHideFromLocal);
   const [isVisible, setIsVisible] = useState(true);
@@ -304,9 +296,9 @@ export default function FloatingDock() {
           setAutoHide(dbPrefs.autoHide);
           saveAutoHideToLocal(dbPrefs.autoHide);
         }
-        if (dbPrefs.position !== undefined) {
-          setPosition(dbPrefs.position);
-          saveDockPositionToLocal(dbPrefs.position);
+        if (dbPrefs.placement !== undefined && dbPrefs.placement !== placement) {
+          setPlacement(dbPrefs.placement);
+          saveDockPlacementToLocal(dbPrefs.placement);
         }
       } catch (error) {
         console.error('[FloatingDock] Failed to load preferences from database:', error);
@@ -405,16 +397,34 @@ export default function FloatingDock() {
     };
   }, [autoHide, isHovered, isDragging]);
 
-  // Handle drag end - save position
+  // Handle drag end - save placement
   const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     setIsDragging(false);
-    const newPosition = {
-      x: (position?.x || 0) + info.offset.x,
-      y: (position?.y || 0) + info.offset.y,
-    };
-    setPosition(newPosition);
-    saveDockPositionToLocal(newPosition);
-    saveToDatabaseDebounced({ mode: dockMode, orientation, autoHide, position: newPosition });
+    const { x, y } = info.point;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    // Distances to edges
+    const distTop = y;
+    const distBottom = h - y;
+    const distLeft = x;
+    const distRight = w - x;
+
+    const minDist = Math.min(distTop, distBottom, distLeft, distRight);
+    let newPlacement: DockPlacement = "bottom";
+    if (minDist === distTop) newPlacement = "top";
+    else if (minDist === distBottom) newPlacement = "bottom";
+    else if (minDist === distLeft) newPlacement = "left";
+    else if (minDist === distRight) newPlacement = "right";
+
+    // Auto-adjust orientation based on placement
+    const newOrientation = (newPlacement === "left" || newPlacement === "right") ? "vertical" : "horizontal";
+
+    setPlacement(newPlacement);
+    setOrientation(newOrientation);
+    saveDockPlacementToLocal(newPlacement);
+    saveDockOrientationToLocal(newOrientation);
+    saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, placement: newPlacement });
   };
 
   // Toggle orientation
@@ -422,7 +432,7 @@ export default function FloatingDock() {
     const newOrientation = orientation === "horizontal" ? "vertical" : "horizontal";
     setOrientation(newOrientation);
     saveDockOrientationToLocal(newOrientation);
-    saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, position });
+    saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, placement });
   };
 
   // Toggle auto-hide
@@ -430,14 +440,16 @@ export default function FloatingDock() {
     const newAutoHide = !autoHide;
     setAutoHide(newAutoHide);
     saveAutoHideToLocal(newAutoHide);
-    saveToDatabaseDebounced({ mode: dockMode, orientation, autoHide: newAutoHide, position });
+    saveToDatabaseDebounced({ mode: dockMode, orientation, autoHide: newAutoHide, placement });
   };
 
-  // Reset position
+  // Reset placement
   const resetPosition = () => {
-    setPosition(null);
-    saveDockPositionToLocal(null);
-    saveToDatabaseDebounced({ mode: dockMode, orientation, autoHide, position: null });
+    setPlacement("bottom");
+    setOrientation("horizontal");
+    saveDockPlacementToLocal("bottom");
+    saveDockOrientationToLocal("horizontal");
+    saveToDatabaseDebounced({ mode: dockMode, orientation: "horizontal", autoHide, placement: "bottom" });
   };
 
   // Toggle dock mode (floating <-> sidebar)
@@ -445,7 +457,7 @@ export default function FloatingDock() {
     const newMode = dockMode === "floating" ? "sidebar" : "floating";
     setDockMode(newMode);
     saveDockModeToLocal(newMode);
-    saveToDatabaseDebounced({ mode: newMode, orientation, autoHide, position });
+    saveToDatabaseDebounced({ mode: newMode, orientation, autoHide, placement });
     // Dispatch event so App.tsx can respond
     window.dispatchEvent(new CustomEvent("dock:mode-change", { detail: { mode: newMode } }));
   };
@@ -463,9 +475,29 @@ export default function FloatingDock() {
   const isVertical = orientation === "vertical";
   const isSidebar = dockMode === "sidebar";
 
-  // Calculate peek position for hidden state
-  const hiddenOffset = isVertical ? { x: 50 } : { y: 60 };
-  const visibleOffset = { x: position?.x || 0, y: position?.y || 0 };
+  // Calculate offsets for animations based on placement
+  const getVisibleAnimation = () => {
+    switch (placement) {
+      case "top": return { x: "-50%", y: 12 };
+      case "bottom": return { x: "-50%", y: -12 };
+      case "left": return { x: 12, y: "-50%" };
+      case "right": return { x: -12, y: "-50%" };
+      default: return { x: "-50%", y: -12 };
+    }
+  };
+
+  const getHiddenAnimation = () => {
+    switch (placement) {
+      case "top": return { x: "-50%", y: -80 };
+      case "bottom": return { x: "-50%", y: 80 };
+      case "left": return { x: -80, y: "-50%" };
+      case "right": return { x: 80, y: "-50%" };
+      default: return { x: "-50%", y: 80 };
+    }
+  };
+
+  const visibleAnim = getVisibleAnimation();
+  const hiddenAnim = getHiddenAnimation();
 
   // Sidebar mode rendering (hidden during fullscreen — falls through to floating dock)
   if (isSidebar && !isFullscreen) {
@@ -579,9 +611,10 @@ export default function FloatingDock() {
             }}
             className={cn(
               "fixed z-[80] cursor-pointer",
-              isVertical
-                ? "right-0 top-1/2 -translate-y-1/2 w-16 h-64"
-                : "bottom-3 left-1/2 -translate-x-1/2 min-w-[280px]"
+              placement === "left" && "left-0 top-1/2 -translate-y-1/2 w-16 h-64",
+              placement === "right" && "right-0 top-1/2 -translate-y-1/2 w-16 h-64",
+              placement === "top" && "top-0 left-1/2 -translate-x-1/2 h-16 w-64",
+              placement === "bottom" && "bottom-0 left-1/2 -translate-x-1/2 h-16 w-64"
             )}
           >
             <div className={cn(
@@ -655,23 +688,21 @@ export default function FloatingDock() {
         onDragEnd={handleDragEnd}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.9, ...visibleAnim }}
         animate={{
           opacity: isVisible ? 1 : 0,
           scale: isVisible ? 1 : 0.95,
-          x: isVisible ? visibleOffset.x : (isVertical ? hiddenOffset.x : visibleOffset.x),
-          y: isVisible ? visibleOffset.y : (isVertical ? visibleOffset.y : hiddenOffset.y),
+          ...(isVisible ? visibleAnim : hiddenAnim)
         }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className={cn(
           "fixed z-[70] pointer-events-auto",
-          !position && (isVertical
-            ? "right-3 top-1/2 -translate-y-1/2"
-            : "bottom-3 left-1/2 -translate-x-1/2"
-          ),
+          placement === "top" && "top-0 left-1/2",
+          placement === "bottom" && "bottom-0 left-1/2",
+          placement === "left" && "left-0 top-1/2",
+          placement === "right" && "right-0 top-1/2",
           !isVisible && "pointer-events-none"
         )}
-        style={position ? { left: "50%", bottom: "12px" } : undefined}
       >
         <div className={cn(
           "flex items-center gap-1 px-1.5 py-1.5 rounded-2xl border transition-all duration-300",
@@ -901,7 +932,7 @@ export default function FloatingDock() {
                   )}
 
                   {/* Reset Position */}
-                  {position && !isSidebar && (
+                  {placement !== "bottom" && !isSidebar && (
                     <>
                       <div className="h-px bg-white/5 mx-1" />
                       <button
