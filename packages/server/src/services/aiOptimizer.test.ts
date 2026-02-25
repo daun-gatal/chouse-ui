@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 import {
     isOptimizerEnabled,
     getSystemPrompt,
@@ -8,14 +8,109 @@ import {
     type TableSchema,
 } from "./aiOptimizer";
 import type { TableDetails } from "../types";
+import { AppError } from "../types";
 
+mock.module("../rbac/services/aiModels", () => {
+    return {
+        getDefaultAiConfig: async () => {
+            if (process.env.AI_OPTIMIZER_ENABLED !== 'true') return null;
+            return {
+                id: "test",
+                isActive: true,
+                provider: {
+                    id: "provider1",
+                    name: process.env.AI_PROVIDER || "openai",
+                    apiKey: process.env.AI_API_KEY !== undefined ? process.env.AI_API_KEY : null,
+                    baseUrl: process.env.AI_BASE_URL || null,
+                    isActive: true,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                },
+                model: {
+                    id: "model1",
+                    providerId: "provider1",
+                    name: "Test Model",
+                    modelId: "test-model",
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                },
+                modelId: "model1",
+                name: "Test Config",
+                isDefault: true,
+                createdBy: null,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+        },
+        getAiConfigById: async (id: string) => {
+            if (process.env.AI_OPTIMIZER_ENABLED !== 'true') return null;
+            return {
+                id: "test",
+                isActive: true,
+                provider: {
+                    id: "provider1",
+                    name: process.env.AI_PROVIDER || "openai",
+                    apiKey: process.env.AI_API_KEY !== undefined ? process.env.AI_API_KEY : null,
+                    baseUrl: process.env.AI_BASE_URL || null,
+                    isActive: true,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                },
+                model: {
+                    id: "model1",
+                    providerId: "provider1",
+                    name: "Test Model",
+                    modelId: "test-model",
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                },
+                modelId: "model1",
+                name: "Test Config",
+                isDefault: true,
+                createdBy: null,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+        },
+        getAiConfigWithKey: async (id: string) => {
+            if (process.env.AI_OPTIMIZER_ENABLED !== 'true') return null;
+            return {
+                id: "test",
+                isActive: true,
+                provider: {
+                    id: "provider1",
+                    name: process.env.AI_PROVIDER || "openai",
+                    apiKey: process.env.AI_API_KEY !== undefined ? process.env.AI_API_KEY : null,
+                    baseUrl: process.env.AI_BASE_URL || null,
+                    isActive: true,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                },
+                model: {
+                    id: "model1",
+                    providerId: "provider1",
+                    name: "Test Model",
+                    modelId: "test-model",
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                },
+                modelId: "model1",
+                name: "Test Config",
+                isDefault: true,
+                createdBy: null,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+        }
+    };
+});
 describe("aiOptimizer", () => {
     describe("isOptimizerEnabled", () => {
-        it("should return false when AI_OPTIMIZER_ENABLED is not set", () => {
+        it("should return false when AI_OPTIMIZER_ENABLED is not set", async () => {
             const originalValue = process.env.AI_OPTIMIZER_ENABLED;
             delete process.env.AI_OPTIMIZER_ENABLED;
 
-            const result = isOptimizerEnabled();
+            const result = await isOptimizerEnabled();
 
             expect(result).toBe(false);
 
@@ -25,11 +120,11 @@ describe("aiOptimizer", () => {
             }
         });
 
-        it("should return true when AI_OPTIMIZER_ENABLED is 'true'", () => {
+        it("should return true when AI_OPTIMIZER_ENABLED is 'true'", async () => {
             const originalValue = process.env.AI_OPTIMIZER_ENABLED;
             process.env.AI_OPTIMIZER_ENABLED = "true";
 
-            const result = isOptimizerEnabled();
+            const result = await isOptimizerEnabled();
 
             expect(result).toBe(true);
 
@@ -41,11 +136,11 @@ describe("aiOptimizer", () => {
             }
         });
 
-        it("should return false when AI_OPTIMIZER_ENABLED is 'false'", () => {
+        it("should return false when AI_OPTIMIZER_ENABLED is 'false'", async () => {
             const originalValue = process.env.AI_OPTIMIZER_ENABLED;
             process.env.AI_OPTIMIZER_ENABLED = "false";
 
-            const result = isOptimizerEnabled();
+            const result = await isOptimizerEnabled();
 
             expect(result).toBe(false);
 
@@ -139,7 +234,7 @@ describe("aiOptimizer", () => {
             } catch (error) {
                 expect(error).toBeDefined();
                 if (error instanceof Error) {
-                    expect(error.message).toContain("not configured");
+                    expect(error.message).toContain("API key is missing");
                 }
             }
 
@@ -176,7 +271,7 @@ describe("aiOptimizer", () => {
                 await optimizeQuery("SELECT 1", []);
                 expect(true).toBe(false);
             } catch (error) {
-                expect(error instanceof Error && error.message.includes("AI_BASE_URL is required")).toBe(true);
+                expect(error instanceof AppError && error.message.includes("Base URL is required")).toBe(true);
             }
 
             if (originalEnabled !== undefined) process.env.AI_OPTIMIZER_ENABLED = originalEnabled;
@@ -251,7 +346,7 @@ describe("aiOptimizer", () => {
             } catch (error) {
                 expect(error).toBeDefined();
                 if (error instanceof Error) {
-                    expect(error.message).toContain("not configured");
+                    expect(error.message).toContain("API key is missing");
                 }
             }
 
