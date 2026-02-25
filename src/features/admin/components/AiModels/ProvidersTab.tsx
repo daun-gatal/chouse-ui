@@ -15,7 +15,7 @@ import ConfirmationDialog from '@/components/common/ConfirmationDialog';
 import { toast } from 'sonner';
 import { rbacAiProvidersApi, type AiProvider, type CreateAiProviderInput, type UpdateAiProviderInput } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
-import { PROVIDER_TYPES, formatProviderType } from '@/constants/aiProviders';
+import { PROVIDER_TYPES, formatProviderType, type ProviderType } from '@/constants/aiProviders';
 
 const providerSchema = z.object({
     name: z.string().min(1, 'Name is required').max(255),
@@ -100,7 +100,7 @@ export default function ProvidersTab() {
             if (isEditing) {
                 const updateData: UpdateAiProviderInput = {
                     name: values.name,
-                    providerType: values.providerType,
+                    providerType: values.providerType as ProviderType,
                     baseUrl: values.baseUrl || null,
                 };
                 if (values.apiKey) updateData.apiKey = values.apiKey;
@@ -114,7 +114,7 @@ export default function ProvidersTab() {
                 }
                 const createData: CreateAiProviderInput = {
                     name: values.name,
-                    providerType: values.providerType,
+                    providerType: values.providerType as ProviderType,
                     baseUrl: values.baseUrl || null,
                     apiKey: values.apiKey
                 };
