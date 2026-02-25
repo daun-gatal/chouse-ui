@@ -108,10 +108,15 @@ aiProvidersRoutes.patch(
             const id = c.req.param('id');
             const input = c.req.valid('json');
 
-            const provider = await updateAiProvider(id, {
-                ...input,
+            const updateInput: Parameters<typeof updateAiProvider>[1] = {
+                ...(input.name !== undefined && { name: input.name }),
                 ...(input.providerType !== undefined && { providerType: input.providerType as ProviderType }),
-            });
+                ...(input.baseUrl !== undefined && { baseUrl: input.baseUrl }),
+                ...(input.apiKey !== undefined && { apiKey: input.apiKey }),
+                ...(input.isActive !== undefined && { isActive: input.isActive }),
+            };
+
+            const provider = await updateAiProvider(id, updateInput);
             if (!provider) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
 
             await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
