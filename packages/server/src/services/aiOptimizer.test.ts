@@ -14,12 +14,14 @@ mock.module("../rbac/services/aiModels", () => {
     return {
         getDefaultAiConfig: async () => {
             if (process.env.AI_OPTIMIZER_ENABLED !== 'true') return null;
+            const providerType = (process.env.AI_PROVIDER || "openai") as "openai" | "anthropic" | "google" | "huggingface" | "openai-compatible";
             return {
                 id: "test",
                 isActive: true,
                 provider: {
                     id: "provider1",
                     name: process.env.AI_PROVIDER || "openai",
+                    providerType: providerType,
                     apiKey: process.env.AI_API_KEY !== undefined ? process.env.AI_API_KEY : null,
                     baseUrl: process.env.AI_BASE_URL || null,
                     isActive: true,
@@ -44,12 +46,14 @@ mock.module("../rbac/services/aiModels", () => {
         },
         getAiConfigById: async (id: string) => {
             if (process.env.AI_OPTIMIZER_ENABLED !== 'true') return null;
+            const providerType = (process.env.AI_PROVIDER || "openai") as "openai" | "anthropic" | "google" | "huggingface" | "openai-compatible";
             return {
                 id: "test",
                 isActive: true,
                 provider: {
                     id: "provider1",
                     name: process.env.AI_PROVIDER || "openai",
+                    providerType: providerType,
                     apiKey: process.env.AI_API_KEY !== undefined ? process.env.AI_API_KEY : null,
                     baseUrl: process.env.AI_BASE_URL || null,
                     isActive: true,
@@ -74,12 +78,14 @@ mock.module("../rbac/services/aiModels", () => {
         },
         getAiConfigWithKey: async (id: string) => {
             if (process.env.AI_OPTIMIZER_ENABLED !== 'true') return null;
+            const providerType = (process.env.AI_PROVIDER || "openai") as "openai" | "anthropic" | "google" | "huggingface" | "openai-compatible";
             return {
                 id: "test",
                 isActive: true,
                 provider: {
                     id: "provider1",
                     name: process.env.AI_PROVIDER || "openai",
+                    providerType: providerType,
                     apiKey: process.env.AI_API_KEY !== undefined ? process.env.AI_API_KEY : null,
                     baseUrl: process.env.AI_BASE_URL || null,
                     isActive: true,
