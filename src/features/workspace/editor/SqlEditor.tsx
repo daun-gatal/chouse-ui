@@ -7,7 +7,7 @@ import {
   createMonacoEditor,
 } from "@/features/workspace/editor/monacoConfig";
 import { Button } from "@/components/ui/button";
-import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database, Network, Sparkles } from "lucide-react";
+import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database, Network, Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -211,7 +211,12 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
     }
   }, [getCurrentQuery, onOptimize]);
 
-
+  const handleFormatQuery = useCallback(() => {
+    if (monacoRef.current) {
+      monacoRef.current.getAction("editor.action.formatDocument")?.run();
+      toast.success("Query formatted");
+    }
+  }, []);
 
   const isSavingRef = useRef(false);
 
@@ -632,6 +637,24 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
                   </Tooltip>
                 </>
               )}
+
+              <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleFormatQuery}
+                    className="h-8 w-8 p-0 text-muted-foreground hover:bg-white/10 hover:text-white transition-all duration-200"
+                  >
+                    <Wand2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="center">
+                  <p>Format Query</p>
+                </TooltipContent>
+              </Tooltip>
 
               <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
 

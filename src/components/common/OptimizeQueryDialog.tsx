@@ -11,6 +11,7 @@ import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, 
 import { optimizeQuery } from '@/api/query';
 import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
+import { format } from 'sql-formatter';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -131,7 +132,7 @@ export function OptimizeQueryDialog({
         try {
             const response = await optimizeQuery(query, database, additionalPrompt, selectedModelId || undefined, controller.signal);
             setResult({
-                optimizedQuery: response.optimizedQuery,
+                optimizedQuery: format(response.optimizedQuery, { language: 'sql' }),
                 explanation: response.explanation,
                 summary: response.summary,
                 tips: response.tips,
