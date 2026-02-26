@@ -1189,7 +1189,7 @@ export default function AiChatBubble() {
                     }}
                 >
                     <motion.div
-                        drag={isDesktop}
+                        drag={isDesktop || isTablet}
                         dragControls={dragControls}
                         dragListener={false}
                         dragMomentum={false}
@@ -1198,6 +1198,7 @@ export default function AiChatBubble() {
                         animate={{ opacity: 1, scale: 1, x: position.x, y: position.y }}
                         exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ duration: 0.2 }}
+                        style={{ touchAction: 'none' }}
                         className={`pointer-events-auto flex flex-col overflow-hidden bg-black/70 backdrop-blur-2xl border-white/10 shadow-black/60 shadow-2xl w-full h-full
                                     ${isMobile ? 'border-0 rounded-none animate-[slideUpFull_0.3s_ease-out]' : 'border rounded-2xl'}`}
                     >
@@ -1256,10 +1257,17 @@ export default function AiChatBubble() {
                                 </div>
 
                                 {/* Drag Handle */}
-                                {isDesktop && !isResizing && (
+                                {(isDesktop || isTablet) && !isResizing && (
                                     <div
-                                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 p-2 cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 transition-colors"
-                                        onPointerDown={(e) => dragControls.start(e)}
+                                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 p-2 cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 active:text-white/70 transition-colors touch-none min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => {
+                                            // Prevent default touch behaviors to ensure smooth dragging on mobile/tablet
+                                            if (e.pointerType === 'touch') {
+                                                e.preventDefault();
+                                            }
+                                            dragControls.start(e);
+                                        }}
                                         title="Drag to move"
                                     >
                                         <GripHorizontal className="w-5 h-5" />

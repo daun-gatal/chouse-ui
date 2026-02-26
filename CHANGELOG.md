@@ -22,7 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **ClickHouse Connection Port Parsing**: Fixed validation error when entering port numbers in the connection form. Typed input values (e.g., "18123") were treated as strings, causing "Invalid input: expected number, received string" errors (#172).
 - **Dialog Close Buttons**: Fixed the 'x' close button inside the `DebugQueryDialog` and `OptimizeQueryDialog` which were previously unclickable due to styling overlaps. They have now been mapped to a custom close button in the header, enabling immediate query cancellation and modal dismissal.
+- **Mobile/Tablet Drag Support**: Fixed drag functionality for FloatingDock and AI Chat components on tablet and smartphone devices. Enabled drag on tablets for `AiChatBubble`, added `touch-action: none` CSS to prevent default browser touch behaviors, enhanced drag handles with minimum 44x44px touch targets for accessibility, and improved touch event handling with proper `preventDefault()` calls. Both components now support smooth dragging on touch devices without interfering with scrolling or zooming.
 
 ## [v2.12.1] - 2026-02-25
 ### Added

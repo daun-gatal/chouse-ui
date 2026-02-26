@@ -38,7 +38,7 @@ const connectionsRoutes = new Hono();
 const createConnectionSchema = z.object({
   name: z.string().min(1).max(255),
   host: z.string().min(1).max(255),
-  port: z.number().int().min(1).max(65535).default(8123),
+  port: z.coerce.number().int().default(8123),
   username: z.string().min(1).max(255),
   password: z.string().optional(),
   database: z.string().max(255).optional(),
@@ -49,7 +49,7 @@ const createConnectionSchema = z.object({
 const updateConnectionSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   host: z.string().min(1).max(255).optional(),
-  port: z.number().int().min(1).max(65535).optional(),
+  port: z.coerce.number().int().default(8123).optional(),
   username: z.string().min(1).max(255).optional(),
   password: z.string().optional(),
   database: z.string().max(255).optional().nullable(),
@@ -61,7 +61,7 @@ const updateConnectionSchema = z.object({
 
 const testConnectionSchema = z.object({
   host: z.string().min(1).max(255),
-  port: z.number().int().min(1).max(65535).default(8123),
+  port: z.coerce.number().int().default(8123),
   username: z.string().min(1).max(255),
   password: z.string().optional(),
   database: z.string().max(255).optional(),

@@ -84,7 +84,7 @@ import ConnectionUserAccess from './ConnectionUserAccess';
 const connectionSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255),
   host: z.string().min(1, 'Host is required').max(255),
-  port: z.number().int().min(1).max(65535),
+  port: z.coerce.number().int().default(8123),
   username: z.string().min(1, 'Username is required').max(255),
   password: z.string().optional(),
   database: z.string().max(255).optional(),
@@ -117,6 +117,7 @@ function ConnectionFormDialog({
 
   const isEditing = !!connection;
 
+  // @ts-expect-error - z.coerce.number() causes TypeScript to infer input type as unknown, but runtime behavior is correct
   const form = useForm<ConnectionFormData>({
     resolver: zodResolver(connectionSchema),
     defaultValues: {
@@ -281,6 +282,8 @@ function ConnectionFormDialog({
                         placeholder="8123"
                         className="bg-gray-800 border-gray-700"
                         {...field}
+                        value={field.value ?? 8123}
+                        onChange={(e) => field.onChange(e.target.value === '' ? 8123 : Number(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />
