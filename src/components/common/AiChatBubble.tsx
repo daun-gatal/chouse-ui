@@ -592,10 +592,14 @@ export default function AiChatBubble() {
     const shouldHideSidebar = showSidebar && isDesktop && logicalWidth < hideSidebarThreshold;
     const useSingleColPrompt = isMobile || (isDesktop && logicalWidth < singleColPromptThreshold);
 
-    // Resize handlers (desktop only)
-    const handleResizeStart = useCallback((axis: 'both' | 'x' | 'y', e: ReactMouseEvent) => {
+    // Resize handlers (desktop and tablet)
+    const handleResizeStart = useCallback((axis: 'both' | 'x' | 'y', e: React.PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        // Prevent default touch behaviors to ensure smooth resizing on mobile/tablet
+        if (e.pointerType === 'touch') {
+            e.preventDefault();
+        }
         setIsResizing(true);
         resizeRef.current = {
             axis,
@@ -608,8 +612,12 @@ export default function AiChatBubble() {
 
     useEffect(() => {
         if (!isResizing) return;
-        const handleMouseMove = (e: globalThis.MouseEvent) => {
+        const handlePointerMove = (e: globalThis.PointerEvent) => {
             if (!resizeRef.current) return;
+            // Prevent default touch behaviors to ensure smooth resizing on mobile/tablet
+            if (e.pointerType === 'touch') {
+                e.preventDefault();
+            }
             const { axis, startX, startY, startW, startH } = resizeRef.current;
             // Coordinate mapping: divide client delta by zoomFactor to get logical delta
             const dx = axis !== 'y' ? (startX - e.clientX) / zoomFactor : 0;
@@ -619,17 +627,17 @@ export default function AiChatBubble() {
                 height: Math.min(Math.max(startH + dy * zoomFactor, MIN_HEIGHT), maxHeight),
             });
         };
-        const handleMouseUp = () => {
+        const handlePointerUp = () => {
             setIsResizing(false);
             resizeRef.current = null;
         };
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp);
         return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
         };
-    }, [isResizing, maxWidth, maxHeight]);
+    }, [isResizing, maxWidth, maxHeight, zoomFactor]);
 
     // Auto-close sidebar on smaller breakpoints
     useEffect(() => {
@@ -1204,20 +1212,38 @@ export default function AiChatBubble() {
                     >
                         {/* Main content wrapper */}
                         <div className="flex flex-col flex-1 relative w-full h-full">
-                            {/* Desktop Resize Handles */}
-                            {isDesktop && !isResizing && (
+                            {/* Desktop/Tablet Resize Handles */}
+                            {!isMobile && !isResizing && (
                                 <>
                                     <div
                                         className="ai-chat-resize-corner"
-                                        onMouseDown={(e) => handleResizeStart('both', e)}
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => {
+                                            if (e.pointerType === 'touch') {
+                                                e.preventDefault();
+                                            }
+                                            handleResizeStart('both', e);
+                                        }}
                                     />
                                     <div
                                         className="ai-chat-resize-left"
-                                        onMouseDown={(e) => handleResizeStart('x', e)}
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => {
+                                            if (e.pointerType === 'touch') {
+                                                e.preventDefault();
+                                            }
+                                            handleResizeStart('x', e);
+                                        }}
                                     />
                                     <div
                                         className="ai-chat-resize-bottom"
-                                        onMouseDown={(e) => handleResizeStart('y', e)}
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => {
+                                            if (e.pointerType === 'touch') {
+                                                e.preventDefault();
+                                            }
+                                            handleResizeStart('y', e);
+                                        }}
                                     />
                                 </>
                             )}

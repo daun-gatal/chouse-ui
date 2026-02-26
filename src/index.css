@@ -513,6 +513,29 @@
   z-index: 60;
 }
 
+/* Touch-friendly resize handles for tablet and mobile devices */
+@media (pointer: coarse) {
+  .ai-chat-resize-corner {
+    width: 44px;
+    height: 44px;
+    padding: 8px;
+  }
+  .ai-chat-resize-corner::before {
+    width: 16px;
+    height: 16px;
+    border-left-width: 3px;
+    border-bottom-width: 3px;
+  }
+  .ai-chat-resize-left {
+    width: 12px;
+    bottom: 44px;
+  }
+  .ai-chat-resize-bottom {
+    height: 12px;
+    left: 44px;
+  }
+}
+
 /* AI Chat — mobile FAB */
 .ai-chat-fab {
   position: fixed;
