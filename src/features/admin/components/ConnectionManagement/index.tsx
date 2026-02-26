@@ -91,7 +91,7 @@ const connectionSchema = z.object({
   sslEnabled: z.boolean(),
 });
 
-type ConnectionFormData = z.infer<typeof connectionSchema>;
+type ConnectionFormData = z.output<typeof connectionSchema>;
 
 // ============================================
 // Connection Form Dialog
@@ -117,9 +117,8 @@ function ConnectionFormDialog({
 
   const isEditing = !!connection;
 
-  // @ts-expect-error - z.coerce.number() causes TypeScript to infer input type as unknown, but runtime behavior is correct
   const form = useForm<ConnectionFormData>({
-    resolver: zodResolver(connectionSchema),
+    resolver: zodResolver(connectionSchema) as any,
     defaultValues: {
       name: connection?.name || '',
       host: connection?.host || '',
