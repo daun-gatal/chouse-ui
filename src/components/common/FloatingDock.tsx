@@ -469,6 +469,10 @@ export default function FloatingDock() {
 
   // Start drag from handle
   const startDrag = (event: React.PointerEvent) => {
+    // Prevent default touch behaviors to ensure smooth dragging on mobile/tablet
+    if (event.pointerType === 'touch') {
+      event.preventDefault();
+    }
     dragControls.start(event);
   };
 
@@ -695,6 +699,7 @@ export default function FloatingDock() {
           ...(isVisible ? visibleAnim : hiddenAnim)
         }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        style={{ touchAction: 'none' }}
         className={cn(
           "fixed z-[70] pointer-events-auto",
           placement === "top" && "top-0 left-1/2",
@@ -719,12 +724,15 @@ export default function FloatingDock() {
               <TooltipTrigger asChild>
                 <button
                   onPointerDown={startDrag}
+                  style={{ touchAction: 'none' }}
                   className={cn(
-                    "flex items-center justify-center rounded text-gray-500 hover:text-white hover:bg-white/10 transition-all cursor-grab active:cursor-grabbing",
-                    isVertical ? "w-8 h-6" : "w-6 h-8"
+                    "flex items-center justify-center rounded text-gray-500 hover:text-white hover:bg-white/10 active:bg-white/20 transition-all cursor-grab active:cursor-grabbing touch-none",
+                    // Minimum 44x44px touch target for accessibility on mobile/tablet
+                    isVertical ? "w-8 h-6 min-w-[44px] min-h-[44px] sm:w-8 sm:h-6" : "w-6 h-8 min-w-[44px] min-h-[44px] sm:w-6 sm:h-8"
                   )}
+                  aria-label="Drag to move dock"
                 >
-                  <GripVertical className={cn("w-3 h-3", isVertical && "rotate-90")} />
+                  <GripVertical className={cn("w-3 h-3 sm:w-3 sm:h-3", isVertical && "rotate-90")} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">

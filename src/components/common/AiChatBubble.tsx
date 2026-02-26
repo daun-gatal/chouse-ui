@@ -592,10 +592,14 @@ export default function AiChatBubble() {
     const shouldHideSidebar = showSidebar && isDesktop && logicalWidth < hideSidebarThreshold;
     const useSingleColPrompt = isMobile || (isDesktop && logicalWidth < singleColPromptThreshold);
 
-    // Resize handlers (desktop only)
-    const handleResizeStart = useCallback((axis: 'both' | 'x' | 'y', e: ReactMouseEvent) => {
+    // Resize handlers (desktop and tablet)
+    const handleResizeStart = useCallback((axis: 'both' | 'x' | 'y', e: React.PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        // Prevent default touch behaviors to ensure smooth resizing on mobile/tablet
+        if (e.pointerType === 'touch') {
+            e.preventDefault();
+        }
         setIsResizing(true);
         resizeRef.current = {
             axis,
@@ -608,8 +612,12 @@ export default function AiChatBubble() {
 
     useEffect(() => {
         if (!isResizing) return;
-        const handleMouseMove = (e: globalThis.MouseEvent) => {
+        const handlePointerMove = (e: globalThis.PointerEvent) => {
             if (!resizeRef.current) return;
+            // Prevent default touch behaviors to ensure smooth resizing on mobile/tablet
+            if (e.pointerType === 'touch') {
+                e.preventDefault();
+            }
             const { axis, startX, startY, startW, startH } = resizeRef.current;
             // Coordinate mapping: divide client delta by zoomFactor to get logical delta
             const dx = axis !== 'y' ? (startX - e.clientX) / zoomFactor : 0;
@@ -619,17 +627,17 @@ export default function AiChatBubble() {
                 height: Math.min(Math.max(startH + dy * zoomFactor, MIN_HEIGHT), maxHeight),
             });
         };
-        const handleMouseUp = () => {
+        const handlePointerUp = () => {
             setIsResizing(false);
             resizeRef.current = null;
         };
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp);
         return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
         };
-    }, [isResizing, maxWidth, maxHeight]);
+    }, [isResizing, maxWidth, maxHeight, zoomFactor]);
 
     // Auto-close sidebar on smaller breakpoints
     useEffect(() => {
@@ -1189,7 +1197,7 @@ export default function AiChatBubble() {
                     }}
                 >
                     <motion.div
-                        drag={isDesktop}
+                        drag={true}
                         dragControls={dragControls}
                         dragListener={false}
                         dragMomentum={false}
@@ -1198,25 +1206,44 @@ export default function AiChatBubble() {
                         animate={{ opacity: 1, scale: 1, x: position.x, y: position.y }}
                         exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ duration: 0.2 }}
+                        style={{ touchAction: 'none' }}
                         className={`pointer-events-auto flex flex-col overflow-hidden bg-black/70 backdrop-blur-2xl border-white/10 shadow-black/60 shadow-2xl w-full h-full
                                     ${isMobile ? 'border-0 rounded-none animate-[slideUpFull_0.3s_ease-out]' : 'border rounded-2xl'}`}
                     >
                         {/* Main content wrapper */}
                         <div className="flex flex-col flex-1 relative w-full h-full">
-                            {/* Desktop Resize Handles */}
-                            {isDesktop && !isResizing && (
+                            {/* Desktop/Tablet Resize Handles */}
+                            {!isMobile && !isResizing && (
                                 <>
                                     <div
                                         className="ai-chat-resize-corner"
-                                        onMouseDown={(e) => handleResizeStart('both', e)}
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => {
+                                            if (e.pointerType === 'touch') {
+                                                e.preventDefault();
+                                            }
+                                            handleResizeStart('both', e);
+                                        }}
                                     />
                                     <div
                                         className="ai-chat-resize-left"
-                                        onMouseDown={(e) => handleResizeStart('x', e)}
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => {
+                                            if (e.pointerType === 'touch') {
+                                                e.preventDefault();
+                                            }
+                                            handleResizeStart('x', e);
+                                        }}
                                     />
                                     <div
                                         className="ai-chat-resize-bottom"
-                                        onMouseDown={(e) => handleResizeStart('y', e)}
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => {
+                                            if (e.pointerType === 'touch') {
+                                                e.preventDefault();
+                                            }
+                                            handleResizeStart('y', e);
+                                        }}
                                     />
                                 </>
                             )}
@@ -1256,10 +1283,17 @@ export default function AiChatBubble() {
                                 </div>
 
                                 {/* Drag Handle */}
-                                {isDesktop && !isResizing && (
+                                {!isResizing && (
                                     <div
-                                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 p-2 cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 transition-colors"
-                                        onPointerDown={(e) => dragControls.start(e)}
+                                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 p-2 cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 active:text-white/70 transition-colors touch-none min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={(e) => {
+                                            // Prevent default touch behaviors to ensure smooth dragging on mobile/tablet
+                                            if (e.pointerType === 'touch') {
+                                                e.preventDefault();
+                                            }
+                                            dragControls.start(e);
+                                        }}
                                         title="Drag to move"
                                     >
                                         <GripHorizontal className="w-5 h-5" />
