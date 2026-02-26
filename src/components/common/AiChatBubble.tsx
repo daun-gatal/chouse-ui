@@ -1189,7 +1189,7 @@ export default function AiChatBubble() {
                     }}
                 >
                     <motion.div
-                        drag={isDesktop || isTablet}
+                        drag={true}
                         dragControls={dragControls}
                         dragListener={false}
                         dragMomentum={false}
@@ -1257,7 +1257,7 @@ export default function AiChatBubble() {
                                 </div>
 
                                 {/* Drag Handle */}
-                                {(isDesktop || isTablet) && !isResizing && (
+                                {!isResizing && (
                                     <div
                                         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 p-2 cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 active:text-white/70 transition-colors touch-none min-w-[44px] min-h-[44px] flex items-center justify-center"
                                         style={{ touchAction: 'none' }}
