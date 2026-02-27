@@ -20,6 +20,7 @@ import {
   getAccessTypeFromStatementType,
   type ParsedStatement
 } from './sqlParser';
+import { PERMISSIONS } from '../rbac/schema/base';
 
 // ============================================
 // Context Extension
@@ -57,6 +58,75 @@ function hasPermissionForAccessType(permissions: string[], accessType: AccessTyp
     default:
       return false;
   }
+}
+
+/**
+ * Get the required RBAC permission for a DDL statement (operation-specific).
+ * Returns the permission name (e.g. database:drop, table:create) or null if unknown.
+ * Used so that e.g. table:create does not authorize DROP DATABASE.
+ */
+function getRequiredDdlPermission(
+  statement: string,
+  parsedType: ParsedStatement['type']
+): string | null {
+  const normalized = statement.trim().replace(/\s+/g, ' ');
+  const upper = normalized.toUpperCase();
+
+  if (parsedType === 'drop') {
+    if (/^\s*DROP\s+(DATABASE|SCHEMA)\b/i.test(normalized)) return PERMISSIONS.DB_DROP;
+    if (/^\s*DROP\s+(TABLE|VIEW)\b/i.test(normalized)) return PERMISSIONS.TABLE_DROP;
+    return null;
+  }
+
+  if (parsedType === 'create') {
+    if (/^\s*CREATE\s+(OR\s+REPLACE\s+)?(DATABASE|SCHEMA)\b/i.test(normalized)) return PERMISSIONS.DB_CREATE;
+    if (/^\s*CREATE\s+(OR\s+REPLACE\s+)?(TABLE|VIEW)\b/i.test(normalized)) return PERMISSIONS.TABLE_CREATE;
+    return null;
+  }
+
+  if (parsedType === 'alter') {
+    if (/^\s*ALTER\s+(DATABASE|SCHEMA)\b/i.test(normalized)) return PERMISSIONS.DB_CREATE;
+    if (/^\s*ALTER\s+(TABLE|VIEW)\b/i.test(normalized)) return PERMISSIONS.TABLE_ALTER;
+    return null;
+  }
+
+  if (parsedType === 'truncate') {
+    return PERMISSIONS.TABLE_DELETE;
+  }
+
+  return null;
+}
+
+/**
+ * Get the required RBAC permission for any statement (operation-specific).
+ * Maps each operation to the matching table/query permission so execute always routes to the right permission.
+ */
+function getRequiredStatementPermission(
+  statement: string,
+  parsedType: ParsedStatement['type']
+): string | null {
+  // DDL: create, drop, alter, truncate (database vs table handled inside)
+  const ddlPerm = getRequiredDdlPermission(statement, parsedType);
+  if (ddlPerm !== null) return ddlPerm;
+
+  // DML
+  if (parsedType === 'insert') return PERMISSIONS.TABLE_INSERT;
+  if (parsedType === 'update') return PERMISSIONS.TABLE_UPDATE;
+  if (parsedType === 'delete') return PERMISSIONS.TABLE_DELETE;
+
+  // Read (select)
+  if (parsedType === 'select') return PERMISSIONS.TABLE_SELECT;
+
+  // View (show, describe)
+  if (parsedType === 'show' || parsedType === 'describe') return PERMISSIONS.TABLE_VIEW;
+
+  // Misc (use, set, explain, exists, check, kill)
+  if (parsedType === 'use' || parsedType === 'set' || parsedType === 'explain' ||
+      parsedType === 'exists' || parsedType === 'check' || parsedType === 'kill') {
+    return PERMISSIONS.QUERY_EXECUTE_MISC;
+  }
+
+  return null;
 }
 
 // ============================================
@@ -279,16 +349,25 @@ async function validateSingleStatement(
     };
   }
 
-  const accessType = getAccessTypeFromStatementType(parsed.type);
-
-  // Check if user has permission for this type of operation (based on role)
-  if (!hasPermissionForAccessType(permissions, accessType)) {
+  // Require the operation-specific permission for every statement type (table:select, table:insert, etc.)
+  const requiredPermission = getRequiredStatementPermission(statement, parsed.type);
+  if (requiredPermission === null) {
     return {
       allowed: false,
-      reason: `Statement ${statementIndex + 1}: No permission for ${accessType} operations (${parsed.type} statement)`,
+      reason: `Statement ${statementIndex + 1}: Unsupported or unrecognized statement type`,
       statementIndex,
     };
   }
+  if (!permissions.includes(requiredPermission)) {
+    return {
+      allowed: false,
+      reason: `Statement ${statementIndex + 1}: Permission '${requiredPermission}' required for this ${parsed.type} statement`,
+      statementIndex,
+    };
+  }
+
+  // Used for data access rule checks (read/write/admin) when validating table access
+  const accessType = getAccessTypeFromStatementType(parsed.type);
 
   let tables = parsed.tables;
 

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.4] - 2026-02-27
+
+### ⚠️ Security
+
+We **recommend upgrading to v2.12.4** due to a security fix in RBAC query execution. Earlier versions could, under certain permission combinations, allow broader or more destructive SQL operations than intended when role permissions were not strictly matched to each statement type.
+
+### Security
+
+- **RBAC Data Access Enforcement**: Tightened ClickHouse RBAC data access middleware so each SQL statement type (SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, TRUNCATE, SHOW/DESCRIBE, USE/SET/EXPLAIN/EXISTS/CHECK/KILL) now requires a specific permission (e.g. `table:select`, `table:insert`, `table:delete`, `table:create`, `table:alter`, `table:drop`, `database:drop`, `query:execute:misc`). This prevents permissive combinations (such as having `table:create` only) from implicitly authorizing unrelated destructive operations like `DROP DATABASE` or `DROP TABLE`.
+- **Multi-Statement Protection**: Improved per-statement validation and error reporting for multi-statement batches so failures clearly indicate the index and exact missing permission, reducing the risk of accidentally executing a dangerous statement buried in a longer script.
+
+### Changed
+
+- **Operation-Specific Permissions**: Updated data access middleware to resolve an operation-specific required permission for every supported statement and deny execution if that exact permission is missing, while still using high-level access types (read/write/admin) only for data access rule evaluation.
+- **Tests**: Expanded and updated `dataAccess` middleware tests to cover DROP DATABASE/TABLE, TRUNCATE, and mixed batches across different permission combinations, ensuring the tightened security behavior is enforced.
+
 ## [v2.12.3] - 2026-02-27
 
 ### Added
