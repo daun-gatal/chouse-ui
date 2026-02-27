@@ -6,6 +6,7 @@
  */
 
 import { Hono, type Context, type Next } from "hono";
+import { rateLimiter } from "hono-rate-limiter";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { AppError, type Session } from "../types";
@@ -278,18 +279,33 @@ aiChat.get("/models", async (c) => {
 // Streaming Chat Endpoint
 // ============================================
 
-const StreamRequestSchema = z.object({
+export const StreamMessageSchema = z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string(),
+});
+
+export const MAX_MESSAGE_LENGTH = 32_000;
+export const MAX_MESSAGES_PAYLOAD = 50;
+
+export const StreamRequestSchema = z.object({
     threadId: z.string().min(1, "Thread ID is required"),
-    message: z.string().min(1, "Message is required"),
-    messages: z.array(z.any()).optional(), // Optional full message history from frontend
+    message: z.string().min(1, "Message is required").max(MAX_MESSAGE_LENGTH, "Message too long"),
+    messages: z.array(StreamMessageSchema).max(MAX_MESSAGES_PAYLOAD).optional(),
     modelId: z.string().optional(),
+});
+
+/** Per-user rate limit for stream (expensive LLM + tools) */
+const streamRateLimiter = rateLimiter({
+    windowMs: 60 * 1000,
+    limit: 30,
+    keyGenerator: (c: Context<{ Variables: Variables }>) => c.get("rbacUserId") ?? "unknown",
 });
 
 /**
  * POST /ai-chat/stream
  * Stream a chat response via SSE
  */
-aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
+aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema), async (c) => {
     const { threadId, message, messages: frontendMessages, modelId } = c.req.valid("json");
     const rbacUserId = c.get("rbacUserId")!;
     const isRbacAdmin = c.get("isRbacAdmin") || false;
@@ -308,17 +324,20 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
     await addMessage(threadId, 'user', message);
 
     // Build messages array (limit to newest 50 to avoid token overflow)
-    const MAX_MESSAGES = 50;
-    let coreMessages: any[];
+    type CoreMessage = { role: "user" | "assistant"; content: string };
+    let coreMessages: CoreMessage[];
 
     if (frontendMessages && Array.isArray(frontendMessages) && frontendMessages.length > 0) {
-        // Use frontend-provided message history (includes tool calls)
-        coreMessages = frontendMessages.slice(-MAX_MESSAGES);
+        // Use frontend-provided message history (validated by schema)
+        coreMessages = frontendMessages.slice(-MAX_MESSAGES_PAYLOAD).map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+        }));
     } else {
         // Fall back to DB messages
         const dbMessages = await getMessages(threadId);
-        coreMessages = dbMessages.slice(-MAX_MESSAGES).map(m => ({
-            role: m.role,
+        coreMessages = dbMessages.slice(-MAX_MESSAGES_PAYLOAD).map((m) => ({
+            role: m.role as "user" | "assistant",
             content: m.content,
         }));
     }
@@ -479,7 +498,7 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
                             case 'error': {
                                 const errorMsg = part.error instanceof Error ? part.error.message : String(part.error);
                                 console.error('[AI Chat] Stream error:', errorMsg);
-                                const sseError = `data: ${JSON.stringify({ type: 'error', error: errorMsg })}\n\n`;
+                                const sseError = `data: ${JSON.stringify({ type: 'error', error: errorMsg, retryable: true })}\n\n`;
                                 controller.enqueue(encoder.encode(sseError));
                                 break;
                             }
@@ -522,7 +541,7 @@ aiChat.post("/stream", zValidator("json", StreamRequestSchema), async (c) => {
                     }
                 } catch (error) {
                     const errorMsg = error instanceof Error ? error.message : String(error);
-                    const sseError = `data: ${JSON.stringify({ type: 'error', error: errorMsg })}\n\n`;
+                    const sseError = `data: ${JSON.stringify({ type: 'error', error: errorMsg, retryable: true })}\n\n`;
                     controller.enqueue(encoder.encode(sseError));
                     controller.close();
                 }

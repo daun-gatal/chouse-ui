@@ -236,8 +236,42 @@ export const handlers = [
     });
   }),
 
+  http.patch(`${API_BASE}/ai-chat/threads/:id`, async ({ request, params }) => {
+    const body = await request.json() as { title: string };
+    return HttpResponse.json({ success: true, data: { id: params.id, title: body.title } });
+  }),
+
   http.delete(`${API_BASE}/ai-chat/threads/:id`, () => {
     return HttpResponse.json({ success: true, data: { message: 'Thread deleted successfully' } });
+  }),
+
+  http.get(`${API_BASE}/ai-chat/models`, () => {
+    return HttpResponse.json({
+      success: true,
+      data: [
+        { id: 'model-1', name: 'GPT-4', provider: 'openai', isDefault: true },
+        { id: 'model-2', name: 'Claude', provider: 'anthropic', isDefault: false },
+      ],
+    });
+  }),
+
+  http.post(`${API_BASE}/ai-chat/stream`, async ({ request }) => {
+    const body = await request.json() as { threadId: string; message: string };
+    if (!body.threadId || !body.message) {
+      return HttpResponse.json({ success: false, error: { message: 'threadId and message required' } }, { status: 400 });
+    }
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'text-delta', text: 'Hello ' })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'text-delta', text: 'world' })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+        controller.close();
+      },
+    });
+    return new HttpResponse(stream, {
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
   }),
 
   // Default 404

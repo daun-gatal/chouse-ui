@@ -8,8 +8,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'framer-motion';
 import { useWindowSize, type Breakpoint } from '@/hooks/useWindowSize';
+import { useDeviceType } from '@/hooks/useDeviceType';
+import {
+    getChatPrefsFromWorkspace,
+    mergeChatPrefsIntoWorkspace,
+    type DeviceType,
+    type WorkspacePreferencesMap,
+} from '@/lib/devicePreferences';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/core';
 import sql from 'highlight.js/lib/languages/sql';
 import json from 'highlight.js/lib/languages/json';
@@ -22,6 +31,7 @@ import {
     createThread,
     getThread,
     deleteThread,
+    updateThreadTitle,
     streamChatMessage,
     getAiModels,
     type AiModelSimple,
@@ -29,6 +39,7 @@ import {
     type ChatMessage,
     type ChartSpec,
 } from '@/api/ai-chat';
+import { toast } from 'sonner';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
 import {
     MessageSquare,
@@ -65,6 +76,9 @@ import {
     TrendingUp,
     PieChart,
     ScatterChart,
+    Copy,
+    Pencil,
+    Download,
 } from 'lucide-react';
 
 import {
@@ -111,6 +125,8 @@ interface UIMessage {
     isError?: boolean;
     /** snapshot of user message to retry */
     retryPrompt?: string;
+    /** when false, do not show Retry button (e.g. non-retryable server error) */
+    retryable?: boolean;
     /** ordered list of tool calls made during this assistant turn */
     toolCalls?: ToolCallStep[];
     /** chart specs produced by the render_chart tool, if any */
@@ -158,6 +174,26 @@ function pickRandom<T>(arr: T[], n: number, seed: number): T[] {
     return shuffled.slice(0, n);
 }
 
+/** Copy text to clipboard and show toast */
+async function copyToClipboard(text: string, label: string): Promise<void> {
+    try {
+        await navigator.clipboard.writeText(text);
+        toast.success(`${label} copied to clipboard`);
+    } catch {
+        toast.error('Failed to copy');
+    }
+}
+
+/** Build markdown export of messages for the current thread */
+function exportThreadAsMarkdown(messages: UIMessage[], threadTitle: string | null): string {
+    const lines: string[] = [threadTitle ? `# ${threadTitle}\n` : '# Chat export\n'];
+    for (const msg of messages) {
+        const role = msg.role === 'user' ? '**You**' : '**Assistant**';
+        lines.push(`${role}\n\n${msg.content}\n\n`);
+    }
+    return lines.join('');
+}
+
 // Relative time helper
 function timeAgo(dateStr: string): string {
     const now = Date.now();
@@ -184,20 +220,44 @@ function formatToolName(name: string): string {
 function SidebarThreadButton({
     thread,
     activeId,
+    editingId,
     onLoad,
-    onDelete
+    onDelete,
+    onStartEdit,
+    onSaveTitle,
+    onCancelEdit,
 }: {
     thread: ChatThread;
     activeId: string | null;
+    editingId: string | null;
     onLoad: (id: string) => void;
     onDelete: (id: string, e: React.MouseEvent) => void;
+    onStartEdit: (id: string, e: React.MouseEvent) => void;
+    onSaveTitle: (id: string, title: string) => void;
+    onCancelEdit: () => void;
 }) {
+    const [editValue, setEditValue] = useState(thread.title || '');
+    const isEditing = editingId === thread.id;
+
+    const handleSave = useCallback(() => {
+        const trimmed = editValue.trim();
+        if (trimmed) onSaveTitle(thread.id, trimmed);
+        else onCancelEdit();
+    }, [thread.id, editValue, onSaveTitle, onCancelEdit]);
+
     return (
         <div
-            role="button"
+            role="listitem"
             tabIndex={0}
-            onClick={() => onLoad(thread.id)}
+            onClick={() => !isEditing && onLoad(thread.id)}
             onKeyDown={(e) => {
+                if (isEditing) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSave();
+                    }
+                    return;
+                }
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     onLoad(thread.id);
@@ -211,23 +271,56 @@ function SidebarThreadButton({
                 }`}
         >
             <div className="flex-1 min-w-0 mr-2">
-                <span className="block truncate">{thread.title || 'New Thread'}</span>
-                <span className="flex items-center gap-1 text-xs text-zinc-600 mt-0.5">
-                    <Clock className="w-2.5 h-2.5" />
-                    {timeAgo(thread.updatedAt)}
-                </span>
+                {isEditing ? (
+                    <input
+                        type="text"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={handleSave}
+                        onKeyDown={(e) => e.key === 'Escape' && onCancelEdit()}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                        placeholder="Thread title"
+                        autoFocus
+                        aria-label="Edit thread title"
+                    />
+                ) : (
+                    <>
+                        <span className="block truncate">{thread.title || 'New Thread'}</span>
+                        <span className="flex items-center gap-1 text-xs text-zinc-600 mt-0.5">
+                            <Clock className="w-2.5 h-2.5" />
+                            {timeAgo(thread.updatedAt)}
+                        </span>
+                    </>
+                )}
             </div>
-            <button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(thread.id, e);
-                }}
-                className="p-1 rounded-lg opacity-0 group-hover:opacity-100
-                         hover:bg-red-500/15 text-zinc-600 hover:text-red-400 transition-all"
-                title="Delete chat"
-            >
-                <Trash2 className="w-3 h-3" />
-            </button>
+            {!isEditing && (
+                <>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onStartEdit(thread.id, e);
+                            setEditValue(thread.title || '');
+                        }}
+                        className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-all"
+                        title="Rename"
+                        aria-label="Rename thread"
+                    >
+                        <Pencil className="w-3 h-3" />
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(thread.id, e);
+                        }}
+                        className="p-1 rounded-lg opacity-0 group-hover:opacity-100
+                                 hover:bg-red-500/15 text-zinc-600 hover:text-red-400 transition-all"
+                        title="Delete chat"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                </>
+            )}
         </div>
     );
 }
@@ -237,15 +330,23 @@ function CollapsibleThreadGroup({
     title,
     threads,
     activeId,
+    editingId,
     onLoad,
     onDelete,
+    onStartEdit,
+    onSaveTitle,
+    onCancelEdit,
     defaultExpanded = true,
 }: {
     title: string;
     threads: ChatThread[];
     activeId: string | null;
+    editingId: string | null;
     onLoad: (id: string) => void;
     onDelete: (id: string, e: React.MouseEvent) => void;
+    onStartEdit: (id: string, e: React.MouseEvent) => void;
+    onSaveTitle: (id: string, title: string) => void;
+    onCancelEdit: () => void;
     defaultExpanded?: boolean;
 }) {
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -271,6 +372,8 @@ function CollapsibleThreadGroup({
 
             <div
                 className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+                role="list"
+                aria-label="Chat threads"
             >
                 <div className="overflow-hidden flex flex-col gap-0.5">
                     {threads.map((t) => (
@@ -278,8 +381,12 @@ function CollapsibleThreadGroup({
                             key={t.id}
                             thread={t}
                             activeId={activeId}
+                            editingId={editingId}
                             onLoad={onLoad}
                             onDelete={onDelete}
+                            onStartEdit={onStartEdit}
+                            onSaveTitle={onSaveTitle}
+                            onCancelEdit={onCancelEdit}
                         />
                     ))}
                 </div>
@@ -366,25 +473,25 @@ function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; 
     );
 }
 
-// Custom renderers for ReactMarkdown
+// Custom renderers for ReactMarkdown (typed to avoid `any` per .rules)
+type CodeComponentProps = React.ComponentPropsWithoutRef<'code'> & { className?: string; children?: React.ReactNode };
+
 const markdownComponents = {
-    // Tables: wrap in scrollable container
-    table: ({ children, ...props }: any) => (
+    table: ({ children, ...props }: React.ComponentPropsWithoutRef<'table'>) => (
         <div className="overflow-x-auto my-2 rounded-lg border border-white/10">
             <table className="min-w-full text-xs" {...props}>{children}</table>
         </div>
     ),
-    thead: ({ children, ...props }: any) => (
+    thead: ({ children, ...props }: React.ComponentPropsWithoutRef<'thead'>) => (
         <thead className="bg-white/5" {...props}>{children}</thead>
     ),
-    th: ({ children, ...props }: any) => (
+    th: ({ children, ...props }: React.ComponentPropsWithoutRef<'th'>) => (
         <th className="px-3 py-1.5 text-left font-medium text-white/80 border-b border-white/10 whitespace-nowrap" {...props}>{children}</th>
     ),
-    td: ({ children, ...props }: any) => (
+    td: ({ children, ...props }: React.ComponentPropsWithoutRef<'td'>) => (
         <td className="px-3 py-1.5 text-white/70 border-b border-white/5 whitespace-nowrap" {...props}>{children}</td>
     ),
-    // Code blocks with syntax highlighting
-    code: ({ className, children, ...props }: any) => {
+    code: ({ className, children, ...props }: CodeComponentProps) => {
         const match = /language-(\w+)/.exec(className || '');
         const lang = match?.[1];
         const codeStr = String(children).replace(/\n$/, '');
@@ -395,36 +502,48 @@ const markdownComponents = {
                     highlighted = hljs.highlight(codeStr, { language: lang }).value;
                 }
             } catch { /* fallback to plain */ }
+            const sanitized = DOMPurify.sanitize(highlighted, { ALLOWED_TAGS: ['span'], ALLOWED_ATTR: ['class'] });
             return (
-                <code
-                    className={`${className || ''} text-xs`}
-                    dangerouslySetInnerHTML={{ __html: highlighted }}
-                    {...props}
-                />
+                <div className="relative group/code">
+                    <button
+                        type="button"
+                        onClick={() => copyToClipboard(codeStr, 'Code')}
+                        className="absolute top-2 right-2 p-1.5 rounded opacity-0 group-hover/code:opacity-100 hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-all"
+                        title="Copy code"
+                        aria-label="Copy code"
+                    >
+                        <Copy className="w-3 h-3" />
+                    </button>
+                    <code
+                        className={`${className || ''} text-xs block pr-8`}
+                        dangerouslySetInnerHTML={{ __html: sanitized }}
+                        {...props}
+                    />
+                </div>
             );
         }
         // Inline code
         return <code className="bg-white/10 px-1.5 py-0.5 rounded text-violet-300 text-xs" {...props}>{children}</code>;
     },
-    pre: ({ children, ...props }: any) => (
+    pre: ({ children, ...props }: React.ComponentPropsWithoutRef<'pre'>) => (
         <pre className="bg-black/40 rounded-lg p-3 overflow-x-auto my-2 text-xs" {...props}>{children}</pre>
     ),
-    p: ({ children, ...props }: any) => (
+    p: ({ children, ...props }: React.ComponentPropsWithoutRef<'p'>) => (
         <p className="my-1.5 leading-relaxed" {...props}>{children}</p>
     ),
-    ul: ({ children, ...props }: any) => (
+    ul: ({ children, ...props }: React.ComponentPropsWithoutRef<'ul'>) => (
         <ul className="list-disc list-inside my-1.5 space-y-0.5" {...props}>{children}</ul>
     ),
-    ol: ({ children, ...props }: any) => (
+    ol: ({ children, ...props }: React.ComponentPropsWithoutRef<'ol'>) => (
         <ol className="list-decimal list-inside my-1.5 space-y-0.5" {...props}>{children}</ol>
     ),
-    h1: ({ children, ...props }: any) => <h1 className="text-base font-bold text-white/90 mt-3 mb-1" {...props}>{children}</h1>,
-    h2: ({ children, ...props }: any) => <h2 className="text-sm font-bold text-white/90 mt-3 mb-1" {...props}>{children}</h2>,
-    h3: ({ children, ...props }: any) => <h3 className="text-sm font-semibold text-white/90 mt-2 mb-1" {...props}>{children}</h3>,
-    a: ({ children, ...props }: any) => (
+    h1: ({ children, ...props }: React.ComponentPropsWithoutRef<'h1'>) => <h1 className="text-base font-bold text-white/90 mt-3 mb-1" {...props}>{children}</h1>,
+    h2: ({ children, ...props }: React.ComponentPropsWithoutRef<'h2'>) => <h2 className="text-sm font-bold text-white/90 mt-3 mb-1" {...props}>{children}</h2>,
+    h3: ({ children, ...props }: React.ComponentPropsWithoutRef<'h3'>) => <h3 className="text-sm font-semibold text-white/90 mt-2 mb-1" {...props}>{children}</h3>,
+    a: ({ children, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
         <a className="text-violet-400 hover:text-violet-300 underline" target="_blank" rel="noopener" {...props}>{children}</a>
     ),
-    blockquote: ({ children, ...props }: any) => (
+    blockquote: ({ children, ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
         <blockquote className="border-l-2 border-violet-500/40 pl-3 my-2 text-white/60 italic" {...props}>{children}</blockquote>
     ),
     // Suppress images — the AI sometimes generates ![chart](...) markdown which renders as broken <img>
@@ -433,46 +552,308 @@ const markdownComponents = {
 };
 
 /**
- * Normalise common AI output quirks before passing to ReactMarkdown:
- * - Replace literal \n escape sequences with real newlines
- *   (AI sometimes escapes newlines inside table cells)
- * - Normalise <br> variants to real newlines
- *   (AI sometimes uses <br> for line breaks in table cells)
+ * Normalise common AI output quirks before passing to ReactMarkdown.
+ * All transformations are applied only outside code fences (content inside ``` blocks is left unchanged).
+ *
+ * Normalized quirks:
+ * - Leading: blank lines and leading spaces on the first line stripped (so first line is not indented)
+ * - Line endings: \\r\\n and \\r normalized to \\n
+ * - Headings: missing space after # (e.g. ##Heading → ## Heading)
+ * - Code fences: opening/closing fence lines trimmed so fence is alone; closing fence with trailing content split
+ * - Tables: literal \\n and <br> in table rows collapsed to spaces; malformed ```lang\\nCODE\\n``` in cells → inline `CODE`; row cell count normalized to match header
+ * - Paragraphs: literal \\n → real newlines; <br> variants → newlines
  */
-function preprocessMarkdown(text: string): string {
-    const lines = text.split('\n');
-    let inCodeFence = false;
+export function preprocessMarkdown(text: string): string {
+    if (!text) return text;
 
-    const out = lines.map(line => {
-        // Track real triple-backtick fences (standalone lines starting with ```)
+    // 1. Normalize line endings first
+    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let lines = normalizedText.split('\n');
+
+    // 2. Strip leading blank lines and leading spaces on the first line (fixes AI output like "          Here's the SQL...")
+    let firstNonEmpty = 0;
+    while (firstNonEmpty < lines.length && lines[firstNonEmpty].trim() === '') firstNonEmpty++;
+    if (firstNonEmpty < lines.length) {
+        lines[firstNonEmpty] = lines[firstNonEmpty].trimStart();
+    }
+    if (firstNonEmpty > 0) {
+        lines = lines.slice(firstNonEmpty);
+    }
+
+    let inCodeFence = false;
+    let inTable = false;
+    let tableHeaderCellCount = 0;
+    const out: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+
+        // Track code fence boundaries (standalone lines starting with ```)
+        const isClosingFence = inCodeFence;
         if (/^\s*```/.test(line)) {
             inCodeFence = !inCodeFence;
-            return line;
+            // Normalize fence line: trim and ensure fence is alone; if trailing content, split
+            const trimmed = line.trimStart();
+            const backtick = '\u0060';
+            let fenceEnd = 0;
+            while (fenceEnd < trimmed.length && trimmed[fenceEnd] === backtick) fenceEnd++;
+            if (fenceEnd >= 3) {
+                if (isClosingFence) {
+                    // Closing fence: only backticks then optional spaces then rest (no lang)
+                    const rest = trimmed.slice(fenceEnd).trimStart();
+                    if (rest) {
+                        out.push(trimmed.slice(0, fenceEnd));
+                        out.push(rest);
+                    } else {
+                        out.push(trimmed.trimEnd());
+                    }
+                } else {
+                    // Opening fence: backticks, optional lang, optional spaces, then rest
+                    while (fenceEnd < trimmed.length && trimmed[fenceEnd] === ' ') fenceEnd++;
+                    while (fenceEnd < trimmed.length && /\w/.test(trimmed[fenceEnd])) fenceEnd++;
+                    while (fenceEnd < trimmed.length && trimmed[fenceEnd] === ' ') fenceEnd++;
+                    const rest = trimmed.slice(fenceEnd);
+                    if (rest.trim()) {
+                        const fences = trimmed.slice(0, 3);
+                        const lang = trimmed.slice(3, fenceEnd).trim();
+                        out.push(fences + (lang ? lang : ''));
+                        out.push(rest.trim());
+                    } else {
+                        out.push(trimmed.trimEnd());
+                    }
+                }
+            } else {
+                out.push(line);
+            }
+            continue;
         }
-        // Inside a real code fence block — never touch the content
-        if (inCodeFence) return line;
 
-        // Table rows: collapse ```lang\nCODE\n``` inside cells to inline `CODE`,
-        // then replace any remaining literal \n with a space to keep the row single-line.
+        if (inCodeFence) {
+            out.push(line);
+            continue;
+        }
+
+        // Table row
         if (line.trimStart().startsWith('|')) {
-            return line
-                // ```lang\nCODE\n``` → `CODE` (newlines become spaces so the cell stays on one line)
+            const cellCount = line.split('|').length - 2;
+            if (!inTable) {
+                inTable = true;
+                tableHeaderCellCount = Math.max(1, cellCount);
+            }
+            // Normalize cell count to match header: pad with empty cells or trim
+            let normalizedRow = line
                 .replace(/```\w*\\n([\s\S]*?)(?:\\n)?```/g, (_match, code) =>
                     '`' + code.replace(/\\n/g, ' ').trim() + '`'
                 )
-                // any remaining literal \n → space
                 .replace(/\\n/g, ' ')
-                // <br> → space
                 .replace(/<br\s*\/?>/gi, ' ');
+
+            const cells = normalizedRow.split('|').map((c) => c.trim());
+            const body = cells.slice(1, -1);
+            if (body.length !== tableHeaderCellCount) {
+                if (body.length > tableHeaderCellCount) {
+                    normalizedRow = '| ' + body.slice(0, tableHeaderCellCount).join(' | ') + ' |';
+                } else {
+                    const isSeparator = body.every((c) => /^[\s\-:]+$/.test(c));
+                    const pad = isSeparator ? '---' : '';
+                    const padded = [...body, ...Array(tableHeaderCellCount - body.length).fill(pad)];
+                    normalizedRow = '| ' + padded.join(' | ') + ' |';
+                }
+            }
+            out.push(normalizedRow);
+            continue;
         }
 
-        // Regular paragraph lines: convert literal \n to real newlines
-        return line
+        inTable = false;
+
+        // Heading: ensure space after # (e.g. ##Heading → ## Heading)
+        if (/^#{1,6}[^\s#]/.test(line)) {
+            line = line.replace(/^(#{1,6})([^\s#])/m, '$1 $2');
+        }
+
+        // Regular paragraph lines
+        line = line
             .replace(/\\n/g, '\n')
             .replace(/<br\s*\/?>/gi, '  \n');
-    });
+
+        out.push(line);
+    }
 
     return out.join('\n');
+}
+
+// ============================================
+// useAiChatStream hook
+// ============================================
+
+function useAiChatStream({
+    setMessages,
+    loadThreads,
+    selectedModelId,
+}: {
+    setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>;
+    loadThreads: () => void;
+    selectedModelId: string;
+}) {
+    const [isStreaming, setIsStreaming] = useState(false);
+    const [toolStatus, setToolStatus] = useState<string | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
+
+    const runStream = useCallback(async (
+        threadId: string,
+        prompt: string,
+        messageHistory: { role: string; content: string }[],
+    ) => {
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setIsStreaming(true);
+        setToolStatus(null);
+
+        try {
+            const stream = streamChatMessage(
+                threadId,
+                prompt,
+                messageHistory,
+                selectedModelId || undefined,
+                controller.signal
+            );
+
+            for await (const delta of stream) {
+                if (delta.type === 'text-delta' && delta.text) {
+                    setToolStatus(null);
+                    setMessages((prev) => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            updated[updated.length - 1] = {
+                                ...last,
+                                content: last.content + delta.text!,
+                                toolStatus: undefined,
+                            };
+                        }
+                        return updated;
+                    });
+                } else if (delta.type === 'tool-call' && delta.tool) {
+                    const label = delta.tool.replace(/_/g, ' ');
+                    setToolStatus(`Querying ${label}...`);
+                    setMessages((prev) => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            const newStep: ToolCallStep = {
+                                tool: delta.tool!,
+                                args: delta.args ?? {},
+                                status: 'running',
+                            };
+                            updated[updated.length - 1] = {
+                                ...last,
+                                toolStatus: `Querying ${label}...`,
+                                toolCalls: [...(last.toolCalls ?? []), newStep],
+                            };
+                        }
+                        return updated;
+                    });
+                } else if (delta.type === 'chart-data' && delta.chartSpec) {
+                    setMessages((prev) => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            updated[updated.length - 1] = {
+                                ...last,
+                                chartSpecs: [...(last.chartSpecs || []), delta.chartSpec!]
+                            };
+                        }
+                        return updated;
+                    });
+                } else if (delta.type === 'tool-complete' && delta.tool) {
+                    setMessages((prev) => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant' && last.toolCalls) {
+                            const steps = [...last.toolCalls];
+                            for (let i = steps.length - 1; i >= 0; i--) {
+                                if (steps[i].tool === delta.tool && steps[i].status === 'running') {
+                                    steps[i] = { ...steps[i], status: 'done', summary: delta.summary ?? null };
+                                    break;
+                                }
+                            }
+                            updated[updated.length - 1] = { ...last, toolCalls: steps };
+                        }
+                        return updated;
+                    });
+                } else if (delta.type === 'status' && delta.tool) {
+                    const label = delta.tool.replace(/_/g, ' ');
+                    setToolStatus(`Querying ${label}...`);
+                } else if (delta.type === 'error') {
+                    setToolStatus(null);
+                    setMessages((prev) => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            updated[updated.length - 1] = {
+                                ...last,
+                                content: delta.error || 'An unexpected error occurred.',
+                                isStreaming: false,
+                                isError: true,
+                                retryPrompt: prompt,
+                                retryable: delta.retryable ?? true,
+                                toolStatus: undefined,
+                            };
+                        }
+                        return updated;
+                    });
+                }
+            }
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name !== 'AbortError') {
+                const isNetwork = err.message?.includes('fetch') || err.message?.includes('network') || err.name === 'TypeError';
+                const errMsg = isNetwork ? 'Connection failed. You can retry.' : (err.message || 'Something went wrong. You can retry.');
+                setMessages((prev) => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                        updated[updated.length - 1] = {
+                            ...last,
+                            content: errMsg,
+                            isStreaming: false,
+                            isError: true,
+                            retryPrompt: prompt,
+                            retryable: true,
+                        };
+                    }
+                    return updated;
+                });
+            }
+        } finally {
+            setToolStatus(null);
+            setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.isStreaming) {
+                    const isEmpty = !last.content.trim();
+                    updated[updated.length - 1] = {
+                        ...last,
+                        isStreaming: false,
+                        toolStatus: undefined,
+                        ...(isEmpty && !last.isError
+                            ? { content: 'I wasn\'t able to generate a response. Please try again.', isError: true, retryPrompt: prompt }
+                            : {}
+                        ),
+                    };
+                }
+                return updated;
+            });
+            setIsStreaming(false);
+            abortRef.current = null;
+            loadThreads();
+        }
+    }, [loadThreads, selectedModelId, setMessages]);
+
+    const handleStop = useCallback(() => {
+        abortRef.current?.abort();
+    }, []);
+
+    return { runStream, isStreaming, toolStatus, handleStop };
 }
 
 // ============================================
@@ -488,44 +869,19 @@ export default function AiChatBubble() {
     const [isOpen, setIsOpen] = useState(false);
     const [showSidebar, setShowSidebar] = useState(false);
 
-    // Position state
+    // Position and size state (device-aware; defaults applied in load effect)
     const [position, setPosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
-    const hasLoadedFromDb = useRef(false);
+    const lastLoadedDeviceRef = useRef<DeviceType | null>(null);
     const dragControls = useDragControls();
 
-    // Load preferences
-    useEffect(() => {
-        if (!hasPermission || hasLoadedFromDb.current) return;
-
-        const loadFromDb = async () => {
-            try {
-                const prefs = await rbacUserPreferencesApi.getPreferences();
-                const chatPrefs = prefs.workspacePreferences?.chatPreferences as { position?: { x: number, y: number } } | undefined;
-                if (chatPrefs?.position) {
-                    setPosition(chatPrefs.position);
-                }
-                hasLoadedFromDb.current = true;
-            } catch (err) {
-                console.error('[AiChatBubble] Failed to load preferences:', err);
-            }
-        };
-        loadFromDb();
-
-        // Load from local storage fallback
-        try {
-            const saved = localStorage.getItem('chouseui-chat-position');
-            if (saved && !hasLoadedFromDb.current) {
-                setPosition(JSON.parse(saved));
-            }
-        } catch { }
-    }, [hasPermission]);
+    const deviceType = useDeviceType();
 
     const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const savePositionDebounced = useCallback((pos: { x: number, y: number }): void => {
+    const saveChatPrefsDebounced = useCallback((pos: { x: number, y: number }, size: { width: number, height: number }): void => {
         try {
             localStorage.setItem('chouseui-chat-position', JSON.stringify(pos));
-        } catch { }
+        } catch { /* ignore */ }
 
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
@@ -534,28 +890,15 @@ export default function AiChatBubble() {
         saveTimeoutRef.current = setTimeout(async () => {
             try {
                 const current = await rbacUserPreferencesApi.getPreferences();
-                await rbacUserPreferencesApi.updatePreferences({
-                    workspacePreferences: {
-                        ...current.workspacePreferences,
-                        chatPreferences: { position: pos }
-                    }
-                });
+                const workspace = current.workspacePreferences as WorkspacePreferencesMap | undefined;
+                const merged = mergeChatPrefsIntoWorkspace(workspace, deviceType, { position: pos, size });
+                await rbacUserPreferencesApi.updatePreferences({ workspacePreferences: merged });
             } catch (err) {
                 console.error('[AiChatBubble] Failed to save preferences:', err);
             }
         }, 1000);
-    }, []);
+    }, [deviceType]);
 
-
-    const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo): void => {
-        const newPos = {
-            // Need to divide by zoomFactor to map screen delta to logical container offset
-            x: position.x + info.offset.x / zoomFactor,
-            y: position.y + info.offset.y / zoomFactor
-        };
-        setPosition(newPos);
-        savePositionDebounced(newPos);
-    };
 
     // Responsive breakpoint
     const { width: viewportWidth, height: viewportHeight, breakpoint } = useWindowSize();
@@ -565,8 +908,37 @@ export default function AiChatBubble() {
 
     // Resize state (desktop only)
     const [windowSize, setWindowSize] = useState({ width: DEFAULT_DESKTOP_WIDTH, height: DEFAULT_DESKTOP_HEIGHT });
+    const windowSizeRef = useRef(windowSize);
+    useEffect(() => {
+        windowSizeRef.current = windowSize;
+    }, [windowSize]);
     const [isResizing, setIsResizing] = useState(false);
     const resizeRef = useRef<{ axis: 'both' | 'x' | 'y'; startX: number; startY: number; startW: number; startH: number } | null>(null);
+
+    // Load preferences (per device type; re-load when device type changes; must run after windowSize is declared)
+    useEffect(() => {
+        if (!hasPermission || lastLoadedDeviceRef.current === deviceType) return;
+
+        const loadFromDb = async () => {
+            try {
+                const prefs = await rbacUserPreferencesApi.getPreferences();
+                const workspace = prefs.workspacePreferences as WorkspacePreferencesMap | undefined;
+                const { position: loadedPos, size: loadedSize } = getChatPrefsFromWorkspace(workspace, deviceType);
+                setPosition(loadedPos);
+                if (deviceType !== 'mobile' && loadedSize.width > 0 && loadedSize.height > 0) {
+                    setWindowSize(loadedSize);
+                }
+                lastLoadedDeviceRef.current = deviceType;
+            } catch (err) {
+                console.error('[AiChatBubble] Failed to load preferences:', err);
+                try {
+                    const saved = localStorage.getItem('chouseui-chat-position');
+                    if (saved) setPosition(JSON.parse(saved));
+                } catch { /* ignore */ }
+            }
+        };
+        loadFromDb();
+    }, [hasPermission, deviceType]);
 
     // Compute max constraints based on viewport
     const maxWidth = Math.min(DEFAULT_DESKTOP_WIDTH, viewportWidth - 40);
@@ -580,6 +952,15 @@ export default function AiChatBubble() {
     const zoomFactor = isDesktop
         ? Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(effectiveWidth / DEFAULT_DESKTOP_WIDTH, effectiveHeight / DEFAULT_DESKTOP_HEIGHT)))
         : 1;
+
+    const handleDragEnd = useCallback((_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo): void => {
+        const newPos = {
+            x: position.x + info.offset.x / zoomFactor,
+            y: position.y + info.offset.y / zoomFactor
+        };
+        setPosition(newPos);
+        saveChatPrefsDebounced(newPos, windowSizeRef.current);
+    }, [position, zoomFactor, saveChatPrefsDebounced]);
 
     // Logical dimensions for internal layout
     const logicalWidth = isDesktop ? effectiveWidth / zoomFactor : (isTablet ? 680 : viewportWidth);
@@ -639,6 +1020,16 @@ export default function AiChatBubble() {
         };
     }, [isResizing, maxWidth, maxHeight, zoomFactor]);
 
+    // Save position + size when resize ends (isResizing goes true -> false)
+    const prevResizingRef = useRef(false);
+    useEffect(() => {
+        const wasResizing = prevResizingRef.current;
+        prevResizingRef.current = isResizing;
+        if (wasResizing && !isResizing) {
+            saveChatPrefsDebounced(position, windowSize);
+        }
+    }, [isResizing, position, windowSize, saveChatPrefsDebounced]);
+
     // Auto-close sidebar on smaller breakpoints
     useEffect(() => {
         if (isMobile || isTablet) setShowSidebar(false);
@@ -647,18 +1038,23 @@ export default function AiChatBubble() {
     // Thread state
     const [threads, setThreads] = useState<ChatThread[]>([]);
     const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+    const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
     const [messages, setMessages] = useState<UIMessage[]>([]);
     const [isLoadingThreads, setIsLoadingThreads] = useState(false);
 
     // Input state
     const [input, setInput] = useState('');
-    const [isStreaming, setIsStreaming] = useState(false);
-    const [toolStatus, setToolStatus] = useState<string | null>(null);
     const [shuffleKey, setShuffleKey] = useState(() => Date.now());
-    const abortRef = useRef<AbortController | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    const messageVirtualizer = useVirtualizer({
+        count: messages.length,
+        getScrollElement: () => scrollContainerRef.current,
+        estimateSize: () => 180,
+        overscan: 5,
+    });
 
     // Random subset of prompts — changes when shuffleKey changes
     const visiblePrompts = useMemo(
@@ -736,6 +1132,24 @@ export default function AiChatBubble() {
         }
     }, [messages]);
 
+    const loadThreads = useCallback(async () => {
+        setIsLoadingThreads(true);
+        try {
+            const result = await listThreads(activeConnectionId);
+            setThreads(result);
+        } catch (err) {
+            console.error('[AiChat] Failed to load threads:', err);
+        } finally {
+            setIsLoadingThreads(false);
+        }
+    }, [activeConnectionId]);
+
+    const { runStream, isStreaming, toolStatus, handleStop } = useAiChatStream({
+        setMessages,
+        loadThreads,
+        selectedModelId,
+    });
+
     // Focus input when thread loads
     useEffect(() => {
         if (activeThreadId && !isStreaming) {
@@ -752,18 +1166,6 @@ export default function AiChatBubble() {
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
     }, [isOpen]);
-
-    const loadThreads = useCallback(async () => {
-        setIsLoadingThreads(true);
-        try {
-            const result = await listThreads(activeConnectionId);
-            setThreads(result);
-        } catch (err) {
-            console.error('[AiChat] Failed to load threads:', err);
-        } finally {
-            setIsLoadingThreads(false);
-        }
-    }, [activeConnectionId]);
 
     const lastClosedAtRef = useRef<number | null>(null);
     const lastConnectionIdRef = useRef<string | null>(null);
@@ -842,163 +1244,39 @@ export default function AiChatBubble() {
         }
     }, [activeThreadId]);
 
-    /**
-     * Core streaming executor — shared by both handleSend and handleSuggestedPrompt.
-     * Streams the AI response and updates the last assistant message in state.
-     * On error, marks the message with isError=true and stores retryPrompt.
-     */
-    const runStream = useCallback(async (
-        threadId: string,
-        prompt: string,
-        messageHistory: { role: string; content: string }[],
-    ) => {
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setIsStreaming(true);
-        setToolStatus(null);
+    const handleStartEditThread = useCallback((_threadId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setEditingThreadId(_threadId);
+    }, []);
 
+    const handleSaveThreadTitle = useCallback(async (threadId: string, title: string) => {
+        setEditingThreadId(null);
         try {
-            const stream = streamChatMessage(
-                threadId,
-                prompt,
-                messageHistory,
-                selectedModelId || undefined,
-                controller.signal
-            );
-
-            for await (const delta of stream) {
-                if (delta.type === 'text-delta' && delta.text) {
-                    setToolStatus(null);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                content: last.content + delta.text!,
-                                toolStatus: undefined,
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'tool-call' && delta.tool) {
-                    // New tool call started — add to toolCalls on the last assistant message
-                    const label = delta.tool.replace(/_/g, ' ');
-                    setToolStatus(`Querying ${label}...`);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            const newStep: ToolCallStep = {
-                                tool: delta.tool!,
-                                args: delta.args ?? {},
-                                status: 'running',
-                            };
-                            updated[updated.length - 1] = {
-                                ...last,
-                                toolStatus: `Querying ${label}...`,
-                                toolCalls: [...(last.toolCalls ?? []), newStep],
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'chart-data' && delta.chartSpec) {
-                    // Attach chart spec to the current assistant message
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                chartSpecs: [...(last.chartSpecs || []), delta.chartSpec!]
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'tool-complete' && delta.tool) {
-                    // Tool finished — mark its step as done and attach the summary
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant' && last.toolCalls) {
-                            // Find the last running step for this tool
-                            const steps = [...last.toolCalls];
-                            for (let i = steps.length - 1; i >= 0; i--) {
-                                if (steps[i].tool === delta.tool && steps[i].status === 'running') {
-                                    steps[i] = { ...steps[i], status: 'done', summary: delta.summary ?? null };
-                                    break;
-                                }
-                            }
-                            updated[updated.length - 1] = { ...last, toolCalls: steps };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'status' && delta.tool) {
-                    // Legacy status event fallback
-                    const label = delta.tool.replace(/_/g, ' ');
-                    setToolStatus(`Querying ${label}...`);
-                } else if (delta.type === 'error') {
-                    setToolStatus(null);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                content: delta.error || 'An unexpected error occurred.',
-                                isStreaming: false,
-                                isError: true,
-                                retryPrompt: prompt,
-                                toolStatus: undefined,
-                            };
-                        }
-                        return updated;
-                    });
-                }
-            }
-        } catch (err: unknown) {
-            if (err instanceof Error && err.name !== 'AbortError') {
-                const errMsg = err.message || 'Connection failed';
-                setMessages((prev) => {
-                    const updated = [...prev];
-                    const last = updated[updated.length - 1];
-                    if (last && last.role === 'assistant') {
-                        updated[updated.length - 1] = {
-                            ...last,
-                            content: errMsg,
-                            isStreaming: false,
-                            isError: true,
-                            retryPrompt: prompt,
-                        };
-                    }
-                    return updated;
-                });
-            }
-        } finally {
-            setToolStatus(null);
-            setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last && last.isStreaming) {
-                    // Guard: if content is empty and not already an error, show fallback
-                    const isEmpty = !last.content.trim();
-                    updated[updated.length - 1] = {
-                        ...last,
-                        isStreaming: false,
-                        toolStatus: undefined,
-                        ...(isEmpty && !last.isError
-                            ? { content: 'I wasn\'t able to generate a response. Please try again.', isError: true, retryPrompt: prompt }
-                            : {}
-                        ),
-                    };
-                }
-                return updated;
-            });
-            setIsStreaming(false);
-            abortRef.current = null;
-            loadThreads();
+            await updateThreadTitle(threadId, title);
+            setThreads((prev) => prev.map((t) => (t.id === threadId ? { ...t, title } : t)));
+        } catch (err) {
+            console.error('[AiChat] Failed to update thread title:', err);
+            toast.error('Failed to rename thread');
         }
-    }, [loadThreads]);
+    }, []);
+
+    const handleCancelEditThread = useCallback(() => {
+        setEditingThreadId(null);
+    }, []);
+
+    const handleExportThread = useCallback(() => {
+        if (!activeThreadId || messages.length === 0) return;
+        const thread = threads.find((t) => t.id === activeThreadId);
+        const md = exportThreadAsMarkdown(messages, thread?.title ?? null);
+        const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chat-${(thread?.title || activeThreadId.slice(0, 8)).replace(/[^a-zA-Z0-9-_]/g, '-')}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success('Thread exported');
+    }, [activeThreadId, messages, threads]);
 
     const handleSend = useCallback(async (e?: FormEvent) => {
         e?.preventDefault();
@@ -1070,10 +1348,6 @@ export default function AiChatBubble() {
             handleSend();
         }
     }, [handleSend]);
-
-    const handleStop = useCallback(() => {
-        abortRef.current?.abort();
-    }, []);
 
     // Helper to send a suggested prompt — shares runStream for consistent error handling
     const handleSuggestedPrompt = useCallback(async (prompt: string) => {
@@ -1346,17 +1620,28 @@ export default function AiChatBubble() {
                                     )}
                                     {isDesktop && (
                                         <button
-                                            onClick={() => setWindowSize(
-                                                windowSize.width >= DEFAULT_DESKTOP_WIDTH * 0.9
+                                            onClick={() => {
+                                                const newSize = windowSize.width >= DEFAULT_DESKTOP_WIDTH * 0.9
                                                     ? { width: 500, height: 700 }
-                                                    : { width: DEFAULT_DESKTOP_WIDTH, height: DEFAULT_DESKTOP_HEIGHT }
-                                            )}
+                                                    : { width: DEFAULT_DESKTOP_WIDTH, height: DEFAULT_DESKTOP_HEIGHT };
+                                                setWindowSize(newSize);
+                                                saveChatPrefsDebounced(position, newSize);
+                                            }}
                                             className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200 mr-1"
                                             title={windowSize.width >= DEFAULT_DESKTOP_WIDTH * 0.9 ? "Compact mode" : "Default size"}
                                         >
                                             {windowSize.width >= DEFAULT_DESKTOP_WIDTH * 0.9 ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                                         </button>
                                     )}
+                                    <button
+                                        onClick={handleExportThread}
+                                        disabled={!activeThreadId || messages.length === 0}
+                                        className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Export thread"
+                                        aria-label="Export thread"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </button>
                                     <button
                                         onClick={handleNewThread}
                                         className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200"
@@ -1397,24 +1682,36 @@ export default function AiChatBubble() {
                                                         title="Recent"
                                                         threads={groupedThreads.recent}
                                                         activeId={activeThreadId}
+                                                        editingId={editingThreadId}
                                                         onLoad={loadThread}
                                                         onDelete={handleDeleteThread}
+                                                        onStartEdit={handleStartEditThread}
+                                                        onSaveTitle={handleSaveThreadTitle}
+                                                        onCancelEdit={handleCancelEditThread}
                                                         defaultExpanded={true}
                                                     />
                                                     <CollapsibleThreadGroup
                                                         title="Last 24 Hours"
                                                         threads={groupedThreads.last24Hours}
                                                         activeId={activeThreadId}
+                                                        editingId={editingThreadId}
                                                         onLoad={loadThread}
                                                         onDelete={handleDeleteThread}
+                                                        onStartEdit={handleStartEditThread}
+                                                        onSaveTitle={handleSaveThreadTitle}
+                                                        onCancelEdit={handleCancelEditThread}
                                                         defaultExpanded={true}
                                                     />
                                                     <CollapsibleThreadGroup
                                                         title="Previous 7 Days"
                                                         threads={groupedThreads.last7Days}
                                                         activeId={activeThreadId}
+                                                        editingId={editingThreadId}
                                                         onLoad={loadThread}
                                                         onDelete={handleDeleteThread}
+                                                        onStartEdit={handleStartEditThread}
+                                                        onSaveTitle={handleSaveThreadTitle}
+                                                        onCancelEdit={handleCancelEditThread}
                                                         defaultExpanded={true}
                                                     />
                                                     {groupedThreads.recent.length === 0 && groupedThreads.last24Hours.length === 0 && groupedThreads.last7Days.length === 0 && (
@@ -1529,14 +1826,36 @@ export default function AiChatBubble() {
                                                 </div>
                                             </div>
                                         ) : (
-                                            /* Message list */
+                                            /* Message list (virtualized for long threads) */
                                             <>
-                                                {messages.map((msg, idx) => (
-                                                    <div
-                                                        key={msg.id}
-                                                        className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}
-                                                        style={{ animation: `fadeSlideIn 0.3s ease-out ${Math.min(idx * 0.05, 0.3)}s both` }}
-                                                    >
+                                                <div
+                                                    style={{
+                                                        height: `${messageVirtualizer.getTotalSize()}px`,
+                                                        width: '100%',
+                                                        position: 'relative',
+                                                    }}
+                                                >
+                                                    {messageVirtualizer.getVirtualItems().map((virtualRow) => {
+                                                        const msg = messages[virtualRow.index];
+                                                        const idx = virtualRow.index;
+                                                        return (
+                                                            <div
+                                                                key={msg.id}
+                                                                data-index={idx}
+                                                                ref={messageVirtualizer.measureElement}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: 0,
+                                                                    left: 0,
+                                                                    width: '100%',
+                                                                    transform: `translateY(${virtualRow.start}px)`,
+                                                                    paddingBottom: '1.25rem',
+                                                                }}
+                                                            >
+                                                                <div
+                                                                    className={`group flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}
+                                                                    style={{ animation: `fadeSlideIn 0.3s ease-out ${Math.min(idx * 0.05, 0.3)}s both` }}
+                                                                >
                                                         {msg.role === 'assistant' && (
                                                             <div className={`w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5
                                                               ${msg.isError
@@ -1574,13 +1893,14 @@ export default function AiChatBubble() {
                                                                         {msg.isError ? (
                                                                             <div className="flex flex-col gap-2">
                                                                                 <p className="text-sm text-red-300/90">{msg.content}</p>
-                                                                                {msg.retryPrompt && (
+                                                                                {msg.retryPrompt && (msg.retryable !== false) && (
                                                                                     <button
                                                                                         onClick={() => handleRetry(msg.retryPrompt!)}
                                                                                         disabled={isStreaming}
                                                                                         className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300
                                                                                      disabled:opacity-40 transition-colors self-start
                                                                                      px-2 py-1 rounded-lg hover:bg-red-500/10"
+                                                                                        aria-label="Retry"
                                                                                     >
                                                                                         <RefreshCw className="w-3 h-3" />
                                                                                         Retry
@@ -1607,9 +1927,18 @@ export default function AiChatBubble() {
                                                                     <span className="whitespace-pre-wrap">{msg.content}</span>
                                                                 )}
                                                             </div>
-                                                            <span className={`text-[10px] text-zinc-600 px-1 ${msg.role === 'user' ? 'text-right' : ''}`}>
-                                                                {timeAgo(msg.createdAt)}
-                                                            </span>
+                                                            <div className={`flex items-center gap-1 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                                <span className="text-[10px] text-zinc-600">{timeAgo(msg.createdAt)}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => copyToClipboard(msg.content, 'Message')}
+                                                                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-all"
+                                                                    title="Copy message"
+                                                                    aria-label="Copy message"
+                                                                >
+                                                                    <Copy className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                         {
                                                             msg.role === 'user' && (
@@ -1618,8 +1947,11 @@ export default function AiChatBubble() {
                                                                 </div>
                                                             )
                                                         }
-                                                    </div>
-                                                ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                                 <div ref={messagesEndRef} />
                                             </>
                                         )}
@@ -1657,6 +1989,7 @@ export default function AiChatBubble() {
                                                         className="p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/15
                                                  text-red-400 transition-all duration-200 flex-shrink-0"
                                                         title="Stop generating"
+                                                        aria-label="Stop generating"
                                                     >
                                                         <Loader2 className="w-4 h-4 animate-spin" />
                                                     </button>

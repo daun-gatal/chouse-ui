@@ -59,6 +59,10 @@ export interface StreamDelta {
     type: 'text-delta' | 'done' | 'error' | 'status' | 'tool-call' | 'tool-complete' | 'chart-data';
     text?: string;
     error?: string;
+    /** Optional error code from server */
+    code?: string;
+    /** When true, client may show a Retry button (default true for stream errors) */
+    retryable?: boolean;
     status?: string;
     tool?: string;
     /** Args passed to the tool (present on tool-call events) */

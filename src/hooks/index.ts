@@ -50,6 +50,9 @@ export {
 
 // Utility hooks
 export { useDebounce } from './useDebounce';
+export { useWindowSize } from './useWindowSize';
+export type { Breakpoint } from './useWindowSize';
+export { useDeviceType } from './useDeviceType';
 
 // Pagination preferences hook
 export { usePaginationPreference, getDefaultPaginationSize } from './usePaginationPreferences';

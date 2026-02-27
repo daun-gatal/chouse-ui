@@ -37,6 +37,14 @@ import ConnectionSelector from "./ConnectionSelector";
 import UserMenu from "@/components/sidebar/UserMenu";
 import { version } from "../../../package.json";
 import { rbacUserPreferencesApi } from "@/api/rbac";
+import { useDeviceType } from "@/hooks/useDeviceType";
+import {
+  getDockPrefsFromWorkspace,
+  mergeDockPrefsIntoWorkspace,
+  type DeviceType,
+  type DockPreferences as DockPreferencesType,
+  type WorkspacePreferencesMap,
+} from "@/lib/devicePreferences";
 
 // Storage keys for dock preferences (localStorage fallback)
 const DOCK_PLACEMENT_KEY = "chouseui-dock-placement";
@@ -48,12 +56,7 @@ type DockPlacement = "bottom" | "top" | "left" | "right";
 type DockOrientation = "horizontal" | "vertical";
 type DockMode = "floating" | "sidebar";
 
-interface DockPreferences {
-  mode?: DockMode;
-  orientation?: DockOrientation;
-  autoHide?: boolean;
-  placement?: DockPlacement;
-}
+type DockPreferences = DockPreferencesType;
 
 // Load dock preferences from localStorage (fallback)
 function loadDockPlacementFromLocal(): DockPlacement {
@@ -134,29 +137,27 @@ function saveDockModeToLocal(mode: DockMode): void {
   }
 }
 
-// Database preference functions
-async function loadDockPreferencesFromDb(): Promise<DockPreferences> {
+// Database preference functions (device-aware: load/save per device type)
+async function loadDockPreferencesFromDb(deviceType: DeviceType): Promise<DockPreferences> {
   try {
     const preferences = await rbacUserPreferencesApi.getPreferences();
-    const dockPrefs = preferences.workspacePreferences?.dockPreferences as DockPreferences | undefined;
-    return dockPrefs || {};
+    const workspace = preferences.workspacePreferences as WorkspacePreferencesMap | undefined;
+    return getDockPrefsFromWorkspace(workspace, deviceType);
   } catch (error) {
-    console.error('[FloatingDock] Failed to fetch dock preferences:', error);
-    return {};
+    console.error("[FloatingDock] Failed to fetch dock preferences:", error);
+    const { DOCK_DEFAULT_PREFERENCES_BY_DEVICE } = await import("@/lib/devicePreferences");
+    return DOCK_DEFAULT_PREFERENCES_BY_DEVICE[deviceType];
   }
 }
 
-async function saveDockPreferencesToDb(dockPrefs: DockPreferences): Promise<void> {
+async function saveDockPreferencesToDb(deviceType: DeviceType, dockPrefs: DockPreferences): Promise<void> {
   try {
     const currentPreferences = await rbacUserPreferencesApi.getPreferences();
-    await rbacUserPreferencesApi.updatePreferences({
-      workspacePreferences: {
-        ...currentPreferences.workspacePreferences,
-        dockPreferences: dockPrefs,
-      },
-    });
+    const workspace = currentPreferences.workspacePreferences as WorkspacePreferencesMap | undefined;
+    const merged = mergeDockPrefsIntoWorkspace(workspace, deviceType, dockPrefs);
+    await rbacUserPreferencesApi.updatePreferences({ workspacePreferences: merged });
   } catch (error) {
-    console.error('[FloatingDock] Failed to save dock preferences:', error);
+    console.error("[FloatingDock] Failed to save dock preferences:", error);
   }
 }
 
@@ -231,7 +232,7 @@ export default function FloatingDock() {
   const dockRef = useRef<HTMLDivElement>(null);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dbSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hasLoadedFromDb = useRef(false);
+  const lastLoadedDeviceRef = useRef<DeviceType | null>(null);
 
   // Dock state - initialize from localStorage for quick render
   const [orientation, setOrientation] = useState<DockOrientation>(loadDockOrientationFromLocal);
@@ -275,14 +276,16 @@ export default function FloatingDock() {
     isAuthenticated,
   } = useRbacStore();
 
-  // Load preferences from database on mount (authenticated users)
+  const deviceType = useDeviceType();
+
+  // Load preferences from database (authenticated users, per device type; re-load when device type changes)
   useEffect(() => {
-    if (!isAuthenticated || hasLoadedFromDb.current) return;
+    if (!isAuthenticated || lastLoadedDeviceRef.current === deviceType) return;
 
     const loadFromDb = async () => {
       try {
-        const dbPrefs = await loadDockPreferencesFromDb();
-        hasLoadedFromDb.current = true;
+        const dbPrefs = await loadDockPreferencesFromDb(deviceType);
+        lastLoadedDeviceRef.current = deviceType;
 
         if (dbPrefs.mode && dbPrefs.mode !== dockMode) {
           setDockMode(dbPrefs.mode);
@@ -301,25 +304,28 @@ export default function FloatingDock() {
           saveDockPlacementToLocal(dbPrefs.placement);
         }
       } catch (error) {
-        console.error('[FloatingDock] Failed to load preferences from database:', error);
+        console.error("[FloatingDock] Failed to load preferences from database:", error);
       }
     };
 
     loadFromDb();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, deviceType]);
 
-  // Debounced save to database
-  const saveToDatabaseDebounced = useCallback((prefs: DockPreferences) => {
-    if (dbSyncTimeoutRef.current) {
-      clearTimeout(dbSyncTimeoutRef.current);
-    }
-    dbSyncTimeoutRef.current = setTimeout(async () => {
-      if (isAuthenticated) {
-        await saveDockPreferencesToDb(prefs);
+  // Debounced save to database (per device type)
+  const saveToDatabaseDebounced = useCallback(
+    (prefs: DockPreferences) => {
+      if (dbSyncTimeoutRef.current) {
+        clearTimeout(dbSyncTimeoutRef.current);
       }
-      dbSyncTimeoutRef.current = null;
-    }, 1000);
-  }, [isAuthenticated]);
+      dbSyncTimeoutRef.current = setTimeout(async () => {
+        if (isAuthenticated) {
+          await saveDockPreferencesToDb(deviceType, prefs);
+        }
+        dbSyncTimeoutRef.current = null;
+      }, 1000);
+    },
+    [isAuthenticated, deviceType]
+  );
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -601,7 +607,7 @@ export default function FloatingDock() {
       {/* Drag constraints container */}
       <div ref={constraintsRef} className="fixed inset-2 z-40 pointer-events-none" />
 
-      {/* Hover trigger zone when hidden */}
+      {/* Hover/tap trigger zone when hidden (onPointerDown fixes touch-to-open on mobile) */}
       <AnimatePresence>
         {autoHide && !isVisible && (
           <motion.div
@@ -611,6 +617,10 @@ export default function FloatingDock() {
             transition={{ duration: 0.3 }}
             onMouseEnter={() => {
               setIsHovered(false); // Reset so auto-hide timer starts for the dock
+              setIsVisible(true);
+            }}
+            onPointerDown={() => {
+              setIsHovered(false);
               setIsVisible(true);
             }}
             className={cn(

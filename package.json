@@ -2,7 +2,7 @@
   "name": "chouseui",
   "private": true,
   "author": "daun-gatal",
-  "version": "2.12.2",
+  "version": "2.12.3",
   "license": "Apache-2.0",
   "type": "module",
   "workspaces": [
@@ -65,6 +65,7 @@
     "dompurify": "^3.3.1",
     "framer-motion": "^12.23.25",
     "highlight.js": "^11.11.1",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^0.544.0",
     "monaco-editor": "^0.53.0",
     "papaparse": "^5.5.3",
