@@ -11,7 +11,7 @@ graph TB
     subgraph Browser["Browser (React SPA)"]
         UI["React 19 + Vite 7"]
         Router["React Router v7"]
-        Stores["Zustand 5 Stores"]
+        Stores["Zustand 4 Stores"]
         RQ["TanStack Query v5"]
         ApiClient["ApiClient (src/api/client.ts)"]
     end
@@ -54,16 +54,16 @@ graph TD
     subgraph UI["UI Layer"]
         Pages["Pages (11)"]
         Features["Feature Modules (5)"]
-        Components["Components: 34 ui + 20 common"]
+        Components["Components: 34 ui + 22 common"]
     end
 
     subgraph Logic["Logic Layer"]
-        Hooks["Hooks (~41 exported from 9 files)"]
+        Hooks["Hooks (~44 exported from 9 files)"]
         Stores["Zustand Stores (4, persisted)"]
     end
 
     subgraph Data["Data Layer"]
-        ApiModules["API Modules: query, explorer, metrics,<br/>rbac, saved-queries, live-queries, config"]
+        ApiModules["API Modules: query, explorer, metrics,<br/>rbac, saved-queries, live-queries, ai-chat, config"]
         ApiClient["ApiClient singleton (src/api/client.ts)"]
     end
 
@@ -85,11 +85,11 @@ graph TD
 | **Pages** | `src/pages/` | 11 files | Route-level views: Login, Home, Explorer, Monitoring, Admin, Preferences, Logs, Metrics, LiveQueries, ExplainPopout, NotFound |
 | **Features** | `src/features/` | 5 modules | Domain-specific component groups with their own `components/` dirs |
 | **UI Components** | `src/components/ui/` | 34 files | shadcn/ui primitives: button, dialog, dropdown-menu, tabs, data-table, select, etc. |
-| **Common Components** | `src/components/common/` | 22 files | FloatingDock, Sidebar, ConnectionSelector, ErrorBoundary, PermissionGuard, DiffEditor, AiChatBubble, AiChartRenderer, etc. |
+| **Common Components** | `src/components/common/` | 22 files | FloatingDock, Sidebar, ConnectionSelector, ErrorBoundary, PermissionGuard, DiffEditor, AiChatBubble, AiChartRenderer, AiChartUtils, form/InputField, etc. (tests live alongside) |
 | **Sidebar** | `src/components/sidebar/` | 1 file | UserMenu component |
-| **Hooks** | `src/hooks/` | 9 files | ~41 exported hooks (TanStack Query wrappers, useWindowSize, useDeviceType, preferences) |
+| **Hooks** | `src/hooks/` | 9 files | ~44 exported hooks (TanStack Query wrappers, useWindowSize, useDeviceType, preferences) |
 | **Stores** | `src/stores/` | 4 stores | Zustand with `persist` middleware and user-specific storage adapters |
-| **API** | `src/api/` | 8 modules | Type-safe `ApiClient` class with JWT/session management + domain modules |
+| **API** | `src/api/` | 9 modules | Type-safe `ApiClient` class with JWT/session management + domain modules (query, explorer, metrics, rbac, saved-queries, live-queries, ai-chat, config) |
 | **Providers** | `src/providers/` | 1 file | `QueryProvider` — TanStack Query context (30s staleTime, 5min gcTime) |
 | **Helpers** | `src/helpers/` | 1 file | `sqlUtils.ts` — SQL formatting and parsing utilities |
 | **Utilities** | `src/utils/` | 1 file | `sessionCleanup.ts` — Session cleanup logic |
@@ -167,17 +167,20 @@ graph TD
     ReqId["1. Request ID Middleware"]
     Security["2. Security Headers (XSS, CSP, Clickjacking)"]
     CORS["3. CORS Middleware (configurable origins)"]
-    RateLogin["4a. Rate Limit: /api/rbac/auth/login — 10/15min"]
-    RateQuery["4b. Rate Limit: /api/query/* — 300/min"]
-    RateGeneral["4c. Rate Limit: /api/* — 1000/min"]
-    ApiProt["5. API Protection (X-Requested-With check)"]
-    Routes["6. API Routes"]
-    Static["7. Static File Serving (SPA fallback)"]
+    DevLog["4. Dev Request Logging (development only)"]
+    SizeLimit["5. Request Size Limit (10MB, 413 if exceeded)"]
+    RateLogin["6a. Rate Limit: /api/rbac/auth/login — 10/15min"]
+    RateQuery["6b. Rate Limit: /api/query/* — 300/min"]
+    RateGeneral["6c. Rate Limit: /api/* — 1000/min"]
+    ApiProt["7. API Protection (X-Requested-With check, in routes/index.ts)"]
+    Routes["8. API Routes"]
+    Static["9. Static File Serving (SPA fallback)"]
 
     Request --> ReqId --> Security --> CORS
-    CORS --> RateLogin
-    CORS --> RateQuery
-    CORS --> RateGeneral
+    CORS --> DevLog --> SizeLimit
+    SizeLimit --> RateLogin
+    SizeLimit --> RateQuery
+    SizeLimit --> RateGeneral
     RateLogin --> ApiProt
     RateQuery --> ApiProt
     RateGeneral --> ApiProt
@@ -223,6 +226,8 @@ All mounted under `/api`:
 | **Inference** | `services/inference.ts` | 10KB | LLM inference abstraction, supports: OpenAI, Anthropic, Google, HuggingFace, OpenAI-compatible |
 | **AI Chat** | `services/aiChat.ts` | ~25KB | ToolLoopAgent with 16 tools + load_skill; streamChat() for SSE |
 | **Chat History** | `services/chatHistory.ts` | ~10KB | Thread and message CRUD, 7-day retention, RBAC-scoped |
+| **aiConfig** | `services/aiConfig.ts` | ~7KB | AI provider and model configuration |
+| **agentSkills** | `services/agentSkills.ts` | ~3KB | Agent skills and load_skill for AI chat |
 
 ---
 
@@ -243,6 +248,9 @@ graph TB
         CHUsers["/clickhouse-users — native ClickHouse user CRUD"]
         Prefs["/user-preferences — favorites, settings, expanded nodes"]
         DataAcc["/data-access — row-level access policies"]
+        AIProv["/ai-providers — AI provider config"]
+        AIBase["/ai-base-models — base models"]
+        AIConfig["/ai-models — model configs"]
     end
 
     subgraph RBACMiddleware["Middleware (rbac/middleware/)"]
@@ -258,6 +266,7 @@ graph TB
         SavedQSvc["savedQueries.ts — Query persistence per user/connection"]
         CHUsersSvc["clickhouseUsers.ts (41KB) — Native ClickHouse user management"]
         UserPrefSvc["userPreferences.ts — User settings, favorites, recent items"]
+        AiModelsSvc["aiModels.ts — AI base models and provider management"]
         SeedSvc["seed.ts (12KB) — Default admin, roles, permissions seeding"]
     end
 
@@ -280,22 +289,24 @@ graph TB
 
 ### RBAC Permission Categories
 
-~40 permissions across 12 categories:
+Permissions are defined in `src/stores/rbac.ts` as `RBAC_PERMISSIONS`; the frontend uses these constants for guards and AdminRoute.
 
 | Category | Permissions |
 |---|---|
 | **Users** | `users:view`, `users:create`, `users:update`, `users:delete` |
-| **Roles** | `roles:view`, `roles:create` |
-| **Queries** | `query:select`, `query:insert`, `query:ddl`, `query:danger` |
-| **Database** | `db:view`, `db:create`, `db:drop` |
-| **Tables** | `table:view`, `table:create`, `table:alter`, `table:drop`, `table:truncate` |
+| **Roles** | `roles:view`, `roles:create`, `roles:update`, `roles:delete`, `roles:assign` |
+| **ClickHouse Users** | `clickhouse:users:view`, `clickhouse:users:create`, `clickhouse:users:update`, `clickhouse:users:delete` |
+| **Database** | `database:view`, `database:create`, `database:drop` |
+| **Tables** | `table:view`, `table:create`, `table:alter`, `table:drop`, `table:select`, `table:insert`, `table:update`, `table:delete` |
+| **Query** | `query:execute`, `query:execute:ddl`, `query:execute:dml`, `query:history:view`, `query:history:view:all` |
 | **Saved Queries** | `saved_queries:view`, `saved_queries:create`, `saved_queries:update`, `saved_queries:delete`, `saved_queries:share` |
 | **Metrics** | `metrics:view`, `metrics:view:advanced` |
-| **Live Queries** | `live_queries:view`, `live_queries:kill`, `live_queries:kill_all` |
-| **Audit** | `audit:view`, `audit:export`, `audit:delete` |
 | **Settings** | `settings:view`, `settings:update` |
-| **AI** | `ai:optimize`, `ai:chat` |
+| **Audit** | `audit:view`, `audit:export`, `audit:delete` |
+| **Live Queries** | `live_queries:view`, `live_queries:kill`, `live_queries:kill_all` |
 | **Connections** | `connections:view`, `connections:edit`, `connections:delete` |
+| **AI** | `ai:optimize`, `ai:chat` |
+| **AI Models** | `ai_models:view`, `ai_models:create`, `ai_models:update`, `ai_models:delete` |
 
 ### Default Roles
 
@@ -400,7 +411,7 @@ chouse-ui/
 │   │
 │   ├── features/                     # 5 domain-specific feature modules
 │   │   ├── admin/
-│   │   │   ├── components/           # ClickHouseUsers/, ConnectionManagement/, CreateUser/, EditUser/, UserDataAccess/, UserManagement/
+│   │   │   ├── components/           # AiModels/, ClickHouseUsers/, ConnectionManagement/, CreateUser/, EditUser/, UserDataAccess/, UserManagement/
 │   │   │   └── routes/               # adminRoute.tsx
 │   │   ├── explorer/
 │   │   │   └── components/           # AlterTable, CreateDatabase, CreateTable, DataExplorer, TreeNode, ImportWizard/, etc.
@@ -420,7 +431,7 @@ chouse-ui/
 │   │   │                             # multi-step-loader, popover, progress, radio-group, resizable,
 │   │   │                             # scroll-area, select, separator, sheet, skeleton, sonner,
 │   │   │                             # switch, table, tabs, textarea, tooltip
-│   │   ├── common/                   # 20 shared app components
+│   │   ├── common/                   # 22 shared app components
 │   │   │   ├── FloatingDock.tsx       # Main navigation dock (34KB)
 │   │   │   ├── Sidebar.tsx            # Sidebar navigation
 │   │   │   ├── ConnectionSelector.tsx # ClickHouse connection switcher (17KB)
@@ -440,7 +451,10 @@ chouse-ui/
 │   │   │   ├── DownloadDialog.tsx     # Data export dialog
 │   │   │   ├── InfoDialog.tsx         # Information dialog
 │   │   │   ├── OptimizeQueryDialog.tsx # AI optimizer dialog (21KB)
-│   │   │   └── form/                  # Form components
+│   │   │   ├── AiChatBubble.tsx       # AI chat UI in MainLayout
+│   │   │   ├── AiChartRenderer.tsx    # AI chart rendering
+│   │   │   ├── AiChartUtils.ts        # Chart utilities
+│   │   │   └── form/                  # Form components (InputField, etc.)
 │   │   └── sidebar/
 │   │       └── UserMenu.tsx           # User avatar menu
 │   │
@@ -451,17 +465,19 @@ chouse-ui/
 │   │   ├── workspace.ts              # Tabs, query execution, saved queries
 │   │   └── explorer.ts              # DB tree, favorites, recent items, modal state (888 lines)
 │   │
-│   ├── hooks/                        # 8 hook files exporting ~40 hooks
+│   ├── hooks/                        # 9 hook files exporting ~44 hooks
 │   │   ├── index.ts                  # Barrel exports
 │   │   ├── useQuery.ts               # ~30 TanStack Query hooks (1307 lines)
 │   │   ├── useAuth.ts                # useAuth, useRequireAuth, useRequireAdmin, usePermission
 │   │   ├── useLiveQueries.ts         # useLiveQueries, useKillQuery
 │   │   ├── useDebounce.ts            # Debounce utility hook
+│   │   ├── useWindowSize.ts          # Window size hook
+│   │   ├── useDeviceType.ts          # Device type (mobile/desktop)
 │   │   ├── useLogsPreferences.ts     # Logs page preferences
 │   │   ├── usePaginationPreferences.ts # Table pagination preferences
 │   │   └── useUserManagementPreferences.ts # Admin page preferences
 │   │
-│   ├── api/                          # API client layer (8 modules)
+│   ├── api/                          # API client layer (9 modules)
 │   │   ├── index.ts                  # Barrel exports
 │   │   ├── client.ts                 # ApiClient class: session mgmt, JWT, auto-refresh (367 lines)
 │   │   ├── query.ts                  # SQL execution, format handling
@@ -470,6 +486,7 @@ chouse-ui/
 │   │   ├── rbac.ts                   # RBAC API: auth, users, roles, connections, audit, preferences (1494 lines)
 │   │   ├── saved-queries.ts          # Saved query CRUD
 │   │   ├── live-queries.ts           # Active query operations
+│   │   ├── ai-chat.ts                # Streaming AI chat, thread/message CRUD
 │   │   └── config.ts                 # App configuration
 │   │
 │   ├── providers/
@@ -480,7 +497,8 @@ chouse-ui/
 │   │
 │   ├── lib/
 │   │   ├── basePath.ts               # Base path resolution
-│   │   └── utils.ts                  # General utilities (cn() for class merging)
+│   │   ├── utils.ts                  # General utilities (cn() for class merging)
+│   │   └── devicePreferences.ts       # Per-device preference defaults and merge helpers
 │   │
 │   ├── types/
 │   │   ├── env.d.ts                  # Global environment type declarations
@@ -495,12 +513,12 @@ chouse-ui/
 │       └── mocks/                    # MSW mock handlers
 │
 ├── packages/server/                  # Bun/Hono Backend Server
-│   ├── package.json                  # @chouseui/server v2.10.3
+│   ├── package.json                  # @chouseui/server v2.12.3
 │   ├── tsconfig.json
 │   └── src/
 │       ├── index.ts                  # Server entry (353 lines): middleware pipeline, static serving, graceful shutdown
 │       │
-│       ├── routes/                   # 8 API route modules (all under /api)
+│       ├── routes/                   # 9 API route modules (all under /api)
 │       │   ├── index.ts              # Route mounting + API protection middleware
 │       │   ├── query.ts              # /query — SQL execution (43KB)
 │       │   ├── explorer.ts           # /explorer — DB/table browsing (22KB)
@@ -508,6 +526,7 @@ chouse-ui/
 │       │   ├── saved-queries.ts      # /saved-queries — Query persistence (9KB)
 │       │   ├── live-queries.ts       # /live-queries — Active query monitoring (16KB)
 │       │   ├── upload.ts             # /upload — File import to tables (6KB)
+│       │   ├── ai-chat.ts            # /ai-chat — Streaming AI chat, thread/message CRUD
 │       │   └── config.ts             # /config — App configuration (1KB)
 │       │
 │       ├── services/                 # Business logic services
@@ -515,7 +534,11 @@ chouse-ui/
 │       │   ├── clientManager.ts      # ClickHouse client connection pool (4KB)
 │       │   ├── aiOptimizer.ts        # AI-powered query optimization (23KB)
 │       │   ├── queryAnalyzer.ts      # EXPLAIN plan analysis (24KB)
-│       │   └── inference.ts          # LLM inference abstraction (10KB)
+│       │   ├── inference.ts          # LLM inference abstraction (10KB)
+│       │   ├── aiChat.ts             # ToolLoopAgent, streamChat (25KB)
+│       │   ├── chatHistory.ts        # Thread/message CRUD, 7-day retention (10KB)
+│       │   ├── aiConfig.ts           # AI provider/model configuration
+│       │   └── agentSkills.ts        # Agent skills, load_skill for AI chat
 │       │
 │       ├── middleware/               # Server middleware
 │       │   ├── cors.ts               # CORS with configurable origins (5KB)
@@ -527,7 +550,7 @@ chouse-ui/
 │       ├── rbac/                     # Full RBAC subsystem
 │       │   ├── index.ts              # RBAC initialization + route exports
 │       │   ├── cli.ts                # CLI tools: status, migrate, seed, reset, version
-│       │   ├── routes/               # 9 route files (18 files with tests)
+│       │   ├── routes/               # 11 route groups (auth, users, roles, connections, audit, clickhouse-users, data-access, user-preferences, ai-providers, ai-base-models, ai-models)
 │       │   │   ├── auth.ts           # Login, refresh, logout, validate, profile
 │       │   │   ├── users.ts          # User CRUD
 │       │   │   ├── roles.ts          # Role CRUD
@@ -535,8 +558,11 @@ chouse-ui/
 │       │   │   ├── audit.ts          # Audit log viewing/export
 │       │   │   ├── clickhouseUsers.ts # Native ClickHouse user management (19KB)
 │       │   │   ├── dataAccess.ts     # Row-level access policies (14KB)
-│       │   │   └── userPreferences.ts # User favorites, settings
-│       │   ├── services/             # 9 service files (17 files with tests)
+│       │   │   ├── userPreferences.ts # User favorites, settings
+│       │   │   ├── aiProviders.ts    # /ai-providers — AI provider config
+│       │   │   ├── aiModels.ts       # /ai-base-models — base models
+│       │   │   └── aiConfigs.ts      # /ai-models — model configs
+│       │   ├── services/             # 10 service files
 │       │   │   ├── rbac.ts           # Core permission engine (30KB)
 │       │   │   ├── jwt.ts            # JWT via jose library (7KB)
 │       │   │   ├── password.ts       # Argon2id via Bun.password (3KB)
@@ -545,6 +571,7 @@ chouse-ui/
 │       │   │   ├── dataAccess.ts     # Access rule engine (19KB)
 │       │   │   ├── savedQueries.ts   # Query persistence (7KB)
 │       │   │   ├── userPreferences.ts # User settings (11KB)
+│       │   │   ├── aiModels.ts       # AI base models and provider management
 │       │   │   └── seed.ts           # Default data seeding (12KB)
 │       │   ├── db/                   # Database layer
 │       │   │   ├── index.ts          # DB initialization + adapter selection (9KB)
@@ -579,8 +606,8 @@ chouse-ui/
 | Layer | Technology | Version | Purpose |
 |---|---|---|---|
 | **Frontend Framework** | React | 19.2 | UI library |
-| **Build Tool** | Vite | 7.2 | Dev server + bundler |
-| **Styling** | Tailwind CSS | 4.1 | Utility-first CSS |
+| **Build Tool** | Vite | 7.2.6 | Dev server + bundler |
+| **Styling** | Tailwind CSS | 4.1.17 | Utility-first CSS |
 | **UI Components** | shadcn/ui + Radix UI | — | Accessible component primitives |
 | **Client State** | Zustand | 5.0 | Lightweight global state with persistence |
 | **Server State** | TanStack Query | 5.90 | Data fetching, caching, sync |

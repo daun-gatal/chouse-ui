@@ -348,7 +348,7 @@ CHouse UI is a monorepo with two main packages:
 graph TB
     subgraph Browser["Browser (React 19 SPA)"]
         UI["Vite 7 + React Router v7"]
-        Stores["Zustand 5 Stores"]
+        Stores["Zustand 4 Stores"]
         RQ["TanStack Query v5"]
         ApiClient["ApiClient (fetch)"]
     end
@@ -356,9 +356,9 @@ graph TB
     subgraph Server["Bun Server (packages/server)"]
         Hono["Hono v4"]
         MW["Middleware: CORS, Rate Limit, SQL Parser, Data Access"]
-        Routes["API Routes: query, explorer, metrics, saved-queries, live-queries, upload"]
-        Services["Services: ClickHouse proxy, AI Optimizer, Query Analyzer"]
-        RBAC["RBAC: Auth, Users, Roles, Connections, Audit"]
+        Routes["API Routes: query, explorer, metrics, saved-queries, live-queries, upload, ai-chat"]
+        Services["Services: ClickHouse proxy, AI Optimizer, Query Analyzer, AI Chat, Chat History, AI Config"]
+        RBAC["RBAC: Auth, Users, Roles, Connections, Audit, ClickHouse Users, Data Access, User Preferences, AI Providers, AI Models"]
     end
 
     subgraph External["External"]
