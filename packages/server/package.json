@@ -1,6 +1,6 @@
 {
   "name": "@chouseui/server",
-  "version": "2.12.3",
+  "version": "2.12.4",
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",

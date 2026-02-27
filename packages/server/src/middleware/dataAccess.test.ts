@@ -96,7 +96,7 @@ describe("Data Access Middleware", () => {
             const result = await validateQueryAccess(userId, false, [], sql);
 
             expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("No permission for read");
+            expect(result.reason).toContain("table:select");
         });
 
         it("should deny if data access rules fail", async () => {
@@ -131,7 +131,7 @@ describe("Data Access Middleware", () => {
             const result = await validateQueryAccess(userId, false, permissions, sql);
 
             expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("No permission for admin");
+            expect(result.reason).toContain("table:drop");
         });
 
         it("should allow mixed valid statements", async () => {
@@ -142,11 +142,8 @@ describe("Data Access Middleware", () => {
 
             // User has both read and misc permissions
             const permissions = ["table:select", "query:execute:misc", "read", "misc"];
-            // Note: permissions passed to validateQueryAccess are the raw strings.
-            // validateQueryAccess calls hasPermissionForAccessType checking against defined lists.
-            // 'table:select' is in READ_PERMISSIONS. 'query:execute:misc' is in MISC_PERMISSIONS.
-
-            const result = await validateQueryAccess(userId, false, ["table:select", "query:execute:misc"], sql);
+            // Each statement type requires its specific permission: SELECT → table:select, SHOW → table:view, INSERT → table:insert
+            const result = await validateQueryAccess(userId, false, ["table:select", "table:view", "table:insert"], sql);
 
             expect(result.allowed).toBe(true);
         });
@@ -175,43 +172,108 @@ describe("Data Access Middleware", () => {
             // Need to ensure checkUserAccess returns allowed: true
             mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
 
-            // Case 1: All permissions -> Allowed
-            const allPerms = ["table:select", "query:execute:misc", "table:insert", "table:create"];
+            // Case 1: All permissions for SELECT, SHOW, INSERT, CREATE TABLE -> Allowed
+            const allPerms = ["table:select", "table:view", "table:insert", "table:create"];
             const resultAllowed = await validateQueryAccess(userId, false, allPerms, sql);
             expect(resultAllowed.allowed).toBe(true);
 
-            // Case 2: Missing DDL -> Denied
-            const missingDdl = ["table:select", "query:execute:misc", "table:insert"];
+            // Case 2: Missing DDL (table:create) -> Denied on CREATE TABLE
+            const missingDdl = ["table:select", "table:view", "table:insert"];
             const resultDenied = await validateQueryAccess(userId, false, missingDdl, sql);
             expect(resultDenied.allowed).toBe(false);
-            expect(resultDenied.reason).toContain("create");
+            expect(resultDenied.reason).toContain("table:create");
+        });
+
+        it("should deny DROP DATABASE when user has only table:create (operation-specific DDL)", async () => {
+            const sql = "DROP DATABASE foo";
+            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+            const permissions = ["database:view", "table:create"];
+
+            const result = await validateQueryAccess(userId, false, permissions, sql);
+
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain("database:drop");
+        });
+
+        it("should allow DROP DATABASE when user has database:drop", async () => {
+            const sql = "DROP DATABASE foo";
+            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+            const permissions = ["database:drop"];
+
+            const result = await validateQueryAccess(userId, false, permissions, sql);
+
+            expect(result.allowed).toBe(true);
+        });
+
+        it("should deny DROP TABLE when user has only database:drop", async () => {
+            const sql = "DROP TABLE mydb.mytable";
+            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+            const permissions = ["database:drop", "database:view"];
+
+            const result = await validateQueryAccess(userId, false, permissions, sql);
+
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain("table:drop");
+        });
+
+        it("should deny SELECT when user has only table:view (execute routes to table:select)", async () => {
+            const sql = "SELECT * FROM db.t1";
+            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+            const result = await validateQueryAccess(userId, false, ["table:view"], sql);
+
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain("table:select");
+        });
+
+        it("should deny INSERT when user has only table:delete (execute routes to table:insert)", async () => {
+            const sql = "INSERT INTO db.t1 VALUES (1)";
+            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+            const result = await validateQueryAccess(userId, false, ["table:delete"], sql);
+
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain("table:insert");
         });
 
         describe("Detailed Failure Scenarios", () => {
-            it("should fail when using TRUNCATE (admin) with only write permission", async () => {
+            it("should allow TRUNCATE when user has table:delete", async () => {
                 const sql = "TRUNCATE TABLE logs";
                 mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
 
-                // User has write permissions (INSERT/UPDATE/DELETE) but TRUNCATE is admin
-                const permissions = ["table:insert", "table:delete", "write"];
+                const permissions = ["table:delete"];
+
+                const result = await validateQueryAccess(userId, false, permissions, sql);
+
+                expect(result.allowed).toBe(true);
+            });
+
+            it("should fail when using TRUNCATE without table:delete", async () => {
+                const sql = "TRUNCATE TABLE logs";
+                mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
+
+                const permissions = ["table:insert", "table:update"];
 
                 const result = await validateQueryAccess(userId, false, permissions, sql);
 
                 expect(result.allowed).toBe(false);
-                expect(result.reason).toContain("No permission for admin");
+                expect(result.reason).toContain("table:delete");
             });
 
             it("should fail validation for specific statement in a long batch", async () => {
-                // 3 valid statements, 4th is invalid (DROP)
+                // 3 valid statements (SELECT, SELECT, SHOW), 4th is invalid (DROP TABLE - needs table:drop)
                 const sql = "SELECT 1; SELECT 2; SHOW TABLES; DROP TABLE x; SELECT 3";
                 mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
 
-                const permissions = ["table:select", "query:execute:misc", "read", "misc"];
+                const permissions = ["table:select", "table:view"]; // no table:drop
 
                 const result = await validateQueryAccess(userId, false, permissions, sql);
 
                 expect(result.allowed).toBe(false);
-                expect(result.statementIndex).toBe(3); // 0-indexed, so 4th statement is index 3
+                expect(result.statementIndex).toBe(3); // 0-indexed, 4th statement is index 3
                 expect(result.reason).toContain("Statement 4");
             });
 
