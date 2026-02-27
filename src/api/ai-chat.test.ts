@@ -9,6 +9,9 @@ import {
     createThread,
     getThread,
     deleteThread,
+    updateThreadTitle,
+    getAiModels,
+    streamChatMessage,
 } from './ai-chat';
 
 describe('AI Chat API', () => {
@@ -75,6 +78,43 @@ describe('AI Chat API', () => {
         it('should delete a thread', async () => {
             await deleteThread('thread-1');
             // Mock returns success if it doesn't throw
+        });
+    });
+
+    describe('updateThreadTitle', () => {
+        it('should update thread title', async () => {
+            await updateThreadTitle('thread-1', 'Updated Title');
+            // Mock returns success if it doesn't throw
+        });
+    });
+
+    describe('getAiModels', () => {
+        it('should fetch AI models', async () => {
+            const models = await getAiModels();
+            expect(models).toBeDefined();
+            expect(models.length).toBeGreaterThanOrEqual(0);
+            if (models.length > 0) {
+                expect(models[0]).toHaveProperty('id');
+                expect(models[0]).toHaveProperty('name');
+                expect(models[0]).toHaveProperty('provider');
+                expect(models[0]).toHaveProperty('isDefault');
+            }
+        });
+    });
+
+    describe('streamChatMessage', () => {
+        it('should yield text-delta and done events from SSE stream', async () => {
+            const collected: Array<{ type: string; text?: string }> = [];
+            for await (const delta of streamChatMessage('thread-1', 'Hello', undefined, undefined)) {
+                collected.push({ type: delta.type, text: delta.text });
+                if (delta.type === 'done' || delta.type === 'error') break;
+            }
+            expect(collected.some((d) => d.type === 'text-delta')).toBe(true);
+            expect(collected.some((d) => d.type === 'done')).toBe(true);
+            const textDeltas = collected.filter((d) => d.type === 'text-delta' && d.text);
+            const fullText = textDeltas.map((d) => d.text).join('');
+            expect(fullText).toContain('Hello');
+            expect(fullText).toContain('world');
         });
     });
 });

@@ -20,6 +20,7 @@ import {
     checkDatabaseAccess,
     validateQueryAccess,
 } from "../middleware/dataAccess";
+import { parseStatement } from "../middleware/sqlParser";
 import { analyzeQuery } from "./queryAnalyzer";
 import { optimizeQuery as aiOptimizeQuery } from "./aiOptimizer";
 import { discoverSkills, createLoadSkillTool, type SkillMetadata } from "./agentSkills";
@@ -92,6 +93,8 @@ CORE OPERATING RULES
 3. NEVER answer schema/data questions without calling tools first.
 4. DO NOT DESCRIBE CHARTS IN TEXT. YOU MUST USE THE \`render_chart\` TOOL TO SHOW THEM IN THE UI!
 5. NEVER output markdown tables when a chart is requested. Call \`render_chart\` instead.
+6. When the user wants to validate or check a query without running it → use \`validate_sql\`.
+7. When the user wants to export, download, or get data as CSV/JSON → use \`export_query_result\`.
 
 ## DECISION FRAMEWORK: WHEN TO LOAD SKILLS
 You MUST call \`load_skill\` depending on the user's intent BEFORE taking action:
@@ -99,7 +102,9 @@ You MUST call \`load_skill\` depending on the user's intent BEFORE taking action
 - Intent: User wants you to write or execute a SQL query → call \`load_skill\` with "sql-generation"
 - Intent: User wants a chart, plot, graph, or visual distribution → call \`load_skill\` with "data-visualization"
 - Intent: User asks about query performance, EXPLAIN, or wants to optimize a query → call \`load_skill\` with "query-optimization"
-- Intent: User wants to know about server health, running queries, or system issues → call \`load_skill\` with "system-troubleshooting"
+- Intent: User wants to know about server health, running queries, slow/heavy queries (historical or current), or system issues → call \`load_skill\` with "system-troubleshooting" (use \`get_slow_queries\` for historical slow queries, \`get_running_queries\` for currently running).
+
+Other tools (use when appropriate without requiring a skill): For database-level overview (table count, total size), use \`get_database_info\`. For syntax-only validation use \`validate_sql\`; for export use \`export_query_result\`.
 
 ONLY produce the final text answer after all required tool calls (and skill loads) are complete.
 Base your final answer strictly on tool results.
@@ -113,6 +118,25 @@ Never attempt INSERT, UPDATE, DELETE, CREATE, ALTER, DROP.
 }
 
 
+
+// ============================================
+// search_columns pattern sanitization
+// ============================================
+
+const SEARCH_PATTERN_MAX_LENGTH = 200;
+
+/**
+ * Sanitize a LIKE pattern for system.columns name search.
+ * Escapes single quote, backslash, % and _ to prevent injection and wildcard abuse.
+ */
+function sanitizeLikePattern(pattern: string): string {
+    const truncated = pattern.slice(0, SEARCH_PATTERN_MAX_LENGTH);
+    return truncated
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "''")
+        .replace(/%/g, "\\%")
+        .replace(/_/g, "\\_");
+}
 
 // ============================================
 // Chart Axis Inference Helpers
@@ -340,7 +364,7 @@ function createTools(ctx: ChatContext) {
 
         // 7. Run SELECT query (RBAC-validated)
         run_select_query: tool({
-            description: "Execute a read-only SELECT query. Only SELECT and WITH queries are allowed. Results limited to 100 rows.",
+            description: "Execute a read-only SELECT query. Only SELECT and WITH queries are allowed. LIMIT 100 is added automatically if the query has no LIMIT. Results limited to 100 rows.",
             inputSchema: zodSchema(z.object({
                 sql: z.string().describe("The SQL SELECT query to execute").optional(),
                 query: z.string().describe("Alias for sql — the SQL SELECT query to execute").optional(),
@@ -487,10 +511,11 @@ function createTools(ctx: ChatContext) {
         search_columns: tool({
             description: "Search for columns by name pattern across all accessible tables.",
             inputSchema: zodSchema(z.object({
-                pattern: z.string().describe("Column name pattern to search for (case-insensitive)"),
+                pattern: z.string().max(SEARCH_PATTERN_MAX_LENGTH).describe("Column name pattern to search for (case-insensitive)"),
             })),
             execute: async ({ pattern }: { pattern: string }): Promise<Record<string, unknown>> => {
                 try {
+                    const safePattern = sanitizeLikePattern(pattern);
                     const result = await ctx.clickhouseService.executeQuery<{
                         database: string;
                         table: string;
@@ -499,7 +524,7 @@ function createTools(ctx: ChatContext) {
                     }>(
                         `SELECT database, table, name, type 
                          FROM system.columns 
-                         WHERE name ILIKE '%${pattern.replace(/'/g, "''")}%' 
+                         WHERE name ILIKE '%${safePattern}%' 
                          ORDER BY database, table, position 
                          LIMIT 50`,
                         "JSON"
@@ -523,14 +548,14 @@ function createTools(ctx: ChatContext) {
 
         // 13. Generate query (LLM-based via tool)
         generate_query: tool({
-            description: "Generate a SQL query based on a natural language description. Use this after gathering schema information from other tools.",
+            description: "Generate a SQL query based on a natural language description. Use this after gathering schema information from other tools. After calling this, you MUST output the generated query in a ```sql code block. If the user wants the query executed, call run_select_query with that SQL.",
             inputSchema: zodSchema(z.object({
                 description: z.string().describe("Natural language description of what the query should do"),
                 context: z.string().describe("Relevant schema information gathered from other tools"),
             })),
             execute: async ({ description: desc, context: schemaCtx }: { description: string; context: string }): Promise<Record<string, unknown>> => {
                 return {
-                    note: "Generate the SQL query based on the description and schema context. Present it in a ```sql code block.",
+                    note: "Generate the SQL query based on the description and schema context. Present it in a ```sql code block. If the user asked to run or execute the query, call run_select_query with that SQL.",
                     description: desc,
                     schemaContext: schemaCtx,
                 };
@@ -577,7 +602,100 @@ function createTools(ctx: ChatContext) {
             },
         }),
 
-        // 16. Render chart — executes a SELECT query and returns a ChartSpec for the browser
+        // 16. Get slow queries from query_log (RBAC-safe: non-admin sees only own user)
+        get_slow_queries: tool({
+            description: "List recently executed queries that were slow (by duration). Useful for troubleshooting and finding heavy queries. Non-admin users see only their own queries.",
+            inputSchema: zodSchema(z.object({
+                limit: z.number().min(1).max(50).optional().describe("Max number of queries to return (default 20)"),
+                minDurationMs: z.number().min(0).optional().describe("Minimum query duration in ms to include (default 1000)"),
+            })),
+            execute: async ({ limit = 20, minDurationMs = 1000 }: { limit?: number; minDurationMs?: number }): Promise<Record<string, unknown>> => {
+                try {
+                    const filter = ctx.isAdmin ? "" : "AND user = currentUser()";
+                    const result = await ctx.clickhouseService.executeQuery(
+                        `SELECT
+                            query_id,
+                            user,
+                            query,
+                            query_duration_ms,
+                            read_rows,
+                            formatReadableSize(memory_usage) AS memory
+                         FROM system.query_log
+                         WHERE type = 'QueryFinish' AND query_duration_ms >= ${minDurationMs} ${filter}
+                         ORDER BY query_duration_ms DESC
+                         LIMIT ${limit}`,
+                        "JSON"
+                    );
+                    return { queries: result.data, count: result.rows };
+                } catch (error: unknown) {
+                    return { error: error instanceof Error ? error.message : "Failed to get slow queries" };
+                }
+            },
+        }),
+
+        // 17. Validate SQL syntax (no execution)
+        validate_sql: tool({
+            description: "Check if a SQL string is valid syntax. Does not execute the query. Use when the user wants to check syntax or validate a query before running.",
+            inputSchema: zodSchema(z.object({
+                sql: z.string().describe("The SQL query to validate"),
+            })),
+            execute: async ({ sql }: { sql: string }): Promise<Record<string, unknown>> => {
+                try {
+                    parseStatement(sql.trim());
+                    return { valid: true };
+                } catch (error: unknown) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    return { valid: false, error: message };
+                }
+            },
+        }),
+
+        // 18. Export query result as CSV or JSON string (for download/copy)
+        export_query_result: tool({
+            description: "Run a read-only SELECT query and return the result as a CSV or JSON string. Use when the user explicitly asks to export, download, or get data as CSV/JSON. Limited to 1000 rows.",
+            inputSchema: zodSchema(z.object({
+                sql: z.string().describe("The SQL SELECT query to execute"),
+                format: z.enum(["csv", "json"]).optional().describe("Output format (default: csv)"),
+            })),
+            execute: async ({ sql: actualSql, format = "csv" }: { sql: string; format?: "csv" | "json" }): Promise<Record<string, unknown>> => {
+                if (!actualSql?.trim()) {
+                    return { error: "No SQL query provided." };
+                }
+                const normalized = actualSql.trim().toUpperCase();
+                if (!normalized.startsWith("SELECT") && !normalized.startsWith("WITH")) {
+                    return { error: "Only SELECT and WITH queries are allowed." };
+                }
+                const accessCheck = await validateQueryAccess(
+                    ctx.userId, ctx.isAdmin, ctx.permissions,
+                    actualSql, ctx.defaultDatabase, ctx.connectionId
+                );
+                if (!accessCheck.allowed) {
+                    return { error: accessCheck.reason || "Access denied" };
+                }
+                try {
+                    let limitedSql = actualSql.replace(/;\s*$/, "");
+                    if (!normalized.includes("LIMIT")) {
+                        limitedSql = `${limitedSql} LIMIT 1000`;
+                    }
+                    const result = await ctx.clickhouseService.executeQuery(limitedSql, "JSON");
+                    const rows = result.data as Record<string, unknown>[];
+                    if (format === "json") {
+                        return { format: "json", data: rows, rowCount: rows.length };
+                    }
+                    const headers = result.meta?.map((m: { name: string }) => m.name) ?? (rows[0] ? Object.keys(rows[0]) : []);
+                    const csvLines = [headers.join(","), ...rows.map((r) => headers.map((h) => {
+                        const v = r[h];
+                        const s = v === null || v === undefined ? "" : String(v);
+                        return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+                    }).join(","))];
+                    return { format: "csv", data: csvLines.join("\n"), rowCount: rows.length };
+                } catch (error: unknown) {
+                    return { error: error instanceof Error ? error.message : "Export failed" };
+                }
+            },
+        }),
+
+        // 19. Render chart — executes a SELECT query and returns a ChartSpec for the browser
         render_chart: tool({
             description: [
                 "MANDATORY: Use this whenever the user asks to visualize, chart, plot, graph, or show trends.",
@@ -630,10 +748,12 @@ function createTools(ctx: ChatContext) {
                 }
 
                 try {
-                    // Add LIMIT 500 if not already present (charts don't need more than that)
+                    // Add LIMIT when not present: pie/donut use 20 for readability; others use 500
                     let chartSql = sql;
                     if (!normalized.includes("LIMIT")) {
-                        chartSql = `${sql.replace(/;\s*$/, "")} LIMIT 500`;
+                        const limit =
+                            chartType === "pie" || chartType === "donut" ? 20 : 500;
+                        chartSql = `${sql.replace(/;\s*$/, "")} LIMIT ${limit}`;
                     }
 
                     const result = await ctx.clickhouseService.executeQuery(chartSql, "JSON");

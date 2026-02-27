@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.3] - 2026-02-27
+
+### Added
+
+- **Per-device workspace preferences**: Dock and AI chat position/size are now stored and loaded per device type (mobile, tablet, laptop, pc). New `useDeviceType` hook and `devicePreferences` helpers (`getDockPrefsFromWorkspace`, `getChatPrefsFromWorkspace`, merge helpers) with defaults per device; FloatingDock and AiChatBubble use them so layout is appropriate when switching viewport sizes or devices.
+- **AI chart export**: Charts from AI Chat support download as PNG (via html-to-image), CSV, or JSON from a new dropdown menu on each chart. Pie/donut charts cap at 12 slices (rest aggregated as "Other"); bar-family charts cap at 25 categories for readability.
+- **AI Chat tools**: New agent tools `validate_sql` (syntax-only validation), `export_query_result` (run SELECT and return CSV or JSON, up to 1000 rows), and `get_slow_queries` (recent slow queries from query_log). Skills updated to reference them (sql-generation, data-visualization, query-optimization, system-troubleshooting, data-exploration).
+- **AI Chat UX**: Thread rename (inline edit in sidebar), copy message to clipboard, export thread as Markdown; virtualized message list for long threads; Retry button only when server sends `retryable !== false`.
+- **Stream rate limit**: POST `/api/ai-chat/stream` is rate-limited to 30 requests per minute per user.
+- **Tests**: Unit tests for `devicePreferences` and `preprocessMarkdown`; MSW handlers for PATCH thread, GET models, POST stream; ai-chat API and route tests extended.
+
+### Changed
+
+- **AI Chat backend**: Stream request validation (message max length 32k, messages array max 50, schema for role/content); SSE error events include `retryable`. `run_select_query` adds LIMIT 100 when missing; `search_columns` pattern sanitized (LIKE escape, max length 200) to prevent injection.
+- **AI Chat frontend**: Assistant markdown is sanitized with DOMPurify and normalized with `preprocessMarkdown` (leading whitespace, line endings, table-safe handling).
+- **ARCHITECTURE.md**: Documented `/api/ai-chat`, AI Chat and Chat History services, hooks/lib counts, and new "Data Flow: AI Chat" sequence diagram.
+
 ## [v2.12.2] - 2026-02-26
 
 ### Added

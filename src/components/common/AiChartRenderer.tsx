@@ -12,6 +12,8 @@
  */
 
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { toPng } from 'html-to-image';
+import Papa from 'papaparse';
 import type { ChartSpec } from '@/api/ai-chat';
 import {
     buildColorPalette,
@@ -20,6 +22,14 @@ import {
     tooltipStyle,
     tooltipLabelStyle,
 } from './AiChartUtils';
+import { toast } from 'sonner';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Download, Image, FileText } from 'lucide-react';
 import {
     ResponsiveContainer,
     BarChart,
@@ -72,6 +82,47 @@ function useContainerWidth(): [React.RefObject<HTMLDivElement | null>, number] {
     }, [measure]);
 
     return [ref, width];
+}
+
+// Max slices to show in pie/donut; rest are aggregated into "Other"
+const PIE_DONUT_MAX_SLICES = 12;
+// Show inline labels on pie only when slice count is at or below this (avoids overlap)
+const PIE_LABEL_MAX_SLICES = 8;
+// Max categories for bar-family charts to avoid cramped axes
+const BAR_MAX_CATEGORIES = 25;
+
+/** Sanitize chart title for use in download filename (alphanumeric and hyphens, max 40 chars). */
+function sanitizeChartFilename(title: string | undefined): string {
+    if (!title || !title.trim()) return 'chart';
+    const sanitized = title.replace(/[^a-zA-Z0-9-_]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    return sanitized.slice(0, 40) || 'chart';
+}
+
+/** Prepare a row for CSV export (escape objects and special chars). */
+function prepareRowForCsv(row: Record<string, unknown>): Record<string, string | number | boolean | null> {
+    const out: Record<string, string | number | boolean | null> = {};
+    for (const key of Object.keys(row)) {
+        const v = row[key];
+        if (v === null || v === undefined) out[key] = null;
+        else if (typeof v === 'object') out[key] = JSON.stringify(v);
+        else if (typeof v === 'number' || typeof v === 'boolean') out[key] = v;
+        else out[key] = String(v);
+    }
+    return out;
+}
+
+/** Aggregate pie/donut data: top N by value descending, rest summed as "Other". */
+function aggregatePieDonutData(
+    data: { name: string; value: number }[],
+    maxSlices: number
+): { name: string; value: number }[] {
+    if (data.length <= maxSlices) return data;
+    const sorted = [...data].sort((a, b) => b.value - a.value);
+    const top = sorted.slice(0, maxSlices);
+    const rest = sorted.slice(maxSlices);
+    const otherValue = rest.reduce((s, d) => s + d.value, 0);
+    if (otherValue <= 0) return top;
+    return [...top, { name: 'Other', value: otherValue }];
 }
 
 // ============================================
@@ -175,6 +226,62 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         />
     ) : null;
 
+    const isBarFamily = ['bar', 'horizontal_bar', 'grouped_bar', 'stacked_bar'].includes(chartType);
+    const displayRows =
+        isBarFamily && rows.length > BAR_MAX_CATEGORIES
+            ? rows.slice(0, BAR_MAX_CATEGORIES)
+            : rows;
+    const barFamilyTruncated = isBarFamily && rows.length > BAR_MAX_CATEGORIES;
+
+    const baseName = sanitizeChartFilename(title);
+    const timestamp = () => new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+
+    const handleDownloadPng = useCallback(async () => {
+        const el = containerRef.current;
+        if (!el) return;
+        try {
+            const dataUrl = await toPng(el, {
+                cacheBust: true,
+                backgroundColor: '#1a1c24',
+                pixelRatio: 2,
+            });
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `${baseName}-${timestamp()}.png`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to capture chart as image. Please try again.');
+        }
+    }, [baseName]);
+
+    const handleDownloadCsv = useCallback(() => {
+        if (!rows.length) return;
+        const prepared = rows.map(prepareRowForCsv);
+        const csv = Papa.unparse(prepared, { quotes: true, quoteChar: '"', escapeChar: '"' });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseName}-data-${timestamp()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [rows, baseName]);
+
+    const handleDownloadJson = useCallback(() => {
+        if (!rows.length) return;
+        const json = JSON.stringify(rows, null, 2);
+        const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseName}-data-${timestamp()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [rows, baseName]);
+
     const CHART_HEIGHT = 260;
 
     // ============================================
@@ -190,7 +297,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         case 'stacked_bar': {
             const isStacked = chartType === 'stacked_bar';
             chartElement = (
-                <BarChart data={rows}>
+                <BarChart data={displayRows}>
                     {sharedGrid}
                     {sharedXAxis}
                     {sharedYAxis}
@@ -214,7 +321,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         // ---- GROUPED BAR ----
         case 'grouped_bar': {
             chartElement = (
-                <BarChart data={rows} barCategoryGap="25%">
+                <BarChart data={displayRows} barCategoryGap="25%">
                     {sharedGrid}
                     {sharedXAxis}
                     {sharedYAxis}
@@ -237,7 +344,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         // ---- HORIZONTAL BAR ----
         case 'horizontal_bar': {
             chartElement = (
-                <BarChart data={rows} layout="vertical">
+                <BarChart data={displayRows} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
                     <XAxis
                         type="number"
@@ -338,10 +445,12 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         // ---- PIE ----
         case 'pie': {
             const firstY = yAxes[0];
-            const pieData = rows.map((r) => ({
+            const rawPieData = rows.map((r) => ({
                 name: String(r[xAxis] ?? ''),
                 value: Number(r[firstY] ?? 0),
             }));
+            const pieData = aggregatePieDonutData(rawPieData, PIE_DONUT_MAX_SLICES);
+            const showPieLabels = pieData.length <= PIE_LABEL_MAX_SLICES;
             chartElement = (
                 <PieChart>
                     <Pie
@@ -351,12 +460,16 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                         cx="50%"
                         cy="50%"
                         outerRadius={90}
-                        label={(props: { name?: string; percent?: number }) => {
-                            const n = props.name ?? '';
-                            const p = props.percent ?? 0;
-                            const label = n.length > 10 ? n.slice(0, 9) + '\u2026' : n;
-                            return `${label} (${(p * 100).toFixed(1)}%)`;
-                        }}
+                        label={
+                            showPieLabels
+                                ? (props: { name?: string; percent?: number }) => {
+                                      const n = props.name ?? '';
+                                      const p = props.percent ?? 0;
+                                      const label = n.length > 10 ? n.slice(0, 9) + '\u2026' : n;
+                                      return `${label} (${(p * 100).toFixed(1)}%)`;
+                                  }
+                                : false
+                        }
                         labelLine={false}
                     >
                         {pieData.map((_, i) => (
@@ -378,10 +491,11 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         // ---- DONUT ----
         case 'donut': {
             const firstY = yAxes[0];
-            const donutData = rows.map((r) => ({
+            const rawDonutData = rows.map((r) => ({
                 name: String(r[xAxis] ?? ''),
                 value: Number(r[firstY] ?? 0),
             }));
+            const donutData = aggregatePieDonutData(rawDonutData, PIE_DONUT_MAX_SLICES);
             const total = donutData.reduce((s, d) => s + d.value, 0);
             chartElement = (
                 <PieChart>
@@ -636,10 +750,38 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                     </ResponsiveContainer>
                 )}
             </div>
-            <div className="px-4 pb-2 flex items-center gap-1.5">
+            <div className="px-4 pb-2 flex items-center justify-between gap-2">
                 <span className="text-[9px] text-zinc-700 uppercase tracking-wider">
-                    {chartType.replace(/_/g, ' ')} · {rows.length.toLocaleString()} rows
+                    {chartType.replace(/_/g, ' ')}
+                    {barFamilyTruncated
+                        ? ` · Top ${BAR_MAX_CATEGORIES} of ${rows.length.toLocaleString()} rows`
+                        : ` · ${rows.length.toLocaleString()} rows`}
                 </span>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            type="button"
+                            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-white/5 transition-colors"
+                            aria-label="Download chart"
+                        >
+                            <Download className="w-3.5 h-3.5" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-[#1a1c24] border-white/10 min-w-[180px]">
+                        <DropdownMenuItem onClick={handleDownloadPng} className="cursor-pointer">
+                            <Image className="w-3.5 h-3.5 mr-2" />
+                            <span>Download as PNG</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleDownloadCsv} className="cursor-pointer">
+                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            <span>Download data (CSV)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleDownloadJson} className="cursor-pointer">
+                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            <span>Download data (JSON)</span>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
         </div>
     );
@@ -652,6 +794,56 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
 function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] }): React.ReactElement {
     const { rows, xAxis, yAxis, title } = spec;
     const yAxes = resolveYAxes(yAxis);
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    const baseName = sanitizeChartFilename(title);
+    const timestamp = () => new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+
+    const handleDownloadPng = useCallback(async () => {
+        const el = cardRef.current;
+        if (!el) return;
+        try {
+            const dataUrl = await toPng(el, {
+                cacheBust: true,
+                backgroundColor: '#1a1c24',
+                pixelRatio: 2,
+            });
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `${baseName}-${timestamp()}.png`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to capture chart as image. Please try again.');
+        }
+    }, [baseName]);
+
+    const handleDownloadCsv = useCallback(() => {
+        if (!rows.length) return;
+        const prepared = rows.map(prepareRowForCsv);
+        const csv = Papa.unparse(prepared, { quotes: true, quoteChar: '"', escapeChar: '"' });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseName}-data-${timestamp()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [rows, baseName]);
+
+    const handleDownloadJson = useCallback(() => {
+        if (!rows.length) return;
+        const json = JSON.stringify(rows, null, 2);
+        const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseName}-data-${timestamp()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [rows, baseName]);
 
     // Find numeric range for colour scaling
     const allValues = rows.flatMap((r) => yAxes.map((col) => Number(r[col] ?? 0)));
@@ -671,7 +863,7 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
     }
 
     return (
-        <div className="mt-3 mb-1 rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+        <div ref={cardRef} className="mt-3 mb-1 rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
             {title && (
                 <div className="px-4 pt-3 pb-1 text-xs font-semibold text-zinc-300 border-b border-white/[0.05]">
                     {title}
@@ -710,10 +902,35 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
                     </tbody>
                 </table>
             </div>
-            <div className="px-4 pb-2">
+            <div className="px-4 pb-2 flex items-center justify-between gap-2">
                 <span className="text-[9px] text-zinc-700 uppercase tracking-wider">
                     heatmap · {rows.length.toLocaleString()} rows
                 </span>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            type="button"
+                            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-white/5 transition-colors"
+                            aria-label="Download chart"
+                        >
+                            <Download className="w-3.5 h-3.5" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-[#1a1c24] border-white/10 min-w-[180px]">
+                        <DropdownMenuItem onClick={handleDownloadPng} className="cursor-pointer">
+                            <Image className="w-3.5 h-3.5 mr-2" />
+                            <span>Download as PNG</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleDownloadCsv} className="cursor-pointer">
+                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            <span>Download data (CSV)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleDownloadJson} className="cursor-pointer">
+                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            <span>Download data (JSON)</span>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
         </div>
     );

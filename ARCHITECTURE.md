@@ -58,7 +58,7 @@ graph TD
     end
 
     subgraph Logic["Logic Layer"]
-        Hooks["Hooks (~40 exported from 8 files)"]
+        Hooks["Hooks (~41 exported from 9 files)"]
         Stores["Zustand Stores (4, persisted)"]
     end
 
@@ -87,13 +87,13 @@ graph TD
 | **UI Components** | `src/components/ui/` | 34 files | shadcn/ui primitives: button, dialog, dropdown-menu, tabs, data-table, select, etc. |
 | **Common Components** | `src/components/common/` | 22 files | FloatingDock, Sidebar, ConnectionSelector, ErrorBoundary, PermissionGuard, DiffEditor, AiChatBubble, AiChartRenderer, etc. |
 | **Sidebar** | `src/components/sidebar/` | 1 file | UserMenu component |
-| **Hooks** | `src/hooks/` | 8 files | ~40 exported hooks (mostly TanStack Query wrappers) |
+| **Hooks** | `src/hooks/` | 9 files | ~41 exported hooks (TanStack Query wrappers, useWindowSize, useDeviceType, preferences) |
 | **Stores** | `src/stores/` | 4 stores | Zustand with `persist` middleware and user-specific storage adapters |
 | **API** | `src/api/` | 8 modules | Type-safe `ApiClient` class with JWT/session management + domain modules |
 | **Providers** | `src/providers/` | 1 file | `QueryProvider` — TanStack Query context (30s staleTime, 5min gcTime) |
 | **Helpers** | `src/helpers/` | 1 file | `sqlUtils.ts` — SQL formatting and parsing utilities |
 | **Utilities** | `src/utils/` | 1 file | `sessionCleanup.ts` — Session cleanup logic |
-| **Lib** | `src/lib/` | 2 files | `basePath.ts`, `utils.ts` — Path and general utilities |
+| **Lib** | `src/lib/` | 3 files | `basePath.ts`, `utils.ts`, `devicePreferences.ts` — Path, utilities, per-device preference defaults and merge helpers |
 | **Types** | `src/types/` | 2 files | `env.d.ts` (global env types), `explain.ts` (EXPLAIN plan types) |
 | **Tests** | `src/test/` | 3 files + mocks/ | Test setup, global setup, MSW mocks |
 
@@ -199,6 +199,7 @@ All mounted under `/api`:
 | `/api/saved-queries` | `routes/saved-queries.ts` | Session | CRUD for saved queries |
 | `/api/live-queries` | `routes/live-queries.ts` | Session | Active query monitoring, kill queries |
 | `/api/upload` | `routes/upload.ts` | Session | File upload (CSV, TSV, JSON) to tables |
+| `/api/ai-chat` | `routes/ai-chat.ts` | JWT + `ai:chat` | Streaming AI chat, thread/message CRUD, status, models |
 | `/api/rbac/*` | `rbac/routes/` | JWT | Full RBAC subsystem (see below) |
 
 ### Middleware
@@ -220,6 +221,8 @@ All mounted under `/api`:
 | **AI Optimizer** | `services/aiOptimizer.ts` | 23KB | AI-powered SQL query optimization using AI SDK v6 |
 | **Query Analyzer** | `services/queryAnalyzer.ts` | 24KB | EXPLAIN plan analysis and query performance insights |
 | **Inference** | `services/inference.ts` | 10KB | LLM inference abstraction, supports: OpenAI, Anthropic, Google, HuggingFace, OpenAI-compatible |
+| **AI Chat** | `services/aiChat.ts` | ~25KB | ToolLoopAgent with 16 tools + load_skill; streamChat() for SSE |
+| **Chat History** | `services/chatHistory.ts` | ~10KB | Thread and message CRUD, 7-day retention, RBAC-scoped |
 
 ---
 
@@ -335,6 +338,39 @@ sequenceDiagram
     QueryRoute-->>ApiClient: JSON ApiResponse
     ApiClient-->>Workspace: Update tab: result, queryId, clear error
     Workspace-->>User: Render result table in workspace tab
+```
+
+### Data Flow: AI Chat
+
+Streaming chat uses RBAC (`ai:chat` permission), session or RBAC connection for ClickHouse, and per-user stream rate limit (30/min). Threads and messages are persisted via Chat History (7-day retention).
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant AiChatBubble as AiChatBubble
+    participant Api as api/ai-chat
+    participant Route as ai-chat route
+    participant AiChat as aiChat service
+    participant Agent as ToolLoopAgent
+    participant CH as ClickHouse
+
+    User->>AiChatBubble: Send message
+    AiChatBubble->>Api: streamChatMessage(threadId, message, messages, signal)
+    Api->>Route: POST /api/ai-chat/stream (SSE)
+    Route->>AiChat: streamChat(messages, context, modelId)
+    AiChat->>Agent: agent.stream(messages)
+    loop Tool loop
+        Agent->>AiChat: tool calls (list_databases, run_select_query, render_chart, ...)
+        AiChat->>CH: executeQuery (RBAC-checked)
+        CH-->>AiChat: result
+        AiChat-->>Agent: tool result
+    end
+    Agent-->>AiChat: text deltas + finish
+    AiChat-->>Route: fullStream events
+    Route->>Route: stripScratchpad, map to SSE (text-delta, tool-call, chart-data, done)
+    Route->>Api: SSE stream
+    Api->>AiChatBubble: yield StreamDelta
+    AiChatBubble->>User: Update UI (messages, charts, retry on error)
 ```
 
 ---
