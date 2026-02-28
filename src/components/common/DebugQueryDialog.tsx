@@ -6,7 +6,7 @@ import { Sparkles, Loader2, Check, Copy, AlertCircle, RefreshCw, FileText, Arrow
 import { debugQuery } from '@/api/query';
 import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
-import { format } from 'sql-formatter';
+import { formatClickHouseSQL } from '@/lib/formatSql';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -102,7 +102,7 @@ export function DebugQueryDialog({
         try {
             const response = await debugQuery(query, queryError, database, additionalPrompt, selectedModelId || undefined, controller.signal);
             setResult({
-                fixedQuery: format(response.fixedQuery, { language: 'sql' }),
+                fixedQuery: formatClickHouseSQL(response.fixedQuery),
                 explanation: response.explanation,
                 summary: response.summary,
                 errorAnalysis: response.errorAnalysis,

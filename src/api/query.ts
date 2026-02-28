@@ -28,6 +28,13 @@ export interface QueryResult<T = Record<string, unknown>> {
   error?: string | null;
 }
 
+export interface IntellisenseFunctionInfo {
+  name: string;
+  is_aggregate: boolean;
+  description: string;
+  syntax: string;
+}
+
 export interface IntellisenseData {
   columns: Array<{
     database: string;
@@ -35,7 +42,7 @@ export interface IntellisenseData {
     column_name: string;
     column_type: string;
   }>;
-  functions: string[];
+  functions: IntellisenseFunctionInfo[];
   keywords: string[];
 }
 

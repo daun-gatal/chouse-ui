@@ -20,7 +20,7 @@ export type { ApiResponse, ApiError, RequestOptions, RbacTokens } from './client
 
 // Query execution
 export * as queryApi from './query';
-export type { QueryResult, QueryStatistics, QueryMeta, IntellisenseData } from './query';
+export type { QueryResult, QueryStatistics, QueryMeta, IntellisenseData, IntellisenseFunctionInfo } from './query';
 
 // Database explorer
 export * as explorerApi from './explorer';

@@ -6,29 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Database, Table, Code, ChevronUp, ChevronDown, Copy, Check } from "lucide-react";
 import { useTableInfo, useDatabaseInfo } from "@/hooks";
 import { toast } from "sonner";
-import { format } from "sql-formatter";
+import { formatClickHouseSQL } from "@/lib/formatSql";
 import SchemaSection from "./SchemaSection";
 import DataSampleSection from "./DataSampleSection";
-
-// Format SQL query using sql-formatter
-function formatSqlQuery(sql: string): string {
-  if (!sql) return "";
-
-  try {
-    // Use sql-formatter with ClickHouse dialect settings
-    return format(sql, {
-      language: 'sql', // Use generic SQL dialect
-      tabWidth: 2,
-      keywordCase: 'upper',
-      linesBetweenQueries: 2,
-      indentStyle: 'standard',
-    });
-  } catch (error) {
-    // If formatting fails, return original query
-    console.warn('Failed to format SQL query:', error);
-    return sql.trim();
-  }
-}
 
 interface InfoTabProps {
   database: string;
@@ -60,7 +40,7 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
   // Format the CREATE TABLE query
   const formattedQuery = useMemo(() => {
     if (!info || !info.create_table_query) return "";
-    return formatSqlQuery(String(info.create_table_query));
+    return formatClickHouseSQL(String(info.create_table_query));
   }, [info]);
 
   // Filter out only create_table_query (handled separately)

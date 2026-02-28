@@ -1934,7 +1934,7 @@ export class ClickHouseService {
 
   async getIntellisenseData(): Promise<{
     columns: { database: string; table: string; column_name: string; column_type: string }[];
-    functions: string[];
+    functions: { name: string; is_aggregate: boolean; description: string; syntax: string }[];
     keywords: string[];
   }> {
     try {
@@ -1946,17 +1946,28 @@ export class ClickHouseService {
             ORDER BY database, table, column_name
           `,
         }),
-        this.client.query({ query: "SELECT name FROM system.functions" }),
+        this.client.query({
+          query: `
+            SELECT name, is_aggregate, description, syntax
+            FROM system.functions
+            ORDER BY name
+          `,
+        }),
         this.client.query({ query: "SELECT keyword FROM system.keywords" }),
       ]);
 
       const columnsData = await columnsRes.json() as JsonResponse<{ database: string; table: string; column_name: string; column_type: string }>;
-      const functionsData = await functionsRes.json() as JsonResponse<{ name: string }>;
+      const functionsData = await functionsRes.json() as JsonResponse<{ name: string; is_aggregate: number; description: string; syntax: string }>;
       const keywordsData = await keywordsRes.json() as JsonResponse<{ keyword: string }>;
 
       return {
         columns: columnsData.data,
-        functions: functionsData.data.map(f => f.name),
+        functions: functionsData.data.map(f => ({
+          name: f.name,
+          is_aggregate: f.is_aggregate === 1,
+          description: f.description || "",
+          syntax: f.syntax || "",
+        })),
         keywords: keywordsData.data.map(k => k.keyword),
       };
     } catch (error) {
