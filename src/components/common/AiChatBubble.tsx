@@ -70,7 +70,6 @@ import {
     FileText,
     Server,
     GripVertical,
-    GripHorizontal,
     Maximize2,
     Minimize2,
     TrendingUp,
@@ -1530,10 +1529,26 @@ export default function AiChatBubble() {
                             <div className="absolute -top-32 -right-32 w-64 h-64 bg-violet-500/15 rounded-full blur-3xl pointer-events-none" />
                             <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-                            {/* Header — never shrinks */}
-                            <div className="relative z-10 flex-shrink-0 flex items-center justify-between px-5 py-3
+                            {/* Header — never shrinks; full header is draggable */}
+                            <div
+                                className={`relative z-10 flex-shrink-0 flex items-center justify-between px-5 py-3
                                       bg-white/[0.03] backdrop-blur-sm
-                                      border-b border-white/[0.06]">
+                                      border-b border-white/[0.06]
+                                      ${!isResizing ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                                style={!isResizing ? { touchAction: 'none' } : undefined}
+                                aria-label="Drag to move"
+                                title={!isResizing ? 'Drag to move' : undefined}
+                                onPointerDown={
+                                    !isResizing
+                                        ? (e) => {
+                                            const target = e.target instanceof Element ? e.target : null;
+                                            if (target?.closest('button, [role=button], a, input, select, textarea, [role=combobox], [role=listbox]')) return;
+                                            if (e.pointerType === 'touch') e.preventDefault();
+                                            dragControls.start(e);
+                                        }
+                                        : undefined
+                                }
+                            >
                                 <div className="flex items-center gap-3">
                                     <button
                                         onClick={() => setShowSidebar(!showSidebar)}
@@ -1555,24 +1570,6 @@ export default function AiChatBubble() {
                                         </div>
                                     </div>
                                 </div>
-
-                                {/* Drag Handle */}
-                                {!isResizing && (
-                                    <div
-                                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 p-2 cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 active:text-white/70 transition-colors touch-none min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                        style={{ touchAction: 'none' }}
-                                        onPointerDown={(e) => {
-                                            // Prevent default touch behaviors to ensure smooth dragging on mobile/tablet
-                                            if (e.pointerType === 'touch') {
-                                                e.preventDefault();
-                                            }
-                                            dragControls.start(e);
-                                        }}
-                                        title="Drag to move"
-                                    >
-                                        <GripHorizontal className="w-5 h-5" />
-                                    </div>
-                                )}
 
                                 <div className="flex items-center gap-0.5">
                                     {aiModels.length > 0 && (

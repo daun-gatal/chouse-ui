@@ -17,14 +17,21 @@ export interface ChatPreferences {
   size?: { width: number; height: number };
 }
 
+/** Per-dialog position/size for explorer windows (Upload file, AI debugger, etc.). Keyed by dialogId. */
+export interface ExplorerDialogPreferences {
+  [dialogId: string]: { position: { x: number; y: number }; size: { width: number; height: number } } | undefined;
+}
+
 export interface DeviceWorkspacePrefs {
   dockPreferences?: DockPreferences;
   chatPreferences?: ChatPreferences;
+  explorerDialogPreferences?: ExplorerDialogPreferences;
 }
 
 export type WorkspacePreferencesMap = Record<string, unknown> & {
   dockPreferences?: DockPreferences;
   chatPreferences?: ChatPreferences;
+  explorerDialogPreferences?: ExplorerDialogPreferences;
   byDevice?: Partial<Record<DeviceType, DeviceWorkspacePrefs>>;
 };
 
@@ -118,6 +125,66 @@ export function mergeChatPrefsIntoWorkspace(
   const current = (workspace ?? {}) as Record<string, unknown>;
   const byDevice = { ...(current.byDevice as Record<string, unknown> | undefined) };
   const deviceSlice = { ...(byDevice[deviceType] as Record<string, unknown> | undefined), chatPreferences: chatPrefs };
+  byDevice[deviceType] = deviceSlice;
+  return { ...current, byDevice };
+}
+
+/** Default position/size for explorer dialogs per device (used when no saved prefs). All devices use these for drag/resize. */
+export const EXPLORER_DIALOG_DEFAULT_POSITION_AND_SIZE_BY_DEVICE: Record<
+  DeviceType,
+  { position: { x: number; y: number }; size: { width: number; height: number } }
+> = {
+  mobile: { position: { x: 16, y: 16 }, size: { width: 360, height: 560 } },
+  tablet: { position: { x: 24, y: 24 }, size: { width: 680, height: 840 } },
+  laptop: { position: { x: 40, y: 40 }, size: { width: 1300, height: 820 } },
+  pc: { position: { x: 80, y: 60 }, size: { width: 1300, height: 820 } },
+};
+
+/** Smaller default for Create Database dialog (simple form) per device. */
+const CREATE_DATABASE_DEFAULT_POSITION_AND_SIZE_BY_DEVICE: Record<
+  DeviceType,
+  { position: { x: number; y: number }; size: { width: number; height: number } }
+> = {
+  mobile: { position: { x: 16, y: 16 }, size: { width: 360, height: 400 } },
+  tablet: { position: { x: 24, y: 24 }, size: { width: 480, height: 440 } },
+  laptop: { position: { x: 40, y: 40 }, size: { width: 520, height: 420 } },
+  pc: { position: { x: 80, y: 60 }, size: { width: 560, height: 440 } },
+};
+
+/**
+ * Resolve explorer dialog position/size for a device and dialogId.
+ */
+export function getExplorerDialogPrefsFromWorkspace(
+  workspace: WorkspacePreferencesMap | undefined,
+  deviceType: DeviceType,
+  dialogId: string
+): { position: { x: number; y: number }; size: { width: number; height: number } } {
+  const byDevice = workspace?.byDevice?.[deviceType]?.explorerDialogPreferences;
+  const prefs = byDevice?.[dialogId];
+  const defaultForDevice =
+    dialogId === "createDatabase"
+      ? CREATE_DATABASE_DEFAULT_POSITION_AND_SIZE_BY_DEVICE[deviceType]
+      : EXPLORER_DIALOG_DEFAULT_POSITION_AND_SIZE_BY_DEVICE[deviceType];
+  return {
+    position: prefs?.position ?? defaultForDevice.position,
+    size: prefs?.size ?? defaultForDevice.size,
+  };
+}
+
+/**
+ * Merge explorer dialog preferences for a device and dialogId into a copy of workspacePreferences (for PUT).
+ */
+export function mergeExplorerDialogPrefsIntoWorkspace(
+  workspace: WorkspacePreferencesMap | undefined,
+  deviceType: DeviceType,
+  dialogId: string,
+  prefs: { position: { x: number; y: number }; size: { width: number; height: number } }
+): Record<string, unknown> {
+  const current = (workspace ?? {}) as Record<string, unknown>;
+  const byDevice = { ...(current.byDevice as Record<string, unknown> | undefined) };
+  const deviceSlice = { ...(byDevice[deviceType] as Record<string, unknown> | undefined) } as Record<string, unknown>;
+  const explorerDialogs = { ...(deviceSlice.explorerDialogPreferences as ExplorerDialogPreferences | undefined), [dialogId]: prefs };
+  deviceSlice.explorerDialogPreferences = explorerDialogs;
   byDevice[deviceType] = deviceSlice;
   return { ...current, byDevice };
 }

@@ -1,13 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ResponsiveDraggableDialog } from '@/components/common/ResponsiveDraggableDialog';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, Lightbulb, FileText, ArrowRight, X } from 'lucide-react';
+import { Sparkles, Loader2, Check, Copy, AlertCircle, RefreshCw, Lightbulb, FileText } from 'lucide-react';
 import { optimizeQuery } from '@/api/query';
 import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
@@ -15,6 +10,7 @@ import { format } from 'sql-formatter';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { useWindowSize } from '@/hooks/useWindowSize';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { DiffEditor } from './DiffEditor';
 import { Badge } from '@/components/ui/badge';
@@ -69,6 +65,8 @@ export function OptimizeQueryDialog({
     const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
     const [selectedModelId, setSelectedModelId] = useState<string>('');
     const abortControllerRef = useRef<AbortController | null>(null);
+    const { breakpoint } = useWindowSize();
+    const isNarrow = breakpoint === 'mobile' || breakpoint === 'tablet';
 
     // Fetch AI Models
     useEffect(() => {
@@ -183,48 +181,79 @@ export function OptimizeQueryDialog({
         }
     }, [isOpen]);
 
-    return (
-        <Dialog open={isOpen} onOpenChange={(open) => {
-            if (!open) handleCancel();
-        }}>
-            <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 gap-0 bg-[#0F1117] border-gray-800 text-white flex flex-col overflow-hidden [&>button.absolute]:hidden">
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-[#14141a]">
-                    <DialogHeader className="space-y-1">
-                        <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
-                            <div className="p-1.5 rounded-md bg-purple-500/10 border border-purple-500/20">
-                                <Sparkles className="w-5 h-5 text-purple-400" />
-                            </div>
-                            AI Query Optimizer
-                        </DialogTitle>
-                        <p className="text-sm text-gray-400 font-normal">
-                            Optimize your ClickHouse queries with intelligent analysis and recommendations.
-                        </p>
-                    </DialogHeader>
-                    <div className="flex items-center gap-2">
-                        {!isOptimizing && result && (
-                            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 mr-2">
-                                <span className="text-xs text-gray-400">Model:</span>
-                                <span className="text-xs font-medium text-purple-300">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
-                            </div>
-                        )}
-                        <button
-                            onClick={handleCancel}
-                            className="p-2 -mr-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                        >
-                            <X className="w-5 h-5" />
-                            <span className="sr-only">Close</span>
-                        </button>
+    const dialogTitle = (
+        <div className="flex items-center justify-between gap-2 w-full">
+            <DialogHeader className="space-y-1 min-w-0">
+                <DialogTitle className="flex items-center gap-2 text-xl font-semibold text-white">
+                    <div className="p-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 shrink-0">
+                        <Sparkles className="w-5 h-5 text-purple-400" />
                     </div>
+                    AI Query Optimizer
+                </DialogTitle>
+                <p className="text-sm text-gray-400 font-normal">
+                    Optimize your ClickHouse queries with intelligent analysis and recommendations.
+                </p>
+            </DialogHeader>
+            {!isOptimizing && result && (
+                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 shrink-0">
+                    <span className="text-xs text-gray-400">Model:</span>
+                    <span className="text-xs font-medium text-purple-300 truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
                 </div>
+            )}
+        </div>
+    );
 
-                <div className="flex-1 overflow-hidden relative">
-                    {/* Main Content Area */}
-                    <ResizablePanelGroup direction="horizontal" className="h-full">
+    return (
+        <ResponsiveDraggableDialog
+            open={isOpen}
+            onOpenChange={(open) => { if (!open) handleCancel(); }}
+            dialogId="aiOptimizer"
+            title={dialogTitle}
+            windowClassName="rounded-2xl shadow-2xl bg-[#0F1117] border-gray-800 text-white"
+            headerClassName="px-6 py-4 border-white/10 bg-[#14141a]"
+            footerClassName="px-6 py-4 border-white/10 bg-[#14141a]"
+            closeButtonClassName="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg -mr-2"
+            contentClassName="bg-[#0F1117] text-white"
+            footer={
+                <DialogFooter className="px-0 py-0 border-0 bg-transparent">
+                    <Button
+                        variant="ghost"
+                        onClick={handleCancel}
+                        className="text-gray-400 hover:text-white hover:bg-white/5"
+                    >
+                        Close
+                    </Button>
+                    {result && (
+                        <div className="flex gap-2">
+                            <Button
+                                variant="secondary"
+                                onClick={() => {
+                                    navigator.clipboard.writeText(result.optimizedQuery);
+                                    toast.success('Copied to clipboard');
+                                }}
+                                className="gap-2"
+                            >
+                                <Copy className="w-4 h-4" />
+                                Copy Code
+                            </Button>
+                            <Button
+                                onClick={handleAccept}
+                                className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-lg shadow-green-500/20"
+                            >
+                                <Check className="w-4 h-4" />
+                                Apply Changes
+                            </Button>
+                        </div>
+                    )}
+                </DialogFooter>
+            }
+        >
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col bg-[#0F1117]">
+                <ResizablePanelGroup direction={isNarrow ? "vertical" : "horizontal"} className="flex-1 min-h-0 min-w-0">
 
                         {/* Left Panel: Diff Editor */}
-                        <ResizablePanel defaultSize={65} minSize={30} className="bg-[#1e1e1e] flex flex-col">
-                            <div className="flex-1 relative">
+                        <ResizablePanel defaultSize={65} minSize={25} className="bg-[#1e1e1e] flex flex-col min-h-0 min-w-0">
+                            <div className="flex-1 relative min-h-0 min-w-0">
                                 {result ? (
                                     <DiffEditor
                                         original={query}
@@ -277,8 +306,8 @@ export function OptimizeQueryDialog({
                         <ResizableHandle withHandle />
 
                         {/* Right Panel: Controls & Analysis */}
-                        <ResizablePanel defaultSize={35} minSize={20} className="bg-[#0F1117] flex flex-col border-l border-white/5">
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                        <ResizablePanel defaultSize={35} minSize={25} className="bg-[#0F1117] flex flex-col border-l border-white/5 min-h-0 min-w-0">
+                            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 
                                 {/* Controls Section */}
                                 <div className="space-y-5">
@@ -419,42 +448,8 @@ export function OptimizeQueryDialog({
                                 )}
                             </div>
                         </ResizablePanel>
-                    </ResizablePanelGroup>
-                </div>
-
-                {/* Footer */}
-                <DialogFooter className="px-6 py-4 border-t border-white/10 bg-[#14141a]">
-                    <Button
-                        variant="ghost"
-                        onClick={handleCancel}
-                        className="text-gray-400 hover:text-white hover:bg-white/5"
-                    >
-                        Close
-                    </Button>
-                    {result && (
-                        <div className="flex gap-2">
-                            <Button
-                                variant="secondary"
-                                onClick={() => {
-                                    navigator.clipboard.writeText(result.optimizedQuery);
-                                    toast.success('Copied to clipboard');
-                                }}
-                                className="gap-2"
-                            >
-                                <Copy className="w-4 h-4" />
-                                Copy Code
-                            </Button>
-                            <Button
-                                onClick={handleAccept}
-                                className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-lg shadow-green-500/20"
-                            >
-                                <Check className="w-4 h-4" />
-                                Apply Changes
-                            </Button>
-                        </div>
-                    )}
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                </ResizablePanelGroup>
+            </div>
+        </ResponsiveDraggableDialog>
     );
 }

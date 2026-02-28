@@ -1,13 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { DialogFooter, DialogTitle } from '@/components/ui/dialog';
+import { ResponsiveDraggableDialog } from '@/components/common/ResponsiveDraggableDialog';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Loader2, Check, Copy, AlertTriangle, AlertCircle, RefreshCw, Lightbulb, FileText, ArrowRight, Bug, Terminal, X } from 'lucide-react';
+import { Sparkles, Loader2, Check, Copy, AlertCircle, RefreshCw, FileText, ArrowRight, Bug, Terminal } from 'lucide-react';
 import { debugQuery } from '@/api/query';
 import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
@@ -149,53 +144,89 @@ export function DebugQueryDialog({
         };
     }, []);
 
-    return (
-        <Dialog open={isOpen} onOpenChange={(open) => {
-            if (!open) handleCancel();
-        }}>
-            <DialogContent className="max-w-4xl w-full h-[85vh] p-0 gap-0 bg-[#0F1117] border-gray-800 text-white flex flex-col overflow-hidden rounded-2xl shadow-2xl shadow-black/50 [&>button.absolute]:hidden">
-                {/* Header - Clean & Modern */}
-                <div className="px-8 py-5 flex items-center justify-between bg-transparent relative z-10">
-                    <div className="space-y-1">
-                        <DialogTitle className="flex items-center gap-3 text-2xl font-semibold text-white tracking-tight">
-                            <Sparkles className="w-6 h-6 text-indigo-400" />
-                            <span>Query Analysis</span>
-                        </DialogTitle>
-                        <p className="text-sm text-gray-400 ml-9">
-                            {result ? "We found an issue and have a fix ready." : "Analyzing your query logic..."}
-                        </p>
+    const dialogTitle = (
+        <div className="flex items-center justify-between gap-3 w-full">
+            <div className="space-y-1 min-w-0">
+                <DialogTitle className="flex items-center gap-3 text-2xl font-semibold text-white tracking-tight">
+                    <Sparkles className="w-6 h-6 text-indigo-400 shrink-0" />
+                    <span>Query Analysis</span>
+                </DialogTitle>
+                <p className="text-sm text-gray-400 ml-9">
+                    {result ? "We found an issue and have a fix ready." : "Analyzing your query logic..."}
+                </p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+                {result ? (
+                    <Badge variant="outline" className="bg-indigo-500/10 text-indigo-300 border-indigo-500/20 px-3 py-1 font-medium rounded-full">
+                        Fix Available
+                    </Badge>
+                ) : apiError ? (
+                    <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20 px-3 py-1 font-medium rounded-full">
+                        Failed
+                    </Badge>
+                ) : (
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-3 py-1 font-medium rounded-full animate-pulse">
+                        Analyzing...
+                    </Badge>
+                )}
+                {!isDebugging && result && (
+                    <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 mr-2">
+                        <span className="text-xs text-gray-400">Model:</span>
+                        <span className="text-xs font-medium text-indigo-300 truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
                     </div>
-                    <div className="flex items-center gap-3">
-                        {result ? (
-                            <Badge variant="outline" className="bg-indigo-500/10 text-indigo-300 border-indigo-500/20 px-3 py-1 font-medium rounded-full">
-                                Fix Available
-                            </Badge>
-                        ) : apiError ? (
-                            <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20 px-3 py-1 font-medium rounded-full">
-                                Failed
-                            </Badge>
-                        ) : (
-                            <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-3 py-1 font-medium rounded-full animate-pulse">
-                                Analyzing...
-                            </Badge>
-                        )}
-                        {!isDebugging && result && (
-                            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 mr-2">
-                                <span className="text-xs text-gray-400">Model:</span>
-                                <span className="text-xs font-medium text-indigo-300">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
+                )}
+            </div>
+        </div>
+    );
+
+    return (
+        <ResponsiveDraggableDialog
+            open={isOpen}
+            onOpenChange={(open) => { if (!open) handleCancel(); }}
+            dialogId="aiDebugger"
+            title={dialogTitle}
+            windowClassName="rounded-2xl shadow-2xl shadow-black/50 bg-[#0F1117] border-gray-800 text-white"
+            headerClassName="px-8 py-5 border-white/10 bg-transparent"
+            footerClassName="px-8 py-6 bg-gradient-to-t from-[#0F1117] via-[#0F1117] to-transparent border-white/10"
+            closeButtonClassName="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg -mr-2"
+            contentClassName="bg-[#0F1117] text-white"
+            footer={
+                <DialogFooter className="px-0 py-0 border-0 bg-transparent">
+                    <div className="flex w-full items-center justify-between">
+                        <Button
+                            variant="ghost"
+                            onClick={handleCancel}
+                            className="text-gray-500 hover:text-white hover:bg-white/5"
+                        >
+                            Dismiss
+                        </Button>
+                        {result && (
+                            <div className="flex gap-3">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(result.fixedQuery);
+                                        toast.success('Copied to clipboard');
+                                    }}
+                                    className="gap-2 border-white/10 text-gray-300 hover:bg-white/5"
+                                >
+                                    <Copy className="w-4 h-4" />
+                                    Copy Code
+                                </Button>
+                                <Button
+                                    onClick={handleAccept}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white gap-2 shadow-lg shadow-indigo-500/20 px-6 rounded-lg font-medium"
+                                >
+                                    <Check className="w-4 h-4" />
+                                    Apply Fix
+                                </Button>
                             </div>
                         )}
-                        <button
-                            onClick={handleCancel}
-                            className="p-2 -mr-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-                        >
-                            <X className="w-5 h-5" />
-                            <span className="sr-only">Close</span>
-                        </button>
                     </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-8 relative">
+                </DialogFooter>
+            }
+        >
+            <div className="flex-1 overflow-y-auto p-8 relative h-full min-h-0 bg-[#0F1117]">
                     {/* Subtle Background Gradient */}
                     <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none" />
 
@@ -411,42 +442,6 @@ export function DebugQueryDialog({
                         )}
                     </div>
                 </div>
-
-                {/* Footer - Floating/Glassy Effect */}
-                <DialogFooter className="px-8 py-6 bg-gradient-to-t from-[#0F1117] via-[#0F1117] to-transparent z-20">
-                    <div className="flex w-full items-center justify-between">
-                        <Button
-                            variant="ghost"
-                            onClick={handleCancel}
-                            className="text-gray-500 hover:text-white hover:bg-white/5"
-                        >
-                            Dismiss
-                        </Button>
-                        {result && (
-                            <div className="flex gap-3">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        navigator.clipboard.writeText(result.fixedQuery);
-                                        toast.success('Copied to clipboard');
-                                    }}
-                                    className="gap-2 border-white/10 text-gray-300 hover:bg-white/5"
-                                >
-                                    <Copy className="w-4 h-4" />
-                                    Copy Code
-                                </Button>
-                                <Button
-                                    onClick={handleAccept}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white gap-2 shadow-lg shadow-indigo-500/20 px-6 rounded-lg font-medium"
-                                >
-                                    <Check className="w-4 h-4" />
-                                    Apply Fix
-                                </Button>
-                            </div>
-                        )}
-                    </div>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        </ResponsiveDraggableDialog>
     );
 }

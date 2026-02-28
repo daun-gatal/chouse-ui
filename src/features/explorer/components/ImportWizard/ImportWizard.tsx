@@ -1,6 +1,7 @@
 import { getSessionId, api } from '@/api/client';
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { ResponsiveDraggableDialog } from '@/components/common/ResponsiveDraggableDialog';
 import { Button } from '@/components/ui/button';
 import {
     Select,
@@ -18,6 +19,8 @@ import { FileUp, ChevronRight, Upload, Table2, CheckCircle2, Database as Databas
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useDatabases } from '@/hooks';
+import { useWorkspaceStore, genTabId } from '@/stores/workspace';
+import { useNavigate } from 'react-router-dom';
 
 interface ImportWizardProps {
     isOpen: boolean;
@@ -26,6 +29,8 @@ interface ImportWizardProps {
 }
 
 export type ImportMode = 'create' | 'append';
+
+const TABLE_NAME_REGEX = /^[a-zA-Z0-9_]*$/;
 
 const STEPS = [
     { id: 'upload', label: 'Upload File', icon: Upload },
@@ -68,6 +73,8 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     const queryClient = useQueryClient();
+    const { addTab } = useWorkspaceStore();
+    const navigate = useNavigate();
 
     // Fetch schema for existing table to validate mappings
     const isTableExisting = databases.find(db => db.name === selectedDb)?.children?.some(t => t.name === tableName) ?? false;
@@ -109,6 +116,25 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
         }
         reset();
         onClose();
+    };
+
+    const handleViewTable = () => {
+        if (!selectedDb || !tableName) return;
+        addTab({
+            id: genTabId(),
+            title: `Query ${tableName}`,
+            type: 'sql',
+            content: `SELECT * FROM \`${selectedDb}\`.\`${tableName}\` LIMIT 10`,
+            isDirty: false,
+        });
+        navigate('/explorer');
+        handleClose();
+    };
+
+    const handleTryAgain = () => {
+        setStep('preview');
+        setImportStatus(null);
+        setErrorDetails(null);
     };
 
     const normalizeColumnName = (name: string) => {
@@ -169,15 +195,25 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
         }
     };
 
-    const handleFileSelect = async (selectedFile: File) => {
+    const handleFileSelect = (selectedFile: File) => {
         setFile(selectedFile);
         setTableName(selectedFile.name.split('.')[0].replace(/[^a-zA-Z0-9_]/g, '_'));
-        await analyzeFile(selectedFile, hasHeader);
+    };
+
+    const handleRemoveFile = () => {
+        setFile(null);
+        setColumns([]);
+        setPreviewData([]);
+    };
+
+    const handleContinueFromUpload = async () => {
+        if (!file) return;
+        await analyzeFile(file, hasHeader);
     };
 
     const handleHasHeaderChange = async (checked: boolean) => {
         setHasHeader(checked);
-        if (file) {
+        if (step === 'preview' && file) {
             await analyzeFile(file, checked);
         }
     };
@@ -289,94 +325,112 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
         }
     };
 
-    // Helper to check if step is active or completed
-    const getStepState = (stepId: string) => {
-        const stepOrder = ['upload', 'preview', 'progress'];
-        const currentIndex = stepOrder.indexOf(step);
-        const stepIndex = stepOrder.indexOf(stepId);
+    const stepOrder = ['upload', 'preview', 'progress'] as const;
+    const currentStepIndex = stepOrder.indexOf(step) + 1;
+    const stepProgressPercent = (currentStepIndex / STEPS.length) * 100;
 
-        if (stepIndex < currentIndex) return 'completed';
-        if (stepIndex === currentIndex) return 'active';
-        return 'pending';
-    };
+    const dialogTitle = (
+        <DialogHeader className="p-0 border-0 flex-none min-w-0" aria-label="Import wizard">
+            <div className="flex items-center gap-4 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 shrink">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400" aria-hidden>
+                        <FileUp className="h-4 w-4" />
+                    </div>
+                    <DialogTitle className="text-base font-semibold text-white truncate">Import data</DialogTitle>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    {STEPS.map((s, i) => (
+                        <span
+                            key={s.id}
+                            className={cn(
+                                "h-1.5 w-1.5 rounded-full transition-colors",
+                                i + 1 === currentStepIndex ? "bg-emerald-400" : i + 1 < currentStepIndex ? "bg-emerald-400/60" : "bg-white/20"
+                            )}
+                            aria-hidden
+                        />
+                    ))}
+                </div>
+                <div className="flex-1 min-w-0 flex justify-end">
+                    <Select value={selectedDb} onValueChange={setSelectedDb}>
+                        <SelectTrigger className="h-8 w-[130px] text-xs bg-white/5 border-white/10 text-gray-300 focus:ring-1 focus:ring-emerald-500/50 rounded-lg">
+                            <DatabaseIcon className="h-3.5 w-3.5 text-gray-500 mr-1.5 shrink-0" />
+                            <SelectValue placeholder="Database" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100] border-white/10 bg-gray-900 text-gray-300">
+                            {databases.map(db => (
+                                <SelectItem key={db.name} value={db.name} className="focus:bg-emerald-500/15 focus:text-emerald-400 text-sm">
+                                    {db.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+        </DialogHeader>
+    );
 
     return (
-        <Dialog open={isOpen} onOpenChange={handleClose}>
-            <DialogContent className="max-w-5xl h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-gradient-to-br from-gray-900 to-gray-950 border-white/10">
-                <DialogHeader className="p-6 pb-4 border-b border-white/10 flex-none space-y-4">
-                    <DialogTitle className="flex items-center gap-3 text-xl font-normal text-white">
-                        <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-600/20 border border-white/10 shadow-inner">
-                            <FileUp className="h-5 w-5 text-blue-400 shadow-sm" />
-                        </div>
-                        <div className="flex flex-col">
-                            <span>Import Data</span>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className="text-sm font-normal text-gray-400">Target Database:</span>
-                                <Select value={selectedDb} onValueChange={setSelectedDb}>
-                                    <SelectTrigger className="h-7 w-[180px] text-xs bg-white/5 border-white/10 text-gray-300 focus:ring-1 focus:ring-blue-500/50">
-                                        <SelectValue placeholder="Select Database" />
-                                    </SelectTrigger>
-                                    <SelectContent className="z-[100] border-white/10 bg-gray-900 text-gray-300">
-                                        {databases.map(db => (
-                                            <SelectItem key={db.name} value={db.name} className="focus:bg-blue-500/20 focus:text-blue-400">
-                                                <div className="flex items-center gap-2">
-                                                    <DatabaseIcon className="w-3 h-3 text-blue-400" />
-                                                    <span>{db.name}</span>
-                                                </div>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                    </DialogTitle>
-
-                    {/* Stepper */}
-                    <div className="flex items-center gap-2 pt-2">
-                        {STEPS.map((s, i) => {
-                            const state = getStepState(s.id);
-                            return (
-                                <div key={s.id} className="flex items-center">
-                                    <div className={cn(
-                                        "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-colors",
-                                        state === 'active' && "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20",
-                                        state === 'completed' && "text-green-400",
-                                        state === 'pending' && "text-gray-600"
-                                    )}>
-                                        <s.icon className={cn("w-4 h-4",
-                                            state === 'active' && "animate-pulse",
-                                            state === 'completed' && "text-green-400"
-                                        )} />
-                                        <span className="font-medium">{s.label}</span>
-                                    </div>
-                                    {i < STEPS.length - 1 && (
-                                        <div className="w-8 h-[1px] bg-white/10 mx-2" />
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </DialogHeader>
-
-                <div className="flex-1 overflow-hidden relative">
+        <ResponsiveDraggableDialog
+            open={isOpen}
+            onOpenChange={(open) => { if (!open) handleClose(); }}
+            dialogId="uploadFile"
+            title={dialogTitle}
+            windowClassName="rounded-2xl border border-white/10 bg-gray-900 text-white shadow-2xl shadow-black/40"
+            headerClassName="px-5 py-3 border-b border-white/10 bg-gray-900/80"
+            footerClassName="px-5 py-4 border-t border-white/10 bg-gray-900/95"
+            closeButtonClassName="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg"
+            contentClassName="bg-gray-900 text-gray-100"
+            footer={
+                <DialogFooter className="p-0 border-0 bg-transparent gap-3 flex-wrap sm:flex-nowrap">
+                    {step === 'upload' && (
+                        <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-white/10" onClick={handleClose} aria-label="Cancel">
+                            Cancel
+                        </Button>
+                    )}
+                    {step === 'preview' && (
+                        <>
+                            <Button variant="ghost" onClick={reset} className="text-gray-400 hover:text-white hover:bg-white/10 gap-2 order-2 sm:order-1" aria-label="Back">
+                                <ChevronRight className="h-4 w-4 rotate-180" /> Back
+                            </Button>
+                            <Button
+                                onClick={handleImport}
+                                disabled={!tableName || !selectedDb || columns.length === 0 || (tableName.length > 0 && !TABLE_NAME_REGEX.test(tableName))}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white gap-2 order-1 sm:order-2 flex-1 sm:flex-initial min-w-[120px]"
+                                aria-label="Import data"
+                            >
+                                Import <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </>
+                    )}
+                </DialogFooter>
+            }
+        >
+            <div
+                className="flex-1 min-h-0 overflow-auto relative bg-gray-900"
+                role="region"
+                aria-label={step === 'upload' ? 'Upload file' : step === 'preview' ? 'Preview schema' : 'Import progress'}
+            >
                     {step === 'upload' && (
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 1.05 }}
-                            className="h-full"
+                            className="w-full flex flex-col"
                         >
-                            <StepUpload onFileSelect={handleFileSelect} />
+                            <StepUpload
+                                file={file}
+                                onFileSelect={handleFileSelect}
+                                onRemoveFile={handleRemoveFile}
+                                onContinue={handleContinueFromUpload}
+                                hasHeader={hasHeader}
+                                onHasHeaderChange={handleHasHeaderChange}
+                                isAnalyzing={isAnalyzing}
+                            />
                             {isAnalyzing && (
-                                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-10 transition-all">
-                                    <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gray-900 border border-white/10 shadow-2xl">
-                                        <div className="relative">
-                                            <div className="w-12 h-12 rounded-full border-2 border-blue-500/30 border-t-blue-500 animate-spin" />
-                                            <div className="absolute inset-0 flex items-center justify-center">
-                                                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                                            </div>
-                                        </div>
-                                        <p className="text-gray-300 font-medium">Analyzing file structure...</p>
+                                <div className="absolute inset-0 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-10" aria-live="polite" aria-busy="true">
+                                    <div className="flex flex-col items-center gap-4 rounded-xl bg-gray-800/90 border border-white/10 px-8 py-6">
+                                        <div className="h-10 w-10 rounded-full border-2 border-emerald-500/40 border-t-emerald-400 animate-spin" />
+                                        <p className="text-sm text-gray-300">Analyzing file…</p>
                                     </div>
                                 </div>
                             )}
@@ -386,9 +440,10 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                         <motion.div
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
-                            className="h-full"
+                            className="min-h-full"
                         >
                             <StepPreview
+                                fileName={file?.name}
                                 importMode={importMode}
                                 onImportModeChange={setImportMode}
                                 selectedDb={selectedDb}
@@ -419,41 +474,21 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="h-full"
+                            className="min-h-full"
                         >
                             <StepProgress
                                 status={importStatus as any}
                                 error={errorDetails}
+                                database={selectedDb}
+                                tableName={tableName}
                                 onClose={handleClose}
-                                onReset={reset}
+                                onViewTable={handleViewTable}
+                                onTryAgain={handleTryAgain}
                             />
                         </motion.div>
                     )}
                 </div>
-
-                <DialogFooter className="p-6 pt-4 border-t border-white/10 bg-black/20 backdrop-blur-sm">
-                    {step === 'upload' && (
-                        <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-white/5" onClick={handleClose}>
-                            Cancel
-                        </Button>
-                    )}
-                    {step === 'preview' && (
-                        <div className="flex w-full justify-between items-center">
-                            <Button variant="ghost" onClick={reset} className="text-gray-400 hover:text-white hover:bg-white/5 gap-2">
-                                <ChevronRight className="w-4 h-4 rotate-180" /> Back
-                            </Button>
-                            <Button
-                                onClick={handleImport}
-                                disabled={!tableName || !selectedDb || columns.length === 0}
-                                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-900/20"
-                            >
-                                Import Data <ChevronRight className="w-4 h-4 ml-1" />
-                            </Button>
-                        </div>
-                    )}
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        </ResponsiveDraggableDialog>
     );
 }
 
