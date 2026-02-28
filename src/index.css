@@ -431,6 +431,83 @@
   @apply !border-none !bg-accent/10;
 }
 
+/* Monaco Suggest Widget: SQL-style SVG icons replacing default VS Code codicons */
+.monaco-editor .suggest-widget .codicon[class*="codicon-symbol-"] {
+  font-size: 0 !important;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  margin-right: 4px !important;
+  background-size: 16px 16px !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  border-radius: 3px !important;
+}
+.monaco-editor .suggest-widget .codicon[class*="codicon-symbol-"]::before {
+  content: "" !important;
+  display: none !important;
+}
+
+/* Database — cylinder icon (sky blue) */
+.monaco-editor .suggest-widget .codicon-symbol-folder {
+  background-color: rgba(56, 189, 248, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cellipse cx='8' cy='4.2' rx='4.8' ry='2' stroke='%237dd3fc' stroke-width='1.2'/%3E%3Cpath d='M3.2 4.2v7.6c0 1.1 2.15 2 4.8 2s4.8-.9 4.8-2V4.2' stroke='%237dd3fc' stroke-width='1.2'/%3E%3Cellipse cx='8' cy='8' rx='4.8' ry='2' stroke='%237dd3fc' stroke-width='0.8' opacity='.35'/%3E%3C/svg%3E") !important;
+}
+
+/* Table — grid icon (emerald) */
+.monaco-editor .suggest-widget .codicon-symbol-struct {
+  background-color: rgba(52, 211, 153, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Crect x='2' y='2' width='12' height='12' rx='1.5' stroke='%236ee7b7' stroke-width='1.2'/%3E%3Cpath d='M2 5.8h12' stroke='%236ee7b7' stroke-width='1.2'/%3E%3Cpath d='M6.2 5.8V14' stroke='%236ee7b7' stroke-width='.8' opacity='.45'/%3E%3Cpath d='M10.2 5.8V14' stroke='%236ee7b7' stroke-width='.8' opacity='.45'/%3E%3Cpath d='M2 9.5h12' stroke='%236ee7b7' stroke-width='.8' opacity='.45'/%3E%3C/svg%3E") !important;
+}
+
+/* Column — vertical bar with rows (violet) */
+.monaco-editor .suggest-widget .codicon-symbol-field {
+  background-color: rgba(167, 139, 250, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Crect x='4.5' y='2' width='7' height='12' rx='1.2' stroke='%23c4b5fd' stroke-width='1.2'/%3E%3Crect x='4.5' y='2' width='7' height='3.2' rx='1.2' fill='%23c4b5fd' opacity='.25'/%3E%3Cpath d='M6.2 7.5h3.6M6.2 10h3.6M6.2 12.4h2' stroke='%23c4b5fd' stroke-width='.9' stroke-linecap='round' opacity='.55'/%3E%3C/svg%3E") !important;
+}
+
+/* Function — italic f curve (amber) */
+.monaco-editor .suggest-widget .codicon-symbol-function {
+  background-color: rgba(251, 191, 36, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M10 3c-1.2 0-2 .7-2 2v2.5m0 0H6m2 0h2.5M8 7.5v4c0 1.3-.8 2-2 2' stroke='%23fcd34d' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+}
+
+/* Aggregate function — sigma symbol (orange) */
+.monaco-editor .suggest-widget .codicon-symbol-method {
+  background-color: rgba(251, 146, 60, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M11.5 3H5l3.5 5L5 13h6.5' stroke='%23fb923c' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+/* Settings — gear icon (blue) */
+.monaco-editor .suggest-widget .codicon-symbol-property {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Ccircle cx='8' cy='8' r='2.2' stroke='%2393c5fd' stroke-width='1.2'/%3E%3Cpath d='M8 2v1.5M8 12.5V14M2 8h1.5M12.5 8H14M3.8 3.8l1.05 1.05M11.15 11.15l1.05 1.05M12.2 3.8l-1.05 1.05M4.85 11.15L3.8 12.2' stroke='%2393c5fd' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+}
+
+/* Engine — bolt icon (teal) */
+.monaco-editor .suggest-widget .codicon-symbol-constructor {
+  background-color: rgba(20, 184, 166, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M9.5 2L5 8.5h3L6.5 14l5-6.5H8.5z' stroke='%235eead4' stroke-width='1.1' fill='%235eead4' fill-opacity='.15' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+/* Data type — diamond with T (red/coral) */
+.monaco-editor .suggest-widget .codicon-symbol-type-parameter {
+  background-color: rgba(248, 113, 113, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M8 2L14 8l-6 6L2 8z' stroke='%23fca5a5' stroke-width='1.2' fill='%23fca5a5' fill-opacity='.1'/%3E%3Cpath d='M5.8 5.5h4.4M8 5.5V11' stroke='%23fca5a5' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+}
+
+/* Keyword — bracket icon (indigo) */
+.monaco-editor .suggest-widget .codicon-symbol-keyword {
+  background-color: rgba(129, 140, 248, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M5.5 3L3 8l2.5 5' stroke='%23a5b4fc' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M10.5 3L13 8l-2.5 5' stroke='%23a5b4fc' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+/* Snippet — code block icon (pink) */
+.monaco-editor .suggest-widget .codicon-symbol-snippet {
+  background-color: rgba(236, 72, 153, 0.12) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Crect x='2.5' y='2' width='11' height='12' rx='1.5' stroke='%23f9a8d4' stroke-width='1.1'/%3E%3Cpath d='M5 5.5h6M5 8h4M5 10.5h5' stroke='%23f9a8d4' stroke-width='1' stroke-linecap='round' opacity='.7'/%3E%3C/svg%3E") !important;
+}
+
 /* Custom Diff Editor Styles - requested by user */
 .my-added-line {
   background-color: rgba(46, 160, 67, 0.15) !important;
@@ -464,7 +541,7 @@
   }
 }
 
-/* AI Chat — resize handle grip (diagonal lines) */
+/* AI Chat — resize handle grip (invisible, functional only) */
 .ai-chat-resize-corner {
   position: absolute;
   bottom: 0;
@@ -473,24 +550,6 @@
   height: 20px;
   cursor: nesw-resize;
   z-index: 60;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  padding: 3px;
-  opacity: 0.4;
-  transition: opacity 0.2s ease;
-}
-.ai-chat-resize-corner:hover {
-  opacity: 0.8;
-}
-.ai-chat-resize-corner::before {
-  content: '';
-  display: block;
-  width: 10px;
-  height: 10px;
-  border-left: 2px solid rgba(167, 139, 250, 0.6);
-  border-bottom: 2px solid rgba(167, 139, 250, 0.6);
-  border-radius: 0 0 0 2px;
 }
 
 /* AI Chat — edge resize handles */
@@ -518,13 +577,6 @@
   .ai-chat-resize-corner {
     width: 44px;
     height: 44px;
-    padding: 8px;
-  }
-  .ai-chat-resize-corner::before {
-    width: 16px;
-    height: 16px;
-    border-left-width: 3px;
-    border-bottom-width: 3px;
   }
   .ai-chat-resize-left {
     width: 12px;
@@ -536,7 +588,7 @@
   }
 }
 
-/* Resize handles — top, right, and extra corners (all 4 corners + 4 edges) */
+/* Resize handles — top, right, and extra corners (all 4 corners + 4 edges, invisible) */
 .ai-chat-resize-top {
   position: absolute;
   top: 0;
@@ -545,8 +597,6 @@
   height: 6px;
   cursor: ns-resize;
   z-index: 60;
-  opacity: 0.4;
-  transition: opacity 0.2s ease;
 }
 .ai-chat-resize-right {
   position: absolute;
@@ -556,8 +606,6 @@
   bottom: 20px;
   cursor: ew-resize;
   z-index: 60;
-  opacity: 0.4;
-  transition: opacity 0.2s ease;
 }
 .ai-chat-resize-corner-tr {
   position: absolute;
@@ -567,21 +615,6 @@
   height: 20px;
   cursor: nwse-resize;
   z-index: 60;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 3px;
-  opacity: 0.4;
-  transition: opacity 0.2s ease;
-}
-.ai-chat-resize-corner-tr::before {
-  content: '';
-  display: block;
-  width: 10px;
-  height: 10px;
-  border-right: 2px solid rgba(167, 139, 250, 0.6);
-  border-top: 2px solid rgba(167, 139, 250, 0.6);
-  border-radius: 0 2px 0 0;
 }
 .ai-chat-resize-corner-tl {
   position: absolute;
@@ -591,21 +624,6 @@
   height: 20px;
   cursor: nesw-resize;
   z-index: 60;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 3px;
-  opacity: 0.4;
-  transition: opacity 0.2s ease;
-}
-.ai-chat-resize-corner-tl::before {
-  content: '';
-  display: block;
-  width: 10px;
-  height: 10px;
-  border-left: 2px solid rgba(167, 139, 250, 0.6);
-  border-top: 2px solid rgba(167, 139, 250, 0.6);
-  border-radius: 2px 0 0 0;
 }
 .ai-chat-resize-corner-br {
   position: absolute;
@@ -615,28 +633,6 @@
   height: 20px;
   cursor: nesw-resize;
   z-index: 60;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: 3px;
-  opacity: 0.4;
-  transition: opacity 0.2s ease;
-}
-.ai-chat-resize-corner-br::before {
-  content: '';
-  display: block;
-  width: 10px;
-  height: 10px;
-  border-right: 2px solid rgba(167, 139, 250, 0.6);
-  border-bottom: 2px solid rgba(167, 139, 250, 0.6);
-  border-radius: 0 0 2px 0;
-}
-.ai-chat-resize-corner-tr:hover,
-.ai-chat-resize-corner-tl:hover,
-.ai-chat-resize-corner-br:hover,
-.ai-chat-resize-top:hover,
-.ai-chat-resize-right:hover {
-  opacity: 0.8;
 }
 @media (pointer: coarse) {
   .ai-chat-resize-top {
@@ -653,14 +649,6 @@
   .ai-chat-resize-corner-br {
     width: 44px;
     height: 44px;
-    padding: 8px;
-  }
-  .ai-chat-resize-corner-tr::before,
-  .ai-chat-resize-corner-tl::before,
-  .ai-chat-resize-corner-br::before {
-    width: 16px;
-    height: 16px;
-    border-width: 3px;
   }
 }
 

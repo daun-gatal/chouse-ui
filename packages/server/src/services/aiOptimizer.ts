@@ -1,6 +1,6 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { format } from "sql-formatter";
+import { formatDialect, clickhouse } from "sql-formatter";
 import { promises as fs } from "node:fs";
 import type { TableDetails } from "../types";
 import { AppError } from "../types";
@@ -97,8 +97,8 @@ export function buildOptimizationPrompt(
 ): string {
     const schemasText = tableDetails
         .map((details) => {
-            const prettyDdl = format(details.create_table_query, {
-                language: "mariadb",
+            const prettyDdl = formatDialect(details.create_table_query, {
+                dialect: clickhouse,
                 tabWidth: 2,
                 keywordCase: "upper",
                 linesBetweenQueries: 2,
@@ -138,8 +138,8 @@ export function buildDebugPrompt(
 ): string {
     const schemasText = tableDetails
         .map((details) => {
-            const prettyDdl = format(details.create_table_query, {
-                language: "mariadb",
+            const prettyDdl = formatDialect(details.create_table_query, {
+                dialect: clickhouse,
                 tabWidth: 2,
                 keywordCase: "upper",
                 linesBetweenQueries: 2,

@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.6] - 2026-03-01
+
+### Added
+
+- **ClickHouse SQL Dialect**: Replaced generic SQL formatter with `sql-formatter`'s native ClickHouse dialect. New shared `formatClickHouseSQL` utility used across InfoTab, AI dialogs, Monaco editor, and server-side AI prompts.
+- **ClickHouse Monarch Tokenizer**: New `clickhouseLanguage.ts` with comprehensive syntax highlighting for ClickHouse-specific keywords, data types, engines, settings, and constructs (`PREWHERE`, `FINAL`, `MATERIALIZED`, `CODEC`, window functions, etc.).
+- **Rich Function Intellisense**: Functions now show aggregate/regular badges, syntax blocks, and Markdown descriptions sourced from `system.functions` metadata (`is_aggregate`, `description`, `syntax`).
+- **Hover & Signature Help**: Hovering over functions, columns, tables, databases, and data types shows contextual documentation. Typing inside function parentheses triggers signature help with parameter highlighting.
+- **Extended Completion Contexts**: Autocomplete for `GROUP BY`, `ORDER BY`, `HAVING`, `PREWHERE`, `SETTINGS`, `ENGINE =`, `INSERT INTO`, `USING`, `VALUES`, and data type positions — each suggesting contextually appropriate items (settings, engines, types, etc.).
+- **SQL Snippets**: Common patterns (`SELECT … FROM`, `CREATE TABLE`, `INSERT INTO`, `ALTER TABLE ADD COLUMN`) as snippet completions with tab-stop placeholders.
+- **CTE & Alias Resolution**: Autocomplete resolves CTE aliases (`WITH … AS`) and table aliases to their underlying tables for column suggestions (e.g., `alias.` triggers column list).
+- **Custom Suggest Widget Icons**: Replaced default codicon icons with custom SVG icons for database, table, column, function, aggregate, setting, engine, data type, keyword, and snippet.
+
+### Changed
+
+- **Intellisense Data Model**: `IntellisenseFunctionInfo` now carries `name`, `is_aggregate`, `description`, `syntax` (previously plain strings). Server queries `system.functions` with full metadata.
+- **Completion Provider**: Refactored into factory functions (`createCompletionProvider`, `createHoverProvider`, `createSignatureHelpProvider`). Fine-grained priority sorting (`00_`–`09_`) for context-aware ranking. Added `(` and `,` as trigger characters.
+- **Multi-line Context Detection**: `parseQueryContext` now scans all text before the cursor instead of only the current line, correctly handling multi-line queries.
+- **Implicit Alias Detection**: `getTablesInScope` detects implicit aliases (`FROM users u`) with a keyword blocklist to avoid false positives.
+- **Editor Theme**: Added Monarch token-specific color rules to `chouse-dark` (bold keywords, teal types, italic comments, etc.). Enabled snippet previews and parameter hints.
+- **sql-formatter**: Upgraded from `^15.6.10` to `^15.7.2`.
+- **AI Chat Resize Handles**: Made invisible (functional-only) — removed visible border decorations and hover effects.
+- **Tests**: Extended `sqlCompletionUtils.test.ts` with coverage for `getTextBeforeCursor`, `parseCTEDefinitions`, `resolveTableAlias`, all new context kinds, multi-line detection, implicit aliases, and CTE resolution.
+
 ## [v2.12.5] - 2026-02-28
 
 ### Added
