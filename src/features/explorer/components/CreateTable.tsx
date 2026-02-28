@@ -22,13 +22,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ResponsiveDraggableDialog } from "@/components/common/ResponsiveDraggableDialog";
 import {
   Select,
   SelectContent,
@@ -294,20 +289,56 @@ const CreateTable: React.FC = () => {
 
   const queryPreview = generateQueryPreview();
 
-  return (
-    <Dialog open={createTableModalOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col bg-gradient-to-br from-gray-900 to-gray-950 border-white/10">
-        <DialogHeader className="flex-none pb-4 border-b border-white/10">
-          <DialogTitle className="flex items-center gap-3 text-xl">
-            <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
-              <Table2 className="h-5 w-5 text-white" />
-            </div>
-            Create New Table
-          </DialogTitle>
-        </DialogHeader>
+  const dialogTitle = (
+    <DialogHeader className="pb-0 border-0 flex-none">
+      <DialogTitle className="flex items-center gap-3 text-xl text-white">
+        <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 shrink-0">
+          <Table2 className="h-5 w-5 text-white" />
+        </div>
+        Create New Table
+      </DialogTitle>
+    </DialogHeader>
+  );
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col">
-          <div className="flex-1 overflow-y-auto py-4 space-y-6 px-1">
+  return (
+    <ResponsiveDraggableDialog
+      open={createTableModalOpen}
+      onOpenChange={(open) => { if (!open) handleClose(); }}
+      dialogId="createTable"
+      title={dialogTitle}
+      windowClassName="rounded-2xl shadow-lg bg-gradient-to-br from-gray-900 to-gray-950 border-white/10 text-white"
+      headerClassName="pb-4 border-white/10"
+      footerClassName="pt-4 border-t border-white/10 px-6"
+      closeButtonClassName="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg"
+      contentClassName="bg-gradient-to-br from-gray-900 to-gray-950 text-white"
+      footer={
+        <DialogFooter className="pt-4 border-t border-white/10 px-0">
+          <Button type="button" variant="outline" onClick={handleClose} className="border-white/10 text-gray-300 hover:bg-white/5">
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="create-table-form"
+            disabled={executeQuery.isPending}
+            className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500"
+          >
+            {executeQuery.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                Create Table
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      }
+    >
+      <form id="create-table-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto py-4 space-y-6 px-1 min-h-0">
             {/* Basic Settings */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -661,31 +692,8 @@ const CreateTable: React.FC = () => {
             </Collapsible>
           </div>
 
-          <DialogFooter className="flex-none pt-4 border-t border-white/10">
-            <Button type="button" variant="outline" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={executeQuery.isPending}
-              className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500"
-            >
-              {executeQuery.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Create Table
-                </>
-              )}
-            </Button>
-          </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+    </ResponsiveDraggableDialog>
   );
 };
 

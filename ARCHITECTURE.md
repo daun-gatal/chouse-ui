@@ -85,7 +85,7 @@ graph TD
 | **Pages** | `src/pages/` | 11 files | Route-level views: Login, Home, Explorer, Monitoring, Admin, Preferences, Logs, Metrics, LiveQueries, ExplainPopout, NotFound |
 | **Features** | `src/features/` | 5 modules | Domain-specific component groups with their own `components/` dirs |
 | **UI Components** | `src/components/ui/` | 34 files | shadcn/ui primitives: button, dialog, dropdown-menu, tabs, data-table, select, etc. |
-| **Common Components** | `src/components/common/` | 22 files | FloatingDock, Sidebar, ConnectionSelector, ErrorBoundary, PermissionGuard, DiffEditor, AiChatBubble, AiChartRenderer, AiChartUtils, form/InputField, etc. (tests live alongside) |
+| **Common Components** | `src/components/common/` | 23 files | FloatingDock, Sidebar, ConnectionSelector, ErrorBoundary, PermissionGuard, DiffEditor, **ResponsiveDraggableDialog** (explorer modals: Upload file, AI debugger, AI optimizer, Create table, Create database — tablet/mobile-friendly, draggable, resizable; position/size persisted per device via user preferences), AiChatBubble, AiChartRenderer, AiChartUtils, form/InputField, etc. (tests live alongside) |
 | **Sidebar** | `src/components/sidebar/` | 1 file | UserMenu component |
 | **Hooks** | `src/hooks/` | 9 files | ~44 exported hooks (TanStack Query wrappers, useWindowSize, useDeviceType, preferences) |
 | **Stores** | `src/stores/` | 4 stores | Zustand with `persist` middleware and user-specific storage adapters |
@@ -431,8 +431,9 @@ chouse-ui/
 │   │   │                             # multi-step-loader, popover, progress, radio-group, resizable,
 │   │   │                             # scroll-area, select, separator, sheet, skeleton, sonner,
 │   │   │                             # switch, table, tabs, textarea, tooltip
-│   │   ├── common/                   # 22 shared app components
+│   │   ├── common/                   # 23 shared app components
 │   │   │   ├── FloatingDock.tsx       # Main navigation dock (34KB)
+│   │   │   ├── ResponsiveDraggableDialog.tsx # Explorer modals: draggable, resizable, tablet/mobile; prefs persisted
 │   │   │   ├── Sidebar.tsx            # Sidebar navigation
 │   │   │   ├── ConnectionSelector.tsx # ClickHouse connection switcher (17KB)
 │   │   │   ├── ErrorBoundary.tsx      # React error boundary

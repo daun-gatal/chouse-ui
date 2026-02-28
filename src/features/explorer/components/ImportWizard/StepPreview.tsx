@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { GripVertical, Table2, Database, Code, Check, Settings2, ChevronDown } from 'lucide-react';
+import { Table2, Database, Code, Check, Settings2, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ENGINES } from './ImportWizard';
@@ -36,7 +36,10 @@ export interface ColumnDefinition {
     mappedTo?: string; // Target column name if appending
 }
 
+const TABLE_NAME_REGEX = /^[a-zA-Z0-9_]*$/;
+
 interface StepPreviewProps {
+    fileName?: string;
     importMode: 'create' | 'append';
     onImportModeChange: (mode: 'create' | 'append') => void;
     selectedDb: string;
@@ -74,6 +77,7 @@ const CLICKHOUSE_TYPES = [
 ];
 
 export function StepPreview({
+    fileName,
     importMode,
     onImportModeChange,
     selectedDb,
@@ -100,6 +104,15 @@ export function StepPreview({
     const [activeTab, setActiveTab] = useState<'schema' | 'data'>('schema');
     const [advancedOpen, setAdvancedOpen] = useState(false);
     const isJSON = format.toUpperCase() === 'JSON';
+    const tableNameInvalid = tableName.length > 0 && !TABLE_NAME_REGEX.test(tableName);
+    const advancedSummaryParts = [
+        engine && `Engine: ${engine}`,
+        orderByColumns.length > 0 && `ORDER BY (${orderByColumns.join(', ')})`,
+        partitionBy && `Partition: ${partitionBy}`,
+        ttlExpression && 'TTL set',
+        comment && 'Comment set',
+    ].filter(Boolean) as string[];
+    const hasAdvancedSummary = advancedSummaryParts.length > 0;
 
     const { data: databases = [] } = useDatabases();
     const existingTables = databases.find(db => db.name === selectedDb)?.children || [];
@@ -137,109 +150,234 @@ export function StepPreview({
     }, [tableSchema, importMode, columns, onColumnsChange]);
 
     return (
-        <div className="flex flex-col h-full space-y-6">
-            {/* Import Mode Selection */}
-            <div className="flex p-1 rounded-lg bg-black/20 border border-white/10 w-fit shrink-0">
-                <button
-                    onClick={() => onImportModeChange('create')}
-                    className={cn(
-                        "px-4 py-2 rounded-md text-sm font-medium transition-all",
-                        importMode === 'create'
-                            ? "bg-blue-600/20 text-blue-400 shadow-sm border border-blue-500/30"
-                            : "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                    )}
-                >
-                    Create New Table
-                </button>
-                <button
-                    onClick={() => onImportModeChange('append')}
-                    className={cn(
-                        "px-4 py-2 rounded-md text-sm font-medium transition-all",
-                        importMode === 'append'
-                            ? "bg-blue-600/20 text-blue-400 shadow-sm border border-blue-500/30"
-                            : "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                    )}
-                >
-                    Append to Existing Table
-                </button>
-            </div>
-
-            {/* Table Name Section */}
-            <div className="flex flex-col p-6 rounded-2xl bg-white/5 border border-white/10 shrink-0">
-                <div className="w-full grid grid-cols-2 gap-6">
+        <div className="flex flex-col space-y-6 pb-6">
+            {/* Destination */}
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Destination</p>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => onImportModeChange('create')}
+                        className={cn(
+                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                            importMode === 'create'
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                : "text-gray-400 border border-white/10 hover:bg-white/5 hover:text-gray-300"
+                        )}
+                    >
+                        New table
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onImportModeChange('append')}
+                        className={cn(
+                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                            importMode === 'append'
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                : "text-gray-400 border border-white/10 hover:bg-white/5 hover:text-gray-300"
+                        )}
+                    >
+                        Append to existing
+                    </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                     <div className="space-y-2">
-                        <Label htmlFor="tableName" className="text-gray-400 flex items-center gap-2">
-                            <Table2 className="w-4 h-4" /> Target Table Name
+                        <Label htmlFor="tableName" className="text-xs font-medium text-gray-500">
+                            Table name
                         </Label>
                         {importMode === 'create' ? (
-                            <Input
-                                id="tableName"
-                                value={tableName}
-                                onChange={(e) => onTableNameChange(e.target.value)}
-                                placeholder="Enter table name"
-                                className="bg-black/20 border-white/10 h-11 text-lg font-medium placeholder:text-gray-600 focus-visible:ring-blue-500/50"
-                            />
+                            <>
+                                <Input
+                                    id="tableName"
+                                    value={tableName}
+                                    onChange={(e) => onTableNameChange(e.target.value)}
+                                    placeholder="my_table"
+                                    aria-invalid={tableNameInvalid}
+                                    aria-describedby={tableNameInvalid ? 'tableName-hint' : undefined}
+                                    className={cn(
+                                        "h-10 bg-white/5 border-white/10 text-sm placeholder:text-gray-500 focus-visible:ring-emerald-500/50",
+                                        tableNameInvalid && "border-red-500/50"
+                                    )}
+                                />
+                                {tableNameInvalid && (
+                                    <p id="tableName-hint" className="text-xs text-red-400" role="alert">
+                                        Use only letters, numbers, and underscores.
+                                    </p>
+                                )}
+                            </>
                         ) : (
                             <Select value={tableName} onValueChange={onTableNameChange}>
-                                <SelectTrigger id="tableName" className="bg-black/20 border-white/10 h-11 text-lg font-medium focus-visible:ring-blue-500/50">
-                                    <SelectValue placeholder="Select existing table" />
+                                <SelectTrigger id="tableName" className="h-10 bg-white/5 border-white/10 text-sm focus-visible:ring-emerald-500/50">
+                                    <SelectValue placeholder="Select table" />
                                 </SelectTrigger>
-                                <SelectContent className="bg-gray-900 border-white/10 text-gray-300">
+                                <SelectContent className="bg-gray-900 border-white/10">
                                     {existingTables.map(t => (
-                                        <SelectItem key={t.name} value={t.name} className="focus:bg-blue-500/20 focus:text-blue-400">
+                                        <SelectItem key={t.name} value={t.name} className="focus:bg-emerald-500/15 focus:text-emerald-400">
                                             {t.name}
                                         </SelectItem>
                                     ))}
                                     {existingTables.length === 0 && (
-                                        <div className="p-2 text-sm text-gray-500 text-center">No tables found</div>
+                                        <div className="p-3 text-sm text-gray-500 text-center">No tables</div>
                                     )}
                                 </SelectContent>
                             </Select>
                         )}
                     </div>
-
-                    <div className="space-y-2 flex flex-col justify-end">
-                        {!isJSON && (
-                            <div className="flex items-center space-x-2 h-11">
+                    {!isJSON && (
+                        <div className="flex items-end">
+                            <div className="flex items-center gap-2">
                                 <Checkbox
                                     id="hasHeader"
                                     checked={hasHeader}
-                                    onCheckedChange={(checked) => onHasHeaderChange(checked as boolean)}
-                                    className="border-white/20 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                    onCheckedChange={(c) => onHasHeaderChange(c as boolean)}
+                                    className="border-white/20 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
                                 />
-                                <Label
-                                    htmlFor="hasHeader"
-                                    className="text-sm font-medium text-gray-300 leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                                >
-                                    First row contains column names
+                                <Label htmlFor="hasHeader" className="text-sm text-gray-400 cursor-pointer">
+                                    First row is header
                                 </Label>
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Main Content Area */}
-            <div className="flex-1 min-h-0 flex flex-col">
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col min-h-0">
-                    <div className="flex items-center justify-between mb-4 px-1">
-                        <TabsList className="bg-white/5 border border-white/10">
-                            <TabsTrigger value="schema" className="data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400">
-                                <Database className="w-4 h-4 mr-2" /> Schema Definition
+            {/* Main Content Area - min height so schema/data area is usable when window scrolls */}
+            <div className="flex flex-col min-h-[320px]">
+                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col min-h-[300px]">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                        <TabsList className="bg-white/5 border border-white/10 p-0.5 rounded-lg">
+                            <TabsTrigger value="schema" className="data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 rounded-md text-sm">
+                                <Database className="w-3.5 h-3.5 mr-1.5" /> Schema
                             </TabsTrigger>
-                            <TabsTrigger value="data" className="data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400">
-                                <Code className="w-4 h-4 mr-2" /> Data Preview ({previewData.length})
+                            <TabsTrigger value="data" className="data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 rounded-md text-sm">
+                                <Code className="w-3.5 h-3.5 mr-1.5" /> Data ({previewData.length})
                             </TabsTrigger>
                         </TabsList>
-                        <div className="text-xs text-gray-500">
-                            {columns.length} columns detected
-                        </div>
+                        <span className="text-xs text-gray-500">{columns.length} columns</span>
                     </div>
 
-                    <TabsContent value="schema" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
-                        <Card className="h-full bg-white/5 border-white/10 flex flex-col overflow-hidden">
+                    <TabsContent value="schema" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden flex flex-col">
+                        <Card className="flex-1 min-h-0 bg-white/[0.02] border-white/10 flex flex-col overflow-hidden rounded-xl">
+                            {/* Mobile/tablet: column cards */}
+                            <div className="md:hidden flex-1 min-h-0 flex flex-col overflow-hidden">
+                                <ScrollArea className="flex-1">
+                                    <div className="p-3 space-y-3 pb-4">
+                                        {columns.map((col, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="rounded-lg border border-white/10 bg-white/[0.02] p-4 space-y-3"
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-xs font-medium text-gray-500">Column {idx + 1}</span>
+                                                    <span className="text-xs truncate text-gray-500 font-mono max-w-[50%]" title={String(col.sampleValue)}>
+                                                        Sample: {String(col.sampleValue ?? '—')}
+                                                    </span>
+                                                </div>
+                                                {importMode === 'create' ? (
+                                                    <>
+                                                        <div>
+                                                            <Label className="text-xs text-gray-400">Name</Label>
+                                                            <Input
+                                                                value={col.name}
+                                                                onChange={(e) => onColumnChange(idx, 'name', e.target.value)}
+                                                                className="h-9 bg-black/20 border-white/10 text-sm mt-1"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <Label className="text-xs text-gray-400">Type</Label>
+                                                            <Select value={col.type} onValueChange={(val) => onColumnChange(idx, 'type', val)}>
+                                                                <SelectTrigger className="h-9 border-white/10 bg-black/20 text-sm mt-1">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {CLICKHOUSE_TYPES.map(t => (
+                                                                        <SelectItem key={t.value} value={t.value}>
+                                                                            <span className={cn("font-medium", t.color)}>{t.label}</span>
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-3 items-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => onColumnChange(idx, 'nullable', !col.nullable)}
+                                                                className={cn(
+                                                                    "flex items-center gap-2 text-xs",
+                                                                    col.nullable ? "text-blue-400" : "text-gray-500"
+                                                                )}
+                                                            >
+                                                                <div                                                                 className={cn(
+                                                                    "w-5 h-5 rounded border flex items-center justify-center",
+                                                                    col.nullable ? "bg-emerald-500 border-emerald-500" : "bg-white/10 border-white/10"
+                                                                )}>
+                                                                    {col.nullable && <Check className="w-3 h-3 text-white" />}
+                                                                </div>
+                                                                Nullable
+                                                            </button>
+                                                            {onToggleOrderBy && col.name && (engine.includes('MergeTree') || engine === 'MergeTree') && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => onToggleOrderBy(col.name)}
+                                                                    className={cn(
+                                                                        "flex items-center gap-2 text-xs",
+                                                                        orderByColumns.includes(col.name) ? "text-emerald-400" : "text-gray-500"
+                                                                    )}
+                                                                >
+                                                                    <div className={cn(
+                                                                        "w-5 h-5 rounded border flex items-center justify-center",
+                                                                        orderByColumns.includes(col.name) ? "bg-emerald-500 border-emerald-500" : "bg-white/10 border-white/10"
+                                                                    )}>
+                                                                        {orderByColumns.includes(col.name) && <Database className="w-3 h-3 text-white" />}
+                                                                    </div>
+                                                                    Sort key
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <Label className="text-xs text-gray-400">Description (optional)</Label>
+                                                            <Input
+                                                                value={col.description || ''}
+                                                                onChange={(e) => onColumnChange(idx, 'description', e.target.value)}
+                                                                placeholder="Optional"
+                                                                className="h-9 bg-black/20 border-white/10 text-xs mt-1"
+                                                            />
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="text-sm font-medium text-gray-300">{col.name}</div>
+                                                        <div>
+                                                            <Label className="text-xs text-gray-400">Map to table column</Label>
+                                                            <Select
+                                                                value={col.mappedTo || "skip"}
+                                                                onValueChange={(val) => onColumnChange(idx, 'mappedTo', val === 'skip' ? '' : val)}
+                                                            >
+                                                                <SelectTrigger className="h-9 border-white/10 bg-black/20 text-sm mt-1">
+                                                                    <SelectValue placeholder="Skip column" />
+                                                                </SelectTrigger>
+                                                                <SelectContent className="bg-gray-900 border-white/10">
+                                                                    <SelectItem value="skip" className="text-gray-500 italic">— Skip —</SelectItem>
+                                                                    {tableSchema?.map(sc => (
+                                                                        <SelectItem key={sc.name} value={sc.name} className="focus:bg-emerald-500/15 focus:text-emerald-400">
+                                                                            {sc.name} <span className="text-gray-500 font-mono text-xs">{sc.type}</span>
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </ScrollArea>
+                            </div>
+
+                            {/* Desktop: table */}
+                            <div className="hidden md:block flex-1 min-h-0 flex flex-col overflow-hidden">
                             {importMode === 'create' ? (
-                                <div className="grid grid-cols-[40px_2.5fr_1.5fr_50px_50px_2.5fr_1.5fr] gap-4 px-6 py-3 border-b border-white/10 text-[11px] font-semibold text-gray-400 uppercase tracking-wider bg-black/40">
+                                <div className="grid grid-cols-[40px_2.5fr_1.5fr_50px_50px_2.5fr_1.5fr] gap-4 px-5 py-2.5 border-b border-white/10 text-[11px] font-medium text-gray-500 uppercase tracking-wider bg-white/[0.02] shrink-0">
                                     <div className="text-center">#</div>
                                     <div>Column Name</div>
                                     <div>Type</div>
@@ -249,7 +387,7 @@ export function StepPreview({
                                     <div>Sample Value</div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-[40px_2.5fr_1fr_2.5fr_2fr] gap-4 px-6 py-3 border-b border-white/10 text-[11px] font-semibold text-gray-400 uppercase tracking-wider bg-black/40">
+                                <div className="grid grid-cols-[40px_2.5fr_1fr_2.5fr_2fr] gap-4 px-5 py-2.5 border-b border-white/10 text-[11px] font-medium text-gray-500 uppercase tracking-wider bg-white/[0.02] shrink-0">
                                     <div className="text-center">#</div>
                                     <div className="flex items-center gap-1">File Column</div>
                                     <div className="text-center"></div>
@@ -257,7 +395,7 @@ export function StepPreview({
                                     <div>Sample Value</div>
                                 </div>
                             )}
-                            <ScrollArea className="flex-1">
+                            <ScrollArea className="flex-1 min-h-0">
                                 <div className="py-2">
                                     <AnimatePresence>
                                         {columns.map((col, idx) => (
@@ -282,7 +420,7 @@ export function StepPreview({
                                                             <Input
                                                                 value={col.name}
                                                                 onChange={(e) => onColumnChange(idx, 'name', e.target.value)}
-                                                                className="h-8 bg-black/20 border-white/10 hover:border-white/20 focus:bg-black/40 focus:border-blue-500/50 transition-all font-medium text-gray-200 rounded-md px-3 text-xs shadow-none"
+                                                                className="h-8 bg-white/5 border-white/10 hover:border-white/20 focus:border-emerald-500/50 transition-all font-medium text-gray-200 rounded-md px-3 text-xs shadow-none"
                                                             />
                                                         </div>
                                                         <div>
@@ -290,7 +428,7 @@ export function StepPreview({
                                                                 value={col.type}
                                                                 onValueChange={(val) => onColumnChange(idx, 'type', val)}
                                                             >
-                                                                <SelectTrigger className="h-8 border-white/10 bg-black/20 hover:bg-black/40 text-xs text-gray-300 rounded-md px-3 shadow-none">
+                                                                <SelectTrigger className="h-8 border-white/10 bg-white/5 hover:bg-white/10 text-xs text-gray-300 rounded-md px-3 shadow-none focus-visible:ring-emerald-500/50">
                                                                     <SelectValue />
                                                                 </SelectTrigger>
                                                                 <SelectContent>
@@ -307,8 +445,8 @@ export function StepPreview({
                                                                 className={cn(
                                                                     "w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-all",
                                                                     col.nullable
-                                                                        ? "bg-blue-500 text-white border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]"
-                                                                        : "bg-black/20 border-white/10 hover:border-white/20 text-transparent"
+                                                                        ? "bg-emerald-500 text-white border-emerald-500"
+                                                                        : "bg-white/10 border-white/10 hover:border-white/20 text-transparent"
                                                                 )}
                                                                 onClick={() => onColumnChange(idx, 'nullable', !col.nullable)}
                                                             >
@@ -321,8 +459,8 @@ export function StepPreview({
                                                                     className={cn(
                                                                         "w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-all",
                                                                         orderByColumns.includes(col.name)
-                                                                            ? "bg-purple-500 text-white border-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.3)]"
-                                                                            : "bg-black/20 border-white/10 hover:border-white/20 text-transparent",
+                                                                            ? "bg-emerald-500 text-white border-emerald-500"
+                                                                            : "bg-white/10 border-white/10 hover:border-white/20 text-transparent",
                                                                         (!engine.includes('MergeTree') && engine !== 'MergeTree') && "opacity-30 cursor-not-allowed"
                                                                     )}
                                                                     onClick={() => {
@@ -341,7 +479,7 @@ export function StepPreview({
                                                                 value={col.description || ''}
                                                                 onChange={(e) => onColumnChange(idx, 'description', e.target.value)}
                                                                 placeholder="Add description..."
-                                                                className="h-8 bg-black/20 border-white/10 hover:border-white/20 focus:bg-black/40 focus:border-blue-500/50 transition-all text-xs text-gray-400 rounded-md px-3 shadow-none"
+                                                                className="h-8 bg-white/5 border-white/10 hover:border-white/20 focus:border-emerald-500/50 transition-all text-xs text-gray-400 rounded-md px-3 shadow-none"
                                                             />
                                                         </div>
                                                     </>
@@ -358,13 +496,13 @@ export function StepPreview({
                                                                 value={col.mappedTo || "skip"}
                                                                 onValueChange={(val) => onColumnChange(idx, 'mappedTo', val === 'skip' ? '' : val)}
                                                             >
-                                                                <SelectTrigger className="h-8 border-white/10 bg-black/20 hover:bg-black/40 text-xs text-gray-300 rounded-md px-3 shadow-none">
+                                                                <SelectTrigger className="h-8 border-white/10 bg-white/5 hover:bg-white/10 text-xs text-gray-300 rounded-md px-3 shadow-none focus-visible:ring-emerald-500/50">
                                                                     <SelectValue placeholder="Skip Column" />
                                                                 </SelectTrigger>
                                                                 <SelectContent className="bg-gray-900 border-white/10 text-gray-300">
-                                                                    <SelectItem value="skip" className="text-gray-500 italic">-- Skip Column --</SelectItem>
+                                                                    <SelectItem value="skip" className="text-gray-500 italic">— Skip —</SelectItem>
                                                                     {tableSchema?.map(sc => (
-                                                                        <SelectItem key={sc.name} value={sc.name} className="focus:bg-blue-500/20 focus:text-blue-400">
+                                                                        <SelectItem key={sc.name} value={sc.name} className="focus:bg-emerald-500/15 focus:text-emerald-400">
                                                                             <span className="flex items-center gap-2">
                                                                                 <span className="font-medium text-gray-200">{sc.name}</span>
                                                                                 <span className="text-[10px] text-gray-500 font-mono">{sc.type}</span>
@@ -384,16 +522,22 @@ export function StepPreview({
                                     </AnimatePresence>
                                 </div>
                             </ScrollArea>
+                            </div>
                             {/* Advanced Settings */}
                             {importMode === 'create' && onEngineChange && (
-                                <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="border-t border-white/10 bg-black/20 shrink-0">
-                                    <CollapsibleTrigger className="w-full">
-                                        <div className={`flex items-center justify-between w-full p-3 px-6 transition-all hover:bg-white/5`}>
-                                            <span className="flex items-center gap-2 font-medium text-xs text-gray-300">
-                                                <Settings2 className={`h-4 w-4 ${advancedOpen ? "text-purple-400" : ""}`} />
-                                                Advanced Settings
+                                <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="border-t border-white/10 bg-white/[0.02] shrink-0">
+                                    <CollapsibleTrigger className="w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 rounded">
+                                        <div className="flex items-center justify-between w-full px-5 py-3 transition-colors hover:bg-white/5">
+                                            <span className="flex items-center gap-2 text-xs font-medium text-gray-400">
+                                                <Settings2 className={cn("h-3.5 w-3.5", advancedOpen && "text-emerald-400")} />
+                                                Advanced
+                                                {!advancedOpen && hasAdvancedSummary && (
+                                                    <span className="text-gray-500 font-normal normal-case">
+                                                        · {advancedSummaryParts.join(' · ')}
+                                                    </span>
+                                                )}
                                             </span>
-                                            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${advancedOpen ? "rotate-180 text-purple-400" : ""}`} />
+                                            <ChevronDown className={cn("h-4 w-4 text-gray-500 transition-transform", advancedOpen && "rotate-180 text-emerald-400")} />
                                         </div>
                                     </CollapsibleTrigger>
                                     <CollapsibleContent>
@@ -402,7 +546,7 @@ export function StepPreview({
                                             <div className="space-y-2 text-left">
                                                 <Label className="text-gray-300 text-xs">Table Engine</Label>
                                                 <Select value={engine} onValueChange={onEngineChange}>
-                                                    <SelectTrigger className="bg-black/20 border-white/10 h-9 focus:ring-1 focus:ring-purple-500">
+                                                    <SelectTrigger className="bg-white/5 border-white/10 h-9 text-sm focus-visible:ring-emerald-500/50">
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
@@ -424,7 +568,7 @@ export function StepPreview({
                                                     value={partitionBy}
                                                     onChange={(e) => onPartitionByChange?.(e.target.value)}
                                                     placeholder="e.g., toYYYYMM(created_at) or leave empty for none"
-                                                    className="bg-black/20 border-white/10 h-9 text-xs focus-visible:ring-1 focus-visible:ring-purple-500"
+                                                    className="bg-white/5 border-white/10 h-9 text-xs focus-visible:ring-emerald-500/50"
                                                 />
                                             </div>
 
@@ -435,7 +579,7 @@ export function StepPreview({
                                                         value={ttlExpression}
                                                         onChange={(e) => onTtlExpressionChange?.(e.target.value)}
                                                         placeholder="e.g., created_at + INTERVAL 30 DAY"
-                                                        className="bg-black/20 border-white/10 h-9 text-xs focus-visible:ring-1 focus-visible:ring-purple-500"
+                                                        className="bg-white/5 border-white/10 h-9 text-xs focus-visible:ring-emerald-500/50"
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
@@ -444,7 +588,7 @@ export function StepPreview({
                                                         value={comment}
                                                         onChange={(e) => onCommentChange?.(e.target.value)}
                                                         placeholder="Optional description"
-                                                        className="bg-black/20 border-white/10 h-9 text-xs focus-visible:ring-1 focus-visible:ring-purple-500"
+                                                        className="bg-white/5 border-white/10 h-9 text-xs focus-visible:ring-emerald-500/50"
                                                     />
                                                 </div>
                                             </div>
@@ -455,8 +599,11 @@ export function StepPreview({
                         </Card>
                     </TabsContent>
 
-                    <TabsContent value="data" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
-                        <Card className="h-full bg-white/5 border-white/10 flex flex-col overflow-hidden">
+                    <TabsContent value="data" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden flex flex-col">
+                        <Card className="flex-1 min-h-0 bg-white/[0.02] border-white/10 flex flex-col overflow-hidden rounded-xl">
+                            <p className="text-xs text-gray-500 px-4 py-2 border-b border-white/10 shrink-0">
+                                Preview (first {previewData.length} row{previewData.length !== 1 ? 's' : ''})
+                            </p>
                             <div className="flex-1 w-full overflow-auto">
                                 <Table>
                                     <TableHeader className="bg-black/20 sticky top-0 z-10">

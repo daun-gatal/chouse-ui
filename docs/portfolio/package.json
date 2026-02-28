@@ -1,7 +1,7 @@
 {
   "name": "chouseui-portfolio",
   "private": true,
-  "version": "2.12.4",
+  "version": "2.12.5",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.5] - 2026-02-28
+
+### Added
+
+- **ResponsiveDraggableDialog**: New shared dialog wrapper for explorer modals (Upload file, AI debugger, AI optimizer, Create table, Create database). Viewport-friendly on tablet and mobile; draggable and resizable on desktop with position and size persisted per device in user preferences.
+- **Explorer dialog preferences**: Extended `devicePreferences` with `explorerDialogPreferences` (per-device, per-dialog position/size), `getExplorerDialogPrefsFromWorkspace`, `mergeExplorerDialogPrefsIntoWorkspace`, and default position/size per device for explorer dialogs.
+- **AI Chat resize handles**: Resize handles (top, right, corners) for the AI chat window with new CSS classes in `index.css`; desktop-only, with drag disabled while resizing.
+
+### Changed
+
+- **Explorer modals**: Debug Query, Optimize Query, Create Database, Create Table, and Import Wizard now use `ResponsiveDraggableDialog` for consistent behavior and persisted layout across devices.
+- **AI Chat drag**: Full header is draggable (replaced dedicated grip handle) with touch support and no-drag when interacting with header buttons/inputs.
+- **ARCHITECTURE.md**: Common components count and directory tree updated to include ResponsiveDraggableDialog.
+
 ## [v2.12.4] - 2026-02-27
 
 ### ⚠️ Security
