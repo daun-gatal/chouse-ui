@@ -431,6 +431,43 @@ function createCompletionProvider(
         }
       }
 
+      // --- "All columns" expansion suggestion in SELECT context ---
+      if (queryContext.kind === "afterSelect" && queryContext.tablesInScope.length > 0) {
+        const usePrefix = queryContext.tablesInScope.length > 1;
+        const allColParts: string[] = [];
+
+        for (const ref of queryContext.tablesInScope) {
+          const db = dbStructure.find(
+            (d) =>
+              (ref.database ? d.name === ref.database : true) && d.children.some((t) => t.name === ref.table)
+          );
+          const tbl = db?.children.find((t) => t.name === ref.table);
+          if (tbl) {
+            const prefix = usePrefix && ref.alias ? `${ref.alias}.` : "";
+            for (const col of tbl.children) {
+              allColParts.push(prefix + col.name);
+            }
+          }
+        }
+
+        if (allColParts.length > 0) {
+          const allColsText = allColParts.join(",\n  ");
+          const tableNames = queryContext.tablesInScope.map((t) => t.alias ?? t.table).join(", ");
+          suggestions.push({
+            label: {
+              label: "* (expand all columns)",
+              description: `${allColParts.length} columns from ${tableNames}`,
+            },
+            kind: monacoInstance.languages.CompletionItemKind.Text,
+            insertText: allColsText,
+            detail: `Expand to all ${allColParts.length} columns`,
+            filterText: "* all columns expand",
+            sortText: `00_!`,
+            range,
+          });
+        }
+      }
+
       // --- Fallback: all columns from all tables when in column context but no FROM yet ---
       const allColumnSuggestions: monaco.languages.CompletionItem[] = [];
       if (isColumnContext && queryContext.tablesInScope.length === 0) {

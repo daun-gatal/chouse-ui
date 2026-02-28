@@ -122,17 +122,17 @@ function stripCTEPrefix(text: string): string {
 }
 
 /**
- * Get table references from FROM and JOIN clauses before the cursor.
- * Supports both explicit aliases (AS alias) and implicit aliases (FROM table alias).
+ * Get table references from FROM and JOIN clauses in the full query.
+ * Scans the entire query (not just before cursor) so that editing the
+ * SELECT list still resolves tables declared in the FROM clause.
  * Resolves CTE references to their underlying tables.
  */
 export function getTablesInScope(
   query: string,
-  position: EditorPosition
+  _position: EditorPosition
 ): TableInScope[] {
-  const fullBeforeCursor = getTextBeforeCursor(query, position);
-  const beforeCursor = stripCTEPrefix(fullBeforeCursor);
-  const tokens = beforeCursor.split(/\s+/).filter((t) => t.length > 0);
+  const mainQuery = stripCTEPrefix(query);
+  const tokens = mainQuery.split(/\s+/).filter((t) => t.length > 0);
   const result: TableInScope[] = [];
   let i = 0;
 

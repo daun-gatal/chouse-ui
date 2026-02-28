@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SQL Snippets**: Common patterns (`SELECT … FROM`, `CREATE TABLE`, `INSERT INTO`, `ALTER TABLE ADD COLUMN`) as snippet completions with tab-stop placeholders.
 - **CTE & Alias Resolution**: Autocomplete resolves CTE aliases (`WITH … AS`) and table aliases to their underlying tables for column suggestions (e.g., `alias.` triggers column list).
 - **Custom Suggest Widget Icons**: Replaced default codicon icons with custom SVG icons for database, table, column, function, aggregate, setting, engine, data type, keyword, and snippet.
+- **Expand All Columns Suggestion**: In `SELECT` context, autocomplete now offers a `* (expand all columns)` completion at the top of the list. Selecting it inserts all column names from every table in scope, with alias-prefixed names for multi-table joins (e.g. `u.id,\n  u.name,\n  o.total`). The suggestion label shows the total column count and the participating table aliases.
 
 ### Changed
 
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Completion Provider**: Refactored into factory functions (`createCompletionProvider`, `createHoverProvider`, `createSignatureHelpProvider`). Fine-grained priority sorting (`00_`–`09_`) for context-aware ranking. Added `(` and `,` as trigger characters.
 - **Multi-line Context Detection**: `parseQueryContext` now scans all text before the cursor instead of only the current line, correctly handling multi-line queries.
 - **Implicit Alias Detection**: `getTablesInScope` detects implicit aliases (`FROM users u`) with a keyword blocklist to avoid false positives.
+- **Full-Query Table Scope**: `getTablesInScope` now scans the entire query instead of only the text before the cursor. This ensures column completions correctly resolve tables declared in the `FROM`/`JOIN` clauses even when the cursor is still editing the `SELECT` list.
 - **Editor Theme**: Added Monarch token-specific color rules to `chouse-dark` (bold keywords, teal types, italic comments, etc.). Enabled snippet previews and parameter hints.
 - **sql-formatter**: Upgraded from `^15.6.10` to `^15.7.2`.
 - **AI Chat Resize Handles**: Made invisible (functional-only) — removed visible border decorations and hover effects.
