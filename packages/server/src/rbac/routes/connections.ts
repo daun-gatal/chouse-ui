@@ -24,7 +24,7 @@ import {
   revokeConnectionAccess,
 } from '../services/connections';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
-import { createAuditLog } from '../services/rbac';
+import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { ClickHouseService, createSession, destroySession, getSession } from '../../services/clickhouse';
 import type { ConnectionConfig } from '../../types';
@@ -241,7 +241,7 @@ connectionsRoutes.post(
       const connection = await createConnection(input, user.sub);
 
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_CREATE, user.sub, {
         resourceType: 'connection',
         resourceId: connection.id,
         details: {
@@ -250,7 +250,6 @@ connectionsRoutes.post(
           host: connection.host,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -295,7 +294,7 @@ connectionsRoutes.patch(
       }
 
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_UPDATE, user.sub, {
         resourceType: 'connection',
         resourceId: connection.id,
         details: {
@@ -304,7 +303,6 @@ connectionsRoutes.patch(
           changes: Object.keys(input),
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -359,7 +357,7 @@ connectionsRoutes.delete(
       }
 
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_DELETE, user.sub, {
         resourceType: 'connection',
         resourceId: id,
         details: {
@@ -368,7 +366,6 @@ connectionsRoutes.delete(
           host: existing.host,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -541,7 +538,7 @@ connectionsRoutes.post(
       });
 
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_CONNECT, user.sub, {
         resourceType: 'connection',
         resourceId: connection.id,
         details: {
@@ -550,7 +547,6 @@ connectionsRoutes.post(
           host: connection.host,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -673,7 +669,7 @@ connectionsRoutes.post(
       await grantConnectionAccess(targetUserId, connectionId);
 
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.USER_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_GRANT_ACCESS, user.sub, {
         resourceType: 'user_connection',
         resourceId: `${targetUserId}:${connectionId}`,
         details: {
@@ -682,7 +678,6 @@ connectionsRoutes.post(
           connectionId,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -716,7 +711,7 @@ connectionsRoutes.delete(
       await revokeConnectionAccess(targetUserId, connectionId);
 
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.USER_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_REVOKE_ACCESS, user.sub, {
         resourceType: 'user_connection',
         resourceId: `${targetUserId}:${connectionId}`,
         details: {
@@ -725,7 +720,6 @@ connectionsRoutes.delete(
           connectionId,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({

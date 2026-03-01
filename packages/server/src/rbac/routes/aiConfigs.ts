@@ -16,7 +16,7 @@ import {
     getDefaultAiConfig,
 } from '../services/aiModels';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
-import { createAuditLog } from '../services/rbac';
+import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 
 const aiConfigsRoutes = new Hono();
@@ -132,12 +132,11 @@ aiConfigsRoutes.post(
             const input = c.req.valid('json');
             const config = await createAiConfig(input, user.sub);
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_CONFIG_CREATE, user.sub, {
                 resourceType: 'ai_config',
                 resourceId: config.id,
                 details: { operation: 'create', name: config.name },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: config }, 201);
         } catch (error) {
@@ -163,12 +162,11 @@ aiConfigsRoutes.patch(
             const config = await updateAiConfig(id, input);
             if (!config) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Config not found' } }, 404);
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_CONFIG_UPDATE, user.sub, {
                 resourceType: 'ai_config',
                 resourceId: config.id,
                 details: { operation: 'update', changes: Object.keys(input) },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: config });
         } catch (error) {
@@ -191,12 +189,11 @@ aiConfigsRoutes.delete(
             const deleted = await deleteAiConfig(id);
             if (!deleted) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Config not found' } }, 404);
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_CONFIG_DELETE, user.sub, {
                 resourceType: 'ai_config',
                 resourceId: id,
                 details: { operation: 'delete' },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: { deleted: true } });
         } catch (error) {

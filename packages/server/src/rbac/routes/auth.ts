@@ -14,7 +14,7 @@ import {
   logoutAllSessions,
   updateUserPassword,
   getUserById,
-  createAuditLog,
+  createAuditLogWithContext,
   listRoles,
 } from '../services/rbac';
 import { getUserConnections } from '../services/connections';
@@ -67,10 +67,9 @@ authRoutes.post('/login', zValidator('json', LoginSchema), async (c) => {
 
   if (!result) {
     // Log failed login
-    await createAuditLog(AUDIT_ACTIONS.LOGIN_FAILED, undefined, {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.LOGIN_FAILED, undefined, {
       details: { identifier },
       ipAddress,
-      userAgent,
       status: 'failure',
       errorMessage: 'Invalid credentials',
     });
@@ -79,9 +78,8 @@ authRoutes.post('/login', zValidator('json', LoginSchema), async (c) => {
   }
 
   // Log successful login
-  await createAuditLog(AUDIT_ACTIONS.LOGIN, result.user.id, {
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.LOGIN, result.user.id, {
     ipAddress,
-    userAgent,
     status: 'success',
   });
 
@@ -124,7 +122,6 @@ authRoutes.post('/refresh', zValidator('json', RefreshTokenSchema), async (c) =>
 authRoutes.post('/logout', rbacAuthMiddleware, async (c) => {
   const user = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   await logoutUser(user.sessionId);
 
@@ -141,9 +138,8 @@ authRoutes.post('/logout', rbacAuthMiddleware, async (c) => {
   }
 
   // Log logout
-  await createAuditLog(AUDIT_ACTIONS.LOGOUT, user.sub, {
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.LOGOUT, user.sub, {
     ipAddress,
-    userAgent,
     status: 'success',
   });
 
@@ -160,7 +156,6 @@ authRoutes.post('/logout', rbacAuthMiddleware, async (c) => {
 authRoutes.post('/logout-all', rbacAuthMiddleware, async (c) => {
   const user = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   await logoutAllSessions(user.sub);
 
@@ -177,10 +172,9 @@ authRoutes.post('/logout-all', rbacAuthMiddleware, async (c) => {
   }
 
   // Log logout all
-  await createAuditLog(AUDIT_ACTIONS.LOGOUT, user.sub, {
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.LOGOUT, user.sub, {
     details: { allSessions: true },
     ipAddress,
-    userAgent,
     status: 'success',
   });
 
@@ -259,7 +253,6 @@ authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', Chang
   const user = getRbacUser(c);
   const { currentPassword, newPassword } = c.req.valid('json');
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   // Validate new password strength
   const strength = validatePasswordStrength(newPassword);
@@ -273,9 +266,8 @@ authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', Chang
   const verification = await authenticateUser(user.email, currentPassword);
 
   if (!verification) {
-    await createAuditLog(AUDIT_ACTIONS.PASSWORD_CHANGE, user.sub, {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.PASSWORD_CHANGE, user.sub, {
       ipAddress,
-      userAgent,
       status: 'failure',
       errorMessage: 'Invalid current password',
     });
@@ -287,9 +279,8 @@ authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', Chang
   await updateUserPassword(user.sub, newPassword);
 
   // Log password change
-  await createAuditLog(AUDIT_ACTIONS.PASSWORD_CHANGE, user.sub, {
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.PASSWORD_CHANGE, user.sub, {
     ipAddress,
-    userAgent,
     status: 'success',
   });
 

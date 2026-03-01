@@ -15,7 +15,7 @@ import {
   listRoles,
   listPermissions,
   getPermissionsByCategory,
-  createAuditLog,
+  createAuditLogWithContext,
 } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import {
@@ -93,13 +93,12 @@ roleRoutes.post('/', requirePermission(PERMISSIONS.ROLES_CREATE), zValidator('js
   const input = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   try {
     const role = await createRole(input);
 
     // Log role creation
-    await createAuditLog(AUDIT_ACTIONS.ROLE_CREATE, currentUser.sub, {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.ROLE_CREATE, currentUser.sub, {
       resourceType: 'role',
       resourceId: role.id,
       details: { 
@@ -108,7 +107,6 @@ roleRoutes.post('/', requirePermission(PERMISSIONS.ROLES_CREATE), zValidator('js
         permissions: role.permissions,
       },
       ipAddress,
-      userAgent,
     });
 
     return c.json({
@@ -132,7 +130,6 @@ roleRoutes.patch('/:id', requirePermission(PERMISSIONS.ROLES_UPDATE), zValidator
   const input = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   // Check if role exists
   const existingRole = await getRoleById(id);
@@ -150,12 +147,11 @@ roleRoutes.patch('/:id', requirePermission(PERMISSIONS.ROLES_UPDATE), zValidator
     const role = await updateRole(id, input, isSuperAdmin(c));
 
     // Log role update
-    await createAuditLog(AUDIT_ACTIONS.ROLE_UPDATE, currentUser.sub, {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.ROLE_UPDATE, currentUser.sub, {
       resourceType: 'role',
       resourceId: id,
       details: { changes: input },
       ipAddress,
-      userAgent,
     });
 
     return c.json({
@@ -178,7 +174,6 @@ roleRoutes.delete('/:id', requirePermission(PERMISSIONS.ROLES_DELETE), async (c)
   const id = c.req.param('id');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   // Check if role exists
   const existingRole = await getRoleById(id);
@@ -200,12 +195,11 @@ roleRoutes.delete('/:id', requirePermission(PERMISSIONS.ROLES_DELETE), async (c)
     await deleteRole(id);
 
     // Log role deletion
-    await createAuditLog(AUDIT_ACTIONS.ROLE_DELETE, currentUser.sub, {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.ROLE_DELETE, currentUser.sub, {
       resourceType: 'role',
       resourceId: id,
       details: { name: existingRole.name },
       ipAddress,
-      userAgent,
     });
 
     return c.json({

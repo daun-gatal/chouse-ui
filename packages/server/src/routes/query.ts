@@ -6,7 +6,7 @@ import { optionalRbacMiddleware, validateQueryAccess } from "../middleware/dataA
 import { getSession } from "../services/clickhouse";
 import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
 import { ClickHouseService } from "../services/clickhouse";
-import { createAuditLog } from "../rbac/services/rbac";
+import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { userHasPermission } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
@@ -380,7 +380,7 @@ async function executeQueryWithValidation(
     try {
       const logQueryId = queryId || `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-      await createAuditLog(
+      await createAuditLogWithContext(c, 
         AUDIT_ACTIONS.CH_QUERY_EXECUTE,
         rbacUserId,
         {
@@ -395,7 +395,6 @@ async function executeQueryWithValidation(
             timestamp: Date.now(),
           },
           ipAddress: getClientIp(c),
-          userAgent: c.req.header('User-Agent'),
           status: 'success',
         }
       );
@@ -1220,7 +1219,7 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
     // Create audit log
     if (rbacUserId) {
       try {
-        await createAuditLog(
+        await createAuditLogWithContext(c, 
           AUDIT_ACTIONS.CH_QUERY_EXECUTE,
           rbacUserId,
           {
@@ -1256,7 +1255,7 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
     // Create audit log for failure
     if (rbacUserId) {
       try {
-        await createAuditLog(
+        await createAuditLogWithContext(c, 
           AUDIT_ACTIONS.CH_QUERY_EXECUTE,
           rbacUserId,
           {

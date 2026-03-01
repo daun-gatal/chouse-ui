@@ -224,12 +224,20 @@ export interface RbacAuditLog {
   resourceId: string | null;
   details: Record<string, unknown> | null;
   ipAddress: string | null;
+  userAgent: string | null;
   status: 'success' | 'failed' | 'failure';
   errorMessage: string | null;
   createdAt: string;
   usernameSnapshot?: string | null;
   emailSnapshot?: string | null;
   displayNameSnapshot?: string | null;
+  browser?: string | null;
+  browserVersion?: string | null;
+  os?: string | null;
+  osVersion?: string | null;
+  deviceType?: string | null;
+  language?: string | null;
+  country?: string | null;
 }
 
 export interface CreateUserInput {

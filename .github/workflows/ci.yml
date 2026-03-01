@@ -209,8 +209,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      security-events: write
-      actions: read
     
     steps:
       - name: Checkout
@@ -218,28 +216,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Check if SARIF file exists
-        id: check_sarif
-        continue-on-error: true
+      - name: Install Grype
         run: |
-          if [ -f trivy-results.sarif ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && steps.check_sarif.outputs.exists == 'true'
-        continue-on-error: true
-        with:
-          sarif_file: 'trivy-results.sarif'
+      - name: Run Grype vulnerability scanner
+        run: grype dir:. --fail-on high

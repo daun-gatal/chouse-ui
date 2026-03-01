@@ -14,7 +14,7 @@ import {
   deleteUser,
   listUsers,
   updateUserPassword,
-  createAuditLog,
+  createAuditLogWithContext,
 } from '../services/rbac';
 import { validatePasswordStrength, generateSecurePassword } from '../services/password';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
@@ -141,7 +141,6 @@ userRoutes.post('/', requirePermission(PERMISSIONS.USERS_CREATE), zValidator('js
   const input = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   // Handle password
   let password = input.password;
@@ -170,7 +169,7 @@ userRoutes.post('/', requirePermission(PERMISSIONS.USERS_CREATE), zValidator('js
     }, currentUser.sub);
 
     // Log user creation
-    await createAuditLog(AUDIT_ACTIONS.USER_CREATE, currentUser.sub, {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.USER_CREATE, currentUser.sub, {
       resourceType: 'user',
       resourceId: user.id,
       details: {
@@ -179,7 +178,6 @@ userRoutes.post('/', requirePermission(PERMISSIONS.USERS_CREATE), zValidator('js
         roles: user.roles,
       },
       ipAddress,
-      userAgent,
     });
 
     return c.json({
@@ -206,7 +204,6 @@ userRoutes.patch('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator
   const input = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   // Check if user exists
   const existingUser = await getUserById(id);
@@ -228,12 +225,11 @@ userRoutes.patch('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator
     const user = await updateUser(id, input);
 
     // Log user update
-    await createAuditLog(AUDIT_ACTIONS.USER_UPDATE, currentUser.sub, {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.USER_UPDATE, currentUser.sub, {
       resourceType: 'user',
       resourceId: id,
       details: { changes: input },
       ipAddress,
-      userAgent,
     });
 
     return c.json({
@@ -256,7 +252,6 @@ userRoutes.delete('/:id', requirePermission(PERMISSIONS.USERS_DELETE), async (c)
   const id = c.req.param('id');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   // Check if user exists
   const existingUser = await getUserById(id);
@@ -278,12 +273,11 @@ userRoutes.delete('/:id', requirePermission(PERMISSIONS.USERS_DELETE), async (c)
     await deleteUser(id);
 
     // Log user deletion
-    await createAuditLog(AUDIT_ACTIONS.USER_DELETE, currentUser.sub, {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.USER_DELETE, currentUser.sub, {
       resourceType: 'user',
       resourceId: id,
       details: { email: existingUser.email, username: existingUser.username },
       ipAddress,
-      userAgent,
     });
 
     return c.json({
@@ -307,7 +301,6 @@ userRoutes.post('/:id/reset-password', requirePermission(PERMISSIONS.USERS_UPDAT
   const input = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   // Check if user exists
   const existingUser = await getUserById(id);
@@ -340,12 +333,11 @@ userRoutes.post('/:id/reset-password', requirePermission(PERMISSIONS.USERS_UPDAT
   await updateUserPassword(id, newPassword);
 
   // Log password reset
-  await createAuditLog(AUDIT_ACTIONS.PASSWORD_CHANGE, currentUser.sub, {
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.PASSWORD_CHANGE, currentUser.sub, {
     resourceType: 'user',
     resourceId: id,
     details: { adminReset: true },
     ipAddress,
-    userAgent,
   });
 
   return c.json({
@@ -368,7 +360,6 @@ userRoutes.post('/:id/assign-roles', requirePermission(PERMISSIONS.ROLES_ASSIGN)
   const { roleIds } = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
-  const userAgent = c.req.header('User-Agent');
 
   // Check if user exists
   const existingUser = await getUserById(id);
@@ -384,12 +375,11 @@ userRoutes.post('/:id/assign-roles', requirePermission(PERMISSIONS.ROLES_ASSIGN)
   const user = await updateUser(id, { roleIds });
 
   // Log role assignment
-  await createAuditLog(AUDIT_ACTIONS.USER_ROLE_ASSIGN, currentUser.sub, {
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.USER_ROLE_ASSIGN, currentUser.sub, {
     resourceType: 'user',
     resourceId: id,
     details: { roleIds },
     ipAddress,
-    userAgent,
   });
 
   return c.json({

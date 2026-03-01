@@ -24,7 +24,7 @@ import {
   type AccessType,
 } from '../services/dataAccess';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
-import { createAuditLog } from '../services/rbac';
+import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS } from '../schema/base';
 
 const dataAccessRoutes = new Hono();
@@ -214,7 +214,7 @@ dataAccessRoutes.post(
       const rule = await createDataAccessRule(input, user.sub);
 
       // Audit log
-      await createAuditLog(AUDIT_ACTIONS.ROLE_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_ACCESS_CREATE, user.sub, {
         resourceType: 'data_access_rule',
         resourceId: rule.id,
         details: {
@@ -225,7 +225,6 @@ dataAccessRoutes.post(
           accessType: input.accessType,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -270,7 +269,7 @@ dataAccessRoutes.patch(
       }
 
       // Audit log
-      await createAuditLog(AUDIT_ACTIONS.ROLE_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_ACCESS_UPDATE, user.sub, {
         resourceType: 'data_access_rule',
         resourceId: rule.id,
         details: {
@@ -278,7 +277,6 @@ dataAccessRoutes.patch(
           changes: Object.keys(input),
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -322,7 +320,7 @@ dataAccessRoutes.delete(
       await deleteDataAccessRule(id);
 
       // Audit log
-      await createAuditLog(AUDIT_ACTIONS.ROLE_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_ACCESS_DELETE, user.sub, {
         resourceType: 'data_access_rule',
         resourceId: id,
         details: {
@@ -332,7 +330,6 @@ dataAccessRoutes.delete(
           tablePattern: existing.tablePattern,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -380,7 +377,7 @@ dataAccessRoutes.post(
       }
 
       // Audit log
-      await createAuditLog(AUDIT_ACTIONS.ROLE_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_ACCESS_BULK_SET, user.sub, {
         resourceType: 'data_access_rule',
         resourceId,
         details: {
@@ -390,7 +387,6 @@ dataAccessRoutes.post(
           ruleCount: rules.length,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
 
       return c.json({
@@ -484,7 +480,7 @@ dataAccessRoutes.post(
     try {
       const user = getRbacUser(c);
       const isAdmin = user.roles.includes('super_admin') || user.roles.includes('admin');
-      
+
       // Admins get all databases
       if (isAdmin) {
         const { databases } = c.req.valid('json');
@@ -527,7 +523,7 @@ dataAccessRoutes.post(
     try {
       const user = getRbacUser(c);
       const isAdmin = user.roles.includes('super_admin') || user.roles.includes('admin');
-      
+
       // Admins get all tables
       if (isAdmin) {
         const { tables } = c.req.valid('json');
