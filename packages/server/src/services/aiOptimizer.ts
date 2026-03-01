@@ -1,8 +1,14 @@
-import { generateText, Output } from "ai";
+/**
+ * AI Optimizer & Debugger Service
+ *
+ * Uses ToolLoopAgent to autonomously gather schema context (DDL, EXPLAIN, etc.)
+ * before producing a structured optimization or debug result.
+ * This mirrors the AI Chat agent pattern for consistency.
+ */
+
+import { ToolLoopAgent, stepCountIs, type ModelMessage } from "ai";
 import { z } from "zod";
-import { formatDialect, clickhouse } from "sql-formatter";
 import { promises as fs } from "node:fs";
-import type { TableDetails } from "../types";
 import { AppError } from "../types";
 import {
     type AIProvider,
@@ -11,21 +17,14 @@ import {
     initializeAIModel,
     isAIEnabled,
 } from "./aiConfig";
+import { discoverSkills, createLoadSkillTool } from "./agentSkills";
+import { type AgentToolContext, createCoreTools } from "./agentTools";
 
 // ============================================
 // Types
 // ============================================
 
-export interface TableSchema {
-    database: string;
-    table: string;
-    engine: string;
-    columns: Array<{
-        name: string;
-        type: string;
-        comment?: string;
-    }>;
-}
+export type { AIProvider };
 
 export interface OptimizationResult {
     optimizedQuery: string;
@@ -48,18 +47,121 @@ export interface OptimizationCheckResult {
     reason: string;
 }
 
-// AIProvider and AIConfiguration types are now imported from aiConfig.ts
+// ============================================
+// Structured Output Schemas (for JSON extraction)
+// ============================================
+
+const OptimizationOutputSchema = z.object({
+    optimizedQuery: z
+        .string()
+        .describe("The full optimized SQL query with explanatory comments"),
+    explanation: z
+        .string()
+        .describe(
+            "A detailed markdown explanation of the changes made and why they improve performance."
+        ),
+    summary: z
+        .string()
+        .describe(
+            "A one-line summary of the main improvement (e.g., 'Replaced WHERE with PREWHERE')."
+        ),
+    tips: z
+        .array(z.string())
+        .describe(
+            "A list of general performance tips relevant to this specific query pattern."
+        ),
+});
+
+const DebugOutputSchema = z.object({
+    fixedQuery: z.string().describe("The fully corrected SQL query"),
+    errorAnalysis: z
+        .string()
+        .describe("Concise explanation of the error cause"),
+    explanation: z
+        .string()
+        .describe("Detailed markdown explanation of the fix"),
+    summary: z.string().describe("One-line summary of the fix"),
+});
 
 // ============================================
-// Configuration & Skills Loading
+// JSON Extraction Utility
 // ============================================
 
 /**
- * Load skill content from SKILL.md and strip frontmatter
+ * Extracts and parses the first valid JSON object from text.
+ * Handles cases where the agent wraps JSON in markdown code blocks or adds preamble text.
+ */
+function extractJson<T>(text: string, schema: z.ZodType<T>): T {
+    const cleaned = text.trim();
+
+    // Try the whole text first
+    try {
+        return schema.parse(JSON.parse(cleaned));
+    } catch {
+        // fall through
+    }
+
+    // Strip markdown code fences (```json ... ``` or ``` ... ```)
+    const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch?.[1]) {
+        try {
+            return schema.parse(JSON.parse(fenceMatch[1].trim()));
+        } catch {
+            // fall through
+        }
+    }
+
+    // Find the first { ... } span in the text
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start !== -1 && end > start) {
+        try {
+            return schema.parse(JSON.parse(cleaned.slice(start, end + 1)));
+        } catch {
+            // fall through
+        }
+    }
+
+    throw new AppError(
+        "AI agent returned an unstructured response. Please retry.",
+        "AI_PARSE_ERROR",
+        "validation",
+        500
+    );
+}
+
+// ============================================
+// SQL Sanitization
+// ============================================
+
+/**
+ * Remove any trailing FORMAT clause the AI may have appended.
+ * The application passes FORMAT to ClickHouse internally — having it in
+ * the query text causes a duplicate-format error at execution time.
+ *
+ * Matches: FORMAT JSON / FORMAT CSV / FORMAT TabSeparated / etc.
+ * placed at the very end of the query (after optional semicolon/whitespace).
+ */
+export function stripFormatClause(sql: string): string {
+    return sql
+        .replace(/\s*;\s*$/, "")                          // strip trailing semicolon first
+        .replace(/\s+FORMAT\s+\w+\s*$/i, "")              // strip trailing FORMAT clause
+        .trimEnd();
+}
+
+// ============================================
+// Skill Loading
+// ============================================
+
+/**
+ * Load raw skill content from SKILL.md and strip frontmatter.
  */
 async function loadSkillContent(skillName: string): Promise<string> {
     try {
-        const url = new URL(`../skills/ai-optimizer/${skillName}/SKILL.md`, import.meta.url);
+        const url = new URL(
+            `../skills/ai-optimizer/${skillName}/SKILL.md`,
+            import.meta.url
+        );
         const content = await fs.readFile(url.pathname, "utf-8");
         const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
         return match ? content.slice(match[0].length).trim() : content.trim();
@@ -69,62 +171,42 @@ async function loadSkillContent(skillName: string): Promise<string> {
     }
 }
 
-// Configuration functions (getConfiguration, validateConfiguration, initializeAIModel)
-// are now imported from aiConfig.ts
-
 // ============================================
 // Public API
 // ============================================
 
-/**
- * Check if AI optimizer is enabled
- */
+/** Check if AI optimizer feature is enabled */
 export async function isOptimizerEnabled(): Promise<boolean> {
     return await isAIEnabled();
 }
 
-/**
- * Get system prompt for optimization
- */
+/** Get the system prompt text for optimization (used by tests) */
 export async function getSystemPrompt(): Promise<string> {
-    return await loadSkillContent('optimizer');
+    return await loadSkillContent("optimizer");
 }
+
+// ============================================
+// Prompt Builders (kept as utilities / for tests)
+// ============================================
 
 export function buildOptimizationPrompt(
     query: string,
-    tableDetails: TableDetails[],
     additionalPrompt?: string
 ): string {
-    const schemasText = tableDetails
-        .map((details) => {
-            const prettyDdl = formatDialect(details.create_table_query, {
-                dialect: clickhouse,
-                tabWidth: 2,
-                keywordCase: "upper",
-                linesBetweenQueries: 2,
-            });
-            return `-- - TABLE: ${details.database}.${details.table} ---
-    ${prettyDdl.trim()} `;
-        })
-        .join("\n\n");
+    let prompt = `Optimize this ClickHouse SQL query:
 
-    let prompt = `
-Original Query:
-===============
 \`\`\`sql
 ${query.trim()}
 \`\`\`
 
-Table Definitions (DDL):
-========================
-${schemasText}`;
+Use your tools to:
+1. Load the \`query-optimizer\` skill for detailed instructions.
+2. Fetch the DDL for all tables referenced in the query using \`get_table_ddl\`.
+3. Run \`explain_query\` to understand the current execution plan.
+4. Produce the optimized query as a JSON response matching the exact schema specified in the optimizer skill.`;
 
-    if (additionalPrompt && additionalPrompt.trim()) {
-        prompt += `
-
-Additional Instructions:
-========================
-${additionalPrompt.trim()}`;
+    if (additionalPrompt?.trim()) {
+        prompt += `\n\nAdditional instructions from the user:\n${additionalPrompt.trim()}`;
     }
 
     return prompt;
@@ -133,275 +215,326 @@ ${additionalPrompt.trim()}`;
 export function buildDebugPrompt(
     query: string,
     error: string,
-    tableDetails: TableDetails[] = [],
     additionalPrompt?: string
 ): string {
-    const schemasText = tableDetails
-        .map((details) => {
-            const prettyDdl = formatDialect(details.create_table_query, {
-                dialect: clickhouse,
-                tabWidth: 2,
-                keywordCase: "upper",
-                linesBetweenQueries: 2,
-            });
-            return `-- - TABLE: ${details.database}.${details.table} ---
-    ${prettyDdl.trim()} `;
-        })
-        .join("\n\n");
+    let prompt = `Debug this failed ClickHouse SQL query:
 
-    let prompt = `
-Failed Query:
-=============
 \`\`\`sql
 ${query.trim()}
 \`\`\`
 
-Error Message:
-==============
+Error:
+\`\`\`
 ${error.trim()}
+\`\`\`
 
-Table Definitions (DDL):
-========================
-${schemasText || "No schema provided."}`;
+Use your tools to:
+1. Load the \`query-debugger\` skill for detailed instructions.
+2. Fetch the DDL for tables referenced in the query using \`get_table_ddl\`.
+3. Validate the corrected query with \`validate_sql\`.
+4. Produce the fixed query as a JSON response matching the exact schema specified in the debugger skill.`;
 
-    if (additionalPrompt && additionalPrompt.trim()) {
-        prompt += `
-
-Additional Instructions:
-========================
-${additionalPrompt.trim()}`;
+    if (additionalPrompt?.trim()) {
+        prompt += `\n\nAdditional instructions from the user:\n${additionalPrompt.trim()}`;
     }
 
     return prompt;
 }
 
+// ============================================
+// Error Handling
+// ============================================
+
+function handleAiError(error: unknown, context: string): never {
+    if (error instanceof AppError) throw error;
+
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`[${context}] AI operation failed:`, msg);
+
+    if (msg.includes("rate limit")) {
+        throw AppError.badRequest(
+            "AI service rate limit exceeded. Please try again later."
+        );
+    }
+    if (msg.includes("API key") || msg.includes("authentication")) {
+        throw AppError.internal(
+            "AI service authentication failed. Please contact your administrator."
+        );
+    }
+    if (msg.includes("ECONNREFUSED") || msg.includes("ETIMEDOUT")) {
+        throw AppError.internal(
+            "AI service endpoint is not accessible. Please contact your administrator."
+        );
+    }
+
+    throw AppError.internal(`AI provider error: ${msg}`);
+}
+
+// ============================================
+// Optimize Query
+// ============================================
+
 /**
- * Optimize a SQL query using AI
+ * Optimize a SQL query using a ToolLoopAgent.
+ *
+ * The agent autonomously fetches table DDL and EXPLAIN plans via tools,
+ * then returns a structured OptimizationResult JSON.
+ *
  * @param query - The SQL query to optimize
- * @param tableDetails - Array of table details for tables used in the query
- * @param additionalPrompt - Optional additional instructions for the AI
- * @returns Optimized query with explanation
+ * @param context - Agent tool context (ClickHouseService + RBAC)
+ * @param additionalPrompt - Optional user-provided instructions
+ * @param modelId - Optional model ID override
  */
 export async function optimizeQuery(
     query: string,
-    tableDetails: TableDetails[],
+    context: AgentToolContext,
     additionalPrompt?: string,
     modelId?: string
 ): Promise<OptimizationResult> {
     const config = await getConfiguration(modelId);
 
-    // Validate configuration
     const validation = validateConfiguration(config);
     if (!validation.valid) {
-        throw AppError.badRequest(validation.error || "AI optimizer is not available");
+        throw AppError.badRequest(
+            validation.error || "AI optimizer is not available"
+        );
     }
 
     try {
-        // Build the user prompt
-        const userPrompt = buildOptimizationPrompt(query, tableDetails, additionalPrompt);
-
-        // Initialize AI model based on provider
         const model = initializeAIModel(config!);
 
-        // Generate optimization using structured output via generateText
-        const systemPrompt = await loadSkillContent('optimizer');
+        // Discover optimizer skills (optimizer, evaluator, etc.)
+        const skills = await discoverSkills(["../skills/ai-optimizer"]);
 
-        const result = await generateText({
+        const agent = new ToolLoopAgent({
             model,
-            output: Output.object({
-                schema: z.object({
-                    optimizedQuery: z.string().describe("The full optimized SQL query with explanatory comments"),
-                    explanation: z.string().describe("A detailed markdown explanation of the changes made and why they improve performance."),
-                    summary: z.string().describe("A one-line summary of the main improvement (e.g., 'Replaced WHERE with PREWHERE')."),
-                    tips: z.array(z.string()).describe("A list of general performance tips relevant to this specific query pattern."),
-                }),
-            }),
-            system: systemPrompt,
-            prompt: userPrompt,
+            instructions: `You are an expert ClickHouse Query Optimizer agent.
+Your job is to analyze and optimize SQL queries using the available tools.
+
+WORKFLOW (follow this order strictly):
+1. Call \`load_skill\` with name "query-optimizer" to load your detailed instructions.
+2. Use \`get_table_ddl\` for every table referenced in the query.
+3. Use \`explain_query\` to understand the current execution plan.
+4. Produce ONLY a JSON object (no markdown, no extra text) matching this exact schema:
+   {
+     "optimizedQuery": "<full optimized SQL>",
+     "explanation": "<detailed markdown explanation>",
+     "summary": "<one-line summary of improvement>",
+     "tips": ["<tip1>", "<tip2>"]
+   }`,
+            tools: {
+                load_skill: createLoadSkillTool(skills),
+                ...createCoreTools(context),
+            },
+            stopWhen: stepCountIs(10),
             temperature: 0.0,
         });
 
-        // result.output is the structured object
-        let optimizedQuery = result.output.optimizedQuery.trim();
+        const messages: ModelMessage[] = [
+            {
+                role: "user",
+                content: buildOptimizationPrompt(query, additionalPrompt),
+            },
+        ];
 
-        // Strip markdown code blocks if present
+        const streamResult = await agent.stream({ messages });
+        const rawText = await streamResult.text;
+
+        const parsed = extractJson(rawText, OptimizationOutputSchema);
+
+        // Strip markdown code fences and any trailing FORMAT clause
+        let optimizedQuery = parsed.optimizedQuery.trim();
         if (optimizedQuery.startsWith("```")) {
-            optimizedQuery = optimizedQuery.replace(/^```(?:sql)?\s*/i, "").replace(/\s*```$/, "");
+            optimizedQuery = optimizedQuery
+                .replace(/^```(?:sql)?\s*/i, "")
+                .replace(/\s*```$/, "");
         }
+        optimizedQuery = stripFormatClause(optimizedQuery);
 
         return {
             originalQuery: query,
-            optimizedQuery: optimizedQuery,
-            explanation: result.output.explanation,
-            summary: result.output.summary,
-            tips: result.output.tips,
+            optimizedQuery,
+            explanation: parsed.explanation,
+            summary: parsed.summary,
+            tips: parsed.tips,
         };
     } catch (error) {
-        // Handle specific error types
-        if (error instanceof AppError) {
-            throw error;
-        }
-
-        // Log error for debugging (server-side only)
-        console.error("[AIOptimizer] Optimization failed:", error instanceof Error ? error.message : String(error));
-
-        // Check for rate limiting
-        if (error instanceof Error && error.message.includes("rate limit")) {
-            throw AppError.badRequest("AI service rate limit exceeded. Please try again later.");
-        }
-
-        // Check for invalid API key
-        if (error instanceof Error && (error.message.includes("API key") || error.message.includes("authentication"))) {
-            throw AppError.internal("AI service authentication failed. Please contact your administrator.");
-        }
-
-        // Check for network errors
-        if (error instanceof Error && (error.message.includes("ECONNREFUSED") || error.message.includes("ETIMEDOUT"))) {
-            throw AppError.internal("AI service endpoint is not accessible. Please contact your administrator.");
-        }
-
-        // Generic error
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        throw AppError.internal(`AI provider error: ${errorMessage} `);
+        handleAiError(error, "AIOptimizer");
     }
 }
 
+// ============================================
+// Debug Query
+// ============================================
 
 /**
- * Debug a failed SQL query using AI
+ * Debug a failed SQL query using a ToolLoopAgent.
+ *
+ * The agent fetches table schema / DDL via tools to understand context,
+ * then returns a structured DebugResult JSON.
+ *
  * @param query - The failed SQL query
- * @param error - The error message
- * @param tableDetails - Array of table details for tables used in the query
- * @param additionalPrompt - Optional additional instructions for the AI
- * @returns Debug result with fixed query and explanation
+ * @param error - The ClickHouse error message
+ * @param context - Agent tool context (ClickHouseService + RBAC)
+ * @param additionalPrompt - Optional user-provided instructions
+ * @param modelId - Optional model ID override
  */
 export async function debugQuery(
     query: string,
     error: string,
-    tableDetails: TableDetails[] = [],
+    context: AgentToolContext,
     additionalPrompt?: string,
     modelId?: string
 ): Promise<DebugResult> {
     const config = await getConfiguration(modelId);
 
-    // Validate configuration
     const validation = validateConfiguration(config);
     if (!validation.valid) {
-        throw AppError.badRequest(validation.error || "AI service is not available");
+        throw AppError.badRequest(
+            validation.error || "AI service is not available"
+        );
     }
 
     try {
-        // Build the user prompt
-        const userPrompt = buildDebugPrompt(query, error, tableDetails, additionalPrompt);
-
-        // Initialize AI model based on provider
         const model = initializeAIModel(config!);
 
-        // Generate debugging fix using structured output via generateText
-        const systemPrompt = await loadSkillContent('debugger');
+        // Discover skills from the shared ai-optimizer directory (includes debugger skill)
+        const skills = await discoverSkills(["../skills/ai-optimizer"]);
 
-        const result = await generateText({
+        const agent = new ToolLoopAgent({
             model,
-            output: Output.object({
-                schema: z.object({
-                    fixedQuery: z.string().describe("The fully corrected SQL query"),
-                    errorAnalysis: z.string().describe("Concise explanation of the error cause"),
-                    explanation: z.string().describe("Detailed markdown explanation of the fix"),
-                    summary: z.string().describe("One-line summary of the fix"),
-                }),
-            }),
-            system: systemPrompt,
-            prompt: userPrompt,
+            instructions: `You are an expert ClickHouse Query Debugger agent.
+Your job is to diagnose and fix failed SQL queries using the available tools.
+
+WORKFLOW (follow this order strictly):
+1. Call \`load_skill\` with name "query-debugger" to load your detailed instructions.
+2. Use \`get_table_ddl\` or \`get_table_schema\` for tables referenced in the query.
+3. Use \`validate_sql\` to verify the corrected query is syntactically valid.
+4. Produce ONLY a JSON object (no markdown, no extra text) matching this exact schema:
+   {
+     "fixedQuery": "<fully corrected SQL>",
+     "errorAnalysis": "<concise cause of error>",
+     "explanation": "<detailed markdown explanation of the fix>",
+     "summary": "<one-line summary of the fix>"
+   }`,
+            tools: {
+                load_skill: createLoadSkillTool(skills),
+                ...createCoreTools(context),
+            },
+            stopWhen: stepCountIs(10),
             temperature: 0.0,
         });
 
-        // result.output is the structured object
-        let fixedQuery = result.output.fixedQuery.trim();
+        const messages: ModelMessage[] = [
+            {
+                role: "user",
+                content: buildDebugPrompt(query, error, additionalPrompt),
+            },
+        ];
 
-        // Strip markdown code blocks if present
+        const streamResult = await agent.stream({ messages });
+        const rawText = await streamResult.text;
+
+        const parsed = extractJson(rawText, DebugOutputSchema);
+
+        let fixedQuery = parsed.fixedQuery.trim();
         if (fixedQuery.startsWith("```")) {
-            fixedQuery = fixedQuery.replace(/^```(?:sql)?\s*/i, "").replace(/\s*```$/, "");
+            fixedQuery = fixedQuery
+                .replace(/^```(?:sql)?\s*/i, "")
+                .replace(/\s*```$/, "");
         }
+        fixedQuery = stripFormatClause(fixedQuery);
 
         return {
             originalQuery: query,
-            fixedQuery: fixedQuery,
-            errorAnalysis: result.output.errorAnalysis,
-            explanation: result.output.explanation,
-            summary: result.output.summary,
+            fixedQuery,
+            errorAnalysis: parsed.errorAnalysis,
+            explanation: parsed.explanation,
+            summary: parsed.summary,
         };
     } catch (error) {
-        // Handle specific error types
-        if (error instanceof AppError) {
-            throw error;
-        }
-
-        // Log error for debugging (server-side only)
-        console.error("[AIDebugger] Debugging failed:", error instanceof Error ? error.message : String(error));
-
-        // Check for rate limiting
-        if (error instanceof Error && error.message.includes("rate limit")) {
-            throw AppError.badRequest("AI service rate limit exceeded. Please try again later.");
-        }
-
-        // Check for invalid API key
-        if (error instanceof Error && (error.message.includes("API key") || error.message.includes("authentication"))) {
-            throw AppError.internal("AI service authentication failed. Please contact your administrator.");
-        }
-
-        // Check for network errors
-        if (error instanceof Error && (error.message.includes("ECONNREFUSED") || error.message.includes("ETIMEDOUT"))) {
-            throw AppError.internal("AI service endpoint is not accessible. Please contact your administrator.");
-        }
-
-        // Generic error
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        throw AppError.internal(`AI provider error: ${errorMessage}`);
+        handleAiError(error, "AIDebugger");
     }
 }
 
+// ============================================
+// Check Query Optimization (ToolLoopAgent, capped at 4 steps for speed)
+// ============================================
+
+const EvaluatorOutputSchema = z.object({
+    canOptimize: z
+        .boolean()
+        .describe("Whether significant optimization is possible"),
+    reason: z.string().describe("Brief reason for the decision"),
+});
+
 /**
- * Check if a query can be optimized (Lightweight check)
- * @param query - The SQL query to check
- * @param tableDetails - Array of table details
+ * Lightweight pre-check to determine if a query is worth optimizing.
+ * Uses a ToolLoopAgent capped at 4 steps so it can call `analyze_query`
+ * and `get_table_ddl` when needed — consistent with the optimizer/debugger pattern.
+ *
+ * @param query - The SQL query to evaluate
+ * @param modelId - Optional model ID override
+ * @param context - Optional agent context; when provided the agent can call schema tools
  */
 export async function checkQueryOptimization(
     query: string,
-    tableDetails: TableDetails[],
-    modelId?: string
+    modelId?: string,
+    context?: AgentToolContext
 ): Promise<OptimizationCheckResult> {
     const config = await getConfiguration(modelId);
 
     const validation = validateConfiguration(config);
     if (!validation.valid) {
-        // silently fail or return false if not configured, but strictly we might throw
-        // For check, let's just return false to avoid noise
-        return { canOptimize: false, reason: validation.error || "AI not configured" };
+        return {
+            canOptimize: false,
+            reason: validation.error || "AI not configured",
+        };
     }
 
     try {
-        const userPrompt = buildOptimizationPrompt(query, tableDetails); // We can reuse the builder
         const model = initializeAIModel(config!);
+        const skills = await discoverSkills(["../skills/ai-optimizer"]);
 
-        const systemPrompt = await loadSkillContent('evaluator');
+        // Always include load_skill; add schema tools when context is available
+        const coreTools = context
+            ? (({ analyze_query, get_table_ddl, get_table_schema }) => ({
+                  analyze_query,
+                  get_table_ddl,
+                  get_table_schema,
+              }))(createCoreTools(context))
+            : {};
 
-        const result = await generateText({
+        const agent = new ToolLoopAgent({
             model,
-            output: Output.object({
-                schema: z.object({
-                    canOptimize: z.boolean().describe("Whether significant optimization is possible"),
-                    reason: z.string().describe("Brief reason for the decision"),
-                }),
-            }),
-            system: systemPrompt,
-            prompt: userPrompt,
+            instructions: `You are a ClickHouse query evaluator performing a rapid pre-screening check.
+Load the "query-evaluator" skill for detailed instructions, then evaluate the query.
+Produce ONLY a JSON object (no markdown, no extra text):
+{ "canOptimize": true|false, "reason": "<one sentence>" }`,
+            tools: {
+                load_skill: createLoadSkillTool(skills),
+                ...coreTools,
+            },
+            stopWhen: stepCountIs(4),
             temperature: 0.0,
         });
 
-        return result.output;
+        const messages: ModelMessage[] = [
+            {
+                role: "user",
+                content: `Evaluate this query:\n\`\`\`sql\n${query.trim()}\n\`\`\``,
+            },
+        ];
+
+        const streamResult = await agent.stream({ messages });
+        const rawText = await streamResult.text;
+
+        return extractJson(rawText, EvaluatorOutputSchema);
     } catch (error) {
-        // Return false on error for background check to be non-intrusive
-        console.error("[IOCheck] Optimization check failed:", error);
+        console.error(
+            "[IOCheck] Optimization check failed:",
+            error instanceof Error ? error.message : String(error)
+        );
         return { canOptimize: false, reason: "Analysis failed" };
     }
 }

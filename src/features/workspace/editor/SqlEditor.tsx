@@ -7,7 +7,7 @@ import {
   createMonacoEditor,
 } from "@/features/workspace/editor/monacoConfig";
 import { Button } from "@/components/ui/button";
-import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database, Network, Sparkles, Wand2 } from "lucide-react";
+import { CirclePlay, Save, Copy, AlertTriangle, PenLine, Cloud, CloudOff, Loader2, Check, CircleStop, FileCode, ChevronDown, Database, Network, Sparkles, Wand2, Keyboard, Search, Code2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
@@ -45,11 +45,24 @@ import {
 import { useSavedQueries, useKillQuery } from "@/hooks";
 import { cn } from "@/lib/utils";
 
+export interface SqlEditorHandle {
+  format: () => void;
+  commentLine: () => void;
+  find: () => void;
+  save: () => void;
+  saveAs: () => void;
+  /** Opens the kill-query confirmation dialog (same as clicking Stop). */
+  stop: () => void;
+  /** Returns the current selection if any, otherwise the full editor content. */
+  getQuery: () => string;
+}
+
 interface SQLEditorProps {
   tabId: string;
   onRunQuery: (query: string) => void;
   onExplain?: (query: string) => void;
   onOptimize?: (query: string) => void;
+  onOpenShortcuts?: () => void;
 }
 
 type SaveMode = "save" | "save-as";
@@ -57,7 +70,38 @@ type SaveStatus = "idle" | "saving" | "saved" | "unsaved";
 
 const AUTO_SAVE_DELAY = 2000; // 2 seconds after user stops typing
 
-const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onOptimize }) => {
+// Detect Mac once at module level (navigator.platform is deprecated but still
+// the most reliable synchronous check; userAgentData is not yet universal)
+const isMac =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPod|iPad/.test(navigator.platform || navigator.userAgent);
+
+/** Returns a readable shortcut string for the current platform.
+ *  mod  = Ctrl on Windows/Linux, ⌘ on Mac
+ *  shift = Shift / ⇧
+ *  alt  = Alt / ⌥
+ */
+function kbd(key: string, { mod = false, shift = false, alt = false } = {}) {
+  if (isMac) {
+    const parts: string[] = [];
+    if (mod)   parts.push("⌘");
+    if (shift) parts.push("⇧");
+    if (alt)   parts.push("⌥");
+    parts.push(key);
+    return parts.join("");
+  }
+  const parts: string[] = [];
+  if (mod)   parts.push("Ctrl");
+  if (shift) parts.push("Shift");
+  if (alt)   parts.push("Alt");
+  parts.push(key);
+  return parts.join("+");
+}
+
+const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQLEditor(
+  { tabId, onRunQuery, onExplain, onOptimize, onOpenShortcuts },
+  ref
+) {
   const { getTabById, updateTab, saveQuery, updateSavedQuery } = useWorkspaceStore();
   const { activeConnectionId } = useAuthStore();
   const { hasPermission, hasAnyPermission } = useRbacStore();
@@ -94,6 +138,11 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
   const lastSavedContentRef = useRef<string>("");
   const savedStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Stable refs for save handlers so useImperativeHandle can reference them
+  // before the actual useCallback definitions appear later in this component.
+  const saveHandlerRef = useRef<() => void>(() => {});
+  const saveAsHandlerRef = useRef<() => void>(() => {});
+
   // Get saved queries to check for duplicates
   const { data: savedQueries = [] } = useSavedQueries(activeConnectionId ?? undefined);
 
@@ -110,7 +159,7 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
     onRunQueryRef.current = onRunQuery;
   }, [onRunQuery]);
 
-  const editorTheme = theme === "light" ? "vs-light" : "chouse-dark";
+  const editorTheme = theme === "light" ? "chouse-light" : "chouse-dark";
 
   // Check if name already exists (excluding current query if updating)
   const isDuplicateName = useMemo(() => {
@@ -217,6 +266,28 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
       toast.success("Query formatted");
     }
   }, []);
+
+  const handleCommentLine = useCallback(() => {
+    monacoRef.current?.getAction("editor.action.commentLine")?.run();
+    monacoRef.current?.focus();
+  }, []);
+
+  const handleFind = useCallback(() => {
+    monacoRef.current?.getAction("actions.find")?.run();
+  }, []);
+
+  // Expose editor actions to parent via ref.
+  // save/saveAs delegate through stable refs so the order of hook calls
+  // doesn't matter (handleSaveShortcut is defined further down).
+  React.useImperativeHandle(ref, () => ({
+    format: handleFormatQuery,
+    commentLine: handleCommentLine,
+    find: handleFind,
+    save: () => saveHandlerRef.current(),
+    saveAs: () => saveAsHandlerRef.current(),
+    stop: () => setIsKillDialogOpen(true),
+    getQuery: getCurrentQuery,
+  }), [handleFormatQuery, handleCommentLine, handleFind, getCurrentQuery]);
 
   const isSavingRef = useRef(false);
 
@@ -354,6 +425,59 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
           monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS,
           () => handleSaveAs()
         );
+
+        // F5 – run query (common in DB tools like DBeaver, TablePlus)
+        editor.addCommand(
+          monaco.KeyCode.F5,
+          () => {
+            const content = getCurrentQueryRef.current();
+            if (content.trim()) {
+              onRunQueryRef.current(content);
+            } else {
+              toast.error("Please enter a query to run");
+            }
+          }
+        );
+
+        // Cmd/Ctrl+Shift+F – format query (matches VS Code Option+Shift+F convention)
+        editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
+          () => {
+            monacoRef.current?.getAction("editor.action.formatDocument")?.run();
+            toast.success("Query formatted");
+          }
+        );
+
+        // Cmd/Ctrl+Shift+E – explain query plan
+        editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE,
+          () => {
+            const currentTab = latestTabRef.current;
+            if (currentTab && onExplain) {
+              const content = getCurrentQueryRef.current();
+              if (content.trim()) {
+                onExplain(content);
+              } else {
+                toast.error("Please enter a query to explain");
+              }
+            }
+          }
+        );
+
+        // Cmd/Ctrl+Shift+I – AI optimize (I for Improve / Intelligence)
+        editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI,
+          () => {
+            if (onOptimize) {
+              const content = getCurrentQueryRef.current();
+              if (content.trim()) {
+                onOptimize(content);
+              } else {
+                toast.error("Please enter a query to optimize");
+              }
+            }
+          }
+        );
       }
     };
 
@@ -439,10 +563,14 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
     setIsSaveDialogOpen(true);
   };
 
+  // Keep stable refs up-to-date so useImperativeHandle delegates work correctly
+  saveHandlerRef.current = handleSaveShortcut;
+
   // Handle "Save As" action
   const handleSaveAs = () => {
     openSaveDialog("save-as");
   };
+  saveAsHandlerRef.current = handleSaveAs;
 
   // Handle the actual save from dialog
   const handleSaveQuery = async () => {
@@ -550,177 +678,15 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
           {renderSaveStatus()}
         </div>
 
-        <div className="flex items-center gap-2">
-          <TooltipProvider>
-            <div className="flex items-center gap-1 bg-white/5 border border-white/10 p-1 rounded-xl shadow-2xl backdrop-blur-md">
-              {tab?.isLoading ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsKillDialogOpen(true)}
-                      disabled={!canKillQuery || killQueryMutation.isPending}
-                      className={cn(
-                        "h-8 w-8 p-0 text-muted-foreground transition-all duration-200",
-                        canKillQuery
-                          ? "hover:bg-red-600 hover:text-white"
-                          : "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <CircleStop className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {canKillQuery
-                      ? "Terminate current query execution"
-                      : "Query is running (Termination restricted)"}
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleRunQuery}
-                      className="h-8 w-8 p-0 text-muted-foreground hover:bg-blue-600 hover:text-white transition-all duration-200 ring-offset-black"
-                    >
-                      <CirclePlay className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" align="center">
-                    <p>Run query (Ctrl+Enter)</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-
-              {onExplain && (
-                <>
-                  <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleExplain}
-                        className="h-8 w-8 p-0 text-muted-foreground hover:bg-purple-600 hover:text-white transition-all duration-200"
-                      >
-                        <Network className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" align="center">
-                      <p>Explain Query Plan</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </>
-              )}
-
-              {/* AI Optimizer Button - Only show if user has permission */}
-              {canOptimizeQuery && (
-                <>
-                  <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleOptimizeQuery}
-                        className="h-8 w-8 p-0 text-muted-foreground hover:bg-gradient-to-r hover:from-purple-600 hover:to-pink-600 hover:text-white transition-all duration-200"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" align="center">
-                      <p>Optimize Query with AI</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </>
-              )}
-
-              <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleFormatQuery}
-                    className="h-8 w-8 p-0 text-muted-foreground hover:bg-white/10 hover:text-white transition-all duration-200"
-                  >
-                    <Wand2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="center">
-                  <p>Format Query</p>
-                </TooltipContent>
-              </Tooltip>
-
-              <Separator orientation="vertical" className="h-4 mx-1 opacity-50" />
-
-              {/* Save Dropdown - Only show if user has permission to save queries */}
-              {canManageSavedQueries && (
-                <DropdownMenu>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 px-2 hover:bg-white/10"
-                          disabled={tab.type === "home" || tab.type === "information" || isSaving}
-                        >
-                          <Save className="h-4 w-4 text-muted-foreground mr-1" />
-                          <ChevronDown className="h-3 w-3 text-muted-foreground opacity-50" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" align="end">
-                      Save & Management Options
-                    </TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent align="end" className="w-48">
-                    {tab.isSaved ? (
-                      <>
-                        {canUpdateQuery && (
-                          <DropdownMenuItem onClick={() => performAutoSave()} className="gap-2">
-                            <Save className="h-3.5 w-3.5" />
-                            <span>Save Now</span>
-                            <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
-                          </DropdownMenuItem>
-                        )}
-                        {canUpdateQuery && (
-                          <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
-                            <PenLine className="h-3.5 w-3.5" />
-                            <span>Rename & Save</span>
-                          </DropdownMenuItem>
-                        )}
-                        {canSaveQuery && (canUpdateQuery && <DropdownMenuSeparator />)}
-                        {canSaveQuery && (
-                          <DropdownMenuItem onClick={handleSaveAs} className="gap-2">
-                            <Copy className="h-3.5 w-3.5" />
-                            <span>Save As...</span>
-                            <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘S</span>
-                          </DropdownMenuItem>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        {canSaveQuery && (
-                          <DropdownMenuItem onClick={() => openSaveDialog("save")} className="gap-2">
-                            <Save className="h-3.5 w-3.5" />
-                            <span>Save Query</span>
-                            <span className="ml-auto text-[10px] text-muted-foreground">⌘S</span>
-                          </DropdownMenuItem>
-                        )}
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          </TooltipProvider>
-        </div>
+        {onOpenShortcuts && (
+          <button
+            onClick={onOpenShortcuts}
+            className="p-2 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-white/10 transition-colors"
+            title="Keyboard shortcuts"
+          >
+            <Keyboard className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <div ref={editorRef} className="flex-1" />
 
@@ -794,6 +760,6 @@ const SQLEditor: React.FC<SQLEditorProps> = ({ tabId, onRunQuery, onExplain, onO
       </AlertDialog>
     </div>
   );
-};
+});
 
 export default SQLEditor;

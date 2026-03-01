@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.8] - 2026-03-01
+
+### Added
+
+- **Shared agent tools** (`agentTools.ts`): Common RBAC-aware ClickHouse tools (list DBs/tables, get schema/DDL, run SELECT, explain, validate_sql, export, slow queries, etc.) and `AgentToolContext`. Used by AI Chat, Optimizer, and Debugger.
+- **Agent-driven Optimizer & Debugger**: Both use `ToolLoopAgent`; they get `AgentToolContext` and call tools for DDL/EXPLAIN/analyze, then return structured JSON. Routes pass context and no longer pre-fetch table details.
+- **SQL “no FORMAT” rule**: Prompts tell the model not to append FORMAT; `stripFormatClause()` strips it from agent output.
+- **Keyboard Shortcuts dialog**: Run, Format, Comment, Find, Explain, Optimize, Save/Save as… with ⌘/Ctrl shortcuts; opened from editor toolbar.
+- **Results-panel action strip**: Run/Stop, Explain, AI Optimize at top of results (replaces toolbar buttons).
+- **SqlEditor ref** (`SqlEditorHandle`): `format`, `commentLine`, `find`, `save`, `saveAs`, `stop`, `getQuery` exposed to parent. Keybindings: F5 run, Cmd+Shift+F/E/I for format, explain, optimize.
+- **chouse-light theme** and **db.table** highlighting in Monaco.
+- **“Debug with AI”** button in query error panel when user has permission.
+
+### Changed
+
+- **AI Chat**: Uses shared `createCoreTools` + `createChartTool`; `ChatContext` = `AgentToolContext`; step limit 30; no FORMAT in prompt.
+- **AI Optimizer**: ToolLoopAgent + tools; APIs take `agentContext` instead of `tableDetails`. Structured JSON via Zod + `extractJson()`.
+- **SqlTab**: Strip above results; simpler resize handle. **SqlEditor**: Toolbar replaced by single shortcuts button.
+- **Tests**: `aiOptimizer.test.ts` updated for context-based API.
+
 ## [v2.12.7] - 2026-03-01
 
 ### Added

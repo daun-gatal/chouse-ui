@@ -12,6 +12,7 @@ import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { analyzeQuery } from "../services/queryAnalyzer";
 import { debugQuery, checkQueryOptimization } from "../services/aiOptimizer";
+import type { AgentToolContext } from "../services/agentTools";
 
 type Variables = {
   sessionId?: string;
@@ -525,6 +526,9 @@ query.post("/debug", zValidator("json", DebugRequestSchema), async (c) => {
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
+  const service = c.get("service");
+  const session = c.get("session");
+  const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
 
   // Check if AI Optimizer is enabled globally
   if (process.env.AI_OPTIMIZER_ENABLED !== 'true') {
@@ -539,9 +543,17 @@ query.post("/debug", zValidator("json", DebugRequestSchema), async (c) => {
     PERMISSIONS.AI_OPTIMIZE
   );
 
-  // Validate it's a SELECT or compatible query
-  // Debugging only makes sense for queries that are safe to run/analyze
-  const result = await debugQuery(sql, error, [], undefined, modelId);
+  // Build agent context so the debugger can autonomously fetch schema via tools
+  const agentContext: AgentToolContext = {
+    userId: rbacUserId ?? "",
+    isAdmin: isRbacAdmin ?? false,
+    permissions: rbacPermissions ?? [],
+    connectionId,
+    clickhouseService: service,
+    defaultDatabase: session?.connectionConfig?.database,
+  };
+
+  const result = await debugQuery(sql, error, agentContext, undefined, modelId);
 
   return c.json({
     success: true,
@@ -563,6 +575,9 @@ query.post("/check-optimization", zValidator("json", CheckOptimizationRequestSch
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
+  const service = c.get("service");
+  const session = c.get("session");
+  const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
 
   // Check if AI Optimizer is enabled globally
   if (process.env.AI_OPTIMIZER_ENABLED !== 'true') {
@@ -581,15 +596,17 @@ query.post("/check-optimization", zValidator("json", CheckOptimizationRequestSch
     PERMISSIONS.AI_OPTIMIZE
   );
 
-  // NOTE: In a real implementation, we might want to fetch table schemas here 
-  // similar to how full optimize works, but for speed we might skip it or keep it minimal.
-  // The service supports passing table details. For now, we pass empty array or 
-  // implementing schema fetching would be better.
-  // Given we are inside a route that has access to 'service', we *could* fetch schemas.
-  // But let's keep it fast for now as the prompt might discern just from SQL structure 
-  // (e.g. SELECT * without LIMIT).
+  // Build agent context so the evaluator can call analyze_query / get_table_ddl
+  const agentContext: AgentToolContext = {
+    userId: rbacUserId ?? "",
+    isAdmin: isRbacAdmin ?? false,
+    permissions: rbacPermissions ?? [],
+    connectionId,
+    clickhouseService: service,
+    defaultDatabase: session?.connectionConfig?.database,
+  };
 
-  const result = await checkQueryOptimization(sql, [], modelId);
+  const result = await checkQueryOptimization(sql, modelId, agentContext);
 
   return c.json({
     success: true,
@@ -1099,7 +1116,6 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
   const defaultDatabase = database || session?.connectionConfig?.database;
 
   try {
-    // Import AI optimizer service
     const { optimizeQuery, isOptimizerEnabled } = await import("../services/aiOptimizer");
 
     // Check if optimizer is enabled
@@ -1133,7 +1149,7 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
       }, 400 as any);
     }
 
-    // Validate table access
+    // Validate table access before handing off to the agent
     const accessCheck = await validateQueryAccess(
       rbacUserId,
       isRbacAdmin,
@@ -1153,68 +1169,18 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
       }, 403 as any);
     }
 
-    // Extract table names
-    // @ts-ignore
-    const { extractTablesFromQuery, extractTablesFromExplainEstimate } = await import("../middleware/dataAccess");
-    let usedTables: { database: string; table: string }[] = [];
+    // Build agent context — the optimizer agent fetches DDL/EXPLAIN via tools autonomously
+    const agentContext: AgentToolContext = {
+      userId: rbacUserId ?? "",
+      isAdmin: isRbacAdmin ?? false,
+      permissions: rbacPermissions ?? [],
+      connectionId,
+      clickhouseService: service,
+      defaultDatabase,
+    };
 
-    // Try to get used tables from EXPLAIN ESTIMATE first as it's more accurate for views and underlying tables
-    try {
-      const explainEstimate = await service.getExplainPlan(sql, 'estimate');
-      if (explainEstimate && explainEstimate.estimate) {
-        usedTables = extractTablesFromExplainEstimate(explainEstimate.estimate);
-      }
-    } catch (error) {
-      // If the error is a syntax error or missing identifier, abort optimization and report it to the user
-      // This prevents confusion where the user sees a 500 error later
-      const errorMessage = (error instanceof Error ? error.message : String(error)).toUpperCase();
-      const isUserError = errorMessage.includes("UNKNOWN_IDENTIFIER") ||
-        errorMessage.includes("SYNTAX_ERROR") ||
-        errorMessage.includes("SYNTAX ERROR") ||
-        errorMessage.includes("CANNOT BE RESOLVED") ||
-        errorMessage.includes("UNKNOWN TABLE"); // ClickHouse user errors
-
-      if (isUserError) {
-        return c.json({
-          success: false,
-          error: {
-            code: "INVALID_QUERY",
-            message: `Optimization stopped: Your query contains errors. ${error instanceof Error ? error.message : String(error)}`,
-          },
-        }, 400 as any);
-      }
-
-      console.warn('Failed to get explain estimate for table extraction:', error);
-    }
-
-    // Fallback to regex-based extraction if estimate failed or returned nothing
-    if (usedTables.length === 0) {
-      const tables = extractTablesFromQuery(sql);
-      usedTables = tables
-        .filter((t): t is { database?: string; table: string } => !!t.table)
-        .map(t => ({
-          database: t.database || defaultDatabase || 'default',
-          table: t.table
-        }));
-    }
-
-    // Deduplicate tables
-    const uniqueTables = new Map<string, { database: string; table: string }>();
-    usedTables.forEach(t => {
-      const db = t.database || defaultDatabase || 'default';
-      if (t.table) {
-        uniqueTables.set(`${db}.${t.table}`, { database: db, table: t.table });
-      }
-    });
-
-    const tableDetails = await Promise.all(
-      Array.from(uniqueTables.values()).map(async (tableRef) => {
-        return service.getTableDetails(tableRef.database, tableRef.table).catch(() => null);
-      })
-    ).then(results => results.filter((r): r is Awaited<ReturnType<typeof service.getTableDetails>> => r !== null));
-
-    // Call AI optimizer
-    const result = await optimizeQuery(sql, tableDetails, additionalPrompt, modelId);
+    // Call AI optimizer (agent loop handles schema gathering internally)
+    const result = await optimizeQuery(sql, agentContext, additionalPrompt, modelId);
 
     // Create audit log
     if (rbacUserId) {

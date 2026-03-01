@@ -929,6 +929,9 @@ export const initializeMonacoGlobally = async (): Promise<void> => {
       { token: "type", foreground: "4EC9B0" },
       { token: "predefined", foreground: "DCDCAA" },
       { token: "identifier.quote", foreground: "CE9178" },
+      // db.table coloring: database/schema name and table/object name
+      { token: "identifier.db", foreground: "C586C0", fontStyle: "bold" },
+      { token: "identifier.table", foreground: "E5C07B" },
       { token: "number", foreground: "B5CEA8" },
       { token: "number.float", foreground: "B5CEA8" },
       { token: "number.hex", foreground: "B5CEA8" },
@@ -946,6 +949,34 @@ export const initializeMonacoGlobally = async (): Promise<void> => {
       'diffEditor.insertedTextBackground': '#2ea04330',
       'diffEditor.removedTextBackground': '#da363330',
       'diffEditor.diagonalFill': '#ffffff10',
+    }
+  });
+
+  monaco.editor.defineTheme('chouse-light', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "0000FF", fontStyle: "bold" },
+      { token: "type", foreground: "267F99" },
+      { token: "predefined", foreground: "795E26" },
+      { token: "identifier.quote", foreground: "A31515" },
+      // db.table coloring: database/schema name and table/object name
+      { token: "identifier.db", foreground: "7B3F9E", fontStyle: "bold" },
+      { token: "identifier.table", foreground: "B07A00" },
+      { token: "number", foreground: "098658" },
+      { token: "number.float", foreground: "098658" },
+      { token: "number.hex", foreground: "098658" },
+      { token: "string", foreground: "A31515" },
+      { token: "string.escape", foreground: "EE0000" },
+      { token: "comment", foreground: "008000", fontStyle: "italic" },
+      { token: "operator", foreground: "444444" },
+      { token: "delimiter", foreground: "444444" },
+    ],
+    colors: {
+      'editor.background': '#ffffff',
+      'editor.lineHighlightBackground': '#0000000a',
+      'editorLineNumber.foreground': '#00000030',
+      'editorLineNumber.activeForeground': '#00000080',
     }
   });
 
@@ -1076,7 +1107,7 @@ export const createMonacoEditor = async (
 
   const editor = monaco.editor.create(container, {
     language: "sql",
-    theme: theme === 'vs-dark' ? 'chouse-dark' : theme || "vs-dark",
+    theme: theme === 'vs-dark' ? 'chouse-dark' : theme === 'vs-light' ? 'chouse-light' : theme || "chouse-dark",
     automaticLayout: true,
     fontSize: options.fontSize,
     wordWrap: options.wordWrap,
@@ -1111,7 +1142,7 @@ export const createMonacoDiffEditor = async (
   const monacoOptions = await getMonacoEditorOptions();
 
   const diffEditor = monaco.editor.createDiffEditor(container, {
-    theme: theme === 'vs-dark' ? 'chouse-dark' : theme || "vs-dark",
+    theme: theme === 'vs-dark' ? 'chouse-dark' : theme === 'vs-light' ? 'chouse-light' : theme || "chouse-dark",
     automaticLayout: true,
     fontSize: monacoOptions.fontSize,
     wordWrap: monacoOptions.wordWrap,
