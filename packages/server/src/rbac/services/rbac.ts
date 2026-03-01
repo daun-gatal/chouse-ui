@@ -865,6 +865,14 @@ export async function createAuditLog(
     userAgent?: string;
     status?: 'success' | 'failed' | 'failure';
     errorMessage?: string;
+    // Client info fields (parsed from User-Agent and HTTP headers)
+    browser?: string;
+    browserVersion?: string;
+    os?: string;
+    osVersion?: string;
+    deviceType?: string;
+    language?: string;
+    country?: string;
   }
 ): Promise<void> {
   const db = getDatabase() as any;
@@ -903,7 +911,50 @@ export async function createAuditLog(
     usernameSnapshot,
     emailSnapshot,
     displayNameSnapshot,
+    browser: options?.browser,
+    browserVersion: options?.browserVersion,
+    os: options?.os,
+    osVersion: options?.osVersion,
+    deviceType: options?.deviceType,
+    language: options?.language,
+    country: options?.country,
     createdAt: new Date(),
+  });
+}
+
+/**
+ * Create an audit log entry with auto-extracted client info from a Hono context.
+ * This is the preferred method for route handlers — it automatically parses
+ * the User-Agent, Accept-Language, and CDN country headers.
+ */
+export async function createAuditLogWithContext(
+  c: { req: { header: (name: string) => string | undefined } },
+  action: AuditAction,
+  userId?: string,
+  options?: {
+    resourceType?: string;
+    resourceId?: string;
+    details?: Record<string, unknown>;
+    ipAddress?: string;
+    status?: 'success' | 'failed' | 'failure';
+    errorMessage?: string;
+  }
+): Promise<void> {
+  const { extractClientInfo, getClientHeaders } = await import('../../utils/parseUserAgent');
+  const headers = getClientHeaders(c);
+  const clientInfo = extractClientInfo(headers);
+
+  await createAuditLog(action, userId, {
+    ...options,
+    ipAddress: options?.ipAddress || headers.ipAddress,
+    userAgent: headers.userAgent,
+    browser: clientInfo.browser || undefined,
+    browserVersion: clientInfo.browserVersion || undefined,
+    os: clientInfo.os || undefined,
+    osVersion: clientInfo.osVersion || undefined,
+    deviceType: clientInfo.deviceType !== 'Unknown' ? clientInfo.deviceType : undefined,
+    language: clientInfo.language || undefined,
+    country: clientInfo.country || undefined,
   });
 }
 

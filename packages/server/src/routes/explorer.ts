@@ -8,8 +8,8 @@ import {
   checkDatabaseAccess,
   checkTableAccess
 } from "../middleware/dataAccess";
-import { PERMISSIONS } from "../rbac/schema/base";
-import { userHasPermission } from "../rbac/services/rbac";
+import { PERMISSIONS, AUDIT_ACTIONS } from "../rbac/schema/base";
+import { userHasPermission, createAuditLogWithContext } from "../rbac/services/rbac";
 import { AppError } from "../types";
 import { ClickHouseService } from "../services/clickhouse";
 import { getSession } from "../services/clickhouse";
@@ -463,6 +463,18 @@ explorer.post(
 
     await service.executeQuery(query);
 
+    // Audit log
+    try {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_DATABASE_CREATE, rbacUserId, {
+        resourceType: 'database',
+        resourceId: name,
+        details: { operation: 'create', database: name, engine, cluster },
+        ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
+      });
+    } catch (auditError) {
+      console.error('[Explorer] Failed to create audit log:', auditError);
+    }
+
     return c.json({
       success: true,
       data: { message: `Database '${name}' created successfully` },
@@ -503,6 +515,18 @@ explorer.delete(
     }
 
     await service.executeQuery(`DROP DATABASE IF EXISTS ${escapedName}`);
+
+    // Audit log
+    try {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_DATABASE_DROP, rbacUserId, {
+        resourceType: 'database',
+        resourceId: name,
+        details: { operation: 'drop', database: name },
+        ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
+      });
+    } catch (auditError) {
+      console.error('[Explorer] Failed to create audit log:', auditError);
+    }
 
     return c.json({
       success: true,
@@ -651,6 +675,18 @@ explorer.post(
 
     await service.executeQuery(query);
 
+    // Audit log
+    try {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_TABLE_CREATE, rbacUserId, {
+        resourceType: 'table',
+        resourceId: `${database}.${name}`,
+        details: { operation: 'create', database, table: name, engine, columnCount: columns.length },
+        ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
+      });
+    } catch (auditError) {
+      console.error('[Explorer] Failed to create audit log:', auditError);
+    }
+
     return c.json({
       success: true,
       data: { message: `Table '${database}.${name}' created successfully` },
@@ -693,6 +729,18 @@ explorer.delete(
     }
 
     await service.executeQuery(`DROP TABLE IF EXISTS ${escapedDatabase}.${escapedTable}`);
+
+    // Audit log
+    try {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_TABLE_DROP, rbacUserId, {
+        resourceType: 'table',
+        resourceId: `${database}.${table}`,
+        details: { operation: 'drop', database, table },
+        ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
+      });
+    } catch (auditError) {
+      console.error('[Explorer] Failed to create audit log:', auditError);
+    }
 
     return c.json({
       success: true,

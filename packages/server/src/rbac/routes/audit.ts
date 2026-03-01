@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getAuditLogs, deleteAuditLogs, createAuditLog, getAuditMetadata } from '../services/rbac';
+import { getAuditLogs, deleteAuditLogs, createAuditLogWithContext, getAuditMetadata } from '../services/rbac';
 import { PERMISSIONS, AUDIT_ACTIONS } from '../schema/base';
 import { requirePermission, requireAnyPermission, rbacAuthMiddleware } from '../middleware/rbacAuth';
 import { AppError } from '../../types';
@@ -157,7 +157,7 @@ auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidat
   });
 
   // Convert to CSV
-  const headers = ['ID', 'User ID', 'Username (Snapshot)', 'Email (Snapshot)', 'Display Name (Snapshot)', 'Action', 'Resource Type', 'Resource ID', 'Status', 'IP Address', 'Created At'];
+  const headers = ['ID', 'User ID', 'Username (Snapshot)', 'Email (Snapshot)', 'Display Name (Snapshot)', 'Action', 'Resource Type', 'Resource ID', 'Status', 'IP Address', 'Browser', 'Browser Version', 'OS', 'OS Version', 'Device Type', 'Language', 'Country', 'User Agent', 'Created At'];
   const rows = result.logs.map(log => [
     log.id,
     log.userId || '',
@@ -169,6 +169,14 @@ auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidat
     log.resourceId || '',
     log.status,
     log.ipAddress || '',
+    log.browser || '',
+    log.browserVersion || '',
+    log.os || '',
+    log.osVersion || '',
+    log.deviceType || '',
+    log.language || '',
+    log.country || '',
+    log.userAgent || '',
     new Date(log.createdAt).toISOString(),
   ]);
 
@@ -244,7 +252,7 @@ auditRoutes.delete('/', requirePermission(PERMISSIONS.AUDIT_DELETE), zValidator(
     });
 
     // Log the deletion action
-    await createAuditLog(
+    await createAuditLogWithContext(c,
       AUDIT_ACTIONS.AUDIT_LOG_DELETE,
       userId,
       {

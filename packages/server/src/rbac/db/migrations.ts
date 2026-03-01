@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.16.2';
+export const APP_VERSION = '1.17.0';
 
 // ============================================
 // Migration Registry
@@ -1899,7 +1899,7 @@ const MIGRATIONS: Migration[] = [
         // Step 1: Check if provider_type column already exists
         let columnExists = false;
         let isNotNull = false;
-        
+
         if (dbType === 'sqlite') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const tableInfo = (db as any).all(sql`
@@ -2069,6 +2069,67 @@ const MIGRATIONS: Migration[] = [
       } catch (error) {
         console.error('[Migration 1.16.2] Error during rollback:', error);
         throw error;
+      }
+    },
+  },
+  {
+    version: '1.17.0',
+    name: 'audit_log_client_info',
+    description: 'Add client info columns (browser, browser_version, os, os_version, device_type, language, country) to audit logs table for enriched audit data',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+
+      const dbType = getDatabaseType();
+
+      const columns = [
+        { name: 'browser', sqliteType: 'TEXT', pgType: 'VARCHAR(100)' },
+        { name: 'browser_version', sqliteType: 'TEXT', pgType: 'VARCHAR(50)' },
+        { name: 'os', sqliteType: 'TEXT', pgType: 'VARCHAR(100)' },
+        { name: 'os_version', sqliteType: 'TEXT', pgType: 'VARCHAR(50)' },
+        { name: 'device_type', sqliteType: 'TEXT', pgType: 'VARCHAR(20)' },
+        { name: 'language', sqliteType: 'TEXT', pgType: 'VARCHAR(20)' },
+        { name: 'country', sqliteType: 'TEXT', pgType: 'VARCHAR(10)' },
+      ];
+
+      for (const col of columns) {
+        if (dbType === 'sqlite') {
+          try {
+            (db as SqliteDb).run(sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN ${col.name} ${col.sqliteType}`));
+            console.log(`[Migration 1.17.0] Added ${col.name} column (SQLite)`);
+          } catch (error: any) {
+            if (error?.message?.includes('duplicate column')) {
+              console.log(`[Migration 1.17.0] ${col.name} column already exists, skipping`);
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          await (db as PostgresDb).execute(
+            sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN IF NOT EXISTS ${col.name} ${col.pgType}`)
+          );
+          console.log(`[Migration 1.17.0] Added ${col.name} column (PostgreSQL)`);
+        }
+      }
+
+      console.log('[Migration 1.17.0] Successfully added client info columns to audit logs');
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+
+      const dbType = getDatabaseType();
+      const columns = ['browser', 'browser_version', 'os', 'os_version', 'device_type', 'language', 'country'];
+
+      if (dbType === 'sqlite') {
+        console.log('[Migration 1.17.0] SQLite does not support DROP COLUMN easily, manual intervention may be required');
+      } else {
+        for (const col of columns) {
+          await (db as PostgresDb).execute(
+            sql.raw(`ALTER TABLE rbac_audit_logs DROP COLUMN IF EXISTS ${col}`)
+          );
+        }
+        console.log('[Migration 1.17.0] Removed client info columns from audit logs (PostgreSQL)');
       }
     },
   },
@@ -2298,6 +2359,16 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
       user_agent TEXT,
       status TEXT NOT NULL DEFAULT 'success',
       error_message TEXT,
+      username_snapshot TEXT,
+      email_snapshot TEXT,
+      display_name_snapshot TEXT,
+      browser TEXT,
+      browser_version TEXT,
+      os TEXT,
+      os_version TEXT,
+      device_type TEXT,
+      language TEXT,
+      country TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     )
   `);
@@ -2606,6 +2677,16 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       user_agent TEXT,
       status VARCHAR(20) NOT NULL DEFAULT 'success',
       error_message TEXT,
+      username_snapshot VARCHAR(100),
+      email_snapshot VARCHAR(255),
+      display_name_snapshot VARCHAR(255),
+      browser VARCHAR(100),
+      browser_version VARCHAR(50),
+      os VARCHAR(100),
+      os_version VARCHAR(50),
+      device_type VARCHAR(20),
+      language VARCHAR(20),
+      country VARCHAR(10),
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
   `);

@@ -15,7 +15,7 @@ import {
     deleteAiProvider,
 } from '../services/aiModels';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
-import { createAuditLog } from '../services/rbac';
+import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { PROVIDER_TYPES, type ProviderType } from '../constants/aiProviders';
 
@@ -82,12 +82,11 @@ aiProvidersRoutes.post(
                 providerType: input.providerType as ProviderType,
             });
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_PROVIDER_CREATE, user.sub, {
                 resourceType: 'ai_provider',
                 resourceId: provider.id,
                 details: { operation: 'create', name: provider.name, providerType: provider.providerType },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: provider }, 201);
         } catch (error) {
@@ -119,12 +118,11 @@ aiProvidersRoutes.patch(
             const provider = await updateAiProvider(id, updateInput);
             if (!provider) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_PROVIDER_UPDATE, user.sub, {
                 resourceType: 'ai_provider',
                 resourceId: provider.id,
                 details: { operation: 'update', changes: Object.keys(input).filter(k => k !== 'apiKey') },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: provider });
         } catch (error) {
@@ -145,12 +143,11 @@ aiProvidersRoutes.delete(
             const deleted = await deleteAiProvider(id);
             if (!deleted) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_PROVIDER_DELETE, user.sub, {
                 resourceType: 'ai_provider',
                 resourceId: id,
                 details: { operation: 'delete' },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: { deleted: true } });
         } catch (error) {

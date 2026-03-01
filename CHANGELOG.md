@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.7] - 2026-03-01
+
+### Added
+
+- **Enriched Audit Logs**: Audit log entries now capture parsed client information extracted from HTTP headers — browser name & version, operating system & version, device type (Desktop / Mobile / Tablet / Bot), preferred language (from `Accept-Language`), and country (from CDN headers such as `CF-IPCountry`). A new lightweight, zero-dependency `parseUserAgent` utility performs regex-based User-Agent parsing server-side.
+- **Extended Audit Coverage**: Added audit logging for operations that were previously untracked:
+  - **AI Management**: Provider create/update/delete, Model create/update/delete, Config create/update/delete.
+  - **Connection Management**: Create, update, delete, connect, grant access, revoke access.
+  - **Data Access Rules**: Create, update, delete, bulk set.
+  - **Saved Queries**: Create, update, delete.
+  - **Explorer Operations**: Create database, drop database, create table, drop table.
+- **Audit Action Constants**: New `AUDIT_ACTIONS` entries for all newly tracked operations in `packages/server/src/rbac/schema/base.ts`.
+- **Client Info UI**: The audit logs table replaces the plain "IP Address" column with a rich "Client Info" cell showing device icon, browser, OS, country, language, and IP — with a tooltip displaying the full User-Agent string.
+- **DB Migration 1.17.0**: Adds `browser`, `browser_version`, `os`, `os_version`, `device_type`, `language`, and `country` columns to `rbac_audit_logs` for both SQLite and PostgreSQL.
+
+### Changed
+
+- **`createAuditLogWithContext` Helper**: Introduced a new `createAuditLogWithContext(c, ...)` function that auto-extracts User-Agent, Accept-Language, and CDN country headers from the Hono request context. All RBAC route handlers (auth, users, roles, connections, data access, ClickHouse users, AI providers, AI models, AI configs, audit) now use this helper instead of manually passing `userAgent`.
+- **Audit Logs CSV Export**: Export now includes the new client info fields (browser, OS, device type, language, country).
+
 ## [v2.12.6] - 2026-03-01
 
 ### Added

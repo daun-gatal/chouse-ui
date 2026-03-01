@@ -23,6 +23,11 @@ import {
   User as UserIcon,
   Activity,
   Info,
+  Globe,
+  Monitor,
+  Smartphone,
+  Tablet,
+  Bot,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { format, subDays, startOfToday, endOfToday, startOfYesterday, endOfYesterday } from 'date-fns';
@@ -77,11 +82,27 @@ const ACTION_COLORS: Record<string, { bg: string; text: string }> = {
   'role': { bg: 'bg-purple-500/20', text: 'text-purple-300' },
   'clickhouse': { bg: 'bg-orange-500/20', text: 'text-orange-300' },
   'settings': { bg: 'bg-cyan-500/20', text: 'text-cyan-300' },
+  'ai_provider': { bg: 'bg-pink-500/20', text: 'text-pink-300' },
+  'ai_model': { bg: 'bg-rose-500/20', text: 'text-rose-300' },
+  'ai_config': { bg: 'bg-fuchsia-500/20', text: 'text-fuchsia-300' },
+  'connection': { bg: 'bg-amber-500/20', text: 'text-amber-300' },
+  'data_access': { bg: 'bg-teal-500/20', text: 'text-teal-300' },
+  'saved_query': { bg: 'bg-indigo-500/20', text: 'text-indigo-300' },
 };
 
 const getActionColor = (action: string) => {
   const category = action.split('.')[0];
   return ACTION_COLORS[category] || { bg: 'bg-gray-500/20', text: 'text-gray-300' };
+};
+
+const DeviceIcon: React.FC<{ type?: string | null; className?: string }> = ({ type, className = 'h-3 w-3' }) => {
+  switch (type) {
+    case 'Mobile': return <Smartphone className={className} />;
+    case 'Tablet': return <Tablet className={className} />;
+    case 'Bot': return <Bot className={className} />;
+    case 'Desktop': return <Monitor className={className} />;
+    default: return <Monitor className={className} />;
+  }
 };
 
 // ============================================
@@ -429,7 +450,7 @@ export const RbacAuditLogs: React.FC = () => {
               <TableHead className="text-gray-400 whitespace-nowrap">Email</TableHead>
               <TableHead className="text-gray-400 whitespace-nowrap">Resource</TableHead>
               <TableHead className="text-gray-400 whitespace-nowrap">Status</TableHead>
-              <TableHead className="text-gray-400 whitespace-nowrap">IP Address</TableHead>
+              <TableHead className="text-gray-400 whitespace-nowrap">Client Info</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -514,8 +535,46 @@ export const RbacAuditLogs: React.FC = () => {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-gray-400 text-sm font-mono">
-                      {log.ipAddress || '-'}
+                    <TableCell>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="space-y-1 cursor-help min-w-[160px]">
+                              {(log.browser || log.os) ? (
+                                <>
+                                  <div className="flex items-center gap-1.5 text-sm text-white">
+                                    <DeviceIcon type={log.deviceType} className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                                    <span className="truncate">
+                                      {[log.browser, log.browserVersion].filter(Boolean).join(' ')}
+                                      {log.os && <span className="text-gray-400"> · {[log.os, log.osVersion].filter(Boolean).join(' ')}</span>}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    {log.country && (
+                                      <span className="flex items-center gap-0.5">
+                                        <Globe className="h-3 w-3" />
+                                        {log.country}
+                                      </span>
+                                    )}
+                                    {log.language && <span>{log.language}</span>}
+                                    {log.ipAddress && <span className="font-mono">{log.ipAddress}</span>}
+                                  </div>
+                                </>
+                              ) : (
+                                <span className="text-gray-500 text-sm font-mono">{log.ipAddress || '-'}</span>
+                              )}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-[400px] bg-gray-900 border-white/10">
+                            <div className="space-y-1 text-xs">
+                              {log.userAgent && (
+                                <p className="text-gray-400 break-all font-mono">{log.userAgent}</p>
+                              )}
+                              {!log.userAgent && <p className="text-gray-500">No user agent data</p>}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                   </TableRow>
                 );

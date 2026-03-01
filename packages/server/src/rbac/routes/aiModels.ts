@@ -15,7 +15,7 @@ import {
     deleteAiModel,
 } from '../services/aiModels';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
-import { createAuditLog } from '../services/rbac';
+import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 
 const aiModelsRoutes = new Hono();
@@ -75,12 +75,11 @@ aiModelsRoutes.post(
             const input = c.req.valid('json');
             const model = await createAiModel(input);
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_MODEL_CREATE, user.sub, {
                 resourceType: 'ai_base_model',
                 resourceId: model.id,
                 details: { operation: 'create', name: model.name, modelId: model.modelId },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: model }, 201);
         } catch (error) {
@@ -103,12 +102,11 @@ aiModelsRoutes.patch(
             const model = await updateAiModel(id, input);
             if (!model) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Model not found' } }, 404);
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_MODEL_UPDATE, user.sub, {
                 resourceType: 'ai_base_model',
                 resourceId: model.id,
                 details: { operation: 'update', changes: Object.keys(input) },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: model });
         } catch (error) {
@@ -128,12 +126,11 @@ aiModelsRoutes.delete(
             const deleted = await deleteAiModel(id);
             if (!deleted) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Model not found' } }, 404);
 
-            await createAuditLog(AUDIT_ACTIONS.SETTINGS_UPDATE, user.sub, {
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_MODEL_DELETE, user.sub, {
                 resourceType: 'ai_base_model',
                 resourceId: id,
                 details: { operation: 'delete' },
                 ipAddress: getClientIp(c),
-                userAgent: c.req.header('User-Agent'),
             });
             return c.json({ success: true, data: { deleted: true } });
         } catch (error) {

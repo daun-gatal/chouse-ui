@@ -314,6 +314,40 @@ export const AUDIT_ACTIONS = {
 
   // Audit Logs
   AUDIT_LOG_DELETE: 'audit.delete',
+
+  // AI Providers
+  AI_PROVIDER_CREATE: 'ai_provider.create',
+  AI_PROVIDER_UPDATE: 'ai_provider.update',
+  AI_PROVIDER_DELETE: 'ai_provider.delete',
+
+  // AI Models
+  AI_MODEL_CREATE: 'ai_model.create',
+  AI_MODEL_UPDATE: 'ai_model.update',
+  AI_MODEL_DELETE: 'ai_model.delete',
+
+  // AI Configs
+  AI_CONFIG_CREATE: 'ai_config.create',
+  AI_CONFIG_UPDATE: 'ai_config.update',
+  AI_CONFIG_DELETE: 'ai_config.delete',
+
+  // Connection Management
+  CONNECTION_CREATE: 'connection.create',
+  CONNECTION_UPDATE: 'connection.update',
+  CONNECTION_DELETE: 'connection.delete',
+  CONNECTION_CONNECT: 'connection.connect',
+  CONNECTION_GRANT_ACCESS: 'connection.grant_access',
+  CONNECTION_REVOKE_ACCESS: 'connection.revoke_access',
+
+  // Data Access Rules
+  DATA_ACCESS_CREATE: 'data_access.create',
+  DATA_ACCESS_UPDATE: 'data_access.update',
+  DATA_ACCESS_DELETE: 'data_access.delete',
+  DATA_ACCESS_BULK_SET: 'data_access.bulk_set',
+
+  // Saved Queries
+  SAVED_QUERY_CREATE: 'saved_query.create',
+  SAVED_QUERY_UPDATE: 'saved_query.update',
+  SAVED_QUERY_DELETE: 'saved_query.delete',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

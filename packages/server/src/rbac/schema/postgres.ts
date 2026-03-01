@@ -159,6 +159,13 @@ export const auditLogs = pgTable('rbac_audit_logs', {
   usernameSnapshot: varchar('username_snapshot', { length: 100 }),
   emailSnapshot: varchar('email_snapshot', { length: 255 }),
   displayNameSnapshot: varchar('display_name_snapshot', { length: 255 }),
+  browser: varchar('browser', { length: 100 }),
+  browserVersion: varchar('browser_version', { length: 50 }),
+  os: varchar('os', { length: 100 }),
+  osVersion: varchar('os_version', { length: 50 }),
+  deviceType: varchar('device_type', { length: 20 }),
+  language: varchar('language', { length: 20 }),
+  country: varchar('country', { length: 10 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   userIdx: index('audit_user_idx').on(table.userId),

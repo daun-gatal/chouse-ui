@@ -20,7 +20,7 @@ import {
   type UpdateClickHouseUserInput,
 } from '../services/clickhouseUsers';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
-import { createAuditLog } from '../services/rbac';
+import { createAuditLogWithContext } from '../services/rbac';
 import { validatePasswordStrength } from '../services/password';
 import { AUDIT_ACTIONS } from '../schema/base';
 import { getSession } from '../../services/clickhouse';
@@ -331,7 +331,7 @@ clickhouseUsersRoutes.post(
       await createClickHouseUser(service, input, connectionId, user.sub);
       
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.CH_USER_CREATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_USER_CREATE, user.sub, {
         resourceType: 'clickhouse_user',
         resourceId: input.username,
         details: {
@@ -341,7 +341,6 @@ clickhouseUsersRoutes.post(
           allowedTables: input.allowedTables,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
       
       return c.json({
@@ -503,7 +502,7 @@ clickhouseUsersRoutes.patch(
       await updateClickHouseUser(service, username, input, connectionId, currentGrants);
       
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.CH_USER_UPDATE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_USER_UPDATE, user.sub, {
         resourceType: 'clickhouse_user',
         resourceId: username,
         details: {
@@ -511,7 +510,6 @@ clickhouseUsersRoutes.patch(
           changes: Object.keys(input),
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
       
       return c.json({
@@ -547,14 +545,13 @@ clickhouseUsersRoutes.delete(
       await deleteClickHouseUser(service, username, connectionId);
       
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.CH_USER_DELETE, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_USER_DELETE, user.sub, {
         resourceType: 'clickhouse_user',
         resourceId: username,
         details: {
           username,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
       
       return c.json({
@@ -599,7 +596,7 @@ clickhouseUsersRoutes.post(
       const result = await syncUnregisteredUsers(service, connectionId, user.sub);
       
       // Log audit event
-      await createAuditLog(AUDIT_ACTIONS.CH_USER_SYNC, user.sub, {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_USER_SYNC, user.sub, {
         resourceType: 'clickhouse_users',
         resourceId: connectionId,
         details: {
@@ -607,7 +604,6 @@ clickhouseUsersRoutes.post(
           errors: result.errors.length,
         },
         ipAddress: getClientIp(c),
-        userAgent: c.req.header('User-Agent'),
       });
       
       return c.json({

@@ -10,8 +10,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { rbacAuthMiddleware } from "../rbac/middleware/rbacAuth";
-import { PERMISSIONS } from "../rbac/schema/base";
-import { userHasPermission } from "../rbac/services/rbac";
+import { PERMISSIONS, AUDIT_ACTIONS } from "../rbac/schema/base";
+import { userHasPermission, createAuditLogWithContext } from "../rbac/services/rbac";
 import { AppError } from "../types";
 import {
   getSavedQueries,
@@ -235,6 +235,18 @@ savedQueriesRouter.post("/", zValidator("json", createQuerySchema), async (c) =>
       isPublic,
     });
 
+    // Audit log
+    try {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.SAVED_QUERY_CREATE, rbacUserId, {
+        resourceType: 'saved_query',
+        resourceId: savedQuery.id,
+        details: { operation: 'create', name, connectionId: connectionId ?? null },
+        ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
+      });
+    } catch (auditError) {
+      console.error('[SavedQueries] Failed to create audit log:', auditError);
+    }
+
     return c.json({
       success: true,
       data: savedQuery,
@@ -277,6 +289,18 @@ savedQueriesRouter.put("/:id", zValidator("json", updateQuerySchema), async (c) 
       }, 404);
     }
 
+    // Audit log
+    try {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.SAVED_QUERY_UPDATE, rbacUserId, {
+        resourceType: 'saved_query',
+        resourceId: id,
+        details: { operation: 'update', changes: Object.keys(input) },
+        ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
+      });
+    } catch (auditError) {
+      console.error('[SavedQueries] Failed to create audit log:', auditError);
+    }
+
     return c.json({
       success: true,
       data: updated,
@@ -316,6 +340,18 @@ savedQueriesRouter.delete("/:id", async (c) => {
         success: false,
         error: { message: "Query not found or you don't have permission to delete it" },
       }, 404);
+    }
+
+    // Audit log
+    try {
+      await createAuditLogWithContext(c, AUDIT_ACTIONS.SAVED_QUERY_DELETE, rbacUserId, {
+        resourceType: 'saved_query',
+        resourceId: id,
+        details: { operation: 'delete' },
+        ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
+      });
+    } catch (auditError) {
+      console.error('[SavedQueries] Failed to create audit log:', auditError);
     }
 
     return c.json({
