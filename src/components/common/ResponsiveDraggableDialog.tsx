@@ -20,6 +20,7 @@ import {
 import { rbacUserPreferencesApi } from "@/api/rbac";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/log";
 
 const MIN_WIDTH = 400;
 const MIN_HEIGHT = 360;
@@ -119,7 +120,7 @@ export function ResponsiveDraggableDialog({
             workspacePreferences: merged,
           });
         } catch (err) {
-          console.error("[ResponsiveDraggableDialog] Failed to save preferences:", err);
+          log.error("[ResponsiveDraggableDialog] Failed to save preferences:", err);
         }
       }, 400);
     },
@@ -150,7 +151,7 @@ export function ResponsiveDraggableDialog({
         }
         lastLoadedRef.current = key;
       } catch (err) {
-        console.error("[ResponsiveDraggableDialog] Failed to load preferences:", err);
+        log.error("[ResponsiveDraggableDialog] Failed to load preferences:", err);
         lastLoadedRef.current = key;
       }
     };

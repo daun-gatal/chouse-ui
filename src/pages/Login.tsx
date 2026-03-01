@@ -33,6 +33,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { withBasePath } from "@/lib/basePath";
+import { log } from "@/lib/log";
 
 // Schema for the login form
 const loginSchema = z.object({
@@ -66,7 +67,7 @@ export default function Login() {
       await login(values.identifier, values.password);
     } catch (err) {
       // Error is handled by the store
-      console.error("Login failed:", err);
+      log.error("Login failed:", err);
     }
   };
 

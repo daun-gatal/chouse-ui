@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { log } from "@/lib/log";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -276,7 +277,7 @@ const EditUser: React.FC = () => {
         await navigator.clipboard.writeText(generatedPassword);
         toast.success("Password copied to clipboard");
       } catch (error) {
-        console.error('Failed to copy password:', error);
+        log.error('Failed to copy password:', error);
         toast.error("Failed to copy password to clipboard");
       }
     }

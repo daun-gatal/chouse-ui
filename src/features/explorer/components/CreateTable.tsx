@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { log } from "@/lib/log";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Loader2,
@@ -213,7 +214,7 @@ const CreateTable: React.FC = () => {
       handleClose();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[CreateTable] Failed to create table:', errorMessage);
+      log.error('[CreateTable] Failed to create table:', errorMessage);
       toast.error(`Failed to create table: ${errorMessage}`);
     }
   };

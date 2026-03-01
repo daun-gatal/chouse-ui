@@ -13,6 +13,7 @@ import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { analyzeQuery } from "../services/queryAnalyzer";
 import { debugQuery, checkQueryOptimization } from "../services/aiOptimizer";
 import type { AgentToolContext } from "../services/agentTools";
+import { requestLogger } from "../utils/logger";
 
 type Variables = {
   sessionId?: string;
@@ -400,7 +401,10 @@ async function executeQueryWithValidation(
         }
       );
     } catch (error) {
-      console.error(`[Query/${operationType}] Failed to create audit log:`, error instanceof Error ? error.message : String(error));
+      requestLogger(c.get("requestId")).error(
+        { module: "Query", operationType, err: error instanceof Error ? error.message : String(error) },
+        "Failed to create audit log"
+      );
     }
   }
 
@@ -1199,7 +1203,10 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
           }
         );
       } catch (auditError) {
-        console.error('[Query] Failed to create audit log:', auditError);
+        requestLogger(c.get("requestId")).error(
+          { module: "Query", err: auditError instanceof Error ? auditError.message : String(auditError) },
+          "Failed to create audit log"
+        );
       }
     }
 
@@ -1215,8 +1222,10 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
       },
     });
   } catch (error) {
-    // Log error for debugging
-    console.error('[Query] Optimization failed:', error instanceof Error ? error.message : String(error));
+    requestLogger(c.get("requestId")).error(
+      { module: "Query", err: error instanceof Error ? error.message : String(error) },
+      "Optimization failed"
+    );
 
     // Create audit log for failure
     if (rbacUserId) {
@@ -1236,7 +1245,10 @@ query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
           }
         );
       } catch (auditError) {
-        console.error('[Query] Failed to create audit log:', auditError);
+        requestLogger(c.get("requestId")).error(
+          { module: "Query", err: auditError instanceof Error ? auditError.message : String(auditError) },
+          "Failed to create audit log"
+        );
       }
     }
 

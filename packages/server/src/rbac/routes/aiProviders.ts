@@ -18,6 +18,7 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from 
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import { PROVIDER_TYPES, type ProviderType } from '../constants/aiProviders';
+import { requestLogger } from '../../utils/logger';
 
 const aiProvidersRoutes = new Hono();
 
@@ -46,7 +47,7 @@ aiProvidersRoutes.get(
             const results = await listAiProviders();
             return c.json({ success: true, data: results });
         } catch (error) {
-            console.error('[AI Providers] List error:', error);
+            requestLogger(c.get('requestId')).error({ module: 'AI Providers', err: error instanceof Error ? error.message : String(error) }, 'List error');
             return c.json({ success: false, error: { code: 'LIST_FAILED', message: error instanceof Error ? error.message : 'Failed to list AI providers' } }, 500);
         }
     }
@@ -90,7 +91,7 @@ aiProvidersRoutes.post(
             });
             return c.json({ success: true, data: provider }, 201);
         } catch (error) {
-            console.error('[AI Providers] Create error:', error);
+            requestLogger(c.get('requestId')).error({ module: 'AI Providers', err: error instanceof Error ? error.message : String(error) }, 'Create error');
             return c.json({ success: false, error: { code: 'CREATE_FAILED', message: error instanceof Error ? error.message : 'Failed to create provider' } }, 500);
         }
     }
@@ -126,7 +127,7 @@ aiProvidersRoutes.patch(
             });
             return c.json({ success: true, data: provider });
         } catch (error) {
-            console.error('[AI Providers] Update error:', error);
+            requestLogger(c.get('requestId')).error({ module: 'AI Providers', err: error instanceof Error ? error.message : String(error) }, 'Update error');
             return c.json({ success: false, error: { code: 'UPDATE_FAILED', message: error instanceof Error ? error.message : 'Failed to update provider' } }, 500);
         }
     }

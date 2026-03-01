@@ -1,5 +1,6 @@
 import { createClient, ClickHouseClient, ClickHouseSettings } from "@clickhouse/client";
 import type { ConnectionConfig } from "../types";
+import { logger } from "../utils/logger";
 
 type ClientFactory = (config: Parameters<typeof createClient>[0]) => ClickHouseClient;
 
@@ -41,7 +42,7 @@ export class ClientManager {
             return entry.client;
         }
 
-        console.log(`[ClientManager] No existing client found, creating new one`);
+        logger.debug({ module: "ClientManager" }, "No existing client found, creating new one");
 
         const client = this.clientFactory({
             url: config.url,
@@ -95,9 +96,9 @@ export class ClientManager {
             if (now - entry.lastUsed > this.IDLE_TIMEOUT_MS) {
                 try {
                     await entry.client.close();
-                    console.log(`[ClientManager] Closed idle client for ${entry.config.url} (user: ${entry.config.username})`);
+                    logger.debug({ module: "ClientManager", url: entry.config.url }, "Closed idle client");
                 } catch (error) {
-                    console.error(`[ClientManager] Failed to close idle client for ${entry.config.url}:`, error);
+                    logger.error({ module: "ClientManager", url: entry.config.url, err: error instanceof Error ? error.message : String(error) }, "Failed to close idle client");
                 }
                 keysToDelete.push(key);
                 closedCount++;
@@ -130,7 +131,7 @@ export class ClientManager {
         // Use unref to allow process to exit even if interval is running
         this.cleanupInterval = setInterval(() => {
             this.cleanup().catch(err => {
-                console.error("[ClientManager] Cleanup failed:", err);
+                logger.error({ module: "ClientManager", err: err instanceof Error ? err.message : String(err) }, "Cleanup failed");
             });
         }, this.CLEANUP_CHECK_MS);
 

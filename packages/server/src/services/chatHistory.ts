@@ -8,6 +8,7 @@
 import { randomUUID } from 'crypto';
 import { eq, and, desc, gte, lt, isNull } from 'drizzle-orm';
 import { getDatabase, getSchema } from '../rbac/db';
+import { logger } from '../utils/logger';
 
 // Type helper to avoid TypeScript union type issues with RbacDb
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -287,7 +288,7 @@ export async function cleanupOldThreads(daysToKeep: number = 7): Promise<number>
 
     const count = result?.rowsAffected ?? result?.changes ?? 0;
     if (count > 0) {
-        console.log(`[ChatHistory] Cleaned up ${count} threads older than ${daysToKeep} days`);
+        logger.info({ module: "ChatHistory", count, daysToKeep }, "Cleaned up old threads");
     }
     return count;
 }

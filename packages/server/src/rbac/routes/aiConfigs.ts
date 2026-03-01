@@ -18,6 +18,7 @@ import {
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
+import { requestLogger } from '../../utils/logger';
 
 const aiConfigsRoutes = new Hono();
 
@@ -67,7 +68,7 @@ aiConfigsRoutes.get(
                 },
             });
         } catch (error) {
-            console.error('[AI Configs] List error:', error);
+            requestLogger(c.get('requestId')).error({ module: 'AI Configs', err: error instanceof Error ? error.message : String(error) }, 'List error');
             return c.json({ success: false, error: { code: 'LIST_FAILED', message: 'Failed to list configs' } }, 500);
         }
     }
@@ -140,7 +141,7 @@ aiConfigsRoutes.post(
             });
             return c.json({ success: true, data: config }, 201);
         } catch (error) {
-            console.error('[AI Configs] Create error:', error);
+            requestLogger(c.get('requestId')).error({ module: 'AI Configs', err: error instanceof Error ? error.message : String(error) }, 'Create error');
             const errorMessage = error instanceof Error ? error.message : 'Failed to create config';
             const statusCode = errorMessage.includes('inactive') ? 400 : 500;
             return c.json({ success: false, error: { code: 'CREATE_FAILED', message: errorMessage } }, statusCode);
@@ -170,7 +171,7 @@ aiConfigsRoutes.patch(
             });
             return c.json({ success: true, data: config });
         } catch (error) {
-            console.error('[AI Configs] Update error:', error);
+            requestLogger(c.get('requestId')).error({ module: 'AI Configs', err: error instanceof Error ? error.message : String(error) }, 'Update error');
             const errorMessage = error instanceof Error ? error.message : 'Failed to update config';
             const statusCode = errorMessage.includes('inactive') ? 400 : 500;
             return c.json({ success: false, error: { code: 'UPDATE_FAILED', message: errorMessage } }, statusCode);

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.9] - 2026-03-02
+
+### Added
+
+- **Server logging (Pino)**: New `packages/server/src/utils/logger.ts` — base logger and `requestLogger(requestId)` for request-scoped correlation. Single-line JSON in production; `pino-pretty` in development. Level controlled by `LOG_LEVEL` (debug | info | warn | error); default `info` in production, `debug` in development.
+- **Client log helper**: New `src/lib/log.ts` — `log.error`, `log.warn`, `log.info`, `log.debug` with optional context; info/debug only in dev; no sensitive data. Used across app, API, components, pages, hooks, and stores.
+- **Log level config**: `LOG_LEVEL` in `.env.example` and `log_level` in `.config.example.yaml`. Documented in README.md env table.
+- **Dependencies**: `pino` and `pino-pretty` (dev) in `packages/server/package.json`.
+
+### Changed
+
+- **Server**: All server-side `console.log` / `console.error` / `console.warn` replaced with `logger` or `requestLogger(c.get('requestId'))` in: `packages/server/src/index.ts` (startup, env validation, request logging, cleanup, shutdown), error middleware, RBAC (cli, routes, services, db/index, migrations), routes (ai-chat, explorer, query, saved-queries, live-queries), services (clickhouse, clientManager, chatHistory, aiOptimizer), configLoader, cors, dataAccess. Request logging runs in all environments (one JSON line per request: method, path, status, durationMs, requestId).
+- **Frontend**: Dozens of files now use `log` from `@/lib/log` instead of `console.*` (e.g. App, api/client, api/rbac, Sidebar, SqlTab, Explorer, hooks, stores, admin/RBAC/workspace components).
+- **Error handler**: Error middleware logs via `requestLogger` with structured fields; 500s use `reqLog.error`, non-404 client errors and 404 use `reqLog.warn`.
+- **Tests**: `packages/server/src/middleware/error.test.ts` mocks `../utils/logger` (`requestLogger` returns `{ error, warn }`); assertions use `mockError`/`mockWarn` instead of `console` spies; `afterEach` uses `vi.clearAllMocks()`.
+- **Docs**: ARCHITECTURE.md — `src/lib` count and log.ts description; "Logging (Server)" row (Pino) in stack table.
+
 ## [v2.12.8] - 2026-03-01
 
 ### Added

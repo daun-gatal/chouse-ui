@@ -9,6 +9,7 @@ import { errorHandler, notFoundHandler } from "./middleware/error";
 import { cleanupExpiredSessions, getSessionCount } from "./services/clickhouse";
 import { initializeRbac, shutdownRbac } from "./rbac";
 import { requestId } from "./middleware/requestId";
+import { logger, requestLogger } from "./utils/logger";
 
 // Configuration
 const PORT = parseInt(process.env.PORT || "5521", 10);
@@ -95,18 +96,13 @@ function validateEnvironmentVariables(): void {
     }
   }
 
-  // Print warnings
   if (warnings.length > 0) {
-    console.warn("\n⚠️  Environment Variable Warnings:");
-    warnings.forEach((warning) => console.warn(`   - ${warning}`));
-    console.warn("");
+    warnings.forEach((warning) => logger.warn({ phase: "env_validation", warning }, warning));
   }
 
-  // Throw errors (fail fast)
   if (errors.length > 0) {
-    console.error("\n❌ Environment Variable Validation Failed:");
-    errors.forEach((error) => console.error(`   - ${error}`));
-    console.error("\nServer startup aborted. Please fix the above errors.\n");
+    errors.forEach((error) => logger.error({ phase: "env_validation", error }, error));
+    logger.error({ phase: "env_validation" }, "Server startup aborted. Please fix the above errors.");
     process.exit(1);
   }
 }
@@ -167,15 +163,17 @@ app.use("*", corsMiddleware({
   strictMode: NODE_ENV === "production" && CORS_ORIGIN !== "*",
 }));
 
-// Request logging in development
-if (NODE_ENV === "development") {
-  app.use("*", async (c, next) => {
-    const start = Date.now();
-    await next();
-    const ms = Date.now() - start;
-    console.log(`${c.req.method} ${c.req.path} - ${c.res.status} ${ms}ms`);
-  });
-}
+// Request logging: one JSON line per request (method, path, status, durationMs, requestId)
+app.use("*", async (c, next) => {
+  const start = Date.now();
+  await next();
+  const ms = Date.now() - start;
+  const reqLog = requestLogger(c.get("requestId"));
+  reqLog.info(
+    { method: c.req.method, path: c.req.path, status: c.res.status, durationMs: ms },
+    "request"
+  );
+});
 
 // ============================================
 // Security Middleware (Rate Limiting & Size)
@@ -263,22 +261,16 @@ app.notFound(async (c) => {
 // Server Startup
 // ============================================
 
-console.log(`
-╔══════════════════════════════════════════════════╗
-║           CHouse UI Server               ║
-╠══════════════════════════════════════════════════╣
-║  Environment: ${NODE_ENV.padEnd(33)}║
-║  Port: ${PORT.toString().padEnd(40)}║
-║  Static Path: ${STATIC_PATH.padEnd(33)}║
-║  CORS Origin: ${CORS_ORIGIN.substring(0, 33).padEnd(33)}║
-╚══════════════════════════════════════════════════╝
-`);
+logger.info(
+  { phase: "startup", env: NODE_ENV, port: PORT, staticPath: STATIC_PATH, corsOrigin: CORS_ORIGIN },
+  "CHouse UI Server starting"
+);
 
 // Initialize RBAC system
 initializeRbac().then(() => {
-  console.log('RBAC system ready');
+  logger.info({ phase: "startup" }, "RBAC system ready");
 }).catch((error) => {
-  console.error('Failed to initialize RBAC:', error);
+  logger.error({ phase: "startup", err: error instanceof Error ? error.message : String(error) }, "Failed to initialize RBAC");
   // Continue without RBAC - it's optional for backward compatibility
 });
 
@@ -286,7 +278,7 @@ initializeRbac().then(() => {
 const cleanupInterval = setInterval(async () => {
   const cleaned = await cleanupExpiredSessions(SESSION_MAX_AGE);
   if (cleaned > 0) {
-    console.log(`Cleaned up ${cleaned} expired sessions. Active sessions: ${getSessionCount()}`);
+    logger.info({ phase: "cleanup", cleaned, activeSessions: getSessionCount() }, "Cleaned up expired sessions");
   }
 }, SESSION_CLEANUP_INTERVAL);
 
@@ -299,55 +291,48 @@ const server = serve({
 
 // Graceful shutdown handler
 async function gracefulShutdown(signal: string): Promise<void> {
-  console.log(`\nReceived ${signal}, shutting down gracefully...`);
+  logger.info({ phase: "shutdown", signal }, "Shutting down gracefully");
 
   try {
-    // 1. Stop accepting new connections
     server.stop();
-    console.log('[Shutdown] Server stopped accepting new connections');
+    logger.info({ phase: "shutdown" }, "Server stopped accepting new connections");
 
-    // 2. Clear cleanup interval
     clearInterval(cleanupInterval);
-    console.log('[Shutdown] Cleanup interval cleared');
+    logger.info({ phase: "shutdown" }, "Cleanup interval cleared");
 
-    // 3. Close all ClickHouse sessions
     const { getSessionCount, cleanupExpiredSessions } = await import('./services/clickhouse');
     const sessionCount = getSessionCount();
     if (sessionCount > 0) {
-      // Force cleanup all sessions (set maxAge to 0 to clean all)
       await cleanupExpiredSessions(0);
-      console.log(`[Shutdown] Closed ${sessionCount} ClickHouse session(s)`);
+      logger.info({ phase: "shutdown", sessionCount }, "Closed ClickHouse sessions");
     }
 
-    // 4. Shutdown RBAC system
     await shutdownRbac();
-    console.log('[Shutdown] RBAC system shut down');
+    logger.info({ phase: "shutdown" }, "RBAC system shut down");
 
-    console.log('[Shutdown] Graceful shutdown complete');
+    logger.info({ phase: "shutdown" }, "Graceful shutdown complete");
   } catch (error) {
-    console.error('[Shutdown] Error during graceful shutdown:', error);
+    logger.error({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Error during graceful shutdown");
   } finally {
-    // Force exit after cleanup
     process.exit(0);
   }
 }
 
-// Handle graceful shutdown signals
 process.on("SIGINT", () => {
   gracefulShutdown('SIGINT').catch((error) => {
-    console.error('[Shutdown] Failed to shutdown gracefully:', error);
+    logger.error({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Failed to shutdown gracefully");
     process.exit(1);
   });
 });
 
 process.on("SIGTERM", () => {
   gracefulShutdown('SIGTERM').catch((error) => {
-    console.error('[Shutdown] Failed to shutdown gracefully:', error);
+    logger.error({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Failed to shutdown gracefully");
     process.exit(1);
   });
 });
 
-console.log(`Server running at http://localhost:${PORT}`);
+logger.info({ phase: "startup", port: PORT }, `Server running at http://localhost:${PORT}`);
 
 // Export for testing
 export { app, server };

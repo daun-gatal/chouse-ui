@@ -22,6 +22,7 @@ import { PageTitleUpdater } from "@/components/common/PageTitleUpdater";
 import { api, rbacConnectionsApi } from "@/api";
 import { useAuthStore } from "@/stores/auth";
 import { toast } from "sonner";
+import { log } from "@/lib/log";
 
 // Storage key for dock mode (to sync with FloatingDock).
 const DOCK_MODE_KEY = "chouseui-dock-mode";
@@ -84,7 +85,7 @@ export default function App() {
   useEffect(() => {
     api.setOnSessionExpired(async () => {
       const activeConnectionId = useAuthStore.getState().activeConnectionId;
-      console.warn("[App] ClickHouse session expired. Attempting to reconnect...", activeConnectionId);
+      log.warn("[App] ClickHouse session expired. Attempting to reconnect.", { activeConnectionId });
 
       if (activeConnectionId) {
         try {
@@ -100,11 +101,11 @@ export default function App() {
               activeConnectionId: activeConnectionId,
               activeConnectionName: result.connectionName,
             });
-            console.log("[App] Session recovered successfully.");
+            log.info("[App] Session recovered successfully.");
             toast.success("Session recovered");
           }
         } catch (e) {
-          console.error("[App] Failed to recover session:", e);
+          log.error("[App] Failed to recover session.", { err: e instanceof Error ? e.message : String(e) });
           toast.error("Session expired. Please reconnect.");
         }
       } else {

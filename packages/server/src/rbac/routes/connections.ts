@@ -23,6 +23,7 @@ import {
   grantConnectionAccess,
   revokeConnectionAccess,
 } from '../services/connections';
+import { requestLogger } from '../../utils/logger';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
@@ -105,7 +106,7 @@ connectionsRoutes.get(
         },
       });
     } catch (error) {
-      console.error('[Connections] List error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'List error');
       return c.json({
         success: false,
         error: {
@@ -143,7 +144,7 @@ connectionsRoutes.get(
         data: connections,
       });
     } catch (error) {
-      console.error('[Connections] My connections error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'My connections error');
       return c.json({
         success: false,
         error: {
@@ -178,7 +179,7 @@ connectionsRoutes.get(
         data: connection,
       });
     } catch (error) {
-      console.error('[Connections] Get default error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Get default error');
       return c.json({
         success: false,
         error: {
@@ -215,7 +216,7 @@ connectionsRoutes.get(
         data: connection,
       });
     } catch (error) {
-      console.error('[Connections] Get by ID error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Get by ID error');
       return c.json({
         success: false,
         error: {
@@ -257,7 +258,7 @@ connectionsRoutes.post(
         data: connection,
       }, 201);
     } catch (error) {
-      console.error('[Connections] Create error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Create error');
       return c.json({
         success: false,
         error: {
@@ -310,7 +311,7 @@ connectionsRoutes.patch(
         data: connection,
       });
     } catch (error) {
-      console.error('[Connections] Update error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Update error');
       return c.json({
         success: false,
         error: {
@@ -373,7 +374,7 @@ connectionsRoutes.delete(
         data: { deleted: true },
       });
     } catch (error) {
-      console.error('[Connections] Delete error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Delete error');
       return c.json({
         success: false,
         error: {
@@ -404,7 +405,7 @@ connectionsRoutes.post(
         data: result,
       });
     } catch (error) {
-      console.error('[Connections] Test error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Test error');
       return c.json({
         success: false,
         error: {
@@ -431,7 +432,7 @@ connectionsRoutes.post(
         data: result,
       });
     } catch (error) {
-      console.error('[Connections] Test saved error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Test saved error');
       return c.json({
         success: false,
         error: {
@@ -566,7 +567,7 @@ connectionsRoutes.post(
       });
 
     } catch (error) {
-      console.error('[Connections] Connect error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Connect error');
       return c.json({
         success: false,
         error: {
@@ -595,7 +596,7 @@ connectionsRoutes.post(
         data: { disconnected: true },
       });
     } catch (error) {
-      console.error('[Connections] Disconnect error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Disconnect error');
       return c.json({
         success: false,
         error: {
@@ -643,7 +644,7 @@ connectionsRoutes.get(
         },
       });
     } catch (error) {
-      console.error('[Connections] Session status error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Session status error');
       return c.json({
         success: false,
         error: {
@@ -685,7 +686,7 @@ connectionsRoutes.post(
         data: { granted: true },
       });
     } catch (error) {
-      console.error('[Connections] Grant access error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Grant access error');
       return c.json({
         success: false,
         error: {
@@ -727,7 +728,7 @@ connectionsRoutes.delete(
         data: { revoked: true },
       });
     } catch (error) {
-      console.error('[Connections] Revoke access error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Revoke access error');
       return c.json({
         success: false,
         error: {
@@ -767,7 +768,7 @@ connectionsRoutes.get(
         data: users,
       });
     } catch (error) {
-      console.error('[Connections] Get users error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'Connections', err: error instanceof Error ? error.message : String(error) }, 'Get users error');
       return c.json({
         success: false,
         error: {

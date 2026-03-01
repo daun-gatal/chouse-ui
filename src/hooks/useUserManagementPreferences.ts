@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { rbacUserPreferencesApi } from '@/api/rbac';
 import { useRbacStore } from '@/stores/rbac';
+import { log } from '@/lib/log';
 
 export interface UserManagementPreferences {
   defaultPageSize?: number;
@@ -58,14 +59,14 @@ export function useUserManagementPreferences(): {
         setHasFetched(true);
         setIsLoading(false);
       } catch (error) {
-        console.error('[useUserManagementPreferences] Failed to fetch preferences:', error);
+        log.error('[useUserManagementPreferences] Failed to fetch preferences', error);
         setHasFetched(true);
         setIsLoading(false);
       }
     };
 
     fetchPreferences().catch((error) => {
-      console.error('[useUserManagementPreferences] Error fetching preferences:', error);
+      log.error('[useUserManagementPreferences] Error fetching preferences', error);
       setHasFetched(true);
       setIsLoading(false);
     });
@@ -93,7 +94,7 @@ export function useUserManagementPreferences(): {
           },
         });
       } catch (error) {
-        console.error('[useUserManagementPreferences] Failed to sync preferences:', error);
+        log.error('[useUserManagementPreferences] Failed to sync preferences', error);
         // Continue anyway - state is already set locally
       }
     }

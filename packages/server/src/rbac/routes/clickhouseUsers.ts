@@ -26,6 +26,7 @@ import { AUDIT_ACTIONS } from '../schema/base';
 import { getSession } from '../../services/clickhouse';
 import { AppError } from '../../types';
 import type { ClickHouseUserRole } from '../services/clickhouseUsers';
+import { logger, requestLogger } from '../../utils/logger';
 
 const clickhouseUsersRoutes = new Hono();
 
@@ -140,7 +141,7 @@ clickhouseUsersRoutes.get(
         data: clusters,
       });
     } catch (error) {
-      console.error('[ClickHouse Users] Get clusters error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Get clusters error');
       const errorInfo = handleError(error, 'CLUSTERS_FETCH_FAILED', 'Failed to fetch clusters');
       return c.json({
         success: false,
@@ -169,7 +170,7 @@ clickhouseUsersRoutes.get(
         data: users,
       });
     } catch (error) {
-      console.error('[ClickHouse Users] List error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'List error');
       const errorInfo = handleError(error, 'LIST_FAILED', 'Failed to list ClickHouse users');
       return c.json({
         success: false,
@@ -226,7 +227,7 @@ clickhouseUsersRoutes.get(
         data: user,
       });
     } catch (error) {
-      console.error('[ClickHouse Users] Get error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Get error');
       const errorInfo = handleError(error, 'FETCH_FAILED', 'Failed to fetch ClickHouse user');
       return c.json({
         success: false,
@@ -266,7 +267,7 @@ clickhouseUsersRoutes.post(
         data: ddl,
       });
     } catch (error) {
-      console.error('[ClickHouse Users] Generate DDL error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Generate DDL error');
       return c.json({
         success: false,
         error: {
@@ -348,7 +349,7 @@ clickhouseUsersRoutes.post(
         data: { username: input.username },
       }, 201);
     } catch (error) {
-      console.error('[ClickHouse Users] Create error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Create error');
       const errorInfo = handleError(error, 'CREATE_FAILED', 'Failed to create ClickHouse user');
       return c.json({
         success: false,
@@ -372,10 +373,10 @@ clickhouseUsersRoutes.post(
       const body = await c.req.json();
       const parseResult = updateUserSchema.safeParse(body);
       if (!parseResult.success) {
-        console.error('[ClickHouse Users] Generate DDL validation error:', {
-          errors: parseResult.error.errors,
-          body: JSON.stringify(body, null, 2),
-        });
+        requestLogger(c.get('requestId')).error(
+          { module: 'ClickHouse Users', errors: parseResult.error.errors },
+          'Generate DDL validation error'
+        );
         return c.json({
           success: false,
           error: {
@@ -405,7 +406,10 @@ clickhouseUsersRoutes.post(
             };
           }
         } catch (error) {
-          console.warn(`[ClickHouse Users] Failed to load metadata for ${username}, falling back to grants parsing:`, error);
+          requestLogger(c.get('requestId')).warn(
+            { module: 'ClickHouse Users', username, err: error instanceof Error ? error.message : String(error) },
+            'Failed to load metadata, falling back to grants parsing'
+          );
         }
       }
       
@@ -425,7 +429,7 @@ clickhouseUsersRoutes.post(
         data: ddl,
       });
     } catch (error) {
-      console.error('[ClickHouse Users] Generate update DDL error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Generate update DDL error');
       return c.json({
         success: false,
         error: {
@@ -448,14 +452,13 @@ clickhouseUsersRoutes.patch(
       const service = getClickHouseService(c);
       const username = decodeURIComponent(c.req.param('username'));
       const body = await c.req.json();
-      console.log('[ClickHouse Users] Received update request body:', JSON.stringify(body, null, 2));
+      logger.debug({ module: 'ClickHouse Users' }, 'Update request received');
       const parseResult = updateUserSchema.safeParse(body);
       if (!parseResult.success) {
-        console.error('[ClickHouse Users] Update validation error:', {
-          errors: parseResult.error.errors,
-          formattedErrors: parseResult.error.format(),
-          body: JSON.stringify(body, null, 2),
-        });
+        requestLogger(c.get('requestId')).error(
+          { module: 'ClickHouse Users', errors: parseResult.error.errors },
+          'Update validation error'
+        );
         return c.json({
           success: false,
           error: {
@@ -466,8 +469,7 @@ clickhouseUsersRoutes.patch(
         }, 400);
       }
       const input = parseResult.data;
-      console.log('[ClickHouse Users] Parsed input:', JSON.stringify(input, null, 2));
-      
+
       const connectionId = getConnectionId(c);
       
       // Try to get current grants from metadata first, fallback to parsing grants
@@ -486,7 +488,10 @@ clickhouseUsersRoutes.patch(
             };
           }
         } catch (error) {
-          console.warn(`[ClickHouse Users] Failed to load metadata for ${username}, falling back to grants parsing:`, error);
+          requestLogger(c.get('requestId')).warn(
+            { module: 'ClickHouse Users', username, err: error instanceof Error ? error.message : String(error) },
+            'Failed to load metadata, falling back to grants parsing'
+          );
         }
       }
       
@@ -517,7 +522,7 @@ clickhouseUsersRoutes.patch(
         data: { username },
       });
     } catch (error) {
-      console.error('[ClickHouse Users] Update error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Update error');
       const errorInfo = handleError(error, 'UPDATE_FAILED', 'Failed to update ClickHouse user');
       return c.json({
         success: false,
@@ -559,7 +564,7 @@ clickhouseUsersRoutes.delete(
         data: { deleted: true },
       });
     } catch (error) {
-      console.error('[ClickHouse Users] Delete error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Delete error');
       const errorInfo = handleError(error, 'DELETE_FAILED', 'Failed to delete ClickHouse user');
       return c.json({
         success: false,
@@ -611,7 +616,7 @@ clickhouseUsersRoutes.post(
         data: result,
       });
     } catch (error) {
-      console.error('[ClickHouse Users] Sync error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Sync error');
       const errorInfo = handleError(error, 'SYNC_FAILED', 'Failed to sync unregistered users');
       return c.json({
         success: false,

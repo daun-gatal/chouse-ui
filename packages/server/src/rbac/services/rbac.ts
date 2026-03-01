@@ -18,6 +18,7 @@ import {
   type Permission as PermissionName,
   type AuditAction,
 } from '../schema/base';
+import { logger } from '../../utils/logger';
 import type {
   User,
   Role,
@@ -321,7 +322,7 @@ export async function listUsers(options: {
 
       return { users: userResponses, total };
     } catch (error) {
-      console.error('[listUsers] Error filtering by role:', error);
+      logger.error({ module: 'RBAC', err: error instanceof Error ? error.message : String(error) }, 'listUsers: error filtering by role');
       // Fall back to returning empty result if role filtering fails
       return { users: [], total: 0 };
     }
@@ -898,7 +899,7 @@ export async function createAuditLog(
       }
     } catch (error) {
       // Ignore error if user fetch fails, just log without snapshot
-      console.warn(`[createAuditLog] Failed to fetch user snapshot for ${userId}:`, error);
+      logger.warn({ module: 'RBAC', userId, err: error instanceof Error ? error.message : String(error) }, 'createAuditLog: failed to fetch user snapshot');
     }
   }
 

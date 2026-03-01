@@ -11,6 +11,7 @@ import { getDatabase, getSchema } from '../db';
 import { eq, and } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import type { ClickHouseUserMetadata } from '../schema';
+import { logger } from '../../utils/logger';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -604,7 +605,7 @@ export async function listClickHouseUsers(
           return user;
         });
       } catch (error) {
-        console.warn(`[ClickHouse Users] Failed to load metadata for listing:`, error);
+        logger.warn({ module: 'ClickHouse Users', err: error instanceof Error ? error.message : String(error) }, 'Failed to load metadata for listing');
         // Return users without metadata enrichment if it fails
         return users;
       }
@@ -667,7 +668,7 @@ export async function getClickHouseUser(
           };
         }
       } catch (error) {
-        console.warn(`[ClickHouse Users] Failed to load metadata for ${username}:`, error);
+        logger.warn({ module: 'ClickHouse Users', username, err: error instanceof Error ? error.message : String(error) }, 'Failed to load metadata');
         // Fall through to grant parsing
       }
     }
@@ -682,7 +683,7 @@ export async function getClickHouseUser(
         allowedTables: grants.allowedTables,
       };
     } catch (error) {
-      console.warn(`[ClickHouse Users] Failed to parse grants for ${username}:`, error);
+      logger.warn({ module: 'ClickHouse Users', username, err: error instanceof Error ? error.message : String(error) }, 'Failed to parse grants');
       return baseUser;
     }
   } catch (error) {
@@ -714,7 +715,7 @@ export async function getUserGrants(
           `SELECT grant FROM system.grants WHERE user_name = '${escapedUsername.replace(/'/g, "''")}'`
         );
       } catch (err2) {
-        console.warn(`Failed to get grants for user ${username}:`, error);
+        logger.warn({ module: 'ClickHouse Users', username, err: error instanceof Error ? error.message : String(error) }, 'Failed to get grants');
         return {
           allowedDatabases: [],
           allowedTables: [],
@@ -724,7 +725,7 @@ export async function getUserGrants(
     }
 
     const grants = grantsResult.data || [];
-    console.log(`[getUserGrants] Raw grants for ${username}:`, grants);
+    logger.debug({ module: 'ClickHouse Users', username }, 'getUserGrants: raw grants');
     const allowedDatabases = new Set<string>();
     const allowedTables: Array<{ database: string; table: string }> = [];
     let role: ClickHouseUserRole | null = null;
@@ -749,11 +750,11 @@ export async function getUserGrants(
       }
 
       if (!grant || typeof grant !== 'string') {
-        console.log(`[getUserGrants] Skipping invalid grant row:`, row);
+        logger.debug({ module: 'ClickHouse Users' }, 'getUserGrants: skipping invalid grant row');
         continue;
       }
 
-      console.log(`[getUserGrants] Processing grant:`, grant);
+      logger.debug({ module: 'ClickHouse Users' }, 'getUserGrants: processing grant');
 
       // Skip REVOKE statements
       if (grant.toUpperCase().startsWith('REVOKE')) {
@@ -825,11 +826,11 @@ export async function getUserGrants(
       role,
     };
 
-    console.log(`[getUserGrants] Parsed grants for ${username}:`, result);
+    logger.debug({ module: 'ClickHouse Users', username }, 'getUserGrants: parsed grants');
     return result;
   } catch (error) {
     // If grants can't be retrieved, return empty (user might not exist or have no grants)
-    console.warn(`Failed to get grants for user ${username}:`, error);
+    logger.warn({ module: 'ClickHouse Users', username, err: error instanceof Error ? error.message : String(error) }, 'Failed to get grants');
     return {
       allowedDatabases: [],
       allowedTables: [],
@@ -868,7 +869,7 @@ export async function createClickHouseUser(
       try {
         await saveUserMetadata(connectionId, input.username, input, createdBy);
       } catch (error) {
-        console.warn(`[ClickHouse Users] Failed to save metadata for ${input.username}:`, error);
+        logger.warn({ module: 'ClickHouse Users', username: input.username, err: error instanceof Error ? error.message : String(error) }, 'Failed to save metadata');
         // Don't fail the whole operation if metadata save fails
       }
     }
@@ -924,7 +925,7 @@ export async function updateClickHouseUser(
         };
         await saveUserMetadata(connectionId, username, fullInput);
       } catch (error) {
-        console.warn(`[ClickHouse Users] Failed to update metadata for ${username}:`, error);
+        logger.warn({ module: 'ClickHouse Users', username, err: error instanceof Error ? error.message : String(error) }, 'Failed to update metadata');
         // Don't fail the whole operation if metadata update fails
       }
     }
@@ -952,7 +953,7 @@ export async function deleteClickHouseUser(
       try {
         await deleteUserMetadata(connectionId, username);
       } catch (error) {
-        console.warn(`[ClickHouse Users] Failed to delete metadata for ${username}:`, error);
+        logger.warn({ module: 'ClickHouse Users', username, err: error instanceof Error ? error.message : String(error) }, 'Failed to delete metadata');
         // Don't fail the whole operation if metadata delete fails
       }
     }
@@ -1003,7 +1004,7 @@ export async function syncUnregisteredUsers(
           allowedDatabases = grants.allowedDatabases || [];
           allowedTables = grants.allowedTables || [];
         } catch (error) {
-          console.warn(`[Sync] Failed to parse grants for ${user.name}, using defaults:`, error);
+          logger.warn({ module: 'ClickHouse Users', username: user.name, err: error instanceof Error ? error.message : String(error) }, 'Sync: failed to parse grants, using defaults');
           // Use defaults if grant parsing fails
         }
 

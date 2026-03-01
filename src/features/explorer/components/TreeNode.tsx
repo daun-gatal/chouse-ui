@@ -20,6 +20,7 @@ import { useExplorerStore, useWorkspaceStore, genTabId, RBAC_PERMISSIONS } from 
 import PermissionGuard from "@/components/common/PermissionGuard";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/log";
 import { escapeQualifiedIdentifier } from "@/helpers/sqlUtils";
 
 export interface TreeNodeData {
@@ -322,7 +323,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                         content: `DESCRIBE TABLE ${escapedTable}`,
                       });
                     } catch (error) {
-                      console.error('Invalid table identifier:', error);
+                      log.error('Invalid table identifier:', error);
                       // Still add tab but with error message
                       addTab({
                         id: genTabId(),

@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { log } from '@/lib/log';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -116,7 +117,7 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
       setRules(rulesData);
       setConnections(connectionsData);
     } catch (error) {
-      console.error('Failed to load data:', error);
+      log.error('Failed to load data:', error);
       toast.error('Failed to load data access rules');
     } finally {
       setIsLoading(false);
@@ -189,7 +190,7 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
       setRules(savedRules);
       toast.success('Data access rules saved successfully');
     } catch (error) {
-      console.error('Failed to save rules:', error);
+      log.error('Failed to save rules:', error);
       toast.error('Failed to save data access rules');
     } finally {
       setIsSaving(false);

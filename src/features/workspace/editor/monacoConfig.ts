@@ -1,5 +1,6 @@
 // monacoConfig.ts
 import { createClient } from "@clickhouse/client-web";
+import { log } from "@/lib/log";
 import * as monaco from "monaco-editor";
 import { formatClickHouseSQL } from "@/lib/formatSql";
 import type { IntellisenseData, IntellisenseFunctionInfo } from "@/api/query";
@@ -74,7 +75,7 @@ function initializeClickHouseClient(
     });
   } else {
     if (process.env.NODE_ENV === "development") {
-      console.warn("[MonacoConfig] Invalid or missing ClickHouse credentials");
+      log.warn("[MonacoConfig] Invalid or missing ClickHouse credentials");
     }
   }
 }
@@ -82,7 +83,7 @@ function initializeClickHouseClient(
 try {
   initializeClickHouseClient(appStore, state, credential);
 } catch (error) {
-  console.error("[MonacoConfig] Error initializing ClickHouse client:", error);
+  log.error("[MonacoConfig] Error initializing ClickHouse client:", error);
 }
 
 export async function retryInitialization(
@@ -104,7 +105,7 @@ export async function retryInitialization(
     }
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
-  console.error("[MonacoConfig] Failed to initialize ClickHouse client after multiple attempts.");
+  log.error("[MonacoConfig] Failed to initialize ClickHouse client after multiple attempts.");
 }
 
 export type { Column, Database, ParseQueryContextResult, QueryContextKind, Table, TableInScope } from "./sqlCompletionUtils";
@@ -132,7 +133,7 @@ async function getIntellisenseDataCached(): Promise<IntellisenseData | null> {
     return data;
   } catch (err) {
     if (process.env.NODE_ENV === "development") {
-      console.error("[MonacoConfig] Failed to fetch intellisense data:", err);
+      log.error("[MonacoConfig] Failed to fetch intellisense data:", err);
     }
     return null;
   }
@@ -1063,7 +1064,7 @@ export async function getMonacoEditorOptions(): Promise<MonacoEditorOptions> {
 
     return DEFAULT_MONACO_OPTIONS;
   } catch (error) {
-    console.error('[MonacoConfig] Failed to fetch editor preferences:', error);
+    log.error('[MonacoConfig] Failed to fetch editor preferences:', error);
     return DEFAULT_MONACO_OPTIONS;
   }
 }
@@ -1091,7 +1092,7 @@ export async function updateMonacoEditorOptions(
       },
     });
   } catch (error) {
-    console.error('[MonacoConfig] Failed to update editor preferences:', error);
+    log.error('[MonacoConfig] Failed to update editor preferences:', error);
   }
 }
 

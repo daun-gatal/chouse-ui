@@ -48,12 +48,12 @@ function isError(error: unknown): error is Error {
   return error instanceof Error;
 }
 
-// ✅ Good: Usage
+// ✅ Good: Usage (client — use log helper, not console)
 try {
   // ...
 } catch (error) {
   if (isError(error)) {
-    console.error(error.message);
+    log.error('Operation failed', error);
   }
 }
 ```
@@ -185,19 +185,20 @@ try {
   toast.success("Query executed successfully");
 } catch (error) {
   const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-  console.error('[Component] Operation failed:', errorMessage);
+  log.error('[Component] Operation failed', { errorMessage });
   toast.error(`Failed to execute: ${errorMessage}`);
 }
+// (Use import { log } from '@/lib/log'; in client code.)
 ```
 
 ### Server-Side
 - **Use AppError**: Use the `AppError` class for consistent error responses
 - **Proper HTTP status codes**: Use appropriate status codes (400, 401, 403, 404, 500)
-- **Error logging**: Log errors with context for debugging
+- **Error logging**: Use the shared **logger** (see [Logging (server and client)](#logging-server-and-client)); log errors with context for debugging
 - **Don't expose internals**: Don't leak sensitive information in error messages
 
 ```typescript
-// ✅ Good: Server error handling
+// ✅ Good: Server error handling (use logger, not console)
 try {
   const user = await getUserById(id);
   if (!user) {
@@ -208,9 +209,10 @@ try {
   if (error instanceof AppError) {
     throw error;
   }
-  console.error('[Route] Failed to fetch user:', error);
+  requestLogger(c.get('requestId')).error({ err: error instanceof Error ? error.message : String(error) }, 'Failed to fetch user');
   throw AppError.internal('Failed to fetch user');
 }
+// (Use import { requestLogger } from '../utils/logger'; in server route.)
 ```
 
 ### Resource Cleanup
@@ -437,19 +439,20 @@ const fetchLimit = Math.max(limit * multiplier, 1000);
 - **Quotes**: Use double quotes for strings (TypeScript default)
 - **Semicolons**: Use semicolons consistently
 
-### Console Logging
-- **Development only**: Wrap debug logs in `process.env.NODE_ENV === 'development'`
-- **Use appropriate levels**: Use `console.error` for errors, `console.warn` for warnings
-- **Structured logging**: Include context in log messages
+### Logging (server and client)
+- **Prefer logging utilities over raw console**: Do not use `console.log`/`console.error`/`console.warn` in application code. Use the shared logger on the server and the `log` helper on the client for consistent, level-based, and (server) JSON-formatted logs.
+- **Server** (`packages/server`): Use the shared **logger** from `utils/logger.ts` (Pino). All logs are JSON (one line per entry). Use `logger.info()`, `logger.warn()`, `logger.error()`, `logger.debug()`; use `requestLogger(c.get('requestId'))` in route handlers for request-scoped logs with correlation ID. Set `LOG_LEVEL` (e.g. `info` in production, `debug` in development). Never log passwords, tokens, or full request bodies.
+- **Client** (`src`): Use the **log** helper from `@/lib/log`. Use `log.error()`, `log.warn()` for errors/warnings (always); use `log.info()`, `log.debug()` for dev-only messages (they no-op in production). Pass an optional context object; do not log sensitive data.
 
 ```typescript
-// ✅ Good: Conditional logging
-if (process.env.NODE_ENV === 'development') {
-  console.log('[Component] Debug info:', data);
-}
+// ✅ Good: Server route
+import { requestLogger } from '../utils/logger';
+requestLogger(c.get('requestId')).error({ module: 'MyRoute', err: e.message }, 'Failed to fetch');
 
-// ✅ Good: Error logging with context
-console.error('[Component] Failed to fetch data:', error instanceof Error ? error.message : String(error));
+// ✅ Good: Client
+import { log } from '@/lib/log';
+log.error('Failed to fetch data', { err: error instanceof Error ? error.message : String(error) });
+log.debug('Debug info', { key: data }); // dev only
 ```
 
 ### Imports
@@ -466,7 +469,7 @@ console.error('[Component] Failed to fetch data:', error instanceof Error ? erro
 - [ ] All `useEffect` hooks have proper cleanup
 - [ ] Error handling is implemented for async operations
 - [ ] Resource cleanup is implemented (timers, connections, etc.)
-- [ ] Console.logs are conditional or removed
+- [ ] Server uses `logger` (no raw console); client uses `log` helper for errors/debug
 - [ ] Input validation is implemented
 - [ ] Permissions are checked (server-side)
 - [ ] Performance optimizations applied (memoization, etc.)

@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Search,
 } from 'lucide-react';
+import { log } from '@/lib/log';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -97,7 +98,7 @@ export default function ConnectionUserAccess({
       const users = await rbacConnectionsApi.getUsers(connection.id);
       setUsersWithAccess(users);
     } catch (error) {
-      console.error('Failed to fetch users with access:', error);
+      log.error('Failed to fetch users with access:', error);
       toast.error('Failed to load users with access');
     } finally {
       setIsLoading(false);
@@ -110,7 +111,7 @@ export default function ConnectionUserAccess({
       const result = await rbacUsersApi.list({ limit: 1000 });
       setAllUsers(result.users);
     } catch (error) {
-      console.error('Failed to fetch all users:', error);
+      log.error('Failed to fetch all users:', error);
     }
   };
 

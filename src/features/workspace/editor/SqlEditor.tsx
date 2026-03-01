@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useSavedQueries, useKillQuery } from "@/hooks";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/log";
 
 export interface SqlEditorHandle {
   format: () => void;
@@ -299,7 +300,7 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
 
     // Don't save if content hasn't changed from last save
     if (currentContent === lastSavedContentRef.current) {
-      console.log(`[AutoSave] Skipping save for tab ${tabId}: content unchanged`);
+      log.debug('[AutoSave] Skipping save for tab (content unchanged)', { tabId });
       setSaveStatus("saved");
       return;
     }
@@ -310,9 +311,9 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
     isSavingRef.current = true;
 
     try {
-      console.log(`[AutoSave] Saving tab ${tabId}...`);
+      log.debug('[AutoSave] Saving tab', { tabId });
       await updateSavedQuery(tabId, currentContent);
-      console.log(`[AutoSave] Successfully saved tab ${tabId}`);
+      log.debug('[AutoSave] Successfully saved tab', { tabId });
       lastSavedContentRef.current = currentContent;
       setSaveStatus("saved");
 
@@ -324,7 +325,7 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
         setSaveStatus("idle");
       }, 3000);
     } catch (error) {
-      console.error("Auto-save failed:", error);
+      log.error("Auto-save failed:", error);
       setSaveStatus("unsaved");
     } finally {
       isSavingRef.current = false;
@@ -345,7 +346,7 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
     setSaveStatus("unsaved");
 
     // Schedule new save
-    console.log(`[AutoSave] Scheduled save for tab ${tabId} in ${AUTO_SAVE_DELAY}ms`);
+    log.debug('[AutoSave] Scheduled save', { tabId, delayMs: AUTO_SAVE_DELAY });
     autoSaveTimeoutRef.current = setTimeout(() => {
       performAutoSave();
     }, AUTO_SAVE_DELAY);
@@ -597,7 +598,7 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
       setIsSaveDialogOpen(false);
       setSaveStatus("saved");
     } catch (error) {
-      console.error("Error saving query:", error);
+      log.error("Error saving query:", error);
     } finally {
       setIsSaving(false);
     }

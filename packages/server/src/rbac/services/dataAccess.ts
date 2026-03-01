@@ -8,6 +8,7 @@
 import { eq, and, desc, asc, like, or, isNull, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema, isSqlite } from '../db';
+import { logger } from '../../utils/logger';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -524,20 +525,23 @@ export async function filterDatabasesForUser(
 ): Promise<string[]> {
   const rules = await getRulesForUser(userId, connectionId);
 
-  // Debug logging
-  console.log('[DataAccess] filterDatabasesForUser:', {
-    userId,
-    connectionId,
-    rulesCount: rules.length,
-    rules: rules.map(r => ({
-      id: r.id.substring(0, 8),
-      roleId: r.roleId?.substring(0, 8),
-      userId: r.userId?.substring(0, 8),
-      db: r.databasePattern,
-      table: r.tablePattern,
-      allowed: r.isAllowed
-    })),
-  });
+  logger.debug(
+    {
+      module: 'DataAccess',
+      userId,
+      connectionId,
+      rulesCount: rules.length,
+      rules: rules.map(r => ({
+        id: r.id.substring(0, 8),
+        roleId: r.roleId?.substring(0, 8),
+        userId: r.userId?.substring(0, 8),
+        db: r.databasePattern,
+        table: r.tablePattern,
+        allowed: r.isAllowed
+      })),
+    },
+    'filterDatabasesForUser'
+  );
 
   // If no rules, return empty (secure by default)
   // System databases will be filtered out by the caller for non-admin users

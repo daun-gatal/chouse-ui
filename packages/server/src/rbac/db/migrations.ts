@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import { getDatabase, getDatabaseType, isSqlite, getSchema, type RbacDb, type SqliteDb, type PostgresDb } from './index';
 import { SYSTEM_ROLES } from '../schema/base';
 import { hashPassword } from '../services/password';
+import { logger } from '../../utils/logger';
 
 // ============================================
 // Types
@@ -55,7 +56,7 @@ const MIGRATIONS: Migration[] = [
     name: 'init',
     description: 'Initial RBAC schema - users, roles, permissions, audit logs',
     up: async (db) => {
-      console.log('[Migration 1.0.0] Initial schema applied via Drizzle');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.0.0] Initial schema applied via Drizzle');
     },
   },
   {
@@ -117,7 +118,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_access_user_conn_idx ON rbac_data_access_rules(user_id, connection_id)`);
       }
 
-      console.log('[Migration 1.1.0] Data access rules table created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.1.0] Data access rules table created');
     },
     down: async (db) => {
       const dbType = getDatabaseType();
@@ -128,7 +129,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_data_access_rules`);
       }
 
-      console.log('[Migration 1.1.0] Data access rules table dropped');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.1.0] Data access rules table dropped');
     },
   },
   {
@@ -182,7 +183,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ch_users_meta_connection_idx ON rbac_clickhouse_users_metadata(connection_id)`);
       }
 
-      console.log('[Migration 1.2.0] ClickHouse users metadata table created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.0] ClickHouse users metadata table created');
     },
     down: async (db) => {
       const dbType = getDatabaseType();
@@ -193,7 +194,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_clickhouse_users_metadata`);
       }
 
-      console.log('[Migration 1.2.0] ClickHouse users metadata table dropped');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.0] ClickHouse users metadata table dropped');
     },
   },
   {
@@ -210,11 +211,11 @@ const MIGRATIONS: Migration[] = [
             ALTER TABLE rbac_clickhouse_users_metadata 
             ADD COLUMN auth_type TEXT
           `);
-          console.log('[Migration 1.2.1] Added auth_type column to SQLite metadata table');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.1] Added auth_type column to SQLite metadata table');
         } catch (error: any) {
           // Column might already exist, which is fine
           if (error?.message?.includes('duplicate column')) {
-            console.log('[Migration 1.2.1] auth_type column already exists, skipping');
+            logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.1] auth_type column already exists, skipping');
           } else {
             throw error;
           }
@@ -224,7 +225,7 @@ const MIGRATIONS: Migration[] = [
           ALTER TABLE rbac_clickhouse_users_metadata 
           ADD COLUMN IF NOT EXISTS auth_type VARCHAR(50)
         `);
-        console.log('[Migration 1.2.1] Added auth_type column to PostgreSQL metadata table');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.1] Added auth_type column to PostgreSQL metadata table');
       }
     },
     down: async (db) => {
@@ -232,13 +233,13 @@ const MIGRATIONS: Migration[] = [
 
       if (dbType === 'sqlite') {
         // SQLite doesn't support DROP COLUMN easily, would need to recreate table
-        console.log('[Migration 1.2.1] SQLite does not support DROP COLUMN, manual intervention required');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.1] SQLite does not support DROP COLUMN, manual intervention required');
       } else {
         await (db as PostgresDb).execute(sql`
           ALTER TABLE rbac_clickhouse_users_metadata 
           DROP COLUMN IF EXISTS auth_type
         `);
-        console.log('[Migration 1.2.1] Removed auth_type column from PostgreSQL metadata table');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.1] Removed auth_type column from PostgreSQL metadata table');
       }
     },
   },
@@ -257,7 +258,7 @@ const MIGRATIONS: Migration[] = [
       // Then seed roles (which includes GUEST)
       const roleIdMap = await seedRoles(permissionIdMap);
 
-      console.log('[Migration 1.2.2] Ensured Guest role exists with permissions');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Ensured Guest role exists with permissions');
 
       // Create data access rule for GUEST role to allow read access to system tables
       // This ensures guest users can query system tables for metrics and logs
@@ -287,16 +288,16 @@ const MIGRATIONS: Migration[] = [
               priority: 100, // High priority
               description: 'Allow GUEST role to read system tables for metrics and logs',
             });
-            console.log('[Migration 1.2.2] Created data access rule for system tables');
+            logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Created data access rule for system tables');
           } else {
-            console.log('[Migration 1.2.2] System table access rule already exists');
+            logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] System table access rule already exists');
           }
         } catch (error: any) {
           // Rule might already exist (unique constraint), which is fine
           if (error?.message?.includes('UNIQUE') || error?.message?.includes('unique')) {
-            console.log('[Migration 1.2.2] System table access rule already exists');
+            logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] System table access rule already exists');
           } else {
-            console.warn('[Migration 1.2.2] Could not create system table access rule:', error);
+            logger.warn({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Could not create system table access rule:', error);
             // Don't throw - migration should continue even if rule creation fails
           }
         }
@@ -330,7 +331,7 @@ const MIGRATIONS: Migration[] = [
             DELETE FROM rbac_roles WHERE id = ${roleId}
           `);
 
-          console.log('[Migration 1.2.2] Removed Guest role and associated rules');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Removed Guest role and associated rules');
         }
       } else {
         // PostgreSQL
@@ -356,7 +357,7 @@ const MIGRATIONS: Migration[] = [
             DELETE FROM rbac_roles WHERE id = ${roleId}
           `);
 
-          console.log('[Migration 1.2.2] Removed Guest role and associated rules');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Removed Guest role and associated rules');
         }
       }
     },
@@ -458,7 +459,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_id_idx ON rbac_user_preferences(user_id)`);
       }
 
-      console.log('[Migration 1.3.0] User preferences tables created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.3.0] User preferences tables created');
     },
     down: async (db) => {
       const dbType = getDatabaseType();
@@ -473,7 +474,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_user_favorites`);
       }
 
-      console.log('[Migration 1.3.0] User preferences tables dropped');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.3.0] User preferences tables dropped');
     },
   },
   {
@@ -521,7 +522,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_conn_idx ON rbac_saved_queries(user_id, connection_id)`);
       }
 
-      console.log('[Migration 1.4.0] Saved queries table created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.4.0] Saved queries table created');
     },
     down: async (db) => {
       const dbType = getDatabaseType();
@@ -532,7 +533,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_saved_queries`);
       }
 
-      console.log('[Migration 1.4.0] Saved queries table dropped');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.4.0] Saved queries table dropped');
     },
   },
   {
@@ -603,11 +604,11 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP INDEX IF EXISTS saved_queries_user_conn_idx`);
       }
 
-      console.log('[Migration 1.5.0] Saved queries table updated to support shared queries across connections');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.5.0] Saved queries table updated to support shared queries across connections');
     },
     down: async (db) => {
       // This migration is not easily reversible as it changes data
-      console.log('[Migration 1.5.0] Down migration not supported - connectionId is now optional');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.5.0] Down migration not supported - connectionId is now optional');
     },
   },
   {
@@ -716,10 +717,10 @@ const MIGRATIONS: Migration[] = [
         `);
       }
 
-      console.log('[Migration 1.6.0] Favorites and recent items tables updated to support connection filtering');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.6.0] Favorites and recent items tables updated to support connection filtering');
     },
     down: async (db) => {
-      console.log('[Migration 1.6.0] Down migration not supported');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.6.0] Down migration not supported');
     },
   },
   {
@@ -734,14 +735,14 @@ const MIGRATIONS: Migration[] = [
       // First ensure all permissions exist (including new ones)
       const permissionIdMap = await seedPermissions();
 
-      console.log('[Migration 1.7.0] Live query management permissions created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.7.0] Live query management permissions created');
 
       // Get LIVE_QUERIES_VIEW and LIVE_QUERIES_KILL permission IDs
       const liveQueriesViewId = permissionIdMap.get('live_queries:view');
       const liveQueriesKillId = permissionIdMap.get('live_queries:kill');
 
       if (!liveQueriesViewId || !liveQueriesKillId) {
-        console.error('[Migration 1.7.0] Failed to get live query permission IDs');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.7.0] Failed to get live query permission IDs');
         return;
       }
 
@@ -806,18 +807,18 @@ const MIGRATIONS: Migration[] = [
                   VALUES (${id}, ${roleId}, ${permId}, ${createdAt.toISOString()})
                 `);
               }
-              console.log(`[Migration 1.7.0] Assigned permission ${permId} to role ${roleName}`);
+              logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.7.0] Assigned permission ${permId} to role ${roleName}`);
             } else {
-              console.log(`[Migration 1.7.0] Permission ${permId} already assigned to role ${roleName}`);
+              logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.7.0] Permission ${permId} already assigned to role ${roleName}`);
             }
           }
         }
       }
 
-      console.log('[Migration 1.7.0] Live query management permissions assigned to super_admin role');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.7.0] Live query management permissions assigned to super_admin role');
     },
     down: async (db) => {
-      console.log('[Migration 1.7.0] Down migration: Removing live query permissions');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.7.0] Down migration: Removing live query permissions');
       // Permissions will be removed by cascade on role deletion, but we can clean up manually if needed
     },
   },
@@ -833,7 +834,7 @@ const MIGRATIONS: Migration[] = [
       // First ensure all permissions exist (including new ones)
       const permissionIdMap = await seedPermissions();
 
-      console.log('[Migration 1.8.0] Connection management permissions created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.8.0] Connection management permissions created');
 
       // Get permission IDs
       const connViewId = permissionIdMap.get('connections:view');
@@ -841,7 +842,7 @@ const MIGRATIONS: Migration[] = [
       const connDeleteId = permissionIdMap.get('connections:delete');
 
       if (!connViewId || !connEditId || !connDeleteId) {
-        console.error('[Migration 1.8.0] Failed to get connection permission IDs');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.8.0] Failed to get connection permission IDs');
         return;
       }
 
@@ -906,18 +907,18 @@ const MIGRATIONS: Migration[] = [
                   VALUES (${id}, ${roleId}, ${permId}, ${createdAt.toISOString()})
                 `);
               }
-              console.log(`[Migration 1.8.0] Assigned permission ${permId} to role ${roleName}`);
+              logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.8.0] Assigned permission ${permId} to role ${roleName}`);
             } else {
-              console.log(`[Migration 1.8.0] Permission ${permId} already assigned to role ${roleName}`);
+              logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.8.0] Permission ${permId} already assigned to role ${roleName}`);
             }
           }
         }
       }
 
-      console.log('[Migration 1.8.0] Connection management permissions assigned to super_admin role');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.8.0] Connection management permissions assigned to super_admin role');
     },
     down: async (db) => {
-      console.log('[Migration 1.8.0] Down migration: Connection management permissions will remain (idempotent seed)');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.8.0] Down migration: Connection management permissions will remain (idempotent seed)');
     },
   },
   {
@@ -932,13 +933,13 @@ const MIGRATIONS: Migration[] = [
       // First ensure all permissions exist (including new ones)
       const permissionIdMap = await seedPermissions();
 
-      console.log('[Migration 1.9.0] Audit log deletion permission created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.9.0] Audit log deletion permission created');
 
       // Get permission ID
       const auditDeleteId = permissionIdMap.get('audit:delete');
 
       if (!auditDeleteId) {
-        console.error('[Migration 1.9.0] Failed to get audit delete permission ID');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.9.0] Failed to get audit delete permission ID');
         return;
       }
 
@@ -1002,17 +1003,17 @@ const MIGRATIONS: Migration[] = [
                 VALUES (${id}, ${roleId}, ${auditDeleteId}, ${createdAt.toISOString()})
               `);
             }
-            console.log(`[Migration 1.9.0] Assigned permission ${auditDeleteId} to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.9.0] Assigned permission ${auditDeleteId} to role ${roleName}`);
           } else {
-            console.log(`[Migration 1.9.0] Permission ${auditDeleteId} already assigned to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.9.0] Permission ${auditDeleteId} already assigned to role ${roleName}`);
           }
         }
       }
 
-      console.log('[Migration 1.9.0] Audit log deletion permission assigned to super_admin role');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.9.0] Audit log deletion permission assigned to super_admin role');
     },
     down: async (db) => {
-      console.log('[Migration 1.9.0] Down migration: Audit log deletion permission will remain (idempotent seed)');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.9.0] Down migration: Audit log deletion permission will remain (idempotent seed)');
     },
   },
   {
@@ -1026,13 +1027,13 @@ const MIGRATIONS: Migration[] = [
       // First ensure all permissions exist (including new ones)
       const permissionIdMap = await seedPermissions();
 
-      console.log('[Migration 1.10.0] Query execute misc permission created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.10.0] Query execute misc permission created');
 
       // Get permission ID
       const queryMiscId = permissionIdMap.get('query:execute:misc');
 
       if (!queryMiscId) {
-        console.error('[Migration 1.10.0] Failed to get query:execute:misc permission ID');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.10.0] Failed to get query:execute:misc permission ID');
         return;
       }
 
@@ -1101,17 +1102,17 @@ const MIGRATIONS: Migration[] = [
                 VALUES (${id}, ${roleId}, ${queryMiscId}, ${createdAt.toISOString()})
               `);
             }
-            console.log(`[Migration 1.10.0] Assigned permission ${queryMiscId} to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.10.0] Assigned permission ${queryMiscId} to role ${roleName}`);
           } else {
-            console.log(`[Migration 1.10.0] Permission ${queryMiscId} already assigned to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.10.0] Permission ${queryMiscId} already assigned to role ${roleName}`);
           }
         }
       }
 
-      console.log('[Migration 1.10.0] Query execute misc permission assigned to relevant roles');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.10.0] Query execute misc permission assigned to relevant roles');
     },
     down: async (db) => {
-      console.log('[Migration 1.10.0] Down migration: Query execute misc permission will remain (idempotent seed)');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.10.0] Down migration: Query execute misc permission will remain (idempotent seed)');
     },
   },
   {
@@ -1125,13 +1126,13 @@ const MIGRATIONS: Migration[] = [
       // First ensure all permissions exist (including new ones)
       const permissionIdMap = await seedPermissions();
 
-      console.log('[Migration 1.10.1] Ensuring query execute misc permission exists');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.10.1] Ensuring query execute misc permission exists');
 
       // Get permission ID
       const queryMiscId = permissionIdMap.get('query:execute:misc');
 
       if (!queryMiscId) {
-        console.error('[Migration 1.10.1] Failed to get query:execute:misc permission ID');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.10.1] Failed to get query:execute:misc permission ID');
         return;
       }
 
@@ -1200,17 +1201,17 @@ const MIGRATIONS: Migration[] = [
                 VALUES (${id}, ${roleId}, ${queryMiscId}, ${createdAt.toISOString()})
               `);
             }
-            console.log(`[Migration 1.10.1] Assigned permission ${queryMiscId} to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.10.1] Assigned permission ${queryMiscId} to role ${roleName}`);
           } else {
-            console.log(`[Migration 1.10.1] Permission ${queryMiscId} already assigned to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.10.1] Permission ${queryMiscId} already assigned to role ${roleName}`);
           }
         }
       }
 
-      console.log('[Migration 1.10.1] Query execute misc permission check completed');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.10.1] Query execute misc permission check completed');
     },
     down: async (db) => {
-      console.log('[Migration 1.10.1] Down migration: No action needed');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.10.1] Down migration: No action needed');
     },
   },
   {
@@ -1233,10 +1234,10 @@ const MIGRATIONS: Migration[] = [
               ALTER TABLE rbac_audit_logs 
               ADD COLUMN ${col} TEXT
             `));
-            console.log(`[Migration 1.11.0] Added ${col} column to SQLite audit logs table`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.11.0] Added ${col} column to SQLite audit logs table`);
           } catch (error: any) {
             if (error?.message?.includes('duplicate column')) {
-              console.log(`[Migration 1.11.0] ${col} column already exists, skipping`);
+              logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.11.0] ${col} column already exists, skipping`);
             } else {
               throw error;
             }
@@ -1249,14 +1250,14 @@ const MIGRATIONS: Migration[] = [
           ADD COLUMN IF NOT EXISTS email_snapshot VARCHAR(255),
           ADD COLUMN IF NOT EXISTS display_name_snapshot VARCHAR(255)
         `);
-        console.log('[Migration 1.11.0] Added snapshot columns to PostgreSQL audit logs table');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.11.0] Added snapshot columns to PostgreSQL audit logs table');
       }
     },
     down: async (db) => {
       const dbType = getDatabaseType();
 
       if (dbType === 'sqlite') {
-        console.log('[Migration 1.11.0] SQLite does not support DROP COLUMN, manual intervention required');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.11.0] SQLite does not support DROP COLUMN, manual intervention required');
       } else {
         await (db as PostgresDb).execute(sql`
           ALTER TABLE rbac_audit_logs 
@@ -1264,7 +1265,7 @@ const MIGRATIONS: Migration[] = [
           DROP COLUMN IF EXISTS email_snapshot,
           DROP COLUMN IF EXISTS display_name_snapshot
         `);
-        console.log('[Migration 1.11.0] Removed snapshot columns from PostgreSQL audit logs table');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.11.0] Removed snapshot columns from PostgreSQL audit logs table');
       }
     },
   },
@@ -1279,13 +1280,13 @@ const MIGRATIONS: Migration[] = [
       // First ensure all permissions exist (including the new ai:optimize)
       const permissionIdMap = await seedPermissions();
 
-      console.log('[Migration 1.12.0] AI optimize permission created/updated');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.12.0] AI optimize permission created/updated');
 
       // Get permission ID
       const aiOptimizeId = permissionIdMap.get('ai:optimize');
 
       if (!aiOptimizeId) {
-        console.error('[Migration 1.12.0] Failed to get ai:optimize permission ID');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.12.0] Failed to get ai:optimize permission ID');
         return;
       }
 
@@ -1354,17 +1355,17 @@ const MIGRATIONS: Migration[] = [
                 VALUES (${id}, ${roleId}, ${aiOptimizeId}, ${createdAt.toISOString()})
               `);
             }
-            console.log(`[Migration 1.12.0] Assigned permission ${aiOptimizeId} to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.12.0] Assigned permission ${aiOptimizeId} to role ${roleName}`);
           } else {
-            console.log(`[Migration 1.12.0] Permission ${aiOptimizeId} already assigned to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.12.0] Permission ${aiOptimizeId} already assigned to role ${roleName}`);
           }
         }
       }
 
-      console.log('[Migration 1.12.0] AI optimize permission sync completed');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.12.0] AI optimize permission sync completed');
     },
     down: async (db) => {
-      console.log('[Migration 1.12.0] Down migration: AI optimization permission will remain (idempotent seed)');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.12.0] Down migration: AI optimization permission will remain (idempotent seed)');
     },
   },
   {
@@ -1377,12 +1378,12 @@ const MIGRATIONS: Migration[] = [
       // Seed all permissions (including new live_queries:kill_all)
       const permissionIdMap = await seedPermissions();
 
-      console.log('[Migration 1.13.0] live_queries:kill_all permission created');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.13.0] live_queries:kill_all permission created');
 
       const killAllId = permissionIdMap.get('live_queries:kill_all');
 
       if (!killAllId) {
-        console.error('[Migration 1.13.0] Failed to get live_queries:kill_all permission ID');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.13.0] Failed to get live_queries:kill_all permission ID');
         return;
       }
 
@@ -1447,17 +1448,17 @@ const MIGRATIONS: Migration[] = [
                 VALUES (${id}, ${roleId}, ${killAllId}, ${createdAt.toISOString()})
               `);
             }
-            console.log(`[Migration 1.13.0] Assigned permission ${killAllId} to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.13.0] Assigned permission ${killAllId} to role ${roleName}`);
           } else {
-            console.log(`[Migration 1.13.0] Permission ${killAllId} already assigned to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.13.0] Permission ${killAllId} already assigned to role ${roleName}`);
           }
         }
       }
 
-      console.log('[Migration 1.13.0] live_queries:kill_all permission assigned to super_admin and admin roles');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.13.0] live_queries:kill_all permission assigned to super_admin and admin roles');
     },
     down: async (db) => {
-      console.log('[Migration 1.13.0] Down migration: live_queries:kill_all permission will remain (idempotent seed)');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.13.0] Down migration: live_queries:kill_all permission will remain (idempotent seed)');
     },
   },
   {
@@ -1501,7 +1502,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_chat_threads_updated_at_idx ON rbac_ai_chat_threads(updated_at)`);
       }
 
-      console.log('[Migration 1.14.0] Created rbac_ai_chat_threads table');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.14.0] Created rbac_ai_chat_threads table');
 
       // Create AI chat messages table
       if (dbType === 'sqlite') {
@@ -1532,7 +1533,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_chat_messages_created_at_idx ON rbac_ai_chat_messages(created_at)`);
       }
 
-      console.log('[Migration 1.14.0] Created rbac_ai_chat_messages table');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.14.0] Created rbac_ai_chat_messages table');
 
       // Seed ai:chat permission and assign to roles
       const { seedPermissions } = await import('../services/seed');
@@ -1541,7 +1542,7 @@ const MIGRATIONS: Migration[] = [
       const aiChatId = permissionIdMap.get('ai:chat');
 
       if (!aiChatId) {
-        console.error('[Migration 1.14.0] Failed to get ai:chat permission ID');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.14.0] Failed to get ai:chat permission ID');
         return;
       }
 
@@ -1603,14 +1604,14 @@ const MIGRATIONS: Migration[] = [
                 VALUES (${id}, ${roleId}, ${aiChatId}, ${createdAt.toISOString()})
               `);
             }
-            console.log(`[Migration 1.14.0] Assigned ai:chat permission to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.14.0] Assigned ai:chat permission to role ${roleName}`);
           } else {
-            console.log(`[Migration 1.14.0] ai:chat permission already assigned to role ${roleName}`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.14.0] ai:chat permission already assigned to role ${roleName}`);
           }
         }
       }
 
-      console.log('[Migration 1.14.0] AI chat tables and permission setup completed');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.14.0] AI chat tables and permission setup completed');
     },
     down: async (db) => {
       const { getDatabaseType } = await import('./index');
@@ -1625,7 +1626,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_chat_threads`);
       }
 
-      console.log('[Migration 1.14.0] Dropped AI chat tables');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.14.0] Dropped AI chat tables');
     },
   },
   {
@@ -1642,16 +1643,16 @@ const MIGRATIONS: Migration[] = [
           (db as SqliteDb).run(sql`
             ALTER TABLE rbac_ai_chat_messages ADD COLUMN chart_spec TEXT
           `);
-          console.log('[Migration 1.15.0] Added chart_spec column to SQLite rbac_ai_chat_messages table');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.15.0] Added chart_spec column to SQLite rbac_ai_chat_messages table');
         } catch (error: any) {
           if (!error?.message?.includes('duplicate column')) throw error;
-          console.log('[Migration 1.15.0] chart_spec column already exists, skipping');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.15.0] chart_spec column already exists, skipping');
         }
       } else {
         await (db as PostgresDb).execute(sql`
           ALTER TABLE rbac_ai_chat_messages ADD COLUMN IF NOT EXISTS chart_spec JSONB
         `);
-        console.log('[Migration 1.15.0] Added chart_spec column to PostgreSQL rbac_ai_chat_messages table');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.15.0] Added chart_spec column to PostgreSQL rbac_ai_chat_messages table');
       }
     },
     down: async (db) => {
@@ -1660,12 +1661,12 @@ const MIGRATIONS: Migration[] = [
       const dbType = getDatabaseType();
 
       if (dbType === 'sqlite') {
-        console.log('[Migration 1.15.0] SQLite does not support DROP COLUMN easily, manual intervention required');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.15.0] SQLite does not support DROP COLUMN easily, manual intervention required');
       } else {
         await (db as PostgresDb).execute(sql`
           ALTER TABLE rbac_ai_chat_messages DROP COLUMN IF EXISTS chart_spec
         `);
-        console.log('[Migration 1.15.0] Dropped chart_spec column from PostgreSQL rbac_ai_chat_messages table');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.15.0] Dropped chart_spec column from PostgreSQL rbac_ai_chat_messages table');
       }
     },
   },
@@ -1768,7 +1769,7 @@ const MIGRATIONS: Migration[] = [
       const permissionIdMap = await seedPermissions();
       await seedRoles(permissionIdMap);
 
-      console.log('[Migration 1.16.0] Added ai models normalized tables and permissions');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.0] Added ai models normalized tables and permissions');
     },
     down: async (db) => {
       const { getDatabaseType } = await import('./index');
@@ -1784,7 +1785,7 @@ const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_models`);
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_providers`);
       }
-      console.log('[Migration 1.16.0] Dropped ai models normalized tables');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.0] Dropped ai models normalized tables');
     },
   },
   {
@@ -1802,7 +1803,7 @@ const MIGRATIONS: Migration[] = [
       const aiDeleteId = permissionIdMap.get('ai_models:delete');
 
       if (!aiViewId || !aiCreateId || !aiUpdateId || !aiDeleteId) {
-        console.error('[Migration 1.16.1] Failed to get AI Models permission IDs');
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.16.1] Failed to get AI Models permission IDs');
         return;
       }
 
@@ -1872,16 +1873,16 @@ const MIGRATIONS: Migration[] = [
                   VALUES (${id}, ${roleId}, ${permId}, ${createdAt.toISOString()})
                 `);
               }
-              console.log(`[Migration 1.16.1] Assigned permission ${permId} to role ${roleName}`);
+              logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.16.1] Assigned permission ${permId} to role ${roleName}`);
             }
           }
         }
       }
 
-      console.log('[Migration 1.16.1] Seeded AI Models permissions to Admin roles');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.1] Seeded AI Models permissions to Admin roles');
     },
     down: async (db) => {
-      console.log('[Migration 1.16.1] Down migration: AI Models permissions will remain (idempotent seed)');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.1] Down migration: AI Models permissions will remain (idempotent seed)');
     },
   },
   {
@@ -1936,9 +1937,9 @@ const MIGRATIONS: Migration[] = [
               ALTER TABLE rbac_ai_providers ADD COLUMN provider_type VARCHAR(255)
             `);
           }
-          console.log('[Migration 1.16.2] Added provider_type column (nullable)');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.2] Added provider_type column (nullable)');
         } else {
-          console.log('[Migration 1.16.2] provider_type column already exists, skipping add');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.2] provider_type column already exists, skipping add');
         }
 
         // Step 2: Copy name values to provider_type for all existing records
@@ -1952,7 +1953,7 @@ const MIGRATIONS: Migration[] = [
           `);
         }
 
-        console.log('[Migration 1.16.2] Copied name values to provider_type');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.2] Copied name values to provider_type');
 
         // Step 3: Validate all provider_type values are valid (skip if column was just created and table is empty)
         let invalidProviders: Array<{ id: string; name: string; provider_type: string }> = [];
@@ -1982,7 +1983,7 @@ const MIGRATIONS: Migration[] = [
           );
         }
 
-        console.log('[Migration 1.16.2] Validated all provider_type values');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.2] Validated all provider_type values');
 
         // Step 4: Make provider_type NOT NULL (only if it's currently nullable)
         if (!isNotNull) {
@@ -2020,13 +2021,13 @@ const MIGRATIONS: Migration[] = [
               ALTER TABLE rbac_ai_providers ALTER COLUMN provider_type SET NOT NULL
             `);
           }
-          console.log('[Migration 1.16.2] Made provider_type NOT NULL');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.2] Made provider_type NOT NULL');
         } else {
-          console.log('[Migration 1.16.2] provider_type column already has NOT NULL constraint, skipping');
+          logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.2] provider_type column already has NOT NULL constraint, skipping');
         }
-        console.log('[Migration 1.16.2] Successfully added provider_type column');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.2] Successfully added provider_type column');
       } catch (error) {
-        console.error('[Migration 1.16.2] Error during migration:', error);
+        logger.error({ module: 'RBAC', phase: 'migration', err: error instanceof Error ? error.message : String(error) }, '[Migration 1.16.2] Error during migration');
         throw error;
       }
     },
@@ -2065,9 +2066,9 @@ const MIGRATIONS: Migration[] = [
           `);
         }
 
-        console.log('[Migration 1.16.2] Rolled back: Removed provider_type column');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.16.2] Rolled back: Removed provider_type column');
       } catch (error) {
-        console.error('[Migration 1.16.2] Error during rollback:', error);
+        logger.error({ module: 'RBAC', phase: 'migration', err: error instanceof Error ? error.message : String(error) }, '[Migration 1.16.2] Error during rollback');
         throw error;
       }
     },
@@ -2096,10 +2097,10 @@ const MIGRATIONS: Migration[] = [
         if (dbType === 'sqlite') {
           try {
             (db as SqliteDb).run(sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN ${col.name} ${col.sqliteType}`));
-            console.log(`[Migration 1.17.0] Added ${col.name} column (SQLite)`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.0] Added ${col.name} column (SQLite)`);
           } catch (error: any) {
             if (error?.message?.includes('duplicate column')) {
-              console.log(`[Migration 1.17.0] ${col.name} column already exists, skipping`);
+              logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.0] ${col.name} column already exists, skipping`);
             } else {
               throw error;
             }
@@ -2108,11 +2109,11 @@ const MIGRATIONS: Migration[] = [
           await (db as PostgresDb).execute(
             sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN IF NOT EXISTS ${col.name} ${col.pgType}`)
           );
-          console.log(`[Migration 1.17.0] Added ${col.name} column (PostgreSQL)`);
+          logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.0] Added ${col.name} column (PostgreSQL)`);
         }
       }
 
-      console.log('[Migration 1.17.0] Successfully added client info columns to audit logs');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.17.0] Successfully added client info columns to audit logs');
     },
     down: async (db) => {
       const { getDatabaseType } = await import('./index');
@@ -2122,14 +2123,14 @@ const MIGRATIONS: Migration[] = [
       const columns = ['browser', 'browser_version', 'os', 'os_version', 'device_type', 'language', 'country'];
 
       if (dbType === 'sqlite') {
-        console.log('[Migration 1.17.0] SQLite does not support DROP COLUMN easily, manual intervention may be required');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.17.0] SQLite does not support DROP COLUMN easily, manual intervention may be required');
       } else {
         for (const col of columns) {
           await (db as PostgresDb).execute(
             sql.raw(`ALTER TABLE rbac_audit_logs DROP COLUMN IF EXISTS ${col}`)
           );
         }
-        console.log('[Migration 1.17.0] Removed client info columns from audit logs (PostgreSQL)');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.17.0] Removed client info columns from audit logs (PostgreSQL)');
       }
     },
   },
@@ -2155,10 +2156,10 @@ const MIGRATIONS: Migration[] = [
         if (dbType === 'sqlite') {
           try {
             (db as SqliteDb).run(sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN ${col.name} ${col.sqliteType}`));
-            console.log(`[Migration 1.17.1] Added ${col.name} column (SQLite)`);
+            logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.1] Added ${col.name} column (SQLite)`);
           } catch (error: any) {
             if (error?.message?.includes('duplicate column')) {
-              console.log(`[Migration 1.17.1] ${col.name} column already exists, skipping`);
+              logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.1] ${col.name} column already exists, skipping`);
             } else {
               throw error;
             }
@@ -2167,11 +2168,11 @@ const MIGRATIONS: Migration[] = [
           await (db as PostgresDb).execute(
             sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN IF NOT EXISTS ${col.name} ${col.pgType}`)
           );
-          console.log(`[Migration 1.17.1] Added ${col.name} column (PostgreSQL)`);
+          logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.1] Added ${col.name} column (PostgreSQL)`);
         }
       }
 
-      console.log('[Migration 1.17.1] Successfully added enriched geo and device columns to audit logs');
+      logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.17.1] Successfully added enriched geo and device columns to audit logs');
     },
     down: async (db) => {
       const { getDatabaseType } = await import('./index');
@@ -2181,14 +2182,14 @@ const MIGRATIONS: Migration[] = [
       const columns = ['timezone', 'city', 'country_region', 'device_model', 'architecture'];
 
       if (dbType === 'sqlite') {
-        console.log('[Migration 1.17.1] SQLite does not support DROP COLUMN easily, manual intervention may be required');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.17.1] SQLite does not support DROP COLUMN easily, manual intervention may be required');
       } else {
         for (const col of columns) {
           await (db as PostgresDb).execute(
             sql.raw(`ALTER TABLE rbac_audit_logs DROP COLUMN IF EXISTS ${col}`)
           );
         }
-        console.log('[Migration 1.17.1] Removed enriched geo and device columns from audit logs (PostgreSQL)');
+        logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.17.1] Removed enriched geo and device columns from audit logs (PostgreSQL)');
       }
     },
   },
@@ -2300,7 +2301,7 @@ async function createSchemaFromDrizzle(db: RbacDb): Promise<void> {
 }
 
 async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
-  console.log('[Migration] Creating SQLite schema from Drizzle definitions...');
+  logger.info({ module: 'RBAC', phase: 'migration' },'[Migration] Creating SQLite schema from Drizzle definitions...');
 
   // Users table
   db.run(sql`
@@ -2614,11 +2615,11 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
   db.run(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_idx ON rbac_saved_queries(user_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS saved_queries_conn_idx ON rbac_saved_queries(connection_id)`);
 
-  console.log('[Migration] SQLite schema created');
+  logger.info({ module: 'RBAC', phase: 'migration' },'[Migration] SQLite schema created');
 }
 
 async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
-  console.log('[Migration] Creating PostgreSQL schema from Drizzle definitions...');
+  logger.info({ module: 'RBAC', phase: 'migration' },'[Migration] Creating PostgreSQL schema from Drizzle definitions...');
 
   // Users table (using TEXT for IDs to match Drizzle schema)
   await db.execute(sql`
@@ -2933,7 +2934,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS saved_queries_user_idx ON rbac_saved_queries(user_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS saved_queries_conn_idx ON rbac_saved_queries(connection_id)`);
 
-  console.log('[Migration] PostgreSQL schema created');
+  logger.info({ module: 'RBAC', phase: 'migration' },'[Migration] PostgreSQL schema created');
 }
 
 // ============================================
@@ -2954,31 +2955,31 @@ export async function runMigrations(options: { skipSeed?: boolean } = {}): Promi
   const isFirstRunFlag = appliedMigrations.length === 0;
   const migrationsApplied: string[] = [];
 
-  console.log(`[Migration] Current version: ${previousVersion || 'none (first run)'}`);
-  console.log(`[Migration] Target version: ${APP_VERSION}`);
+  logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Current version: ${previousVersion || 'none (first run)'}`);
+  logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Target version: ${APP_VERSION}`);
 
   // For first run, create initial schema
   if (isFirstRunFlag) {
-    console.log('[Migration] First run detected - creating initial schema');
+    logger.info({ module: 'RBAC', phase: 'migration' },'[Migration] First run detected - creating initial schema');
     await createSchemaFromDrizzle(db);
   }
 
   // Run pending migrations
   for (const migration of MIGRATIONS) {
     if (appliedVersions.has(migration.version)) {
-      console.log(`[Migration] Skipping ${migration.version} (already applied)`);
+      logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Skipping ${migration.version} (already applied)`);
       continue;
     }
 
-    console.log(`[Migration] Applying ${migration.version}: ${migration.name}`);
+    logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Applying ${migration.version}: ${migration.name}`);
 
     try {
       await migration.up(db);
       await recordMigration(db, migration);
       migrationsApplied.push(migration.version);
-      console.log(`[Migration] Applied ${migration.version} successfully`);
+      logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Applied ${migration.version} successfully`);
     } catch (error) {
-      console.error(`[Migration] Failed to apply ${migration.version}:`, error);
+      logger.error({ module: 'RBAC', phase: 'migration', version: migration.version, err: error instanceof Error ? error.message : String(error) }, 'Failed to apply migration');
       throw new Error(`Migration ${migration.version} failed: ${error}`);
     }
   }
@@ -2986,9 +2987,9 @@ export async function runMigrations(options: { skipSeed?: boolean } = {}): Promi
   const currentVersion = await getCurrentVersion();
 
   if (migrationsApplied.length > 0) {
-    console.log(`[Migration] Applied ${migrationsApplied.length} migration(s): ${migrationsApplied.join(', ')}`);
+    logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Applied ${migrationsApplied.length} migration(s): ${migrationsApplied.join(', ')}`);
   } else {
-    console.log('[Migration] No new migrations to apply');
+    logger.info({ module: 'RBAC', phase: 'migration' },'[Migration] No new migrations to apply');
   }
 
   return {

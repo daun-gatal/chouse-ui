@@ -10,6 +10,7 @@ import { formatClickHouseSQL } from '@/lib/formatSql';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { log } from '@/lib/log';
 import { DiffEditor } from './DiffEditor';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
@@ -69,7 +70,7 @@ export function DebugQueryDialog({
                 } else if (models.length > 0) {
                     setSelectedModelId(models[0].id);
                 }
-            }).catch(console.error);
+            }).catch((e) => log.error('Failed to fetch AI models', e));
         }
     }, [isOpen]);
 

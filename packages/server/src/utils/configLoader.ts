@@ -1,5 +1,6 @@
 import fs from "fs";
 import yaml from "yaml";
+import { logger } from "./logger";
 
 /**
  * Recursively flattens a nested object into a single-level object with keys joined by underscores.
@@ -43,7 +44,7 @@ function loadConfig() {
 
     try {
         if (!fs.existsSync(configPath)) {
-            console.error(`❌ Configuration file not found at ${configPath}.`);
+            logger.error({ configPath }, "Configuration file not found");
             process.exit(1);
         }
 
@@ -53,18 +54,20 @@ function loadConfig() {
         if (parsedConfig && typeof parsedConfig === "object") {
             const flattened = flattenConfig(parsedConfig);
 
-            // Override process.env with the flattened YAML config
             for (const [key, value] of Object.entries(flattened)) {
                 process.env[key] = value;
             }
 
-            console.log(`✅ Loaded configuration from ${configPath}`);
+            logger.info({ configPath }, "Loaded configuration from file");
         } else {
-            console.error(`❌ Invalid configuration format in ${configPath}. Expected a YAML object.`);
+            logger.error({ configPath }, "Invalid configuration format; expected YAML object");
             process.exit(1);
         }
     } catch (error) {
-        console.error(`❌ Failed to load configuration from ${configPath}:`, error instanceof Error ? error.message : String(error));
+        logger.error(
+            { configPath, err: error instanceof Error ? error.message : String(error) },
+            "Failed to load configuration"
+        );
         process.exit(1);
     }
 }

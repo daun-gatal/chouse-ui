@@ -28,6 +28,7 @@ import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId } from "@/api/client";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";
 import { GlassCard } from "@/components/ui/glass-card";
+import { log } from "@/lib/log";
 
 // ============================================
 // Types & Components
@@ -483,13 +484,13 @@ export default function Preferences() {
         try {
           await rbacConnectionsApi.disconnect(sessionId);
         } catch (error) {
-          console.error('Failed to disconnect ClickHouse connection:', error);
+          log.error('Failed to disconnect ClickHouse connection:', error);
         }
       }
       await rbacLogout();
       useAuthStore.getState().clearConnectionInfo();
     } catch (error) {
-      console.error('Logout error:', error);
+      log.error('Logout error:', error);
       useAuthStore.getState().clearConnectionInfo();
     } finally {
       setIsLoggingOut(false);

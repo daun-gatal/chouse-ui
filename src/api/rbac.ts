@@ -15,6 +15,7 @@ import {
   refreshTokens,
   type RbacTokens
 } from './client';
+import { log } from '@/lib/log';
 
 // ============================================
 // Types
@@ -1246,7 +1247,7 @@ export const rbacUserPreferencesApi = {
   async addFavorite(database: string, table?: string, connectionId?: string | null, connectionName?: string | null): Promise<UserFavorite> {
     let accessToken = getRbacAccessToken();
     if (!accessToken) {
-      console.error('[UserPreferences] No access token found');
+      log.error('[UserPreferences] No access token found');
       throw new ApiError('Not authenticated', 401);
     }
 
@@ -1285,23 +1286,12 @@ export const rbacUserPreferencesApi = {
     try {
       data = await response.json();
     } catch (e) {
-      console.error('[UserPreferences] Failed to parse response:', e);
-      const text = await response.text();
-      console.error('[UserPreferences] Response text:', text);
+      log.error('[UserPreferences] Failed to parse response', e);
       throw new ApiError('Invalid response from server', response.status);
     }
 
     if (!response.ok) {
-      console.error('[UserPreferences] Failed to add favorite:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: data.error,
-        hasToken: !!accessToken,
-        tokenLength: accessToken?.length,
-        tokenPreview: accessToken ? `${accessToken.substring(0, 20)}...` : null,
-        responseData: data,
-        headers: Object.fromEntries(response.headers.entries()),
-      });
+      log.error('[UserPreferences] Failed to add favorite', { status: response.status, statusText: response.statusText, errorMessage: data?.error?.message });
       throw new ApiError(data.error?.message || `Failed to add favorite (${response.status})`, response.status);
     }
     return data.favorite;

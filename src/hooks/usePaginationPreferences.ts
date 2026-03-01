@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { rbacUserPreferencesApi } from '@/api/rbac';
 import { useRbacStore } from '@/stores/rbac';
+import { log } from '@/lib/log';
 
 export interface TablePaginationPreferences {
   queryResults?: number;
@@ -61,14 +62,14 @@ export function usePaginationPreference(
         setHasFetched(true);
         setIsLoading(false);
       } catch (error) {
-        console.error(`[usePaginationPreference] Failed to fetch pagination preference for ${context}:`, error);
+        log.error(`[usePaginationPreference] Failed to fetch pagination preference for ${context}`, error);
         setHasFetched(true);
         setIsLoading(false);
       }
     };
 
     fetchPaginationPreference().catch((error) => {
-      console.error(`[usePaginationPreference] Error fetching pagination preference:`, error);
+      log.error('[usePaginationPreference] Error fetching pagination preference', error);
       setHasFetched(true);
       setIsLoading(false);
     });
@@ -78,7 +79,7 @@ export function usePaginationPreference(
   const setPageSize = useCallback(async (size: number): Promise<void> => {
     // Validate size
     if (size <= 0 || !Number.isInteger(size)) {
-      console.error(`[usePaginationPreference] Invalid page size: ${size}`);
+      log.error('[usePaginationPreference] Invalid page size', { size });
       return;
     }
 
@@ -99,7 +100,7 @@ export function usePaginationPreference(
           },
         });
       } catch (error) {
-        console.error(`[usePaginationPreference] Failed to sync pagination preference for ${context}:`, error);
+        log.error(`[usePaginationPreference] Failed to sync pagination preference for ${context}`, error);
         // Continue anyway - state is already set locally
       }
     }

@@ -7,6 +7,7 @@ import "./features/metrics/components/uplot.css";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
+import { log } from "@/lib/log";
 
 // Polyfill for crypto.randomUUID if not available
 if (typeof crypto.randomUUID !== "function") {
@@ -28,7 +29,7 @@ if (import.meta.env.DEV && !window.env) {
       .split(",")
       .filter((url: string) => url.trim() !== ""),
   };
-  console.log("Development mode: Injected window.env from .env file", window.env);
+  log.debug("Development mode: Injected window.env from .env file");
 }
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

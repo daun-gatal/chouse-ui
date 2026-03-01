@@ -14,6 +14,7 @@ import Papa from "papaparse";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { log } from "@/lib/log";
 
 interface DownloadDialogProps {
   data: any[];
@@ -275,7 +276,7 @@ const DownloadDialog: React.FC<DownloadDialogProps> = ({
 
       setOpen(false);
     } catch (error) {
-      console.error("Export error:", error);
+      log.error("Export error:", error);
       toast.error("Failed to export data. Please try again.", {
         duration: 2000,
       });

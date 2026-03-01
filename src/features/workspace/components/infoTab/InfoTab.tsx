@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Database, Table, Code, ChevronUp, ChevronDown, Copy, Check } from "lucide-react";
 import { useTableInfo, useDatabaseInfo } from "@/hooks";
 import { toast } from "sonner";
+import { log } from "@/lib/log";
 import { formatClickHouseSQL } from "@/lib/formatSql";
 import SchemaSection from "./SchemaSection";
 import DataSampleSection from "./DataSampleSection";
@@ -79,7 +80,7 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
       }, 2000);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[InfoTab] Failed to copy query:', errorMessage);
+      log.error('[InfoTab] Failed to copy query:', errorMessage);
       toast.error("Failed to copy query");
     }
   };

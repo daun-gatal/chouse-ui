@@ -9,6 +9,7 @@
 import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRbacStore } from '@/stores';
+import { log } from '@/lib/log';
 
 /**
  * Main authentication hook (DEPRECATED)
@@ -22,7 +23,7 @@ export function useAuth() {
   useEffect(() => {
     const handleUnauthorized = () => {
       rbacStore.logout().catch((err) => {
-        console.error('[useAuth] Logout error:', err);
+        log.error('[useAuth] Logout error', err);
       });
       navigate('/login');
     };

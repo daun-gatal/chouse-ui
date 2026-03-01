@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { log } from "@/lib/log";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -202,7 +203,7 @@ const CreateUser: React.FC = () => {
         setConnections(result.connections);
       })
       .catch((err) => {
-        console.error('Failed to load connections:', err);
+        log.error('Failed to load connections:', err);
       });
   }, [isSuperAdmin]);
 
@@ -279,7 +280,7 @@ const CreateUser: React.FC = () => {
         await navigator.clipboard.writeText(generatedPassword);
         toast.success("Password copied to clipboard");
       } catch (error) {
-        console.error('Failed to copy password:', error);
+        log.error('Failed to copy password:', error);
         toast.error("Failed to copy password to clipboard");
       }
     }
@@ -371,7 +372,7 @@ const CreateUser: React.FC = () => {
           }));
           await rbacDataAccessApi.bulkSetForUser(result.user.id, rulesToSave);
         } catch (err) {
-          console.error('Failed to save data access rules:', err);
+          log.error('Failed to save data access rules:', err);
           toast.warning('User created but failed to save data access rules');
         }
       }
@@ -384,7 +385,7 @@ const CreateUser: React.FC = () => {
         navigate("/admin");
       }
     } catch (error) {
-      console.error("Failed to create user:", error);
+      log.error("Failed to create user:", error);
       toast.error(`Failed to create user: ${(error as Error).message}`);
     } finally {
       setIsSubmitting(false);

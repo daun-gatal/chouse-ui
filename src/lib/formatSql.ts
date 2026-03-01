@@ -1,5 +1,6 @@
 import { formatDialect, clickhouse } from "sql-formatter";
 import type { FormatOptions } from "sql-formatter";
+import { log } from "@/lib/log";
 
 type FormatSqlOptions = Partial<Omit<FormatOptions, "language">>;
 
@@ -26,7 +27,7 @@ export function formatClickHouseSQL(
       ...options,
     });
   } catch {
-    console.warn("Failed to format SQL query");
+    log.warn("Failed to format SQL query");
     return sql.trim();
   }
 }

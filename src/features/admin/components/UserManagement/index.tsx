@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { usePaginationPreference, useUserManagementPreferences } from "@/hooks";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/log";
 import {
   Users,
   RefreshCw,
@@ -156,7 +157,7 @@ const UserManagement: React.FC = () => {
 
   // Fetch roles on mount
   useEffect(() => {
-    rbacRolesApi.list().then(setRoles).catch(console.error);
+    rbacRolesApi.list().then(setRoles).catch((e) => log.error('Failed to fetch roles', e));
   }, []);
 
   // Fetch users
@@ -241,7 +242,7 @@ const UserManagement: React.FC = () => {
         await navigator.clipboard.writeText(generatedPassword);
         toast.success("Password copied to clipboard");
       } catch (error) {
-        console.error('Failed to copy password:', error);
+        log.error('Failed to copy password:', error);
         toast.error("Failed to copy password to clipboard");
       }
     }

@@ -17,6 +17,7 @@ import {
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
+import { requestLogger } from '../../utils/logger';
 
 const aiModelsRoutes = new Hono();
 
@@ -42,7 +43,7 @@ aiModelsRoutes.get(
             const results = await listAiModels(query.providerId);
             return c.json({ success: true, data: results });
         } catch (error) {
-            console.error('[AI Models] List error:', error);
+            requestLogger(c.get('requestId')).error({ module: 'AI Models', err: error instanceof Error ? error.message : String(error) }, 'List error');
             return c.json({ success: false, error: { code: 'LIST_FAILED', message: error instanceof Error ? error.message : 'Failed to list models' } }, 500);
         }
     }

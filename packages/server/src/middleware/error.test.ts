@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
-import { errorHandler } from "./error";
 import { AppError } from "../types";
 import { requestId } from "./requestId";
 import { ZodError } from "zod";
+
+const mockError = vi.fn();
+const mockWarn = vi.fn();
+vi.mock("../utils/logger", () => ({
+  requestLogger: () => ({ error: mockError, warn: mockWarn }),
+}));
+
+const { errorHandler } = await import("./error");
 
 describe("Error Handler Middleware", () => {
     let app: Hono;
@@ -20,7 +27,7 @@ describe("Error Handler Middleware", () => {
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
+        vi.clearAllMocks();
     });
 
     it("should handle AppError correctly", async () => {
@@ -67,8 +74,6 @@ describe("Error Handler Middleware", () => {
     });
 
     it("should handle generic Error as Internal Server Error", async () => {
-        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
-
         app.get("/crash", () => {
             throw new Error("Something blew up");
         });
@@ -78,13 +83,10 @@ describe("Error Handler Middleware", () => {
 
         expect(res.status).toBe(500);
         expect(data.error.code).toBe("INTERNAL_ERROR");
-        expect(consoleSpy).toHaveBeenCalled();
+        expect(mockError).toHaveBeenCalled();
     });
 
     it("should suppress 404 logs loudness", async () => {
-        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
-
         app.get("/not-found", () => {
             throw AppError.notFound("Resource missing");
         });
@@ -92,15 +94,13 @@ describe("Error Handler Middleware", () => {
         const res = await app.request("/not-found");
 
         expect(res.status).toBe(404);
-        expect(consoleWarnSpy).toHaveBeenCalled();
-        expect(consoleErrorSpy).not.toHaveBeenCalled();
+        expect(mockWarn).toHaveBeenCalled();
+        expect(mockError).not.toHaveBeenCalled();
     });
 
     it("should mask internal details in production", async () => {
         const originalEnv = process.env.NODE_ENV;
         process.env.NODE_ENV = "production";
-
-        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
         try {
             app.get("/prod-crash", () => {
@@ -113,6 +113,7 @@ describe("Error Handler Middleware", () => {
             expect(res.status).toBe(500);
             expect(data.error.message).toBe("An unexpected error occurred");
             expect(data.error.stack).toBeUndefined();
+            expect(mockError).toHaveBeenCalled();
         } finally {
             process.env.NODE_ENV = originalEnv;
         }

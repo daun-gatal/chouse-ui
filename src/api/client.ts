@@ -5,6 +5,8 @@
  * It handles authentication, error handling, and request/response transformation.
  */
 
+import { log } from '@/lib/log';
+
 // ============================================
 // Types
 // ============================================
@@ -303,7 +305,7 @@ class ApiClient {
               }
             }
 
-            console.warn(`[ApiClient] 429 rate limit exceeded. Retrying in ${waitTime}ms (attempt ${attempt + 1}/${maxRetries})`);
+            log.warn('[ApiClient] 429 rate limit exceeded, retrying', { waitMs: waitTime, attempt: attempt + 1, maxRetries });
             await new Promise(resolve => setTimeout(resolve, waitTime));
             attempt++;
             continue;

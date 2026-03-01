@@ -38,6 +38,7 @@ import {
   Eye as EyeIcon,
   Download,
 } from 'lucide-react';
+import { log } from '@/lib/log';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -179,22 +180,21 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         try {
           const [dbList, clusterList] = await Promise.all([
             getDatabases().catch((err) => {
-              console.error('Failed to fetch databases:', err);
+              log.error('Failed to fetch databases:', err);
               return [];
             }),
             rbacClickHouseUsersApi.getClusters().catch((err) => {
-              console.error('Failed to fetch clusters:', err);
+              log.error('Failed to fetch clusters:', err);
               return [];
             }),
           ]);
           if (process.env.NODE_ENV === 'development') {
-            console.log('Fetched databases:', dbList);
-            console.log('Fetched clusters:', clusterList);
+            log.debug('Fetched databases and clusters', { dbCount: dbList?.length, clusterCount: clusterList?.length });
           }
           setDatabases(dbList || []);
           setClusters(clusterList || []);
         } catch (error) {
-          console.error('Failed to fetch data:', error);
+          log.error('Failed to fetch data:', error);
           toast.error('Failed to load some data. You can still enter names manually.');
           setDatabases([]);
           setClusters([]);
@@ -217,7 +217,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
     if (isOpen) {
       if (isEditing && user) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] Loading user data for editing:', user);
+          log.debug('[ClickHouse Users] Loading user data for editing', { userName: user?.name });
         }
         setUsername(user.name);
         setPassword('');
@@ -226,7 +226,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         const userRole = user.role || 'viewer';
         setRole(userRole);
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] Setting role:', userRole);
+          log.debug('[ClickHouse Users] Setting role', { userRole });
         }
 
         // Use allowedDatabases and allowedTables from grants if available
@@ -235,8 +235,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         setAllowedDatabases(userDatabases);
         setAllowedTables(userTables);
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] Setting databases:', userDatabases);
-          console.log('[ClickHouse Users] Setting tables:', userTables);
+log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: userDatabases?.length, tablesCount: userTables?.length });
         }
 
         // Auto-expand databases that have selected tables
@@ -245,7 +244,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
           userTables.forEach(t => dbSet.add(t.database));
           setExpandedDatabases(dbSet);
           if (process.env.NODE_ENV === 'development') {
-            console.log('[ClickHouse Users] Auto-expanding databases:', Array.from(dbSet));
+            log.debug('[ClickHouse Users] Auto-expanding databases', { count: dbSet?.size });
           }
         }
 
@@ -257,7 +256,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         setHostIp(hostIpStr);
         setHostNames(hostNamesStr);
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] Setting hostIp:', hostIpStr, 'hostNames:', hostNamesStr);
+          log.debug('[ClickHouse Users] Setting hostIp and hostNames');
         }
 
         // Cluster is not stored in ClickHouse, so we can't retrieve it
@@ -348,7 +347,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         // Note: authType is not included in update - it cannot be changed
 
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] Generating DDL with input:', updateInput);
+          log.debug('[ClickHouse Users] Generating DDL with input');
         }
         const generatedDdl = await rbacClickHouseUsersApi.generateUpdateDDL(username, updateInput);
         setDdl(generatedDdl);
@@ -426,7 +425,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         // Note: authType is not included in update - it cannot be changed
 
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] Submitting input:', input);
+          log.debug('[ClickHouse Users] Submitting update input');
         }
         await rbacClickHouseUsersApi.update(username, input);
         toast.success('ClickHouse user updated successfully');
@@ -463,7 +462,7 @@ function UserFormDialog({ isOpen, onClose, user, onSuccess }: UserFormDialogProp
         }
 
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] Submitting input:', createPayload);
+          log.debug('[ClickHouse Users] Submitting create payload');
         }
         await rbacClickHouseUsersApi.create(createPayload);
         toast.success('ClickHouse user created successfully');
@@ -1581,7 +1580,7 @@ export default function ClickHouseUsersManagement() {
 
       if (!sessionId) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] No session ID found, checking server-side session status...');
+          log.debug('[ClickHouse Users] No session ID found, checking server-side session status');
         }
         // No local session ID — try server-side session check as fallback
         try {
@@ -1606,12 +1605,12 @@ export default function ClickHouseUsersManagement() {
         setUsers(result);
         setHasClickHouseSession(true);
         if (process.env.NODE_ENV === 'development') {
-          console.log('[ClickHouse Users] Successfully fetched users, session is valid');
+          log.debug('[ClickHouse Users] Successfully fetched users, session is valid');
         }
         return true;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Failed to load ClickHouse users';
-        console.error('[ClickHouse Users] Failed to fetch users:', errorMsg);
+        log.error('[ClickHouse Users] Failed to fetch users:', errorMsg);
 
         // Check if it's a session error
         if (errorMsg.includes('No active ClickHouse session') ||
@@ -1620,7 +1619,7 @@ export default function ClickHouseUsersManagement() {
           (error instanceof Error && error.message.includes('session'))) {
           setHasClickHouseSession(false);
           if (process.env.NODE_ENV === 'development') {
-            console.log('[ClickHouse Users] Session error detected');
+            log.debug('[ClickHouse Users] Session error detected');
           }
           return false;
         } else {
@@ -1631,7 +1630,7 @@ export default function ClickHouseUsersManagement() {
         }
       }
     } catch (error) {
-      console.error('[ClickHouse Users] Error checking session:', error);
+      log.error('[ClickHouse Users] Error checking session:', error);
       setHasClickHouseSession(false);
       return false;
     } finally {
@@ -1648,7 +1647,7 @@ export default function ClickHouseUsersManagement() {
     // Listen for connection events
     const handleConnection = () => {
       if (process.env.NODE_ENV === 'development') {
-        console.log('[ClickHouse Users] Connection event received, refreshing...');
+        log.debug('[ClickHouse Users] Connection event received, refreshing');
       }
       checkSessionAndFetchUsers();
     };
@@ -1700,7 +1699,7 @@ export default function ClickHouseUsersManagement() {
       const result = await rbacClickHouseUsersApi.sync();
       if (result.errors.length > 0) {
         toast.warning(`Synced ${result.synced} users, but ${result.errors.length} had errors`);
-        console.error('Sync errors:', result.errors);
+        log.error('Sync errors', result.errors);
       } else {
         toast.success(`Successfully synced ${result.synced} unregistered user(s) to metadata`);
       }

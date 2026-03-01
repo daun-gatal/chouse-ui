@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { log } from "@/lib/log";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Loader2,
@@ -147,7 +148,7 @@ const AlterTable: React.FC = () => {
       });
       setColumns(result.data as unknown as TableColumn[]);
     } catch (error) {
-      console.error("Failed to fetch table structure:", error);
+      log.error("Failed to fetch table structure:", error);
       toast.error("Failed to fetch table structure");
     } finally {
       setIsLoading(false);
@@ -204,7 +205,7 @@ const AlterTable: React.FC = () => {
       await fetchTableStructure();
       await refetchDatabases();
     } catch (error) {
-      console.error("Failed to add column:", error);
+      log.error("Failed to add column:", error);
       toast.error(`Failed to add column: ${(error as Error).message}`);
     }
   };
@@ -232,7 +233,7 @@ const AlterTable: React.FC = () => {
       await fetchTableStructure();
       await refetchDatabases();
     } catch (error) {
-      console.error("Failed to drop column:", error);
+      log.error("Failed to drop column:", error);
       toast.error(`Failed to drop column: ${(error as Error).message}`);
     }
   };
@@ -269,7 +270,7 @@ const AlterTable: React.FC = () => {
       await fetchTableStructure();
       await refetchDatabases();
     } catch (error) {
-      console.error("Failed to rename column:", error);
+      log.error("Failed to rename column:", error);
       toast.error(`Failed to rename column: ${(error as Error).message}`);
     }
   };
@@ -309,7 +310,7 @@ const AlterTable: React.FC = () => {
       await fetchTableStructure();
       await refetchDatabases();
     } catch (error) {
-      console.error("Failed to modify column:", error);
+      log.error("Failed to modify column:", error);
       toast.error(`Failed to modify column: ${(error as Error).message}`);
     }
   };
@@ -336,7 +337,7 @@ const AlterTable: React.FC = () => {
       });
       toast.success("Table comment updated");
     } catch (error) {
-      console.error("Failed to update comment:", error);
+      log.error("Failed to update comment:", error);
       toast.error(`Failed to update comment: ${(error as Error).message}`);
     }
   };
