@@ -468,6 +468,10 @@ export function createClickHouseMonarchTokenizer(): monacoTypes.languages.IMonar
         [/\|\|/, "operator"],
         [/->/, "operator"],
 
+        // db.table / schema.table pattern — must come BEFORE the plain identifier rule
+        // Colors the database/schema part and the table/object part with distinct tokens
+        [/([a-zA-Z_]\w*)(\.)([a-zA-Z_]\w*)/, ["identifier.db", "delimiter", "identifier.table"]],
+
         // Identifiers and keywords
         [
           /[a-zA-Z_]\w*/,

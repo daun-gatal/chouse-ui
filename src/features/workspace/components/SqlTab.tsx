@@ -1,14 +1,14 @@
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { Loader2, FileX2, Maximize2, Download, ExternalLink } from "lucide-react";
+import { Loader2, FileX2, Download, ExternalLink, Lightbulb,
+         CirclePlay, CircleStop, Wand2, Code2, Search, Network, Sparkles, Keyboard, Save, Copy } from "lucide-react";
 import DOMPurify from "dompurify";
 import { format as formatDate } from "date-fns";
 import { DataTable } from "@/components/ui/data-table";
-import { ColumnDef, CellContext } from "@tanstack/react-table";
+import { ColumnDef } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
-
 // Component imports
-import SQLEditor from "@/features/workspace/editor/SqlEditor";
+import SQLEditor, { type SqlEditorHandle } from "@/features/workspace/editor/SqlEditor";
 import {
   ResizablePanel,
   ResizablePanelGroup,
@@ -17,18 +17,44 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import DownloadDialog from "@/components/common/DownloadDialog";
 import EmptyQueryResult from "./EmptyQueryResult";
 import StatisticsDisplay from "./StatisticsDisplay";
 import ExplainTab from "./ExplainTab";
 import { DebugQueryDialog } from "@/components/common/DebugQueryDialog";
 import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
-import { Sparkles, Lightbulb } from "lucide-react";
 
 // Store and Hooks
 import { useWorkspaceStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { useDatabases, useConfig } from "@/hooks";
 import { queryApi } from "@/api";
+
+// ── Platform-aware keyboard hint helpers ────────────────────────────────────
+const isMac =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPod|iPad/.test(navigator.platform || navigator.userAgent);
+
+function kbd(key: string, { mod = false, shift = false } = {}) {
+  if (isMac) {
+    const parts: string[] = [];
+    if (mod)   parts.push("⌘");
+    if (shift) parts.push("⇧");
+    parts.push(key);
+    return parts.join("");
+  }
+  const parts: string[] = [];
+  if (mod)   parts.push("Ctrl");
+  if (shift) parts.push("Shift");
+  parts.push(key);
+  return parts.join("+");
+}
 
 // Types
 import { ExplainType, ExplainResult } from "@/types/explain";
@@ -104,6 +130,11 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const tab = getTabById(tabId);
   const [activeTab, setActiveTab] = useState<string>("results");
 
+  // Ref to the SQL editor — used by the hint strip to invoke editor actions
+  const editorRef = useRef<SqlEditorHandle>(null);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+
+
   // Explain state
   const [explainPlan, setExplainPlan] = useState<ExplainResult | null>(null);
   const [isExplainLoading, setIsExplainLoading] = useState(false);
@@ -135,6 +166,11 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   const canDebug = config?.features?.aiOptimizer && hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   // Separate check for cleaner logic, though currently identical to canDebug
   const canOptimize = config?.features?.aiOptimizer && hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+
+  // RBAC for hint strip
+  const canKillQuery    = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_KILL);
+  const canSaveQuery    = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_CREATE);
+  const canUpdateQuery  = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_UPDATE);
 
   // Detect schema-changing queries to refresh database explorer
   const isSchemaModifyingQuery = (query: string): boolean => {
@@ -224,17 +260,11 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     [runQuery, tabId, refetchDatabases, canOptimize, checkOptimization]
   );
 
-  // Background optimization check
-  // We use a useEffect or just fire it in handleRunQuery?
-  // Since handleRunQuery is async, we can fire it there but NOT await it.
-
-
-
-  // Wrap handleRunQuery to include optimization check
-  // Wrap handleRunQuery - NO, pass explicitly
-  // const wrappedHandleRunQuery = ... REMOVED code ...
-
-  // Handle explain query
+  // Runs whatever is currently in the editor (selection or full content) — used by hint strip
+  const handleStripRunQuery = useCallback(() => {
+    const query = editorRef.current?.getQuery() ?? "";
+    if (query) handleRunQuery(query);
+  }, [handleRunQuery]);
 
   // Handle explain query
   const handleExplain = useCallback(
@@ -362,38 +392,35 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   );
 
   const renderError = (errorMessage: string) => (
-    <div className="m-4">
-      <Alert variant="destructive" className="flex flex-col gap-4">
-        <div>
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription className="font-mono text-xs mt-1 whitespace-pre-wrap break-all">
-            {errorMessage}
-          </AlertDescription>
+    <div className="h-full overflow-y-auto p-4 flex flex-col gap-3">
+      <Alert variant="destructive">
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription className="font-mono text-xs mt-1 whitespace-pre-wrap break-all">
+          {errorMessage}
+        </AlertDescription>
+      </Alert>
+
+      {canDebug && (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-red-950/20 hover:bg-red-900/40 border-red-800 text-red-200"
+            onClick={() => {
+              setDebugError(errorMessage);
+              const currentContent = typeof tab?.content === 'string' ? tab.content : '';
+              if (!debugQueryString && currentContent) {
+                setDebugQueryString(currentContent);
+              }
+              setIsDebugDialogOpen(true);
+            }}
+          >
+            <Sparkles className="w-3.5 h-3.5 mr-2" />
+            Debug with AI
+          </Button>
         </div>
-        <div className="flex justify-end mt-4">
-          {canDebug && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="bg-red-950/20 hover:bg-red-900/40 border-red-800 text-red-200"
-              onClick={() => {
-                setDebugError(errorMessage);
-                // Ensure we have the query that caused the error. If handleRunQuery set it, good.
-                // Use current content if debugQueryString is empty (fallback)
-                const currentContent = typeof tab?.content === 'string' ? tab.content : '';
-                if (!debugQueryString && currentContent) {
-                  setDebugQueryString(currentContent);
-                }
-                setIsDebugDialogOpen(true);
-              }}
-            >
-              <Sparkles className="w-3.5 h-3.5 mr-2" />
-              Debug with AI
-            </Button>
-          )}
-        </div>
-      </Alert >
-    </div >
+      )}
+    </div>
   );
 
   const renderEmpty = () => (
@@ -604,22 +631,162 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   // Return null if tab doesn't exist
   if (!tab) return null;
 
+  // ── Hint strip items — only the most important actions.
+  //    Format / Comment / Find / Save are all accessible via the Shortcuts dialog.
+  const stripItems = useMemo(() => {
+    const items: { icon: React.ReactNode; label: string; shortcut: string; action: () => void }[] = [
+      ...(canOptimize ? [{ icon: <Network  className="h-3 w-3 shrink-0 text-purple-400" />, label: "Explain",     shortcut: kbd("E", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleExplain(q); } }] : []),
+      ...(canOptimize ? [{ icon: <Sparkles className="h-3 w-3 shrink-0 text-pink-400" />,   label: "AI Optimize", shortcut: kbd("I", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleOptimize(q); } }] : []),
+    ];
+    return items;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canOptimize, handleExplain, handleOptimize]);
+
   return (
     <div className="h-full bg-white/[0.02]">
       <ResizablePanelGroup direction="vertical">
-        <ResizablePanel defaultSize={50} minSize={25}>
+        <ResizablePanel defaultSize={50} minSize={20}>
           <SQLEditor
+            ref={editorRef}
             tabId={tabId}
             onRunQuery={handleRunQuery}
             onExplain={handleExplain}
             onOptimize={handleOptimize}
+            onOpenShortcuts={() => setIsShortcutsOpen(true)}
           />
         </ResizablePanel>
-        <ResizableHandle withHandle className="bg-white/5 hover:bg-white/10 transition-colors" />
-        <ResizablePanel defaultSize={50} minSize={25}>
-          {renderResults()}
+
+        {/* Standard thin handle — no strip inside, so the library's global
+            *{cursor:row-resize!important} only applies to this small element */}
+        <ResizableHandle className="bg-white/5 hover:bg-white/10 transition-colors" />
+
+        {/* ── Results panel — strip pinned at its top ─────────────────────────
+            The strip is a normal div (not a resize handle), so cursor behaves
+            exactly as CSS says. It is part of the results panel so it can never
+            be squeezed out by the editor panel growing. The results panel's
+            minSize guarantees the strip is always fully visible.
+        ─────────────────────────────────────────────────────────────────────── */}
+        <ResizablePanel defaultSize={50} minSize={12}>
+          <div className="h-full flex flex-col">
+            {/* Action strip */}
+            <div className="flex-shrink-0 flex items-center border-b border-white/5 bg-black/20 backdrop-blur-sm overflow-x-auto scrollbar-none select-none">
+              {/* Run / Stop */}
+              {tab?.isLoading ? (
+                <button
+                  onClick={() => { if (canKillQuery) editorRef.current?.stop(); }}
+                  disabled={!canKillQuery}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors touch-manipulation shrink-0",
+                    canKillQuery
+                      ? "cursor-pointer text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                      : "cursor-not-allowed text-muted-foreground/40"
+                  )}
+                >
+                  <CircleStop className="h-3.5 w-3.5 shrink-0" />
+                  <span>Stop</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleStripRunQuery}
+                  className="cursor-pointer flex items-center gap-2 px-3 py-2 text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 active:bg-blue-500/20 transition-colors touch-manipulation shrink-0"
+                >
+                  <CirclePlay className="h-3.5 w-3.5 shrink-0" />
+                  <span>Run</span>
+                  <kbd className="hidden md:inline ml-1 text-[11px] text-blue-400/50 font-mono">
+                    {kbd("↵", { mod: true })}·F5
+                  </kbd>
+                </button>
+              )}
+
+              {/* Feature-gated actions */}
+              {stripItems.length > 0 && (
+                <>
+                  <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+                  {stripItems.map(({ icon, label, shortcut, action }, i, arr) => (
+                    <React.Fragment key={label}>
+                      <button
+                        onClick={action}
+                        className="cursor-pointer flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-white/5 active:bg-white/10 transition-colors touch-manipulation shrink-0"
+                      >
+                        {icon}
+                        <span>{label}</span>
+                        <kbd className="hidden md:inline ml-1 text-[11px] text-muted-foreground/40 font-mono">{shortcut}</kbd>
+                      </button>
+                      {i < arr.length - 1 && <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
+                    </React.Fragment>
+                  ))}
+                </>
+              )}
+
+              <div className="flex-1 min-w-2" />
+            </div>
+
+            {/* Results */}
+            <div className="flex-1 overflow-hidden">
+              {renderResults()}
+            </div>
+          </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* ── Shortcuts Dialog ────────────────────────────────────────────────── */}
+      <Dialog open={isShortcutsOpen} onOpenChange={setIsShortcutsOpen}>
+        <DialogContent className="sm:max-w-sm p-0 overflow-hidden">
+          <DialogHeader className="px-5 pt-5 pb-3 border-b border-white/5">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Keyboard className="h-4 w-4" />
+              Keyboard Shortcuts
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {isMac ? "Tap" : "Click"} any row to run the action directly.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 px-1.5 max-h-[70vh] overflow-y-auto">
+            {([
+              { icon: <CirclePlay className="h-3.5 w-3.5 text-blue-400" />, label: "Run query",      hint: `${kbd("↵", { mod: true })} · F5`, note: "Runs selection if text is selected", action: handleStripRunQuery },
+              { icon: <Wand2      className="h-3.5 w-3.5" />,               label: "Format query",   hint: kbd("F", { mod: true, shift: true }), action: () => editorRef.current?.format() },
+              { icon: <Code2      className="h-3.5 w-3.5" />,               label: "Toggle comment", hint: kbd("/", { mod: true }),              action: () => editorRef.current?.commentLine() },
+              { icon: <Search     className="h-3.5 w-3.5" />,               label: "Find",           hint: kbd("F", { mod: true }),              action: () => editorRef.current?.find() },
+              ...(canOptimize   ? [{ icon: <Network  className="h-3.5 w-3.5 text-purple-400" />, label: "Explain query plan", hint: kbd("E", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleExplain(q); } }] : []),
+              ...(canOptimize   ? [{ icon: <Sparkles className="h-3.5 w-3.5 text-pink-400" />,   label: "AI optimize",        hint: kbd("I", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleOptimize(q); } }] : []),
+              ...((canSaveQuery || canUpdateQuery) ? [{ icon: <Save className="h-3.5 w-3.5" />, label: "Save",     hint: kbd("S", { mod: true }),              action: () => editorRef.current?.save() }] : []),
+              ...(canSaveQuery                     ? [{ icon: <Copy className="h-3.5 w-3.5" />, label: "Save as…", hint: kbd("S", { mod: true, shift: true }), action: () => editorRef.current?.saveAs() }] : []),
+            ] as { icon: React.ReactNode; label: string; hint: string; note?: string; action: () => void }[]).map(({ icon, label, hint, note, action }) => (
+              <button
+                key={label}
+                onClick={() => { action(); setIsShortcutsOpen(false); }}
+                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm text-left hover:bg-white/5 active:bg-white/10 transition-colors touch-manipulation group"
+              >
+                <span className="text-muted-foreground group-hover:text-foreground transition-colors shrink-0">{icon}</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block font-medium text-[13px] leading-snug">{label}</span>
+                  {note && <span className="block text-[11px] text-muted-foreground/60 leading-tight">{note}</span>}
+                </span>
+                <kbd className="hidden sm:inline shrink-0 text-[11px] font-mono text-muted-foreground/50 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">{hint}</kbd>
+              </button>
+            ))}
+
+            <div className="mt-2 pt-2 border-t border-white/5 px-3.5 pb-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 mb-2">Editor built-ins</p>
+              <div className="space-y-1.5 text-[12px] text-muted-foreground/60">
+                {[
+                  { label: "Find & replace", hint: kbd("H", { mod: true }) },
+                  { label: "Go to line",     hint: isMac ? "⌃G" : "Ctrl+G" },
+                  { label: "Select all",     hint: kbd("A", { mod: true }) },
+                  { label: "Undo / Redo",    hint: `${kbd("Z", { mod: true })} / ${kbd("Z", { mod: true, shift: true })}` },
+                  { label: "Multi-cursor",   hint: isMac ? "⌥ Click" : "Alt+Click" },
+                ].map(({ label, hint }) => (
+                  <div key={label} className="flex justify-between items-center">
+                    <span>{label}</span>
+                    <kbd className="text-[11px] font-mono text-muted-foreground/40">{hint}</kbd>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DebugQueryDialog
         isOpen={isDebugDialogOpen}
