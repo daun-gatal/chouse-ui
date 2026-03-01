@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { log } from '@/lib/log';
 import { toast } from 'sonner';
 import {
   rbacConnectionsApi,
@@ -80,7 +81,7 @@ async function getStoredConnectionIdFromDb(): Promise<string | null> {
     const lastConnectionId = preferences.workspacePreferences?.lastConnectionId as string | undefined;
     return lastConnectionId || null;
   } catch (error) {
-    console.error('[ConnectionSelector] Failed to fetch connection preference:', error);
+    log.error('[ConnectionSelector] Failed to fetch connection preference:', error);
     // Fallback to localStorage
     return getStoredConnectionId();
   }
@@ -100,7 +101,7 @@ async function setStoredConnectionIdToDb(id: string): Promise<void> {
     // Also update localStorage as fallback
     setStoredConnectionId(id);
   } catch (error) {
-    console.error('[ConnectionSelector] Failed to save connection preference:', error);
+    log.error('[ConnectionSelector] Failed to save connection preference:', error);
     // Fallback to localStorage
     setStoredConnectionId(id);
   }
@@ -144,7 +145,7 @@ export default function ConnectionSelector({
         try {
           storedConnectionId = await getStoredConnectionIdFromDb();
         } catch (error) {
-          console.error('[ConnectionSelector] Failed to fetch connection preference:', error);
+          log.error('[ConnectionSelector] Failed to fetch connection preference:', error);
           // Fallback to localStorage
           storedConnectionId = getStoredConnectionId();
         }
@@ -186,7 +187,7 @@ export default function ConnectionSelector({
         }
       }
     } catch (error) {
-      console.error('Failed to fetch connections:', error);
+      log.error('Failed to fetch connections:', error);
     } finally {
       setIsLoading(false);
     }
@@ -240,7 +241,7 @@ export default function ConnectionSelector({
 
       return result;
     } catch (error) {
-      console.error('Failed to connect:', error);
+      log.error('Failed to connect:', error);
       setIsConnected(false);
       clearSession();
       // Don't clear stored connection on error - user might want to retry
@@ -304,7 +305,7 @@ export default function ConnectionSelector({
         clearSession();
         setIsConnected(false);
       } catch (error) {
-        console.error('Failed to disconnect:', error);
+        log.error('Failed to disconnect:', error);
       }
     }
 

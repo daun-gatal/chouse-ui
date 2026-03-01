@@ -13,6 +13,7 @@ import { useRbacStore } from '@/stores/rbac';
 import { queryKeys } from '@/hooks/useQuery';
 import { queryClient } from '@/providers/QueryProvider';
 import { clearIntellisenseCache } from '@/features/workspace/editor/monacoConfig';
+import { log } from '@/lib/log';
 
 /**
  * Cleanup all user-related state and sessions
@@ -29,7 +30,7 @@ export async function cleanupUserSession(currentUserId: string | null): Promise<
         await rbacConnectionsApi.disconnect(sessionId);
       } catch (error) {
         // Log but don't throw - continue cleanup even if disconnect fails
-        console.error('[SessionCleanup] Failed to disconnect ClickHouse session:', error);
+        log.error('[SessionCleanup] Failed to disconnect ClickHouse session:', error);
       }
     }
 
@@ -90,12 +91,12 @@ export async function cleanupUserSession(currentUserId: string | null): Promise<
         localStorage.removeItem('explorer-last-user-id');
         localStorage.removeItem('workspace-last-user-id');
       } catch (error) {
-        console.error('[SessionCleanup] Failed to clear localStorage:', error);
+        log.error('[SessionCleanup] Failed to clear localStorage:', error);
       }
     }
   } catch (error) {
     // Log error but don't throw - cleanup should be best-effort
-    console.error('[SessionCleanup] Error during cleanup:', error);
+    log.error('[SessionCleanup] Error during cleanup:', error);
   }
 }
 
@@ -130,7 +131,7 @@ export function broadcastUserChange(newUserId: string | null): void {
     }
   } catch (error) {
     // BroadcastChannel might not be available in all environments
-    console.warn('[SessionCleanup] BroadcastChannel error:', error);
+    log.warn('[SessionCleanup] BroadcastChannel error:', error);
   }
 }
 
@@ -157,10 +158,10 @@ export function listenForUserChanges(
 
         // Only react if the user ID is different
         if (currentUserId !== userId) {
-          console.log('[SessionCleanup] User changed in another tab, syncing...', { from: currentUserId, to: userId });
+          log.info('[SessionCleanup] User changed in another tab, syncing', { from: currentUserId, to: userId });
 
           cleanupUserSession(currentUserId).catch((error) => {
-            console.error('[SessionCleanup] Failed to cleanup on user change:', error);
+            log.error('[SessionCleanup] Failed to cleanup on user change:', error);
           });
           onUserChange(userId);
         }
@@ -175,7 +176,7 @@ export function listenForUserChanges(
       // Do NOT close the channel here as it's a singleton used for sending too
     };
   } catch (error) {
-    console.warn('[SessionCleanup] Failed to setup BroadcastChannel listener:', error);
+    log.warn('[SessionCleanup] Failed to setup BroadcastChannel listener:', error);
     return undefined;
   }
 }

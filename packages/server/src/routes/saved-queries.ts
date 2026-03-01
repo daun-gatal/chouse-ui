@@ -21,6 +21,7 @@ import {
   deleteSavedQuery,
   getQueryConnectionNames,
 } from "../rbac/services/savedQueries";
+import { requestLogger } from "../utils/logger";
 
 type Variables = {
   rbacUserId: string;
@@ -123,7 +124,7 @@ savedQueriesRouter.get("/", zValidator("query", getQueriesSchema), async (c) => 
       data: queries,
     });
   } catch (error) {
-    console.error("[SavedQueries] Failed to fetch queries:", error);
+    requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: error instanceof Error ? error.message : String(error) }, "Failed to fetch queries");
     return c.json({
       success: false,
       error: { message: "Failed to fetch saved queries" },
@@ -157,7 +158,7 @@ savedQueriesRouter.get("/connections", async (c) => {
       data: connectionNames,
     });
   } catch (error) {
-    console.error("[SavedQueries] Failed to fetch connection names:", error);
+    requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: error instanceof Error ? error.message : String(error) }, "Failed to fetch connection names");
     return c.json({
       success: false,
       error: { message: "Failed to fetch connection names" },
@@ -198,7 +199,7 @@ savedQueriesRouter.get("/:id", async (c) => {
       data: query,
     });
   } catch (error) {
-    console.error("[SavedQueries] Failed to fetch query:", error);
+    requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: error instanceof Error ? error.message : String(error) }, "Failed to fetch query");
     return c.json({
       success: false,
       error: { message: "Failed to fetch saved query" },
@@ -244,7 +245,7 @@ savedQueriesRouter.post("/", zValidator("json", createQuerySchema), async (c) =>
         ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
       });
     } catch (auditError) {
-      console.error('[SavedQueries] Failed to create audit log:', auditError);
+      requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: auditError instanceof Error ? auditError.message : String(auditError) }, "Failed to create audit log");
     }
 
     return c.json({
@@ -252,7 +253,7 @@ savedQueriesRouter.post("/", zValidator("json", createQuerySchema), async (c) =>
       data: savedQuery,
     });
   } catch (error) {
-    console.error("[SavedQueries] Failed to create query:", error);
+    requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: error instanceof Error ? error.message : String(error) }, "Failed to create query");
     return c.json({
       success: false,
       error: { message: "Failed to save query" },
@@ -298,7 +299,7 @@ savedQueriesRouter.put("/:id", zValidator("json", updateQuerySchema), async (c) 
         ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
       });
     } catch (auditError) {
-      console.error('[SavedQueries] Failed to create audit log:', auditError);
+      requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: auditError instanceof Error ? auditError.message : String(auditError) }, "Failed to create audit log");
     }
 
     return c.json({
@@ -306,7 +307,7 @@ savedQueriesRouter.put("/:id", zValidator("json", updateQuerySchema), async (c) 
       data: updated,
     });
   } catch (error) {
-    console.error("[SavedQueries] Failed to update query:", error);
+    requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: error instanceof Error ? error.message : String(error) }, "Failed to update query");
     return c.json({
       success: false,
       error: { message: "Failed to update query" },
@@ -351,7 +352,7 @@ savedQueriesRouter.delete("/:id", async (c) => {
         ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
       });
     } catch (auditError) {
-      console.error('[SavedQueries] Failed to create audit log:', auditError);
+      requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: auditError instanceof Error ? auditError.message : String(auditError) }, "Failed to create audit log");
     }
 
     return c.json({
@@ -359,7 +360,7 @@ savedQueriesRouter.delete("/:id", async (c) => {
       data: { message: "Query deleted successfully" },
     });
   } catch (error) {
-    console.error("[SavedQueries] Failed to delete query:", error);
+    requestLogger(c.get("requestId")).error({ module: "SavedQueries", err: error instanceof Error ? error.message : String(error) }, "Failed to delete query");
     return c.json({
       success: false,
       error: { message: "Failed to delete query" },

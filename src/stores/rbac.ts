@@ -15,6 +15,7 @@ import {
   type RbacUser,
   type RbacTokens,
 } from '@/api';
+import { log } from '@/lib/log';
 
 // ============================================
 // Types
@@ -132,7 +133,7 @@ export const useRbacStore = create<RbacState>()(
           // Logout from server
           await rbacAuthApi.logout();
         } catch (error) {
-          console.error('Logout error:', error);
+          log.error('Logout error', error);
         } finally {
           clearRbacTokens();
           set({
@@ -155,7 +156,7 @@ export const useRbacStore = create<RbacState>()(
         try {
           await rbacAuthApi.logoutAll();
         } catch (error) {
-          console.error('Logout all error:', error);
+          log.error('Logout all error', error);
         } finally {
           clearRbacTokens();
           set({

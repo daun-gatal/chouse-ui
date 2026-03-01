@@ -11,6 +11,7 @@ import { getAuditLogs, deleteAuditLogs, createAuditLogWithContext, getAuditMetad
 import { PERMISSIONS, AUDIT_ACTIONS } from '../schema/base';
 import { requirePermission, requireAnyPermission, rbacAuthMiddleware } from '../middleware/rbacAuth';
 import { AppError } from '../../types';
+import { logger } from '../../utils/logger';
 
 const auditRoutes = new Hono();
 
@@ -83,7 +84,7 @@ auditRoutes.get('/', zValidator('query', ListAuditLogsSchema), async (c) => {
       endDate: query.endDate ? new Date(query.endDate) : undefined,
     });
   } catch (error) {
-    console.error('[Audit] Failed to fetch audit logs:', error);
+    logger.error({ module: 'Audit', err: error instanceof Error ? error.message : String(error) }, 'Failed to fetch audit logs');
     throw AppError.internal('Failed to fetch audit logs');
   }
 
@@ -131,7 +132,7 @@ auditRoutes.get('/metadata', requirePermission(PERMISSIONS.AUDIT_VIEW), async (c
       data: metadata,
     });
   } catch (error) {
-    console.error('[Audit] Failed to fetch metadata:', error);
+    logger.error({ module: 'Audit', err: error instanceof Error ? error.message : String(error) }, 'Failed to fetch metadata');
     throw AppError.internal('Failed to fetch audit metadata');
   }
 });
@@ -304,7 +305,7 @@ auditRoutes.delete('/', requirePermission(PERMISSIONS.AUDIT_DELETE), zValidator(
       data: result,
     });
   } catch (error) {
-    console.error('[Audit] Failed to delete audit logs:', error);
+    logger.error({ module: 'Audit', err: error instanceof Error ? error.message : String(error) }, 'Failed to delete audit logs');
     throw AppError.internal('Failed to delete audit logs');
   }
 });

@@ -7,6 +7,7 @@
 import { randomUUID } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { getDatabase, getSchema } from '../db';
+import { logger } from '../../utils/logger';
 import { hashPassword } from './password';
 
 // Type helper to avoid TypeScript union type issues with RbacDb
@@ -207,7 +208,7 @@ export async function seedPermissions(): Promise<Map<string, string>> {
   const schema = getSchema();
   const permissionIdMap = new Map<string, string>();
 
-  console.log('[RBAC] Seeding permissions...');
+  logger.info({ module: "RBAC" }, "Seeding permissions");
 
   for (const [category, perms] of Object.entries(PERMISSION_CATEGORIES)) {
     for (const permName of perms) {
@@ -245,14 +246,14 @@ export async function seedPermissions(): Promise<Map<string, string>> {
               description: `Permission to ${displayName.toLowerCase()}`
             })
             .where(eq(schema.permissions.id, p.id));
-          console.log(`[RBAC] Updated permission metadata for ${permName}`);
+          logger.debug({ module: "RBAC", permName }, "Updated permission metadata");
         }
         permissionIdMap.set(permName, p.id);
       }
     }
   }
 
-  console.log(`[RBAC] Seeded ${permissionIdMap.size} permissions`);
+  logger.debug({ module: "RBAC", count: permissionIdMap.size }, "Seeded permissions");
   return permissionIdMap;
 }
 
@@ -264,7 +265,7 @@ export async function seedRoles(permissionIdMap: Map<string, string>): Promise<M
   const schema = getSchema();
   const roleIdMap = new Map<string, string>();
 
-  console.log('[RBAC] Seeding roles...');
+  logger.info({ module: "RBAC" }, "Seeding roles");
 
   for (const roleName of Object.values(SYSTEM_ROLES)) {
     const id = randomUUID();
@@ -312,7 +313,7 @@ export async function seedRoles(permissionIdMap: Map<string, string>): Promise<M
     }
   }
 
-  console.log(`[RBAC] Seeded ${roleIdMap.size} roles`);
+  logger.debug({ module: "RBAC", count: roleIdMap.size }, "Seeded roles");
   return roleIdMap;
 }
 
@@ -327,7 +328,7 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
   const adminUsername = process.env.RBAC_ADMIN_USERNAME || 'admin';
   const adminPassword = process.env.RBAC_ADMIN_PASSWORD || 'admin123!';
 
-  console.log('[RBAC] Checking for super admin user...');
+  logger.info({ module: "RBAC" }, "Checking for super admin user");
 
   // Check if super admin already exists
   // @ts-ignore - Union type issue with RbacDb, resolved at runtime
@@ -365,14 +366,16 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
       });
     }
 
-    console.log(`[RBAC] Created super admin user: ${adminEmail}`);
+    logger.info({ module: "RBAC", email: adminEmail }, "Created super admin user");
 
     if (adminPassword === 'admin123!') {
-      console.log('[RBAC] ⚠️  WARNING: Using default admin password. Please change it immediately!');
-      console.log('[RBAC] Set RBAC_ADMIN_PASSWORD environment variable for production.');
+      logger.warn(
+        { module: "RBAC" },
+        "Using default admin password. Set RBAC_ADMIN_PASSWORD for production."
+      );
     }
   } else {
-    console.log('[RBAC] Super admin user already exists');
+    logger.info({ module: "RBAC" }, "Super admin user already exists");
   }
 }
 
@@ -380,16 +383,19 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
  * Run full database seeding
  */
 export async function seedDatabase(): Promise<void> {
-  console.log('[RBAC] Starting database seeding...');
+  logger.info({ module: "RBAC" }, "Starting database seeding");
 
   try {
     const permissionIdMap = await seedPermissions();
     const roleIdMap = await seedRoles(permissionIdMap);
     await seedSuperAdmin(roleIdMap);
 
-    console.log('[RBAC] Database seeding completed successfully');
+    logger.info({ module: "RBAC" }, "Database seeding completed successfully");
   } catch (error) {
-    console.error('[RBAC] Database seeding failed:', error);
+    logger.error(
+      { module: "RBAC", err: error instanceof Error ? error.message : String(error) },
+      "Database seeding failed"
+    );
     throw error;
   }
 }

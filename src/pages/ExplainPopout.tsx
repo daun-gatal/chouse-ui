@@ -12,6 +12,7 @@ import ExplainInfoHeader from "@/features/workspace/components/ExplainInfoHeader
 import { ExplainResult, ExplainType, EXPLAIN_TYPES, QueryComplexity, PerformanceRecommendation } from '@/types/explain';
 import { queryApi } from '@/api';
 import { useConfig } from '@/hooks';
+import { log } from '@/lib/log';
 
 // Extended type to include analysis
 type ViewType = ExplainType | 'analysis';
@@ -164,7 +165,7 @@ const ExplainPopout = () => {
             }
         } catch (err) {
             setError("Failed to parse explain data.");
-            console.error(err);
+            log.error('Failed to parse explain data', err);
         }
     }, []);
 
@@ -190,7 +191,7 @@ const ExplainPopout = () => {
                     [activeView]: result
                 }));
             } catch (err: any) {
-                console.error(`Error fetching ${activeView} explain:`, err);
+                log.error(`Error fetching ${activeView} explain`, err);
                 setLoadError(err.message || `Failed to fetch ${activeView} explain`);
             } finally {
                 setIsLoading(false);

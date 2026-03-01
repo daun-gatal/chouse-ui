@@ -16,6 +16,7 @@ import { getSession } from "../services/clickhouse";
 import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
 import type { Session } from "../types";
 import { escapeIdentifier, escapeQualifiedIdentifier, validateColumnType, validateFormat } from "../utils/sqlIdentifier";
+import { logger, requestLogger } from "../utils/logger";
 
 type Variables = {
   sessionId?: string;
@@ -240,32 +241,25 @@ explorer.get("/databases", async (c) => {
   // Get the RBAC connection ID from the session (if session was created from RBAC connection)
   const connectionId = session?.rbacConnectionId;
 
-  // Debug logging
-  console.log('[Explorer] Data access context:', {
-    rbacUserId,
-    isRbacAdmin,
-    connectionId,
-    hasSession: !!session,
-  });
+  logger.debug(
+    { module: "Explorer", rbacUserId, isRbacAdmin, connectionId, hasSession: !!session },
+    "Data access context"
+  );
 
-  // For RBAC users, check if they have a connection assigned
-  // If no connection is assigned, return empty array (don't show any databases)
   if (rbacUserId && !isRbacAdmin) {
     const { getUserConnections } = await import('../rbac/services/connections');
     const userConnections = await getUserConnections(rbacUserId);
 
-    // If user has no connections assigned, return empty
     if (userConnections.length === 0) {
-      console.log(`[Explorer] User ${rbacUserId} has no connections assigned - returning empty`);
+      logger.debug({ module: "Explorer", rbacUserId }, "User has no connections assigned");
       return c.json({
         success: true,
         data: [],
       });
     }
 
-    // If connectionId is set but user doesn't have access to it, return empty
     if (connectionId && !userConnections.some(conn => conn.id === connectionId)) {
-      console.log(`[Explorer] User ${rbacUserId} doesn't have access to connection ${connectionId} - returning empty`);
+      logger.debug({ module: "Explorer", rbacUserId, connectionId }, "User does not have access to connection");
       return c.json({
         success: true,
         data: [],
@@ -273,21 +267,15 @@ explorer.get("/databases", async (c) => {
     }
   }
 
-  // Get all databases and tables from ClickHouse
   const allDatabases = await service.getDatabasesAndTables();
 
-  // Filter based on data access rules
   const databaseNames = allDatabases.map((db: { name: string }) => db.name);
-  console.log('[Explorer] All databases:', databaseNames);
   const allowedDatabases = await filterDatabases(rbacUserId, isRbacAdmin, databaseNames, connectionId);
-  console.log('[Explorer] Allowed databases:', allowedDatabases);
 
-  // Filter the database list and their tables
   const filteredDatabases = await Promise.all(
     allDatabases
       .filter((db: { name: string }) => allowedDatabases.includes(db.name))
       .map(async (db: { name: string; children: { name: string }[] }) => {
-        // Filter tables within each database
         const tableNames = db.children.map((t) => t.name);
         const allowedTables = await filterTables(rbacUserId, isRbacAdmin, db.name, tableNames, connectionId);
 
@@ -297,8 +285,6 @@ explorer.get("/databases", async (c) => {
         };
       })
   );
-
-  console.log('[Explorer] Returning databases:', filteredDatabases.map((db: any) => db.name));
 
   return c.json({
     success: true,
@@ -472,7 +458,10 @@ explorer.post(
         ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
       });
     } catch (auditError) {
-      console.error('[Explorer] Failed to create audit log:', auditError);
+      requestLogger(c.get("requestId")).error(
+        { module: "Explorer", err: auditError instanceof Error ? auditError.message : String(auditError) },
+        "Failed to create audit log"
+      );
     }
 
     return c.json({
@@ -525,7 +514,10 @@ explorer.delete(
         ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
       });
     } catch (auditError) {
-      console.error('[Explorer] Failed to create audit log:', auditError);
+      requestLogger(c.get("requestId")).error(
+        { module: "Explorer", err: auditError instanceof Error ? auditError.message : String(auditError) },
+        "Failed to create audit log"
+      );
     }
 
     return c.json({
@@ -684,7 +676,10 @@ explorer.post(
         ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
       });
     } catch (auditError) {
-      console.error('[Explorer] Failed to create audit log:', auditError);
+      requestLogger(c.get("requestId")).error(
+        { module: "Explorer", err: auditError instanceof Error ? auditError.message : String(auditError) },
+        "Failed to create audit log"
+      );
     }
 
     return c.json({
@@ -739,7 +734,10 @@ explorer.delete(
         ipAddress: c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP'),
       });
     } catch (auditError) {
-      console.error('[Explorer] Failed to create audit log:', auditError);
+      requestLogger(c.get("requestId")).error(
+        { module: "Explorer", err: auditError instanceof Error ? auditError.message : String(auditError) },
+        "Failed to create audit log"
+      );
     }
 
     return c.json({

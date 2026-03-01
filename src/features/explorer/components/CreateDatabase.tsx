@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
+import { log } from "@/lib/log";
 import { Loader2, Server } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,7 @@ const CreateDatabase: React.FC = () => {
       await refetchDatabases();
       handleClose();
     } catch (error) {
-      console.error("Failed to create database:", error);
+      log.error("Failed to create database:", error);
       toast.error(`Failed to create database: ${(error as Error).message}`);
     }
   };

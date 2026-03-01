@@ -10,6 +10,7 @@ import { formatClickHouseSQL } from '@/lib/formatSql';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { log } from '@/lib/log';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { DiffEditor } from './DiffEditor';
@@ -79,7 +80,7 @@ export function OptimizeQueryDialog({
                 } else if (models.length > 0) {
                     setSelectedModelId(models[0].id);
                 }
-            }).catch(console.error);
+            }).catch((e) => log.error('Failed to fetch AI models', e));
         }
     }, [isOpen]);
 

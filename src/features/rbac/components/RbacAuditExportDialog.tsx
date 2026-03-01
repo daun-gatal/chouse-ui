@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { subDays, format } from 'date-fns';
 import { Download, Calendar as CalendarIcon, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { log } from '@/lib/log';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -108,7 +109,7 @@ export const RbacAuditExportDialog: React.FC<RbacAuditExportDialogProps> = ({
             toast.success('Export completed successfully', { id: uniqueId });
             setIsOpen(false);
         } catch (error) {
-            console.error('Export failed:', error);
+            log.error('Export failed:', error);
             toast.error('Failed to export audit logs', { id: `rbac_export_error` });
         } finally {
             setIsExporting(false);

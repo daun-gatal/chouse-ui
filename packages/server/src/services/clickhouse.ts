@@ -10,6 +10,7 @@ import type {
   ColumnInfo,
 } from "../types";
 import { AppError } from "../types";
+import { logger } from "../utils/logger";
 
 // ============================================
 // Types for ClickHouse JSON Response
@@ -95,7 +96,7 @@ export class ClickHouseService {
 
       return { isAdmin, permissions };
     } catch (error) {
-      console.error("Failed to check admin status:", error);
+      logger.error({ module: "ClickHouse", err: error instanceof Error ? error.message : String(error) }, "Failed to check admin status");
       return { isAdmin: false, permissions: [] };
     }
   }
@@ -1709,7 +1710,7 @@ export class ClickHouseService {
         memory_usage: Number(d.memory_usage) || 0,
       }));
     } catch (error) {
-      console.error("Failed to fetch merge history", error);
+      logger.error({ module: "ClickHouse", err: error instanceof Error ? error.message : String(error) }, "Failed to fetch merge history");
       return [];
     }
   }
@@ -2156,7 +2157,7 @@ export async function destroyUserSessions(rbacUserId: string): Promise<number> {
       await destroySession(sessionId);
       destroyed++;
     } catch (error) {
-      console.error(`[ClickHouse] Failed to destroy session ${sessionId}:`, error);
+      logger.error({ module: "ClickHouse", sessionId, err: error instanceof Error ? error.message : String(error) }, "Failed to destroy session");
     }
   }
 

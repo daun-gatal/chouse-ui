@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useExplorerStore } from "@/stores/explorer";
 import { useRbacStore } from "@/stores/rbac";
 import { rbacUserPreferencesApi } from "@/api/rbac";
+import { log } from "@/lib/log";
 
 const ExplorerPage = () => {
   const { data: databases = [] } = useDatabases();
@@ -66,9 +67,9 @@ const ExplorerPage = () => {
   // Fetch favorites, recent items, and preferences when authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      fetchFavorites().catch(console.error);
-      fetchRecentItems().catch(console.error);
-      fetchPreferences().catch(console.error);
+      fetchFavorites().catch((e) => log.error('Fetch favorites failed', e));
+      fetchRecentItems().catch((e) => log.error('Fetch recent items failed', e));
+      fetchPreferences().catch((e) => log.error('Fetch preferences failed', e));
     }
   }, [isAuthenticated, fetchFavorites, fetchRecentItems, fetchPreferences]);
 
@@ -95,13 +96,13 @@ const ExplorerPage = () => {
         }
         setHasFetchedPanelSizes(true);
       } catch (error) {
-        console.error('[ExplorerPage] Failed to fetch panel sizes:', error);
+        log.error('[ExplorerPage] Failed to fetch panel sizes:', error);
         setHasFetchedPanelSizes(true);
       }
     };
 
     fetchPanelSizes().catch((error) => {
-      console.error('[ExplorerPage] Error fetching panel sizes:', error);
+      log.error('[ExplorerPage] Error fetching panel sizes:', error);
       setHasFetchedPanelSizes(true);
     });
   }, [isAuthenticated, hasFetchedPanelSizes]);
@@ -146,7 +147,7 @@ const ExplorerPage = () => {
               },
             });
           } catch (error) {
-            console.error('[ExplorerPage] Failed to sync panel sizes:', error);
+            log.error('[ExplorerPage] Failed to sync panel sizes:', error);
           }
           panelSizeSyncTimeoutRef.current = null;
         }, 1000);

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react"
 import { rbacUserPreferencesApi } from "@/api"
 import { useRbacStore } from "@/stores/rbac"
+import { log } from "@/lib/log"
 
 type Theme = "dark" | "light" | "system"
 
@@ -51,7 +52,7 @@ export function ThemeProvider({
           localStorage.setItem(storageKey, savedTheme)
         }
       } catch (error) {
-        console.error('[ThemeProvider] Failed to fetch theme preference:', error)
+        log.error('[ThemeProvider] Failed to fetch theme preference:', error)
         // Fallback to localStorage if API fails
         const fallbackTheme = (localStorage.getItem(storageKey) as Theme) || defaultTheme
         setThemeState(fallbackTheme)
@@ -59,7 +60,7 @@ export function ThemeProvider({
     }
 
     fetchTheme().catch((error) => {
-      console.error('[ThemeProvider] Error fetching theme:', error)
+      log.error('[ThemeProvider] Error fetching theme:', error)
     })
   }, [isAuthenticated, storageKey, defaultTheme])
 
@@ -99,7 +100,7 @@ export function ThemeProvider({
           },
         })
       } catch (error) {
-        console.error('[ThemeProvider] Failed to sync theme preference:', error)
+        log.error('[ThemeProvider] Failed to sync theme preference:', error)
         // Continue anyway - theme is already set locally
       }
     }

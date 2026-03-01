@@ -7,6 +7,7 @@ import { format as formatDate } from "date-fns";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/log";
 // Component imports
 import SQLEditor, { type SqlEditorHandle } from "@/features/workspace/editor/SqlEditor";
 import {
@@ -193,7 +194,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
       // Light-weight boolean check
       queryApi.checkQueryOptimization(query)
         .then(result => {
-          console.log("[DEBUG] checkQueryOptimization result:", result);
+          log.debug("[SqlTab] checkQueryOptimization result", { canOptimize: result.canOptimize, reason: result.reason });
           if (result.canOptimize) {
             toast("Your query can be optimized", {
               description: "AI analysis found potential improvements.",
@@ -212,7 +213,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         })
         .catch(err => {
           // Silent fail for background check
-          console.debug("Background optimization check failed", err);
+          log.debug("Background optimization check failed", err);
         });
     } catch (e) {
       // ignore
@@ -251,7 +252,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           toast.success("Data Explorer refreshed due to schema change");
         }
       } catch (error) {
-        console.error("Error running query:", error);
+        log.error("Error running query:", error);
         toast.error(
           "Failed to execute query. Please check the console for more details."
         );
@@ -283,7 +284,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         const plan = await queryApi.explainQuery(query, targetType);
         setExplainPlan(plan);
       } catch (error: any) {
-        console.error("Error explaining query:", error);
+        log.error("Error explaining query:", error);
         setExplainError(error.message || "Failed to explain query");
         setExplainPlan(null);
       } finally {
@@ -326,7 +327,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
       );
     } catch (error) {
-      console.error("Failed to popout explain plan:", error);
+      log.error("Failed to popout explain plan:", error);
       toast.error("Failed to open explain plan in new window");
     }
   }, [explainPlan]);

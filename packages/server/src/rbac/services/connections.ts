@@ -16,6 +16,7 @@ import { ClientManager } from '../../services/clientManager';
 type AnyDb = any;
 
 import type { User, ClickHouseConnection, DataAccessRule, UserRole } from '../schema';
+import { logger } from '../../utils/logger';
 
 // ============================================
 // Types
@@ -275,7 +276,7 @@ export async function getConnectionWithPassword(id: string): Promise<ConnectionW
     } catch (error) {
       // Log the error but throw it to prevent silent failures
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Failed to decrypt password for connection ${id}:`, errorMessage);
+      logger.error({ module: 'Connections', connectionId: id, err: errorMessage }, 'Failed to decrypt password');
       throw new Error(`Failed to decrypt password for connection ${id}: ${errorMessage}`);
     }
   }
@@ -862,17 +863,15 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
       eq(schema.userConnections.canUse, true)
     ));
 
-  console.log(`[getUserConnections] User ${userId} has ${userConns.length} direct connection access(es)`);
+  logger.debug({ module: 'Connections', userId, count: userConns.length }, 'getUserConnections');
 
   if (userConns.length === 0) {
-    console.log(`[getUserConnections] User ${userId} has NO connection access - returning empty array`);
+    logger.debug({ module: 'Connections', userId }, 'User has no connection access');
     return [];
   }
 
-  // User has explicit connection access - return only those connections
-  userConns.forEach((uc: any) => {
+  userConns.forEach((uc: { connectionId: string }) => {
     connectionIdSet.add(uc.connectionId);
-    console.log(`[getUserConnections] Direct access to connection: ${uc.connectionId}`);
   });
 
   // Get the filtered connections

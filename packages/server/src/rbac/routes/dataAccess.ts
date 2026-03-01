@@ -26,6 +26,7 @@ import {
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS } from '../schema/base';
+import { requestLogger } from '../../utils/logger';
 
 const dataAccessRoutes = new Hono();
 
@@ -123,7 +124,7 @@ dataAccessRoutes.get(
         },
       });
     } catch (error) {
-      console.error('[DataAccess] List error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'List error');
       return c.json({
         success: false,
         error: {
@@ -151,7 +152,7 @@ dataAccessRoutes.get(
         data: rules,
       });
     } catch (error) {
-      console.error('[DataAccess] Get role rules error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Get role rules error');
       return c.json({
         success: false,
         error: {
@@ -188,7 +189,7 @@ dataAccessRoutes.get(
         data: rule,
       });
     } catch (error) {
-      console.error('[DataAccess] Get rule error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Get rule error');
       return c.json({
         success: false,
         error: {
@@ -232,7 +233,7 @@ dataAccessRoutes.post(
         data: rule,
       }, 201);
     } catch (error) {
-      console.error('[DataAccess] Create error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Create error');
       return c.json({
         success: false,
         error: {
@@ -284,7 +285,7 @@ dataAccessRoutes.patch(
         data: rule,
       });
     } catch (error) {
-      console.error('[DataAccess] Update error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Update error');
       return c.json({
         success: false,
         error: {
@@ -337,7 +338,7 @@ dataAccessRoutes.delete(
         data: { deleted: true },
       });
     } catch (error) {
-      console.error('[DataAccess] Delete error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Delete error');
       return c.json({
         success: false,
         error: {
@@ -394,7 +395,7 @@ dataAccessRoutes.post(
         data: createdRules,
       });
     } catch (error) {
-      console.error('[DataAccess] Bulk set error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Bulk set error');
       return c.json({
         success: false,
         error: {
@@ -421,7 +422,7 @@ dataAccessRoutes.get(
         data: rules,
       });
     } catch (error) {
-      console.error('[DataAccess] Get user rules error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Get user rules error');
       return c.json({
         success: false,
         error: {
@@ -456,7 +457,7 @@ dataAccessRoutes.post(
         data: result,
       });
     } catch (error) {
-      console.error('[DataAccess] Check access error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Check access error');
       return c.json({
         success: false,
         error: {
@@ -498,7 +499,7 @@ dataAccessRoutes.post(
         data: filtered,
       });
     } catch (error) {
-      console.error('[DataAccess] Filter databases error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Filter databases error');
       return c.json({
         success: false,
         error: {
@@ -541,7 +542,7 @@ dataAccessRoutes.post(
         data: filtered,
       });
     } catch (error) {
-      console.error('[DataAccess] Filter tables error:', error);
+      requestLogger(c.get('requestId')).error({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Filter tables error');
       return c.json({
         success: false,
         error: {

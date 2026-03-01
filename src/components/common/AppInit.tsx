@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useRbacStore } from "@/stores";
 import { toast } from "sonner";
 import { listenForUserChanges } from "@/utils/sessionCleanup";
+import { log } from "@/lib/log";
 
 const AppInitializer = ({ children }: { children: ReactNode }) => {
   const loadingStates = [
@@ -22,7 +23,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
       try {
         await checkAuth();
       } catch (err) {
-        console.error("Initialization failed:", err);
+        log.error("Initialization failed:", err);
       } finally {
         setIsLoading(false);
       }
@@ -41,7 +42,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
         const { isAuthenticated } = useRbacStore.getState();
         if (isAuthenticated) {
           logout().catch((err) => {
-            console.error("[AppInit] Failed to logout on user change:", err);
+            log.error("[AppInit] Failed to logout on user change:", err);
           });
         }
       }
@@ -59,7 +60,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
       }
 
       logout().catch((err) => {
-        console.error("[AppInit] Logout error:", err);
+        log.error("[AppInit] Logout error:", err);
       });
       navigate("/login");
     };

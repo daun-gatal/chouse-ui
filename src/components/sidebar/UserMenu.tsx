@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { getSessionId, clearSession } from "@/api/client";
 import { rbacConnectionsApi } from "@/api/rbac";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";
+import { log } from "@/lib/log";
 
 interface UserMenuProps {
     isCollapsed: boolean;
@@ -31,13 +32,13 @@ export default function UserMenu({ isCollapsed }: UserMenuProps) {
                 try {
                     await rbacConnectionsApi.disconnect(sessionId);
                 } catch (error) {
-                    console.error("Failed to disconnect ClickHouse connection:", error);
+                    log.error("Failed to disconnect ClickHouse connection:", error);
                 }
             }
             await logout();
             clearSession();
         } catch (error) {
-            console.error("Logout error:", error);
+            log.error("Logout error:", error);
             clearSession();
         } finally {
             setIsLoggingOut(false);

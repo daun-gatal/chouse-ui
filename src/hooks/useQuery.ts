@@ -13,6 +13,7 @@ import {
   UseMutationOptions,
 } from '@tanstack/react-query';
 import { explorerApi, metricsApi, savedQueriesApi, queryApi, configApi } from '@/api';
+import { log as appLog } from '@/lib/log';
 import { escapeQualifiedIdentifier } from '@/helpers/sqlUtils';
 import { useAuthStore } from '@/stores';
 import type {
@@ -603,7 +604,7 @@ export function useQueryLogs(
             const myConnections = await rbacConnectionsApi.getMyConnections();
             connectionMap = new Map(myConnections.map(c => [c.id, c.name]));
           } catch (innerError) {
-            console.warn('[QueryLogs] Failed to fetch connections for name resolution:', innerError);
+            appLog.warn('[QueryLogs] Failed to fetch connections for name resolution', innerError);
           }
         }
 
@@ -687,7 +688,7 @@ export function useQueryLogs(
 
         // Debug logging (can be removed in production or made conditional)
         if (process.env.NODE_ENV === 'development') {
-          console.log('[QueryLogs] Audit logs found:', allAuditLogs.length, 'Unique users:', new Set(allAuditLogs.map(l => l.userId).filter(Boolean)).size, rbacUserId ? `(filtered for user: ${rbacUserId})` : '(all users)');
+          appLog.debug('[QueryLogs] Audit logs found', { count: allAuditLogs.length, uniqueUsers: new Set(allAuditLogs.map(l => l.userId).filter(Boolean)).size, rbacUserId });
         }
 
         // Get unique user IDs to fetch user details (from both Audit Logs and log_comment)
@@ -717,7 +718,7 @@ export function useQueryLogs(
                 });
               } catch (error) {
                 // If the user fetching fails (e.g. 404), we still might have basic info from logs or can just skip
-                console.warn(`Failed to fetch user details for ${userId}:`, error);
+                appLog.warn('Failed to fetch user details', { userId, error });
               }
             })
         );
@@ -797,7 +798,7 @@ export function useQueryLogs(
             if (!rbacUserId) {
               unmatchedCount++;
               if (process.env.NODE_ENV === 'development' && unmatchedCount <= 5) {
-                console.warn('[QueryLogs] Unmatched query:', {
+                appLog.debug('[QueryLogs] Unmatched query', {
                   query_id: log.query_id,
                   queryTime,
                   user: log.user,
@@ -840,13 +841,13 @@ export function useQueryLogs(
         const filteredCount = matchedLogs.length;
         // Debug logging (can be removed in production or made conditional)
         if (process.env.NODE_ENV === 'development') {
-          console.log('[QueryLogs] Matched', matchedCount, 'out of', logs.length, 'logs with RBAC users', unmatchedCount > 0 ? `(${unmatchedCount} unmatched)` : '', rbacUserId ? `(filtered for user: ${rbacUserId}, showing ${filteredCount} logs)` : `(all users, showing ${filteredCount} logs)`);
+          appLog.debug('[QueryLogs] Matched logs', { matchedCount, total: logs.length, unmatchedCount, rbacUserId, filteredCount });
         }
         return matchedLogs;
       } catch (error) {
         // If audit log fetch fails and rbacUserId is provided, return empty array
         // (non-admin users should only see their own logs, which require audit log matching)
-        console.warn('Failed to fetch RBAC user info:', error);
+        appLog.warn('Failed to fetch RBAC user info', error);
         if (rbacUserId) {
           // For non-admin users, if we can't match audit logs, return empty array
           // This ensures they don't see logs they shouldn't have access to
@@ -933,7 +934,7 @@ export function useMetrics(
           const result = await queryApi.executeQuery(query);
           return (result.data as Record<string, unknown>[]) || [];
         } catch (error) {
-          console.warn('Metrics query failed:', error);
+          appLog.warn('Metrics query failed', error);
           return [];
         }
       };
@@ -1049,7 +1050,7 @@ export function useMetrics(
         currentStats.totalQueries = sortedData.reduce((sum, d) => sum + Number((d as { total_count: number }).total_count), 0);
         currentStats.failedQueries = sortedData.reduce((sum, d) => sum + Number((d as { failed_count: number }).failed_count), 0);
       } catch (error) {
-        console.warn('Failed to fetch current stats:', error);
+        appLog.warn('Failed to fetch current stats', error);
         // Ignore - will use defaults
       }
 

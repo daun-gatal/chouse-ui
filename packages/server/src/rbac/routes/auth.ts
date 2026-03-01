@@ -28,6 +28,7 @@ import {
   getRbacUser,
   requirePermission
 } from '../middleware/rbacAuth';
+import { requestLogger } from '../../utils/logger';
 import { AppError } from '../../types';
 
 const authRoutes = new Hono();
@@ -130,10 +131,10 @@ authRoutes.post('/logout', rbacAuthMiddleware, async (c) => {
     const { destroyUserSessions } = await import('../../services/clickhouse');
     const destroyed = await destroyUserSessions(user.sub);
     if (destroyed > 0) {
-      console.log(`[Auth] Destroyed ${destroyed} ClickHouse session(s) for user ${user.sub}`);
+      requestLogger(c.get('requestId')).info({ module: 'Auth', userId: user.sub, destroyed }, 'Destroyed ClickHouse sessions on logout');
     }
   } catch (error) {
-    console.error('[Auth] Failed to destroy ClickHouse sessions on logout:', error);
+    requestLogger(c.get('requestId')).error({ module: 'Auth', userId: user.sub, err: error instanceof Error ? error.message : String(error) }, 'Failed to destroy ClickHouse sessions on logout');
     // Continue with logout even if session cleanup fails
   }
 
@@ -164,10 +165,10 @@ authRoutes.post('/logout-all', rbacAuthMiddleware, async (c) => {
     const { destroyUserSessions } = await import('../../services/clickhouse');
     const destroyed = await destroyUserSessions(user.sub);
     if (destroyed > 0) {
-      console.log(`[Auth] Destroyed ${destroyed} ClickHouse session(s) for user ${user.sub} (logout-all)`);
+      requestLogger(c.get('requestId')).info({ module: 'Auth', userId: user.sub, destroyed }, 'Destroyed ClickHouse sessions on logout-all');
     }
   } catch (error) {
-    console.error('[Auth] Failed to destroy ClickHouse sessions on logout-all:', error);
+    requestLogger(c.get('requestId')).error({ module: 'Auth', userId: user.sub, err: error instanceof Error ? error.message : String(error) }, 'Failed to destroy ClickHouse sessions on logout-all');
     // Continue with logout even if session cleanup fails
   }
 
@@ -292,8 +293,7 @@ authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', Chang
     const { destroyUserSessions } = await import('../../services/clickhouse');
     await destroyUserSessions(user.sub);
   } catch (error) {
-    console.error('[Auth] Failed to destroy ClickHouse sessions on password change:', error);
-    // Continue even if session cleanup fails
+    requestLogger(c.get('requestId')).error({ module: 'Auth', userId: user.sub, err: error instanceof Error ? error.message : String(error) }, 'Failed to destroy ClickHouse sessions on password change');
   }
 
   return c.json({

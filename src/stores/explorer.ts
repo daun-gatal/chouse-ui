@@ -11,6 +11,7 @@ import type { DatabaseInfo, SavedQuery, UserFavorite, UserRecentItem } from '@/a
 import { toast } from 'sonner';
 import { useRbacStore } from './rbac';
 import { useAuthStore } from './auth';
+import { log } from '@/lib/log';
 
 // ============================================
 // Types
@@ -324,7 +325,7 @@ export const useExplorerStore = create<ExplorerState>()(
       set({ savedQueries: queries, isLoadingSavedQueries: false, isSavedQueriesEnabled: true });
       return queries;
     } catch (error) {
-      console.error('Failed to fetch saved queries:', error);
+      log.error('Failed to fetch saved queries:', error);
       set({ savedQueries: [], isLoadingSavedQueries: false });
       return [];
     }
@@ -345,7 +346,7 @@ export const useExplorerStore = create<ExplorerState>()(
     const { syncExpandedNodes } = get();
     setTimeout(() => {
       syncExpandedNodes().catch((error) => {
-        console.error('[ExplorerStore] Failed to sync expandedNodes after toggle:', error);
+        log.error('[ExplorerStore] Failed to sync expandedNodes after toggle:', error);
       });
     }, 500); // Debounce by 500ms
   },
@@ -360,7 +361,7 @@ export const useExplorerStore = create<ExplorerState>()(
     const { syncExpandedNodes } = get();
     setTimeout(() => {
       syncExpandedNodes().catch((error) => {
-        console.error('[ExplorerStore] Failed to sync expandedNodes after expand:', error);
+        log.error('[ExplorerStore] Failed to sync expandedNodes after expand:', error);
       });
     }, 500); // Debounce by 500ms
   },
@@ -375,7 +376,7 @@ export const useExplorerStore = create<ExplorerState>()(
     const { syncExpandedNodes } = get();
     setTimeout(() => {
       syncExpandedNodes().catch((error) => {
-        console.error('[ExplorerStore] Failed to sync expandedNodes after collapse:', error);
+        log.error('[ExplorerStore] Failed to sync expandedNodes after collapse:', error);
       });
     }, 500); // Debounce by 500ms
   },
@@ -482,7 +483,7 @@ export const useExplorerStore = create<ExplorerState>()(
 
       set({ favorites, isLoadingFavorites: false });
     } catch (error) {
-      console.error('Failed to fetch favorites:', error);
+      log.error('Failed to fetch favorites:', error);
       set({ isLoadingFavorites: false });
       // Don't show error toast - favorites are optional
     }
@@ -491,7 +492,7 @@ export const useExplorerStore = create<ExplorerState>()(
   addFavorite: async (database: string, table?: string) => {
     const rbacState = useRbacStore.getState();
     if (!rbacState.isAuthenticated) {
-      console.error('[ExplorerStore] User not authenticated:', rbacState);
+      log.error('[ExplorerStore] User not authenticated:', rbacState);
       toast.error('Please log in to add favorites');
       return;
     }
@@ -501,7 +502,7 @@ export const useExplorerStore = create<ExplorerState>()(
     const connectionId = authState.activeConnectionId;
     const connectionName = authState.activeConnectionName;
     
-    console.log('[ExplorerStore] Adding favorite:', { database, table, userId: rbacState.user?.id, connectionId });
+    log.debug('[ExplorerStore] Adding favorite', { database, table, connectionId });
 
     const id = getItemId(database, table);
     const { favorites } = get();
@@ -530,7 +531,7 @@ export const useExplorerStore = create<ExplorerState>()(
       set({ favorites: [...favorites, newFavorite] });
       toast.success(`${table ? 'Table' : 'Database'} added to favorites`);
     } catch (error) {
-      console.error('Failed to add favorite:', error);
+      log.error('Failed to add favorite:', error);
       toast.error('Failed to add favorite');
     }
   },
@@ -564,7 +565,7 @@ export const useExplorerStore = create<ExplorerState>()(
       set({ favorites: favorites.filter(f => f.id !== id) });
       toast.success(`${favorite.type === 'table' ? 'Table' : 'Database'} removed from favorites`);
     } catch (error) {
-      console.error('Failed to remove favorite:', error);
+      log.error('Failed to remove favorite:', error);
       toast.error('Failed to remove favorite');
     }
   },
@@ -598,7 +599,7 @@ export const useExplorerStore = create<ExplorerState>()(
       set({ favorites: [] });
       toast.success('Favorites cleared');
     } catch (error) {
-      console.error('Failed to clear favorites:', error);
+      log.error('Failed to clear favorites:', error);
       toast.error('Failed to clear favorites');
     }
   },
@@ -628,7 +629,7 @@ export const useExplorerStore = create<ExplorerState>()(
 
       set({ recentItems, isLoadingRecentItems: false });
     } catch (error) {
-      console.error('Failed to fetch recent items:', error);
+      log.error('Failed to fetch recent items:', error);
       set({ isLoadingRecentItems: false });
       // Don't show error toast - recent items are optional
     }
@@ -675,7 +676,7 @@ export const useExplorerStore = create<ExplorerState>()(
       const updated = [newRecent, ...filtered].slice(0, 20);
       set({ recentItems: updated });
     } catch (error) {
-      console.error('Failed to add recent item:', error);
+      log.error('Failed to add recent item:', error);
       // Silently fail - recent items are optional
     }
   },
@@ -692,7 +693,7 @@ export const useExplorerStore = create<ExplorerState>()(
       set({ recentItems: [] });
       toast.success('Recent items cleared');
     } catch (error) {
-      console.error('Failed to clear recent items:', error);
+      log.error('Failed to clear recent items:', error);
       toast.error('Failed to clear recent items');
     }
   },
@@ -719,7 +720,7 @@ export const useExplorerStore = create<ExplorerState>()(
           });
         }
       } catch (error) {
-        console.error('[ExplorerStore] Failed to sync sortBy preference:', error);
+        log.error('[ExplorerStore] Failed to sync sortBy preference:', error);
       }
     }
   },
@@ -734,7 +735,7 @@ export const useExplorerStore = create<ExplorerState>()(
           explorerViewMode: mode,
         });
       } catch (error) {
-        console.error('[ExplorerStore] Failed to sync viewMode preference:', error);
+        log.error('[ExplorerStore] Failed to sync viewMode preference:', error);
       }
     }
   },
@@ -749,7 +750,7 @@ export const useExplorerStore = create<ExplorerState>()(
           explorerShowFavoritesOnly: show,
         });
       } catch (error) {
-        console.error('[ExplorerStore] Failed to sync showFavoritesOnly preference:', error);
+        log.error('[ExplorerStore] Failed to sync showFavoritesOnly preference:', error);
       }
     }
   },
@@ -795,7 +796,7 @@ export const useExplorerStore = create<ExplorerState>()(
         set(updates);
       }
     } catch (error) {
-      console.error('[ExplorerStore] Failed to fetch preferences:', error);
+      log.error('[ExplorerStore] Failed to fetch preferences:', error);
     }
   },
 
@@ -817,7 +818,7 @@ export const useExplorerStore = create<ExplorerState>()(
         },
       });
     } catch (error) {
-      console.error('[ExplorerStore] Failed to sync expandedNodes:', error);
+      log.error('[ExplorerStore] Failed to sync expandedNodes:', error);
     }
   },
       };
@@ -856,8 +857,8 @@ export const useExplorerStore = create<ExplorerState>()(
                 // Use setTimeout to avoid calling async functions during rehydration
                 setTimeout(() => {
                   const store = useExplorerStore.getState();
-                  store.fetchFavorites().catch(console.error);
-                  store.fetchRecentItems().catch(console.error);
+                  store.fetchFavorites().catch((e: unknown) => log.error('Fetch failed', e instanceof Error ? e : String(e)));
+                  store.fetchRecentItems().catch((e: unknown) => log.error('Fetch failed', e instanceof Error ? e : String(e)));
                 }, 100);
               }
             }
@@ -871,9 +872,9 @@ export const useExplorerStore = create<ExplorerState>()(
                 const store = useExplorerStore.getState();
                 const rbacState = useRbacStore.getState();
                 if (rbacState.isAuthenticated) {
-                  store.fetchFavorites().catch(console.error);
-                  store.fetchRecentItems().catch(console.error);
-                  store.fetchPreferences().catch(console.error);
+                  store.fetchFavorites().catch((e: unknown) => log.error('Fetch failed', e instanceof Error ? e : String(e)));
+                  store.fetchRecentItems().catch((e: unknown) => log.error('Fetch failed', e instanceof Error ? e : String(e)));
+                  store.fetchPreferences().catch((e: unknown) => log.error('Fetch failed', e instanceof Error ? e : String(e)));
                 }
               }, 100);
             }

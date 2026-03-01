@@ -363,21 +363,23 @@ const result = await fetchData();
 try {
   const result = await fetchData();
 } catch (error) {
-  console.error('[Component] Failed to fetch:', error);
+  log.error('[Component] Failed to fetch', error);
   toast.error('Failed to load data');
 }
 ```
 
-### 6. Console.logs in Production
+### 6. Raw console instead of logging utilities
 ```typescript
-// ❌ Bad: Always logs
+// ❌ Bad: Raw console (no level control, not structured)
 console.log('Debug info:', data);
+console.error('Failed:', error);
 
-// ✅ Good: Conditional logging
-if (process.env.NODE_ENV === 'development') {
-  console.log('Debug info:', data);
-}
+// ✅ Good: Use the log helper (client) — debug/info are dev-only
+import { log } from '@/lib/log';
+log.debug('Debug info', { data });
+log.error('Failed', error);
 ```
+On the server, use `logger` from `utils/logger.ts` (and `requestLogger(requestId)` in routes); never use `console.*` in application code.
 
 ### 7. Missing Permission Checks
 ```typescript

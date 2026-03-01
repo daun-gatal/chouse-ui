@@ -14,6 +14,7 @@ import { existsSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname } from 'path';
 
+import { logger } from '../../utils/logger';
 import * as sqliteSchema from '../schema/sqlite';
 import * as postgresSchema from '../schema/postgres';
 
@@ -138,13 +139,12 @@ async function ensurePostgresDatabaseExists(postgresUrl: string): Promise<void> 
     `;
     
     if (result.length === 0) {
-      // Database doesn't exist, create it
-      console.log(`[RBAC] Creating PostgreSQL database: ${parsed.database}`);
+      logger.info({ module: "RBAC", database: parsed.database }, "Creating PostgreSQL database");
       const escapedDbName = escapePostgresIdentifier(parsed.database);
       await adminClient.unsafe(`CREATE DATABASE ${escapedDbName}`);
-      console.log(`[RBAC] PostgreSQL database created: ${parsed.database}`);
+      logger.info({ module: "RBAC", database: parsed.database }, "PostgreSQL database created");
     } else {
-      console.log(`[RBAC] PostgreSQL database already exists: ${parsed.database}`);
+      logger.debug({ module: "RBAC", database: parsed.database }, "PostgreSQL database already exists");
     }
   } finally {
     await adminClient.end();
@@ -161,18 +161,19 @@ async function ensureSqliteDatabaseExists(sqlitePath: string): Promise<void> {
   if (dir && dir !== '.' && dir !== './' && dir !== '/' && !existsSync(dir)) {
     try {
       await mkdir(dir, { recursive: true });
-      console.log(`[RBAC] Created SQLite directory: ${dir}`);
+      logger.info({ module: "RBAC", dir }, "Created SQLite directory");
     } catch (error) {
-      console.warn(`[RBAC] Warning: Could not create SQLite directory ${dir}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.warn(
+        { module: "RBAC", dir, err: error instanceof Error ? error.message : "Unknown error" },
+        "Could not create SQLite directory"
+      );
     }
   }
-  
-  // The database file will be created automatically when we open it
-  // Log status for user information
+
   if (!existsSync(sqlitePath)) {
-    console.log(`[RBAC] SQLite database file will be created: ${sqlitePath}`);
+    logger.debug({ module: "RBAC", path: sqlitePath }, "SQLite database file will be created");
   } else {
-    console.log(`[RBAC] SQLite database file already exists: ${sqlitePath}`);
+    logger.debug({ module: "RBAC", path: sqlitePath }, "SQLite database file already exists");
   }
 }
 
@@ -197,7 +198,7 @@ export async function initializeDatabase(config?: DatabaseConfig): Promise<RbacD
     sqliteClient.exec('PRAGMA foreign_keys = ON;');
     
     dbInstance = drizzleSqlite(sqliteClient, { schema: sqliteSchema });
-    console.log(`[RBAC] Connected to SQLite database: ${path}`);
+    logger.info({ module: "RBAC", path }, "Connected to SQLite database");
   } else if (cfg.type === 'postgres') {
     if (!cfg.postgresUrl) {
       throw new Error('[RBAC] PostgreSQL URL is required. Set RBAC_POSTGRES_URL or DATABASE_URL');
@@ -207,8 +208,10 @@ export async function initializeDatabase(config?: DatabaseConfig): Promise<RbacD
     try {
       await ensurePostgresDatabaseExists(cfg.postgresUrl);
     } catch (error) {
-      console.warn(`[RBAC] Warning: Could not ensure PostgreSQL database exists: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      console.warn(`[RBAC] Attempting to connect anyway...`);
+      logger.warn(
+        { module: "RBAC", err: error instanceof Error ? error.message : "Unknown error" },
+        "Could not ensure PostgreSQL database exists; attempting to connect anyway"
+      );
     }
     
     // Create PostgreSQL connection
@@ -219,7 +222,7 @@ export async function initializeDatabase(config?: DatabaseConfig): Promise<RbacD
     });
     
     dbInstance = drizzlePostgres(postgresClient, { schema: postgresSchema });
-    console.log(`[RBAC] Connected to PostgreSQL database`);
+    logger.info({ module: "RBAC" }, "Connected to PostgreSQL database");
   } else {
     throw new Error(`[RBAC] Unsupported database type: ${cfg.type}`);
   }
@@ -280,7 +283,7 @@ export async function closeDatabase(): Promise<void> {
   }
   
   dbInstance = null;
-  console.log('[RBAC] Database connection closed');
+  logger.info({ module: "RBAC" }, "Database connection closed");
 }
 
 /**

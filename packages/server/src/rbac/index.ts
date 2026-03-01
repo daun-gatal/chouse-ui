@@ -64,6 +64,7 @@ export { default as rbacRoutes } from './routes';
 import { initializeDatabase, getDatabaseConfig } from './db';
 import { runMigrations, APP_VERSION, type MigrationResult } from './db/migrations';
 import { seedDatabase, needsSeeding } from './services/seed';
+import { logger } from '../utils/logger';
 
 /**
  * Initialize the RBAC system
@@ -82,53 +83,50 @@ export async function initializeRbac(): Promise<{
   seeded: boolean;
 }> {
   const config = getDatabaseConfig();
-  
-  console.log('[RBAC] ========================================');
-  console.log('[RBAC] Initializing RBAC system...');
-  console.log(`[RBAC] Database type: ${config.type}`);
-  console.log(`[RBAC] App version: ${APP_VERSION}`);
-  console.log('[RBAC] ========================================');
-  
+
+  logger.info({ module: "RBAC", dbType: config.type, appVersion: APP_VERSION }, "Initializing RBAC system");
+
   // Step 1: Initialize database connection
   await initializeDatabase(config);
-  
+
   // Step 2: Run migrations (handles both first run and upgrades)
   let migrationResult: MigrationResult;
   try {
     migrationResult = await runMigrations();
   } catch (error) {
-    console.error('[RBAC] Migration failed:', error);
+    logger.error({ module: "RBAC", err: error instanceof Error ? error.message : String(error) }, "Migration failed");
     throw error;
   }
-  
+
   // Step 3: Seed database if this is a first run
   let seeded = false;
   if (migrationResult.isFirstRun) {
-    console.log('[RBAC] First run - seeding database with default data...');
+    logger.info({ module: "RBAC" }, "First run - seeding database with default data");
     try {
       await seedDatabase();
       seeded = true;
     } catch (error) {
-      console.error('[RBAC] Seeding failed:', error);
+      logger.error({ module: "RBAC", err: error instanceof Error ? error.message : String(error) }, "Seeding failed");
       throw error;
     }
   } else {
-    // Check if seeding is needed (e.g., roles table is empty)
     if (await needsSeeding()) {
-      console.log('[RBAC] Database needs seeding...');
+      logger.info({ module: "RBAC" }, "Database needs seeding");
       await seedDatabase();
       seeded = true;
     }
   }
-  
-  // Log summary
-  console.log('[RBAC] ========================================');
-  console.log('[RBAC] Initialization complete!');
-  console.log(`[RBAC] Version: ${migrationResult.currentVersion}`);
-  console.log(`[RBAC] First run: ${migrationResult.isFirstRun}`);
-  console.log(`[RBAC] Migrations applied: ${migrationResult.migrationsApplied.length > 0 ? migrationResult.migrationsApplied.join(', ') : 'none'}`);
-  console.log(`[RBAC] Data seeded: ${seeded}`);
-  console.log('[RBAC] ========================================');
+
+  logger.info(
+    {
+      module: "RBAC",
+      version: migrationResult.currentVersion,
+      isFirstRun: migrationResult.isFirstRun,
+      migrationsApplied: migrationResult.migrationsApplied,
+      seeded,
+    },
+    "RBAC initialization complete"
+  );
   
   return {
     version: migrationResult.currentVersion,
@@ -144,7 +142,7 @@ export async function initializeRbac(): Promise<{
 export async function shutdownRbac(): Promise<void> {
   const { closeDatabase } = await import('./db');
   await closeDatabase();
-  console.log('[RBAC] RBAC system shut down');
+  logger.info({ module: "RBAC" }, "RBAC system shut down");
 }
 
 /**

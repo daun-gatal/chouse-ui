@@ -93,7 +93,7 @@ graph TD
 | **Providers** | `src/providers/` | 1 file | `QueryProvider` — TanStack Query context (30s staleTime, 5min gcTime) |
 | **Helpers** | `src/helpers/` | 1 file | `sqlUtils.ts` — SQL formatting and parsing utilities |
 | **Utilities** | `src/utils/` | 1 file | `sessionCleanup.ts` — Session cleanup logic |
-| **Lib** | `src/lib/` | 3 files | `basePath.ts`, `utils.ts`, `devicePreferences.ts` — Path, utilities, per-device preference defaults and merge helpers |
+| **Lib** | `src/lib/` | 4 files | `basePath.ts`, `utils.ts`, `devicePreferences.ts`, `log.ts` — Path, utilities, per-device preference defaults and merge helpers; **log.ts** — client log helper (error/warn/info/debug, dev-only for info/debug, structured context) |
 | **Types** | `src/types/` | 2 files | `env.d.ts` (global env types), `explain.ts` (EXPLAIN plan types) |
 | **Tests** | `src/test/` | 3 files + mocks/ | Test setup, global setup, MSW mocks |
 
@@ -631,6 +631,7 @@ chouse-ui/
 | **AI SDK** | Vercel AI SDK | 6.0 | Multi-provider LLM integration |
 | **AI Providers** | OpenAI, Anthropic, Google, HuggingFace, OpenAI-compatible | — | Pluggable AI backends |
 | **SQL Parser** | node-sql-parser | 5.3 | SQL analysis for data access control |
+| **Logging (Server)** | Pino | 10.x | JSON logging, levels, request-scoped child loggers (`utils/logger.ts`) |
 | **Rate Limiting** | hono-rate-limiter | 0.5 | Request throttling |
 | **Validation (Server)** | Zod + @hono/zod-validator | 3.23 | Request schema validation |
 | **Validation (Frontend)** | Zod | 4.1 | Form and data validation |

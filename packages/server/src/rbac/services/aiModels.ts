@@ -15,6 +15,7 @@ import { ProviderType, isValidProviderType } from '../constants/aiProviders';
 type AnyDb = any;
 
 import type { AiProvider, AiModel, AiConfig } from '../schema';
+import { logger } from '../../utils/logger';
 
 // ============================================
 // Types
@@ -169,7 +170,7 @@ export async function updateAiProvider(
                     .set({ isActive: false, updatedAt: now })
                     .where(inArray(schema.aiConfigs.id, configIds));
 
-                console.log(`[AI Models] Deactivated ${configIds.length} config(s) due to provider deactivation`);
+                logger.info({ module: 'AI Models', count: configIds.length }, 'Deactivated configs due to provider deactivation');
             }
         }
     }
@@ -555,7 +556,7 @@ export async function getAiConfigWithKey(id: string): Promise<AiConfigWithKey | 
         try {
             apiKey = decryptPassword(row.provider.apiKeyEncrypted);
         } catch (error) {
-            console.error(`Failed to decrypt API key for AI provider ${row.provider.id}:`, error);
+            logger.error({ module: 'AI Models', providerId: row.provider.id, err: error instanceof Error ? error.message : String(error) }, 'Failed to decrypt API key');
             throw new Error(`Failed to decrypt API key for AI provider ${row.provider.id}`);
         }
     }

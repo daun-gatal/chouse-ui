@@ -28,6 +28,7 @@ import {
     getMessages,
     cleanupOldThreads,
 } from "../services/chatHistory";
+import { logger, requestLogger } from "../utils/logger";
 
 // ============================================
 // Types
@@ -265,7 +266,10 @@ aiChat.get("/models", async (c) => {
             data: models,
         });
     } catch (e) {
-        console.error("Failed to load AI models:", e);
+        requestLogger(c.get("requestId")).error(
+            { module: "AI Chat", err: e instanceof Error ? e.message : String(e) },
+            "Failed to load AI models"
+        );
         return c.json({
             success: false,
             error: {
@@ -450,7 +454,10 @@ aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema
                                         );
                                         controller.enqueue(encoder.encode(`data: ${json}\n\n`));
                                     } catch (e) {
-                                        console.error('[AI-CHAT] Failed to serialize chart-data:', e);
+                                        logger.error(
+                                            { module: "AI Chat", err: e instanceof Error ? e.message : String(e) },
+                                            "Failed to serialize chart-data"
+                                        );
                                     }
                                 }
 
@@ -497,7 +504,7 @@ aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema
 
                             case 'error': {
                                 const errorMsg = part.error instanceof Error ? part.error.message : String(part.error);
-                                console.error('[AI Chat] Stream error:', errorMsg);
+                                logger.warn({ module: "AI Chat", errorMsg }, "Stream error");
                                 const sseError = `data: ${JSON.stringify({ type: 'error', error: errorMsg, retryable: true })}\n\n`;
                                 controller.enqueue(encoder.encode(sseError));
                                 break;
@@ -528,14 +535,20 @@ aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema
                             chartSpecs
 
                         ).catch(err => {
-                            console.error('[AI Chat] Failed to save assistant message:', err);
+                            logger.error(
+                                { module: "AI Chat", threadId, err: err instanceof Error ? err.message : String(err) },
+                                "Failed to save assistant message"
+                            );
                         });
 
                         // Auto-generate title for new threads
                         if (!thread.title) {
                             const autoTitle = message.substring(0, 80) + (message.length > 80 ? '...' : '');
                             await updateThreadTitle(threadId, rbacUserId, autoTitle).catch(err => {
-                                console.error('[AI Chat] Failed to auto-title thread:', err);
+                                logger.error(
+                                    { module: "AI Chat", threadId, err: err instanceof Error ? err.message : String(err) },
+                                    "Failed to auto-title thread"
+                                );
                             });
                         }
                     }
@@ -578,7 +591,10 @@ aiChat.get("/threads", async (c) => {
 
     // Trigger async cleanup of old threads
     cleanupOldThreads(7).catch(err => {
-        console.error('[AI Chat] Cleanup failed:', err);
+        logger.error(
+            { module: "AI Chat", err: err instanceof Error ? err.message : String(err) },
+            "Cleanup failed"
+        );
     });
 
     return c.json({

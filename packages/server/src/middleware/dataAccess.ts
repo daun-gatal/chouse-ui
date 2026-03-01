@@ -21,6 +21,7 @@ import {
   type ParsedStatement
 } from './sqlParser';
 import { PERMISSIONS } from '../rbac/schema/base';
+import { logger } from '../utils/logger';
 
 // ============================================
 // Context Extension
@@ -270,7 +271,7 @@ export function extractTablesFromQuery(sql: string): { database?: string; table?
     return parsed.tables;
   } catch (error) {
     // Fallback to empty array if parsing fails completely
-    console.warn('[DataAccess] Failed to extract tables from query:', error);
+    logger.warn({ module: 'DataAccess', err: error instanceof Error ? error.message : String(error) }, 'Failed to extract tables from query');
     return [];
   }
 }

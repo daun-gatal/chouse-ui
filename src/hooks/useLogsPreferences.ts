@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { rbacUserPreferencesApi } from '@/api/rbac';
 import { useRbacStore } from '@/stores/rbac';
+import { log } from '@/lib/log';
 
 export interface LogsPagePreferences {
   defaultLimit?: number;
@@ -64,14 +65,14 @@ export function useLogsPreferences(): {
         setHasFetched(true);
         setIsLoading(false);
       } catch (error) {
-        console.error('[useLogsPreferences] Failed to fetch preferences:', error);
+        log.error('[useLogsPreferences] Failed to fetch preferences', error);
         setHasFetched(true);
         setIsLoading(false);
       }
     };
 
     fetchPreferences().catch((error) => {
-      console.error('[useLogsPreferences] Error fetching preferences:', error);
+      log.error('[useLogsPreferences] Error fetching preferences', error);
       setHasFetched(true);
       setIsLoading(false);
     });
@@ -99,7 +100,7 @@ export function useLogsPreferences(): {
           },
         });
       } catch (error) {
-        console.error('[useLogsPreferences] Failed to sync preferences:', error);
+        log.error('[useLogsPreferences] Failed to sync preferences', error);
         // Continue anyway - state is already set locally
       }
     }

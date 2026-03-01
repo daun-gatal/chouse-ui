@@ -26,6 +26,7 @@ import ConnectionSelector from "./ConnectionSelector";
 import { rbacUserPreferencesApi } from "@/api/rbac";
 import UserMenu from "@/components/sidebar/UserMenu";
 import { version } from "../../../package.json";
+import { log } from "@/lib/log";
 
 // Persist sidebar state in localStorage
 const SIDEBAR_COLLAPSED_KEY = "chouseui-sidebar-collapsed";
@@ -149,7 +150,7 @@ export default function Sidebar() {
         }
         setHasFetchedPreference(true);
       } catch (error) {
-        console.error('[Sidebar] Failed to fetch sidebar preference:', error);
+        log.error('[Sidebar] Failed to fetch sidebar preference:', error);
         // Fallback to localStorage if API fails
         try {
           const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -164,7 +165,7 @@ export default function Sidebar() {
     };
 
     fetchSidebarPreference().catch((error) => {
-      console.error('[Sidebar] Error fetching sidebar preference:', error);
+      log.error('[Sidebar] Error fetching sidebar preference:', error);
       setHasFetchedPreference(true);
     });
   }, [isAuthenticated, hasFetchedPreference]);
@@ -195,7 +196,7 @@ export default function Sidebar() {
           },
         });
       } catch (error) {
-        console.error('[Sidebar] Failed to sync sidebar preference:', error);
+        log.error('[Sidebar] Failed to sync sidebar preference:', error);
         // Continue anyway - state is already set locally
       }
     }, 500); // Debounce by 500ms

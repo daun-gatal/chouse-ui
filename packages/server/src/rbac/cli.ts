@@ -28,6 +28,7 @@ import {
   APP_VERSION,
 } from './db/migrations';
 import { seedDatabase, needsSeeding } from './services/seed';
+import { logger } from '../utils/logger';
 
 const COMMANDS = {
   status: showStatus,
@@ -41,117 +42,57 @@ const COMMANDS = {
 type Command = keyof typeof COMMANDS;
 
 async function showStatus() {
-  console.log('\n📊 RBAC Migration Status\n');
-  console.log('═'.repeat(50));
-  
   const status = await getMigrationStatus();
-  
-  console.log(`App Version:     ${APP_VERSION}`);
-  console.log(`DB Version:      ${status.currentVersion || 'Not initialized'}`);
-  console.log(`Target Version:  ${status.targetVersion}`);
-  console.log('');
-  
-  if (status.pendingMigrations.length > 0) {
-    console.log('⚠️  Pending Migrations:');
-    for (const version of status.pendingMigrations) {
-      console.log(`   - ${version}`);
-    }
-  } else {
-    console.log('✅ All migrations are up to date');
-  }
-  
-  console.log('');
-  console.log('Applied Migrations:');
-  if (status.appliedMigrations.length === 0) {
-    console.log('   (none)');
-  } else {
-    for (const migration of status.appliedMigrations) {
-      console.log(`   - ${migration.version}: ${migration.name} (${migration.appliedAt.toISOString()})`);
-    }
-  }
-  
-  console.log('');
+  logger.info(
+    {
+      phase: 'cli',
+      command: 'status',
+      appVersion: APP_VERSION,
+      dbVersion: status.currentVersion || null,
+      targetVersion: status.targetVersion,
+      pendingMigrations: status.pendingMigrations,
+      appliedMigrations: status.appliedMigrations.map((m) => ({ version: m.version, name: m.name, appliedAt: m.appliedAt.toISOString() })),
+    },
+    'RBAC migration status'
+  );
 }
 
 async function runMigrate() {
-  console.log('\n🚀 Running Migrations\n');
-  console.log('═'.repeat(50));
-  
   const firstRun = await isFirstRun();
-  if (firstRun) {
-    console.log('📦 First run detected - will create schema and seed data');
-  }
-  
   const result = await runMigrations();
-  
-  console.log('');
-  console.log('Migration Result:');
-  console.log(`   First run:    ${result.isFirstRun}`);
-  console.log(`   From version: ${result.previousVersion || 'none'}`);
-  console.log(`   To version:   ${result.currentVersion}`);
-  console.log(`   Applied:      ${result.migrationsApplied.length} migration(s)`);
-  
-  if (result.migrationsApplied.length > 0) {
-    console.log('');
-    console.log('Applied:');
-    for (const version of result.migrationsApplied) {
-      console.log(`   ✅ ${version}`);
-    }
-  }
-  
-  // Seed if first run
   if (result.isFirstRun) {
-    console.log('');
-    console.log('🌱 Seeding database with default data...');
     await seedDatabase();
-    console.log('✅ Database seeded');
   }
-  
-  console.log('');
+  logger.info(
+    {
+      phase: 'cli',
+      command: 'migrate',
+      firstRun,
+      isFirstRun: result.isFirstRun,
+      previousVersion: result.previousVersion ?? null,
+      currentVersion: result.currentVersion,
+      migrationsApplied: result.migrationsApplied,
+      seeded: result.isFirstRun,
+    },
+    'RBAC migrations completed'
+  );
 }
 
 async function runSeed() {
-  console.log('\n🌱 Seeding Database\n');
-  console.log('═'.repeat(50));
-  
   const needs = await needsSeeding();
-  
-  if (!needs) {
-    console.log('ℹ️  Database already has data. Seeding will add missing records.');
-  }
-  
   await seedDatabase();
-  
-  console.log('');
-  console.log('✅ Seeding complete');
-  console.log('');
+  logger.info({ phase: 'cli', command: 'seed', alreadyHadData: !needs }, 'Seeding complete');
 }
 
 async function resetDatabase() {
-  console.log('\n⚠️  DATABASE RESET\n');
-  console.log('═'.repeat(50));
-  console.log('');
-  console.log('This will DROP ALL TABLES and data!');
-  console.log('');
-  
-  // In a real CLI, you'd prompt for confirmation
   const confirm = process.env.CONFIRM_RESET === 'yes';
-  
   if (!confirm) {
-    console.log('❌ Reset cancelled. Set CONFIRM_RESET=yes to proceed.');
-    console.log('');
-    console.log('Example:');
-    console.log('   CONFIRM_RESET=yes bun run src/rbac/cli.ts reset');
-    console.log('');
+    logger.warn({ phase: 'cli', command: 'reset' }, 'Reset cancelled. Set CONFIRM_RESET=yes to proceed.');
     return;
   }
-  
-  console.log('Dropping all RBAC tables...');
-  
   const { getDatabase, isSqlite } = await import('./db');
   const { sql } = await import('drizzle-orm');
   const db = getDatabase();
-  
   const tables = [
     '_rbac_migrations',
     'rbac_audit_logs',
@@ -162,67 +103,33 @@ async function resetDatabase() {
     'rbac_roles',
     'rbac_users',
   ];
-  
+  const dropped: string[] = [];
+  const failed: { table: string; err: string }[] = [];
   for (const table of tables) {
     try {
       if (isSqlite()) {
-        (db as any).run(sql.raw(`DROP TABLE IF EXISTS ${table}`));
+        (db as { run: (q: unknown) => void }).run(sql.raw(`DROP TABLE IF EXISTS ${table}`));
       } else {
-        await (db as any).execute(sql.raw(`DROP TABLE IF EXISTS ${table} CASCADE`));
+        await (db as { execute: (q: unknown) => Promise<unknown> }).execute(sql.raw(`DROP TABLE IF EXISTS ${table} CASCADE`));
       }
-      console.log(`   ✅ Dropped ${table}`);
+      dropped.push(table);
     } catch (error) {
-      console.log(`   ⚠️  Could not drop ${table}: ${error}`);
+      failed.push({ table, err: error instanceof Error ? error.message : String(error) });
     }
   }
-  
-  console.log('');
-  console.log('✅ Database reset complete');
-  console.log('');
-  console.log('Run "migrate" to recreate the schema.');
-  console.log('');
+  logger.info({ phase: 'cli', command: 'reset', dropped, failed }, 'Database reset complete');
 }
 
 async function showVersion() {
   const current = await getCurrentVersion();
-  console.log(`\nRBAC Version: ${current || 'Not initialized'}`);
-  console.log(`App Version:  ${APP_VERSION}\n`);
+  logger.info({ phase: 'cli', command: 'version', rbacVersion: current ?? null, appVersion: APP_VERSION }, 'RBAC version');
 }
 
 function showHelp() {
-  console.log(`
-RBAC Database Management CLI
-
-Usage:
-  bun run src/rbac/cli.ts <command>
-
-Commands:
-  status    Show current migration status
-  migrate   Run pending migrations (and seed on first run)
-  seed      Run database seeding (add default roles/permissions)
-  reset     Reset database (DANGEROUS - requires CONFIRM_RESET=yes)
-  version   Show current database and app versions
-  help      Show this help message
-
-Environment Variables:
-  RBAC_DB_TYPE        Database type: 'sqlite' (default) or 'postgres'
-  RBAC_SQLITE_PATH    SQLite database path (default: ./data/rbac.db)
-  RBAC_POSTGRES_URL   PostgreSQL connection URL
-  RBAC_ADMIN_EMAIL    Initial admin email (default: admin@localhost)
-  RBAC_ADMIN_USERNAME Initial admin username (default: admin)
-  RBAC_ADMIN_PASSWORD Initial admin password (default: admin123!)
-
-Examples:
-  # Check migration status
-  bun run src/rbac/cli.ts status
-
-  # Run migrations
-  bun run src/rbac/cli.ts migrate
-
-  # Reset and recreate database
-  CONFIRM_RESET=yes bun run src/rbac/cli.ts reset
-  bun run src/rbac/cli.ts migrate
-`);
+  logger.info(
+    { phase: 'cli', command: 'help' },
+    'RBAC CLI: status | migrate | seed | reset | version | help'
+  );
 }
 
 // ============================================
@@ -234,23 +141,27 @@ async function main() {
   const command = (args[0] || 'help') as Command;
   
   if (!(command in COMMANDS)) {
-    console.error(`Unknown command: ${command}`);
+    logger.error({ phase: 'cli', command }, 'Unknown command');
     showHelp();
     process.exit(1);
   }
-  
-  // Initialize database connection (except for help)
+
   if (command !== 'help') {
     const config = getDatabaseConfig();
-    console.log(`\n📁 Database: ${config.type === 'sqlite' ? config.sqlitePath : 'PostgreSQL'}`);
-    
+    logger.info(
+      { phase: 'cli', db: config.type === 'sqlite' ? config.sqlitePath : 'PostgreSQL' },
+      'Database connection'
+    );
     await initializeDatabase(config);
   }
-  
+
   try {
     await COMMANDS[command]();
   } catch (error) {
-    console.error('\n❌ Error:', error);
+    logger.error(
+      { phase: 'cli', err: error instanceof Error ? error.message : String(error) },
+      'CLI error'
+    );
     process.exit(1);
   } finally {
     if (command !== 'help') {
@@ -259,4 +170,7 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  logger.error({ phase: 'cli', err: err instanceof Error ? err.message : String(err) }, 'CLI fatal');
+  process.exit(1);
+});

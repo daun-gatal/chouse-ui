@@ -19,6 +19,7 @@ import {
 } from "./aiConfig";
 import { discoverSkills, createLoadSkillTool } from "./agentSkills";
 import { type AgentToolContext, createCoreTools } from "./agentTools";
+import { logger } from "../utils/logger";
 
 // ============================================
 // Types
@@ -166,7 +167,7 @@ async function loadSkillContent(skillName: string): Promise<string> {
         const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
         return match ? content.slice(match[0].length).trim() : content.trim();
     } catch (error) {
-        console.error(`[AIOptimizer] Failed to load skill ${skillName}:`, error);
+        logger.error({ module: "AIOptimizer", skillName, err: error instanceof Error ? error.message : String(error) }, "Failed to load skill");
         return "";
     }
 }
@@ -249,7 +250,7 @@ function handleAiError(error: unknown, context: string): never {
     if (error instanceof AppError) throw error;
 
     const msg = error instanceof Error ? error.message : String(error);
-    console.error(`[${context}] AI operation failed:`, msg);
+    logger.error({ module: context }, msg);
 
     if (msg.includes("rate limit")) {
         throw AppError.badRequest(
@@ -531,9 +532,9 @@ Produce ONLY a JSON object (no markdown, no extra text):
 
         return extractJson(rawText, EvaluatorOutputSchema);
     } catch (error) {
-        console.error(
-            "[IOCheck] Optimization check failed:",
-            error instanceof Error ? error.message : String(error)
+        logger.error(
+            { module: "IOCheck", err: error instanceof Error ? error.message : String(error) },
+            "Optimization check failed"
         );
         return { canOptimize: false, reason: "Analysis failed" };
     }

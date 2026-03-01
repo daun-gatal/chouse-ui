@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { subDays, format } from 'date-fns';
 import { Trash2, AlertTriangle, Calendar as CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { log } from '@/lib/log';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -122,7 +123,7 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
             onPruneSuccess();
             setIsOpen(false);
         } catch (error) {
-            console.error('Prune failed:', error);
+            log.error('Prune failed:', error);
             toast.error('Failed to prune audit logs', { id: 'rbac_prune_error' });
         } finally {
             setIsPruning(false);

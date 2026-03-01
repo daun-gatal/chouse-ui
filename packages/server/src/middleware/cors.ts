@@ -1,4 +1,5 @@
 import { Context, Next } from "hono";
+import { logger } from "../utils/logger";
 
 export interface CorsOptions {
   origin?: string | string[] | ((origin: string) => boolean);
@@ -43,12 +44,12 @@ function isOriginAllowed(origin: string, allowedOrigins: CorsOptions["origin"]):
         if (allowed !== "*" && !allowed.startsWith("*.")) {
           const url = new URL(allowed);
           if (!['http:', 'https:'].includes(url.protocol)) {
-            console.warn(`[CORS] Invalid protocol in allowed origin: ${allowed}`);
+            logger.warn({ module: "CORS", allowed }, "Invalid protocol in allowed origin");
             return false;
           }
         }
       } catch (e) {
-        console.warn(`[CORS] Invalid allowed origin URL: ${allowed}`);
+        logger.warn({ module: "CORS", allowed }, "Invalid allowed origin URL");
         return false;
       }
 
@@ -79,7 +80,7 @@ export function corsMiddleware(options: CorsOptions = {}) {
 
   // minimal validation of configuration in production
   if (opts.strictMode && (!opts.origin || opts.origin === "*" || (Array.isArray(opts.origin) && opts.origin.length === 0))) {
-    console.error("CORS_ORIGINS must be set to specific domains in production");
+    logger.error({ module: "CORS" }, "CORS_ORIGINS must be set to specific domains in production");
     // We don't throw here to avoid crashing if env var is missing, but strict mode will block everything if origin is "*"
     // because isOriginAllowed returns true for "*", but strictMode logic below might need review.
     // Actually, let's look at logic: if origin is "*", isOriginAllowed returns true.
@@ -106,7 +107,7 @@ export function corsMiddleware(options: CorsOptions = {}) {
 
     // In strict mode, reject requests from disallowed origins
     if (opts.strictMode && hasOrigin && !isAllowed) {
-      console.warn(`[CORS] Blocked request from unauthorized origin: ${origin} to ${path}`);
+      logger.warn({ module: "CORS", origin, path }, "Blocked request from unauthorized origin");
       return c.json(
         {
           success: false,

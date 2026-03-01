@@ -23,6 +23,7 @@ import {
   PinOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/log";
 import {
   Tooltip,
   TooltipContent,
@@ -144,7 +145,7 @@ async function loadDockPreferencesFromDb(deviceType: DeviceType): Promise<DockPr
     const workspace = preferences.workspacePreferences as WorkspacePreferencesMap | undefined;
     return getDockPrefsFromWorkspace(workspace, deviceType);
   } catch (error) {
-    console.error("[FloatingDock] Failed to fetch dock preferences:", error);
+    log.error("[FloatingDock] Failed to fetch dock preferences:", error);
     const { DOCK_DEFAULT_PREFERENCES_BY_DEVICE } = await import("@/lib/devicePreferences");
     return DOCK_DEFAULT_PREFERENCES_BY_DEVICE[deviceType];
   }
@@ -157,7 +158,7 @@ async function saveDockPreferencesToDb(deviceType: DeviceType, dockPrefs: DockPr
     const merged = mergeDockPrefsIntoWorkspace(workspace, deviceType, dockPrefs);
     await rbacUserPreferencesApi.updatePreferences({ workspacePreferences: merged });
   } catch (error) {
-    console.error("[FloatingDock] Failed to save dock preferences:", error);
+    log.error("[FloatingDock] Failed to save dock preferences:", error);
   }
 }
 
@@ -265,7 +266,7 @@ export default function FloatingDock() {
         window.dispatchEvent(new CustomEvent("fullscreen:change", { detail: { active: false } }));
       }
     } catch (err) {
-      console.error("[FloatingDock] Fullscreen toggle failed:", err);
+      log.error("[FloatingDock] Fullscreen toggle failed:", err);
     }
   }, []);
 
@@ -304,7 +305,7 @@ export default function FloatingDock() {
           saveDockPlacementToLocal(dbPrefs.placement);
         }
       } catch (error) {
-        console.error("[FloatingDock] Failed to load preferences from database:", error);
+        log.error("[FloatingDock] Failed to load preferences from database:", error);
       }
     };
 

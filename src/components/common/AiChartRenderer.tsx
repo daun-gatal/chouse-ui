@@ -23,6 +23,7 @@ import {
     tooltipLabelStyle,
 } from './AiChartUtils';
 import { toast } from 'sonner';
+import { log } from '@/lib/log';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -252,7 +253,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
             a.click();
             a.remove();
         } catch (err) {
-            console.error(err);
+            log.error('AiChartRenderer error', err);
             toast.error('Failed to capture chart as image. Please try again.');
         }
     }, [baseName]);
@@ -815,7 +816,7 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
             a.click();
             a.remove();
         } catch (err) {
-            console.error(err);
+            log.error('AiChartRenderer error', err);
             toast.error('Failed to capture chart as image. Please try again.');
         }
     }, [baseName]);

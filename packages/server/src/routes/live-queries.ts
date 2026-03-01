@@ -17,6 +17,7 @@ import { ClickHouseService } from "../services/clickhouse";
 import { createAuditLog, userHasPermission, getUserById } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
+import { requestLogger } from "../utils/logger";
 
 // ============================================
 // Types
@@ -304,7 +305,7 @@ liveQueries.get("/", async (c) => {
             },
         });
     } catch (error) {
-        console.error("[LiveQueries] Failed to fetch processes:", error);
+        requestLogger(c.get("requestId")).error({ module: "LiveQueries", err: error instanceof Error ? error.message : String(error) }, "Failed to fetch processes");
         throw AppError.internal("Failed to fetch running queries.");
     }
 });
@@ -413,7 +414,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
                 }
             );
         } catch (auditError) {
-            console.error('[LiveQueries] Failed to create audit log:', auditError);
+            requestLogger(c.get("requestId")).error({ module: "LiveQueries", err: auditError instanceof Error ? auditError.message : String(auditError) }, "Failed to create audit log");
         }
 
         return c.json({
@@ -426,7 +427,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
             },
         });
     } catch (error) {
-        console.error("[LiveQueries] Failed to kill query:", error);
+        requestLogger(c.get("requestId")).error({ module: "LiveQueries", err: error instanceof Error ? error.message : String(error) }, "Failed to kill query");
 
         // Create failed audit log
         try {
@@ -447,7 +448,7 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
                 }
             );
         } catch (auditError) {
-            console.error('[LiveQueries] Failed to create failure audit log:', auditError);
+            requestLogger(c.get("requestId")).error({ module: "LiveQueries", err: auditError instanceof Error ? auditError.message : String(auditError) }, "Failed to create failure audit log");
         }
 
         if (error instanceof AppError) {

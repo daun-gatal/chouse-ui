@@ -27,6 +27,7 @@ import {
   isSuperAdmin,
 } from '../middleware/rbacAuth';
 import { AppError } from '../../types';
+import { requestLogger } from '../../utils/logger';
 
 const userRoutes = new Hono();
 
@@ -119,7 +120,7 @@ userRoutes.get('/:id', rbacAuthMiddleware, async (c) => {
   try {
     user = await getUserById(id);
   } catch (error) {
-    console.error('[Users] Failed to fetch user:', error);
+    requestLogger(c.get('requestId')).error({ module: 'Users', err: error instanceof Error ? error.message : String(error) }, 'Failed to fetch user');
     throw AppError.internal('Failed to fetch user');
   }
 

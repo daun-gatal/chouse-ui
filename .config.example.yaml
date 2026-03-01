@@ -16,6 +16,8 @@ port: 5521
 node_env: development
 static_path: ./dist
 cors_origin: "*"
+# Server log level: debug | info | warn | error (JSON logs via Pino)
+log_level: info
 
 # ============================================
 # RBAC Database Configuration

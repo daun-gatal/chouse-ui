@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { AppError } from "../types";
+import { requestLogger } from "../utils/logger";
 
 /**
  * Global error handler middleware
@@ -9,6 +10,7 @@ export function errorHandler(err: Error, c: Context) {
   const method = c.req.method;
   const path = c.req.path;
   const user = c.get('rbacUser');
+  const reqLog = requestLogger(requestId);
 
   // Determine error details
   let statusCode = 500;
@@ -28,7 +30,7 @@ export function errorHandler(err: Error, c: Context) {
     errorCode = 'VALIDATION_ERROR';
     message = 'Validation failed';
     category = 'validation';
-    details = (err as any).errors;
+    details = (err as { errors: unknown }).errors;
   } else {
     // For non-AppErrors (unexpected), use the actual message in dev
     if (process.env.NODE_ENV !== 'production') {
@@ -36,30 +38,23 @@ export function errorHandler(err: Error, c: Context) {
     }
   }
 
-  // Structured Log Entry
-  const logEntry = {
-    timestamp: new Date().toISOString(),
-    requestId,
-    level: statusCode >= 500 ? 'error' : 'warn',
+  // Structured log entry for observability (no sensitive data)
+  const logFields = {
     statusCode,
     errorCode,
     method,
     path,
     userId: user?.sub,
-    message: err.message, // Always log full message internally
-    stack: statusCode >= 500 ? err.stack : undefined, // Only log stack for server errors
+    message: err.message,
+    ...(statusCode >= 500 && err.stack ? { stack: err.stack } : {}),
   };
 
-  // Log to console (could be sent to external logger)
   if (statusCode >= 500) {
-    console.error(JSON.stringify(logEntry));
+    reqLog.error(logFields, err.message);
   } else if (statusCode !== 404) {
-    // Warn for non-404 client errors
-    console.warn(JSON.stringify(logEntry));
+    reqLog.warn(logFields, err.message);
   } else {
-    // Simple log for 404 to avoid noise
-    // We already have a specific 404 handler, but this catches AppError.notFound() thrown in logic
-    console.warn(`[NOT_FOUND] ${message}: ${method} ${path} (${requestId})`);
+    reqLog.warn({ method, path, message }, `NOT_FOUND: ${message}`);
   }
 
   // Response Construction

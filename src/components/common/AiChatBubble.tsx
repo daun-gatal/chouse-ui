@@ -40,6 +40,7 @@ import {
     type ChartSpec,
 } from '@/api/ai-chat';
 import { toast } from 'sonner';
+import { log } from '@/lib/log';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
 import {
     MessageSquare,
@@ -893,7 +894,7 @@ export default function AiChatBubble() {
                 const merged = mergeChatPrefsIntoWorkspace(workspace, deviceType, { position: pos, size });
                 await rbacUserPreferencesApi.updatePreferences({ workspacePreferences: merged });
             } catch (err) {
-                console.error('[AiChatBubble] Failed to save preferences:', err);
+                log.error('[AiChatBubble] Failed to save preferences:', err);
             }
         }, 1000);
     }, [deviceType]);
@@ -929,7 +930,7 @@ export default function AiChatBubble() {
                 }
                 lastLoadedDeviceRef.current = deviceType;
             } catch (err) {
-                console.error('[AiChatBubble] Failed to load preferences:', err);
+                log.error('[AiChatBubble] Failed to load preferences:', err);
                 try {
                     const saved = localStorage.getItem('chouseui-chat-position');
                     if (saved) setPosition(JSON.parse(saved));
@@ -1110,7 +1111,7 @@ export default function AiChatBubble() {
                 } else if (models.length > 0) {
                     setSelectedModelId(models[0].id);
                 }
-            }).catch(console.error);
+            }).catch((e) => log.error('[AiChat] Failed to fetch', e));
         }
     }, [hasPermission, aiEnabled]);
 
@@ -1137,7 +1138,7 @@ export default function AiChatBubble() {
             const result = await listThreads(activeConnectionId);
             setThreads(result);
         } catch (err) {
-            console.error('[AiChat] Failed to load threads:', err);
+            log.error('[AiChat] Failed to load threads:', err);
         } finally {
             setIsLoadingThreads(false);
         }
@@ -1214,7 +1215,7 @@ export default function AiChatBubble() {
                 }))
             );
         } catch (err) {
-            console.error('[AiChat] Failed to load thread:', err);
+            log.error('[AiChat] Failed to load thread:', err);
         }
     }, []);
 
@@ -1225,7 +1226,7 @@ export default function AiChatBubble() {
             setActiveThreadId(thread.id);
             setMessages([]);
         } catch (err) {
-            console.error('[AiChat] Failed to create thread:', err);
+            log.error('[AiChat] Failed to create thread:', err);
         }
     }, []);
 
@@ -1239,7 +1240,7 @@ export default function AiChatBubble() {
                 setMessages([]);
             }
         } catch (err) {
-            console.error('[AiChat] Failed to delete thread:', err);
+            log.error('[AiChat] Failed to delete thread:', err);
         }
     }, [activeThreadId]);
 
@@ -1254,7 +1255,7 @@ export default function AiChatBubble() {
             await updateThreadTitle(threadId, title);
             setThreads((prev) => prev.map((t) => (t.id === threadId ? { ...t, title } : t)));
         } catch (err) {
-            console.error('[AiChat] Failed to update thread title:', err);
+            log.error('[AiChat] Failed to update thread title:', err);
             toast.error('Failed to rename thread');
         }
     }, []);
@@ -1360,7 +1361,7 @@ export default function AiChatBubble() {
                 threadId = thread.id;
                 setMessages([]);
             } catch (err) {
-                console.error('[AiChat] Failed to create thread:', err);
+                log.error('[AiChat] Failed to create thread:', err);
                 return;
             }
         }

@@ -219,6 +219,7 @@ ai:
 | `NODE_ENV` | Environment (`development`/`production`) | `development` |
 | `CORS_ORIGIN` | Allowed CORS origins (comma-separated or `*`) | `*` |
 | `STATIC_PATH` | Path to frontend build | `./dist` |
+| `LOG_LEVEL` | Server log level: `debug`, `info`, `warn`, or `error` (JSON logs via Pino) | `info` (production), `debug` (development) |
 | `CHOUSE_CONFIG_PATH` | Path to optional YAML configuration file | - |
 
 #### RBAC Database
