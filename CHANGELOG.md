@@ -20,11 +20,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audit Action Constants**: New `AUDIT_ACTIONS` entries for all newly tracked operations in `packages/server/src/rbac/schema/base.ts`.
 - **Client Info UI**: The audit logs table replaces the plain "IP Address" column with a rich "Client Info" cell showing device icon, browser, OS, country, language, and IP — with a tooltip displaying the full User-Agent string.
 - **DB Migration 1.17.0**: Adds `browser`, `browser_version`, `os`, `os_version`, `device_type`, `language`, and `country` columns to `rbac_audit_logs` for both SQLite and PostgreSQL.
+- **Broader Country Detection** (enhancement): Fixed country always being `null` when the server runs without Cloudflare or Vercel. Country resolution now follows a prioritised fallback chain across all major CDN and proxy providers:
+  1. Cloudflare (`CF-IPCountry`)
+  2. Vercel (`X-Vercel-IP-Country`)
+  3. AWS CloudFront (`CloudFront-Viewer-Country`)
+  4. Fastly (`X-Country-Code`)
+  5. Akamai (`X-Akamai-Edgescape`, parsed `country_code=XX`)
+  6. Nginx GeoIP (`X-GeoIP-Country` / `X-Real-Country`)
+  7. Accept-Language region tag fallback (`id-ID` → `ID`) for on-premise / CDN-less deployments
+- **Deeper Client Context** (enhancement): Five additional fields are now extracted per audit log entry:
+  - `device_model` — mobile/tablet brand and model parsed from User-Agent (e.g. `Samsung SM-S918B`, `Pixel 8`, `iPhone`)
+  - `architecture` — CPU/platform architecture parsed from User-Agent (e.g. `x86_64`, `ARM64`, `x86 (WOW64)`)
+  - `city` — city name from CDN geo headers (Cloudflare `CF-IPCity`, Vercel `X-Vercel-IP-City`, CloudFront `CloudFront-Viewer-City`, Akamai Edgescape)
+  - `country_region` — subdivision/state code from CDN headers (Vercel `X-Vercel-IP-Country-Region`, CloudFront `CloudFront-Viewer-Country-Region`, Akamai)
+  - `timezone` — IANA timezone from CDN headers (Vercel `X-Vercel-IP-Timezone`, CloudFront `CloudFront-Viewer-Time-Zone`, Akamai)
+- **DB Migration 1.17.1**: Adds `timezone`, `city`, `country_region`, `device_model`, and `architecture` columns to `rbac_audit_logs` for both SQLite and PostgreSQL.
+- **Enriched Client Info UI** (enhancement): The "Client Info" table cell and hover tooltip are redesigned to surface all new fields:
+  - Compact row now shows device model (mobile/tablet only) with architecture chip badge, and city + country code together.
+  - Tooltip is restructured into three labelled sections — **Client** (device type, model, arch, browser, OS), **Location** (city, country/region, timezone, language), **Network** (IP) — plus a raw User-Agent footer.
 
 ### Changed
 
 - **`createAuditLogWithContext` Helper**: Introduced a new `createAuditLogWithContext(c, ...)` function that auto-extracts User-Agent, Accept-Language, and CDN country headers from the Hono request context. All RBAC route handlers (auth, users, roles, connections, data access, ClickHouse users, AI providers, AI models, AI configs, audit) now use this helper instead of manually passing `userAgent`.
-- **Audit Logs CSV Export**: Export now includes the new client info fields (browser, OS, device type, language, country).
+- **`getClientHeaders` expanded**: Now reads geo headers from all major CDN providers (Cloudflare, Vercel, AWS CloudFront, Fastly, Akamai, Nginx GeoIP) including city, country region, and timezone fields, in addition to the previously supported country-only headers.
+- **Audit Logs CSV Export**: Export now includes all client info fields — `Device Model`, `Architecture`, `City`, `Country Region`, and `Timezone` added alongside the existing browser, OS, device type, language, and country columns (24 total columns, up from 19).
 
 ## [v2.12.6] - 2026-03-01
 

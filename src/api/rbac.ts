@@ -231,13 +231,22 @@ export interface RbacAuditLog {
   usernameSnapshot?: string | null;
   emailSnapshot?: string | null;
   displayNameSnapshot?: string | null;
+  // Browser / OS
   browser?: string | null;
   browserVersion?: string | null;
   os?: string | null;
   osVersion?: string | null;
   deviceType?: string | null;
+  // Device hardware (migration 1.18.0)
+  deviceModel?: string | null;
+  architecture?: string | null;
+  // Locale
   language?: string | null;
+  // Geo (migration 1.18.0)
   country?: string | null;
+  city?: string | null;
+  countryRegion?: string | null;
+  timezone?: string | null;
 }
 
 export interface CreateUserInput {

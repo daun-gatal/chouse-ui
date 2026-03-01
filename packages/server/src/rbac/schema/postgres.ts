@@ -166,6 +166,11 @@ export const auditLogs = pgTable('rbac_audit_logs', {
   deviceType: varchar('device_type', { length: 20 }),
   language: varchar('language', { length: 20 }),
   country: varchar('country', { length: 10 }),
+  timezone: varchar('timezone', { length: 100 }),
+  city: varchar('city', { length: 100 }),
+  countryRegion: varchar('country_region', { length: 10 }),
+  deviceModel: varchar('device_model', { length: 150 }),
+  architecture: varchar('architecture', { length: 30 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   userIdx: index('audit_user_idx').on(table.userId),

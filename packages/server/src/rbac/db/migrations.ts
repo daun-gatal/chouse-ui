@@ -43,7 +43,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.17.0';
+export const APP_VERSION = '1.17.1';
 
 // ============================================
 // Migration Registry
@@ -2130,6 +2130,65 @@ const MIGRATIONS: Migration[] = [
           );
         }
         console.log('[Migration 1.17.0] Removed client info columns from audit logs (PostgreSQL)');
+      }
+    },
+  },
+  {
+    version: '1.17.1',
+    name: 'audit_log_enriched_geo_device',
+    description: 'Add enriched geo columns (timezone, city, country_region) and device columns (device_model, architecture) to audit logs for deeper client context',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+
+      const dbType = getDatabaseType();
+
+      const columns = [
+        { name: 'timezone',       sqliteType: 'TEXT', pgType: 'VARCHAR(100)' },
+        { name: 'city',           sqliteType: 'TEXT', pgType: 'VARCHAR(100)' },
+        { name: 'country_region', sqliteType: 'TEXT', pgType: 'VARCHAR(10)'  },
+        { name: 'device_model',   sqliteType: 'TEXT', pgType: 'VARCHAR(150)' },
+        { name: 'architecture',   sqliteType: 'TEXT', pgType: 'VARCHAR(30)'  },
+      ];
+
+      for (const col of columns) {
+        if (dbType === 'sqlite') {
+          try {
+            (db as SqliteDb).run(sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN ${col.name} ${col.sqliteType}`));
+            console.log(`[Migration 1.17.1] Added ${col.name} column (SQLite)`);
+          } catch (error: any) {
+            if (error?.message?.includes('duplicate column')) {
+              console.log(`[Migration 1.17.1] ${col.name} column already exists, skipping`);
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          await (db as PostgresDb).execute(
+            sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN IF NOT EXISTS ${col.name} ${col.pgType}`)
+          );
+          console.log(`[Migration 1.17.1] Added ${col.name} column (PostgreSQL)`);
+        }
+      }
+
+      console.log('[Migration 1.17.1] Successfully added enriched geo and device columns to audit logs');
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+
+      const dbType = getDatabaseType();
+      const columns = ['timezone', 'city', 'country_region', 'device_model', 'architecture'];
+
+      if (dbType === 'sqlite') {
+        console.log('[Migration 1.17.1] SQLite does not support DROP COLUMN easily, manual intervention may be required');
+      } else {
+        for (const col of columns) {
+          await (db as PostgresDb).execute(
+            sql.raw(`ALTER TABLE rbac_audit_logs DROP COLUMN IF EXISTS ${col}`)
+          );
+        }
+        console.log('[Migration 1.17.1] Removed enriched geo and device columns from audit logs (PostgreSQL)');
       }
     },
   },

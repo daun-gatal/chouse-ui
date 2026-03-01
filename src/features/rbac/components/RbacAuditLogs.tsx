@@ -8,16 +8,12 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   FileText,
-  Search,
-  Download,
   RefreshCw,
   CheckCircle,
   XCircle,
   Calendar,
   Filter,
   User,
-  Trash2,
-  AlertTriangle,
   X,
   Mail,
   User as UserIcon,
@@ -28,6 +24,9 @@ import {
   Smartphone,
   Tablet,
   Bot,
+  MapPin,
+  Clock,
+  Layers,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { format, subDays, startOfToday, endOfToday, startOfYesterday, endOfYesterday } from 'date-fns';
@@ -539,25 +538,45 @@ export const RbacAuditLogs: React.FC = () => {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <div className="space-y-1 cursor-help min-w-[160px]">
+                            <div className="space-y-1 cursor-help min-w-[180px]">
                               {(log.browser || log.os) ? (
                                 <>
+                                  {/* Row 1: device icon + browser + OS */}
                                   <div className="flex items-center gap-1.5 text-sm text-white">
                                     <DeviceIcon type={log.deviceType} className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
                                     <span className="truncate">
                                       {[log.browser, log.browserVersion].filter(Boolean).join(' ')}
-                                      {log.os && <span className="text-gray-400"> · {[log.os, log.osVersion].filter(Boolean).join(' ')}</span>}
+                                      {log.os && (
+                                        <span className="text-gray-400">
+                                          {' · '}{[log.os, log.osVersion].filter(Boolean).join(' ')}
+                                        </span>
+                                      )}
                                     </span>
                                   </div>
+                                  {/* Row 2: device model (mobile/tablet only) */}
+                                  {log.deviceModel && (
+                                    <div className="flex items-center gap-1 text-xs text-gray-400">
+                                      <Layers className="h-3 w-3 shrink-0" />
+                                      <span className="truncate">{log.deviceModel}</span>
+                                      {log.architecture && (
+                                        <span className="ml-1 px-1 rounded bg-white/5 text-gray-500 font-mono text-[10px]">
+                                          {log.architecture}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {/* Row 3: geo + locale + IP */}
                                   <div className="flex items-center gap-2 text-xs text-gray-500">
-                                    {log.country && (
+                                    {(log.country || log.city) && (
                                       <span className="flex items-center gap-0.5">
-                                        <Globe className="h-3 w-3" />
-                                        {log.country}
+                                        <Globe className="h-3 w-3 shrink-0" />
+                                        {[log.city, log.country].filter(Boolean).join(', ')}
                                       </span>
                                     )}
                                     {log.language && <span>{log.language}</span>}
-                                    {log.ipAddress && <span className="font-mono">{log.ipAddress}</span>}
+                                    {log.ipAddress && (
+                                      <span className="font-mono truncate max-w-[110px]">{log.ipAddress}</span>
+                                    )}
                                   </div>
                                 </>
                               ) : (
@@ -565,12 +584,107 @@ export const RbacAuditLogs: React.FC = () => {
                               )}
                             </div>
                           </TooltipTrigger>
-                          <TooltipContent side="left" className="max-w-[400px] bg-gray-900 border-white/10">
-                            <div className="space-y-1 text-xs">
-                              {log.userAgent && (
-                                <p className="text-gray-400 break-all font-mono">{log.userAgent}</p>
+                          <TooltipContent side="left" className="max-w-[360px] bg-gray-900 border-white/10 p-3">
+                            <div className="space-y-3 text-xs">
+                              {/* Browser & OS */}
+                              {(log.browser || log.os || log.deviceType) && (
+                                <div className="space-y-1.5">
+                                  <p className="text-gray-500 uppercase tracking-wider text-[10px] font-semibold">Client</p>
+                                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                                    {log.deviceType && (
+                                      <>
+                                        <span className="text-gray-500">Device</span>
+                                        <span className="text-white flex items-center gap-1">
+                                          <DeviceIcon type={log.deviceType} className="h-3 w-3 text-cyan-400" />
+                                          {log.deviceType}
+                                        </span>
+                                      </>
+                                    )}
+                                    {log.deviceModel && (
+                                      <>
+                                        <span className="text-gray-500">Model</span>
+                                        <span className="text-white">{log.deviceModel}</span>
+                                      </>
+                                    )}
+                                    {log.architecture && (
+                                      <>
+                                        <span className="text-gray-500">Arch</span>
+                                        <span className="text-white font-mono">{log.architecture}</span>
+                                      </>
+                                    )}
+                                    {log.browser && (
+                                      <>
+                                        <span className="text-gray-500">Browser</span>
+                                        <span className="text-white">
+                                          {log.browser}{log.browserVersion && <span className="text-gray-400"> {log.browserVersion}</span>}
+                                        </span>
+                                      </>
+                                    )}
+                                    {log.os && (
+                                      <>
+                                        <span className="text-gray-500">OS</span>
+                                        <span className="text-white">
+                                          {log.os}{log.osVersion && <span className="text-gray-400"> {log.osVersion}</span>}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
                               )}
-                              {!log.userAgent && <p className="text-gray-500">No user agent data</p>}
+                              {/* Geo */}
+                              {(log.country || log.city || log.countryRegion || log.timezone || log.language) && (
+                                <div className="space-y-1.5">
+                                  <p className="text-gray-500 uppercase tracking-wider text-[10px] font-semibold">Location</p>
+                                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                                    {log.city && (
+                                      <>
+                                        <span className="text-gray-500 flex items-center gap-1"><MapPin className="h-3 w-3" />City</span>
+                                        <span className="text-white">{log.city}</span>
+                                      </>
+                                    )}
+                                    {(log.country || log.countryRegion) && (
+                                      <>
+                                        <span className="text-gray-500 flex items-center gap-1"><Globe className="h-3 w-3" />Country</span>
+                                        <span className="text-white">
+                                          {[log.country, log.countryRegion].filter(Boolean).join(' / ')}
+                                        </span>
+                                      </>
+                                    )}
+                                    {log.timezone && (
+                                      <>
+                                        <span className="text-gray-500 flex items-center gap-1"><Clock className="h-3 w-3" />TZ</span>
+                                        <span className="text-white font-mono">{log.timezone}</span>
+                                      </>
+                                    )}
+                                    {log.language && (
+                                      <>
+                                        <span className="text-gray-500">Lang</span>
+                                        <span className="text-white">{log.language}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Network */}
+                              {log.ipAddress && (
+                                <div className="space-y-1.5">
+                                  <p className="text-gray-500 uppercase tracking-wider text-[10px] font-semibold">Network</p>
+                                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                                    <span className="text-gray-500">IP</span>
+                                    <span className="text-white font-mono">{log.ipAddress}</span>
+                                  </div>
+                                </div>
+                              )}
+                              {/* Raw UA */}
+                              {log.userAgent && (
+                                <div className="space-y-1 pt-1 border-t border-white/5">
+                                  <p className="text-gray-500 uppercase tracking-wider text-[10px] font-semibold">User-Agent</p>
+                                  <p className="text-gray-400 break-all font-mono text-[10px] leading-relaxed">{log.userAgent}</p>
+                                </div>
+                              )}
+                              {!log.browser && !log.os && !log.country && !log.ipAddress && !log.userAgent && (
+                                <p className="text-gray-500">No client data available</p>
+                              )}
                             </div>
                           </TooltipContent>
                         </Tooltip>

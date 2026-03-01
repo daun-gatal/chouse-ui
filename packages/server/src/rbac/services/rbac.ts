@@ -873,6 +873,11 @@ export async function createAuditLog(
     deviceType?: string;
     language?: string;
     country?: string;
+    timezone?: string;
+    city?: string;
+    countryRegion?: string;
+    deviceModel?: string;
+    architecture?: string;
   }
 ): Promise<void> {
   const db = getDatabase() as any;
@@ -918,6 +923,11 @@ export async function createAuditLog(
     deviceType: options?.deviceType,
     language: options?.language,
     country: options?.country,
+    timezone: options?.timezone,
+    city: options?.city,
+    countryRegion: options?.countryRegion,
+    deviceModel: options?.deviceModel,
+    architecture: options?.architecture,
     createdAt: new Date(),
   });
 }
@@ -955,6 +965,11 @@ export async function createAuditLogWithContext(
     deviceType: clientInfo.deviceType !== 'Unknown' ? clientInfo.deviceType : undefined,
     language: clientInfo.language || undefined,
     country: clientInfo.country || undefined,
+    timezone: clientInfo.timezone || undefined,
+    city: clientInfo.city || undefined,
+    countryRegion: clientInfo.countryRegion || undefined,
+    deviceModel: clientInfo.deviceModel || undefined,
+    architecture: clientInfo.architecture || undefined,
   });
 }
 

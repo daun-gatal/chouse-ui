@@ -157,7 +157,34 @@ auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidat
   });
 
   // Convert to CSV
-  const headers = ['ID', 'User ID', 'Username (Snapshot)', 'Email (Snapshot)', 'Display Name (Snapshot)', 'Action', 'Resource Type', 'Resource ID', 'Status', 'IP Address', 'Browser', 'Browser Version', 'OS', 'OS Version', 'Device Type', 'Language', 'Country', 'User Agent', 'Created At'];
+  const headers = [
+    'ID',
+    'User ID',
+    'Username (Snapshot)',
+    'Email (Snapshot)',
+    'Display Name (Snapshot)',
+    'Action',
+    'Resource Type',
+    'Resource ID',
+    'Status',
+    'IP Address',
+    // Browser / OS
+    'Browser',
+    'Browser Version',
+    'OS',
+    'OS Version',
+    'Device Type',
+    'Device Model',
+    'Architecture',
+    // Locale & Geo
+    'Language',
+    'Country',
+    'City',
+    'Country Region',
+    'Timezone',
+    'User Agent',
+    'Created At',
+  ];
   const rows = result.logs.map(log => [
     log.id,
     log.userId || '',
@@ -169,13 +196,20 @@ auditRoutes.get('/export', requirePermission(PERMISSIONS.AUDIT_EXPORT), zValidat
     log.resourceId || '',
     log.status,
     log.ipAddress || '',
+    // Browser / OS
     log.browser || '',
     log.browserVersion || '',
     log.os || '',
     log.osVersion || '',
     log.deviceType || '',
+    log.deviceModel || '',
+    log.architecture || '',
+    // Locale & Geo
     log.language || '',
     log.country || '',
+    log.city || '',
+    log.countryRegion || '',
+    log.timezone || '',
     log.userAgent || '',
     new Date(log.createdAt).toISOString(),
   ]);

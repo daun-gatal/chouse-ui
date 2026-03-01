@@ -166,6 +166,11 @@ export const auditLogs = sqliteTable('rbac_audit_logs', {
   deviceType: text('device_type'),
   language: text('language'),
   country: text('country'),
+  timezone: text('timezone'),
+  city: text('city'),
+  countryRegion: text('country_region'),
+  deviceModel: text('device_model'),
+  architecture: text('architecture'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => ({
   userIdx: index('audit_user_idx').on(table.userId),
