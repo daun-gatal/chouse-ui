@@ -30,7 +30,7 @@ export function errorHandler(err: Error, c: Context) {
     errorCode = 'VALIDATION_ERROR';
     message = 'Validation failed';
     category = 'validation';
-    details = (err as { errors: unknown }).errors;
+    details = (err as unknown as { errors: unknown }).errors;
   } else {
     // For non-AppErrors (unexpected), use the actual message in dev
     if (process.env.NODE_ENV !== 'production') {
