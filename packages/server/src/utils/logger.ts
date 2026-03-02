@@ -2,12 +2,12 @@
  * JSON logger for server observability.
  * Uses Pino: single line per log, levels, child loggers for requestId.
  * In development: pino-pretty for human-readable, colorized output. In production: single-line JSON.
+ * pino-pretty is loaded only in development so production/Docker builds need not install it.
  * LOG_LEVEL env: debug | info | warn | error (default: info in production, debug in development).
  * Never log passwords, tokens, or PII.
  */
 
 import pino from "pino";
-import pinoPretty from "pino-pretty";
 
 const NODE_ENV = process.env.NODE_ENV || "development";
 const isDev = NODE_ENV === "development";
@@ -16,6 +16,17 @@ const LOG_LEVEL = (process.env.LOG_LEVEL || (NODE_ENV === "production" ? "info" 
   | "info"
   | "warn"
   | "error";
+
+let dest: pino.DestinationStream | undefined;
+if (isDev) {
+  try {
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    dest = require("pino-pretty")({ colorize: true });
+  } catch {
+    // pino-pretty not installed — fall back to JSON output
+  }
+}
 
 const baseLogger = pino(
   {
@@ -28,7 +39,7 @@ const baseLogger = pino(
     },
     timestamp: pino.stdTimeFunctions.isoTime,
   },
-  isDev ? pinoPretty({ colorize: true }) : undefined
+  dest
 );
 
 export type Logger = pino.Logger;
