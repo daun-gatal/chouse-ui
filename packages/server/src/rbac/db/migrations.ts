@@ -47,6 +47,31 @@ export interface MigrationResult {
 export const APP_VERSION = '1.17.1';
 
 // ============================================
+// Error Helpers
+// Drizzle ORM wraps underlying DB errors inside a DrizzleError where
+// the original message is in error.cause.message, not error.message.
+// These helpers check both levels so migrations can reliably detect
+// duplicate column and unique constraint violations.
+// ============================================
+
+function isDuplicateColumnError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { message?: string; cause?: { message?: string } };
+  const msg = err.message ?? '';
+  const causeMsg = err.cause?.message ?? '';
+  return msg.includes('duplicate column') || causeMsg.includes('duplicate column');
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { message?: string; cause?: { message?: string } };
+  const msg = err.message ?? '';
+  const causeMsg = err.cause?.message ?? '';
+  const check = (m: string) => m.includes('UNIQUE') || m.includes('unique');
+  return check(msg) || check(causeMsg);
+}
+
+// ============================================
 // Migration Registry
 // ============================================
 
@@ -212,9 +237,10 @@ const MIGRATIONS: Migration[] = [
             ADD COLUMN auth_type TEXT
           `);
           logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.1] Added auth_type column to SQLite metadata table');
-        } catch (error: any) {
+        } catch (error: unknown) {
           // Column might already exist, which is fine
-          if (error?.message?.includes('duplicate column')) {
+          // (Drizzle wraps the underlying error in error.cause, so check both)
+          if (isDuplicateColumnError(error)) {
             logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.1] auth_type column already exists, skipping');
           } else {
             throw error;
@@ -292,9 +318,10 @@ const MIGRATIONS: Migration[] = [
           } else {
             logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] System table access rule already exists');
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           // Rule might already exist (unique constraint), which is fine
-          if (error?.message?.includes('UNIQUE') || error?.message?.includes('unique')) {
+          // (Drizzle wraps the underlying error in error.cause, so check both)
+          if (isUniqueConstraintError(error)) {
             logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] System table access rule already exists');
           } else {
             logger.warn({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Could not create system table access rule:', error);
@@ -1235,8 +1262,9 @@ const MIGRATIONS: Migration[] = [
               ADD COLUMN ${col} TEXT
             `));
             logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.11.0] Added ${col} column to SQLite audit logs table`);
-          } catch (error: any) {
-            if (error?.message?.includes('duplicate column')) {
+          } catch (error: unknown) {
+            // (Drizzle wraps the underlying error in error.cause, so check both)
+            if (isDuplicateColumnError(error)) {
               logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.11.0] ${col} column already exists, skipping`);
             } else {
               throw error;
@@ -1644,8 +1672,9 @@ const MIGRATIONS: Migration[] = [
             ALTER TABLE rbac_ai_chat_messages ADD COLUMN chart_spec TEXT
           `);
           logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.15.0] Added chart_spec column to SQLite rbac_ai_chat_messages table');
-        } catch (error: any) {
-          if (!error?.message?.includes('duplicate column')) throw error;
+        } catch (error: unknown) {
+          // (Drizzle wraps the underlying error in error.cause, so check both)
+          if (!isDuplicateColumnError(error)) throw error;
           logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.15.0] chart_spec column already exists, skipping');
         }
       } else {
@@ -2098,8 +2127,9 @@ const MIGRATIONS: Migration[] = [
           try {
             (db as SqliteDb).run(sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN ${col.name} ${col.sqliteType}`));
             logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.0] Added ${col.name} column (SQLite)`);
-          } catch (error: any) {
-            if (error?.message?.includes('duplicate column')) {
+          } catch (error: unknown) {
+            // (Drizzle wraps the underlying error in error.cause, so check both)
+            if (isDuplicateColumnError(error)) {
               logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.0] ${col.name} column already exists, skipping`);
             } else {
               throw error;
@@ -2157,8 +2187,9 @@ const MIGRATIONS: Migration[] = [
           try {
             (db as SqliteDb).run(sql.raw(`ALTER TABLE rbac_audit_logs ADD COLUMN ${col.name} ${col.sqliteType}`));
             logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.1] Added ${col.name} column (SQLite)`);
-          } catch (error: any) {
-            if (error?.message?.includes('duplicate column')) {
+          } catch (error: unknown) {
+            // (Drizzle wraps the underlying error in error.cause, so check both)
+            if (isDuplicateColumnError(error)) {
               logger.info({ module: 'RBAC', phase: 'migration' },`[Migration 1.17.1] ${col.name} column already exists, skipping`);
             } else {
               throw error;
