@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.12.10] - 2026-04-01
+
+### Fixed
+
+- **Migration startup crash (#195)**: The RBAC migration system crashed on startup when SQLite columns added in a previous run already existed. Drizzle ORM wraps the native `bun:sqlite` error into a `DrizzleError` where the original `"duplicate column name: …"` message is placed in `error.cause.message`, not `error.message`. The catch blocks across migrations 1.2.1, 1.11.0, 1.15.0, 1.17.0, and 1.17.1 checked only `error.message`, so the guard never matched and the error was re-thrown — preventing the app from starting on any upgrade that had already partially applied those migrations. Similarly, the UNIQUE constraint guard in migration 1.2.2 had the same gap. Introduced `isDuplicateColumnError` and `isUniqueConstraintError` helpers that inspect both `error.message` and `error.cause?.message`, ensuring all six affected catch blocks correctly skip already-existing columns and constraints.
+
 ## [v2.12.9] - 2026-03-02
 
 ### Added
