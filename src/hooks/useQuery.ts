@@ -554,17 +554,25 @@ export function useQueryLogs(
           LIMIT ${limit}
         `);
 
+      // ClickHouse serializes UInt64 / Float64 fields as JSON strings to
+      // preserve precision past 2^53. The TypeScript type below says `number`,
+      // but at runtime they arrive as strings — so reduce/sum at the consumer
+      // does string concatenation. Coerce every numeric field at the boundary.
+      const num = (v: unknown): number => {
+        const n = typeof v === 'number' ? v : Number(v);
+        return Number.isFinite(n) ? n : 0;
+      };
       const logs = result.data.map((log: any) => ({
         type: log.type,
         event_date: log.event_date,
         event_time: log.event_time,
-        event_timestamp: Number(log.event_timestamp),
+        event_timestamp: num(log.event_timestamp),
         query_id: log.query_id,
         query: log.query,
-        query_duration_ms: log.query_duration_ms,
-        read_rows: log.read_rows,
-        read_bytes: log.read_bytes,
-        memory_usage: log.memory_usage,
+        query_duration_ms: num(log.query_duration_ms),
+        read_rows: num(log.read_rows),
+        read_bytes: num(log.read_bytes),
+        memory_usage: num(log.memory_usage),
         user: log.user,
         exception: log.exception,
         log_comment_json: log.log_comment_json,
