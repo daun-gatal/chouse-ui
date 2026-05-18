@@ -1,417 +1,317 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import {
-    InfoIcon,
-    Activity,
-    FileText,
-    Zap,
-    BarChart3,
-    Radio,
+  InfoIcon,
+  Activity,
+  FileText,
+  Zap,
+  BarChart3,
+  type LucideIcon,
 } from "lucide-react";
 import InfoDialog from "@/components/common/InfoDialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
-import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DataControls } from "@/components/common/DataControls";
 
-// Import the actual page components
 import LogsPage from "./Logs";
 import MetricsPage from "./Metrics";
 import LiveQueriesTable from "./LiveQueries";
 
-// Tab configuration with metadata
-const TAB_CONFIG = {
-    "live-queries": {
-        icon: Zap,
-        label: "Live Queries",
-        description: "Real-time running queries",
-        color: "amber",
-        gradient: "from-amber-500 to-orange-600",
-        bgGlow: "bg-amber-500/10",
-        borderColor: "border-amber-500/30",
-        textColor: "text-amber-300",
-        badge: "Live",
-        badgeColor: "bg-red-500",
-    },
-    "logs": {
-        icon: FileText,
-        label: "Query Logs",
-        description: "Historical query records",
-        color: "purple",
-        gradient: "from-purple-500 to-pink-600",
-        bgGlow: "bg-purple-500/10",
-        borderColor: "border-purple-500/30",
-        textColor: "text-purple-300",
-        badge: null,
-        badgeColor: "",
-    },
-    "metrics": {
-        icon: BarChart3,
-        label: "Metrics",
-        description: "Performance analytics",
-        color: "cyan",
-        gradient: "from-cyan-500 to-blue-600",
-        bgGlow: "bg-cyan-500/10",
-        borderColor: "border-cyan-500/30",
-        textColor: "text-cyan-300",
-        badge: null,
-        badgeColor: "",
-    },
-} as const;
+interface TabConfig {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  liveBadge?: boolean;
+}
 
-type TabKey = keyof typeof TAB_CONFIG;
+const TAB_CONFIG: Record<TabKey, TabConfig> = {
+  "live-queries": {
+    icon: Zap,
+    label: "Live queries",
+    description: "Real-time running queries",
+    liveBadge: true,
+  },
+  logs: {
+    icon: FileText,
+    label: "Query logs",
+    description: "Historical query records",
+  },
+  metrics: {
+    icon: BarChart3,
+    label: "Metrics",
+    description: "Performance analytics",
+  },
+};
 
-// Custom Tab Card Component
-function TabCard({
-    tabKey,
-    isActive,
-    onClick,
-    disabled = false,
-}: {
-    tabKey: TabKey;
-    isActive: boolean;
-    onClick: () => void;
-    disabled?: boolean;
-}) {
-    const config = TAB_CONFIG[tabKey];
-    const Icon = config.icon;
+type TabKey = "live-queries" | "logs" | "metrics";
 
-    return (
-        <motion.button
-            onClick={onClick}
-            disabled={disabled}
-            whileHover={{ scale: disabled ? 1 : 1.02 }}
-            whileTap={{ scale: disabled ? 1 : 0.98 }}
+interface TabCardProps {
+  tabKey: TabKey;
+  isActive: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+function TabCard({ tabKey, isActive, onClick, disabled }: TabCardProps) {
+  const config = TAB_CONFIG[tabKey];
+  const Icon = config.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={isActive}
+      className={cn(
+        "group relative flex min-w-[200px] items-start gap-3 border border-ink-500 px-4 py-3 text-left transition-colors",
+        "rounded-xs",
+        isActive
+          ? "border-ink-700 bg-ink-200 text-paper"
+          : "bg-ink-100 text-paper-muted hover:border-ink-700 hover:bg-ink-200 hover:text-paper",
+        disabled && "cursor-not-allowed opacity-50"
+      )}
+    >
+      <span
+        className={cn(
+          "grid h-8 w-8 shrink-0 place-items-center rounded-xs border transition-colors",
+          isActive
+            ? "border-brand bg-ink-100 text-brand"
+            : "border-ink-500 bg-ink-200 text-paper-muted group-hover:border-ink-700"
+        )}
+      >
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          <span
             className={cn(
-                "relative flex flex-col items-start p-4 rounded-xl border transition-all duration-300 text-left min-w-[180px]",
-                isActive ? [
-                    config.bgGlow,
-                    config.borderColor,
-                    "shadow-lg",
-                ] : [
-                    "bg-white/5",
-                    "border-white/10",
-                    "hover:bg-white/10",
-                    "hover:border-white/20",
-                ],
-                disabled && "opacity-50 cursor-not-allowed"
+              "text-[13px] font-semibold",
+              isActive ? "text-paper" : "text-paper-muted group-hover:text-paper"
             )}
-        >
-            {/* Active indicator glow */}
-            {isActive && (
-                <motion.div
-                    layoutId="activeTabGlow"
-                    className={cn(
-                        "absolute inset-0 rounded-xl",
-                        config.bgGlow,
-                        "opacity-50 blur-sm"
-                    )}
-                    transition={{ type: "spring", duration: 0.4 }}
-                />
-            )}
-
-            <div className="relative z-10 flex items-center gap-3 w-full">
-                <div className={cn(
-                    "p-2 rounded-lg",
-                    isActive ? `bg-gradient-to-br ${config.gradient}` : "bg-white/10"
-                )}>
-                    <Icon className={cn(
-                        "w-5 h-5",
-                        isActive ? "text-white" : "text-gray-400"
-                    )} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                        <span className={cn(
-                            "font-semibold text-sm",
-                            isActive ? "text-white" : "text-gray-300"
-                        )}>
-                            {config.label}
-                        </span>
-                        {config.badge && (
-                            <span className={cn(
-                                "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase",
-                                config.badgeColor,
-                                "text-white animate-pulse"
-                            )}>
-                                <Radio className="w-2 h-2" />
-                                {config.badge}
-                            </span>
-                        )}
-                    </div>
-                    <p className={cn(
-                        "text-xs truncate",
-                        isActive ? config.textColor : "text-gray-500"
-                    )}>
-                        {config.description}
-                    </p>
-                </div>
-            </div>
-
-            {/* Active indicator line */}
-            {isActive && (
-                <motion.div
-                    layoutId="activeTabLine"
-                    className={cn(
-                        "absolute bottom-0 left-4 right-4 h-0.5 rounded-full",
-                        `bg-gradient-to-r ${config.gradient}`
-                    )}
-                    transition={{ type: "spring", duration: 0.4 }}
-                />
-            )}
-        </motion.button>
-    );
+          >
+            {config.label}
+          </span>
+          {config.liveBadge && (
+            <span className="inline-flex items-center gap-1.5 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.16em] text-red-300">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" aria-hidden />
+              Live
+            </span>
+          )}
+        </div>
+        <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+          {config.description}
+        </span>
+      </div>
+    </button>
+  );
 }
 
 export default function Monitoring() {
-    const { hasPermission, hasAnyPermission } = useRbacStore();
-    const { tab } = useParams<{ tab: string }>();
-    const navigate = useNavigate();
-    const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const { hasPermission, hasAnyPermission } = useRbacStore();
+  const { tab } = useParams<{ tab: string }>();
+  const navigate = useNavigate();
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
 
-    // Permission checks for tabs
-    const canViewLiveQueries = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_VIEW);
-    const canViewLogs = hasAnyPermission([
-        RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
-        RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
-    ]);
-    const canViewMetrics = hasAnyPermission([
-        RBAC_PERMISSIONS.METRICS_VIEW,
-        RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
-    ]);
+  const canViewLiveQueries = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_VIEW);
+  const canViewLogs = hasAnyPermission([
+    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
+    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
+  ]);
+  const canViewMetrics = hasAnyPermission([
+    RBAC_PERMISSIONS.METRICS_VIEW,
+    RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
+  ]);
 
-    // Tab keys in priority order: logs, metrics, then live-queries
-    const availableTabs = [
-        ...(canViewLogs ? ["logs" as const] : []),
-        ...(canViewMetrics ? ["metrics" as const] : []),
-        ...(canViewLiveQueries ? ["live-queries" as const] : []),
-    ];
+  const availableTabs: TabKey[] = [
+    ...(canViewLogs ? (["logs"] as TabKey[]) : []),
+    ...(canViewMetrics ? (["metrics"] as TabKey[]) : []),
+    ...(canViewLiveQueries ? (["live-queries"] as TabKey[]) : []),
+  ];
 
-    // Get initial tab from URL or default based on permissions
-    const getInitialTab = (): TabKey => {
-        if (tab && availableTabs.includes(tab as TabKey)) {
-            return tab as TabKey;
-        }
-        return availableTabs[0] || "live-queries";
-    };
+  const getInitialTab = (): TabKey => {
+    if (tab && availableTabs.includes(tab as TabKey)) {
+      return tab as TabKey;
+    }
+    return availableTabs[0] || "live-queries";
+  };
 
-    const activeTab = getInitialTab();
+  const activeTab = getInitialTab();
 
-    // Ensure user is redirected if permissions change, they land on a forbidden tab, or no tab is provided
-    useEffect(() => {
-        if (!tab || !availableTabs.includes(tab as TabKey)) {
-            const firstAvailable = availableTabs[0];
-            if (firstAvailable) {
-                navigate(`/monitoring/${firstAvailable}`, { replace: true });
-            }
-        }
-    }, [tab, availableTabs, navigate]);
+  useEffect(() => {
+    if (!tab || !availableTabs.includes(tab as TabKey)) {
+      const firstAvailable = availableTabs[0];
+      if (firstAvailable) {
+        navigate(`/monitoring/${firstAvailable}`, { replace: true });
+      }
+    }
+  }, [tab, availableTabs, navigate]);
 
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [autoRefresh, setAutoRefresh] = useState(false);
-    const [timeRange, setTimeRange] = useState("1h");
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [timeRange, setTimeRange] = useState("1h");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
 
-    const handleRefresh = () => {
-        setRefreshKey(prev => prev + 1);
-        setLastUpdated(new Date().toLocaleTimeString());
-    };
+  const handleRefresh = () => {
+    setRefreshKey((prev) => prev + 1);
+    setLastUpdated(new Date().toLocaleTimeString());
+  };
 
-    const handleAutoRefreshChange = (value: boolean) => {
-        setAutoRefresh(value);
-    };
+  const handleAutoRefreshChange = (value: boolean) => {
+    setAutoRefresh(value);
+  };
 
-    // Enable auto-refresh when switching to Live Queries
-    useEffect(() => {
-        if (activeTab === "live-queries") {
-            setAutoRefresh(true);
-        } else {
-            setAutoRefresh(false);
-        }
-    }, [activeTab]);
+  useEffect(() => {
+    if (activeTab === "live-queries") {
+      setAutoRefresh(true);
+    } else {
+      setAutoRefresh(false);
+    }
+  }, [activeTab]);
 
-    // (This useEffect block was removed since we use params exclusively now)
-
-    const currentTabConfig = TAB_CONFIG[activeTab];
-
-    return (
-        <div className="h-full w-full flex flex-col overflow-hidden">
-            {/* Header */}
-            <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4 }}
-                className="shrink-0 px-6 pt-6 pb-4"
-            >
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-4">
-                        <div className="relative">
-                            <div className={cn(
-                                "p-3 rounded-2xl shadow-lg",
-                                `bg-gradient-to-br ${currentTabConfig.gradient}`,
-                                `shadow-${currentTabConfig.color}-500/30`
-                            )}>
-                                <Activity className="w-7 h-7 text-white" />
-                            </div>
-                            {/* Animated glow ring */}
-                            <div className={cn(
-                                "absolute inset-0 rounded-2xl animate-ping opacity-20",
-                                `bg-${currentTabConfig.color}-500`
-                            )} style={{ animationDuration: "2s" }} />
-                        </div>
-                        <div>
-                            <h1 className="text-3xl font-bold tracking-tight text-white">
-                                Monitoring
-                            </h1>
-                            <p className="text-gray-400 text-sm mt-0.5">
-                                System monitoring and query performance insights
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                        <DataControls
-                            lastUpdated={lastUpdated}
-                            isRefreshing={isRefreshing}
-                            onRefresh={handleRefresh}
-                            autoRefresh={autoRefresh}
-                            onAutoRefreshChange={handleAutoRefreshChange}
-                            showTimeRange={activeTab === "metrics"} // Only show for Metrics tab
-                            timeRange={timeRange}
-                            onTimeRangeChange={setTimeRange}
-                        />
-
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setIsInfoOpen(true)}
-                            className="text-gray-400 hover:text-white hover:bg-white/10"
-                        >
-                            <InfoIcon className="w-5 h-5" />
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Tab Navigation Cards */}
-                <div className="flex gap-3 overflow-x-auto px-1 pt-2 pb-2 scrollbar-hide">
-                    {availableTabs.map((tabKey) => (
-                        <TabCard
-                            key={tabKey}
-                            tabKey={tabKey}
-                            isActive={activeTab === tabKey}
-                            onClick={() => navigate(`/monitoring/${tabKey}`)}
-                        />
-                    ))}
-                </div>
-            </motion.div>
-
-            {/* Content Area */}
-            <div className="flex-1 overflow-hidden px-6 pb-6">
-                <AnimatePresence mode="wait">
-                    <motion.div
-                        key={activeTab}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="h-full"
-                    >
-                        {activeTab === "live-queries" && canViewLiveQueries && (
-                            <div className="h-full overflow-hidden rounded-xl bg-white/5 border border-white/10">
-                                <LiveQueriesTable
-                                    embedded
-                                    refreshKey={refreshKey}
-                                    autoRefresh={autoRefresh}
-                                    onRefreshChange={setIsRefreshing}
-                                />
-                            </div>
-                        )}
-
-                        {activeTab === "logs" && canViewLogs && (
-                            <div className="h-full overflow-hidden rounded-xl bg-white/5 border border-white/10">
-                                <LogsPage
-                                    embedded
-                                    refreshKey={refreshKey}
-                                    autoRefresh={autoRefresh}
-                                    onRefreshChange={setIsRefreshing}
-                                />
-                            </div>
-                        )}
-
-                        {activeTab === "metrics" && canViewMetrics && (
-                            <div className="h-full overflow-hidden rounded-xl bg-white/5 border border-white/10">
-                                <MetricsPage
-                                    embedded
-                                    refreshKey={refreshKey}
-                                    autoRefresh={autoRefresh}
-                                    timeRange={timeRange}
-                                    onRefreshChange={setIsRefreshing}
-                                />
-                            </div>
-                        )}
-                    </motion.div>
-                </AnimatePresence>
+  return (
+    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50">
+      {/* ─── Header ─── */}
+      <header className="flex-none border-b border-ink-500 px-6 pb-4 pt-6">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+              <Activity className="h-4 w-4" aria-hidden />
+            </span>
+            <div className="flex flex-col gap-1">
+              <span className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                <span className="h-px w-6 bg-ink-700" aria-hidden />
+                <span>Observability</span>
+              </span>
+              <h1 className="text-2xl font-semibold tracking-tight text-paper">Monitoring</h1>
             </div>
+          </div>
 
-            {/* Info Dialog */}
-            <InfoDialog
-                title="Monitoring Dashboard"
-                isOpen={isInfoOpen}
-                onClose={() => setIsInfoOpen(false)}
-                variant="info"
+          <div className="flex items-center gap-2">
+            <DataControls
+              lastUpdated={lastUpdated}
+              isRefreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              autoRefresh={autoRefresh}
+              onAutoRefreshChange={handleAutoRefreshChange}
+              showTimeRange={activeTab === "metrics"}
+              timeRange={timeRange}
+              onTimeRangeChange={setTimeRange}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsInfoOpen(true)}
+              className="h-9 w-9 rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
+              aria-label="About monitoring"
             >
-                <div className="flex flex-col gap-4">
-                    <p className="text-gray-300">
-                        Monitor your ClickHouse database in real-time with comprehensive insights.
-                    </p>
-
-                    <div className="space-y-3">
-                        {Object.entries(TAB_CONFIG).map(([key, config]) => (
-                            <div
-                                key={key}
-                                className={cn(
-                                    "flex items-start gap-3 p-3 rounded-lg",
-                                    config.bgGlow,
-                                    "border",
-                                    config.borderColor
-                                )}
-                            >
-                                <div className={cn(
-                                    "p-2 rounded-lg shrink-0",
-                                    `bg-gradient-to-br ${config.gradient}`
-                                )}>
-                                    <config.icon className="w-4 h-4 text-white" />
-                                </div>
-                                <div>
-                                    <h4 className="font-medium text-white text-sm">{config.label}</h4>
-                                    <p className="text-xs text-gray-400 mt-0.5">
-                                        {key === "live-queries" && "View and terminate running queries in real-time"}
-                                        {key === "logs" && "Browse historical query logs and execution history"}
-                                        {key === "metrics" && "Analyze system performance and resource usage"}
-                                    </p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20">
-                        <div className="flex items-center gap-2 text-amber-300 text-sm font-medium">
-                            <Zap className="w-4 h-4" />
-                            Pro Tip
-                        </div>
-                        <p className="text-xs text-amber-200/80 mt-1">
-                            Use the Live Queries tab to monitor long-running queries and terminate
-                            problematic ones before they impact system performance.
-                        </p>
-                    </div>
-                </div>
-            </InfoDialog>
+              <InfoIcon className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-    );
+
+        {/* Tab cards */}
+        <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-0.5">
+          {availableTabs.map((tabKey) => (
+            <TabCard
+              key={tabKey}
+              tabKey={tabKey}
+              isActive={activeTab === tabKey}
+              onClick={() => navigate(`/monitoring/${tabKey}`)}
+            />
+          ))}
+        </div>
+      </header>
+
+      {/* ─── Content ─── */}
+      <div className="flex-1 overflow-hidden p-6">
+        {activeTab === "live-queries" && canViewLiveQueries && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <LiveQueriesTable
+              embedded
+              refreshKey={refreshKey}
+              autoRefresh={autoRefresh}
+              onRefreshChange={setIsRefreshing}
+            />
+          </div>
+        )}
+
+        {activeTab === "logs" && canViewLogs && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <LogsPage
+              embedded
+              refreshKey={refreshKey}
+              autoRefresh={autoRefresh}
+              onRefreshChange={setIsRefreshing}
+            />
+          </div>
+        )}
+
+        {activeTab === "metrics" && canViewMetrics && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <MetricsPage
+              embedded
+              refreshKey={refreshKey}
+              autoRefresh={autoRefresh}
+              timeRange={timeRange}
+              onRefreshChange={setIsRefreshing}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Info dialog */}
+      <InfoDialog
+        title="Monitoring dashboard"
+        isOpen={isInfoOpen}
+        onClose={() => setIsInfoOpen(false)}
+        variant="info"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-[13px] text-paper-muted">
+            Monitor your ClickHouse database in real-time with comprehensive insights.
+          </p>
+
+          <div className="flex flex-col gap-2">
+            {(Object.entries(TAB_CONFIG) as [TabKey, TabConfig][]).map(([key, config]) => {
+              const Icon = config.icon;
+              return (
+                <div
+                  key={key}
+                  className="flex items-start gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3"
+                >
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+                    <Icon className="h-3.5 w-3.5" aria-hidden />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[13px] font-medium text-paper">{config.label}</span>
+                    <span className="text-[12px] text-paper-muted">
+                      {key === "live-queries" && "View and terminate running queries in real-time."}
+                      {key === "logs" && "Browse historical query logs and execution history."}
+                      {key === "metrics" && "Analyze system performance and resource usage."}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xs border border-brand/30 bg-brand/[0.04] p-3">
+            <Zap className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-brand">
+                Pro tip
+              </span>
+              <p className="text-[12px] text-paper-muted">
+                Use the Live queries tab to monitor long-running queries and terminate problematic
+                ones before they impact system performance.
+              </p>
+            </div>
+          </div>
+        </div>
+      </InfoDialog>
+    </div>
+  );
 }

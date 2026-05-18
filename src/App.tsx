@@ -56,13 +56,7 @@ const MainLayout = () => {
   }, []);
 
   return (
-    <div className="h-screen w-full overflow-hidden bg-[#0a0a0a] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.3),rgba(255,255,255,0))] relative flex">
-      {/* Background Decor */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl opacity-50" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl opacity-50" />
-      </div>
-
+    <div className="relative flex h-screen w-full overflow-hidden bg-ink-50">
       {/* Spacer for sidebar mode (hidden during fullscreen) */}
       {isSidebarMode && !isFullscreen && <div className="w-14 flex-shrink-0" />}
 

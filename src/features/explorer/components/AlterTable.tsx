@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -359,27 +358,29 @@ const AlterTable: React.FC = () => {
 
   return (
     <Dialog open={alterTableModalOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col bg-gradient-to-br from-gray-900 to-gray-950 border-white/10">
-        <DialogHeader className="flex-none pb-4 border-b border-white/10">
-          <DialogTitle className="flex items-center gap-3 text-xl">
-            <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-red-600">
-              <Settings2 className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <span>Alter Table</span>
-              <span className="ml-2 text-sm font-normal text-gray-400">{tableName}</span>
-            </div>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col rounded-xs border-ink-500 bg-ink-100 text-paper">
+        <DialogHeader className="flex-none pb-4 border-b border-ink-500">
+          <DialogTitle className="flex items-center gap-3 text-paper">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+              <Settings2 className="h-4 w-4" aria-hidden />
+            </span>
+            <span className="flex flex-col gap-0.5 text-left">
+              <span className="text-[16px] font-semibold tracking-tight">Alter table</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                {tableName || "Modify table structure"}
+              </span>
+            </span>
           </DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto py-4 space-y-6 px-1">
           {/* Cluster Option */}
           {clusters.length > 0 && (
-            <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-3">
+            <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Server className="h-4 w-4 text-orange-400" />
-                  <Label className="text-gray-300">Apply on Cluster</Label>
+                  <Server className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                  <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Apply on Cluster</Label>
                 </div>
                 <Switch checked={useCluster} onCheckedChange={setUseCluster} />
               </div>
@@ -391,7 +392,7 @@ const AlterTable: React.FC = () => {
                     exit={{ opacity: 0, height: 0 }}
                   >
                     <Select value={selectedCluster} onValueChange={setSelectedCluster}>
-                      <SelectTrigger className="bg-white/5 border-white/10">
+                      <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <SelectValue placeholder="Select cluster" />
                       </SelectTrigger>
                       <SelectContent>
@@ -411,8 +412,8 @@ const AlterTable: React.FC = () => {
           {/* Current Structure */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="flex items-center gap-2 text-gray-300">
-                <Columns className="h-4 w-4 text-blue-400" />
+              <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                <Columns className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                 Current Columns ({columns.length})
               </Label>
               <Button
@@ -421,30 +422,31 @@ const AlterTable: React.FC = () => {
                 variant="ghost"
                 onClick={fetchTableStructure}
                 disabled={isLoading}
+                className="h-8 w-8 rounded-xs text-paper-muted hover:bg-ink-200 hover:text-paper"
               >
                 <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
               </Button>
             </div>
-            
+
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                <Loader2 className="h-6 w-6 animate-spin text-paper-dim" />
               </div>
             ) : (
-              <div className="max-h-48 overflow-y-auto space-y-1 p-2 rounded-lg bg-black/30">
+              <div className="max-h-48 overflow-y-auto space-y-1 p-2 rounded-xs border border-ink-500 bg-ink-200">
                 {columns.map((col, index) => (
                   <div
                     key={col.name}
-                    className="flex items-center justify-between p-2 rounded bg-white/5 hover:bg-white/10 transition-colors group"
+                    className="flex items-center justify-between p-2 rounded-xs bg-ink-100 hover:bg-ink-300 transition-colors group"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-500 w-6">{index + 1}</span>
-                      <span className="text-white font-medium">{col.name}</span>
-                      <Badge variant="secondary" className="bg-blue-500/20 text-blue-300 text-xs">
+                      <span className="font-mono text-[11px] text-paper-faint w-6">{index + 1}</span>
+                      <span className="font-medium text-paper">{col.name}</span>
+                      <span className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[11px] text-paper-muted">
                         {col.type}
-                      </Badge>
+                      </span>
                       {col.default_expression && (
-                        <span className="text-xs text-gray-500">
+                        <span className="font-mono text-[11px] text-paper-faint">
                           = {col.default_expression}
                         </span>
                       )}
@@ -454,27 +456,36 @@ const AlterTable: React.FC = () => {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                          className="h-7 w-7 rounded-xs opacity-0 group-hover:opacity-100 text-red-400 hover:bg-red-950/40 hover:text-red-300"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>
-                      <AlertDialogContent>
+                      <AlertDialogContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <AlertDialogHeader>
-                          <AlertDialogTitle className="flex items-center gap-2">
-                            <AlertTriangle className="h-5 w-5 text-red-500" />
-                            Drop Column
+                          <AlertDialogTitle className="flex items-center gap-3 text-paper">
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+                              <AlertTriangle className="h-4 w-4" aria-hidden />
+                            </span>
+                            <span className="flex flex-col gap-0.5 text-left">
+                              <span className="text-[16px] font-semibold tracking-tight">Drop column</span>
+                              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                                Destructive action
+                              </span>
+                            </span>
                           </AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to drop column <strong>{col.name}</strong>? 
+                          <AlertDialogDescription className="text-paper-muted">
+                            Are you sure you want to drop column <strong className="text-paper">{col.name}</strong>?
                             This action cannot be undone and all data in this column will be lost.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200">
+                            Cancel
+                          </AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => handleDropColumn(col.name)}
-                            className="bg-red-600 hover:bg-red-700"
+                            className="h-9 gap-2 rounded-xs border border-red-700 bg-red-600 px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-paper hover:bg-red-700"
                           >
                             Drop Column
                           </AlertDialogAction>
@@ -489,38 +500,38 @@ const AlterTable: React.FC = () => {
 
           {/* Tabs for different operations */}
           <Tabs defaultValue="add" className="space-y-4">
-            <TabsList className="bg-white/5 border border-white/10 p-1 w-full justify-start">
-              <TabsTrigger value="add" className="data-[state=active]:bg-green-500/20">
-                <Plus className="h-4 w-4 mr-2" />
+            <TabsList className="h-9 w-full justify-start rounded-xs border border-ink-500 bg-ink-200 p-0.5">
+              <TabsTrigger value="add" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
+                <Plus className="h-3.5 w-3.5 mr-2" />
                 Add Column
               </TabsTrigger>
-              <TabsTrigger value="rename" className="data-[state=active]:bg-blue-500/20">
-                <Edit3 className="h-4 w-4 mr-2" />
+              <TabsTrigger value="rename" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
+                <Edit3 className="h-3.5 w-3.5 mr-2" />
                 Rename
               </TabsTrigger>
-              <TabsTrigger value="modify" className="data-[state=active]:bg-orange-500/20">
-                <Settings2 className="h-4 w-4 mr-2" />
+              <TabsTrigger value="modify" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
+                <Settings2 className="h-3.5 w-3.5 mr-2" />
                 Modify Type
               </TabsTrigger>
             </TabsList>
 
             {/* Add Column Tab */}
             <TabsContent value="add" className="space-y-4">
-              <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 space-y-4">
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-gray-300">Column Name</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Column Name</Label>
                     <Input
                       value={newColumnName}
                       onChange={(e) => setNewColumnName(e.target.value)}
                       placeholder="new_column"
-                      className="bg-white/5 border-white/10"
+                      className="rounded-xs border-ink-500 bg-ink-100 text-paper"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-gray-300">Type</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Type</Label>
                     <Select value={newColumnType} onValueChange={setNewColumnType}>
-                      <SelectTrigger className="bg-white/5 border-white/10">
+                      <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -533,9 +544,9 @@ const AlterTable: React.FC = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-gray-300">Position (After)</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Position (After)</Label>
                     <Select value={newColumnAfter || "__first__"} onValueChange={(v) => setNewColumnAfter(v === "__first__" ? "" : v)}>
-                      <SelectTrigger className="bg-white/5 border-white/10">
+                      <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <SelectValue placeholder="End of table" />
                       </SelectTrigger>
                       <SelectContent>
@@ -552,12 +563,12 @@ const AlterTable: React.FC = () => {
                 <Button
                   onClick={handleAddColumn}
                   disabled={executeQuery.isPending || !newColumnName.trim()}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
                 >
                   {executeQuery.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Plus className="h-4 w-4 mr-2" />
+                    <Plus className="h-3.5 w-3.5" />
                   )}
                   Add Column
                 </Button>
@@ -566,12 +577,12 @@ const AlterTable: React.FC = () => {
 
             {/* Rename Column Tab */}
             <TabsContent value="rename" className="space-y-4">
-              <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-gray-300">Column to Rename</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Column to Rename</Label>
                     <Select value={renameFrom} onValueChange={setRenameFrom}>
-                      <SelectTrigger className="bg-white/5 border-white/10">
+                      <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <SelectValue placeholder="Select column" />
                       </SelectTrigger>
                       <SelectContent>
@@ -584,24 +595,24 @@ const AlterTable: React.FC = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-gray-300">New Name</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">New Name</Label>
                     <Input
                       value={renameTo}
                       onChange={(e) => setRenameTo(e.target.value)}
                       placeholder="new_name"
-                      className="bg-white/5 border-white/10"
+                      className="rounded-xs border-ink-500 bg-ink-100 text-paper"
                     />
                   </div>
                 </div>
                 <Button
                   onClick={handleRenameColumn}
                   disabled={executeQuery.isPending || !renameFrom || !renameTo.trim()}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
                 >
                   {executeQuery.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Edit3 className="h-4 w-4 mr-2" />
+                    <Edit3 className="h-3.5 w-3.5" />
                   )}
                   Rename Column
                 </Button>
@@ -610,16 +621,16 @@ const AlterTable: React.FC = () => {
 
             {/* Modify Type Tab */}
             <TabsContent value="modify" className="space-y-4">
-              <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-gray-300">Column to Modify</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Column to Modify</Label>
                     <Select value={modifyColumn} onValueChange={(v) => {
                       setModifyColumn(v);
                       const col = columns.find(c => c.name === v);
                       if (col) setModifyType(col.type);
                     }}>
-                      <SelectTrigger className="bg-white/5 border-white/10">
+                      <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <SelectValue placeholder="Select column" />
                       </SelectTrigger>
                       <SelectContent>
@@ -632,9 +643,9 @@ const AlterTable: React.FC = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-gray-300">New Type</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">New Type</Label>
                     <Select value={modifyType} onValueChange={setModifyType}>
-                      <SelectTrigger className="bg-white/5 border-white/10">
+                      <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
                       <SelectContent>
@@ -647,19 +658,19 @@ const AlterTable: React.FC = () => {
                     </Select>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-yellow-400">
-                  <AlertTriangle className="h-4 w-4" />
+                <div className="flex items-start gap-2 rounded-xs border border-amber-900/60 bg-amber-950/40 p-3 text-[12px] text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-amber-300 shrink-0" aria-hidden />
                   <span>Changing column types may cause data loss if types are incompatible</span>
                 </div>
                 <Button
                   onClick={handleModifyColumn}
                   disabled={executeQuery.isPending || !modifyColumn || !modifyType}
-                  className="bg-orange-600 hover:bg-orange-700"
+                  className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
                 >
                   {executeQuery.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Settings2 className="h-4 w-4 mr-2" />
+                    <Settings2 className="h-3.5 w-3.5" />
                   )}
                   Modify Column Type
                 </Button>
@@ -668,8 +679,13 @@ const AlterTable: React.FC = () => {
           </Tabs>
         </div>
 
-        <DialogFooter className="flex-none pt-4 border-t border-white/10">
-          <Button type="button" variant="outline" onClick={handleClose}>
+        <DialogFooter className="flex-none pt-4 border-t border-ink-500">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleClose}
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+          >
             Close
           </Button>
         </DialogFooter>

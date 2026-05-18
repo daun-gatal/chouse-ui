@@ -152,17 +152,20 @@ export function StepPreview({
     return (
         <div className="flex flex-col space-y-6 pb-6">
             {/* Destination */}
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Destination</p>
+            <div className="space-y-4 rounded-xs border border-ink-500 bg-ink-100 p-5">
+                <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                    <span className="h-px w-6 bg-ink-700" />
+                    <span>Destination</span>
+                </span>
                 <div className="flex flex-wrap gap-2">
                     <button
                         type="button"
                         onClick={() => onImportModeChange('create')}
                         className={cn(
-                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                            "rounded-xs border px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                             importMode === 'create'
-                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                                : "text-gray-400 border border-white/10 hover:bg-white/5 hover:text-gray-300"
+                                ? "border-brand/40 bg-brand/10 text-brand"
+                                : "border-ink-500 bg-ink-200 text-paper-dim hover:bg-ink-300 hover:text-paper"
                         )}
                     >
                         New table
@@ -171,18 +174,18 @@ export function StepPreview({
                         type="button"
                         onClick={() => onImportModeChange('append')}
                         className={cn(
-                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                            "rounded-xs border px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                             importMode === 'append'
-                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                                : "text-gray-400 border border-white/10 hover:bg-white/5 hover:text-gray-300"
+                                ? "border-brand/40 bg-brand/10 text-brand"
+                                : "border-ink-500 bg-ink-200 text-paper-dim hover:bg-ink-300 hover:text-paper"
                         )}
                     >
                         Append to existing
                     </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                <div className="grid grid-cols-1 gap-4 pt-1 md:grid-cols-2">
                     <div className="space-y-2">
-                        <Label htmlFor="tableName" className="text-xs font-medium text-gray-500">
+                        <Label htmlFor="tableName" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                             Table name
                         </Label>
                         {importMode === 'create' ? (
@@ -195,7 +198,7 @@ export function StepPreview({
                                     aria-invalid={tableNameInvalid}
                                     aria-describedby={tableNameInvalid ? 'tableName-hint' : undefined}
                                     className={cn(
-                                        "h-10 bg-white/5 border-white/10 text-sm placeholder:text-gray-500 focus-visible:ring-emerald-500/50",
+                                        "h-10 rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0",
                                         tableNameInvalid && "border-red-500/50"
                                     )}
                                 />
@@ -207,17 +210,17 @@ export function StepPreview({
                             </>
                         ) : (
                             <Select value={tableName} onValueChange={onTableNameChange}>
-                                <SelectTrigger id="tableName" className="h-10 bg-white/5 border-white/10 text-sm focus-visible:ring-emerald-500/50">
+                                <SelectTrigger id="tableName" className="h-10 rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper focus-visible:border-brand focus-visible:ring-0">
                                     <SelectValue placeholder="Select table" />
                                 </SelectTrigger>
-                                <SelectContent className="bg-gray-900 border-white/10">
+                                <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
                                     {existingTables.map(t => (
-                                        <SelectItem key={t.name} value={t.name} className="focus:bg-emerald-500/15 focus:text-emerald-400">
+                                        <SelectItem key={t.name} value={t.name} className="focus:bg-ink-200 focus:text-paper">
                                             {t.name}
                                         </SelectItem>
                                     ))}
                                     {existingTables.length === 0 && (
-                                        <div className="p-3 text-sm text-gray-500 text-center">No tables</div>
+                                        <div className="p-3 text-center font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim">No tables</div>
                                     )}
                                 </SelectContent>
                             </Select>
@@ -230,9 +233,9 @@ export function StepPreview({
                                     id="hasHeader"
                                     checked={hasHeader}
                                     onCheckedChange={(c) => onHasHeaderChange(c as boolean)}
-                                    className="border-white/20 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                                    className="border-ink-500"
                                 />
-                                <Label htmlFor="hasHeader" className="text-sm text-gray-400 cursor-pointer">
+                                <Label htmlFor="hasHeader" className="cursor-pointer text-[13px] text-paper-muted">
                                     First row is header
                                 </Label>
                             </div>
@@ -244,20 +247,20 @@ export function StepPreview({
             {/* Main Content Area - min height so schema/data area is usable when window scrolls */}
             <div className="flex flex-col min-h-[320px]">
                 <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col min-h-[300px]">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                        <TabsList className="bg-white/5 border border-white/10 p-0.5 rounded-lg">
-                            <TabsTrigger value="schema" className="data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 rounded-md text-sm">
-                                <Database className="w-3.5 h-3.5 mr-1.5" /> Schema
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                        <TabsList className="h-9 gap-0.5 rounded-xs border border-ink-500 bg-ink-100 p-0.5">
+                            <TabsTrigger value="schema" className="rounded-xs px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors data-[state=active]:bg-ink-200 data-[state=active]:text-paper data-[state=inactive]:text-paper-dim hover:text-paper">
+                                <Database className="mr-1.5 h-3.5 w-3.5" /> Schema
                             </TabsTrigger>
-                            <TabsTrigger value="data" className="data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 rounded-md text-sm">
-                                <Code className="w-3.5 h-3.5 mr-1.5" /> Data ({previewData.length})
+                            <TabsTrigger value="data" className="rounded-xs px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors data-[state=active]:bg-ink-200 data-[state=active]:text-paper data-[state=inactive]:text-paper-dim hover:text-paper">
+                                <Code className="mr-1.5 h-3.5 w-3.5" /> Data ({previewData.length})
                             </TabsTrigger>
                         </TabsList>
-                        <span className="text-xs text-gray-500">{columns.length} columns</span>
+                        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim">{columns.length} columns</span>
                     </div>
 
                     <TabsContent value="schema" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden flex flex-col">
-                        <Card className="flex-1 min-h-0 bg-white/[0.02] border-white/10 flex flex-col overflow-hidden rounded-xl">
+                        <Card className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-xs border-ink-500 bg-ink-100">
                             {/* Mobile/tablet: column cards */}
                             <div className="md:hidden flex-1 min-h-0 flex flex-col overflow-hidden">
                                 <ScrollArea className="flex-1">
@@ -265,31 +268,31 @@ export function StepPreview({
                                         {columns.map((col, idx) => (
                                             <div
                                                 key={idx}
-                                                className="rounded-lg border border-white/10 bg-white/[0.02] p-4 space-y-3"
+                                                className="space-y-3 rounded-xs border border-ink-500 bg-ink-200 p-4"
                                             >
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <span className="text-xs font-medium text-gray-500">Column {idx + 1}</span>
-                                                    <span className="text-xs truncate text-gray-500 font-mono max-w-[50%]" title={String(col.sampleValue)}>
+                                                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Column {idx + 1}</span>
+                                                    <span className="max-w-[50%] truncate font-mono text-[11px] text-paper-faint" title={String(col.sampleValue)}>
                                                         Sample: {String(col.sampleValue ?? '—')}
                                                     </span>
                                                 </div>
                                                 {importMode === 'create' ? (
                                                     <>
                                                         <div>
-                                                            <Label className="text-xs text-gray-400">Name</Label>
+                                                            <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Name</Label>
                                                             <Input
                                                                 value={col.name}
                                                                 onChange={(e) => onColumnChange(idx, 'name', e.target.value)}
-                                                                className="h-9 bg-black/20 border-white/10 text-sm mt-1"
+                                                                className="mt-1 h-9 rounded-xs border-ink-500 bg-ink-100 font-mono text-[12px] text-paper focus-visible:border-brand focus-visible:ring-0"
                                                             />
                                                         </div>
                                                         <div>
-                                                            <Label className="text-xs text-gray-400">Type</Label>
+                                                            <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Type</Label>
                                                             <Select value={col.type} onValueChange={(val) => onColumnChange(idx, 'type', val)}>
-                                                                <SelectTrigger className="h-9 border-white/10 bg-black/20 text-sm mt-1">
+                                                                <SelectTrigger className="mt-1 h-9 rounded-xs border-ink-500 bg-ink-100 font-mono text-[12px] text-paper focus-visible:border-brand focus-visible:ring-0">
                                                                     <SelectValue />
                                                                 </SelectTrigger>
-                                                                <SelectContent>
+                                                                <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
                                                                     {CLICKHOUSE_TYPES.map(t => (
                                                                         <SelectItem key={t.value} value={t.value}>
                                                                             <span className={cn("font-medium", t.color)}>{t.label}</span>
@@ -298,20 +301,20 @@ export function StepPreview({
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
-                                                        <div className="flex flex-wrap gap-3 items-center">
+                                                        <div className="flex flex-wrap items-center gap-3">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => onColumnChange(idx, 'nullable', !col.nullable)}
                                                                 className={cn(
-                                                                    "flex items-center gap-2 text-xs",
-                                                                    col.nullable ? "text-blue-400" : "text-gray-500"
+                                                                    "flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em]",
+                                                                    col.nullable ? "text-brand" : "text-paper-dim"
                                                                 )}
                                                             >
-                                                                <div                                                                 className={cn(
-                                                                    "w-5 h-5 rounded border flex items-center justify-center",
-                                                                    col.nullable ? "bg-emerald-500 border-emerald-500" : "bg-white/10 border-white/10"
+                                                                <div className={cn(
+                                                                    "flex h-5 w-5 items-center justify-center rounded-xs border",
+                                                                    col.nullable ? "border-brand bg-brand text-ink-50" : "border-ink-500 bg-ink-100"
                                                                 )}>
-                                                                    {col.nullable && <Check className="w-3 h-3 text-white" />}
+                                                                    {col.nullable && <Check className="h-3 w-3" />}
                                                                 </div>
                                                                 Nullable
                                                             </button>
@@ -320,47 +323,47 @@ export function StepPreview({
                                                                     type="button"
                                                                     onClick={() => onToggleOrderBy(col.name)}
                                                                     className={cn(
-                                                                        "flex items-center gap-2 text-xs",
-                                                                        orderByColumns.includes(col.name) ? "text-emerald-400" : "text-gray-500"
+                                                                        "flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em]",
+                                                                        orderByColumns.includes(col.name) ? "text-brand" : "text-paper-dim"
                                                                     )}
                                                                 >
                                                                     <div className={cn(
-                                                                        "w-5 h-5 rounded border flex items-center justify-center",
-                                                                        orderByColumns.includes(col.name) ? "bg-emerald-500 border-emerald-500" : "bg-white/10 border-white/10"
+                                                                        "flex h-5 w-5 items-center justify-center rounded-xs border",
+                                                                        orderByColumns.includes(col.name) ? "border-brand bg-brand text-ink-50" : "border-ink-500 bg-ink-100"
                                                                     )}>
-                                                                        {orderByColumns.includes(col.name) && <Database className="w-3 h-3 text-white" />}
+                                                                        {orderByColumns.includes(col.name) && <Database className="h-3 w-3" />}
                                                                     </div>
                                                                     Sort key
                                                                 </button>
                                                             )}
                                                         </div>
                                                         <div>
-                                                            <Label className="text-xs text-gray-400">Description (optional)</Label>
+                                                            <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Description (optional)</Label>
                                                             <Input
                                                                 value={col.description || ''}
                                                                 onChange={(e) => onColumnChange(idx, 'description', e.target.value)}
                                                                 placeholder="Optional"
-                                                                className="h-9 bg-black/20 border-white/10 text-xs mt-1"
+                                                                className="mt-1 h-9 rounded-xs border-ink-500 bg-ink-100 font-mono text-[11px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                                                             />
                                                         </div>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <div className="text-sm font-medium text-gray-300">{col.name}</div>
+                                                        <div className="font-mono text-[13px] font-medium text-paper">{col.name}</div>
                                                         <div>
-                                                            <Label className="text-xs text-gray-400">Map to table column</Label>
+                                                            <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Map to table column</Label>
                                                             <Select
                                                                 value={col.mappedTo || "skip"}
                                                                 onValueChange={(val) => onColumnChange(idx, 'mappedTo', val === 'skip' ? '' : val)}
                                                             >
-                                                                <SelectTrigger className="h-9 border-white/10 bg-black/20 text-sm mt-1">
+                                                                <SelectTrigger className="mt-1 h-9 rounded-xs border-ink-500 bg-ink-100 font-mono text-[12px] text-paper focus-visible:border-brand focus-visible:ring-0">
                                                                     <SelectValue placeholder="Skip column" />
                                                                 </SelectTrigger>
-                                                                <SelectContent className="bg-gray-900 border-white/10">
-                                                                    <SelectItem value="skip" className="text-gray-500 italic">— Skip —</SelectItem>
+                                                                <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
+                                                                    <SelectItem value="skip" className="italic text-paper-dim">— Skip —</SelectItem>
                                                                     {tableSchema?.map(sc => (
-                                                                        <SelectItem key={sc.name} value={sc.name} className="focus:bg-emerald-500/15 focus:text-emerald-400">
-                                                                            {sc.name} <span className="text-gray-500 font-mono text-xs">{sc.type}</span>
+                                                                        <SelectItem key={sc.name} value={sc.name} className="focus:bg-ink-200 focus:text-paper">
+                                                                            {sc.name} <span className="font-mono text-xs text-paper-faint">{sc.type}</span>
                                                                         </SelectItem>
                                                                     ))}
                                                                 </SelectContent>
@@ -377,7 +380,7 @@ export function StepPreview({
                             {/* Desktop: table */}
                             <div className="hidden md:block flex-1 min-h-0 flex flex-col overflow-hidden">
                             {importMode === 'create' ? (
-                                <div className="grid grid-cols-[40px_2.5fr_1.5fr_50px_50px_2.5fr_1.5fr] gap-4 px-5 py-2.5 border-b border-white/10 text-[11px] font-medium text-gray-500 uppercase tracking-wider bg-white/[0.02] shrink-0">
+                                <div className="grid shrink-0 grid-cols-[40px_2.5fr_1.5fr_50px_50px_2.5fr_1.5fr] gap-4 border-b border-ink-500 bg-ink-200 px-5 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                     <div className="text-center">#</div>
                                     <div>Column Name</div>
                                     <div>Type</div>
@@ -387,7 +390,7 @@ export function StepPreview({
                                     <div>Sample Value</div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-[40px_2.5fr_1fr_2.5fr_2fr] gap-4 px-5 py-2.5 border-b border-white/10 text-[11px] font-medium text-gray-500 uppercase tracking-wider bg-white/[0.02] shrink-0">
+                                <div className="grid shrink-0 grid-cols-[40px_2.5fr_1fr_2.5fr_2fr] gap-4 border-b border-ink-500 bg-ink-200 px-5 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                     <div className="text-center">#</div>
                                     <div className="flex items-center gap-1">File Column</div>
                                     <div className="text-center"></div>
@@ -405,13 +408,13 @@ export function StepPreview({
                                                 animate={{ opacity: 1, y: 0 }}
                                                 transition={{ delay: idx * 0.03 }}
                                                 className={cn(
-                                                    "gap-4 items-center px-6 py-2 border-b border-white/5 hover:bg-white/5 transition-colors group",
+                                                    "group items-center gap-4 border-b border-ink-500 px-6 py-2 transition-colors hover:bg-ink-200",
                                                     importMode === 'create'
                                                         ? "grid grid-cols-[40px_2.5fr_1.5fr_50px_50px_2.5fr_1.5fr]"
                                                         : "grid grid-cols-[40px_2.5fr_1fr_2.5fr_2fr]"
                                                 )}
                                             >
-                                                <div className="flex justify-center text-gray-500 font-mono text-xs">
+                                                <div className="flex justify-center font-mono text-xs text-paper-faint">
                                                     {idx + 1}
                                                 </div>
                                                 {importMode === 'create' ? (
@@ -420,7 +423,7 @@ export function StepPreview({
                                                             <Input
                                                                 value={col.name}
                                                                 onChange={(e) => onColumnChange(idx, 'name', e.target.value)}
-                                                                className="h-8 bg-white/5 border-white/10 hover:border-white/20 focus:border-emerald-500/50 transition-all font-medium text-gray-200 rounded-md px-3 text-xs shadow-none"
+                                                                className="h-8 rounded-xs border-ink-500 bg-ink-200 px-3 font-mono text-xs text-paper shadow-none transition-colors hover:border-ink-700 focus-visible:border-brand focus-visible:ring-0"
                                                             />
                                                         </div>
                                                         <div>
@@ -428,10 +431,10 @@ export function StepPreview({
                                                                 value={col.type}
                                                                 onValueChange={(val) => onColumnChange(idx, 'type', val)}
                                                             >
-                                                                <SelectTrigger className="h-8 border-white/10 bg-white/5 hover:bg-white/10 text-xs text-gray-300 rounded-md px-3 shadow-none focus-visible:ring-emerald-500/50">
+                                                                <SelectTrigger className="h-8 rounded-xs border-ink-500 bg-ink-200 px-3 font-mono text-xs text-paper shadow-none transition-colors hover:bg-ink-300 focus-visible:border-brand focus-visible:ring-0">
                                                                     <SelectValue />
                                                                 </SelectTrigger>
-                                                                <SelectContent>
+                                                                <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
                                                                     {CLICKHOUSE_TYPES.map(t => (
                                                                         <SelectItem key={t.value} value={t.value}>
                                                                             <span className={cn("font-medium", t.color)}>{t.label}</span>
@@ -443,25 +446,25 @@ export function StepPreview({
                                                         <div className="flex justify-center">
                                                             <div
                                                                 className={cn(
-                                                                    "w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-all",
+                                                                    "flex h-5 w-5 cursor-pointer items-center justify-center rounded-xs border transition-colors",
                                                                     col.nullable
-                                                                        ? "bg-emerald-500 text-white border-emerald-500"
-                                                                        : "bg-white/10 border-white/10 hover:border-white/20 text-transparent"
+                                                                        ? "border-brand bg-brand text-ink-50"
+                                                                        : "border-ink-500 bg-ink-200 text-transparent hover:border-ink-700"
                                                                 )}
                                                                 onClick={() => onColumnChange(idx, 'nullable', !col.nullable)}
                                                             >
-                                                                <Check className="w-3 h-3" />
+                                                                <Check className="h-3 w-3" />
                                                             </div>
                                                         </div>
                                                         <div className="flex justify-center">
                                                             {onToggleOrderBy && col.name && (
                                                                 <div
                                                                     className={cn(
-                                                                        "w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-all",
+                                                                        "flex h-5 w-5 cursor-pointer items-center justify-center rounded-xs border transition-colors",
                                                                         orderByColumns.includes(col.name)
-                                                                            ? "bg-emerald-500 text-white border-emerald-500"
-                                                                            : "bg-white/10 border-white/10 hover:border-white/20 text-transparent",
-                                                                        (!engine.includes('MergeTree') && engine !== 'MergeTree') && "opacity-30 cursor-not-allowed"
+                                                                            ? "border-brand bg-brand text-ink-50"
+                                                                            : "border-ink-500 bg-ink-200 text-transparent hover:border-ink-700",
+                                                                        (!engine.includes('MergeTree') && engine !== 'MergeTree') && "cursor-not-allowed opacity-30"
                                                                     )}
                                                                     onClick={() => {
                                                                         if (engine.includes('MergeTree') || engine === 'MergeTree') {
@@ -470,7 +473,7 @@ export function StepPreview({
                                                                     }}
                                                                     title={orderByColumns.includes(col.name) ? "Remove from Sort Key" : "Add to Sort Key"}
                                                                 >
-                                                                    <Database className="w-3 h-3" />
+                                                                    <Database className="h-3 w-3" />
                                                                 </div>
                                                             )}
                                                         </div>
@@ -479,33 +482,33 @@ export function StepPreview({
                                                                 value={col.description || ''}
                                                                 onChange={(e) => onColumnChange(idx, 'description', e.target.value)}
                                                                 placeholder="Add description..."
-                                                                className="h-8 bg-white/5 border-white/10 hover:border-white/20 focus:border-emerald-500/50 transition-all text-xs text-gray-400 rounded-md px-3 shadow-none"
+                                                                className="h-8 rounded-xs border-ink-500 bg-ink-200 px-3 font-mono text-xs text-paper-muted placeholder:text-paper-faint shadow-none transition-colors hover:border-ink-700 focus-visible:border-brand focus-visible:ring-0"
                                                             />
                                                         </div>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <div className="flex items-center bg-black/20 h-8 px-3 rounded-md border border-white/10 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium text-gray-300">
+                                                        <div className="flex h-8 items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-xs border border-ink-500 bg-ink-200 px-3 font-mono text-xs text-paper">
                                                             {col.name}
                                                         </div>
-                                                        <div className="flex justify-center text-gray-500">
-                                                            <ChevronDown className="w-4 h-4 -rotate-90 animate-pulse" />
+                                                        <div className="flex justify-center text-paper-faint">
+                                                            <ChevronDown className="h-4 w-4 -rotate-90 animate-pulse" />
                                                         </div>
                                                         <div>
                                                             <Select
                                                                 value={col.mappedTo || "skip"}
                                                                 onValueChange={(val) => onColumnChange(idx, 'mappedTo', val === 'skip' ? '' : val)}
                                                             >
-                                                                <SelectTrigger className="h-8 border-white/10 bg-white/5 hover:bg-white/10 text-xs text-gray-300 rounded-md px-3 shadow-none focus-visible:ring-emerald-500/50">
+                                                                <SelectTrigger className="h-8 rounded-xs border-ink-500 bg-ink-200 px-3 font-mono text-xs text-paper shadow-none transition-colors hover:bg-ink-300 focus-visible:border-brand focus-visible:ring-0">
                                                                     <SelectValue placeholder="Skip Column" />
                                                                 </SelectTrigger>
-                                                                <SelectContent className="bg-gray-900 border-white/10 text-gray-300">
-                                                                    <SelectItem value="skip" className="text-gray-500 italic">— Skip —</SelectItem>
+                                                                <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
+                                                                    <SelectItem value="skip" className="italic text-paper-dim">— Skip —</SelectItem>
                                                                     {tableSchema?.map(sc => (
-                                                                        <SelectItem key={sc.name} value={sc.name} className="focus:bg-emerald-500/15 focus:text-emerald-400">
+                                                                        <SelectItem key={sc.name} value={sc.name} className="focus:bg-ink-200 focus:text-paper">
                                                                             <span className="flex items-center gap-2">
-                                                                                <span className="font-medium text-gray-200">{sc.name}</span>
-                                                                                <span className="text-[10px] text-gray-500 font-mono">{sc.type}</span>
+                                                                                <span className="font-medium text-paper">{sc.name}</span>
+                                                                                <span className="font-mono text-[10px] text-paper-faint">{sc.type}</span>
                                                                             </span>
                                                                         </SelectItem>
                                                                     ))}
@@ -514,7 +517,7 @@ export function StepPreview({
                                                         </div>
                                                     </>
                                                 )}
-                                                <div className="text-xs truncate text-gray-500 font-mono" title={String(col.sampleValue)}>
+                                                <div className="truncate font-mono text-xs text-paper-faint" title={String(col.sampleValue)}>
                                                     {String(col.sampleValue ?? '-')}
                                                 </div>
                                             </motion.div>
@@ -525,36 +528,36 @@ export function StepPreview({
                             </div>
                             {/* Advanced Settings */}
                             {importMode === 'create' && onEngineChange && (
-                                <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="border-t border-white/10 bg-white/[0.02] shrink-0">
-                                    <CollapsibleTrigger className="w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 rounded">
-                                        <div className="flex items-center justify-between w-full px-5 py-3 transition-colors hover:bg-white/5">
-                                            <span className="flex items-center gap-2 text-xs font-medium text-gray-400">
-                                                <Settings2 className={cn("h-3.5 w-3.5", advancedOpen && "text-emerald-400")} />
+                                <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="shrink-0 border-t border-ink-500 bg-ink-200">
+                                    <CollapsibleTrigger className="w-full rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+                                        <div className="flex w-full items-center justify-between px-5 py-3 transition-colors hover:bg-ink-300">
+                                            <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted">
+                                                <Settings2 className={cn("h-3.5 w-3.5", advancedOpen && "text-brand")} />
                                                 Advanced
                                                 {!advancedOpen && hasAdvancedSummary && (
-                                                    <span className="text-gray-500 font-normal normal-case">
+                                                    <span className="font-mono text-[10px] normal-case tracking-normal text-paper-dim">
                                                         · {advancedSummaryParts.join(' · ')}
                                                     </span>
                                                 )}
                                             </span>
-                                            <ChevronDown className={cn("h-4 w-4 text-gray-500 transition-transform", advancedOpen && "rotate-180 text-emerald-400")} />
+                                            <ChevronDown className={cn("h-4 w-4 text-paper-dim transition-transform", advancedOpen && "rotate-180 text-brand")} />
                                         </div>
                                     </CollapsibleTrigger>
                                     <CollapsibleContent>
-                                        <div className="p-6 pt-2 space-y-5 border-t border-white/5">
+                                        <div className="space-y-5 border-t border-ink-500 p-6 pt-4">
                                             {/* Engine Selection */}
                                             <div className="space-y-2 text-left">
-                                                <Label className="text-gray-300 text-xs">Table Engine</Label>
+                                                <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Table Engine</Label>
                                                 <Select value={engine} onValueChange={onEngineChange}>
-                                                    <SelectTrigger className="bg-white/5 border-white/10 h-9 text-sm focus-visible:ring-emerald-500/50">
+                                                    <SelectTrigger className="h-9 rounded-xs border-ink-500 bg-ink-100 font-mono text-[12px] text-paper focus-visible:border-brand focus-visible:ring-0">
                                                         <SelectValue />
                                                     </SelectTrigger>
-                                                    <SelectContent>
+                                                    <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
                                                         {ENGINES.map((eng) => (
                                                             <SelectItem key={eng.value} value={eng.value}>
                                                                 <div className="flex flex-col text-left">
                                                                     <span>{eng.label}</span>
-                                                                    <span className="text-[10px] text-gray-400">{eng.description}</span>
+                                                                    <span className="text-[10px] text-paper-dim">{eng.description}</span>
                                                                 </div>
                                                             </SelectItem>
                                                         ))}
@@ -563,32 +566,32 @@ export function StepPreview({
                                             </div>
 
                                             <div className="space-y-2 text-left">
-                                                <Label className="text-gray-300 text-xs">Partition By</Label>
+                                                <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Partition By</Label>
                                                 <Input
                                                     value={partitionBy}
                                                     onChange={(e) => onPartitionByChange?.(e.target.value)}
                                                     placeholder="e.g., toYYYYMM(created_at) or leave empty for none"
-                                                    className="bg-white/5 border-white/10 h-9 text-xs focus-visible:ring-emerald-500/50"
+                                                    className="h-9 rounded-xs border-ink-500 bg-ink-100 font-mono text-xs text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                                                 />
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-left">
+                                            <div className="grid grid-cols-1 gap-5 text-left md:grid-cols-2">
                                                 <div className="space-y-2">
-                                                    <Label className="text-gray-300 text-xs">TTL Expression</Label>
+                                                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">TTL Expression</Label>
                                                     <Input
                                                         value={ttlExpression}
                                                         onChange={(e) => onTtlExpressionChange?.(e.target.value)}
                                                         placeholder="e.g., created_at + INTERVAL 30 DAY"
-                                                        className="bg-white/5 border-white/10 h-9 text-xs focus-visible:ring-emerald-500/50"
+                                                        className="h-9 rounded-xs border-ink-500 bg-ink-100 font-mono text-xs text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <Label className="text-gray-300 text-xs">Table Comment</Label>
+                                                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Table Comment</Label>
                                                     <Input
                                                         value={comment}
                                                         onChange={(e) => onCommentChange?.(e.target.value)}
                                                         placeholder="Optional description"
-                                                        className="bg-white/5 border-white/10 h-9 text-xs focus-visible:ring-emerald-500/50"
+                                                        className="h-9 rounded-xs border-ink-500 bg-ink-100 font-mono text-xs text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                                                     />
                                                 </div>
                                             </div>
@@ -600,16 +603,16 @@ export function StepPreview({
                     </TabsContent>
 
                     <TabsContent value="data" className="flex-1 min-h-0 mt-0 data-[state=inactive]:hidden flex flex-col">
-                        <Card className="flex-1 min-h-0 bg-white/[0.02] border-white/10 flex flex-col overflow-hidden rounded-xl">
-                            <p className="text-xs text-gray-500 px-4 py-2 border-b border-white/10 shrink-0">
+                        <Card className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-xs border-ink-500 bg-ink-100">
+                            <p className="shrink-0 border-b border-ink-500 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                 Preview (first {previewData.length} row{previewData.length !== 1 ? 's' : ''})
                             </p>
-                            <div className="flex-1 w-full overflow-auto">
+                            <div className="w-full flex-1 overflow-auto">
                                 <Table>
-                                    <TableHeader className="bg-black/20 sticky top-0 z-10">
-                                        <TableRow className="hover:bg-transparent border-white/10">
+                                    <TableHeader className="sticky top-0 z-10 bg-ink-200">
+                                        <TableRow className="border-ink-500 hover:bg-transparent">
                                             {columns.map((col, i) => (
-                                                <TableHead key={i} className="whitespace-nowrap h-10 text-xs font-semibold text-gray-400 px-4">
+                                                <TableHead key={i} className="h-10 whitespace-nowrap px-4 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                                     {col.name}
                                                 </TableHead>
                                             ))}
@@ -617,9 +620,9 @@ export function StepPreview({
                                     </TableHeader>
                                     <TableBody>
                                         {previewData.map((row, i) => (
-                                            <TableRow key={i} className="border-white/5 hover:bg-white/5">
+                                            <TableRow key={i} className="border-ink-500 hover:bg-ink-200">
                                                 {columns.map((col, j) => (
-                                                    <TableCell key={j} className="whitespace-nowrap font-mono text-xs py-2 px-4 text-gray-300">
+                                                    <TableCell key={j} className="whitespace-nowrap px-4 py-2 font-mono text-xs text-paper-muted">
                                                         {String(row[col.name] ?? row[Object.keys(row)[j]] ?? '')}
                                                     </TableCell>
                                                 ))}
@@ -627,7 +630,7 @@ export function StepPreview({
                                         ))}
                                         {previewData.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={columns.length} className="text-center py-20 text-gray-500">
+                                                <TableCell colSpan={columns.length} className="py-20 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
                                                     No data available for preview.
                                                 </TableCell>
                                             </TableRow>

@@ -4,16 +4,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
-  X,
-  Plus,
-  Home,
-  GripVertical,
-  Info,
-  Terminal,
-  XSquareIcon,
   Copy,
+  GripVertical,
+  Home,
+  Info,
+  Plus,
   Save,
-  Sparkles,
+  Terminal,
+  X,
+  XSquareIcon,
 } from "lucide-react";
 import {
   DndContext,
@@ -70,14 +69,6 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
     return null;
   };
 
-  const getTabColor = () => {
-    if (tab.type === "home") return "text-purple-400";
-    if (tab.type === "sql" && tab.isSaved) return "text-amber-400";
-    if (tab.type === "sql") return "text-emerald-400";
-    if (tab.type === "information") return "text-blue-400";
-    return "text-gray-400";
-  };
-
   return (
     <div
       ref={setNodeRef}
@@ -98,34 +89,42 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
             value={tab.id}
             onClick={onActivate}
             className={cn(
-              "relative flex items-center gap-2 h-9 px-3 rounded-t-lg border-t border-x border-transparent",
-              "transition-all duration-200",
-              "data-[state=active]:bg-white/5 data-[state=active]:border-white/10",
-              "data-[state=active]:shadow-[0_2px_10px_rgba(0,0,0,0.3)]",
-              "hover:bg-white/5",
-              tab.type === "home" ? "min-w-[90px]" : "min-w-[120px] max-w-[180px]"
+              "relative flex h-9 items-center gap-2 rounded-none border-x border-t border-transparent px-3 transition-colors",
+              "data-[state=active]:border-ink-500 data-[state=active]:bg-ink-100 data-[state=active]:text-paper",
+              "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200",
+              tab.type === "home" ? "min-w-[90px]" : "min-w-[120px] max-w-[200px]"
             )}
           >
-            {/* Drag Handle */}
+            {/* Drag handle */}
             {isActive && isHovering && tab.type !== "home" && (
-              <div {...attributes} {...listeners} className="cursor-move">
-                <GripVertical className="h-3 w-3 text-gray-500" />
-              </div>
+              <button
+                type="button"
+                {...attributes}
+                {...listeners}
+                className="cursor-move text-paper-faint hover:text-paper"
+                aria-label="Drag tab"
+              >
+                <GripVertical className="h-3 w-3" aria-hidden />
+              </button>
             )}
 
-            {/* Icon */}
-            <span className={getTabColor()}>{getTabIcon()}</span>
+            <span
+              className={cn(
+                "shrink-0",
+                isActive ? "text-paper-muted" : "text-paper-faint"
+              )}
+            >
+              {getTabIcon()}
+            </span>
 
-            {/* Title */}
-            <span className="truncate text-xs font-medium">{tab.title}</span>
+            <span className="truncate font-mono text-[11.5px]">{tab.title}</span>
 
-            {/* Close Button */}
             {tab.id !== "home" && (
               <span
                 role="button"
                 tabIndex={0}
                 className={cn(
-                  "ml-auto p-0.5 rounded hover:bg-white/10 transition-colors",
+                  "ml-auto grid h-4 w-4 place-items-center rounded-xs transition-all hover:bg-ink-300 hover:text-paper",
                   isHovering ? "opacity-100" : "opacity-0"
                 )}
                 onClick={(e) => {
@@ -139,16 +138,18 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
                     removeTab(tab.id);
                   }
                 }}
+                aria-label="Close tab"
               >
-                <X className="h-3 w-3 text-gray-400 hover:text-white" />
+                <X className="h-3 w-3 text-paper-faint" aria-hidden />
               </span>
             )}
 
-            {/* Active Indicator */}
+            {/* Active indicator — solid brand yellow bar */}
             {isActive && (
               <motion.div
                 layoutId="activeTab"
-                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-purple-500 to-blue-500"
+                className="absolute -bottom-px left-0 right-0 h-px bg-brand"
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
               />
             )}
           </TabsTrigger>
@@ -158,21 +159,21 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
           {tab.type === "sql" && (
             <ContextMenuItem onClick={() => duplicateTab(tab.id)} className="gap-2">
               <Copy className="h-4 w-4" />
-              Duplicate Tab
+              Duplicate tab
             </ContextMenuItem>
           )}
 
           {tab.type !== "home" && (
             <ContextMenuItem onClick={() => removeTab(tab.id)} className="gap-2 text-red-400">
               <XSquareIcon className="h-4 w-4" />
-              Close Tab
+              Close tab
             </ContextMenuItem>
           )}
 
           {tab.type === "home" && (
             <ContextMenuItem className="gap-2">
               <Home className="h-4 w-4" />
-              Home Tab
+              Home tab
             </ContextMenuItem>
           )}
         </ContextMenuContent>
@@ -246,25 +247,24 @@ function WorkspaceTabs() {
   }, [tabs]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col bg-ink-50">
       <Tabs
         value={activeTab || undefined}
         onValueChange={setActiveTab}
-        className="flex flex-col h-full"
+        className="flex h-full flex-col"
       >
-        {/* Tab Bar */}
-        <div className="flex-shrink-0 flex items-center border-b border-white/10 bg-black/20">
-          {/* New Tab Button */}
+        {/* Tab bar */}
+        <div className="flex flex-shrink-0 items-center border-b border-ink-500 bg-ink-100">
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 px-3 rounded-none border-r border-white/10 hover:bg-white/5"
+            className="h-9 rounded-none border-r border-ink-500 px-3 text-paper-dim hover:bg-ink-200 hover:text-paper"
             onClick={addNewCodeTab}
+            aria-label="New tab"
           >
-            <Plus className="h-4 w-4 text-gray-400" />
+            <Plus className="h-3.5 w-3.5" aria-hidden />
           </Button>
 
-          {/* Scrollable Tabs */}
           <ScrollArea className="flex-grow">
             <ContextMenu>
               <ContextMenuTrigger asChild>
@@ -277,7 +277,7 @@ function WorkspaceTabs() {
                     items={sortedTabs.map((tab) => tab.id)}
                     strategy={horizontalListSortingStrategy}
                   >
-                    <TabsList className="inline-flex h-10 items-end bg-transparent rounded-none w-full gap-0.5 px-1">
+                    <TabsList className="inline-flex h-9 w-full items-end gap-0 rounded-none bg-transparent p-0">
                       {sortedTabs.map((tab) => (
                         <SortableTab
                           key={tab.id}
@@ -293,12 +293,12 @@ function WorkspaceTabs() {
               <ContextMenuContent>
                 <ContextMenuItem onClick={addNewCodeTab} className="gap-2">
                   <Plus className="h-4 w-4" />
-                  New Tab
+                  New tab
                 </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={closeAllTabs} className="gap-2 text-red-400">
                   <XSquareIcon className="h-4 w-4" />
-                  Close All Tabs
+                  Close all tabs
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
@@ -306,13 +306,13 @@ function WorkspaceTabs() {
           </ScrollArea>
         </div>
 
-        {/* Tab Content */}
-        <div className="flex-1 min-h-0">
+        {/* Tab content */}
+        <div className="min-h-0 flex-1">
           {sortedTabs.map((tab) => (
             <TabsContent
               key={tab.id}
               value={tab.id}
-              className="h-full p-0 m-0 outline-none data-[state=active]:block"
+              className="m-0 h-full p-0 outline-none data-[state=active]:block"
             >
               {tab.type === "home" ? (
                 <HomeTab />

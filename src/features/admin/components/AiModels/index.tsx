@@ -1,3 +1,4 @@
+import { Bot } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ProvidersTab from './ProvidersTab';
 import BaseModelsTab from './BaseModelsTab';
@@ -7,22 +8,27 @@ export default function AiModelsManagement() {
     return (
         <div className="p-6">
             {/* Header */}
-            <div className="mb-6">
-                <h2 className="text-xl font-semibold text-white">AI Models</h2>
-                <p className="text-sm text-gray-400 mt-1">
-                    Manage AI Providers, SDK Models, and User-Facing Configurations
-                </p>
+            <div className="mb-6 flex items-center gap-3">
+                <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                    <Bot className="h-4 w-4" aria-hidden />
+                </span>
+                <div className="flex flex-col gap-0.5">
+                    <h2 className="text-[18px] font-semibold tracking-tight text-paper">AI models</h2>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                        Manage AI providers, SDK models, and user-facing configurations
+                    </p>
+                </div>
             </div>
 
             <Tabs defaultValue="configs" className="space-y-6">
-                <TabsList className="bg-gray-800 border border-gray-700">
-                    <TabsTrigger value="configs" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
+                <TabsList className="h-9 rounded-xs border border-ink-500 bg-ink-200 p-0.5">
+                    <TabsTrigger value="configs" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
                         Deployments
                     </TabsTrigger>
-                    <TabsTrigger value="basemodels" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
-                        SDK Models
+                    <TabsTrigger value="basemodels" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
+                        SDK models
                     </TabsTrigger>
-                    <TabsTrigger value="providers" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
+                    <TabsTrigger value="providers" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
                         Providers
                     </TabsTrigger>
                 </TabsList>

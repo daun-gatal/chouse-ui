@@ -301,7 +301,7 @@ const SyntaxView: React.FC<SyntaxViewProps> = ({ content, originalQuery }) => {
 
   if (!content) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
         No syntax data available.
       </div>
     );
@@ -312,16 +312,16 @@ const SyntaxView: React.FC<SyntaxViewProps> = ({ content, originalQuery }) => {
       <ExplainInfoHeader type="syntax" />
 
       {/* Copy button header */}
-      <div className="flex-shrink-0 flex items-center justify-end px-4 py-1.5 border-b border-zinc-800 bg-zinc-900/30">
+      <div className="flex-shrink-0 flex items-center justify-end border-b border-ink-500 bg-ink-100 px-4 py-1.5">
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-xs"
+          className="h-7 rounded-xs px-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
           onClick={handleCopy}
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 mr-1 text-green-400" />
+              <Check className="h-3 w-3 mr-1 text-emerald-400" />
               Copied
             </>
           ) : (
@@ -334,14 +334,14 @@ const SyntaxView: React.FC<SyntaxViewProps> = ({ content, originalQuery }) => {
       </div>
 
       {/* Syntax Highlighted Code */}
-      <div className="flex-1 overflow-auto p-4 bg-zinc-950/50">
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="flex-1 overflow-auto bg-ink-50 p-4">
+        <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
           {/* Line numbers + code */}
           <div className="flex">
             {/* Line numbers */}
-            <div className="flex-shrink-0 bg-zinc-900/80 border-r border-zinc-800 px-3 py-4 select-none">
+            <div className="flex-shrink-0 select-none border-r border-ink-500 bg-ink-200 px-3 py-4">
               {formattedContent.split('\n').map((_, i) => (
-                <div key={i} className="text-xs text-zinc-600 text-right leading-6 h-6">
+                <div key={i} className="h-6 text-right font-mono text-xs leading-6 text-paper-faint">
                   {i + 1}
                 </div>
               ))}
@@ -362,31 +362,31 @@ const SyntaxView: React.FC<SyntaxViewProps> = ({ content, originalQuery }) => {
       </div>
 
       {/* Legend */}
-      <div className="flex-shrink-0 border-t border-zinc-800 bg-zinc-900/30 px-4 py-2">
-        <div className="flex flex-wrap gap-4 text-[10px]">
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-blue-400" />
-            <span className="text-zinc-500">Clauses</span>
+      <div className="flex-shrink-0 border-t border-ink-500 bg-ink-100 px-4 py-2">
+        <div className="flex flex-wrap gap-4 font-mono text-[10px] uppercase tracking-[0.14em]">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-xs bg-blue-400" />
+            <span className="text-paper-dim">Clauses</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-purple-400" />
-            <span className="text-zinc-500">Joins</span>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-xs bg-purple-400" />
+            <span className="text-paper-dim">Joins</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-cyan-400" />
-            <span className="text-zinc-500">Functions</span>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-xs bg-cyan-400" />
+            <span className="text-paper-dim">Functions</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-400" />
-            <span className="text-zinc-500">Strings</span>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-xs bg-green-400" />
+            <span className="text-paper-dim">Strings</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span className="text-zinc-500">Numbers</span>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-xs bg-emerald-400" />
+            <span className="text-paper-dim">Numbers</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-yellow-400" />
-            <span className="text-zinc-500">Operators</span>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-xs bg-yellow-400" />
+            <span className="text-paper-dim">Operators</span>
           </div>
         </div>
       </div>

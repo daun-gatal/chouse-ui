@@ -146,7 +146,7 @@ const ASTNodeComponent = ({ data }: { data: { type: string; name?: string; value
   return (
     <div
       className={cn(
-        "px-3 py-2 rounded-lg border min-w-[120px] max-w-[200px] shadow-lg relative",
+        "px-3 py-2 rounded-xs border min-w-[120px] max-w-[200px] shadow-lg relative",
         "transition-all duration-200 hover:shadow-xl"
       )}
       style={{
@@ -154,12 +154,12 @@ const ASTNodeComponent = ({ data }: { data: { type: string; name?: string; value
         borderColor: style.borderColor,
       }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-zinc-500 !w-2 !h-2" />
+      <Handle type="target" position={Position.Top} className="!bg-ink-700 !w-2 !h-2" />
 
       {/* Node content */}
       <div className="flex items-center gap-2">
         <div
-          className="p-1 rounded-md flex-shrink-0"
+          className="p-1 rounded-xs flex-shrink-0"
           style={{ backgroundColor: `${style.color}30` }}
         >
           <Icon className="h-3.5 w-3.5" style={{ color: style.color }} />
@@ -173,14 +173,14 @@ const ASTNodeComponent = ({ data }: { data: { type: string; name?: string; value
             {data.type}
           </div>
           {(data.name || data.value) && (
-            <div className="text-[9px] text-zinc-400 truncate" title={data.name || data.value}>
+            <div className="text-[9px] text-paper-dim truncate" title={data.name || data.value}>
               {data.name || data.value}
             </div>
           )}
         </div>
       </div>
 
-      <Handle type="source" position={Position.Bottom} className="!bg-zinc-500 !w-2 !h-2" />
+      <Handle type="source" position={Position.Bottom} className="!bg-ink-700 !w-2 !h-2" />
     </div>
   );
 };
@@ -281,18 +281,18 @@ const Legend: React.FC = () => {
   const categories: ASTCategory[] = ['query', 'table', 'column', 'filter', 'function', 'expression', 'literal', 'identifier'];
 
   return (
-    <div className="absolute top-3 left-3 bg-zinc-900/90 border border-zinc-800 rounded-lg p-2 z-10 backdrop-blur-sm">
-      <div className="text-[10px] font-semibold text-zinc-400 mb-2">Node Types</div>
+    <div className="absolute top-3 left-3 rounded-xs border border-ink-500 bg-ink-100 p-2 z-10">
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Node Types</div>
       <div className="flex flex-wrap gap-2 max-w-[280px]">
         {categories.map((category) => {
           const style = AST_STYLES[category];
           return (
             <div key={category} className="flex items-center gap-1.5">
               <div
-                className="w-3 h-3 rounded-sm"
+                className="w-3 h-3 rounded-xs"
                 style={{ backgroundColor: style.color }}
               />
-              <span className="text-[9px] text-zinc-400">{style.label}</span>
+              <span className="text-[9px] text-paper-dim">{style.label}</span>
             </div>
           );
         })}
@@ -321,15 +321,15 @@ const StatsPanel: React.FC<{ astNodes: ASTNode[] }> = ({ astNodes }) => {
   }, [astNodes]);
 
   return (
-    <div className="absolute top-3 right-3 bg-zinc-900/90 border border-zinc-800 rounded-lg p-3 z-10 backdrop-blur-sm">
+    <div className="absolute top-3 right-3 rounded-xs border border-ink-500 bg-ink-100 p-3 z-10">
       <div className="flex gap-4 text-xs">
         <div className="text-center">
-          <div className="text-lg font-bold text-zinc-300">{stats.total}</div>
-          <div className="text-[10px] text-zinc-500">Nodes</div>
+          <div className="font-mono text-lg font-semibold tabular-nums text-paper">{stats.total}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Nodes</div>
         </div>
         <div className="text-center">
-          <div className="text-lg font-bold text-blue-400">{stats.depth}</div>
-          <div className="text-[10px] text-zinc-500">Depth</div>
+          <div className="font-mono text-lg font-semibold tabular-nums text-paper">{stats.depth}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Depth</div>
         </div>
       </div>
     </div>
@@ -388,12 +388,12 @@ const ASTViewInner: React.FC<{ content: string; astNodes: ASTNode[] }> = ({ cont
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-2 text-xs bg-zinc-900/90 border-zinc-800 hover:bg-zinc-800"
+          className="h-7 rounded-xs border-ink-500 bg-ink-100 px-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
           onClick={handleCopy}
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 mr-1 text-green-400" />
+              <Check className="h-3 w-3 mr-1 text-emerald-400" />
               Copied
             </>
           ) : (
@@ -416,9 +416,9 @@ const ASTViewInner: React.FC<{ content: string; astNodes: ASTNode[] }> = ({ cont
         attributionPosition="bottom-left"
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={12} size={1} color="#27272a" />
+        <Background gap={12} size={1} color="#262626" />
         <Controls
-          className="bg-zinc-900 border-zinc-800 text-zinc-100 fill-zinc-100 [&>button]:!bg-zinc-900 [&>button]:!border-zinc-800 [&>button:hover]:!bg-zinc-800 [&_path]:!fill-zinc-100"
+          className="rounded-xs border border-ink-500 bg-ink-100 text-paper fill-paper [&>button]:!bg-ink-100 [&>button]:!border-ink-500 [&>button:hover]:!bg-ink-200 [&_path]:!fill-paper"
         >
           <ControlButton onClick={() => onLayout('TB')} title="Vertical Layout (Tree)">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -446,7 +446,7 @@ const ASTView: React.FC<ASTViewProps> = ({ content }) => {
 
   if (!content) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
         No AST data available.
       </div>
     );
@@ -455,7 +455,7 @@ const ASTView: React.FC<ASTViewProps> = ({ content }) => {
   return (
     <div className="w-full h-full flex flex-col">
       <ExplainInfoHeader type="ast" />
-      <div className="flex-1 bg-zinc-950/50 backdrop-blur-sm relative">
+      <div className="relative flex-1 bg-ink-50">
         <ReactFlowProvider>
           <ASTViewInner content={content} astNodes={astNodes} />
         </ReactFlowProvider>

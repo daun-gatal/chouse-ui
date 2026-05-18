@@ -124,59 +124,59 @@ export const RbacAuditExportDialog: React.FC<RbacAuditExportDialogProps> = ({
                 <Button
                     variant="outline"
                     size="sm"
-                    className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+                    className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                 >
-                    <Download className="h-4 w-4" />
+                    <Download className="h-3.5 w-3.5" />
                     Export CSV
                 </Button>
             </DialogTrigger>
-            <DialogContent className="bg-[#0B0D11] border-white/10 text-white backdrop-blur-xl shadow-2xl max-w-md">
+            <DialogContent className="max-w-md rounded-xs border-ink-500 bg-ink-100 text-paper">
                 <DialogHeader>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 rounded-lg bg-cyan-500/20">
-                            <FileDown className="h-6 w-6 text-cyan-400" />
-                        </div>
-                        <DialogTitle className="text-xl">Export Audit Logs</DialogTitle>
+                    <div className="mb-2 flex items-center gap-3">
+                        <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                            <FileDown className="h-4 w-4" aria-hidden />
+                        </span>
+                        <DialogTitle className="text-[16px] font-semibold tracking-tight text-paper">Export audit logs</DialogTitle>
                     </div>
-                    <DialogDescription className="text-gray-400 text-base">
+                    <DialogDescription className="text-paper-muted">
                         Download audit logs as a CSV file. Choose a date range below.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                        <Label className="text-gray-300">Export Range</Label>
+                        <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Export range</Label>
                         <Select
                             value={exportRange}
                             onValueChange={(v) => setExportRange(v as ExportRange)}
                         >
-                            <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                            <SelectTrigger className="rounded-xs border-ink-500 bg-ink-200 text-paper">
                                 <SelectValue placeholder="Select export range" />
                             </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="7d">Last 7 Days</SelectItem>
-                                <SelectItem value="30d">Last 30 Days</SelectItem>
-                                <SelectItem value="90d">Last 90 Days</SelectItem>
-                                <SelectItem value="custom">Custom Date Range</SelectItem>
-                                <SelectItem value="all">All Time</SelectItem>
-                                <SelectItem value="current_filter">Matching Current Filters</SelectItem>
+                            <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+                                <SelectItem value="7d">Last 7 days</SelectItem>
+                                <SelectItem value="30d">Last 30 days</SelectItem>
+                                <SelectItem value="90d">Last 90 days</SelectItem>
+                                <SelectItem value="custom">Custom date range</SelectItem>
+                                <SelectItem value="all">All time</SelectItem>
+                                <SelectItem value="current_filter">Matching current filters</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
                     {exportRange === 'custom' && (
                         <div className="space-y-2">
-                            <Label className="text-gray-300">Select Date Range</Label>
+                            <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Select date range</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button
                                         variant="outline"
                                         className={cn(
-                                            "w-full justify-start text-left font-normal bg-white/5 border-white/10 text-white hover:bg-white/10",
-                                            !customDateRange.start && "text-gray-400"
+                                            "h-9 w-full justify-start rounded-xs border-ink-500 bg-ink-200 px-3 text-left font-normal text-paper hover:border-ink-700 hover:bg-ink-100",
+                                            !customDateRange.start && "text-paper-faint"
                                         )}
                                     >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                                         {customDateRange.start ? (
                                             customDateRange.end ? (
                                                 `${format(customDateRange.start, "MMM d, yyyy")} - ${format(customDateRange.end, "MMM d, yyyy")}`
@@ -188,18 +188,18 @@ export const RbacAuditExportDialog: React.FC<RbacAuditExportDialogProps> = ({
                                         )}
                                     </Button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0 bg-gray-900 border-white/10" align="start">
+                                <PopoverContent className="w-auto rounded-xs border-ink-500 bg-ink-100 p-0" align="start">
                                     <Calendar
                                         mode="range"
                                         selected={{ from: customDateRange.start, to: customDateRange.end }}
                                         onSelect={(range) => setCustomDateRange({ start: range?.from, end: range?.to })}
                                         initialFocus
                                         numberOfMonths={2}
-                                        className="p-3 pointer-events-auto"
+                                        className="pointer-events-auto p-3"
                                         classNames={{
-                                            day_selected: "bg-cyan-500 text-white hover:bg-cyan-600 focus:bg-cyan-500",
-                                            day_today: "bg-white/10 text-white",
-                                            range_middle: "bg-cyan-500/20 text-cyan-200",
+                                            day_selected: "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
+                                            day_today: "bg-ink-200 text-paper rounded-xs",
+                                            range_middle: "bg-brand/10 text-brand !rounded-none",
                                         }}
                                     />
                                 </PopoverContent>
@@ -207,11 +207,11 @@ export const RbacAuditExportDialog: React.FC<RbacAuditExportDialogProps> = ({
                         </div>
                     )}
 
-                    <div className="p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-sm text-cyan-200">
-                        <p className="font-semibold mb-1">Export Summary</p>
-                        <ul className="list-disc list-inside opacity-90 space-y-1 text-xs">
+                    <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 text-[12px] text-paper-muted">
+                        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Export summary</p>
+                        <ul className="list-inside list-disc space-y-1">
                             <li>
-                                Date Range: <span className="font-bold text-white">
+                                Date range: <span className="font-mono font-semibold text-paper">
                                     {range.start ? (
                                         range.end ?
                                             `${format(range.start, 'MMM d, yyyy')} - ${format(range.end, 'MMM d, yyyy')}` :
@@ -219,10 +219,10 @@ export const RbacAuditExportDialog: React.FC<RbacAuditExportDialogProps> = ({
                                     ) : 'All Time'}
                                 </span>
                             </li>
-                            <li>Action Filter: <span className="font-bold text-white">{actionFilter === 'all' || !actionFilter ? 'All Actions' : actionFilter}</span></li>
-                            {usernameFilter && <li>Username: <span className="font-bold text-white">{usernameFilter}</span></li>}
-                            {emailFilter && <li>Email: <span className="font-bold text-white">{emailFilter}</span></li>}
-                            {statusFilter !== 'all' && statusFilter && <li>Status: <span className="font-bold text-white uppercase">{statusFilter}</span></li>}
+                            <li>Action filter: <span className="font-mono font-semibold text-paper">{actionFilter === 'all' || !actionFilter ? 'All actions' : actionFilter}</span></li>
+                            {usernameFilter && <li>Username: <span className="font-mono font-semibold text-paper">{usernameFilter}</span></li>}
+                            {emailFilter && <li>Email: <span className="font-mono font-semibold text-paper">{emailFilter}</span></li>}
+                            {statusFilter !== 'all' && statusFilter && <li>Status: <span className="font-mono font-semibold uppercase text-paper">{statusFilter}</span></li>}
                         </ul>
                     </div>
                 </div>
@@ -232,22 +232,22 @@ export const RbacAuditExportDialog: React.FC<RbacAuditExportDialogProps> = ({
                         variant="ghost"
                         onClick={() => setIsOpen(false)}
                         disabled={isExporting}
-                        className="hover:bg-white/10 text-white"
+                        className="h-9 rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
                     >
                         Cancel
                     </Button>
                     <Button
                         onClick={handleExport}
                         disabled={isExporting || (exportRange === 'custom' && (!customDateRange.start || !customDateRange.end))}
-                        className="bg-cyan-500 hover:bg-cyan-600 text-white border-none gap-2"
+                        className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                     >
                         {isExporting ? (
                             <>
-                                <span className="animate-spin">⏳</span> Exporting...
+                                <span className="animate-spin">⏳</span> Exporting…
                             </>
                         ) : (
                             <>
-                                <Download className="h-4 w-4" /> Download CSV
+                                <Download className="h-3.5 w-3.5" /> Download CSV
                             </>
                         )}
                     </Button>

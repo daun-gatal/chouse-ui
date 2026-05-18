@@ -10,7 +10,6 @@ interface ExplainInfo {
   description: string;
   howToRead: string[];
   keyInsights: string[];
-  color: string;
 }
 
 const EXPLAIN_INFO: Record<ExplainViewType, ExplainInfo> = {
@@ -28,7 +27,6 @@ const EXPLAIN_INFO: Record<ExplainViewType, ExplainInfo> = {
       'Filter nodes early in the plan (higher up) are more efficient',
       'Selected Parts/Granules show how well indexes filter the data',
     ],
-    color: '#3b82f6',
   },
   ast: {
     title: 'Abstract Syntax Tree',
@@ -44,7 +42,6 @@ const EXPLAIN_INFO: Record<ExplainViewType, ExplainInfo> = {
       'Multiple SelectQuery nodes suggest subqueries',
       'Look for Function nodes to see which functions are called',
     ],
-    color: '#8b5cf6',
   },
   syntax: {
     title: 'Optimized Query',
@@ -60,14 +57,13 @@ const EXPLAIN_INFO: Record<ExplainViewType, ExplainInfo> = {
       'Look for added PREWHERE for early filtering optimization',
       'Verify JOIN order matches your expectations',
     ],
-    color: '#a855f7',
   },
   pipeline: {
     title: 'Processing Pipeline',
     description: 'Shows the data processing pipeline with parallel execution stages. This represents how data flows through ClickHouse\'s query processor.',
     howToRead: [
       'Data flows left to right through processing stages',
-      'Green borders indicate parallel execution (multi-threaded)',
+      'Emerald borders indicate parallel execution (multi-threaded)',
       'The ×N badge shows parallelism level (number of threads)',
       'Resize stages adjust parallelism between operations',
     ],
@@ -76,7 +72,6 @@ const EXPLAIN_INFO: Record<ExplainViewType, ExplainInfo> = {
       'Look for bottlenecks where parallelism drops to 1',
       'MergeTree stages show direct table reads',
     ],
-    color: '#22c55e',
   },
   estimate: {
     title: 'Cost Estimation',
@@ -92,7 +87,6 @@ const EXPLAIN_INFO: Record<ExplainViewType, ExplainInfo> = {
       'Many parts suggest fragmented data (consider OPTIMIZE)',
       'Compare estimates with actual statistics after execution',
     ],
-    color: '#f59e0b',
   },
   analysis: {
     title: 'Query Analysis',
@@ -108,7 +102,6 @@ const EXPLAIN_INFO: Record<ExplainViewType, ExplainInfo> = {
       'SELECT * and missing LIMIT are common issues',
       'PREWHERE can significantly speed up filtered queries',
     ],
-    color: '#ec4899',
   },
 };
 
@@ -127,48 +120,42 @@ const ExplainInfoHeader: React.FC<ExplainInfoHeaderProps> = ({
   const info = EXPLAIN_INFO[type];
 
   return (
-    <div className={cn("border-b border-zinc-800 bg-zinc-900/50", className)}>
+    <div className={cn("border-b border-ink-500 bg-ink-100", className)}>
       {/* Collapsed Header */}
-      <div
-        className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-zinc-800/30 transition-colors"
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-4 py-2 text-left transition-colors hover:bg-ink-200"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-2">
-          <div
-            className="p-1 rounded"
-            style={{ backgroundColor: `${info.color}20` }}
-          >
-            <HelpCircle className="h-3.5 w-3.5" style={{ color: info.color }} />
-          </div>
-          <span className="text-sm font-medium text-zinc-300">{info.title}</span>
-          <span className="text-xs text-zinc-500">— {info.description.split('.')[0]}</span>
+          <span className="grid h-6 w-6 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+            <HelpCircle className="h-3 w-3" aria-hidden />
+          </span>
+          <span className="text-[13px] font-medium text-paper">{info.title}</span>
+          <span className="text-[11px] text-paper-faint">— {info.description.split('.')[0]}</span>
         </div>
-        <Button variant="ghost" size="sm" className="h-6 px-2">
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 text-zinc-400" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-zinc-400" />
-          )}
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-paper-dim hover:bg-ink-200 hover:text-paper">
+          {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </Button>
-      </div>
+      </button>
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="px-4 pb-3 space-y-3 border-t border-zinc-800/50 pt-3">
+        <div className="space-y-3 border-t border-ink-500 px-4 pb-3 pt-3">
           {/* Description */}
-          <p className="text-xs text-zinc-400">{info.description}</p>
+          <p className="text-[12px] text-paper-muted">{info.description}</p>
 
           <div className="grid grid-cols-2 gap-4">
             {/* How to Read */}
             <div className="space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-300">
-                <Info className="h-3 w-3" style={{ color: info.color }} />
-                How to Read
+              <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                <Info className="h-3 w-3" aria-hidden />
+                How to read
               </div>
               <ul className="space-y-1">
                 {info.howToRead.map((item, i) => (
-                  <li key={i} className="text-[11px] text-zinc-500 flex items-start gap-1.5">
-                    <span className="text-zinc-600 mt-0.5">•</span>
+                  <li key={i} className="flex items-start gap-1.5 text-[11px] text-paper-muted">
+                    <span className="mt-0.5 text-paper-faint">·</span>
                     {item}
                   </li>
                 ))}
@@ -177,14 +164,14 @@ const ExplainInfoHeader: React.FC<ExplainInfoHeaderProps> = ({
 
             {/* Key Insights */}
             <div className="space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-300">
-                <Lightbulb className="h-3 w-3 text-yellow-500" />
-                Key Insights
+              <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                <Lightbulb className="h-3 w-3 text-brand" aria-hidden />
+                Key insights
               </div>
               <ul className="space-y-1">
                 {info.keyInsights.map((item, i) => (
-                  <li key={i} className="text-[11px] text-zinc-500 flex items-start gap-1.5">
-                    <span className="text-yellow-600 mt-0.5">→</span>
+                  <li key={i} className="flex items-start gap-1.5 text-[11px] text-paper-muted">
+                    <span className="mt-0.5 text-brand">→</span>
                     {item}
                   </li>
                 ))}

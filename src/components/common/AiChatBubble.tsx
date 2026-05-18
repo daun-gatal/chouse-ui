@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
-import { motion, AnimatePresence, useDragControls, type PanInfo } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useWindowSize, type Breakpoint } from '@/hooks/useWindowSize';
 import { useDeviceType } from '@/hooks/useDeviceType';
 import {
@@ -92,12 +92,12 @@ import {
 // Resize constants
 // ============================================
 
-const DEFAULT_DESKTOP_WIDTH = 1340;
-const DEFAULT_DESKTOP_HEIGHT = 840;
-const MIN_WIDTH = 400;
-const MIN_HEIGHT = 360;
-const ZOOM_MIN = 0.55;
-const ZOOM_MAX = 1.0;
+// Right-edge side-sheet widths (cycled by header toggle, resizable from left edge)
+const SHEET_WIDTH_COMPACT = 420;
+const SHEET_WIDTH_STANDARD = 560;
+const SHEET_WIDTH_WIDE = 760;
+const MIN_SHEET_WIDTH = 360;
+const MAX_SHEET_WIDTH_RATIO = 0.7; // never exceed 70% of viewport width
 
 // Register highlight.js languages
 hljs.registerLanguage('sql', sql);
@@ -263,11 +263,11 @@ function SidebarThreadButton({
                     onLoad(thread.id);
                 }
             }}
-            className={`w-full text-left px-3 py-2.5 rounded-xl text-[14px]
-                      flex items-center justify-between group transition-all duration-200 cursor-pointer
+            className={`w-full text-left px-3 py-2 rounded-xs text-[13px]
+                      flex items-center justify-between group transition-colors duration-200 cursor-pointer border
                       ${activeId === thread.id
-                    ? 'bg-violet-500/10 text-zinc-100 border-l-2 border-l-violet-400 border border-violet-500/10'
-                    : 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200 border border-transparent'
+                    ? 'border-ink-500 bg-ink-200 text-paper border-l-brand border-l-2'
+                    : 'border-transparent text-paper-muted hover:bg-ink-200 hover:text-paper'
                 }`}
         >
             <div className="flex-1 min-w-0 mr-2">
@@ -279,7 +279,7 @@ function SidebarThreadButton({
                         onBlur={handleSave}
                         onKeyDown={(e) => e.key === 'Escape' && onCancelEdit()}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                        className="w-full rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 text-[13px] text-paper focus:border-brand focus:outline-none focus:ring-0"
                         placeholder="Thread title"
                         autoFocus
                         aria-label="Edit thread title"
@@ -287,7 +287,7 @@ function SidebarThreadButton({
                 ) : (
                     <>
                         <span className="block truncate">{thread.title || 'New Thread'}</span>
-                        <span className="flex items-center gap-1 text-xs text-zinc-600 mt-0.5">
+                        <span className="flex items-center gap-1 mt-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                             <Clock className="w-2.5 h-2.5" />
                             {timeAgo(thread.updatedAt)}
                         </span>
@@ -302,7 +302,7 @@ function SidebarThreadButton({
                             onStartEdit(thread.id, e);
                             setEditValue(thread.title || '');
                         }}
-                        className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-all"
+                        className="p-1 rounded-xs opacity-0 group-hover:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
                         title="Rename"
                         aria-label="Rename thread"
                     >
@@ -313,8 +313,8 @@ function SidebarThreadButton({
                             e.stopPropagation();
                             onDelete(thread.id, e);
                         }}
-                        className="p-1 rounded-lg opacity-0 group-hover:opacity-100
-                                 hover:bg-red-500/15 text-zinc-600 hover:text-red-400 transition-all"
+                        className="p-1 rounded-xs opacity-0 group-hover:opacity-100
+                                 hover:bg-red-950/40 text-paper-dim hover:text-red-300 transition-colors"
                         title="Delete chat"
                     >
                         <Trash2 className="w-3 h-3" />
@@ -357,17 +357,17 @@ function CollapsibleThreadGroup({
         <div className="mb-4 last:mb-0">
             <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="sticky top-0 z-10 border-b border-white/[0.06] flex items-center gap-1.5 w-[calc(100%+24px)] -mx-3 px-4 text-xs font-semibold uppercase tracking-wider bg-black/95 backdrop-blur-2xl py-2.5 mb-2 transition-colors text-violet-300/80 hover:text-violet-200"
+                className="sticky top-0 z-10 border-b border-ink-500 flex items-center gap-1.5 w-[calc(100%+24px)] -mx-3 px-4 font-mono text-[10px] uppercase tracking-[0.18em] bg-ink-100 py-2.5 mb-2 transition-colors text-paper-dim hover:text-paper"
             >
-                <div className="flex items-center justify-center p-0.5 rounded transition-colors hover:bg-white/10">
+                <div className="flex items-center justify-center p-0.5 rounded-xs transition-colors hover:bg-ink-200">
                     {isExpanded ? (
-                        <ChevronDown className="w-3 h-3 text-zinc-400" />
+                        <ChevronDown className="w-3 h-3 text-paper-dim" />
                     ) : (
-                        <ChevronRight className="w-3 h-3 text-zinc-400" />
+                        <ChevronRight className="w-3 h-3 text-paper-dim" />
                     )}
                 </div>
                 {title}
-                <span className="ml-auto text-zinc-600 font-normal normal-case">{threads.length}</span>
+                <span className="ml-auto font-mono text-[10px] text-paper-faint normal-case">{threads.length}</span>
             </button>
 
             <div
@@ -411,37 +411,37 @@ function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; 
         : `Used ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}`;
 
     return (
-        <div className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm overflow-hidden">
-            {/* Animated shimmer bar while running */}
+        <div className="mb-3 rounded-xs border border-ink-500 bg-ink-200 overflow-hidden">
+            {/* Subtle pulse bar while running */}
             {isRunning && (
-                <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/0 via-violet-400/60 to-violet-500/0 animate-pulse" />
+                <div className="h-px w-full bg-brand/50 animate-pulse" />
             )}
             <button
                 onClick={() => setExpanded((v) => !v)}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-ink-300"
             >
                 {isRunning
-                    ? <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin flex-shrink-0" />
-                    : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/70 flex-shrink-0" />
+                    ? <Loader2 className="w-3.5 h-3.5 text-brand animate-spin flex-shrink-0" />
+                    : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/80 flex-shrink-0" />
                 }
-                <span className="text-[11px] text-zinc-400 font-medium flex-1">{label}</span>
+                <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">{label}</span>
                 <ChevronDown
-                    className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+                    className={`w-3.5 h-3.5 text-paper-dim transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
                 />
             </button>
 
             {expanded && (
-                <div className="px-3.5 pb-3 space-y-2.5 border-t border-white/[0.06]">
+                <div className="px-3 pb-3 space-y-2.5 border-t border-ink-500">
                     {toolCalls.map((step, i) => (
                         <div key={i} className="pt-2.5 flex gap-2.5">
                             <div className="flex-shrink-0 pt-0.5">
                                 {step.status === 'running'
-                                    ? <Loader2 className="w-3 h-3 text-violet-400 animate-spin" />
-                                    : <CheckCircle2 className="w-3 h-3 text-emerald-400/70" />
+                                    ? <Loader2 className="w-3 h-3 text-brand animate-spin" />
+                                    : <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
                                 }
                             </div>
                             <div className="flex-1 min-w-0 space-y-1">
-                                <span className="text-[11px] font-semibold text-zinc-300">{formatToolName(step.tool)}</span>
+                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper">{formatToolName(step.tool)}</span>
                                 {Object.entries(step.args)
                                     .filter(([, v]) => v !== undefined && v !== null && v !== '')
                                     .map(([k, v]) => {
@@ -451,18 +451,18 @@ function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; 
                                         const isMultiLine = strVal.includes('\n') || strVal.length > 80;
                                         return (
                                             <div key={k} className={`text-[10px] ${isMultiLine ? '' : 'flex items-baseline gap-1.5'}`}>
-                                                <span className="text-zinc-500 font-medium shrink-0">{k}:</span>
+                                                <span className="font-mono uppercase tracking-[0.14em] text-paper-faint shrink-0">{k}:</span>
                                                 {isMultiLine ? (
-                                                    <pre className="mt-0.5 bg-black/40 rounded-lg px-2.5 py-1.5 text-zinc-400 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-[120px] overflow-y-auto border border-white/[0.04]">{strVal.trim()}</pre>
+                                                    <pre className="mt-0.5 rounded-xs border border-ink-500 bg-ink-100 px-2.5 py-1.5 text-paper-muted font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-[120px] overflow-y-auto">{strVal.trim()}</pre>
                                                 ) : (
-                                                    <span className="text-zinc-400 font-mono ml-1.5">{strVal}</span>
+                                                    <span className="text-paper-muted font-mono ml-1.5">{strVal}</span>
                                                 )}
                                             </div>
                                         );
                                     })
                                 }
                                 {step.status === 'done' && step.summary && (
-                                    <p className="text-[10px] text-emerald-400/70">↳ {step.summary}</p>
+                                    <p className="text-[10px] text-emerald-400/80">↳ {step.summary}</p>
                                 )}
                             </div>
                         </div>
@@ -478,18 +478,18 @@ type CodeComponentProps = React.ComponentPropsWithoutRef<'code'> & { className?:
 
 const markdownComponents = {
     table: ({ children, ...props }: React.ComponentPropsWithoutRef<'table'>) => (
-        <div className="overflow-x-auto my-2 rounded-lg border border-white/10">
-            <table className="min-w-full text-xs" {...props}>{children}</table>
+        <div className="overflow-x-auto my-2 rounded-xs border border-ink-500">
+            <table className="min-w-full text-[12px]" {...props}>{children}</table>
         </div>
     ),
     thead: ({ children, ...props }: React.ComponentPropsWithoutRef<'thead'>) => (
-        <thead className="bg-white/5" {...props}>{children}</thead>
+        <thead className="bg-ink-200" {...props}>{children}</thead>
     ),
     th: ({ children, ...props }: React.ComponentPropsWithoutRef<'th'>) => (
-        <th className="px-3 py-1.5 text-left font-medium text-white/80 border-b border-white/10 whitespace-nowrap" {...props}>{children}</th>
+        <th className="px-3 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim border-b border-ink-500 whitespace-nowrap" {...props}>{children}</th>
     ),
     td: ({ children, ...props }: React.ComponentPropsWithoutRef<'td'>) => (
-        <td className="px-3 py-1.5 text-white/70 border-b border-white/5 whitespace-nowrap" {...props}>{children}</td>
+        <td className="px-3 py-1.5 text-paper-muted border-b border-ink-500 whitespace-nowrap" {...props}>{children}</td>
     ),
     code: ({ className, children, ...props }: CodeComponentProps) => {
         const match = /language-(\w+)/.exec(className || '');
@@ -508,14 +508,14 @@ const markdownComponents = {
                     <button
                         type="button"
                         onClick={() => copyToClipboard(codeStr, 'Code')}
-                        className="absolute top-2 right-2 p-1.5 rounded opacity-0 group-hover/code:opacity-100 hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-all"
+                        className="absolute top-2 right-2 p-1.5 rounded-xs opacity-0 group-hover/code:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
                         title="Copy code"
                         aria-label="Copy code"
                     >
                         <Copy className="w-3 h-3" />
                     </button>
                     <code
-                        className={`${className || ''} text-xs block pr-8`}
+                        className={`${className || ''} text-[12px] block pr-8`}
                         dangerouslySetInnerHTML={{ __html: sanitized }}
                         {...props}
                     />
@@ -523,28 +523,28 @@ const markdownComponents = {
             );
         }
         // Inline code
-        return <code className="bg-white/10 px-1.5 py-0.5 rounded text-violet-300 text-xs" {...props}>{children}</code>;
+        return <code className="rounded-xs border border-ink-500 bg-ink-200 px-1 font-mono text-[11px] text-paper" {...props}>{children}</code>;
     },
     pre: ({ children, ...props }: React.ComponentPropsWithoutRef<'pre'>) => (
-        <pre className="bg-black/40 rounded-lg p-3 overflow-x-auto my-2 text-xs" {...props}>{children}</pre>
+        <pre className="rounded-xs border border-ink-500 bg-ink-200 p-3 overflow-x-auto my-2 font-mono text-[12px] text-paper" {...props}>{children}</pre>
     ),
     p: ({ children, ...props }: React.ComponentPropsWithoutRef<'p'>) => (
-        <p className="my-1.5 leading-relaxed" {...props}>{children}</p>
+        <p className="my-1.5 leading-relaxed text-paper-muted" {...props}>{children}</p>
     ),
     ul: ({ children, ...props }: React.ComponentPropsWithoutRef<'ul'>) => (
-        <ul className="list-disc list-inside my-1.5 space-y-0.5" {...props}>{children}</ul>
+        <ul className="list-disc list-outside ml-5 my-1.5 space-y-0.5 text-paper-muted marker:text-brand" {...props}>{children}</ul>
     ),
     ol: ({ children, ...props }: React.ComponentPropsWithoutRef<'ol'>) => (
-        <ol className="list-decimal list-inside my-1.5 space-y-0.5" {...props}>{children}</ol>
+        <ol className="list-decimal list-outside ml-5 my-1.5 space-y-0.5 text-paper-muted marker:text-brand" {...props}>{children}</ol>
     ),
-    h1: ({ children, ...props }: React.ComponentPropsWithoutRef<'h1'>) => <h1 className="text-base font-bold text-white/90 mt-3 mb-1" {...props}>{children}</h1>,
-    h2: ({ children, ...props }: React.ComponentPropsWithoutRef<'h2'>) => <h2 className="text-sm font-bold text-white/90 mt-3 mb-1" {...props}>{children}</h2>,
-    h3: ({ children, ...props }: React.ComponentPropsWithoutRef<'h3'>) => <h3 className="text-sm font-semibold text-white/90 mt-2 mb-1" {...props}>{children}</h3>,
+    h1: ({ children, ...props }: React.ComponentPropsWithoutRef<'h1'>) => <h1 className="text-[18px] font-semibold tracking-tight text-paper mt-3 mb-1" {...props}>{children}</h1>,
+    h2: ({ children, ...props }: React.ComponentPropsWithoutRef<'h2'>) => <h2 className="text-[16px] font-semibold tracking-tight text-paper mt-3 mb-1" {...props}>{children}</h2>,
+    h3: ({ children, ...props }: React.ComponentPropsWithoutRef<'h3'>) => <h3 className="text-[14px] font-semibold tracking-tight text-paper mt-2 mb-1" {...props}>{children}</h3>,
     a: ({ children, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
-        <a className="text-violet-400 hover:text-violet-300 underline" target="_blank" rel="noopener" {...props}>{children}</a>
+        <a className="text-brand underline hover:text-brand-soft" target="_blank" rel="noopener" {...props}>{children}</a>
     ),
     blockquote: ({ children, ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
-        <blockquote className="border-l-2 border-violet-500/40 pl-3 my-2 text-white/60 italic" {...props}>{children}</blockquote>
+        <blockquote className="border-l-2 border-brand pl-3 my-2 text-paper-muted italic" {...props}>{children}</blockquote>
     ),
     // Suppress images — the AI sometimes generates ![chart](...) markdown which renders as broken <img>
     img: () => null,
@@ -869,36 +869,8 @@ export default function AiChatBubble() {
     const [isOpen, setIsOpen] = useState(false);
     const [showSidebar, setShowSidebar] = useState(false);
 
-    // Position and size state (device-aware; defaults applied in load effect)
-    const [position, setPosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
     const lastLoadedDeviceRef = useRef<DeviceType | null>(null);
-    const dragControls = useDragControls();
-
     const deviceType = useDeviceType();
-
-    const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const saveChatPrefsDebounced = useCallback((pos: { x: number, y: number }, size: { width: number, height: number }): void => {
-        try {
-            localStorage.setItem('chouseui-chat-position', JSON.stringify(pos));
-        } catch { /* ignore */ }
-
-        if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-        }
-
-        saveTimeoutRef.current = setTimeout(async () => {
-            try {
-                const current = await rbacUserPreferencesApi.getPreferences();
-                const workspace = current.workspacePreferences as WorkspacePreferencesMap | undefined;
-                const merged = mergeChatPrefsIntoWorkspace(workspace, deviceType, { position: pos, size });
-                await rbacUserPreferencesApi.updatePreferences({ workspacePreferences: merged });
-            } catch (err) {
-                log.error('[AiChatBubble] Failed to save preferences:', err);
-            }
-        }, 1000);
-    }, [deviceType]);
-
 
     // Responsive breakpoint
     const { width: viewportWidth, height: viewportHeight, breakpoint } = useWindowSize();
@@ -906,107 +878,89 @@ export default function AiChatBubble() {
     const isTablet = breakpoint === 'tablet';
     const isDesktop = breakpoint === 'desktop';
 
-    // Resize state (desktop only)
-    const [windowSize, setWindowSize] = useState({ width: DEFAULT_DESKTOP_WIDTH, height: DEFAULT_DESKTOP_HEIGHT });
-    const windowSizeRef = useRef(windowSize);
+    // Sheet width state (desktop & tablet only — mobile is always full screen)
+    const [sheetWidth, setSheetWidth] = useState(SHEET_WIDTH_STANDARD);
+    const sheetWidthRef = useRef(sheetWidth);
     useEffect(() => {
-        windowSizeRef.current = windowSize;
-    }, [windowSize]);
-    const [isResizing, setIsResizing] = useState(false);
-    const resizeRef = useRef<{ axis: 'both' | 'x' | 'y'; startX: number; startY: number; startW: number; startH: number } | null>(null);
+        sheetWidthRef.current = sheetWidth;
+    }, [sheetWidth]);
 
-    // Load preferences (per device type; re-load when device type changes; must run after windowSize is declared)
+    // Max sheet width based on viewport (prevent the sheet from eating the whole screen)
+    const maxSheetWidth = Math.max(MIN_SHEET_WIDTH, Math.floor(viewportWidth * MAX_SHEET_WIDTH_RATIO));
+    const effectiveSheetWidth = Math.min(Math.max(sheetWidth, MIN_SHEET_WIDTH), maxSheetWidth);
+
+    // Persistence — debounced
+    const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const saveChatPrefsDebounced = useCallback((width: number): void => {
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = setTimeout(async () => {
+            try {
+                const current = await rbacUserPreferencesApi.getPreferences();
+                const workspace = current.workspacePreferences as WorkspacePreferencesMap | undefined;
+                // Keep the prefs API shape (position + size) but pin position to {0,0} and
+                // store the sheet width in size.width — height fills viewport now.
+                const merged = mergeChatPrefsIntoWorkspace(workspace, deviceType, {
+                    position: { x: 0, y: 0 },
+                    size: { width, height: 0 },
+                });
+                await rbacUserPreferencesApi.updatePreferences({ workspacePreferences: merged });
+            } catch (err) {
+                log.error('[AiChatBubble] Failed to save preferences:', err);
+            }
+        }, 1000);
+    }, [deviceType]);
+
+    // Load preferences (per device type)
     useEffect(() => {
         if (!hasPermission || lastLoadedDeviceRef.current === deviceType) return;
-
         const loadFromDb = async () => {
             try {
                 const prefs = await rbacUserPreferencesApi.getPreferences();
                 const workspace = prefs.workspacePreferences as WorkspacePreferencesMap | undefined;
-                const { position: loadedPos, size: loadedSize } = getChatPrefsFromWorkspace(workspace, deviceType);
-                setPosition(loadedPos);
-                if (deviceType !== 'mobile' && loadedSize.width > 0 && loadedSize.height > 0) {
-                    setWindowSize(loadedSize);
+                const { size: loadedSize } = getChatPrefsFromWorkspace(workspace, deviceType);
+                if (deviceType !== 'mobile' && loadedSize.width >= MIN_SHEET_WIDTH) {
+                    setSheetWidth(loadedSize.width);
                 }
                 lastLoadedDeviceRef.current = deviceType;
             } catch (err) {
                 log.error('[AiChatBubble] Failed to load preferences:', err);
-                try {
-                    const saved = localStorage.getItem('chouseui-chat-position');
-                    if (saved) setPosition(JSON.parse(saved));
-                } catch { /* ignore */ }
             }
         };
         loadFromDb();
     }, [hasPermission, deviceType]);
 
-    // Compute max constraints based on viewport
-    const maxWidth = Math.min(DEFAULT_DESKTOP_WIDTH, viewportWidth - 40);
-    const maxHeight = Math.min(900, Math.round(viewportHeight * 0.96));
-
-    // Effective window dimensions for desktop
-    const effectiveWidth = Math.min(Math.max(windowSize.width, MIN_WIDTH), maxWidth);
-    const effectiveHeight = Math.min(Math.max(windowSize.height, MIN_HEIGHT), maxHeight);
-
-    // Compute zoom factor for proportional scaling (desktop resize only)
-    const zoomFactor = isDesktop
-        ? Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(effectiveWidth / DEFAULT_DESKTOP_WIDTH, effectiveHeight / DEFAULT_DESKTOP_HEIGHT)))
-        : 1;
-
-    const handleDragEnd = useCallback((_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo): void => {
-        const newPos = {
-            x: position.x + info.offset.x / zoomFactor,
-            y: position.y + info.offset.y / zoomFactor
-        };
-        setPosition(newPos);
-        saveChatPrefsDebounced(newPos, windowSizeRef.current);
-    }, [position, zoomFactor, saveChatPrefsDebounced]);
-
-    // Logical dimensions for internal layout
-    const logicalWidth = isDesktop ? effectiveWidth / zoomFactor : (isTablet ? 680 : viewportWidth);
-    const logicalHeight = isDesktop ? effectiveHeight / zoomFactor : (isTablet ? 840 : viewportHeight);
+    // Logical dimensions for internal layout (no zoom — side-sheet renders at 1:1)
+    const logicalWidth = isMobile ? viewportWidth : effectiveSheetWidth;
+    const logicalHeight = viewportHeight;
 
     // Adaptive internal layout thresholds
-    const hideSidebarThreshold = 900;
-    const singleColPromptThreshold = 600;
+    const hideSidebarThreshold = 720;
+    const singleColPromptThreshold = 520;
+    const shouldHideSidebar = showSidebar && !isMobile && logicalWidth < hideSidebarThreshold;
+    const useSingleColPrompt = isMobile || logicalWidth < singleColPromptThreshold;
 
-    const shouldHideSidebar = showSidebar && isDesktop && logicalWidth < hideSidebarThreshold;
-    const useSingleColPrompt = isMobile || (isDesktop && logicalWidth < singleColPromptThreshold);
-
-    // Resize handlers (desktop and tablet)
-    const handleResizeStart = useCallback((axis: 'both' | 'x' | 'y', e: React.PointerEvent) => {
+    // Width-only resize (drag the left edge of the sheet)
+    const [isResizing, setIsResizing] = useState(false);
+    const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+    const handleResizeStart = useCallback((e: React.PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        // Prevent default touch behaviors to ensure smooth resizing on mobile/tablet
-        if (e.pointerType === 'touch') {
-            e.preventDefault();
-        }
+        if (e.pointerType === 'touch') e.preventDefault();
         setIsResizing(true);
-        resizeRef.current = {
-            axis,
-            startX: e.clientX,
-            startY: e.clientY,
-            startW: effectiveWidth,
-            startH: effectiveHeight,
-        };
-    }, [effectiveWidth, effectiveHeight]);
+        resizeRef.current = { startX: e.clientX, startW: effectiveSheetWidth };
+    }, [effectiveSheetWidth]);
 
     useEffect(() => {
         if (!isResizing) return;
         const handlePointerMove = (e: globalThis.PointerEvent) => {
             if (!resizeRef.current) return;
-            // Prevent default touch behaviors to ensure smooth resizing on mobile/tablet
-            if (e.pointerType === 'touch') {
-                e.preventDefault();
-            }
-            const { axis, startX, startY, startW, startH } = resizeRef.current;
-            // Coordinate mapping: divide client delta by zoomFactor to get logical delta
-            const dx = axis !== 'y' ? (startX - e.clientX) / zoomFactor : 0;
-            const dy = axis !== 'x' ? (e.clientY - startY) / zoomFactor : 0;
-            setWindowSize({
-                width: Math.min(Math.max(startW + dx * zoomFactor, MIN_WIDTH), maxWidth),
-                height: Math.min(Math.max(startH + dy * zoomFactor, MIN_HEIGHT), maxHeight),
-            });
+            if (e.pointerType === 'touch') e.preventDefault();
+            const { startX, startW } = resizeRef.current;
+            // Dragging left grows the sheet (sheet is anchored to the right edge).
+            const next = Math.min(Math.max(startW + (startX - e.clientX), MIN_SHEET_WIDTH), maxSheetWidth);
+            setSheetWidth(next);
         };
         const handlePointerUp = () => {
             setIsResizing(false);
@@ -1018,17 +972,17 @@ export default function AiChatBubble() {
             window.removeEventListener('pointermove', handlePointerMove);
             window.removeEventListener('pointerup', handlePointerUp);
         };
-    }, [isResizing, maxWidth, maxHeight, zoomFactor]);
+    }, [isResizing, maxSheetWidth]);
 
-    // Save position + size when resize ends (isResizing goes true -> false)
+    // Save width when resize ends
     const prevResizingRef = useRef(false);
     useEffect(() => {
         const wasResizing = prevResizingRef.current;
         prevResizingRef.current = isResizing;
         if (wasResizing && !isResizing) {
-            saveChatPrefsDebounced(position, windowSize);
+            saveChatPrefsDebounced(sheetWidthRef.current);
         }
-    }, [isResizing, position, windowSize, saveChatPrefsDebounced]);
+    }, [isResizing, saveChatPrefsDebounced]);
 
     // Auto-close sidebar on smaller breakpoints
     useEffect(() => {
@@ -1401,8 +1355,8 @@ export default function AiChatBubble() {
                         className="ai-chat-fab group"
                         title="Open AI Chat"
                     >
-                        <Sparkles className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
-                        <div className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-violet-500 animate-pulse" />
+                        <Sparkles className="w-5 h-5 transition-colors" aria-hidden />
+                        <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-emerald-400 ring-2 ring-ink-100" aria-hidden />
                     </button>
                 ) : (
                     <div
@@ -1414,30 +1368,27 @@ export default function AiChatBubble() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            width: 48,
-                            height: 120,
+                            width: 40,
+                            height: 110,
                         }}
                     >
                         <button
+                            type="button"
                             onClick={() => setIsOpen(true)}
-                            aria-label="Open AI Chat"
-                            className="flex items-center justify-center
-                                       transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform-gpu
-                                       w-10 h-24 rounded-l-xl
-                                       shadow-xl shadow-violet-500/10 cursor-pointer
-                                       bg-black/60 backdrop-blur-xl hover:bg-black/80
-                                       border-y border-l border-white/10 hover:border-violet-500/30
-                                       opacity-70 hover:opacity-100 hover:-translate-x-1
-                                       group"
-                            title="Open AI Chat"
+                            aria-label="Open AI chat"
+                            className="group flex items-center justify-center
+                                       w-9 h-24 rounded-l-md cursor-pointer
+                                       bg-ink-100 border-y border-l border-ink-500
+                                       text-paper-dim
+                                       transition-[border-color,background-color,color,transform] duration-200
+                                       hover:bg-ink-200 hover:border-brand hover:text-brand
+                                       hover:-translate-x-px"
+                            title="Open AI chat"
                         >
                             <div className="flex flex-col items-center gap-1.5 py-3">
-                                <div className="relative">
-                                    <Sparkles className="w-4 h-4 text-violet-400 group-hover:text-violet-300 transition-colors" />
-                                    <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-                                </div>
+                                <Sparkles className="w-3.5 h-3.5" aria-hidden />
                                 <span
-                                    className="text-xs font-semibold text-zinc-300 group-hover:text-white tracking-wide transition-colors"
+                                    className="font-mono text-[10px] uppercase tracking-[0.18em]"
                                     style={{ writingMode: 'vertical-lr' }}
                                 >
                                     Ask AI
@@ -1448,126 +1399,68 @@ export default function AiChatBubble() {
                 )
             )}
 
-            {/* Chat Window Container */}
+            {/* Chat Window Container — side-sheet docked to the right edge on desktop/tablet, full-screen on mobile */}
             {isOpen && (
                 <div
                     className="fixed z-50 pointer-events-none"
                     style={isMobile ? {
-                        inset: 0
-                    } : isTablet ? {
-                        top: '50%',
-                        right: '12px',
-                        transform: 'translateY(-50%)',
-                        transformOrigin: '100% 50%',
-                        width: 'min(680px, calc(100vw - 24px))',
-                        height: 'min(840px, 94vh)',
+                        inset: 0,
                     } : {
-                        top: '50%',
-                        right: '20px',
-                        transform: `translateY(-50%) scale(${zoomFactor})`,
-                        transformOrigin: '100% 50%',
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
                         width: `${logicalWidth}px`,
-                        height: `${logicalHeight}px`,
                     }}
                 >
                     <motion.div
-                        drag={true}
-                        dragControls={dragControls}
-                        dragListener={false}
-                        dragMomentum={false}
-                        onDragEnd={handleDragEnd}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1, x: position.x, y: position.y }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        style={{ touchAction: 'none' }}
-                        className={`pointer-events-auto flex flex-col overflow-hidden bg-black/70 backdrop-blur-2xl border-white/10 shadow-black/60 shadow-2xl w-full h-full
-                                    ${isMobile ? 'border-0 rounded-none animate-[slideUpFull_0.3s_ease-out]' : 'border rounded-2xl'}`}
+                        initial={isMobile ? { opacity: 0 } : { x: '100%' }}
+                        animate={isMobile ? { opacity: 1 } : { x: 0 }}
+                        exit={isMobile ? { opacity: 0 } : { x: '100%' }}
+                        transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+                        className={`pointer-events-auto flex flex-col overflow-hidden bg-ink-100 shadow-2xl shadow-black/40 w-full h-full
+                                    ${isMobile ? 'border-0 rounded-none animate-[slideUpFull_0.3s_ease-out]' : 'border-l border-ink-500'}`}
                     >
                         {/* Main content wrapper */}
                         <div className="flex flex-col flex-1 relative w-full h-full">
-                            {/* Desktop/Tablet Resize Handles */}
-                            {!isMobile && !isResizing && (
-                                <>
-                                    <div
-                                        className="ai-chat-resize-corner"
-                                        style={{ touchAction: 'none' }}
-                                        onPointerDown={(e) => {
-                                            if (e.pointerType === 'touch') {
-                                                e.preventDefault();
-                                            }
-                                            handleResizeStart('both', e);
-                                        }}
-                                    />
-                                    <div
-                                        className="ai-chat-resize-left"
-                                        style={{ touchAction: 'none' }}
-                                        onPointerDown={(e) => {
-                                            if (e.pointerType === 'touch') {
-                                                e.preventDefault();
-                                            }
-                                            handleResizeStart('x', e);
-                                        }}
-                                    />
-                                    <div
-                                        className="ai-chat-resize-bottom"
-                                        style={{ touchAction: 'none' }}
-                                        onPointerDown={(e) => {
-                                            if (e.pointerType === 'touch') {
-                                                e.preventDefault();
-                                            }
-                                            handleResizeStart('y', e);
-                                        }}
-                                    />
-                                </>
+                            {/* Left-edge width resize handle (desktop & tablet only) */}
+                            {!isMobile && (
+                                <div
+                                    className={`absolute left-0 top-0 z-30 h-full w-1.5 -translate-x-1/2 cursor-ew-resize ${isResizing ? 'bg-brand/40' : 'hover:bg-brand/30'}`}
+                                    style={{ touchAction: 'none' }}
+                                    onPointerDown={(e) => {
+                                        if (e.pointerType === 'touch') e.preventDefault();
+                                        handleResizeStart(e);
+                                    }}
+                                    aria-label="Resize sheet width"
+                                />
                             )}
-                            {/* Full-screen opaque drag overlay to prevent iframe/selection issues during drag */}
+                            {/* Full-screen overlay to keep pointer events smooth during resize */}
                             {isResizing && (
-                                <div className="fixed inset-0 z-[100] cursor-grabbing" style={{ left: '-100vw', right: '-100vw', top: '-100vh', bottom: '-100vh' }} />
+                                <div className="fixed inset-0 z-[100] cursor-ew-resize" />
                             )}
 
-                            {/* Glow orbs behind window */}
-                            <div className="absolute -top-32 -right-32 w-64 h-64 bg-violet-500/15 rounded-full blur-3xl pointer-events-none" />
-                            <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                            {/* Header — never shrinks; full header is draggable */}
-                            <div
-                                className={`relative z-10 flex-shrink-0 flex items-center justify-between px-5 py-3
-                                      bg-white/[0.03] backdrop-blur-sm
-                                      border-b border-white/[0.06]
-                                      ${!isResizing ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                                style={!isResizing ? { touchAction: 'none' } : undefined}
-                                aria-label="Drag to move"
-                                title={!isResizing ? 'Drag to move' : undefined}
-                                onPointerDown={
-                                    !isResizing
-                                        ? (e) => {
-                                            const target = e.target instanceof Element ? e.target : null;
-                                            if (target?.closest('button, [role=button], a, input, select, textarea, [role=combobox], [role=listbox]')) return;
-                                            if (e.pointerType === 'touch') e.preventDefault();
-                                            dragControls.start(e);
-                                        }
-                                        : undefined
-                                }
-                            >
+                            {/* Header — never shrinks (sheet is anchored; no longer draggable) */}
+                            <div className="relative z-10 flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-ink-200 border-b border-ink-500">
                                 <div className="flex items-center gap-3">
                                     <button
+                                        type="button"
                                         onClick={() => setShowSidebar(!showSidebar)}
-                                        className="p-1.5 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200"
+                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
                                         title={showSidebar ? 'Close sidebar' : 'Thread history'}
+                                        aria-label={showSidebar ? 'Close sidebar' : 'Thread history'}
                                     >
-                                        {showSidebar ? <PanelLeftClose className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+                                        {showSidebar ? <PanelLeftClose className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
                                     </button>
                                     <div className="flex items-center gap-2.5">
                                         <div className="relative">
-                                            <div className="p-1.5 rounded-lg bg-gradient-to-br from-violet-500/20 to-indigo-500/20">
-                                                <Bot className="w-4 h-4 text-violet-400" />
-                                            </div>
-                                            <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-black/70 animate-pulse" />
+                                            <span className="grid h-7 w-7 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+                                                <Bot className="h-3.5 w-3.5" aria-hidden />
+                                            </span>
+                                            <span className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400 ring-2 ring-ink-200" aria-hidden />
                                         </div>
-                                        <div>
-                                            <span className="text-sm font-semibold text-zinc-100">CHouse AI</span>
-                                            <span className="text-[10px] text-emerald-400/60 ml-2 font-medium">Online</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[13px] font-semibold text-paper">CHouse AI</span>
+                                            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Online</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1577,64 +1470,69 @@ export default function AiChatBubble() {
                                         <div className="mr-2 hidden sm:block">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                    <button className="flex items-center gap-2 bg-black/40 text-xs text-zinc-300 border border-white/10 rounded-lg px-2.5 py-1.5 hover:bg-white/5 hover:border-white/20 transition-colors max-w-[160px]">
-                                                        <span className="truncate">{aiModels.find(m => m.id === selectedModelId)?.name || 'Select Model'}</span>
-                                                        <ChevronDown className="w-3 h-3 opacity-50 flex-shrink-0" />
+                                                    <button type="button" className="inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper hover:border-ink-700 hover:bg-ink-300 transition-colors max-w-[180px]">
+                                                        <span className="truncate">{aiModels.find(m => m.id === selectedModelId)?.name || 'Select model'}</span>
+                                                        <ChevronDown className="h-3 w-3 text-paper-dim shrink-0" aria-hidden />
                                                     </button>
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-[240px] bg-[#1a1c24] border-white/10 p-2 shadow-2xl">
-                                                    <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-2 py-1.5 flex flex-col mb-1">
+                                                <DropdownMenuContent align="end" className="w-[240px] rounded-md border-ink-500 bg-ink-100 p-0">
+                                                    <div className="border-b border-ink-500 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
                                                         AI Models
                                                     </div>
-                                                    <div className="flex flex-col gap-1 max-h-[280px] overflow-y-auto custom-scrollbar">
-                                                        {aiModels.map(m => (
-                                                            <DropdownMenuItem
-                                                                key={m.id}
-                                                                onClick={() => setSelectedModelId(m.id)}
-                                                                className={`flex items-start gap-2.5 px-3 py-2 cursor-pointer rounded-lg transition-colors ${selectedModelId === m.id
-                                                                    ? "bg-violet-500/15 text-violet-200"
-                                                                    : "hover:bg-white/5 text-zinc-300"
-                                                                    }`}
-                                                            >
-                                                                <div className="mt-0.5 flex-shrink-0">
-                                                                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${selectedModelId === m.id ? "border-violet-400" : "border-zinc-600"}`}>
-                                                                        {selectedModelId === m.id && <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
+                                                    <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto p-1">
+                                                        {aiModels.map(m => {
+                                                            const isCurrent = selectedModelId === m.id;
+                                                            return (
+                                                                <DropdownMenuItem
+                                                                    key={m.id}
+                                                                    onClick={() => setSelectedModelId(m.id)}
+                                                                    className={`flex items-start gap-2.5 rounded-xs px-3 py-2 cursor-pointer transition-colors hover:bg-ink-200 ${isCurrent ? "bg-ink-200" : ""}`}
+                                                                >
+                                                                    <div className="mt-0.5 flex-shrink-0">
+                                                                        <div className={`grid h-3.5 w-3.5 place-items-center rounded-full border ${isCurrent ? "border-brand" : "border-ink-700"}`}>
+                                                                            {isCurrent && <div className="h-1.5 w-1.5 rounded-full bg-brand" />}
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                                <div className="flex flex-col gap-0.5 min-w-0">
-                                                                    <span className={`text-[13px] font-medium truncate ${selectedModelId === m.id ? "text-violet-200" : "text-zinc-200"}`}>
-                                                                        {m.name}
-                                                                    </span>
-                                                                    <span className="text-[10px] text-zinc-500 uppercase font-medium tracking-wide truncate">
-                                                                        {m.provider || 'AI Provider'}
-                                                                    </span>
-                                                                </div>
-                                                            </DropdownMenuItem>
-                                                        ))}
+                                                                    <div className="flex min-w-0 flex-col gap-0.5">
+                                                                        <span className={`truncate text-[13px] font-medium ${isCurrent ? "text-paper" : "text-paper-muted"}`}>
+                                                                            {m.name}
+                                                                        </span>
+                                                                        <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                                                                            {m.provider || 'AI provider'}
+                                                                        </span>
+                                                                    </div>
+                                                                </DropdownMenuItem>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </div>
                                     )}
-                                    {isDesktop && (
+                                    {!isMobile && (
                                         <button
                                             onClick={() => {
-                                                const newSize = windowSize.width >= DEFAULT_DESKTOP_WIDTH * 0.9
-                                                    ? { width: 500, height: 700 }
-                                                    : { width: DEFAULT_DESKTOP_WIDTH, height: DEFAULT_DESKTOP_HEIGHT };
-                                                setWindowSize(newSize);
-                                                saveChatPrefsDebounced(position, newSize);
+                                                // Cycle: compact → standard → wide → compact
+                                                const next = sheetWidth >= SHEET_WIDTH_WIDE
+                                                    ? SHEET_WIDTH_COMPACT
+                                                    : sheetWidth >= SHEET_WIDTH_STANDARD
+                                                        ? SHEET_WIDTH_WIDE
+                                                        : SHEET_WIDTH_STANDARD;
+                                                const clamped = Math.min(next, maxSheetWidth);
+                                                setSheetWidth(clamped);
+                                                saveChatPrefsDebounced(clamped);
                                             }}
-                                            className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200 mr-1"
-                                            title={windowSize.width >= DEFAULT_DESKTOP_WIDTH * 0.9 ? "Compact mode" : "Default size"}
+                                            className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper mr-1"
+                                            title={sheetWidth >= SHEET_WIDTH_WIDE ? 'Compact sheet' : sheetWidth >= SHEET_WIDTH_STANDARD ? 'Wide sheet' : 'Standard sheet'}
+                                            aria-label="Cycle sheet width"
                                         >
-                                            {windowSize.width >= DEFAULT_DESKTOP_WIDTH * 0.9 ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                                            {sheetWidth >= SHEET_WIDTH_WIDE ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                                         </button>
                                     )}
                                     <button
                                         onClick={handleExportThread}
                                         disabled={!activeThreadId || messages.length === 0}
-                                        className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper disabled:opacity-40 disabled:cursor-not-allowed"
                                         title="Export thread"
                                         aria-label="Export thread"
                                     >
@@ -1642,14 +1540,14 @@ export default function AiChatBubble() {
                                     </button>
                                     <button
                                         onClick={handleNewThread}
-                                        className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200"
+                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
                                         title="New chat"
                                     >
                                         <Plus className="w-4 h-4" />
                                     </button>
                                     <button
                                         onClick={() => setIsOpen(false)}
-                                        className="p-2 rounded-lg hover:bg-white/[0.08] transition-colors text-zinc-500 hover:text-zinc-200"
+                                        className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
                                         title="Close (Esc)"
                                     >
                                         <X className="w-4 h-4" />
@@ -1660,20 +1558,20 @@ export default function AiChatBubble() {
                             <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden">
                                 {/* Thread Sidebar — on mobile it acts as an overlay/slideover. Auto-hide on small desktop logical widths. */}
                                 {showSidebar && !shouldHideSidebar && (
-                                    <div className={`flex-shrink-0 bg-black/80 backdrop-blur-xl border-r border-white/[0.06] overflow-y-auto z-20 transition-all ${isMobile ? 'absolute inset-0 w-full' : 'absolute left-0 top-0 bottom-0 w-72 md:relative md:w-72'}`}>
+                                    <div className={`flex-shrink-0 bg-ink-100 border-r border-ink-500 overflow-y-auto z-20 transition-all ${isMobile ? 'absolute inset-0 w-full' : 'absolute left-0 top-0 bottom-0 w-72 md:relative md:w-72'}`}>
                                         <div className="p-3">
-                                            <div className="flex items-center justify-between mb-3 px-1">
-                                                <h3 className="text-[13px] font-semibold text-zinc-500 uppercase tracking-wider">
+                                            <div className="mb-3 flex items-center justify-between px-1">
+                                                <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
                                                     Conversations
                                                 </h3>
-                                                <span className="text-[11px] text-zinc-600">{threads.length}</span>
+                                                <span className="font-mono text-[10px] text-paper-faint">{threads.length}</span>
                                             </div>
                                             {isLoadingThreads ? (
                                                 <div className="flex items-center justify-center py-8">
-                                                    <Loader2 className="w-4 h-4 text-zinc-600 animate-spin" />
+                                                    <Loader2 className="w-4 h-4 text-paper-dim animate-spin" />
                                                 </div>
                                             ) : threads.length === 0 ? (
-                                                <p className="text-sm text-zinc-600 text-center py-8">No conversations yet</p>
+                                                <p className="text-[12px] text-paper-faint text-center py-8">No conversations yet</p>
                                             ) : (
                                                 <div className="py-2">
                                                     <CollapsibleThreadGroup
@@ -1713,7 +1611,7 @@ export default function AiChatBubble() {
                                                         defaultExpanded={true}
                                                     />
                                                     {groupedThreads.recent.length === 0 && groupedThreads.last24Hours.length === 0 && groupedThreads.last7Days.length === 0 && (
-                                                        <p className="text-sm text-zinc-600 text-center py-8">No recent conversations</p>
+                                                        <p className="text-[12px] text-paper-faint text-center py-8">No recent conversations</p>
                                                     )}
                                                 </div>
                                             )}
@@ -1727,98 +1625,87 @@ export default function AiChatBubble() {
                                     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
                                         {!activeThreadId ? (
                                             /* Welcome screen */
-                                            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-                                                <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20
-                                                  flex items-center justify-center mb-6 ring-1 ring-white/10">
-                                                    <Sparkles className="w-9 h-9 text-violet-400" />
-                                                    <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-black/50 animate-pulse" />
+                                            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+                                                <div className="relative mb-6 grid h-14 w-14 place-items-center rounded-md border border-ink-500 bg-ink-200">
+                                                    <Sparkles className="h-6 w-6 text-paper-muted" aria-hidden />
+                                                    <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-ink-100" aria-hidden />
                                                 </div>
-                                                <h3 className="text-2xl font-bold bg-gradient-to-r from-violet-300 via-indigo-300 to-violet-400 bg-clip-text text-transparent mb-2">
+                                                <span className="mb-2 inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                                                    <span className="h-px w-6 bg-ink-700" aria-hidden />
                                                     CHouse AI
+                                                </span>
+                                                <h3 className="mb-2 text-xl font-semibold tracking-tight text-paper">
+                                                    Ask anything about{" "}
+                                                    <span className="text-paper-dim">your ClickHouse data.</span>
                                                 </h3>
-                                                <p className="text-sm text-zinc-500 mb-8 leading-relaxed max-w-md">
-                                                    Your intelligent ClickHouse assistant. Explore schemas, write queries,
-                                                    analyze performance, and get instant insights from your data.
+                                                <p className="mb-8 max-w-md text-[13px] leading-relaxed text-paper-muted">
+                                                    Explore schemas, write queries, analyze performance, and get insights — straight from the editor.
                                                 </p>
-                                                {/* Suggested prompts — random subset with shuffle */}
-                                                <div className="w-full max-w-lg mb-6">
-                                                    <div className={`grid gap-3 ${useSingleColPrompt ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                                                        {visiblePrompts.map((sp) => (
-                                                            <button
-                                                                key={sp.label}
-                                                                onClick={async () => { if (!activeThreadId) { await handleNewThread(); } setInput(sp.prompt); setTimeout(() => inputRef.current?.focus(), 100); }}
-                                                                className="flex items-center gap-3 px-4 py-3.5 rounded-xl
-                                                             bg-white/[0.04] border border-white/[0.07]
-                                                             hover:bg-violet-500/10 hover:border-violet-500/20
-                                                             hover:shadow-lg hover:shadow-violet-500/5
-                                                             text-left transition-all duration-300 group"
-                                                            >
-                                                                <div className="p-1.5 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/20 transition-colors">
-                                                                    <sp.icon className="w-3.5 h-3.5 text-violet-400/70 group-hover:text-violet-300 transition-colors" />
-                                                                </div>
-                                                                <span className="text-xs text-zinc-400 group-hover:text-zinc-200 transition-colors">{sp.label}</span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                    <button
-                                                        onClick={() => setShuffleKey(Date.now())}
-                                                        className="flex items-center gap-1.5 mx-auto mt-3 px-3 py-1.5 rounded-lg
-                                                     text-[11px] text-zinc-600 hover:text-zinc-300
-                                                     hover:bg-white/[0.04] transition-all duration-200"
-                                                        title="Show different suggestions"
-                                                    >
-                                                        <Shuffle className="w-3 h-3" />
-                                                        More suggestions
-                                                    </button>
-                                                </div>
-                                                <button
-                                                    onClick={handleNewThread}
-                                                    className="px-6 py-2.5 rounded-xl
-                                                 bg-gradient-to-r from-violet-500 to-indigo-600
-                                                 hover:from-violet-400 hover:to-indigo-500
-                                                 text-white text-sm font-medium transition-all duration-300
-                                                 flex items-center gap-2
-                                                 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40"
-                                                >
-                                                    <Plus className="w-4 h-4" />
-                                                    Start New Chat
-                                                </button>
-                                            </div>
-                                        ) : messages.length === 0 ? (
-                                            /* Thread selected but empty */
-                                            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-                                                <div className="p-3 rounded-2xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 ring-1 ring-white/[0.06] mb-4">
-                                                    <Bot className="w-8 h-8 text-violet-400/60" />
-                                                </div>
-                                                <p className="text-sm text-zinc-500 mb-6">
-                                                    Ask me anything about your ClickHouse databases
-                                                </p>
-                                                <div className="w-full max-w-md">
+                                                {/* Suggested prompts */}
+                                                <div className="mb-6 w-full max-w-lg">
                                                     <div className={`grid gap-2 ${useSingleColPrompt ? 'grid-cols-1' : 'grid-cols-2'}`}>
                                                         {visiblePrompts.map((sp) => (
                                                             <button
                                                                 key={sp.label}
+                                                                type="button"
                                                                 onClick={async () => { if (!activeThreadId) { await handleNewThread(); } setInput(sp.prompt); setTimeout(() => inputRef.current?.focus(), 100); }}
-                                                                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl
-                                                             bg-white/[0.04] border border-white/[0.07]
-                                                             hover:bg-violet-500/10 hover:border-violet-500/20
-                                                             text-left transition-all duration-300 group"
+                                                                className="group flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5 text-left transition-colors hover:border-ink-700 hover:bg-ink-300"
                                                             >
-                                                                <div className="p-1 rounded-md bg-violet-500/10 group-hover:bg-violet-500/20 transition-colors">
-                                                                    <sp.icon className="w-3 h-3 text-violet-400/60 group-hover:text-violet-300 transition-colors" />
-                                                                </div>
-                                                                <span className="text-xs text-zinc-500 group-hover:text-zinc-200 transition-colors">{sp.label}</span>
+                                                                <sp.icon className="h-3.5 w-3.5 shrink-0 text-paper-dim transition-colors group-hover:text-brand" aria-hidden />
+                                                                <span className="text-[12px] text-paper-muted transition-colors group-hover:text-paper">{sp.label}</span>
                                                             </button>
                                                         ))}
                                                     </div>
                                                     <button
+                                                        type="button"
                                                         onClick={() => setShuffleKey(Date.now())}
-                                                        className="flex items-center gap-1.5 mx-auto mt-2.5 px-3 py-1.5 rounded-lg
-                                                     text-[11px] text-zinc-600 hover:text-zinc-300
-                                                     hover:bg-white/[0.04] transition-all duration-200"
+                                                        className="mx-auto mt-3 flex items-center gap-1.5 rounded-xs px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper"
                                                         title="Show different suggestions"
                                                     >
-                                                        <Shuffle className="w-3 h-3" />
+                                                        <Shuffle className="h-3 w-3" />
+                                                        More suggestions
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleNewThread}
+                                                    className="inline-flex h-10 items-center gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 transition-[transform,background-color] duration-200 hover:bg-brand-soft hover:-translate-y-px"
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                    Start new chat
+                                                </button>
+                                            </div>
+                                        ) : messages.length === 0 ? (
+                                            /* Thread selected but empty — compact top-aligned, leaves space for input below */
+                                            <div className="flex flex-col items-start gap-5 px-6 pt-10">
+                                                <span className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                                                    <span className="h-px w-6 bg-ink-700" aria-hidden />
+                                                    New conversation
+                                                </span>
+                                                <h3 className="text-[15px] font-medium leading-snug text-paper">
+                                                    Ask anything about your ClickHouse databases.
+                                                </h3>
+                                                <div className="w-full">
+                                                    <div className={`grid gap-2 ${useSingleColPrompt ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                                                        {visiblePrompts.map((sp) => (
+                                                            <button
+                                                                key={sp.label}
+                                                                type="button"
+                                                                onClick={async () => { if (!activeThreadId) { await handleNewThread(); } setInput(sp.prompt); setTimeout(() => inputRef.current?.focus(), 100); }}
+                                                                className="group flex items-center gap-2.5 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5 text-left transition-colors hover:border-ink-700 hover:bg-ink-300"
+                                                            >
+                                                                <sp.icon className="h-3 w-3 shrink-0 text-paper-dim transition-colors group-hover:text-brand" aria-hidden />
+                                                                <span className="text-[12px] text-paper-muted transition-colors group-hover:text-paper">{sp.label}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShuffleKey(Date.now())}
+                                                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-xs px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper"
+                                                        title="Show different suggestions"
+                                                    >
+                                                        <Shuffle className="h-3 w-3" />
                                                         More suggestions
                                                     </button>
                                                 </div>
@@ -1855,23 +1742,23 @@ export default function AiChatBubble() {
                                                                     style={{ animation: `fadeSlideIn 0.3s ease-out ${Math.min(idx * 0.05, 0.3)}s both` }}
                                                                 >
                                                         {msg.role === 'assistant' && (
-                                                            <div className={`w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5
+                                                            <div className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-xs border
                                                               ${msg.isError
-                                                                    ? 'bg-red-500/15 ring-1 ring-red-500/20'
-                                                                    : 'bg-gradient-to-br from-violet-500/20 to-indigo-500/20 ring-1 ring-white/[0.06]'}`}>
+                                                                    ? 'border-red-900/60 bg-red-950/40'
+                                                                    : 'border-brand/40 bg-brand/5'}`}>
                                                                 {msg.isError
-                                                                    ? <AlertCircle className="w-3.5 h-3.5 text-red-400" />
-                                                                    : <Bot className="w-3.5 h-3.5 text-violet-400" />}
+                                                                    ? <AlertCircle className="w-3.5 h-3.5 text-red-300" />
+                                                                    : <Bot className="w-3.5 h-3.5 text-brand" />}
                                                             </div>
                                                         )}
-                                                        <div className={`flex flex-col gap-0.5 min-w-0 ${msg.role === 'assistant' && msg.chartSpecs?.length ? 'flex-1' : ''}`} style={{ maxWidth: msg.role === 'user' ? '75%' : '85%' }}>
+                                                        <div className={`flex flex-col gap-1 min-w-0 ${msg.role === 'assistant' && msg.chartSpecs?.length ? 'flex-1' : ''}`} style={{ maxWidth: msg.role === 'user' ? '75%' : '85%' }}>
                                                             <div
-                                                                className={`rounded-2xl px-4 py-3 text-sm leading-relaxed overflow-hidden
+                                                                className={`rounded-xs px-3 py-2.5 text-[13px] leading-relaxed overflow-hidden border
                                                               ${msg.role === 'user'
-                                                                        ? 'bg-violet-500/15 text-zinc-100 border border-violet-500/15'
+                                                                        ? 'border-ink-500 bg-ink-200 text-paper'
                                                                         : msg.isError
-                                                                            ? 'bg-red-500/10 text-red-300 border border-red-500/15'
-                                                                            : 'bg-white/[0.04] text-zinc-200 border border-white/[0.06]'
+                                                                            ? 'border-red-900/60 bg-red-950/40 text-red-200'
+                                                                            : 'border-ink-500 bg-ink-100 text-paper'
                                                                     }`}
                                                             >
                                                                 {msg.role === 'assistant' ? (
@@ -1883,21 +1770,21 @@ export default function AiChatBubble() {
                                                                             />
                                                                         )}
                                                                         {msg.isStreaming && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
-                                                                            <div className="flex items-center gap-2 text-violet-400/80 text-xs py-1">
+                                                                            <div className="flex items-center gap-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                                                                                 <Loader2 className="w-3 h-3 animate-spin" />
                                                                                 <span>{msg.toolStatus}</span>
                                                                             </div>
                                                                         )}
                                                                         {msg.isError ? (
                                                                             <div className="flex flex-col gap-2">
-                                                                                <p className="text-sm text-red-300/90">{msg.content}</p>
+                                                                                <p className="text-[13px] text-red-200">{msg.content}</p>
                                                                                 {msg.retryPrompt && (msg.retryable !== false) && (
                                                                                     <button
                                                                                         onClick={() => handleRetry(msg.retryPrompt!)}
                                                                                         disabled={isStreaming}
-                                                                                        className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300
+                                                                                        className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300 hover:text-red-200
                                                                                      disabled:opacity-40 transition-colors self-start
-                                                                                     px-2 py-1 rounded-lg hover:bg-red-500/10"
+                                                                                     px-2 py-1 rounded-xs hover:bg-red-950/40"
                                                                                         aria-label="Retry"
                                                                                     >
                                                                                         <RefreshCw className="w-3 h-3" />
@@ -1926,11 +1813,11 @@ export default function AiChatBubble() {
                                                                 )}
                                                             </div>
                                                             <div className={`flex items-center gap-1 px-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                                <span className="text-[10px] text-zinc-600">{timeAgo(msg.createdAt)}</span>
+                                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{timeAgo(msg.createdAt)}</span>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => copyToClipboard(msg.content, 'Message')}
-                                                                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-all"
+                                                                    className="p-1 rounded-xs opacity-0 group-hover:opacity-100 hover:bg-ink-300 text-paper-dim hover:text-paper transition-colors"
                                                                     title="Copy message"
                                                                     aria-label="Copy message"
                                                                 >
@@ -1940,8 +1827,8 @@ export default function AiChatBubble() {
                                                         </div>
                                                         {
                                                             msg.role === 'user' && (
-                                                                <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-indigo-500/20 to-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-white/[0.06]">
-                                                                    <User className="w-3.5 h-3.5 text-indigo-400" />
+                                                                <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-200">
+                                                                    <User className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
                                                                 </div>
                                                             )
                                                         }
@@ -1955,10 +1842,10 @@ export default function AiChatBubble() {
                                         )}
                                     </div>
 
-                                    {/* Input Area */}
+                                    {/* Input area */}
                                     {activeThreadId && (
-                                        <div className={`relative z-10 flex-shrink-0 px-5 border-t border-white/[0.06] bg-black/40 backdrop-blur-sm ${isMobile ? 'pt-3 pb-6' : 'py-3'}`}>
-                                            <form onSubmit={handleSend} className="flex items-end gap-3">
+                                        <div className={`relative z-10 flex-shrink-0 border-t border-ink-500 bg-ink-200 px-4 ${isMobile ? 'pt-3 pb-6' : 'py-3'}`}>
+                                            <form onSubmit={handleSend} className="flex items-end gap-2">
                                                 <textarea
                                                     ref={inputRef}
                                                     value={input}
@@ -1967,12 +1854,11 @@ export default function AiChatBubble() {
                                                     placeholder="Ask about your databases, schemas, queries…"
                                                     disabled={isStreaming}
                                                     rows={1}
-                                                    className="flex-1 resize-none rounded-xl px-4 py-3 text-sm
-                                             bg-white/[0.05] border border-white/[0.08] text-zinc-100
-                                             placeholder:text-zinc-600
-                                             focus:outline-none focus:border-violet-500/30 focus:ring-2 focus:ring-violet-500/10
-                                             disabled:opacity-40 transition-all duration-200
-                                             max-h-[120px] min-h-[44px]"
+                                                    className="flex-1 resize-none rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5
+                                                               font-mono text-[12.5px] text-paper placeholder:text-paper-faint
+                                                               focus:border-brand focus:outline-none focus:ring-0
+                                                               disabled:opacity-40 transition-colors
+                                                               max-h-[120px] min-h-[44px]"
                                                     style={{ height: 'auto' }}
                                                     onInput={(e) => {
                                                         const target = e.target as HTMLTextAreaElement;
@@ -1984,34 +1870,31 @@ export default function AiChatBubble() {
                                                     <button
                                                         type="button"
                                                         onClick={handleStop}
-                                                        className="p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/15
-                                                 text-red-400 transition-all duration-200 flex-shrink-0"
+                                                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300 transition-colors hover:border-red-700 hover:bg-red-900/50"
                                                         title="Stop generating"
                                                         aria-label="Stop generating"
                                                     >
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
                                                     </button>
                                                 ) : (
                                                     <button
                                                         type="submit"
                                                         disabled={!input.trim()}
-                                                        className="p-3 rounded-xl
-                                                 bg-gradient-to-r from-violet-500 to-indigo-600
-                                                 hover:from-violet-400 hover:to-indigo-500
-                                                 disabled:from-white/[0.04] disabled:to-white/[0.04] disabled:text-zinc-600
-                                                 text-white transition-all duration-300 flex-shrink-0
-                                                 shadow-lg shadow-violet-500/20 disabled:shadow-none"
+                                                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xs bg-brand text-ink-50 transition-[transform,background-color] duration-200 hover:bg-brand-soft hover:-translate-y-px disabled:bg-ink-300 disabled:text-paper-faint disabled:translate-y-0"
                                                         title="Send message"
+                                                        aria-label="Send"
                                                     >
-                                                        <Send className="w-4 h-4" />
+                                                        <Send className="h-4 w-4" />
                                                     </button>
                                                 )}
                                             </form>
-                                            <div className="flex items-center justify-between mt-1.5 px-1">
-                                                <span className="text-[10px] text-zinc-700">Shift+Enter for new line · Esc to close</span>
+                                            <div className="mt-2 flex items-center justify-between px-1">
+                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                                                    Shift+Enter newline · Esc close
+                                                </span>
                                                 {isStreaming && toolStatus && (
-                                                    <span className="text-[10px] text-violet-400/60 flex items-center gap-1">
-                                                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                                    <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                                                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
                                                         {toolStatus}
                                                     </span>
                                                 )}

@@ -347,11 +347,11 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
       return {
         accessorKey: col.name,
         header: () => (
-          <div className="flex items-center justify-between w-full group cursor-default h-full px-1">
-            <span className="truncate font-medium text-white/60 group-hover:text-white/90 transition-colors duration-300 lowercase text-[13px]">
+          <div className="group flex h-full w-full cursor-default items-center justify-between px-1">
+            <span className="truncate font-mono text-[12px] lowercase text-paper-muted transition-colors group-hover:text-paper">
               {col.name}
             </span>
-            <span className={cn("cell-type-badge text-[9px] font-mono transition-all duration-500", typeClass)}>
+            <span className={cn("cell-type-badge font-mono text-[9px] transition-all duration-500", typeClass)}>
               {col.type}
             </span>
           </div>
@@ -406,7 +406,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           <Button
             variant="outline"
             size="sm"
-            className="bg-red-950/20 hover:bg-red-900/40 border-red-800 text-red-200"
+            className="rounded-xs border-ink-500 bg-ink-100 text-paper hover:border-brand hover:bg-ink-200 hover:text-brand"
             onClick={() => {
               setDebugError(errorMessage);
               const currentContent = typeof tab?.content === 'string' ? tab.content : '';
@@ -416,7 +416,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               setIsDebugDialogOpen(true);
             }}
           >
-            <Sparkles className="w-3.5 h-3.5 mr-2" />
+            <Sparkles className="mr-2 h-3.5 w-3.5" />
             Debug with AI
           </Button>
         </div>
@@ -483,18 +483,17 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           }}
           className="h-full flex flex-col"
         >
-          <TabsList className="rounded-none border-b border-white/5 bg-black/20 backdrop-blur-md px-4 w-full justify-start h-10">
-            {/* Show Results trigger to allow going back, but defaulting to Explain view */}
-            <TabsTrigger value="results" className="data-[state=active]:bg-white/5">
+          <TabsList className="h-9 w-full justify-start rounded-none border-b border-ink-500 bg-ink-100 px-3">
+            <TabsTrigger value="results" className="rounded-none border-x border-t border-transparent px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:border-ink-500 data-[state=active]:bg-ink-50 data-[state=active]:text-paper">
               Results
-              {hasData && <span className="ml-2 text-xs text-muted-foreground">({resultData.length})</span>}
+              {hasData && <span className="ml-2 text-paper-faint">({resultData.length})</span>}
             </TabsTrigger>
-            <TabsTrigger value="statistics" className="data-[state=active]:bg-white/5">
+            <TabsTrigger value="statistics" className="rounded-none border-x border-t border-transparent px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:border-ink-500 data-[state=active]:bg-ink-50 data-[state=active]:text-paper">
               Statistics
             </TabsTrigger>
             <TabsTrigger
               value="explain"
-              className="data-[state=active]:bg-white/5 group relative flex items-center gap-2"
+              className="group relative flex items-center gap-2 rounded-none border-x border-t border-transparent px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:border-ink-500 data-[state=active]:bg-ink-50 data-[state=active]:text-paper"
               draggable
               onDragEnd={(e) => {
                 if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
@@ -505,19 +504,19 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               Explain
               <span
                 role="button"
-                className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white/10 rounded p-0.5"
+                className="cursor-pointer rounded-xs p-0.5 opacity-0 transition-opacity hover:bg-ink-300 group-hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   handlePopout();
                 }}
                 title="Open in new window"
               >
-                <ExternalLink size={12} className="text-white" />
+                <ExternalLink size={12} className="text-paper-muted" />
               </span>
             </TabsTrigger>
           </TabsList>
           <div className="flex-1 overflow-hidden w-full relative">
-            <TabsContent value="explain" className="h-full m-0 overflow-hidden data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm">
+            <TabsContent value="explain" className="absolute inset-0 m-0 h-full overflow-hidden bg-ink-50 data-[state=inactive]:hidden">
               <ExplainTab
                 plan={explainPlan}
                 isLoading={isExplainLoading}
@@ -539,28 +538,27 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         onValueChange={setActiveTab}
         className="h-full flex flex-col"
       >
-        <TabsList className="rounded-none border-b border-white/5 bg-black/20 backdrop-blur-md px-4 w-full justify-start h-10">
-          <TabsTrigger value="results" className="data-[state=active]:bg-white/5">
+        <TabsList className="h-9 w-full justify-start rounded-none border-b border-ink-500 bg-ink-100 px-3">
+          <TabsTrigger value="results" className="rounded-none border-x border-t border-transparent px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:border-ink-500 data-[state=active]:bg-ink-50 data-[state=active]:text-paper">
             Results
             {hasData && (
-              <div className="ml-2 text-muted-foreground items-center flex gap-2">
-                <span className="text-xs">({resultData.length} rows)</span>
+              <span className="ml-2 flex items-center gap-2 text-paper-faint">
+                <span>({resultData.length} rows)</span>
                 <DownloadDialog data={resultData} trigger={
-                  <Button variant="ghost" size="icon" className="h-5 w-5 hover:bg-white/10 p-0 rounded-sm">
+                  <Button variant="ghost" size="icon" className="h-5 w-5 rounded-xs p-0 text-paper-dim hover:bg-ink-300 hover:text-paper">
                     <Download className="h-3 w-3" />
                   </Button>
                 } />
-              </div>
+              </span>
             )}
           </TabsTrigger>
-          {/* Metadata Tab Removed */}
-          <TabsTrigger value="statistics" className="data-[state=active]:bg-white/5">
+          <TabsTrigger value="statistics" className="rounded-none border-x border-t border-transparent px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:border-ink-500 data-[state=active]:bg-ink-50 data-[state=active]:text-paper">
             Statistics
           </TabsTrigger>
           {(explainPlan || isExplainLoading || explainError) && (
             <TabsTrigger
               value="explain"
-              className="data-[state=active]:bg-white/5 group relative flex items-center gap-2"
+              className="group relative flex items-center gap-2 rounded-none border-x border-t border-transparent px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:border-ink-500 data-[state=active]:bg-ink-50 data-[state=active]:text-paper"
               draggable
               onDragEnd={(e) => {
                 if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
@@ -571,14 +569,14 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               Explain
               <span
                 role="button"
-                className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-white/10 rounded p-0.5"
+                className="cursor-pointer rounded-xs p-0.5 opacity-0 transition-opacity hover:bg-ink-300 group-hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   handlePopout();
                 }}
                 title="Open in new window"
               >
-                <ExternalLink size={12} className="text-white" />
+                <ExternalLink size={12} className="text-paper-muted" />
               </span>
             </TabsTrigger>
           )}
@@ -587,10 +585,10 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           <TabsContent value="results" className="h-full m-0 flex flex-col overflow-hidden w-full data-[state=inactive]:hidden absolute inset-0">
             {renderResultsTab()}
           </TabsContent>
-          <TabsContent value="statistics" className="h-full m-0 overflow-auto data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm p-4">
+          <TabsContent value="statistics" className="absolute inset-0 m-0 h-full overflow-auto bg-ink-50 p-4 data-[state=inactive]:hidden">
             {renderStatisticsResults()}
           </TabsContent>
-          <TabsContent value="explain" className="h-full m-0 overflow-hidden data-[state=inactive]:hidden absolute inset-0 bg-background/50 backdrop-blur-sm">
+          <TabsContent value="explain" className="absolute inset-0 m-0 h-full overflow-hidden bg-ink-50 data-[state=inactive]:hidden">
             <ExplainTab
               plan={explainPlan}
               isLoading={isExplainLoading}
@@ -635,16 +633,19 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   // ── Hint strip items — only the most important actions.
   //    Format / Comment / Find / Save are all accessible via the Shortcuts dialog.
   const stripItems = useMemo(() => {
+    // Explain is a standard ClickHouse feature (EXPLAIN PLAN) — anyone who can
+    // run a query in this editor can also explain it. AI Optimize is the
+    // AI-feature-gated one and stays behind canOptimize.
     const items: { icon: React.ReactNode; label: string; shortcut: string; action: () => void }[] = [
-      ...(canOptimize ? [{ icon: <Network  className="h-3 w-3 shrink-0 text-purple-400" />, label: "Explain",     shortcut: kbd("E", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleExplain(q); } }] : []),
-      ...(canOptimize ? [{ icon: <Sparkles className="h-3 w-3 shrink-0 text-pink-400" />,   label: "AI Optimize", shortcut: kbd("I", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleOptimize(q); } }] : []),
+      { icon: <Network  className="h-3 w-3 shrink-0" />, label: "Explain",     shortcut: kbd("E", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleExplain(q); } },
+      ...(canOptimize ? [{ icon: <Sparkles className="h-3 w-3 shrink-0" />, label: "AI Optimize", shortcut: kbd("I", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleOptimize(q); } }] : []),
     ];
     return items;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canOptimize, handleExplain, handleOptimize]);
 
   return (
-    <div className="h-full bg-white/[0.02]">
+    <div className="h-full bg-ink-50">
       <ResizablePanelGroup direction="vertical">
         <ResizablePanel defaultSize={50} minSize={20}>
           <SQLEditor
@@ -657,30 +658,24 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
           />
         </ResizablePanel>
 
-        {/* Standard thin handle — no strip inside, so the library's global
-            *{cursor:row-resize!important} only applies to this small element */}
-        <ResizableHandle className="bg-white/5 hover:bg-white/10 transition-colors" />
+        <ResizableHandle className="h-px bg-ink-500 transition-colors hover:bg-ink-700 data-[resize-handle-active]:bg-brand" />
 
-        {/* ── Results panel — strip pinned at its top ─────────────────────────
-            The strip is a normal div (not a resize handle), so cursor behaves
-            exactly as CSS says. It is part of the results panel so it can never
-            be squeezed out by the editor panel growing. The results panel's
-            minSize guarantees the strip is always fully visible.
-        ─────────────────────────────────────────────────────────────────────── */}
+        {/* Results panel with action strip pinned at top */}
         <ResizablePanel defaultSize={50} minSize={12}>
-          <div className="h-full flex flex-col">
+          <div className="flex h-full flex-col bg-ink-50">
             {/* Action strip */}
-            <div className="flex-shrink-0 flex items-center border-b border-white/5 bg-black/20 backdrop-blur-sm overflow-x-auto scrollbar-none select-none">
+            <div className="scrollbar-none flex flex-shrink-0 select-none items-center overflow-x-auto border-b border-ink-500 bg-ink-100">
               {/* Run / Stop */}
               {tab?.isLoading ? (
                 <button
+                  type="button"
                   onClick={() => { if (canKillQuery) editorRef.current?.stop(); }}
                   disabled={!canKillQuery}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors touch-manipulation shrink-0",
+                    "flex shrink-0 items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                     canKillQuery
-                      ? "cursor-pointer text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      : "cursor-not-allowed text-muted-foreground/40"
+                      ? "cursor-pointer text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                      : "cursor-not-allowed text-paper-faint"
                   )}
                 >
                   <CircleStop className="h-3.5 w-3.5 shrink-0" />
@@ -688,13 +683,14 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={handleStripRunQuery}
-                  className="cursor-pointer flex items-center gap-2 px-3 py-2 text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 active:bg-blue-500/20 transition-colors touch-manipulation shrink-0"
+                  className="flex shrink-0 cursor-pointer items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper transition-colors hover:bg-brand hover:text-ink-50"
                 >
                   <CirclePlay className="h-3.5 w-3.5 shrink-0" />
                   <span>Run</span>
-                  <kbd className="hidden md:inline ml-1 text-[11px] text-blue-400/50 font-mono">
-                    {kbd("↵", { mod: true })}·F5
+                  <kbd className="ml-1 hidden font-mono text-[10px] text-paper-faint md:inline">
+                    {kbd("↵", { mod: true })} · F5
                   </kbd>
                 </button>
               )}
@@ -702,24 +698,25 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               {/* Feature-gated actions */}
               {stripItems.length > 0 && (
                 <>
-                  <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+                  <div className="mx-0.5 h-4 w-px shrink-0 bg-ink-500" aria-hidden />
                   {stripItems.map(({ icon, label, shortcut, action }, i, arr) => (
                     <React.Fragment key={label}>
                       <button
+                        type="button"
                         onClick={action}
-                        className="cursor-pointer flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-white/5 active:bg-white/10 transition-colors touch-manipulation shrink-0"
+                        className="flex shrink-0 cursor-pointer items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
                       >
                         {icon}
                         <span>{label}</span>
-                        <kbd className="hidden md:inline ml-1 text-[11px] text-muted-foreground/40 font-mono">{shortcut}</kbd>
+                        <kbd className="ml-1 hidden font-mono text-[10px] text-paper-faint md:inline">{shortcut}</kbd>
                       </button>
-                      {i < arr.length - 1 && <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
+                      {i < arr.length - 1 && <div className="mx-0.5 h-4 w-px shrink-0 bg-ink-500" aria-hidden />}
                     </React.Fragment>
                   ))}
                 </>
               )}
 
-              <div className="flex-1 min-w-2" />
+              <div className="min-w-2 flex-1" />
             </div>
 
             {/* Results */}
@@ -730,47 +727,48 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      {/* ── Shortcuts Dialog ────────────────────────────────────────────────── */}
+      {/* Shortcuts dialog */}
       <Dialog open={isShortcutsOpen} onOpenChange={setIsShortcutsOpen}>
-        <DialogContent className="sm:max-w-sm p-0 overflow-hidden">
-          <DialogHeader className="px-5 pt-5 pb-3 border-b border-white/5">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Keyboard className="h-4 w-4" />
-              Keyboard Shortcuts
+        <DialogContent className="overflow-hidden rounded-md border-ink-500 bg-ink-100 p-0 sm:max-w-sm">
+          <DialogHeader className="border-b border-ink-500 px-5 pb-3 pt-5">
+            <DialogTitle className="flex items-center gap-2 text-base text-paper">
+              <Keyboard className="h-4 w-4 text-paper-muted" aria-hidden />
+              Keyboard shortcuts
             </DialogTitle>
-            <DialogDescription className="text-xs">
+            <DialogDescription className="text-xs text-paper-muted">
               {isMac ? "Tap" : "Click"} any row to run the action directly.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-2 px-1.5 max-h-[70vh] overflow-y-auto">
+          <div className="max-h-[70vh] overflow-y-auto px-1 py-2">
             {([
-              { icon: <CirclePlay className="h-3.5 w-3.5 text-blue-400" />, label: "Run query",      hint: `${kbd("↵", { mod: true })} · F5`, note: "Runs selection if text is selected", action: handleStripRunQuery },
-              { icon: <Wand2      className="h-3.5 w-3.5" />,               label: "Format query",   hint: kbd("F", { mod: true, shift: true }), action: () => editorRef.current?.format() },
-              { icon: <Code2      className="h-3.5 w-3.5" />,               label: "Toggle comment", hint: kbd("/", { mod: true }),              action: () => editorRef.current?.commentLine() },
-              { icon: <Search     className="h-3.5 w-3.5" />,               label: "Find",           hint: kbd("F", { mod: true }),              action: () => editorRef.current?.find() },
-              ...(canOptimize   ? [{ icon: <Network  className="h-3.5 w-3.5 text-purple-400" />, label: "Explain query plan", hint: kbd("E", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleExplain(q); } }] : []),
-              ...(canOptimize   ? [{ icon: <Sparkles className="h-3.5 w-3.5 text-pink-400" />,   label: "AI optimize",        hint: kbd("I", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleOptimize(q); } }] : []),
+              { icon: <CirclePlay className="h-3.5 w-3.5" />, label: "Run query",      hint: `${kbd("↵", { mod: true })} · F5`, note: "Runs selection if text is selected", action: handleStripRunQuery },
+              { icon: <Wand2      className="h-3.5 w-3.5" />, label: "Format query",   hint: kbd("F", { mod: true, shift: true }), action: () => editorRef.current?.format() },
+              { icon: <Code2      className="h-3.5 w-3.5" />, label: "Toggle comment", hint: kbd("/", { mod: true }),              action: () => editorRef.current?.commentLine() },
+              { icon: <Search     className="h-3.5 w-3.5" />, label: "Find",           hint: kbd("F", { mod: true }),              action: () => editorRef.current?.find() },
+              { icon: <Network  className="h-3.5 w-3.5" />, label: "Explain query plan", hint: kbd("E", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleExplain(q); } },
+              ...(canOptimize   ? [{ icon: <Sparkles className="h-3.5 w-3.5" />, label: "AI optimize",        hint: kbd("I", { mod: true, shift: true }), action: () => { const q = editorRef.current?.getQuery() ?? ""; if (q) handleOptimize(q); } }] : []),
               ...((canSaveQuery || canUpdateQuery) ? [{ icon: <Save className="h-3.5 w-3.5" />, label: "Save",     hint: kbd("S", { mod: true }),              action: () => editorRef.current?.save() }] : []),
               ...(canSaveQuery                     ? [{ icon: <Copy className="h-3.5 w-3.5" />, label: "Save as…", hint: kbd("S", { mod: true, shift: true }), action: () => editorRef.current?.saveAs() }] : []),
             ] as { icon: React.ReactNode; label: string; hint: string; note?: string; action: () => void }[]).map(({ icon, label, hint, note, action }) => (
               <button
                 key={label}
+                type="button"
                 onClick={() => { action(); setIsShortcutsOpen(false); }}
-                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm text-left hover:bg-white/5 active:bg-white/10 transition-colors touch-manipulation group"
+                className="group flex w-full items-center gap-3 rounded-xs px-3.5 py-2.5 text-left transition-colors hover:bg-ink-200"
               >
-                <span className="text-muted-foreground group-hover:text-foreground transition-colors shrink-0">{icon}</span>
-                <span className="flex-1 min-w-0">
-                  <span className="block font-medium text-[13px] leading-snug">{label}</span>
-                  {note && <span className="block text-[11px] text-muted-foreground/60 leading-tight">{note}</span>}
+                <span className="shrink-0 text-paper-dim transition-colors group-hover:text-paper">{icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-medium leading-snug text-paper">{label}</span>
+                  {note && <span className="block text-[11px] leading-tight text-paper-faint">{note}</span>}
                 </span>
-                <kbd className="hidden sm:inline shrink-0 text-[11px] font-mono text-muted-foreground/50 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">{hint}</kbd>
+                <kbd className="hidden shrink-0 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted sm:inline">{hint}</kbd>
               </button>
             ))}
 
-            <div className="mt-2 pt-2 border-t border-white/5 px-3.5 pb-1">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 mb-2">Editor built-ins</p>
-              <div className="space-y-1.5 text-[12px] text-muted-foreground/60">
+            <div className="mt-2 border-t border-ink-500 px-3.5 pb-1 pt-3">
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">Editor built-ins</p>
+              <div className="space-y-1.5 text-[12px] text-paper-muted">
                 {[
                   { label: "Find & replace", hint: kbd("H", { mod: true }) },
                   { label: "Go to line",     hint: isMac ? "⌃G" : "Ctrl+G" },
@@ -778,9 +776,9 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
                   { label: "Undo / Redo",    hint: `${kbd("Z", { mod: true })} / ${kbd("Z", { mod: true, shift: true })}` },
                   { label: "Multi-cursor",   hint: isMac ? "⌥ Click" : "Alt+Click" },
                 ].map(({ label, hint }) => (
-                  <div key={label} className="flex justify-between items-center">
+                  <div key={label} className="flex items-center justify-between">
                     <span>{label}</span>
-                    <kbd className="text-[11px] font-mono text-muted-foreground/40">{hint}</kbd>
+                    <kbd className="font-mono text-[10px] text-paper-faint">{hint}</kbd>
                   </div>
                 ))}
               </div>

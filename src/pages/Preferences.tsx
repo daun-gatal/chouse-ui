@@ -4,8 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Server,
   Database,
-  ExternalLink,
-  Keyboard,
   LogOut,
   User,
   Mail,
@@ -19,7 +17,6 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuthStore, useRbacStore } from "@/stores";
 import { useNavigate } from "react-router-dom";
@@ -27,8 +24,15 @@ import { cn } from "@/lib/utils";
 import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId } from "@/api/client";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";
-import { GlassCard } from "@/components/ui/glass-card";
 import { log } from "@/lib/log";
+
+// ============================================
+// Recipes
+// ============================================
+
+const EYEBROW = "inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim";
+const MONO_LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";
+const MONO_FAINT = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint";
 
 // ============================================
 // Types & Components
@@ -38,7 +42,6 @@ interface SettingCardProps {
   title: string;
   description?: string;
   icon: React.ElementType;
-  color: string;
   children: React.ReactNode;
   delay?: number;
   className?: string;
@@ -48,7 +51,6 @@ const SettingCard: React.FC<SettingCardProps> = ({
   title,
   description,
   icon: Icon,
-  color,
   children,
   delay = 0,
   className,
@@ -59,18 +61,18 @@ const SettingCard: React.FC<SettingCardProps> = ({
     transition={{ delay }}
     className={cn("h-full", className)}
   >
-    <GlassCard className="h-full overflow-hidden group hover:border-white/10 transition-all duration-300 bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl flex flex-col">
-      <div className="flex-none flex items-center gap-3 p-4 border-b border-white/5 bg-white/[0.02]">
-        <div className={cn("p-2 rounded-lg ring-1 ring-white/10 shadow-lg", color)}>
-          <Icon className="h-4 w-4 text-white" />
-        </div>
-        <div>
-          <h3 className="font-bold text-white group-hover:text-purple-300 transition-colors text-sm">{title}</h3>
-          {description && <p className="text-xs text-gray-500 font-medium">{description}</p>}
+    <div className="flex h-full flex-col overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+      <div className="flex flex-none items-center gap-3 border-b border-ink-500 px-4 py-3">
+        <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+        <div className="flex flex-col gap-0.5">
+          <h3 className="text-[13px] font-semibold tracking-tight text-paper">{title}</h3>
+          {description && <p className={MONO_FAINT}>{description}</p>}
         </div>
       </div>
-      <div className="flex-1 p-4 overflow-hidden">{children}</div>
-    </GlassCard>
+      <div className="flex-1 overflow-hidden p-4">{children}</div>
+    </div>
   </motion.div>
 );
 
@@ -81,14 +83,35 @@ interface InfoRowProps {
 }
 
 const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon: Icon }) => (
-  <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] transition-all duration-200 border border-white/5">
-    <div className="flex items-center gap-2.5">
-      {Icon && <Icon className="h-4 w-4 text-gray-400" />}
-      <span className="text-sm text-gray-400 font-semibold">{label}</span>
+  <div className="flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5">
+    <div className="flex items-center gap-2">
+      {Icon && <Icon className="h-3.5 w-3.5 text-paper-dim" aria-hidden />}
+      <span className={MONO_LABEL}>{label}</span>
     </div>
-    <div className="text-sm text-white font-bold tracking-tight">{value}</div>
+    <div className="text-[13px] font-medium tracking-tight text-paper">{value}</div>
   </div>
 );
+
+// ============================================
+// Status footer (uniform editorial pill for card bottom)
+// ============================================
+
+const StatusFooter: React.FC<{
+  label: string;
+  meta: string;
+  tone?: "brand" | "emerald";
+}> = ({ label, meta, tone = "brand" }) => {
+  const dot = tone === "emerald" ? "bg-emerald-400" : "bg-brand";
+  return (
+    <div className="flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className={cn("h-1.5 w-1.5 rounded-full", dot)} aria-hidden />
+        <span className={MONO_LABEL}>{label}</span>
+      </div>
+      <span className={MONO_FAINT}>{meta}</span>
+    </div>
+  );
+};
 
 // ============================================
 // Identity Card
@@ -99,31 +122,24 @@ const IdentityCard: React.FC = () => {
 
   return (
     <SettingCard
-      title="Identity & Access"
+      title="Identity & access"
       description="Your personal RBAC profile"
       icon={Fingerprint}
-      color="bg-indigo-600"
       delay={0.1}
       className="md:col-span-1"
     >
-      <div className="space-y-3">
-        <InfoRow
-          label="Username"
-          icon={User}
-          value={user?.username || "N/A"}
-        />
+      <div className="space-y-2">
+        <InfoRow label="Username" icon={User} value={user?.username || "N/A"} />
         <InfoRow
           label="RBAC ID"
           icon={Shield}
-          value={<span className="font-mono text-xs">{user?.id?.slice(0, 12)}...</span>}
+          value={
+            <span className="font-mono text-[11px] text-paper-muted">
+              {user?.id?.slice(0, 12)}…
+            </span>
+          }
         />
-        <div className="p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" />
-            <span className="text-xs font-bold text-indigo-500">Session Active</span>
-          </div>
-          <span className="text-xs text-gray-500 font-mono font-medium">Secure</span>
-        </div>
+        <StatusFooter label="Session active" meta="Secure" tone="emerald" />
       </div>
     </SettingCard>
   );
@@ -133,7 +149,10 @@ const IdentityCard: React.FC = () => {
 // Connection Card
 // ============================================
 
-const ConnectionDetailsCard: React.FC<{ url: string | null; version: string | null }> = ({ url, version }) => {
+const ConnectionDetailsCard: React.FC<{ url: string | null; version: string | null }> = ({
+  url,
+  version,
+}) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -145,46 +164,42 @@ const ConnectionDetailsCard: React.FC<{ url: string | null; version: string | nu
 
   return (
     <SettingCard
-      title="ClickHouse Node"
+      title="ClickHouse node"
       description="Current connection details"
       icon={Database}
-      color="bg-blue-600"
       delay={0.2}
       className="md:col-span-2"
     >
-      <div className="space-y-3">
+      <div className="space-y-2">
         <InfoRow
           label="Endpoint"
           icon={Server}
           value={
             url ? (
               <div className="flex items-center gap-1.5">
-                <span className="font-mono text-sm truncate max-w-[150px]" title={url}>
-                  {url.split('://')[1] || url}
+                <span className="max-w-[200px] truncate font-mono text-[12px] text-paper" title={url}>
+                  {url.split("://")[1] || url}
                 </span>
                 <button
                   onClick={handleCopy}
-                  className="text-indigo-400 hover:text-white transition-colors p-1 hover:bg-white/5 rounded-md"
+                  className="rounded-xs p-1 text-paper-dim transition-colors hover:bg-ink-100 hover:text-paper"
                   title="Copy to clipboard"
+                  aria-label="Copy endpoint"
                 >
-                  {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? (
+                    <Check className="h-3 w-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
                 </button>
               </div>
-            ) : "Disconnected"
+            ) : (
+              <span className={MONO_FAINT}>Disconnected</span>
+            )
           }
         />
-        <InfoRow
-          label="Version"
-          icon={Cpu}
-          value={version || "N/A"}
-        />
-        <div className="p-3 rounded-xl bg-green-500/5 border border-green-500/10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
-            <span className="text-xs font-bold text-green-500">Node Operational</span>
-          </div>
-          <span className="text-xs text-gray-500 font-mono font-medium">Online</span>
-        </div>
+        <InfoRow label="Version" icon={Cpu} value={version || "N/A"} />
+        <StatusFooter label="Node operational" meta="Online" tone="emerald" />
       </div>
     </SettingCard>
   );
@@ -201,128 +216,122 @@ const DataAccessCard: React.FC<{
 }> = ({ rules: allRules, connections, isAdmin }) => {
   const admin = isAdmin;
 
-  // State for expanded sections - default to all expanded
   const [expandedConnections, setExpandedConnections] = useState<Record<string, boolean>>({});
   const [expandedDatabases, setExpandedDatabases] = useState<Record<string, boolean>>({});
 
   const toggleConnection = (id: string) => {
-    setExpandedConnections(prev => ({
+    setExpandedConnections((prev) => ({
       ...prev,
-      [id]: prev[id] === false ? true : false // default is true if undefined
+      [id]: prev[id] === false ? true : false,
     }));
   };
 
   const toggleDatabase = (connId: string, db: string) => {
     const key = `${connId}:${db}`;
-    setExpandedDatabases(prev => ({
+    setExpandedDatabases((prev) => ({
       ...prev,
-      [key]: prev[key] === false ? true : false // default is true if undefined
+      [key]: prev[key] === false ? true : false,
     }));
   };
 
   const isConnectionExpanded = (id: string) => expandedConnections[id] !== false;
-  const isDatabaseExpanded = (connId: string, db: string) => expandedDatabases[`${connId}:${db}`] !== false;
+  const isDatabaseExpanded = (connId: string, db: string) =>
+    expandedDatabases[`${connId}:${db}`] !== false;
 
-  // Group by Connection ID -> then by Database Pattern
   const groupedByConnection = useMemo(() => {
     const connMap: Record<string, Record<string, typeof allRules>> = {};
-
-    allRules.forEach(rule => {
+    allRules.forEach((rule) => {
       const connId = rule.connectionId || "all";
       if (!connMap[connId]) connMap[connId] = {};
-
       const dbPattern = rule.databasePattern || "*";
       if (!connMap[connId][dbPattern]) connMap[connId][dbPattern] = [];
-
       connMap[connId][dbPattern].push(rule);
     });
-
     return connMap;
   }, [allRules]);
 
   const getConnectionName = (id: string) => {
-    if (id === "all") return "All Connections";
-    const conn = connections.find(c => c.id === id);
+    if (id === "all") return "All connections";
+    const conn = connections.find((c) => c.id === id);
     return conn?.name || `Conn: ${id.substring(0, 8)}`;
   };
 
   return (
     <SettingCard
-      title="Data Access"
-      description="Database & Table Permissions"
+      title="Data access"
+      description="Database & table permissions"
       icon={Shield}
-      color="bg-purple-600"
       delay={0.3}
       className="md:col-span-2 h-[450px]"
     >
-      <div className="flex flex-col h-full">
-        <div className="flex-1 min-h-0">
+      <div className="flex h-full flex-col">
+        <div className="min-h-0 flex-1">
           {admin || allRules.length === 0 ? (
-            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+            <div className="rounded-xs border border-ink-500 bg-ink-200 px-4 py-8 text-center">
               {admin ? (
                 <>
-                  <div className="flex justify-center mb-2">
-                    <div className="p-2 rounded-full bg-indigo-500/20 ring-1 ring-indigo-500/40">
-                      <Shield className="h-5 w-5 text-indigo-400" />
-                    </div>
-                  </div>
-                  <p className="text-xs text-indigo-400 font-black tracking-wider">Full Global Access</p>
-                  <p className="text-[10px] text-gray-500 mt-1 font-bold">Admin Access Active</p>
+                  <span className="mx-auto mb-3 grid h-9 w-9 place-items-center rounded-xs border border-brand/40 bg-brand/5 text-brand">
+                    <Shield className="h-4 w-4" aria-hidden />
+                  </span>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand">
+                    Full global access
+                  </p>
+                  <p className={cn("mt-1", MONO_FAINT)}>Admin access active</p>
                 </>
               ) : (
-                <p className="text-xs text-gray-500 font-bold tracking-wide">No matching rules</p>
+                <p className={cn(MONO_LABEL, "tracking-[0.18em]")}>No matching rules</p>
               )}
             </div>
           ) : (
-            <div className="h-full overflow-y-auto custom-scrollbar pr-1 space-y-6">
+            <div className="custom-scrollbar h-full space-y-5 overflow-y-auto pr-1">
               {Object.entries(groupedByConnection).map(([connId, dbGroups]) => (
-                <div key={connId} className="space-y-4">
+                <div key={connId} className="space-y-3">
                   {/* Connection Header */}
-                  <div
-                    className="flex items-center gap-3 cursor-pointer group/conn"
+                  <button
+                    type="button"
+                    className="group/conn flex w-full items-center gap-3 text-left"
                     onClick={() => toggleConnection(connId)}
                   >
-                    {/* ... existing content ... */}
-                    <div className="p-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 group-hover/conn:bg-indigo-500/20 transition-colors">
-                      <Server className="h-3.5 w-3.5 text-indigo-400" />
-                    </div>
-                    <span className="text-xs font-black text-indigo-300 tracking-wider group-hover/conn:text-indigo-200 transition-colors">
+                    <span className="grid h-7 w-7 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted transition-colors group-hover/conn:border-ink-700 group-hover/conn:text-paper">
+                      <Server className="h-3.5 w-3.5" aria-hidden />
+                    </span>
+                    <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper group-hover/conn:text-paper">
                       {getConnectionName(connId)}
                     </span>
-                    <div className="h-px flex-1 bg-gradient-to-r from-indigo-500/30 to-transparent" />
+                    <div className="h-px flex-1 bg-ink-500" />
                     {isConnectionExpanded(connId) ? (
-                      <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+                      <ChevronDown className="h-3.5 w-3.5 text-paper-faint" />
                     ) : (
-                      <ChevronRight className="h-3.5 w-3.5 text-gray-500" />
+                      <ChevronRight className="h-3.5 w-3.5 text-paper-faint" />
                     )}
-                  </div>
+                  </button>
 
-                  {/* Databases under this connection */}
                   <AnimatePresence initial={false}>
                     {isConnectionExpanded(connId) && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3, ease: "easeInOut" }}
-                        className="overflow-hidden pl-4 space-y-4"
+                        transition={{ duration: 0.2, ease: "easeInOut" }}
+                        className="space-y-3 overflow-hidden pl-3"
                       >
                         {Object.entries(dbGroups).map(([db, rules]) => (
                           <div key={db} className="space-y-2">
-                            <div
-                              className="flex items-center gap-2 cursor-pointer group/db w-fit"
+                            <button
+                              type="button"
+                              className="group/db flex w-fit items-center gap-2"
                               onClick={() => toggleDatabase(connId, db)}
                             >
-                              <Database className="h-3 w-3 text-purple-400/60 group-hover/db:text-purple-400 transition-colors" />
-                              <span className="text-[10px] text-purple-400 font-bold group-hover/db:text-purple-300 transition-colors">
-                                {db === "*" ? "All Databases" : db}
+                              <Database className="h-3 w-3 text-paper-faint transition-colors group-hover/db:text-paper-dim" />
+                              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted transition-colors group-hover/db:text-paper">
+                                {db === "*" ? "All databases" : db}
                               </span>
                               {isDatabaseExpanded(connId, db) ? (
-                                <ChevronDown className="h-2.5 w-2.5 text-gray-600" />
+                                <ChevronDown className="h-2.5 w-2.5 text-paper-faint" />
                               ) : (
-                                <ChevronRight className="h-2.5 w-2.5 text-gray-600" />
+                                <ChevronRight className="h-2.5 w-2.5 text-paper-faint" />
                               )}
-                            </div>
+                            </button>
 
                             <AnimatePresence initial={false}>
                               {isDatabaseExpanded(connId, db) && (
@@ -330,34 +339,41 @@ const DataAccessCard: React.FC<{
                                   initial={{ height: 0, opacity: 0 }}
                                   animate={{ height: "auto", opacity: 1 }}
                                   exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.2, ease: "easeInOut" }}
-                                  className="overflow-hidden grid grid-cols-1 gap-1.5 ml-5"
+                                  transition={{ duration: 0.15, ease: "easeInOut" }}
+                                  className="ml-5 grid grid-cols-1 gap-1 overflow-hidden"
                                 >
                                   {rules.map((rule, i) => (
-                                    <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.02] border border-white/5 group hover:border-white/10 transition-colors">
-                                      <div className="flex items-center gap-3">
-                                        <div className={cn(
-                                          "w-1.5 h-1.5 rounded-full",
-                                          rule.isAllowed ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
-                                        )} />
-                                        <span className="text-xs text-gray-300 font-medium">
-                                          {rule.tablePattern === "*" ? "All Tables" : rule.tablePattern}
+                                    <div
+                                      key={i}
+                                      className="flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 px-3 py-2"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span
+                                          className={cn(
+                                            "h-1.5 w-1.5 rounded-full",
+                                            rule.isAllowed ? "bg-emerald-400" : "bg-red-400",
+                                          )}
+                                        />
+                                        <span className="font-mono text-[12px] text-paper-muted">
+                                          {rule.tablePattern === "*" ? "All tables" : rule.tablePattern}
                                         </span>
                                       </div>
-                                      <div className="flex items-center gap-2">
-                                        {rule.accessType !== 'read' && (
-                                          <Badge className="px-1.5 py-0 rounded text-[9px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                      <div className="flex items-center gap-1.5">
+                                        {rule.accessType !== "read" && (
+                                          <span className="rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
                                             {rule.accessType}
-                                          </Badge>
+                                          </span>
                                         )}
-                                        <Badge className={cn(
-                                          "px-1.5 py-0 rounded text-[9px] font-bold",
-                                          rule.isAllowed
-                                            ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                                            : "bg-red-500/10 text-red-400 border border-red-500/20"
-                                        )}>
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]",
+                                            rule.isAllowed
+                                              ? "border border-emerald-900/60 bg-emerald-950/40 text-emerald-300"
+                                              : "border border-red-900/60 bg-red-950/40 text-red-300",
+                                          )}
+                                        >
                                           {rule.isAllowed ? "Allow" : "Deny"}
-                                        </Badge>
+                                        </span>
                                       </div>
                                     </div>
                                   ))}
@@ -374,14 +390,11 @@ const DataAccessCard: React.FC<{
             </div>
           )}
         </div>
-        <div className="flex-none pt-4">
-          <div className="p-3 rounded-xl bg-purple-500/5 border border-purple-500/10 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]" />
-              <span className="text-xs font-bold text-purple-500">Active Policy Engine</span>
-            </div>
-            <span className="text-xs text-gray-500 font-mono font-medium">{allRules.length} Rules Applied</span>
-          </div>
+        <div className="flex-none pt-3">
+          <StatusFooter
+            label="Active policy engine"
+            meta={`${allRules.length} ${allRules.length === 1 ? "rule" : "rules"} applied`}
+          />
         </div>
       </div>
     </SettingCard>
@@ -393,51 +406,49 @@ const DataAccessCard: React.FC<{
 // ============================================
 
 const EffectivePermissionsCard: React.FC<{ permissions: string[] }> = ({ permissions = [] }) => {
-
   const categories = useMemo(() => {
     const cats: Record<string, string[]> = {};
-    permissions.forEach(p => {
-      const [category] = p.split(':');
+    permissions.forEach((p) => {
+      const [category] = p.split(":");
       if (!cats[category]) cats[category] = [];
-      cats[category].push(p.split(':').slice(1).join(' '));
+      cats[category].push(p.split(":").slice(1).join(" "));
     });
     return cats;
   }, [permissions]);
 
   return (
     <SettingCard
-      title="Functional Access"
-      description="Application Capabilities"
+      title="Functional access"
+      description="Application capabilities"
       icon={Fingerprint}
-      color="bg-emerald-600"
       delay={0.4}
       className="md:col-span-1 h-[450px]"
     >
-      <div className="flex flex-col h-full">
-        <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(categories).map(([cat, perms]) => (
-              <div key={cat} className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white/[0.03] border border-white/5 w-full">
-                <span className="w-full text-[10px] text-emerald-500 font-black tracking-wider mb-1">
-                  {cat}
-                </span>
-                {perms.map(p => (
-                  <Badge key={p} variant="outline" className="text-[10px] bg-white/5 border-white/10 text-gray-300 font-bold">
+      <div className="flex h-full flex-col">
+        <div className="custom-scrollbar flex-1 space-y-2 overflow-y-auto pr-1">
+          {Object.entries(categories).map(([cat, perms]) => (
+            <div key={cat} className="rounded-xs border border-ink-500 bg-ink-200 p-2.5">
+              <p className={cn("mb-2 block", MONO_LABEL)}>{cat}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {perms.map((p) => (
+                  <span
+                    key={p}
+                    className="rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted"
+                  >
                     {p}
-                  </Badge>
+                  </span>
                 ))}
               </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex-none pt-4">
-          <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-              <span className="text-xs font-bold text-emerald-500">Permissions Visualized</span>
             </div>
-            <span className="text-xs text-gray-500 font-mono font-medium">{permissions.length} Total</span>
-          </div>
+          ))}
+          {Object.keys(categories).length === 0 && (
+            <div className="rounded-xs border border-ink-500 bg-ink-200 px-4 py-8 text-center">
+              <p className={cn(MONO_LABEL, "tracking-[0.18em]")}>No permissions assigned</p>
+            </div>
+          )}
+        </div>
+        <div className="flex-none pt-3">
+          <StatusFooter label="Permissions visualized" meta={`${permissions.length} total`} />
         </div>
       </div>
     </SettingCard>
@@ -451,11 +462,11 @@ const EffectivePermissionsCard: React.FC<{ permissions: string[] }> = ({ permiss
 export default function Preferences() {
   const navigate = useNavigate();
   const { url, version } = useAuthStore();
-  const { logout: rbacLogout, user: storeUser, isSuperAdmin, isAdmin } = useRbacStore();
+  const { logout: rbacLogout, user: storeUser, isAdmin } = useRbacStore();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile } = useQuery({
     queryKey: ["rbac-profile"],
     queryFn: () => rbacAuthApi.getProfile(),
   });
@@ -466,15 +477,26 @@ export default function Preferences() {
   const rolesMetadata = user?.rolesMetadata || [];
 
   const getRoleDisplayName = (roleName: string) => {
-    const meta = rolesMetadata.find(m => m.name === roleName);
+    const meta = rolesMetadata.find((m) => m.name === roleName);
     if (meta?.displayName) return meta.displayName;
-
-    // Minimal fallback
     return roleName
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   };
+
+  // Initials chip from displayName/username
+  const initials = useMemo(() => {
+    const name = user?.displayName || user?.username || "";
+    return (
+      name
+        .split(/[\s._-]+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((s: string) => s[0]?.toUpperCase() || "")
+        .join("") || "U"
+    );
+  }, [user?.displayName, user?.username]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -484,13 +506,13 @@ export default function Preferences() {
         try {
           await rbacConnectionsApi.disconnect(sessionId);
         } catch (error) {
-          log.error('Failed to disconnect ClickHouse connection:', error);
+          log.error("Failed to disconnect ClickHouse connection:", error);
         }
       }
       await rbacLogout();
       useAuthStore.getState().clearConnectionInfo();
     } catch (error) {
-      log.error('Logout error:', error);
+      log.error("Logout error:", error);
       useAuthStore.getState().clearConnectionInfo();
     } finally {
       setIsLoggingOut(false);
@@ -499,7 +521,7 @@ export default function Preferences() {
   };
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden relative">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
       <ConfirmationDialog
         isOpen={showLogoutConfirm}
         onClose={() => setShowLogoutConfirm(false)}
@@ -512,121 +534,114 @@ export default function Preferences() {
       />
 
       {/* Header */}
-      <div className="flex-none z-20 backdrop-blur-md bg-black/10">
-        <div className="px-6 pt-6 pb-4">
+      <div className="flex-none border-b border-ink-500 bg-ink-50">
+        <div className="px-6 pb-4 pt-6">
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="flex items-center justify-between gap-6 mb-2"
+            transition={{ duration: 0.3 }}
+            className="flex items-center justify-between gap-6"
           >
-            <div className="flex-1 flex items-center gap-4">
-              <div className="relative">
-                <div className={cn(
-                  "p-3 rounded-2xl shadow-lg ring-1 ring-white/20",
-                  "bg-gradient-to-br from-indigo-500 to-purple-600",
-                  "shadow-indigo-500/20"
-                )}>
-                  <UserCog className="w-7 h-7 text-white" />
-                </div>
-                <div className={cn(
-                  "absolute inset-0 rounded-2xl animate-ping opacity-20 bg-indigo-500"
-                )} style={{ animationDuration: "2s" }} />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight text-white">
-                  Preferences
-                </h1>
-                <p className="text-gray-400 text-sm mt-0.5 font-medium">
-                  Manage your identity and workspace environment
-                </p>
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                <UserCog className="h-4 w-4" aria-hidden />
+              </span>
+              <div className="flex flex-col gap-0.5">
+                <h1 className="text-[18px] font-semibold tracking-tight text-paper">Preferences</h1>
+                <p className={MONO_FAINT}>Manage your identity and workspace environment</p>
               </div>
             </div>
 
-            <div className="flex-none">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowLogoutConfirm(true)}
-                className="gap-2 border-white/5 bg-white/[0.03] text-gray-500 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-all duration-300 rounded-xl group backdrop-blur-sm"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span className="font-bold text-[10px]">Log out</span>
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLogoutConfirm(true)}
+              className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:border-red-900/60 hover:bg-red-950/40 hover:text-red-300"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Log out
+            </Button>
           </motion.div>
         </div>
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-6 pb-24 relative z-10">
-        <div className="max-w-6xl mx-auto space-y-6">
-
+      <div className="custom-scrollbar flex-1 overflow-y-auto px-6 py-6 pb-24">
+        <div className="mx-auto max-w-6xl space-y-6">
           {/* Profile Hero Section */}
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.3 }}
+            className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100"
           >
-            <GlassCard className="border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+            <div className="flex flex-col items-start gap-6 p-6 md:flex-row md:items-center md:p-8">
+              <div className="relative">
+                <span className="grid h-20 w-20 place-items-center rounded-xs border border-ink-500 bg-ink-200 font-mono text-[28px] font-semibold tracking-tight text-paper">
+                  {initials}
+                </span>
+                <span
+                  className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full border border-ink-100 bg-ink-200"
+                  aria-label="Online"
+                >
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                </span>
+              </div>
 
-              <div className="p-8 flex flex-col md:flex-row items-start md:items-center gap-8 relative z-10">
-                <div className="relative">
-                  <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-2xl ring-4 ring-white/10 group-hover:scale-105 transition-transform duration-500">
-                    <User className="w-12 h-12 text-white" />
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-[#0a0a0a] ring-1 ring-white/10">
-                    <div className="w-4 h-4 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)] animate-pulse" />
-                  </div>
-                </div>
-
-                <div className="flex-1 space-y-4">
-                  <div className="space-y-1">
-                    <h2 className="text-4xl font-extrabold text-white tracking-tight">
-                      {user?.displayName || user?.username || "Commander"}
-                    </h2>
-                    <div className="flex flex-wrap items-center gap-4">
-                      <div className="flex items-center gap-2 text-gray-400 text-base font-medium">
-                        <Mail className="w-4 h-4" />
-                        {user?.email || "no-email@clickhouse.ui"}
-                      </div>
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-700" />
-                      <div className="flex items-center gap-2 text-gray-400 text-base font-medium">
-                        <Calendar className="w-4 h-4" />
-                        Joined {user?.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : "Recently"}
-                      </div>
+              <div className="flex-1 space-y-3">
+                <div className="space-y-1">
+                  <span className={EYEBROW}>
+                    <span className="h-px w-6 bg-ink-700" />
+                    <span>Profile</span>
+                  </span>
+                  <h2 className="text-[28px] font-semibold tracking-tight text-paper">
+                    {user?.displayName || user?.username || "Commander"}
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-3 text-[13px] text-paper-muted">
+                    <div className="flex items-center gap-1.5">
+                      <Mail className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                      <span className="font-mono">{user?.email || "no-email@clickhouse.ui"}</span>
+                    </div>
+                    <span className="h-1 w-1 rounded-full bg-paper-faint" aria-hidden />
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                      <span className={MONO_FAINT}>
+                        Joined{" "}
+                        {user?.createdAt
+                          ? new Date(user.createdAt).toLocaleDateString(undefined, {
+                              month: "long",
+                              year: "numeric",
+                            })
+                          : "Recently"}
+                      </span>
                     </div>
                   </div>
+                </div>
 
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {user?.roles?.map((role) => (
-                      <Badge key={role} className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 px-4 py-1.5 rounded-full text-xs font-bold backdrop-blur-sm">
-                        <Shield className="w-3.5 h-3.5 mr-2" />
+                {user?.roles && user.roles.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {user.roles.map((role) => (
+                      <span
+                        key={role}
+                        className="inline-flex items-center gap-1.5 rounded-xs border border-brand/40 bg-brand/5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand"
+                      >
+                        <Shield className="h-3 w-3" aria-hidden />
                         {getRoleDisplayName(role)}
-                      </Badge>
+                      </span>
                     ))}
                   </div>
-                </div>
+                )}
               </div>
-            </GlassCard>
+            </div>
           </motion.div>
 
           {/* Preferences Grid */}
-          <div className="grid gap-6 md:grid-cols-3 items-start relative">
-            <div className="absolute top-1/2 left-1/4 w-[400px] h-[400px] bg-indigo-500/5 blur-[120px] rounded-full pointer-events-none -translate-x-1/2 -translate-y-1/2" />
-            <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-purple-500/5 blur-[100px] rounded-full pointer-events-none translate-x-1/2 translate-y-1/2" />
-
+          <div className="grid items-start gap-6 md:grid-cols-3">
             <IdentityCard />
             <ConnectionDetailsCard url={url} version={version} />
-            <DataAccessCard
-              rules={allRules}
-              connections={connections}
-              isAdmin={isAdmin()}
-            />
+            <DataAccessCard rules={allRules} connections={connections} isAdmin={isAdmin()} />
             <EffectivePermissionsCard permissions={user?.permissions || []} />
           </div>
-
         </div>
       </div>
     </div>

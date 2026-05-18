@@ -143,66 +143,73 @@ const TreeNode: React.FC<TreeNodeProps> = ({
     <div className="select-none">
       <div
         className={cn(
-          "flex items-center py-1 px-2 rounded-md cursor-pointer transition-all duration-150 group",
-          "hover:bg-white/5",
-          matchesSearch && searchTerm && "bg-amber-500/10 hover:bg-amber-500/15"
+          "group flex cursor-pointer items-center rounded-xs py-1 px-2 transition-colors",
+          "hover:bg-ink-200",
+          matchesSearch && searchTerm && "bg-brand/[0.08] hover:bg-brand/[0.12]"
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleViewInfo}
       >
-        {/* Expand/Collapse Button */}
+        {/* Expand/Collapse */}
         {hasChildren ? (
-          <button 
-            onClick={handleToggle} 
-            className="p-0.5 hover:bg-white/10 rounded transition-colors mr-1"
+          <button
+            type="button"
+            onClick={handleToggle}
+            className="mr-1 rounded-xs p-0.5 transition-colors hover:bg-ink-300"
+            aria-label={isExpanded ? "Collapse" : "Expand"}
           >
             <motion.div
               animate={{ rotate: isExpanded ? 90 : 0 }}
               transition={{ duration: 0.15 }}
             >
-              <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+              <ChevronRight className="h-3.5 w-3.5 text-paper-faint" aria-hidden />
             </motion.div>
           </button>
         ) : (
           <span className="w-5" />
         )}
 
-        {/* Icon */}
+        {/* Icon — monochrome paper-dim; shape distinguishes type */}
         {isDatabase ? (
-          <Database className="w-3.5 h-3.5 text-blue-400 mr-2 flex-shrink-0" />
+          <Database className="mr-2 h-3.5 w-3.5 shrink-0 text-paper-dim" aria-hidden />
         ) : node.type === "view" ? (
-          <Eye className="w-3.5 h-3.5 text-purple-400 mr-2 flex-shrink-0" />
+          <Eye className="mr-2 h-3.5 w-3.5 shrink-0 text-paper-dim" aria-hidden />
         ) : (
-          <Table2 className="w-3.5 h-3.5 text-emerald-400 mr-2 flex-shrink-0" />
+          <Table2 className="mr-2 h-3.5 w-3.5 shrink-0 text-paper-dim" aria-hidden />
         )}
 
         {/* Name */}
         <TooltipProvider>
           <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>
-              <span className="flex-1 text-xs text-gray-300 truncate group-hover:text-white transition-colors">
+              <span
+                className={cn(
+                  "flex-1 truncate font-mono text-[12px] transition-colors",
+                  "text-paper-muted group-hover:text-paper"
+                )}
+              >
                 {node.name}
               </span>
             </TooltipTrigger>
             {!isDatabase && (node.rows || node.size || node.engine) && (
               <TooltipContent side="right" className="max-w-xs">
-                <div className="space-y-1 text-xs">
+                <div className="space-y-1.5 font-mono text-[11px]">
                   {node.engine && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-400">Engine</span>
-                      <span className="text-white font-medium">{node.engine}</span>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="uppercase tracking-[0.14em] text-paper-faint">Engine</span>
+                      <span className="text-paper">{node.engine}</span>
                     </div>
                   )}
                   {node.rows && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-400">Rows</span>
-                      <span className="text-white font-medium">{node.rows}</span>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="uppercase tracking-[0.14em] text-paper-faint">Rows</span>
+                      <span className="text-paper">{node.rows}</span>
                     </div>
                   )}
                   {node.size && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-400">Size</span>
-                      <span className="text-white font-medium">{node.size}</span>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="uppercase tracking-[0.14em] text-paper-faint">Size</span>
+                      <span className="text-paper">{node.size}</span>
                     </div>
                   )}
                 </div>
@@ -211,48 +218,49 @@ const TreeNode: React.FC<TreeNodeProps> = ({
           </Tooltip>
         </TooltipProvider>
 
-        {/* Metadata Badges - Show on hover */}
+        {/* Metadata badge — show on hover */}
         {!isDatabase && (node.rows || node.size) && (
-          <div className="hidden sm:flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="ml-2 hidden items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
             {node.rows && (
-              <Badge className="text-[9px] px-1 py-0 bg-blue-500/15 text-blue-400 border-0 font-normal">
+              <Badge className="border border-ink-500 bg-ink-200 px-1 py-0 font-mono text-[9px] font-normal text-paper-muted">
                 {node.rows}
               </Badge>
             )}
           </div>
         )}
 
-        {/* Favorite Star */}
+        {/* Favorite star */}
         <Button
           size="icon"
           variant="ghost"
           onClick={handleToggleFavorite}
           className={cn(
-            "h-5 w-5 ml-1 p-0 transition-opacity",
+            "ml-1 h-5 w-5 rounded-xs p-0 transition-all hover:bg-ink-300",
             isFavorited ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           )}
           title={isFavorited ? "Remove from pinned" : "Pin"}
         >
           <Star
             className={cn(
-              "w-3 h-3 transition-colors",
-              isFavorited 
-                ? "fill-amber-400 text-amber-400" 
-                : "text-gray-500 hover:text-amber-400"
+              "h-3 w-3 transition-colors",
+              isFavorited
+                ? "fill-brand text-brand"
+                : "text-paper-faint hover:text-brand"
             )}
           />
         </Button>
 
-        {/* Actions Menu */}
+        {/* Actions menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               size="icon"
               variant="ghost"
               onClick={(e) => e.stopPropagation()}
-              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="h-5 w-5 rounded-xs opacity-0 transition-all hover:bg-ink-300 group-hover:opacity-100"
+              aria-label="More actions"
             >
-              <MoreVertical className="w-3.5 h-3.5 text-gray-500" />
+              <MoreVertical className="h-3.5 w-3.5 text-paper-faint" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
@@ -289,7 +297,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                     }} 
                     className="text-xs gap-2"
                   >
-                    <FilePlus className="w-3.5 h-3.5 text-emerald-400" />
+                    <FilePlus className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
                     Create Table
                   </DropdownMenuItem>
                 </PermissionGuard>
@@ -301,7 +309,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
                     }} 
                     className="text-xs gap-2"
                   >
-                    <FileUp className="w-3.5 h-3.5 text-purple-400" />
+                    <FileUp className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
                     Upload File
                   </DropdownMenuItem>
                 </PermissionGuard>

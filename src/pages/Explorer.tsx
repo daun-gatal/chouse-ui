@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Database, Table2, ChevronRight, Home, Command, Layers, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronRight, Database, Layers, PanelLeftClose, PanelLeftOpen, Table2 } from "lucide-react";
 import DatabaseExplorer from "@/features/explorer/components/DataExplorer";
 import WorkspaceTabs from "@/features/workspace/components/WorkspaceTabs";
 import {
@@ -28,7 +27,6 @@ const ExplorerPage = () => {
   const { fetchFavorites, fetchRecentItems, fetchPreferences } = useExplorerStore();
   const { isAuthenticated } = useRbacStore();
 
-  // Panel sizes state (defaults)
   const [leftPanelSize, setLeftPanelSize] = useState(35);
   const [rightPanelSize, setRightPanelSize] = useState(65);
   const [hasFetchedPanelSizes, setHasFetchedPanelSizes] = useState(false);
@@ -47,11 +45,9 @@ const ExplorerPage = () => {
     }
   };
 
-  // Get current database and table from URL
   const currentDatabase = searchParams.get("database") || "";
   const currentTable = searchParams.get("table") || "";
 
-  // Calculate stats
   const databaseCount = databases.length;
   const tableCount = databases.reduce((acc, db) => acc + (db.children?.length || 0), 0);
 
@@ -64,16 +60,14 @@ const ExplorerPage = () => {
     document.title = title;
   }, [currentDatabase, currentTable]);
 
-  // Fetch favorites, recent items, and preferences when authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      fetchFavorites().catch((e) => log.error('Fetch favorites failed', e));
-      fetchRecentItems().catch((e) => log.error('Fetch recent items failed', e));
-      fetchPreferences().catch((e) => log.error('Fetch preferences failed', e));
+      fetchFavorites().catch((e) => log.error("Fetch favorites failed", e));
+      fetchRecentItems().catch((e) => log.error("Fetch recent items failed", e));
+      fetchPreferences().catch((e) => log.error("Fetch preferences failed", e));
     }
   }, [isAuthenticated, fetchFavorites, fetchRecentItems, fetchPreferences]);
 
-  // Fetch panel sizes from database when authenticated
   useEffect(() => {
     if (!isAuthenticated || hasFetchedPanelSizes) {
       return;
@@ -87,75 +81,74 @@ const ExplorerPage = () => {
           | undefined;
 
         if (panelSizes?.explorer) {
-          if (typeof panelSizes.explorer.left === 'number' && panelSizes.explorer.left >= 20 && panelSizes.explorer.left <= 50) {
+          if (typeof panelSizes.explorer.left === "number" && panelSizes.explorer.left >= 20 && panelSizes.explorer.left <= 50) {
             setLeftPanelSize(panelSizes.explorer.left);
           }
-          if (typeof panelSizes.explorer.right === 'number' && panelSizes.explorer.right >= 50) {
+          if (typeof panelSizes.explorer.right === "number" && panelSizes.explorer.right >= 50) {
             setRightPanelSize(panelSizes.explorer.right);
           }
         }
         setHasFetchedPanelSizes(true);
       } catch (error) {
-        log.error('[ExplorerPage] Failed to fetch panel sizes:', error);
+        log.error("[ExplorerPage] Failed to fetch panel sizes:", error);
         setHasFetchedPanelSizes(true);
       }
     };
 
     fetchPanelSizes().catch((error) => {
-      log.error('[ExplorerPage] Error fetching panel sizes:', error);
+      log.error("[ExplorerPage] Error fetching panel sizes:", error);
       setHasFetchedPanelSizes(true);
     });
   }, [isAuthenticated, hasFetchedPanelSizes]);
 
-  // Debounce timer ref for panel size sync
   const panelSizeSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Handle panel layout changes (debounced)
-  const handlePanelLayout = useCallback((sizes: number[]): void => {
-    if (sizes.length >= 2) {
-      const [left, right] = sizes;
-      const clampedLeft = Math.max(20, Math.min(50, left));
-      const clampedRight = Math.max(50, right);
-      setLeftPanelSize(clampedLeft);
-      setRightPanelSize(clampedRight);
+  const handlePanelLayout = useCallback(
+    (sizes: number[]): void => {
+      if (sizes.length >= 2) {
+        const [left, right] = sizes;
+        const clampedLeft = Math.max(20, Math.min(50, left));
+        const clampedRight = Math.max(50, right);
+        setLeftPanelSize(clampedLeft);
+        setRightPanelSize(clampedRight);
 
-      // Update collapsed state based on size
-      if (left < 10) {
-        setIsSidebarCollapsed(true);
-      } else {
-        setIsSidebarCollapsed(false);
-      }
+        if (left < 10) {
+          setIsSidebarCollapsed(true);
+        } else {
+          setIsSidebarCollapsed(false);
+        }
 
-      if (panelSizeSyncTimeoutRef.current) {
-        clearTimeout(panelSizeSyncTimeoutRef.current);
-      }
+        if (panelSizeSyncTimeoutRef.current) {
+          clearTimeout(panelSizeSyncTimeoutRef.current);
+        }
 
-      if (isAuthenticated && hasFetchedPanelSizes) {
-        panelSizeSyncTimeoutRef.current = setTimeout(async () => {
-          try {
-            const currentPreferences = await rbacUserPreferencesApi.getPreferences();
-            await rbacUserPreferencesApi.updatePreferences({
-              workspacePreferences: {
-                ...currentPreferences.workspacePreferences,
-                panelSizes: {
-                  ...((currentPreferences.workspacePreferences?.panelSizes as Record<string, unknown>) || {}),
-                  explorer: {
-                    left: clampedLeft,
-                    right: clampedRight,
+        if (isAuthenticated && hasFetchedPanelSizes) {
+          panelSizeSyncTimeoutRef.current = setTimeout(async () => {
+            try {
+              const currentPreferences = await rbacUserPreferencesApi.getPreferences();
+              await rbacUserPreferencesApi.updatePreferences({
+                workspacePreferences: {
+                  ...currentPreferences.workspacePreferences,
+                  panelSizes: {
+                    ...((currentPreferences.workspacePreferences?.panelSizes as Record<string, unknown>) || {}),
+                    explorer: {
+                      left: clampedLeft,
+                      right: clampedRight,
+                    },
                   },
                 },
-              },
-            });
-          } catch (error) {
-            log.error('[ExplorerPage] Failed to sync panel sizes:', error);
-          }
-          panelSizeSyncTimeoutRef.current = null;
-        }, 1000);
+              });
+            } catch (error) {
+              log.error("[ExplorerPage] Failed to sync panel sizes:", error);
+            }
+            panelSizeSyncTimeoutRef.current = null;
+          }, 1000);
+        }
       }
-    }
-  }, [isAuthenticated, hasFetchedPanelSizes]);
+    },
+    [isAuthenticated, hasFetchedPanelSizes]
+  );
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (panelSizeSyncTimeoutRef.current) {
@@ -164,7 +157,6 @@ const ExplorerPage = () => {
     };
   }, []);
 
-  // Breadcrumb items
   const breadcrumbs = React.useMemo(() => {
     const items: Array<{ label: string; path: string; icon: React.ReactNode }> = [];
 
@@ -172,7 +164,7 @@ const ExplorerPage = () => {
       items.push({
         label: currentDatabase,
         path: `/explorer?database=${currentDatabase}`,
-        icon: <Database className="w-3 h-3 text-blue-400" />,
+        icon: <Database className="h-3 w-3 text-paper-dim" aria-hidden />,
       });
     }
 
@@ -180,7 +172,7 @@ const ExplorerPage = () => {
       items.push({
         label: currentTable,
         path: `/explorer?database=${currentDatabase}&table=${currentTable}`,
-        icon: <Table2 className="w-3 h-3 text-emerald-400" />,
+        icon: <Table2 className="h-3 w-3 text-paper-dim" aria-hidden />,
       });
     }
 
@@ -188,78 +180,87 @@ const ExplorerPage = () => {
   }, [currentDatabase, currentTable]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2 }}
-      className="h-full w-full flex flex-col"
-    >
-      {/* Minimal Header Bar */}
-      <div className="flex-none h-11 px-4 flex items-center justify-between border-b border-white/10">
-        {/* Left: Breadcrumbs */}
-        <div className="flex items-center gap-2 min-w-0">
+    <div className="flex h-full w-full flex-col">
+      {/* ─── Header bar ─── */}
+      <div className="flex h-11 flex-none items-center justify-between border-b border-ink-500 bg-ink-50 px-3">
+        {/* Left: sidebar toggle + breadcrumbs */}
+        <div className="flex min-w-0 items-center gap-1">
           <button
+            type="button"
             onClick={toggleSidebar}
-            className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-white/5 transition-colors mr-1"
-            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
+            title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {isSidebarCollapsed ? (
-              <PanelLeftOpen className="w-4 h-4" />
+              <PanelLeftOpen className="h-3.5 w-3.5" />
             ) : (
-              <PanelLeftClose className="w-4 h-4" />
+              <PanelLeftClose className="h-3.5 w-3.5" />
             )}
           </button>
-          {breadcrumbs.length > 0 && (
-            <button
-              onClick={() => navigate('/explorer')}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Explorer</span>
-            </button>
-          )}
+
+          <span className="mx-2 h-4 w-px bg-ink-500" aria-hidden />
+
+          <button
+            type="button"
+            onClick={() => navigate("/explorer")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors",
+              breadcrumbs.length === 0
+                ? "text-paper"
+                : "text-paper-muted hover:bg-ink-200 hover:text-paper"
+            )}
+          >
+            <Layers className="h-3.5 w-3.5" aria-hidden />
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em]">Explorer</span>
+          </button>
 
           {breadcrumbs.map((crumb, index) => (
             <React.Fragment key={crumb.path}>
-              <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />
+              <ChevronRight className="h-3 w-3 shrink-0 text-paper-faint" aria-hidden />
               <button
+                type="button"
                 onClick={() => navigate(crumb.path)}
                 className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors truncate max-w-[150px]",
+                  "inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-[12px] transition-colors max-w-[180px] truncate",
                   index === breadcrumbs.length - 1
-                    ? "text-white font-medium bg-white/10"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
+                    ? "bg-ink-200 text-paper"
+                    : "text-paper-muted hover:bg-ink-200 hover:text-paper"
                 )}
               >
                 {crumb.icon}
-                <span className="truncate">{crumb.label}</span>
+                <span className="truncate font-mono">{crumb.label}</span>
               </button>
             </React.Fragment>
           ))}
         </div>
 
-        {/* Right: Stats & Keyboard Hint */}
-        <div className="flex items-center gap-3">
-          {/* Stats Pills */}
-          <div className="hidden sm:flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20">
-              <Database className="w-3 h-3 text-blue-400" />
-              <span className="text-[10px] font-medium text-blue-300">{databaseCount}</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <Table2 className="w-3 h-3 text-emerald-400" />
-              <span className="text-[10px] font-medium text-emerald-300">{tableCount}</span>
-            </div>
+        {/* Right: stats + keyboard hint */}
+        <div className="flex items-center gap-4">
+          <div className="hidden items-center gap-3 sm:flex">
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-faint">
+              <Database className="h-3 w-3" aria-hidden />
+              <span className="text-paper">{databaseCount}</span>
+              <span>db</span>
+            </span>
+            <span className="h-3 w-px bg-ink-500" aria-hidden />
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-faint">
+              <Table2 className="h-3 w-3" aria-hidden />
+              <span className="text-paper">{tableCount}</span>
+              <span>tbl</span>
+            </span>
           </div>
 
-          {/* Keyboard Shortcut Hint */}
-          <div className="hidden md:flex items-center gap-1 text-[10px] text-gray-500">
-            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono">
-              <Command className="w-2.5 h-2.5 inline" />
+          <div className="hidden items-center gap-1 md:flex">
+            <kbd className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
+              ⌘
             </kbd>
-            <span>+</span>
-            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono">K</kbd>
-            <span className="ml-1">to search</span>
+            <kbd className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
+              K
+            </kbd>
+            <span className="ml-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              search
+            </span>
           </div>
         </div>
       </div>
@@ -270,14 +271,13 @@ const ExplorerPage = () => {
       <UploadFromFile />
       <AlterTable />
 
-      {/* Main Content */}
-      <div className="flex-1 min-h-0">
+      {/* Main content */}
+      <div className="min-h-0 flex-1">
         <ResizablePanelGroup
           direction="horizontal"
           onLayout={handlePanelLayout}
           className="h-full"
         >
-          {/* Left Panel - Sidebar */}
           <ResizablePanel
             ref={sidebarPanelRef}
             className="overflow-hidden"
@@ -292,16 +292,14 @@ const ExplorerPage = () => {
             <DatabaseExplorer />
           </ResizablePanel>
 
-          {/* Resizable Handle */}
           <ResizableHandle
             withHandle
             className={cn(
-              "w-px bg-white/10 hover:bg-white/20 transition-colors duration-200",
-              "data-[resize-handle-active]:bg-white/30"
+              "w-px bg-ink-500 transition-colors duration-200",
+              "hover:bg-ink-700 data-[resize-handle-active]:bg-brand"
             )}
           />
 
-          {/* Right Panel - Workspace */}
           <ResizablePanel
             className="overflow-hidden"
             defaultSize={rightPanelSize}
@@ -311,7 +309,7 @@ const ExplorerPage = () => {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
-    </motion.div>
+    </div>
   );
 };
 

@@ -3,7 +3,7 @@ import { useWorkspaceStore, genTabId, useAuthStore, useRbacStore, RBAC_PERMISSIO
 import { useSavedQueries } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FilePlus, Save, Clock, ArrowRight } from "lucide-react";
+import { ArrowRight, Clock, FilePlus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const HomeTab = () => {
@@ -11,7 +11,6 @@ const HomeTab = () => {
   const { activeConnectionId } = useAuthStore();
   const { hasPermission } = useRbacStore();
   const canViewSavedQueries = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_VIEW);
-  // Only fetch saved queries if user has permission
   const { data: savedQueries = [] } = useSavedQueries(
     activeConnectionId ?? undefined,
     { enabled: canViewSavedQueries }
@@ -44,45 +43,54 @@ const HomeTab = () => {
   };
 
   return (
-    <div className="h-full p-6">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-white/90 mb-2">
-            Query Workspace
+    <div className="h-full overflow-y-auto bg-ink-50">
+      <div className="mx-auto max-w-4xl px-6 py-12">
+        <header className="flex flex-col gap-4 border-b border-ink-500 pb-8">
+          <span className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+            <span className="text-paper-faint">01</span>
+            <span className="h-px w-6 bg-ink-700" aria-hidden />
+            <span>Query workspace</span>
+          </span>
+          <h1 className="text-2xl font-semibold tracking-tight text-paper">
+            Start a query.{" "}
+            <span className="text-paper-dim">Or open one you saved.</span>
           </h1>
-          <p className="text-gray-400">
-            Create and manage your SQL queries
-          </p>
-        </div>
+          <div>
+            <Button
+              type="button"
+              onClick={handleNewQuery}
+              className="group inline-flex h-10 items-center gap-2 rounded-xs bg-brand px-4 text-sm font-semibold tracking-tight text-ink-50 hover:bg-brand-soft hover:-translate-y-px transition-[transform,background-color] duration-200"
+            >
+              <FilePlus className="h-4 w-4" />
+              New query
+            </Button>
+          </div>
+        </header>
 
-        {/* Quick Actions */}
-        <div className="flex justify-center">
-          <Button
-            onClick={handleNewQuery}
-            className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500"
-          >
-            <FilePlus className="h-4 w-4" />
-            New Query
-          </Button>
-        </div>
-
-        <div className={cn("grid gap-6", canViewSavedQueries ? "md:grid-cols-2" : "md:grid-cols-1")}>
-          {/* Recent Queries */}
-          <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Clock className="h-5 w-5 text-purple-400" />
-              <h2 className="text-lg font-semibold text-white/90">
-                Recent Queries
-              </h2>
+        <section
+          className={cn(
+            "mt-10 grid gap-5",
+            canViewSavedQueries ? "md:grid-cols-2" : "md:grid-cols-1"
+          )}
+        >
+          {/* Recent queries */}
+          <div className="flex h-[280px] flex-col rounded-md border border-ink-500 bg-ink-100">
+            <div className="flex items-center gap-3 border-b border-ink-500 px-4 py-3">
+              <Clock className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
+              <span className="text-[13px] font-medium text-paper">Recent queries</span>
+              {recentTabs.length > 0 && (
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                  {recentTabs.length}
+                </span>
+              )}
             </div>
-            <ScrollArea className="h-[200px]">
+            <ScrollArea className="flex-1">
               {recentTabs.length > 0 ? (
-                <div className="space-y-2">
+                <div className="flex flex-col">
                   {recentTabs.map((tab) => (
-                    <div
+                    <button
                       key={tab.id}
-                      className="p-3 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors flex items-center justify-between group"
+                      type="button"
                       onClick={() =>
                         addTab({
                           ...tab,
@@ -90,60 +98,67 @@ const HomeTab = () => {
                           title: `${tab.title} (Copy)`,
                         })
                       }
+                      className="group flex items-center gap-3 border-t border-ink-500 px-4 py-3 text-left transition-colors first:border-t-0 hover:bg-ink-200"
                     >
-                      <span className="text-sm text-gray-300 truncate flex-1">
+                      <span className="flex-1 truncate text-[13px] text-paper">
                         {tab.title}
                       </span>
-                      <ArrowRight className="h-4 w-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-paper-faint opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                    </button>
                   ))}
                 </div>
               ) : (
-                <p className="text-center text-gray-500 py-8">
-                  No recent queries
-                </p>
+                <div className="flex h-full items-center justify-center px-6 py-10 text-center">
+                  <p className="text-sm text-paper-muted">No recent queries</p>
+                </div>
               )}
             </ScrollArea>
           </div>
 
-          {/* Saved Queries - Only show if user has permission */}
+          {/* Saved queries */}
           {canViewSavedQueries && (
-            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Save className="h-5 w-5 text-blue-400" />
-                <h2 className="text-lg font-semibold text-white/90">
-                  Saved Queries
-                </h2>
+            <div className="flex h-[280px] flex-col rounded-md border border-ink-500 bg-ink-100">
+              <div className="flex items-center gap-3 border-b border-ink-500 px-4 py-3">
+                <Save className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
+                <span className="text-[13px] font-medium text-paper">Saved queries</span>
+                {savedQueries.length > 0 && (
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                    {savedQueries.length}
+                  </span>
+                )}
               </div>
-              <ScrollArea className="h-[200px]">
+              <ScrollArea className="flex-1">
                 {!activeConnectionId ? (
-                  <p className="text-center text-gray-500 py-8">
-                    Connect to a server to view saved queries
-                  </p>
+                  <div className="flex h-full items-center justify-center px-6 py-10 text-center">
+                    <p className="text-sm text-paper-muted">
+                      Connect to a server to view saved queries.
+                    </p>
+                  </div>
                 ) : savedQueries.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="flex flex-col">
                     {savedQueries.slice(0, 5).map((query) => (
-                      <div
+                      <button
                         key={query.id}
-                        className="p-3 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors flex items-center justify-between group"
+                        type="button"
                         onClick={() => handleOpenSavedQuery(query)}
+                        className="group flex items-center gap-3 border-t border-ink-500 px-4 py-3 text-left transition-colors first:border-t-0 hover:bg-ink-200"
                       >
-                        <span className="text-sm text-gray-300 truncate flex-1">
+                        <span className="flex-1 truncate text-[13px] text-paper">
                           {query.name}
                         </span>
-                        <ArrowRight className="h-4 w-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-paper-faint opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                      </button>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-center text-gray-500 py-8">
-                    No saved queries yet
-                  </p>
+                  <div className="flex h-full items-center justify-center px-6 py-10 text-center">
+                    <p className="text-sm text-paper-muted">No saved queries yet.</p>
+                  </div>
                 )}
               </ScrollArea>
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

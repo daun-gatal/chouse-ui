@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { log } from '@/lib/log';
 import { DiffEditor } from './DiffEditor';
-import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -145,35 +144,42 @@ export function DebugQueryDialog({
         };
     }, []);
 
+    const statusPill = result ? (
+        <span className="inline-flex items-center gap-1.5 rounded-xs border border-brand/40 bg-brand/5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
+            Fix Available
+        </span>
+    ) : apiError ? (
+        <span className="inline-flex items-center gap-1.5 rounded-xs border border-red-900/60 bg-red-950/40 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+            Failed
+        </span>
+    ) : (
+        <span className="inline-flex items-center gap-1.5 rounded-xs border border-amber-900/60 bg-amber-950/40 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" aria-hidden />
+            Analyzing
+        </span>
+    );
+
     const dialogTitle = (
         <div className="flex items-center justify-between gap-3 w-full">
-            <div className="space-y-1 min-w-0">
-                <DialogTitle className="flex items-center gap-3 text-2xl font-semibold text-white tracking-tight">
-                    <Sparkles className="w-6 h-6 text-indigo-400 shrink-0" />
-                    <span>Query Analysis</span>
-                </DialogTitle>
-                <p className="text-sm text-gray-400 ml-9">
-                    {result ? "We found an issue and have a fix ready." : "Analyzing your query logic..."}
-                </p>
+            <div className="flex items-center gap-3 min-w-0">
+                <span className="grid h-9 w-9 place-items-center rounded-xs border border-brand/40 bg-brand/5 text-brand shrink-0" aria-hidden>
+                    <Sparkles className="w-4 h-4" />
+                </span>
+                <div className="space-y-0.5 min-w-0">
+                    <DialogTitle className="text-[16px] font-semibold tracking-tight text-paper">
+                        Query Analysis
+                    </DialogTitle>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                        {result ? "Issue found — fix ready" : "Analyzing query logic"}
+                    </p>
+                </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-                {result ? (
-                    <Badge variant="outline" className="bg-indigo-500/10 text-indigo-300 border-indigo-500/20 px-3 py-1 font-medium rounded-full">
-                        Fix Available
-                    </Badge>
-                ) : apiError ? (
-                    <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20 px-3 py-1 font-medium rounded-full">
-                        Failed
-                    </Badge>
-                ) : (
-                    <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-3 py-1 font-medium rounded-full animate-pulse">
-                        Analyzing...
-                    </Badge>
-                )}
+                {statusPill}
                 {!isDebugging && result && (
-                    <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 mr-2">
-                        <span className="text-xs text-gray-400">Model:</span>
-                        <span className="text-xs font-medium text-indigo-300 truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
+                    <div className="hidden sm:flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-1.5">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Model</span>
+                        <span className="text-[11px] font-medium text-paper truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
                     </div>
                 )}
             </div>
@@ -186,39 +192,39 @@ export function DebugQueryDialog({
             onOpenChange={(open) => { if (!open) handleCancel(); }}
             dialogId="aiDebugger"
             title={dialogTitle}
-            windowClassName="rounded-2xl shadow-2xl shadow-black/50 bg-[#0F1117] border-gray-800 text-white"
-            headerClassName="px-8 py-5 border-white/10 bg-transparent"
-            footerClassName="px-8 py-6 bg-gradient-to-t from-[#0F1117] via-[#0F1117] to-transparent border-white/10"
-            closeButtonClassName="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg -mr-2"
-            contentClassName="bg-[#0F1117] text-white"
+            windowClassName="rounded-xs border border-ink-500 bg-ink-100 text-paper shadow-xl"
+            headerClassName="px-6 py-4 border-b border-ink-500 bg-ink-100"
+            footerClassName="px-6 py-4 border-t border-ink-500 bg-ink-100"
+            closeButtonClassName="text-paper-dim hover:text-paper hover:bg-ink-200 rounded-xs -mr-1"
+            contentClassName="bg-ink-100 text-paper"
             footer={
                 <DialogFooter className="px-0 py-0 border-0 bg-transparent">
-                    <div className="flex w-full items-center justify-between">
+                    <div className="flex w-full items-center justify-between gap-2">
                         <Button
-                            variant="ghost"
+                            variant="outline"
                             onClick={handleCancel}
-                            className="text-gray-500 hover:text-white hover:bg-white/5"
+                            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                         >
                             Dismiss
                         </Button>
                         {result && (
-                            <div className="flex gap-3">
+                            <div className="flex gap-2">
                                 <Button
                                     variant="outline"
                                     onClick={() => {
                                         navigator.clipboard.writeText(result.fixedQuery);
                                         toast.success('Copied to clipboard');
                                     }}
-                                    className="gap-2 border-white/10 text-gray-300 hover:bg-white/5"
+                                    className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                                 >
-                                    <Copy className="w-4 h-4" />
+                                    <Copy className="w-3.5 h-3.5" />
                                     Copy Code
                                 </Button>
                                 <Button
                                     onClick={handleAccept}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white gap-2 shadow-lg shadow-indigo-500/20 px-6 rounded-lg font-medium"
+                                    className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                                 >
-                                    <Check className="w-4 h-4" />
+                                    <Check className="w-3.5 h-3.5" />
                                     Apply Fix
                                 </Button>
                             </div>
@@ -227,62 +233,58 @@ export function DebugQueryDialog({
                 </DialogFooter>
             }
         >
-            <div className="flex-1 overflow-y-auto p-8 relative h-full min-h-0 bg-[#0F1117]">
-                    {/* Subtle Background Gradient */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none" />
-
-                    <div className="max-w-4xl mx-auto space-y-10 relative z-10">
+            <div className="flex-1 overflow-y-auto p-8 relative h-full min-h-0 bg-ink-100">
+                    <div className="max-w-4xl mx-auto space-y-8 relative">
                         {apiError ? (
                             <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-                                <div className="max-w-md w-full">
-                                    <Alert variant="destructive" className="bg-red-500/10 border-red-500/20 text-left">
-                                        <AlertTitle className="text-red-400 font-semibold flex items-center gap-2">
-                                            Analysis Failed
-                                        </AlertTitle>
-                                        <AlertDescription className="text-red-300/80 mt-2">
-                                            {apiError}
-                                        </AlertDescription>
-                                    </Alert>
+                                <div className="max-w-md w-full rounded-xs border border-red-900/60 bg-red-950/40 p-4 text-left">
+                                    <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                                        <AlertCircle className="w-3.5 h-3.5" />
+                                        Analysis Failed
+                                    </div>
+                                    <p className="mt-2 text-[12px] text-red-200">
+                                        {apiError}
+                                    </p>
                                 </div>
                                 <Button
                                     onClick={handleDebug}
-                                    className="bg-white/5 hover:bg-white/10 text-white border border-white/10 gap-2 mt-4"
+                                    className="h-9 gap-2 rounded-xs border border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                                 >
-                                    <RefreshCw className="w-4 h-4" />
+                                    <RefreshCw className="w-3.5 h-3.5" />
                                     Try Again
                                 </Button>
                             </div>
                         ) : !result && !isDebugging ? (
-                            <div className="flex flex-col items-center justify-center py-12 text-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                            <div className="flex flex-col items-center justify-center py-12 text-center space-y-8">
                                 <div className="space-y-4">
-                                    <div className="inline-flex items-center justify-center p-4 rounded-full bg-indigo-500/10 mb-2">
-                                        <Bug className="w-8 h-8 text-indigo-400" />
+                                    <div className="inline-flex items-center justify-center h-12 w-12 rounded-xs border border-brand/40 bg-brand/5 text-brand">
+                                        <Bug className="w-5 h-5" />
                                     </div>
-                                    <h3 className="text-2xl font-semibold text-white tracking-tight">Debug this Query</h3>
-                                    <p className="text-gray-400 max-w-md mx-auto leading-relaxed text-sm">Select an AI model to analyze your query for schema compliance, logic errors, and optimization opportunities.</p>
+                                    <h3 className="text-[18px] font-semibold text-paper tracking-tight">Debug this Query</h3>
+                                    <p className="text-[12px] text-paper-muted max-w-md mx-auto leading-relaxed">Select an AI model to analyze your query for schema compliance, logic errors, and optimization opportunities.</p>
                                 </div>
 
-                                <div className="w-full max-w-lg space-y-5 text-left bg-white/5 border border-white/5 rounded-2xl p-6 shadow-xl shadow-black/20">
-                                    <div className="space-y-3">
-                                        <Label className="text-gray-300 font-medium ml-1">Select AI Model</Label>
+                                <div className="w-full max-w-lg space-y-5 text-left rounded-xs border border-ink-500 bg-ink-200 p-5">
+                                    <div className="space-y-2">
+                                        <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Select AI Model</Label>
                                         <Select
                                             value={selectedModelId}
                                             onValueChange={(value) => setSelectedModelId(value)}
                                         >
-                                            <SelectTrigger className="w-full bg-[#0F1117] border-white/10 hover:bg-white/5 text-sm h-12 rounded-xl focus:ring-1 focus:ring-indigo-500/50 transition-colors">
+                                            <SelectTrigger className="w-full h-10 rounded-xs border-ink-500 bg-ink-100 text-[12px] text-paper hover:bg-ink-200 focus-visible:border-brand focus-visible:ring-0 transition-colors">
                                                 <SelectValue placeholder="Select an AI Model" />
                                             </SelectTrigger>
-                                            <SelectContent className="bg-[#0F1117] border-white/10 rounded-xl max-h-[220px]">
+                                            <SelectContent className="rounded-xs border-ink-500 bg-ink-100 max-h-[220px]">
                                                 {aiModels.length === 0 ? (
-                                                    <div className="p-4 text-center text-sm text-gray-500">
+                                                    <div className="p-4 text-center text-[12px] text-paper-dim">
                                                         No AI models configured.<br />Please add one in the Admin UI.
                                                     </div>
                                                 ) : (
                                                     aiModels.map(m => (
-                                                        <SelectItem key={m.id} value={m.id} className="focus:bg-indigo-500/10 focus:text-indigo-200 cursor-pointer py-3 rounded-lg mx-1 my-0.5">
-                                                            <div className="flex flex-col gap-1 text-left">
-                                                                <span className="font-medium text-sm text-gray-200">{m.name}</span>
-                                                                <span className="text-[11px] text-gray-500 font-medium tracking-wide uppercase">{m.provider || 'AI Provider'}</span>
+                                                        <SelectItem key={m.id} value={m.id} className="focus:bg-ink-200 focus:text-paper cursor-pointer py-2 rounded-xs mx-1 my-0.5">
+                                                            <div className="flex flex-col gap-0.5 text-left">
+                                                                <span className="font-medium text-[12px] text-paper">{m.name}</span>
+                                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{m.provider || 'AI Provider'}</span>
                                                             </div>
                                                         </SelectItem>
                                                     ))
@@ -292,50 +294,49 @@ export function DebugQueryDialog({
                                     </div>
                                     <Button
                                         onClick={handleDebug}
-                                        className="w-full h-12 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-base shadow-lg shadow-indigo-500/25 transition-all"
+                                        className="w-full h-10 rounded-xs bg-brand font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                                         disabled={!selectedModelId || aiModels.length === 0}
                                     >
-                                        <Sparkles className="w-5 h-5 mr-2" />
+                                        <Sparkles className="w-3.5 h-3.5 mr-2" />
                                         Analyze Query
                                     </Button>
                                 </div>
                             </div>
                         ) : !result && isDebugging ? (
                             <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-                                <div className="relative p-7 rounded-full bg-indigo-500/10 mb-2">
-                                    <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full animate-pulse" />
-                                    <Loader2 className="w-8 h-8 text-indigo-400 animate-spin relative" />
+                                <div className="grid h-12 w-12 place-items-center rounded-xs border border-brand/40 bg-brand/5">
+                                    <Loader2 className="w-5 h-5 text-brand animate-spin" />
                                 </div>
                                 <div className="space-y-2">
-                                    <h3 className="text-xl font-medium text-white tracking-tight">Running Analysis</h3>
-                                    <p className="text-gray-400 max-w-xs mx-auto text-sm">Checking schema compliance, logic errors, and optimization opportunities...</p>
+                                    <h3 className="text-[16px] font-semibold text-paper tracking-tight">Running Analysis</h3>
+                                    <p className="text-[12px] text-paper-muted max-w-xs mx-auto">Checking schema compliance, logic errors, and optimization opportunities...</p>
                                 </div>
                             </div>
                         ) : (
                             <>
-                                {/* 1. Diagnosis Section (Clean, No Box) */}
+                                {/* 1. Diagnosis Section */}
                                 <section className="space-y-3">
-                                    <div className="flex items-center gap-2 text-sm font-medium text-red-300 ml-1">
-                                        <AlertCircle className="w-4 h-4" />
+                                    <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                                        <AlertCircle className="w-3.5 h-3.5" />
                                         Diagnosis
                                     </div>
-                                    <div className="text-lg text-gray-100 leading-relaxed font-light">
+                                    <div className="rounded-xs border border-red-900/60 bg-red-950/40 p-4 text-[13px] leading-relaxed text-red-100">
                                         {result?.errorAnalysis}
                                     </div>
                                 </section>
 
-                                {/* 2. Proposed Change (Rounded Editor, Shadow) */}
+                                {/* 2. Proposed Change (Diff editor) */}
                                 <section className="space-y-3">
-                                    <div className="flex items-center justify-between ml-1 text-sm font-medium text-indigo-300">
-                                        <div className="flex items-center gap-2">
-                                            <FileText className="w-4 h-4" />
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                                            <FileText className="w-3.5 h-3.5" />
                                             Proposed Change
                                         </div>
-                                        <div className="text-xs text-indigo-400/60 font-mono">
+                                        <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                                             Diff View
                                         </div>
                                     </div>
-                                    <div className="rounded-xl overflow-hidden shadow-2xl shadow-black/40 border border-white/5 bg-[#0a0a0c]">
+                                    <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-200">
                                         <DiffEditor
                                             original={query}
                                             modified={result?.fixedQuery || ''}
@@ -354,62 +355,60 @@ export function DebugQueryDialog({
                                     </div>
                                 </section>
 
-                                {/* 3. Solution Summary (Soft Background) */}
+                                {/* 3. Solution Summary */}
                                 <section className="space-y-3">
-                                    <div className="flex items-center gap-2 text-sm font-medium text-green-300 ml-1">
-                                        <Check className="w-4 h-4" />
+                                    <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+                                        <Check className="w-3.5 h-3.5" />
                                         Why this fixes it
                                     </div>
-                                    <div className="text-base text-gray-300 bg-white/5 border border-white/5 p-6 rounded-2xl leading-relaxed">
+                                    <div className="rounded-xs border border-emerald-900/60 bg-emerald-950/40 p-4 text-[13px] leading-relaxed text-emerald-100">
                                         {result?.summary}
                                     </div>
                                 </section>
 
                                 {/* 4. Technical Details (Accordion) */}
-                                <section className="pt-4">
+                                <section className="pt-2">
                                     <details className="group">
-                                        <summary className="list-none flex items-center cursor-pointer text-sm text-gray-500 hover:text-gray-300 transition-colors py-2">
+                                        <summary className="list-none flex items-center cursor-pointer font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:text-paper transition-colors py-2">
                                             <div className="flex items-center gap-2">
-                                                <div className="p-1 rounded bg-transparent group-hover:bg-white/5 transition-colors">
-                                                    <ArrowRight className="w-3 h-3 transition-transform group-open:rotate-90" />
-                                                </div>
-                                                <span>Viewing Technical Details</span>
+                                                <ArrowRight className="w-3 h-3 transition-transform group-open:rotate-90" />
+                                                <span>Technical Details</span>
                                             </div>
                                         </summary>
-                                        <div className="mt-4 pl-4 border-l border-white/10 group-open:animate-in group-open:slide-in-from-top-2">
+                                        <div className="mt-4 pl-4 border-l border-ink-500">
                                             <div className="prose prose-invert prose-sm max-w-none">
                                                 <ReactMarkdown
                                                     components={{
-                                                        h1: ({ node, ...props }) => <h1 className="text-xl font-semibold text-white mt-6 mb-3 first:mt-0" {...props} />,
-                                                        h2: ({ node, ...props }) => <h2 className="text-lg font-medium text-indigo-200 mt-5 mb-2" {...props} />,
-                                                        h3: ({ node, ...props }) => <h3 className="text-base font-medium text-indigo-100 mt-4 mb-2" {...props} />,
-                                                        p: ({ node, ...props }) => <p className="text-gray-300 leading-relaxed mb-4" {...props} />,
-                                                        ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-5 mb-4 text-gray-300 space-y-1" {...props} />,
-                                                        ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-5 mb-4 text-gray-300 space-y-1" {...props} />,
-                                                        li: ({ node, ...props }) => <li className="pl-1 marker:text-indigo-400/50" {...props} />,
-                                                        strong: ({ node, ...props }) => <strong className="font-semibold text-indigo-200" {...props} />,
+                                                        h1: ({ node, ...props }) => <h1 className="text-[16px] font-semibold text-paper mt-6 mb-3 first:mt-0" {...props} />,
+                                                        h2: ({ node, ...props }) => <h2 className="text-[14px] font-semibold text-paper mt-5 mb-2" {...props} />,
+                                                        h3: ({ node, ...props }) => <h3 className="text-[13px] font-medium text-paper mt-4 mb-2" {...props} />,
+                                                        p: ({ node, ...props }) => <p className="text-[13px] text-paper-muted leading-relaxed mb-4" {...props} />,
+                                                        ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-5 mb-4 text-[13px] text-paper-muted space-y-1" {...props} />,
+                                                        ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-5 mb-4 text-[13px] text-paper-muted space-y-1" {...props} />,
+                                                        li: ({ node, ...props }) => <li className="pl-1 marker:text-brand/60" {...props} />,
+                                                        strong: ({ node, ...props }) => <strong className="font-semibold text-paper" {...props} />,
                                                         code: ({ node, className, children, ...props }: any) => {
                                                             const match = /language-(\w+)/.exec(className || '');
                                                             const isInline = !match && !String(children).includes('\n');
                                                             return isInline ? (
-                                                                <code className="bg-indigo-500/10 text-indigo-200 px-1.5 py-0.5 rounded text-[13px] font-mono border border-indigo-500/10" {...props}>
+                                                                <code className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[12px] text-paper" {...props}>
                                                                     {children}
                                                                 </code>
                                                             ) : (
-                                                                <div className="rounded-lg overflow-hidden my-4 border border-white/10 bg-[#0a0a0c] shadow-sm">
+                                                                <div className="my-4 overflow-hidden rounded-xs border border-ink-500 bg-ink-200">
                                                                     {match && (
-                                                                        <div className="px-3 py-1.5 bg-white/5 border-b border-white/5 text-xs text-gray-500 font-mono flex items-center gap-2">
+                                                                        <div className="flex items-center gap-2 border-b border-ink-500 bg-ink-100 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                                                             <Terminal className="w-3 h-3" />
                                                                             {match[1]}
                                                                         </div>
                                                                     )}
-                                                                    <pre className="p-4 overflow-x-auto text-sm text-gray-300 font-mono scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" {...props}>
+                                                                    <pre className="p-4 overflow-x-auto font-mono text-[12px] text-paper" {...props}>
                                                                         <code>{children}</code>
                                                                     </pre>
                                                                 </div>
                                                             )
                                                         },
-                                                        blockquote: ({ node, ...props }) => <blockquote className="border-l-2 border-indigo-500/30 pl-4 italic text-gray-400 my-4 bg-white/5 py-2 pr-2 rounded-r" {...props} />,
+                                                        blockquote: ({ node, ...props }) => <blockquote className="border-l-2 border-brand/40 pl-4 italic text-[13px] text-paper-muted my-4 bg-ink-200 py-2 pr-2 rounded-r-xs" {...props} />,
                                                     }}
                                                 >
                                                     {result?.explanation || ''}
@@ -417,23 +416,25 @@ export function DebugQueryDialog({
                                             </div>
 
                                             {/* Context Input */}
-                                            <div className="mt-8 pt-6">
-                                                <div className="relative">
-                                                    <Textarea
-                                                        value={additionalPrompt}
-                                                        onChange={(e) => setAdditionalPrompt(e.target.value)}
-                                                        placeholder="Ask a question to refine this result..."
-                                                        className="bg-[#14141a] border-white/10 rounded-xl text-sm p-4 min-h-[80px] focus:ring-1 focus:ring-indigo-500/50 transition-all"
-                                                    />
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="absolute right-3 bottom-3 h-7 text-xs text-indigo-300 hover:text-white hover:bg-indigo-500/20"
-                                                        onClick={handleDebug}
-                                                        disabled={isDebugging}
-                                                    >
-                                                        {isDebugging ? <Loader2 className="w-3 h-3 animate-spin" /> : "Refine Result"}
-                                                    </Button>
+                                            <div className="mt-8 pt-6 border-t border-ink-500">
+                                                <div className="space-y-2">
+                                                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Refine</Label>
+                                                    <div className="relative">
+                                                        <Textarea
+                                                            value={additionalPrompt}
+                                                            onChange={(e) => setAdditionalPrompt(e.target.value)}
+                                                            placeholder="Ask a question to refine this result..."
+                                                            className="rounded-xs border-ink-500 bg-ink-200 text-[12px] text-paper placeholder:text-paper-faint p-3 min-h-[80px] focus-visible:border-brand focus-visible:ring-0 transition-colors"
+                                                        />
+                                                        <Button
+                                                            size="sm"
+                                                            className="absolute right-2 bottom-2 h-7 rounded-xs bg-brand px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
+                                                            onClick={handleDebug}
+                                                            disabled={isDebugging}
+                                                        >
+                                                            {isDebugging ? <Loader2 className="w-3 h-3 animate-spin" /> : "Refine"}
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

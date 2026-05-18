@@ -1,6 +1,6 @@
 /**
  * RBAC Create User Component
- * 
+ *
  * Creates users through the RBAC system with role assignment.
  * No ClickHouse DDL is executed - user management is done through RBAC.
  */
@@ -11,8 +11,6 @@ import {
   UserPlus,
   ArrowLeft,
   Loader2,
-  Shield,
-  Key,
   Copy,
   Check,
   Eye,
@@ -34,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -57,55 +54,27 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip";
-import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
 import { rbacUsersApi, rbacRolesApi, rbacConnectionsApi, rbacDataAccessApi, type RbacRole, type CreateUserInput, type ClickHouseConnection } from "@/api/rbac";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
-// Role colors for display
-const ROLE_COLORS: Record<string, { icon: string; color: string; bgColor: string; borderColor: string }> = {
-  super_admin: {
-    icon: "👑",
-    color: "text-red-400",
-    bgColor: "bg-red-500/20",
-    borderColor: "border-red-500/50",
-  },
-  admin: {
-    icon: "🛡️",
-    color: "text-orange-400",
-    bgColor: "bg-orange-500/20",
-    borderColor: "border-orange-500/50",
-  },
-  developer: {
-    icon: "👨‍💻",
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/20",
-    borderColor: "border-blue-500/50",
-  },
-  analyst: {
-    icon: "📊",
-    color: "text-green-400",
-    bgColor: "bg-green-500/20",
-    borderColor: "border-green-500/50",
-  },
-  viewer: {
-    icon: "👁️",
-    color: "text-purple-400",
-    bgColor: "bg-purple-500/20",
-    borderColor: "border-purple-500/50",
-  },
-  guest: {
-    icon: "👋",
-    color: "text-cyan-400",
-    bgColor: "bg-cyan-500/20",
-    borderColor: "border-cyan-500/50",
-  },
+// Editorial role chrome: uniform hairline; identity comes from a 2-letter code.
+const ROLE_CODES: Record<string, string> = {
+  super_admin: "SA",
+  admin: "AD",
+  developer: "DV",
+  analyst: "AN",
+  viewer: "VW",
+  guest: "GS",
 };
+
+const getRoleCode = (roleName: string) =>
+  ROLE_CODES[roleName] || roleName.slice(0, 2).toUpperCase();
 
 // Password requirement indicator component
 const RequirementItem = ({ fulfilled, label }: { fulfilled: boolean; label: string }) => (
-  <div className={`flex items-center gap-2 text-xs transition-colors duration-200 ${fulfilled ? "text-green-400" : "text-gray-500"}`}>
-    <div className={`w-4 h-4 rounded-full flex items-center justify-center border ${fulfilled ? "bg-green-500/10 border-green-500/50" : "border-gray-700 bg-gray-800"}`}>
-      {fulfilled ? <Check className="w-2.5 h-2.5" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+  <div className={`flex items-center gap-2 text-[11px] transition-colors ${fulfilled ? "text-emerald-300" : "text-paper-faint"}`}>
+    <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${fulfilled ? "border-emerald-700 bg-emerald-950/40" : "border-ink-500 bg-ink-200"}`}>
+      {fulfilled ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
     </div>
     <span>{label}</span>
   </div>
@@ -400,34 +369,36 @@ const CreateUser: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         className="container mx-auto p-6 max-w-lg"
       >
-        <GlassCard>
-          <GlassCardHeader>
-            <GlassCardTitle className="flex items-center gap-2 text-green-400">
-              <Check className="h-5 w-5" />
-              User Created Successfully
-            </GlassCardTitle>
-          </GlassCardHeader>
-          <GlassCardContent className="space-y-6">
-            <p className="text-gray-300">
-              User <strong className="text-white">{username}</strong> has been created with the
-              following credentials:
+        <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+          <div className="flex items-center gap-3 border-b border-ink-500 px-5 py-4">
+            <span className="grid h-9 w-9 place-items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 text-emerald-300">
+              <Check className="h-4 w-4" aria-hidden />
+            </span>
+            <div className="flex flex-col gap-0.5">
+              <h2 className="text-[16px] font-semibold tracking-tight text-paper">User created successfully</h2>
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Credentials ready</p>
+            </div>
+          </div>
+          <div className="space-y-6 px-5 py-5">
+            <p className="text-[13px] text-paper-muted">
+              User <strong className="text-paper">{username}</strong> has been created with the following credentials.
             </p>
 
             <div className="space-y-3">
-              <div className="p-3 rounded-lg bg-white/5 border border-white/10">
-                <div className="text-xs text-gray-400 mb-1">Username</div>
-                <div className="text-white font-medium">{username}</div>
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Username</div>
+                <div className="mt-1 font-medium text-paper">{username}</div>
               </div>
 
-              <div className="p-3 rounded-lg bg-white/5 border border-white/10">
-                <div className="text-xs text-gray-400 mb-1">Email</div>
-                <div className="text-white font-medium">{email}</div>
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Email</div>
+                <div className="mt-1 font-medium text-paper">{email}</div>
               </div>
 
-              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                <div className="text-xs text-yellow-400 mb-1">Generated Password</div>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm break-all">
+              <div className="rounded-xs border border-amber-900/60 bg-amber-950/40 p-3">
+                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300">Generated password</div>
+                <div className="mt-2 flex items-center gap-2">
+                  <code className="flex-1 rounded-xs border border-ink-500 bg-ink-0 p-2 font-mono text-[12px] text-paper break-all">
                     {generatedPassword}
                   </code>
                   <Button
@@ -435,11 +406,12 @@ const CreateUser: React.FC = () => {
                     size="sm"
                     variant="outline"
                     onClick={copyGeneratedPassword}
+                    className="h-9 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-200"
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <p className="text-xs text-yellow-400/80 mt-2 flex items-center gap-1">
+                <p className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-200">
                   <AlertCircle className="h-3 w-3" />
                   Save this password securely. It won't be shown again.
                 </p>
@@ -447,8 +419,12 @@ const CreateUser: React.FC = () => {
             </div>
 
             <div className="flex gap-3">
-              <Button variant="outline" onClick={() => navigate("/admin")} className="flex-1">
-                Back to Users
+              <Button
+                variant="outline"
+                onClick={() => navigate("/admin")}
+                className="h-9 flex-1 rounded-xs border-ink-500 bg-ink-100 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+              >
+                Back to users
               </Button>
               <Button
                 onClick={() => {
@@ -459,14 +435,14 @@ const CreateUser: React.FC = () => {
                   setPassword("");
                   setConfirmPassword("");
                 }}
-                className="flex-1"
+                className="h-9 flex-1 gap-2 rounded-xs bg-brand font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
               >
-                <UserPlus className="h-4 w-4 mr-2" />
-                Create Another
+                <UserPlus className="h-3.5 w-3.5" />
+                Create another
               </Button>
             </div>
-          </GlassCardContent>
-        </GlassCard>
+          </div>
+        </div>
       </motion.div>
     );
   }
@@ -479,12 +455,22 @@ const CreateUser: React.FC = () => {
     >
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
-          <ArrowLeft className="h-5 w-5" />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate("/admin")}
+          className="h-9 w-9 rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
+        >
+          <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-center gap-3">
-          <UserPlus className="h-6 w-6 text-green-400" />
-          <h1 className="text-2xl font-bold text-white">Create New User</h1>
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+            <UserPlus className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-semibold tracking-tight text-paper">Create new user</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">RBAC user provisioning</p>
+          </div>
         </div>
       </div>
 
@@ -492,16 +478,16 @@ const CreateUser: React.FC = () => {
         {/* Left Column - User Details */}
         <div className="space-y-6">
           {/* Basic Information */}
-          <GlassCard>
-            <GlassCardHeader>
-              <GlassCardTitle className="flex items-center gap-2">
-                <UserPlus className="h-5 w-5 text-blue-400" />
-                User Information
-              </GlassCardTitle>
-            </GlassCardHeader>
-            <GlassCardContent className="space-y-4">
+          <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+            <div className="flex items-center gap-3 border-b border-ink-500 px-5 py-4">
+              <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                <span className="h-px w-6 bg-ink-700" aria-hidden />
+                <span>User information</span>
+              </span>
+            </div>
+            <div className="space-y-4 px-5 py-5">
               <div className="space-y-2">
-                <Label className="text-white">
+                <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                   Email <span className="text-red-400">*</span>
                 </Label>
                 <Input
@@ -509,54 +495,55 @@ const CreateUser: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="user@example.com"
-                  className="bg-white/5 border-white/10"
+                  className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-white">
+                <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                   Username <span className="text-red-400">*</span>
                 </Label>
                 <Input
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
                   placeholder="username"
-                  className="bg-white/5 border-white/10"
+                  className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                 />
-                <p className="text-xs text-gray-500">
-                  Lowercase letters, numbers, underscores, and hyphens only
+                <p className="text-[11px] text-paper-faint">
+                  Lowercase letters, numbers, underscores, and hyphens only.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label className="text-white">Display Name</Label>
+                <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Display name</Label>
                 <Input
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="John Doe"
-                  className="bg-white/5 border-white/10"
+                  className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                 />
               </div>
-            </GlassCardContent>
-          </GlassCard>
+            </div>
+          </div>
 
           {/* Password Section */}
-          <GlassCard>
-            <GlassCardHeader>
-              <GlassCardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5 text-yellow-400" />
-                Password
-              </GlassCardTitle>
-            </GlassCardHeader>
-            <GlassCardContent className="space-y-4">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+          <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+            <div className="flex items-center gap-3 border-b border-ink-500 px-5 py-4">
+              <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                <span className="h-px w-6 bg-ink-700" aria-hidden />
+                <span>Password</span>
+              </span>
+            </div>
+            <div className="space-y-4 px-5 py-5">
+              <div className="flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
                 <Checkbox
                   id="generate-password"
                   checked={generatePassword}
                   onCheckedChange={(checked) => setGeneratePassword(!!checked)}
+                  className="border-ink-500"
                 />
-                <Label htmlFor="generate-password" className="text-white cursor-pointer flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-yellow-400" />
+                <Label htmlFor="generate-password" className="flex cursor-pointer items-center gap-2 text-[12px] text-paper">
+                  <Sparkles className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                   Generate a secure password automatically
                 </Label>
               </div>
@@ -564,7 +551,7 @@ const CreateUser: React.FC = () => {
               {!generatePassword && (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-white">Password</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Password</Label>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <Input
@@ -572,39 +559,44 @@ const CreateUser: React.FC = () => {
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           placeholder="Enter password"
-                          className="bg-white/5 border-white/10 pr-10"
+                          className="rounded-xs border-ink-500 bg-ink-200 pr-10 text-paper"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-paper-dim hover:text-paper"
                         >
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
-                      <Button type="button" variant="outline" onClick={handleGeneratePasswordManually}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleGeneratePasswordManually}
+                        className="h-9 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+                      >
                         Generate
                       </Button>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-white">Confirm Password</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Confirm password</Label>
                     <Input
                       type={showPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Confirm password"
-                      className="bg-white/5 border-white/10"
+                      className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                     />
                     {confirmPassword && !passwordsMatch && (
-                      <p className="text-xs text-red-400">Passwords do not match</p>
+                      <p className="text-[11px] text-red-300">Passwords do not match.</p>
                     )}
                   </div>
 
                   {/* Password Requirements */}
-                  <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-                    <p className="text-xs text-gray-400 mb-3">Password Requirements:</p>
+                  <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                    <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Password requirements</p>
                     <div className="grid grid-cols-2 gap-2">
                       <RequirementItem fulfilled={passwordReqs.length} label="At least 12 characters" />
                       <RequirementItem fulfilled={passwordReqs.upper} label="Uppercase letter" />
@@ -615,39 +607,34 @@ const CreateUser: React.FC = () => {
                   </div>
                 </div>
               )}
-            </GlassCardContent>
-          </GlassCard>
+            </div>
+          </div>
         </div>
 
         {/* Right Column - Role Selection */}
         <div className="space-y-6">
-          <GlassCard>
-            <GlassCardHeader>
-              <GlassCardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-purple-400" />
-                Assign Roles <span className="text-red-400">*</span>
-              </GlassCardTitle>
-            </GlassCardHeader>
-            <GlassCardContent className="space-y-4">
+          <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+            <div className="flex items-center gap-3 border-b border-ink-500 px-5 py-4">
+              <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                <span className="h-px w-6 bg-ink-700" aria-hidden />
+                <span>Assign role <span className="text-red-400">*</span></span>
+              </span>
+            </div>
+            <div className="space-y-4 px-5 py-5">
               {!canAssignRoles && (
-                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-400">
+                <div className="rounded-xs border border-amber-900/60 bg-amber-950/40 p-3 text-[12px] text-amber-200">
                   You don't have permission to assign roles. The default role will be used.
                 </div>
               )}
 
               {loadingRoles ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+                  <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
                 </div>
               ) : (
                 <div className="space-y-3">
                   {roles.map((role) => {
-                    const colors = ROLE_COLORS[role.name] || {
-                      icon: "🔐",
-                      color: "text-gray-400",
-                      bgColor: "bg-gray-500/20",
-                      borderColor: "border-gray-500/50",
-                    };
+                    const code = getRoleCode(role.name);
                     const isSelected = selectedRoles.includes(role.id);
 
                     return (
@@ -656,55 +643,59 @@ const CreateUser: React.FC = () => {
                         type="button"
                         onClick={() => canAssignRoles && toggleRole(role.id)}
                         disabled={!canAssignRoles}
-                        className={`w-full p-4 rounded-lg border-2 transition-all text-left ${isSelected
-                            ? `${colors.bgColor} ${colors.borderColor}`
-                            : "bg-white/5 border-white/10 hover:bg-white/10"
-                          } ${!canAssignRoles && "opacity-50 cursor-not-allowed"}`}
+                        className={`w-full rounded-xs border p-4 text-left transition-colors ${isSelected
+                          ? "border-brand/60 bg-ink-200"
+                          : "border-ink-500 bg-ink-100 hover:border-ink-700"
+                          } ${!canAssignRoles ? "opacity-50 cursor-not-allowed" : ""}`}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="text-2xl">{colors.icon}</div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className={`font-semibold ${isSelected ? colors.color : "text-white"}`}>
+                          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xs border font-mono text-[12px] font-semibold tracking-tight ${isSelected
+                            ? "border-brand/60 bg-brand/10 text-brand"
+                            : "border-ink-500 bg-ink-200 text-paper"
+                            }`}>
+                            {code}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[14px] font-semibold text-paper">
                                 {role.displayName}
                               </span>
                               {role.isDefault && (
-                                <span className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                                   Default
                                 </span>
                               )}
                               {role.isSystem && (
-                                <span className="px-2 py-0.5 rounded text-xs bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                                <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                                   System
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-gray-400 mt-1">{role.description}</p>
-                            <div className="flex flex-wrap gap-1 mt-2">
+                            <p className="mt-1 text-[12px] text-paper-muted">{role.description}</p>
+                            <div className="mt-2 flex flex-wrap gap-1">
                               {role.permissions.slice(0, 4).map((perm) => (
                                 <span
                                   key={perm}
-                                  className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-gray-300"
+                                  className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted"
                                 >
                                   {perm}
                                 </span>
                               ))}
                               {role.permissions.length > 4 && (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-gray-400">
+                                <span className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-faint">
                                   +{role.permissions.length - 4} more
                                 </span>
                               )}
                             </div>
                           </div>
                           <div className="shrink-0">
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected
-                                ? 'border-cyan-400 bg-cyan-400'
-                                : 'border-gray-500 bg-transparent'
-                              }`}>
-                              {isSelected && (
-                                <div className="w-2.5 h-2.5 rounded-full bg-white" />
-                              )}
-                            </div>
+                            {isSelected ? (
+                              <span className="grid h-5 w-5 place-items-center rounded-xs bg-brand text-ink-50">
+                                <Check className="h-3 w-3" />
+                              </span>
+                            ) : (
+                              <span className="block h-5 w-5 rounded-xs border border-ink-500 bg-ink-200" />
+                            )}
                           </div>
                         </div>
                       </button>
@@ -714,64 +705,73 @@ const CreateUser: React.FC = () => {
               )}
 
               {selectedRoles.length === 0 && (
-                <p className="text-sm text-amber-400">⚠️ Please select a role</p>
+                <p className="flex items-center gap-1.5 text-[12px] text-amber-300">
+                  <AlertCircle className="h-3.5 w-3.5" aria-hidden />
+                  Please select a role.
+                </p>
               )}
-            </GlassCardContent>
-          </GlassCard>
+            </div>
+          </div>
 
           {/* Data Access Section */}
           {showDataAccessUI && (
-            <GlassCard className={requiresDataAccess && dataAccessRules.length === 0 ? "border-red-500/50" : ""}>
-              <GlassCardHeader>
+            <div className={`overflow-hidden rounded-xs border bg-ink-100 ${requiresDataAccess && dataAccessRules.length === 0 ? "border-red-900/60" : "border-ink-500"}`}>
+              <div className="border-b border-ink-500 px-5 py-4">
                 <button
                   type="button"
                   onClick={() => setShowDataAccessSection(!showDataAccessSection)}
-                  className="flex items-center justify-between w-full"
+                  className="flex w-full items-center justify-between"
                 >
-                  <GlassCardTitle className="flex items-center gap-2">
-                    <Database className={`h-5 w-5 ${requiresDataAccess && dataAccessRules.length === 0 ? "text-red-400" : "text-cyan-400"}`} />
-                    Data Access Rules
-                    {requiresDataAccess && (
-                      <span className="text-red-400 text-xs">*</span>
-                    )}
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                      <span className="h-px w-6 bg-ink-700" aria-hidden />
+                      <span className="flex items-center gap-2">
+                        Data access rules
+                        {requiresDataAccess && <span className="text-red-400">*</span>}
+                      </span>
+                    </span>
                     {dataAccessRules.length > 0 && (
-                      <Badge variant="secondary" className="ml-2">
+                      <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                         {dataAccessRules.length}
-                      </Badge>
+                      </span>
                     )}
                     {requiresDataAccess && dataAccessRules.length === 0 && (
-                      <Badge variant="destructive" className="ml-2 text-xs">
+                      <span className="inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
                         Required
-                      </Badge>
+                      </span>
                     )}
-                  </GlassCardTitle>
+                  </div>
                   {showDataAccessSection ? (
-                    <ChevronUp className="h-5 w-5 text-gray-400" />
+                    <ChevronUp className="h-4 w-4 text-paper-dim" />
                   ) : (
-                    <ChevronDown className="h-5 w-5 text-gray-400" />
+                    <ChevronDown className="h-4 w-4 text-paper-dim" />
                   )}
                 </button>
-              </GlassCardHeader>
+              </div>
               {showDataAccessSection && (
-                <GlassCardContent className="space-y-4">
+                <div className="space-y-4 px-5 py-5">
                   {requiresDataAccess && dataAccessRules.length === 0 ? (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-2">
-                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="font-medium">Data access rules required</p>
-                        <p className="text-xs text-red-400/80 mt-1">
-                          Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
-                        </p>
+                    <div className="rounded-xs border border-red-900/60 bg-red-950/40 p-3">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-300" aria-hidden />
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Data access rules required</p>
+                          <p className="mt-1 text-[12px] text-red-200">
+                            Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-sm text-cyan-300 flex items-start gap-2">
-                      <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                      <div>
-                        <p>Configure which databases and tables this user can access.</p>
-                        <p className="text-xs text-cyan-400/80 mt-1">
-                          Access type (read/write/admin) is determined by the user's role permissions.
-                        </p>
+                    <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                      <div className="flex items-start gap-2">
+                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-paper-dim" aria-hidden />
+                        <div>
+                          <p className="text-[12px] text-paper">Configure which databases and tables this user can access.</p>
+                          <p className="mt-1 text-[11px] text-paper-faint">
+                            Access type (read/write/admin) is determined by the user's role permissions.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -781,28 +781,33 @@ const CreateUser: React.FC = () => {
                       {dataAccessRules.map((rule, index) => (
                         <div
                           key={rule.id}
-                          className="p-3 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between gap-3"
+                          className="flex items-center justify-between gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3"
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant={rule.isAllowed ? "default" : "destructive"} className="text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={
+                                rule.isAllowed
+                                  ? "inline-flex items-center gap-1 rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300"
+                                  : "inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300"
+                              }>
                                 {rule.isAllowed ? "Allow" : "Deny"}
-                              </Badge>
-                              <span className="text-sm text-white font-mono truncate">
+                              </span>
+                              <span className="truncate font-mono text-[12px] text-paper">
                                 {rule.databasePattern}.{rule.tablePattern}
                               </span>
                             </div>
-                            <div className="text-xs text-gray-400 mt-1">
+                            <div className="mt-1 text-[11px] text-paper-faint">
                               {getConnectionName(rule.connectionId)}
-                              {rule.description && ` • ${rule.description}`}
+                              {rule.description && ` · ${rule.description}`}
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex shrink-0 items-center gap-1">
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               onClick={() => openEditDataAccessDialog(index)}
+                              className="h-8 rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
                             >
                               Edit
                             </Button>
@@ -810,7 +815,7 @@ const CreateUser: React.FC = () => {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="text-red-400 hover:text-red-300"
+                              className="h-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
                               onClick={() => handleDeleteDataAccessRule(index)}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -820,107 +825,116 @@ const CreateUser: React.FC = () => {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-6 text-gray-400">
-                      <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">No data access rules configured</p>
-                      <p className="text-xs text-gray-500 mt-1">User will have access based on role permissions only</p>
+                    <div className="rounded-xs border border-ink-500 bg-ink-100 px-6 py-12 text-center">
+                      <Database className="mx-auto mb-4 h-8 w-8 text-paper-faint" aria-hidden />
+                      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No data access rules configured</p>
+                      <p className="mt-2 text-[12px] text-paper-muted">User will have access based on role permissions only.</p>
                     </div>
                   )}
 
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full"
+                    className="h-9 w-full gap-2 rounded-xs border-ink-500 bg-ink-100 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                     onClick={openAddDataAccessDialog}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Data Access Rule
+                    <Plus className="h-3.5 w-3.5" />
+                    Add data access rule
                   </Button>
-                </GlassCardContent>
+                </div>
               )}
-            </GlassCard>
+            </div>
           )}
 
           {/* Summary Card */}
-          <GlassCard>
-            <GlassCardContent className="py-4">
-              <h3 className="text-sm font-medium text-gray-400 mb-3">Summary</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Email</span>
-                  <span className="text-white">{email || "-"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Username</span>
-                  <span className="text-white">{username || "-"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Password</span>
-                  <span className="text-white">{generatePassword ? "Auto-generated" : "Custom"}</span>
-                </div>
-                <div className="flex justify-between items-start">
-                  <span className="text-gray-400">Roles</span>
-                  <div className="flex flex-wrap gap-1 justify-end">
-                    {selectedRoles.length > 0
-                      ? selectedRoles.map((roleId) => {
-                        const role = roles.find((r) => r.id === roleId);
-                        return (
-                          <span
-                            key={roleId}
-                            className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300"
-                          >
-                            {role?.displayName || roleId}
-                          </span>
-                        );
-                      })
-                      : "-"}
-                  </div>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Data Access Rules</span>
-                  <span className="text-white">
-                    {dataAccessRules.length > 0 ? (
-                      <span className="text-cyan-400">{dataAccessRules.length} rule(s)</span>
-                    ) : requiresDataAccess ? (
-                      <span className="text-red-400">⚠️ Required</span>
-                    ) : (
-                      "None (admin bypass)"
-                    )}
-                  </span>
+          <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+            <div className="flex items-center gap-3 border-b border-ink-500 px-5 py-4">
+              <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                <span className="h-px w-6 bg-ink-700" aria-hidden />
+                <span>Summary</span>
+              </span>
+            </div>
+            <div className="space-y-2 px-5 py-4 text-[12px]">
+              <div className="flex justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Email</span>
+                <span className="text-paper">{email || "—"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Username</span>
+                <span className="text-paper">{username || "—"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Password</span>
+                <span className="text-paper">{generatePassword ? "Auto-generated" : "Custom"}</span>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Roles</span>
+                <div className="flex flex-wrap justify-end gap-1">
+                  {selectedRoles.length > 0
+                    ? selectedRoles.map((roleId) => {
+                      const role = roles.find((r) => r.id === roleId);
+                      return (
+                        <span
+                          key={roleId}
+                          className="inline-flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted"
+                        >
+                          {role?.displayName || roleId}
+                        </span>
+                      );
+                    })
+                    : <span className="text-paper">—</span>}
                 </div>
               </div>
-            </GlassCardContent>
-          </GlassCard>
+              <div className="flex justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Data access rules</span>
+                <span>
+                  {dataAccessRules.length > 0 ? (
+                    <span className="text-paper">{dataAccessRules.length} rule(s)</span>
+                  ) : requiresDataAccess ? (
+                    <span className="inline-flex items-center gap-1 text-red-300">
+                      <AlertCircle className="h-3 w-3" aria-hidden /> Required
+                    </span>
+                  ) : (
+                    <span className="text-paper-muted">None (admin bypass)</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Submit buttons */}
-      <div className="flex flex-col gap-3 pt-6 border-t border-white/10">
+      <div className="flex flex-col gap-3 pt-6 border-t border-ink-500">
         {requiresDataAccess && dataAccessRules.length === 0 && (
-          <div className="flex items-center justify-end gap-2 text-red-400 text-sm">
-            <AlertCircle className="h-4 w-4" />
-            Data access rules are required for non-admin roles
+          <div className="flex items-center justify-end gap-2 text-[12px] text-red-300">
+            <AlertCircle className="h-3.5 w-3.5" aria-hidden />
+            Data access rules are required for non-admin roles.
           </div>
         )}
         <div className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => navigate("/admin")}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate("/admin")}
+            className="h-9 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+          >
             Cancel
           </Button>
           <Button
-            variant="outline"
             onClick={onSubmit}
             disabled={isSubmitting || !isFormValid}
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+            className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Creating User...
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Creating user…
               </>
             ) : (
               <>
-                <UserPlus className="h-4 w-4" />
-                Create User
+                <UserPlus className="h-3.5 w-3.5" />
+                Create user
               </>
             )}
           </Button>
@@ -929,13 +943,22 @@ const CreateUser: React.FC = () => {
 
       {/* Data Access Rule Dialog */}
       <Dialog open={showDataAccessDialog} onOpenChange={setShowDataAccessDialog}>
-        <DialogContent className="bg-gray-900 border border-white/10">
+        <DialogContent className="rounded-xs border-ink-500 bg-ink-100">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-cyan-400" />
-              {editingRuleIndex !== null ? 'Edit' : 'Add'} Data Access Rule
+            <DialogTitle className="flex items-center gap-3 text-paper">
+              <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                <Database className="h-4 w-4" aria-hidden />
+              </span>
+              <span className="flex flex-col gap-0.5 text-left">
+                <span className="text-[16px] font-semibold tracking-tight">
+                  {editingRuleIndex !== null ? 'Edit' : 'Add'} data access rule
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                  {editingRuleIndex !== null ? 'Update rule' : 'New access rule'}
+                </span>
+              </span>
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-paper-muted">
               Configure access to specific databases and tables.
             </DialogDescription>
           </DialogHeader>
@@ -943,17 +966,17 @@ const CreateUser: React.FC = () => {
           <div className="space-y-4 py-4">
             {/* Connection Selection */}
             <div className="space-y-2">
-              <Label>Connection</Label>
+              <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Connection</Label>
               <Select
                 value={dataAccessForm.connectionId || 'all'}
                 onValueChange={(value) =>
                   setDataAccessForm({ ...dataAccessForm, connectionId: value === 'all' ? null : value })
                 }
               >
-                <SelectTrigger className="bg-white/5 border-white/10">
+                <SelectTrigger className="rounded-xs border-ink-500 bg-ink-200 text-paper">
                   <SelectValue placeholder="Select connection" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
                   <SelectItem value="all">All Connections</SelectItem>
                   {connections.map((conn) => (
                     <SelectItem key={conn.id} value={conn.id}>
@@ -962,16 +985,16 @@ const CreateUser: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">
-                Apply rule to a specific connection or all connections
+              <p className="text-[11px] text-paper-faint">
+                Apply rule to a specific connection or all connections.
               </p>
             </div>
 
             {/* Database Pattern */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Database className="h-4 w-4 text-blue-400" />
-                Database Pattern
+              <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                Database pattern
               </Label>
               <Input
                 value={dataAccessForm.databasePattern}
@@ -979,18 +1002,18 @@ const CreateUser: React.FC = () => {
                   setDataAccessForm({ ...dataAccessForm, databasePattern: e.target.value })
                 }
                 placeholder="* (all databases) or specific_db"
-                className="bg-white/5 border-white/10 font-mono"
+                className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper"
               />
-              <p className="text-xs text-gray-500">
-                Use * for all databases, or specify a name/pattern
+              <p className="text-[11px] text-paper-faint">
+                Use * for all databases, or specify a name/pattern.
               </p>
             </div>
 
             {/* Table Pattern */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Table2 className="h-4 w-4 text-green-400" />
-                Table Pattern
+              <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                <Table2 className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                Table pattern
               </Label>
               <Input
                 value={dataAccessForm.tablePattern}
@@ -998,31 +1021,31 @@ const CreateUser: React.FC = () => {
                   setDataAccessForm({ ...dataAccessForm, tablePattern: e.target.value })
                 }
                 placeholder="* (all tables) or specific_table"
-                className="bg-white/5 border-white/10 font-mono"
+                className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper"
               />
-              <p className="text-xs text-gray-500">
-                Use * for all tables, or specify a name/pattern
+              <p className="text-[11px] text-paper-faint">
+                Use * for all tables, or specify a name/pattern.
               </p>
             </div>
 
             {/* Allow/Deny Toggle */}
             <TooltipProvider>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
+              <div className="flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 p-3">
                 <div className="flex items-center gap-2">
-                  <Label>Access Permission</Label>
+                  <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Access permission</Label>
                   <Tooltip>
                     <TooltipTrigger>
-                      <Info className="h-4 w-4 text-gray-400" />
+                      <Info className="h-3.5 w-3.5 text-paper-dim" />
                     </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs">
+                    <TooltipContent className="rounded-xs border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                      <p className="max-w-xs normal-case">
                         Allow grants access, Deny blocks access even if other rules allow it
                       </p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm ${!dataAccessForm.isAllowed ? 'text-red-400' : 'text-gray-500'}`}>
+                  <span className={`text-[12px] ${!dataAccessForm.isAllowed ? 'text-red-300' : 'text-paper-faint'}`}>
                     Deny
                   </span>
                   <Switch
@@ -1031,7 +1054,7 @@ const CreateUser: React.FC = () => {
                       setDataAccessForm({ ...dataAccessForm, isAllowed: checked })
                     }
                   />
-                  <span className={`text-sm ${dataAccessForm.isAllowed ? 'text-green-400' : 'text-gray-500'}`}>
+                  <span className={`text-[12px] ${dataAccessForm.isAllowed ? 'text-emerald-300' : 'text-paper-faint'}`}>
                     Allow
                   </span>
                 </div>
@@ -1040,15 +1063,15 @@ const CreateUser: React.FC = () => {
 
             {/* Priority */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-2">
+              <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                 Priority
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger>
-                      <Info className="h-4 w-4 text-gray-400" />
+                      <Info className="h-3.5 w-3.5 text-paper-dim" />
                     </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs">
+                    <TooltipContent className="rounded-xs border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                      <p className="max-w-xs normal-case">
                         Higher priority rules are evaluated first. Use this to override more general rules.
                       </p>
                     </TooltipContent>
@@ -1061,34 +1084,38 @@ const CreateUser: React.FC = () => {
                 onChange={(e) =>
                   setDataAccessForm({ ...dataAccessForm, priority: parseInt(e.target.value) || 0 })
                 }
-                className="bg-white/5 border-white/10"
+                className="rounded-xs border-ink-500 bg-ink-200 text-paper"
               />
             </div>
 
             {/* Description */}
             <div className="space-y-2">
-              <Label>Description (Optional)</Label>
+              <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Description (optional)</Label>
               <Input
                 value={dataAccessForm.description}
                 onChange={(e) =>
                   setDataAccessForm({ ...dataAccessForm, description: e.target.value })
                 }
                 placeholder="e.g., Production read access"
-                className="bg-white/5 border-white/10"
+                className="rounded-xs border-ink-500 bg-ink-200 text-paper"
               />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDataAccessDialog(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowDataAccessDialog(false)}
+              className="h-9 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+            >
               Cancel
             </Button>
             <Button
-              variant="outline"
               onClick={handleSaveDataAccessRule}
-              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+              className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
             >
-              {editingRuleIndex !== null ? 'Update' : 'Add'} Rule
+              {editingRuleIndex !== null ? 'Update' : 'Add'} rule
             </Button>
           </DialogFooter>
         </DialogContent>

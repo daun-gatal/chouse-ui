@@ -1,13 +1,13 @@
 /**
  * Connection Selector Component
- * 
+ *
  * Dropdown to select and switch between ClickHouse connections.
  * Automatically connects to ClickHouse when a connection is selected.
  * Persists the selected connection across browser reloads.
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Server,
   ChevronDown,
@@ -18,8 +18,8 @@ import {
   Lock,
   Plug,
   PlugZap,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,29 +27,29 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import { log } from '@/lib/log';
-import { toast } from 'sonner';
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { log } from "@/lib/log";
+import { toast } from "sonner";
 import {
   rbacConnectionsApi,
   type ClickHouseConnection,
   type ConnectResult,
-} from '@/api/rbac';
-import { setSessionId, clearSession, getSessionId } from '@/api/client';
-import { rbacUserPreferencesApi } from '@/api';
-import { useRbacStore, useAuthStore } from '@/stores';
+} from "@/api/rbac";
+import { setSessionId, clearSession, getSessionId } from "@/api/client";
+import { rbacUserPreferencesApi } from "@/api";
+import { useRbacStore, useAuthStore } from "@/stores";
 
-// Storage key for persisting selected connection (fallback for non-authenticated users)
-const SELECTED_CONNECTION_KEY = 'clickhouse_selected_connection_id';
+const SELECTED_CONNECTION_KEY = "clickhouse_selected_connection_id";
 
-// Helper to get/set selected connection from localStorage (fallback)
+const TOOLTIP_CLASS =
+  "z-[100] rounded-xs border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted shadow-lg";
+
 function getStoredConnectionId(): string | null {
   try {
     return localStorage.getItem(SELECTED_CONNECTION_KEY);
@@ -66,31 +66,19 @@ function setStoredConnectionId(id: string): void {
   }
 }
 
-function clearStoredConnectionId(): void {
-  try {
-    localStorage.removeItem(SELECTED_CONNECTION_KEY);
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-// Get connection ID from database preferences
 async function getStoredConnectionIdFromDb(): Promise<string | null> {
   try {
     const preferences = await rbacUserPreferencesApi.getPreferences();
     const lastConnectionId = preferences.workspacePreferences?.lastConnectionId as string | undefined;
     return lastConnectionId || null;
   } catch (error) {
-    log.error('[ConnectionSelector] Failed to fetch connection preference:', error);
-    // Fallback to localStorage
+    log.error("[ConnectionSelector] Failed to fetch connection preference:", error);
     return getStoredConnectionId();
   }
 }
 
-// Save connection ID to database preferences
 async function setStoredConnectionIdToDb(id: string): Promise<void> {
   try {
-    // Get current preferences and merge lastConnectionId
     const currentPreferences = await rbacUserPreferencesApi.getPreferences();
     await rbacUserPreferencesApi.updatePreferences({
       workspacePreferences: {
@@ -98,11 +86,9 @@ async function setStoredConnectionIdToDb(id: string): Promise<void> {
         lastConnectionId: id,
       },
     });
-    // Also update localStorage as fallback
     setStoredConnectionId(id);
   } catch (error) {
-    log.error('[ConnectionSelector] Failed to save connection preference:', error);
-    // Fallback to localStorage
+    log.error("[ConnectionSelector] Failed to save connection preference:", error);
     setStoredConnectionId(id);
   }
 }
@@ -136,50 +122,40 @@ export default function ConnectionSelector({
       const previousConnectionsCount = connections.length;
       setConnections(myConnections);
 
-      // If this is the first time initializing, try to auto-connect
       if (!hasInitialized.current) {
         hasInitialized.current = true;
 
-        // Try to restore previously selected connection from database
         let storedConnectionId: string | null = null;
         try {
           storedConnectionId = await getStoredConnectionIdFromDb();
         } catch (error) {
-          log.error('[ConnectionSelector] Failed to fetch connection preference:', error);
-          // Fallback to localStorage
+          log.error("[ConnectionSelector] Failed to fetch connection preference:", error);
           storedConnectionId = getStoredConnectionId();
         }
 
         let connectionToUse: ClickHouseConnection | undefined;
 
         if (storedConnectionId) {
-          // Find the stored connection
-          connectionToUse = myConnections.find(c => c.id === storedConnectionId);
+          connectionToUse = myConnections.find((c) => c.id === storedConnectionId);
         }
 
-        // Fall back to default connection, then first available
         if (!connectionToUse) {
-          connectionToUse = myConnections.find(c => c.isDefault) || myConnections[0];
+          connectionToUse = myConnections.find((c) => c.isDefault) || myConnections[0];
         }
 
         if (connectionToUse) {
           setActiveConnection(connectionToUse);
-          // Auto-connect to selected connection
           await connectToClickHouse(connectionToUse);
         }
       } else {
-        // Already initialized - check if we should auto-connect to a new first connection
-        // This handles the case where the first connection is created after the component has loaded
         if (!isConnected && !activeConnection && myConnections.length > 0) {
-          // We have connections but no active connection - auto-connect to first/default
-          const connectionToUse = myConnections.find(c => c.isDefault) || myConnections[0];
+          const connectionToUse = myConnections.find((c) => c.isDefault) || myConnections[0];
           if (connectionToUse) {
             setActiveConnection(connectionToUse);
             await connectToClickHouse(connectionToUse);
           }
         } else if (previousConnectionsCount === 0 && myConnections.length > 0 && !isConnected) {
-          // First connection was just added - auto-connect to it
-          const connectionToUse = myConnections.find(c => c.isDefault) || myConnections[0];
+          const connectionToUse = myConnections.find((c) => c.isDefault) || myConnections[0];
           if (connectionToUse) {
             setActiveConnection(connectionToUse);
             await connectToClickHouse(connectionToUse);
@@ -187,26 +163,22 @@ export default function ConnectionSelector({
         }
       }
     } catch (error) {
-      log.error('Failed to fetch connections:', error);
+      log.error("Failed to fetch connections:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Connect to ClickHouse using the saved connection
   const connectToClickHouse = async (connection: ClickHouseConnection) => {
     setIsConnecting(true);
     try {
       const result = await rbacConnectionsApi.connect(connection.id);
 
-      // Store session ID for API calls
       setSessionId(result.sessionId);
 
-      // Build connection URL for display
-      const protocol = connection.sslEnabled ? 'https' : 'http';
+      const protocol = connection.sslEnabled ? "https" : "http";
       const connectionUrl = `${protocol}://${connection.host}:${connection.port}`;
 
-      // Update connection info store
       useAuthStore.getState().setConnectionInfo({
         sessionId: result.sessionId,
         username: result.username,
@@ -218,33 +190,29 @@ export default function ConnectionSelector({
         activeConnectionName: connection.name,
       });
 
-      // Persist the selected connection to database (and localStorage as fallback)
       await setStoredConnectionIdToDb(connection.id);
 
       setIsConnected(true);
       onConnectionChange?.(connection, result);
       toast.success(`Connected to "${connection.name}" (v${result.version})`);
 
-      // Invalidate cached queries to ensure fresh data with new connection's permissions
-      queryClient.invalidateQueries({ queryKey: ['databases'] });
-      queryClient.invalidateQueries({ queryKey: ['tableDetails'] });
-      queryClient.invalidateQueries({ queryKey: ['tableSample'] });
-      queryClient.invalidateQueries({ queryKey: ['systemStats'] });
-      queryClient.invalidateQueries({ queryKey: ['recentQueries'] });
-      queryClient.invalidateQueries({ queryKey: ['queryLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['metrics'] });
-      queryClient.invalidateQueries({ queryKey: ['productionMetrics'] });
-      queryClient.invalidateQueries({ queryKey: ['savedQueries'] });
+      queryClient.invalidateQueries({ queryKey: ["databases"] });
+      queryClient.invalidateQueries({ queryKey: ["tableDetails"] });
+      queryClient.invalidateQueries({ queryKey: ["tableSample"] });
+      queryClient.invalidateQueries({ queryKey: ["systemStats"] });
+      queryClient.invalidateQueries({ queryKey: ["recentQueries"] });
+      queryClient.invalidateQueries({ queryKey: ["queryLogs"] });
+      queryClient.invalidateQueries({ queryKey: ["metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["productionMetrics"] });
+      queryClient.invalidateQueries({ queryKey: ["savedQueries"] });
 
-      // Trigger a refresh of data by dispatching a custom event
-      window.dispatchEvent(new CustomEvent('clickhouse:connected', { detail: result }));
+      window.dispatchEvent(new CustomEvent("clickhouse:connected", { detail: result }));
 
       return result;
     } catch (error) {
-      log.error('Failed to connect:', error);
+      log.error("Failed to connect:", error);
       setIsConnected(false);
       clearSession();
-      // Don't clear stored connection on error - user might want to retry
       toast.error(`Failed to connect to "${connection.name}"`);
       throw error;
     } finally {
@@ -253,7 +221,6 @@ export default function ConnectionSelector({
   };
 
   useEffect(() => {
-    // Reset initialization flag when auth status changes (e.g., logout/login)
     if (!isAuthenticated) {
       hasInitialized.current = false;
       setConnections([]);
@@ -264,22 +231,16 @@ export default function ConnectionSelector({
 
     fetchConnections();
 
-    // Check if we have an existing session
     const existingSession = getSessionId();
     if (existingSession) {
       setIsConnected(true);
     }
   }, [isAuthenticated]);
 
-  // Listen for connection changes (e.g., when a new connection is created)
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Poll for connection updates periodically (every 3 seconds) when not connected
-    // This ensures we detect when a new connection is added and auto-connect to it
     const interval = setInterval(() => {
-      // Only refresh if we're not connected and have no active connection
-      // This prevents unnecessary refreshes when already connected
       if (!isConnected && !activeConnection) {
         fetchConnections();
       }
@@ -289,7 +250,6 @@ export default function ConnectionSelector({
   }, [isAuthenticated, isConnected, activeConnection]);
 
   const handleSelectConnection = async (connection: ClickHouseConnection) => {
-    // Don't re-connect if already connected to this connection
     if (activeConnection?.id === connection.id && isConnected) {
       setIsOpen(false);
       return;
@@ -298,197 +258,208 @@ export default function ConnectionSelector({
     setActiveConnection(connection);
     setIsOpen(false);
 
-    // Disconnect from previous connection
     if (isConnected) {
       try {
         await rbacConnectionsApi.disconnect(getSessionId() || undefined);
         clearSession();
         setIsConnected(false);
       } catch (error) {
-        log.error('Failed to disconnect:', error);
+        log.error("Failed to disconnect:", error);
       }
     }
 
-    // Connect to new connection
     await connectToClickHouse(connection);
   };
 
-  // Loading or connecting state
+  // ── Loading or connecting ──────────────────────────────────────────────
   if (isLoading || isConnecting) {
     return (
-      <div className={cn(
-        "flex items-center gap-2 rounded-lg bg-white/5 border border-white/10 px-3 py-2",
-        isCollapsed && "justify-center p-2"
-      )}>
-        <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+      <div
+        className={cn(
+          "flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-2.5 py-1.5",
+          isCollapsed && "h-9 w-9 justify-center px-0 py-0"
+        )}
+      >
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-paper-dim" aria-hidden />
         {!isCollapsed && (
-          <span className="text-sm text-gray-400">
-            {isConnecting ? 'Connecting...' : 'Loading...'}
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted">
+            {isConnecting ? "Connecting…" : "Loading…"}
           </span>
         )}
       </div>
     );
   }
 
-  // No connections
+  // ── No connections ─────────────────────────────────────────────────────
   if (connections.length === 0) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className={cn(
-            "flex items-center gap-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-3 py-2",
-            isCollapsed && "justify-center p-2"
-          )}>
-            <AlertCircle className="w-4 h-4 text-yellow-400" />
+          <div
+            className={cn(
+              "flex items-center gap-2 rounded-xs border border-brand/30 bg-brand/[0.04] px-2.5 py-1.5",
+              isCollapsed && "h-9 w-9 justify-center px-0 py-0"
+            )}
+          >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />
             {!isCollapsed && (
-              <span className="text-sm text-yellow-300">No connections</span>
+              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-brand">
+                No connection
+              </span>
             )}
           </div>
         </TooltipTrigger>
-        <TooltipContent side="right">
-          No ClickHouse connections configured. Add one in Administration.
+        <TooltipContent side="right" className={TOOLTIP_CLASS}>
+          No ClickHouse connections configured.
         </TooltipContent>
       </Tooltip>
     );
   }
 
-  // Single connection (no dropdown needed)
+  // ── Status helpers ─────────────────────────────────────────────────────
+  const statusDot = isConnected ? "bg-emerald-400" : "bg-paper-faint";
+  const statusIcon = isConnected ? PlugZap : Plug;
+  const StatusIcon = statusIcon;
+
+  // ── Single connection (no dropdown) ────────────────────────────────────
   if (connections.length === 1) {
     const conn = connections[0];
-    const statusColor = isConnected ? 'text-green-400' : 'text-yellow-400';
-    const statusBgColor = isConnected ? 'bg-green-400' : 'bg-yellow-400';
 
     return (
       <Tooltip>
         <TooltipTrigger asChild>
           <button
+            type="button"
             onClick={() => !isConnected && connectToClickHouse(conn)}
             className={cn(
-              "flex items-center gap-2 rounded-lg bg-white/5 border border-white/10 px-3 py-2 w-full",
-              !isConnected && "hover:bg-white/10 cursor-pointer",
-              isCollapsed && "justify-center p-2"
+              "group flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 transition-colors",
+              !isConnected && "cursor-pointer hover:border-ink-700 hover:bg-ink-200",
+              isCollapsed ? "h-9 w-9 justify-center" : "w-full px-2.5 py-1.5"
             )}
+            aria-label={`Connection: ${conn.name}`}
           >
-            <div className="relative">
-              {isConnected ? (
-                <PlugZap className={cn("w-4 h-4", statusColor)} />
-              ) : (
-                <Plug className={cn("w-4 h-4", statusColor)} />
-              )}
-              <span className={cn("absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-black", statusBgColor)} />
+            <div className="relative shrink-0">
+              <StatusIcon className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
+              <span
+                className={cn(
+                  "absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-2 ring-ink-100",
+                  statusDot
+                )}
+                aria-hidden
+              />
             </div>
             {!isCollapsed && (
-              <div className="flex flex-col min-w-0 flex-1 text-left">
-                <span className="text-sm font-medium text-white truncate">
-                  {conn.name}
-                </span>
-                <span className="text-xs text-gray-500 truncate">
-                  {isConnected ? 'Connected' : 'Click to connect'}
+              <div className="flex min-w-0 flex-1 flex-col text-left">
+                <span className="truncate text-[12px] font-medium text-paper">{conn.name}</span>
+                <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                  {isConnected ? "Connected" : "Click to connect"}
                 </span>
               </div>
             )}
           </button>
         </TooltipTrigger>
         {isCollapsed && (
-          <TooltipContent side="right">
-            {conn.name} ({isConnected ? 'Connected' : 'Click to connect'})
+          <TooltipContent side="right" className={TOOLTIP_CLASS}>
+            {conn.name} · {isConnected ? "Connected" : "Click to connect"}
           </TooltipContent>
         )}
       </Tooltip>
     );
   }
 
-  // Multiple connections - show dropdown
-  const statusColor = isConnected ? 'text-green-400' : 'text-yellow-400';
-  const statusBgColor = isConnected ? 'bg-green-400' : 'bg-yellow-400';
-
+  // ── Multiple connections (dropdown) ────────────────────────────────────
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           className={cn(
-            "w-full justify-between rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 px-3 py-2 h-auto",
-            isCollapsed && "justify-center p-2"
+            "h-auto justify-between rounded-xs border border-ink-500 bg-ink-100 px-2.5 py-1.5 transition-colors hover:border-ink-700 hover:bg-ink-200",
+            isCollapsed ? "h-9 w-9 justify-center px-0 py-0" : "w-full"
           )}
+          aria-label="Switch connection"
         >
-          <div className={cn("flex items-center gap-2 min-w-0", isCollapsed && "justify-center")}>
+          <div className={cn("flex min-w-0 items-center gap-2", isCollapsed && "justify-center")}>
             <div className="relative shrink-0">
-              {isConnected ? (
-                <PlugZap className={cn("w-4 h-4", statusColor)} />
-              ) : (
-                <Plug className={cn("w-4 h-4", statusColor)} />
-              )}
-              <span className={cn("absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-black", statusBgColor)} />
+              <StatusIcon className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
+              <span
+                className={cn(
+                  "absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-2 ring-ink-100",
+                  statusDot
+                )}
+                aria-hidden
+              />
             </div>
             {!isCollapsed && activeConnection && (
-              <div className="flex flex-col min-w-0 text-left">
-                <span className="text-sm font-medium text-white truncate">
+              <div className="flex min-w-0 flex-col text-left">
+                <span className="truncate text-[12px] font-medium text-paper">
                   {activeConnection.name}
                 </span>
-                <span className="text-xs text-gray-500 truncate">
-                  {isConnected ? 'Connected' : 'Not connected'}
+                <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                  {isConnected ? "Connected" : "Not connected"}
                 </span>
               </div>
             )}
           </div>
-          {!isCollapsed && <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
+          {!isCollapsed && <ChevronDown className="h-3.5 w-3.5 shrink-0 text-paper-dim" />}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="z-[100] w-64 bg-gray-900 border-gray-800"
+        className="z-[100] w-72 rounded-md border-ink-500 bg-ink-100 p-0"
         align={isCollapsed ? "start" : "center"}
         side={isCollapsed ? "right" : "bottom"}
+        sideOffset={isCollapsed ? 8 : 4}
       >
-        <DropdownMenuLabel className="text-gray-400 text-xs">
-          Switch Connection
+        <DropdownMenuLabel className="border-b border-ink-500 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+          Switch connection
         </DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-gray-800" />
 
-        {connections.map((conn) => (
-          <DropdownMenuItem
-            key={conn.id}
-            onClick={() => handleSelectConnection(conn)}
-            className={cn(
-              "flex items-center gap-3 cursor-pointer",
-              activeConnection?.id === conn.id && "bg-purple-500/10"
-            )}
-          >
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="relative shrink-0">
-                <Server className="w-4 h-4 text-gray-400" />
-                {conn.sslEnabled && (
-                  <Lock className="w-2 h-2 absolute -bottom-0.5 -right-0.5 text-green-400" />
+        <div className="flex flex-col py-1">
+          {connections.map((conn) => {
+            const isCurrent = activeConnection?.id === conn.id;
+            return (
+              <DropdownMenuItem
+                key={conn.id}
+                onClick={() => handleSelectConnection(conn)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 rounded-xs px-3 py-2 transition-colors hover:bg-ink-200",
+                  isCurrent && "bg-ink-200"
                 )}
-              </div>
-              <div className="flex flex-col min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-white truncate">
-                    {conn.name}
-                  </span>
-                  {conn.isDefault && (
-                    <Badge className="bg-yellow-500/20 text-yellow-400 text-[10px] px-1 py-0">
-                      Default
-                    </Badge>
+              >
+                <div className="relative shrink-0">
+                  <Server className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                  {conn.sslEnabled && (
+                    <Lock
+                      className="absolute -bottom-0.5 -right-0.5 h-2 w-2 text-emerald-400"
+                      aria-hidden
+                    />
                   )}
                 </div>
-                <span className="text-xs text-gray-500 truncate">
-                  {conn.username}
-                </span>
-              </div>
-            </div>
-            {activeConnection?.id === conn.id && (
-              <Check className="w-4 h-4 text-purple-400 shrink-0" />
-            )}
-          </DropdownMenuItem>
-        ))}
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-[13px] font-medium text-paper">{conn.name}</span>
+                    {conn.isDefault && (
+                      <span className="inline-flex items-center rounded-xs border border-brand/40 px-1 py-px font-mono text-[9px] uppercase tracking-[0.14em] text-brand">
+                        Default
+                      </span>
+                    )}
+                  </div>
+                  <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                    {conn.username}
+                  </span>
+                </div>
+                {isCurrent && <Check className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />}
+              </DropdownMenuItem>
+            );
+          })}
+        </div>
 
-        <DropdownMenuSeparator className="bg-gray-800" />
+        <DropdownMenuSeparator className="bg-ink-500" />
         <DropdownMenuItem
           onClick={fetchConnections}
-          className="flex items-center gap-2 text-gray-400 cursor-pointer"
+          className="flex cursor-pointer items-center gap-2 rounded-xs px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           Refresh
         </DropdownMenuItem>
       </DropdownMenuContent>

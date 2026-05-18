@@ -174,7 +174,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
 
     if (!rows || rows.length === 0) {
         return (
-            <div className="flex items-center justify-center h-24 text-xs text-zinc-500">
+            <div className="flex h-24 items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
                 No data to display
             </div>
         );
@@ -738,21 +738,21 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
     const chartHeight = CHART_HEIGHT - 20;
 
     return (
-        <div ref={containerRef} className="mt-3 mb-1 rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden min-w-[320px]">
+        <div ref={containerRef} className="mb-1 mt-3 min-w-[320px] overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
             {title && (
-                <div className="px-4 pt-3 pb-1 text-xs font-semibold text-zinc-300 border-b border-white/[0.05]">
+                <div className="border-b border-ink-500 px-4 pb-1 pt-3 text-xs font-semibold text-paper">
                     {title}
                 </div>
             )}
-            <div className="px-2 pt-3 pb-2" style={{ height: `${CHART_HEIGHT}px` }}>
+            <div className="px-2 pb-2 pt-3" style={{ height: `${CHART_HEIGHT}px` }}>
                 {chartWidth > 0 && (
                     <ResponsiveContainer width={chartWidth} height={chartHeight}>
                         {chartElement}
                     </ResponsiveContainer>
                 )}
             </div>
-            <div className="px-4 pb-2 flex items-center justify-between gap-2">
-                <span className="text-[9px] text-zinc-700 uppercase tracking-wider">
+            <div className="flex items-center justify-between gap-2 px-4 pb-2">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
                     {chartType.replace(/_/g, ' ')}
                     {barFamilyTruncated
                         ? ` · Top ${BAR_MAX_CATEGORIES} of ${rows.length.toLocaleString()} rows`
@@ -762,23 +762,23 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                     <DropdownMenuTrigger asChild>
                         <button
                             type="button"
-                            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-white/5 transition-colors"
+                            className="rounded-xs p-1.5 text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
                             aria-label="Download chart"
                         >
-                            <Download className="w-3.5 h-3.5" />
+                            <Download className="h-3.5 w-3.5" />
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-[#1a1c24] border-white/10 min-w-[180px]">
+                    <DropdownMenuContent align="end" className="min-w-[180px] rounded-xs border-ink-500 bg-ink-100">
                         <DropdownMenuItem onClick={handleDownloadPng} className="cursor-pointer">
-                            <Image className="w-3.5 h-3.5 mr-2" />
+                            <Image className="mr-2 h-3.5 w-3.5" />
                             <span>Download as PNG</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={handleDownloadCsv} className="cursor-pointer">
-                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            <FileText className="mr-2 h-3.5 w-3.5" />
                             <span>Download data (CSV)</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={handleDownloadJson} className="cursor-pointer">
-                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            <FileText className="mr-2 h-3.5 w-3.5" />
                             <span>Download data (JSON)</span>
                         </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -864,26 +864,26 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
     }
 
     return (
-        <div ref={cardRef} className="mt-3 mb-1 rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+        <div ref={cardRef} className="mb-1 mt-3 overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
             {title && (
-                <div className="px-4 pt-3 pb-1 text-xs font-semibold text-zinc-300 border-b border-white/[0.05]">
+                <div className="border-b border-ink-500 px-4 pb-1 pt-3 text-xs font-semibold text-paper">
                     {title}
                 </div>
             )}
-            <div className="overflow-x-auto max-h-[280px] overflow-y-auto p-3">
-                <table className="text-[10px] border-collapse w-full">
+            <div className="max-h-[280px] overflow-x-auto overflow-y-auto p-3">
+                <table className="w-full border-collapse text-[10px]">
                     <thead>
                         <tr>
-                            <th className="text-zinc-500 text-left pr-3 pb-1 font-medium whitespace-nowrap">{xAxis}</th>
+                            <th className="whitespace-nowrap pb-1 pr-3 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{xAxis}</th>
                             {yAxes.map((col) => (
-                                <th key={col} className="text-zinc-500 pb-1 font-medium whitespace-nowrap px-2 text-center">{col}</th>
+                                <th key={col} className="whitespace-nowrap px-2 pb-1 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{col}</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
                         {rows.slice(0, 50).map((r, i) => (
                             <tr key={i}>
-                                <td className="text-zinc-400 pr-3 py-0.5 whitespace-nowrap">
+                                <td className="whitespace-nowrap py-0.5 pr-3 text-paper-muted">
                                     {String(r[xAxis] ?? '').slice(0, 20)}
                                 </td>
                                 {yAxes.map((col) => {
@@ -891,7 +891,7 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
                                     return (
                                         <td
                                             key={col}
-                                            className="text-center px-2 py-0.5 rounded font-mono"
+                                            className="rounded px-2 py-0.5 text-center font-mono"
                                             style={{ backgroundColor: cellColor(val), color: '#e4e4e7' }}
                                         >
                                             {formatAxisValue(val)}
@@ -903,31 +903,31 @@ function HeatmapTable({ spec, palette }: { spec: ChartSpec; palette: string[] })
                     </tbody>
                 </table>
             </div>
-            <div className="px-4 pb-2 flex items-center justify-between gap-2">
-                <span className="text-[9px] text-zinc-700 uppercase tracking-wider">
+            <div className="flex items-center justify-between gap-2 px-4 pb-2">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
                     heatmap · {rows.length.toLocaleString()} rows
                 </span>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <button
                             type="button"
-                            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-white/5 transition-colors"
+                            className="rounded-xs p-1.5 text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
                             aria-label="Download chart"
                         >
-                            <Download className="w-3.5 h-3.5" />
+                            <Download className="h-3.5 w-3.5" />
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-[#1a1c24] border-white/10 min-w-[180px]">
+                    <DropdownMenuContent align="end" className="min-w-[180px] rounded-xs border-ink-500 bg-ink-100">
                         <DropdownMenuItem onClick={handleDownloadPng} className="cursor-pointer">
-                            <Image className="w-3.5 h-3.5 mr-2" />
+                            <Image className="mr-2 h-3.5 w-3.5" />
                             <span>Download as PNG</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={handleDownloadCsv} className="cursor-pointer">
-                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            <FileText className="mr-2 h-3.5 w-3.5" />
                             <span>Download data (CSV)</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={handleDownloadJson} className="cursor-pointer">
-                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            <FileText className="mr-2 h-3.5 w-3.5" />
                             <span>Download data (JSON)</span>
                         </DropdownMenuItem>
                     </DropdownMenuContent>

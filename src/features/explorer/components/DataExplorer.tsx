@@ -81,34 +81,33 @@ const QuickAccessItem: React.FC<QuickAccessItemProps> = ({
   sublabel,
   onClick,
   onRemove,
-  variant = 'recent',
 }) => {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-2 px-3 py-1.5 text-left group",
-        "hover:bg-white/5 transition-colors rounded-md mx-1"
+        "group flex w-full items-center gap-2.5 px-3 py-2 text-left",
+        "transition-colors hover:bg-ink-200"
       )}
     >
-      <span className="flex-shrink-0 opacity-70">{icon}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-300 truncate group-hover:text-white transition-colors">
-          {label}
-        </p>
+      <span className="shrink-0 text-paper-dim">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12.5px] text-paper">{label}</p>
         {sublabel && (
-          <p className="text-[10px] text-gray-500 truncate">{sublabel}</p>
+          <p className="truncate font-mono text-[10px] text-paper-faint">{sublabel}</p>
         )}
       </div>
       {onRemove && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
           }}
-          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-white/10 rounded transition-all"
+          className="grid h-5 w-5 place-items-center rounded-xs opacity-0 transition-all hover:bg-ink-300 group-hover:opacity-100"
+          aria-label="Remove"
         >
-          <X className="w-3 h-3 text-gray-500 hover:text-gray-300" />
+          <X className="h-3 w-3 text-paper-faint hover:text-paper" />
         </button>
       )}
     </button>
@@ -129,39 +128,34 @@ const SavedQueryItem: React.FC<SavedQueryItemProps> = ({ query, onOpen, onDelete
     <button
       onClick={onOpen}
       className={cn(
-        "w-full flex items-center gap-2 px-3 py-2 text-left",
-        "hover:bg-white/5 transition-colors group rounded-md mx-1"
+        "group flex w-full items-center gap-2.5 px-3 py-2 text-left",
+        "transition-colors hover:bg-ink-200"
       )}
     >
-      <FileCode className="w-3.5 h-3.5 text-amber-400/70 flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-300 truncate group-hover:text-white transition-colors">
-          {query.name}
-        </p>
-        <div className="flex items-center gap-1.5 mt-0.5">
+      <FileCode className="h-3.5 w-3.5 shrink-0 text-paper-dim" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12.5px] text-paper">{query.name}</p>
+        <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-paper-faint">
           {query.connectionName ? (
-            <span className="text-[10px] text-gray-500 truncate max-w-[100px]">
-              {query.connectionName}
-            </span>
+            <span className="max-w-[100px] truncate">{query.connectionName}</span>
           ) : (
-            <span className="text-[10px] text-purple-400/80">All connections</span>
+            <span className="text-paper-dim">All connections</span>
           )}
-          <span className="text-gray-600">·</span>
-          <span className="text-[10px] text-gray-500">
-            {new Date(query.updatedAt).toLocaleDateString()}
-          </span>
+          <span>·</span>
+          <span>{new Date(query.updatedAt).toLocaleDateString()}</span>
         </div>
       </div>
       {onDelete && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onDelete(query);
           }}
-          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-all flex-shrink-0"
-          title="Delete query"
+          className="grid h-5 w-5 shrink-0 place-items-center rounded-xs opacity-0 transition-all hover:bg-ink-300 group-hover:opacity-100"
+          aria-label="Delete query"
         >
-          <Trash2 className="w-3.5 h-3.5 text-gray-500 hover:text-red-400" />
+          <Trash2 className="h-3 w-3 text-paper-faint hover:text-red-400" />
         </button>
       )}
     </button>
@@ -181,21 +175,26 @@ interface TabButtonProps {
 
 const TabButton: React.FC<TabButtonProps> = ({ active, onClick, icon, label, count }) => (
   <button
+    type="button"
     onClick={onClick}
     className={cn(
-      "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-all",
+      "flex items-center gap-1.5 rounded-xs px-2.5 py-1.5 transition-colors",
+      "font-mono text-[10px] uppercase tracking-[0.14em]",
       active
-        ? "bg-white/10 text-white"
-        : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
+        ? "bg-ink-200 text-paper"
+        : "text-paper-dim hover:bg-ink-200 hover:text-paper"
     )}
+    aria-pressed={active}
   >
-    {icon}
+    <span className={active ? "text-paper-muted" : "text-paper-faint"}>{icon}</span>
     <span className="hidden sm:inline">{label}</span>
     {count !== undefined && count > 0 && (
-      <span className={cn(
-        "text-[10px] tabular-nums px-1 rounded",
-        active ? "bg-white/20" : "bg-white/5"
-      )}>
+      <span
+        className={cn(
+          "rounded-xs px-1 tabular-nums",
+          active ? "text-paper" : "text-paper-faint"
+        )}
+      >
         {count}
       </span>
     )}
@@ -212,13 +211,13 @@ interface EmptyStateProps {
 }
 
 const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description }) => (
-  <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mb-3">
+  <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+    <div className="mb-3 grid h-10 w-10 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
       {icon}
     </div>
-    <p className="text-sm text-gray-400">{title}</p>
+    <p className="text-[13px] text-paper-muted">{title}</p>
     {description && (
-      <p className="text-xs text-gray-500 mt-1 max-w-[200px]">{description}</p>
+      <p className="mt-1 max-w-[220px] text-[12px] text-paper-faint">{description}</p>
     )}
   </div>
 );
@@ -413,29 +412,28 @@ const DatabaseExplorer: React.FC = () => {
   }, [activeTab, canViewSavedQueries]);
 
   return (
-    <div className="flex flex-col h-full bg-slate-900/50">
-      {/* Header */}
-      <div className="flex-shrink-0 border-b border-white/10">
-        {/* Tab Navigation */}
+    <div className="flex h-full flex-col bg-ink-50">
+      {/* Tab navigation */}
+      <div className="flex-shrink-0 border-b border-ink-500">
         <div className="flex items-center gap-1 px-2 py-2">
           <TabButton
             active={activeTab === "databases"}
             onClick={() => setActiveTab("databases")}
-            icon={<Database className="w-3.5 h-3.5" />}
+            icon={<Database className="h-3.5 w-3.5" />}
             label="Databases"
             count={databases.length}
           />
           <TabButton
             active={activeTab === "pinned"}
             onClick={() => setActiveTab("pinned")}
-            icon={<Star className="w-3.5 h-3.5 text-amber-400" />}
+            icon={<Star className="h-3.5 w-3.5" />}
             label="Pinned"
             count={filteredFavorites.length}
           />
           <TabButton
             active={activeTab === "recent"}
             onClick={() => setActiveTab("recent")}
-            icon={<History className="w-3.5 h-3.5 text-blue-400" />}
+            icon={<History className="h-3.5 w-3.5" />}
             label="Recent"
             count={filteredRecentItems.length}
           />
@@ -443,7 +441,7 @@ const DatabaseExplorer: React.FC = () => {
             <TabButton
               active={activeTab === "saved"}
               onClick={() => setActiveTab("saved")}
-              icon={<FileCode className="w-3.5 h-3.5 text-amber-400" />}
+              icon={<FileCode className="h-3.5 w-3.5" />}
               label="Queries"
               count={filteredQueries.length}
             />
@@ -474,9 +472,9 @@ const DatabaseExplorer: React.FC = () => {
                     placeholder="Search databases..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8 h-8 text-xs bg-white/5 border-white/10 placeholder:text-gray-500"
+                    className="h-8 rounded-xs border-ink-500 bg-ink-200 pl-8 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                   />
-                  <kbd className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-500 bg-white/5 px-1.5 py-0.5 rounded hidden sm:inline">
+                  <kbd className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-faint sm:inline">
                     ⌘K
                   </kbd>
                 </div>
@@ -488,9 +486,9 @@ const DatabaseExplorer: React.FC = () => {
                         variant="ghost"
                         onClick={() => refreshDatabases()}
                         disabled={isFetchingDatabases}
-                        className="h-8 w-8 hover:bg-white/10"
+                        className="h-8 w-8 rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
                       >
-                        <RefreshCcw className={cn("w-3.5 h-3.5", isFetchingDatabases && "animate-spin")} />
+                        <RefreshCcw className={cn("h-3.5 w-3.5", isFetchingDatabases && "animate-spin")} />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Refresh</TooltipContent>
@@ -498,8 +496,8 @@ const DatabaseExplorer: React.FC = () => {
                 </TooltipProvider>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10">
-                      <Plus className="w-3.5 h-3.5" />
+                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper">
+                      <Plus className="h-3.5 w-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
@@ -538,7 +536,7 @@ const DatabaseExplorer: React.FC = () => {
               {isLoadingDatabase ? (
                 <div className="space-y-2 p-2">
                   {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-7 bg-white/5" />
+                    <Skeleton key={i} className="h-7 rounded-xs bg-ink-200" />
                   ))}
                 </div>
               ) : filteredData.length > 0 ? (
@@ -562,7 +560,7 @@ const DatabaseExplorer: React.FC = () => {
                 </div>
               ) : (
                 <EmptyState
-                  icon={<Database className="w-5 h-5 text-gray-500" />}
+                  icon={<Database className="h-5 w-5" />}
                   title={debouncedSearchTerm ? "No matches found" : "No databases"}
                   description={debouncedSearchTerm ? "Try a different search term" : "Connect to view databases"}
                 />
@@ -583,22 +581,22 @@ const DatabaseExplorer: React.FC = () => {
               {/* Connection Filter for Pinned */}
               {(favorites.length > 0 || connectionNames.length > 0) && (
                 <div className="flex items-center gap-2 mb-3 px-1">
-                  <Filter className="w-3 h-3 text-gray-500" />
+                  <Filter className="h-3 w-3 text-paper-faint" aria-hidden />
                   <Select value={connectionFilter} onValueChange={setConnectionFilter}>
-                    <SelectTrigger className="h-7 text-xs bg-white/5 border-white/10 flex-1">
-                      <SelectValue placeholder="All Connections" />
+                    <SelectTrigger className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper">
+                      <SelectValue placeholder="All connections" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">
                         <span className="flex items-center gap-2">
-                          <Layers className="w-3.5 h-3.5 text-purple-400" />
-                          All Connections
+                          <Layers className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                          All connections
                         </span>
                       </SelectItem>
                       {activeConnectionId && (
                         <SelectItem value="current">
                           <span className="flex items-center gap-2">
-                            <Pin className="w-3.5 h-3.5 text-emerald-400" />
+                            <Pin className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                             {activeConnectionName || "Current"}
                           </span>
                         </SelectItem>
@@ -608,7 +606,7 @@ const DatabaseExplorer: React.FC = () => {
                         .map((name) => (
                           <SelectItem key={name} value={name}>
                             <span className="flex items-center gap-2">
-                              <Database className="w-3.5 h-3.5 text-blue-400" />
+                              <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                               {name}
                             </span>
                           </SelectItem>
@@ -620,9 +618,10 @@ const DatabaseExplorer: React.FC = () => {
                       size="sm"
                       variant="ghost"
                       onClick={() => setConnectionFilter("all")}
-                      className="h-7 w-7 p-0 text-gray-400 hover:text-white"
+                      className="h-7 w-7 rounded-xs p-0 text-paper-dim hover:bg-ink-200 hover:text-paper"
+                      aria-label="Clear filter"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>
@@ -635,8 +634,8 @@ const DatabaseExplorer: React.FC = () => {
                       key={`${fav.id}-${fav.connectionId || 'shared'}`}
                       icon={
                         fav.type === 'database'
-                          ? <Database className="w-3.5 h-3.5 text-blue-400" />
-                          : <Table2 className="w-3.5 h-3.5 text-emerald-400" />
+                          ? <Database className="h-3.5 w-3.5" aria-hidden />
+                          : <Table2 className="h-3.5 w-3.5" aria-hidden />
                       }
                       label={fav.name}
                       sublabel={[fav.type === 'table' ? fav.database : null, fav.connectionName].filter(Boolean).join(' · ')}
@@ -647,7 +646,7 @@ const DatabaseExplorer: React.FC = () => {
                 </div>
               ) : (
                 <EmptyState
-                  icon={<Star className="w-5 h-5 text-amber-400/50" />}
+                  icon={<Star className="h-5 w-5" />}
                   title={hasConnectionFilter ? "No pinned items for this connection" : "No pinned items"}
                   description="Star your favorite tables and databases"
                 />
@@ -668,22 +667,22 @@ const DatabaseExplorer: React.FC = () => {
               {/* Connection Filter for Recent */}
               {(recentItems.length > 0 || connectionNames.length > 0) && (
                 <div className="flex items-center gap-2 mb-3 px-1">
-                  <Filter className="w-3 h-3 text-gray-500" />
+                  <Filter className="h-3 w-3 text-paper-faint" aria-hidden />
                   <Select value={connectionFilter} onValueChange={setConnectionFilter}>
-                    <SelectTrigger className="h-7 text-xs bg-white/5 border-white/10 flex-1">
-                      <SelectValue placeholder="All Connections" />
+                    <SelectTrigger className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper">
+                      <SelectValue placeholder="All connections" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">
                         <span className="flex items-center gap-2">
-                          <Layers className="w-3.5 h-3.5 text-purple-400" />
-                          All Connections
+                          <Layers className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                          All connections
                         </span>
                       </SelectItem>
                       {activeConnectionId && (
                         <SelectItem value="current">
                           <span className="flex items-center gap-2">
-                            <Pin className="w-3.5 h-3.5 text-emerald-400" />
+                            <Pin className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                             {activeConnectionName || "Current"}
                           </span>
                         </SelectItem>
@@ -693,7 +692,7 @@ const DatabaseExplorer: React.FC = () => {
                         .map((name) => (
                           <SelectItem key={name} value={name}>
                             <span className="flex items-center gap-2">
-                              <Database className="w-3.5 h-3.5 text-blue-400" />
+                              <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                               {name}
                             </span>
                           </SelectItem>
@@ -705,9 +704,10 @@ const DatabaseExplorer: React.FC = () => {
                       size="sm"
                       variant="ghost"
                       onClick={() => setConnectionFilter("all")}
-                      className="h-7 w-7 p-0 text-gray-400 hover:text-white"
+                      className="h-7 w-7 rounded-xs p-0 text-paper-dim hover:bg-ink-200 hover:text-paper"
+                      aria-label="Clear filter"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>
@@ -715,15 +715,17 @@ const DatabaseExplorer: React.FC = () => {
 
               {filteredRecentItems.length > 0 ? (
                 <>
-                  <div className="flex items-center justify-between px-2 mb-2">
-                    <span className="text-[10px] text-gray-500 uppercase tracking-wider">Recently viewed</span>
+                  <div className="mb-2 flex items-center justify-between px-3">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-paper-faint">
+                      Recently viewed
+                    </span>
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => clearRecentItems()}
-                      className="h-5 px-1.5 text-[10px] text-gray-500 hover:text-white"
+                      className="h-5 rounded-xs px-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint hover:bg-ink-200 hover:text-paper"
                     >
-                      Clear all
+                      Clear
                     </Button>
                   </div>
                   <div className="space-y-0.5">
@@ -732,8 +734,8 @@ const DatabaseExplorer: React.FC = () => {
                         key={`${item.id}-${item.connectionId || 'shared'}`}
                         icon={
                           item.type === 'database'
-                            ? <Database className="w-3.5 h-3.5 text-blue-400" />
-                            : <Table2 className="w-3.5 h-3.5 text-emerald-400" />
+                            ? <Database className="h-3.5 w-3.5" aria-hidden />
+                            : <Table2 className="h-3.5 w-3.5" aria-hidden />
                         }
                         label={item.name}
                         sublabel={[item.type === 'table' ? item.database : null, item.connectionName].filter(Boolean).join(' · ')}
@@ -745,7 +747,7 @@ const DatabaseExplorer: React.FC = () => {
                 </>
               ) : (
                 <EmptyState
-                  icon={<History className="w-5 h-5 text-blue-400/50" />}
+                  icon={<History className="h-5 w-5" />}
                   title={hasConnectionFilter ? "No recent items for this connection" : "No recent items"}
                   description="Your recently viewed items will appear here"
                 />
@@ -764,23 +766,23 @@ const DatabaseExplorer: React.FC = () => {
               className="p-2"
             >
               {/* Connection Filter for Saved Queries */}
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <Filter className="w-3 h-3 text-gray-500" />
+              <div className="mb-3 flex items-center gap-2 px-1">
+                <Filter className="h-3 w-3 text-paper-faint" aria-hidden />
                 <Select value={connectionFilter} onValueChange={setConnectionFilter}>
-                  <SelectTrigger className="h-7 text-xs bg-white/5 border-white/10 flex-1">
-                    <SelectValue placeholder="All Connections" />
+                  <SelectTrigger className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper">
+                    <SelectValue placeholder="All connections" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                     <SelectItem value="all">
                       <span className="flex items-center gap-2">
-                        <Layers className="w-3.5 h-3.5 text-purple-400" />
-                        All Connections
+                        <Layers className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                        All connections
                       </span>
                     </SelectItem>
                     {activeConnectionId && (
                       <SelectItem value="current">
                         <span className="flex items-center gap-2">
-                          <Pin className="w-3.5 h-3.5 text-emerald-400" />
+                          <Pin className="h-3.5 w-3.5 text-brand" aria-hidden />
                           {activeConnectionName || "Current"}
                         </span>
                       </SelectItem>
@@ -790,7 +792,7 @@ const DatabaseExplorer: React.FC = () => {
                       .map((name) => (
                         <SelectItem key={name} value={name}>
                           <span className="flex items-center gap-2">
-                            <Database className="w-3.5 h-3.5 text-blue-400" />
+                            <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                             {name}
                           </span>
                         </SelectItem>
@@ -802,9 +804,9 @@ const DatabaseExplorer: React.FC = () => {
                     size="sm"
                     variant="ghost"
                     onClick={() => setConnectionFilter("all")}
-                    className="h-7 w-7 p-0 text-gray-400 hover:text-white"
+                    className="h-7 w-7 rounded-xs p-0 text-paper-dim hover:bg-ink-200 hover:text-paper"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>
@@ -818,7 +820,7 @@ const DatabaseExplorer: React.FC = () => {
                     placeholder="Search saved queries..."
                     value={searchQueryValue}
                     onChange={(e) => setSearchQueryValue(e.target.value)}
-                    className="pl-8 h-8 text-xs bg-white/5 border-white/10 placeholder:text-gray-500"
+                    className="h-8 rounded-xs border-ink-500 bg-ink-200 pl-8 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                   />
                 </div>
                 <TooltipProvider>
@@ -857,13 +859,13 @@ const DatabaseExplorer: React.FC = () => {
                 </div>
               ) : savedQueriesList.length > 0 ? (
                 <EmptyState
-                  icon={<Search className="w-5 h-5 text-gray-500" />}
+                  icon={<Search className="h-5 w-5" />}
                   title="No matching queries"
                   description="Try a different search term or filter"
                 />
               ) : (
                 <EmptyState
-                  icon={<Bookmark className="w-5 h-5 text-amber-400/50" />}
+                  icon={<Bookmark className="h-5 w-5" />}
                   title="No saved queries"
                   description="Save queries from the SQL editor using ⌘S"
                 />

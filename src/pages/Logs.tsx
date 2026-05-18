@@ -51,32 +51,21 @@ interface StatCardProps {
   title: string;
   value: string | number;
   icon: any;
-  color: string;
+  color?: string; // accepted for API compat, not used in editorial layout
 }
 
-const StatCard = ({ title, value, icon: Icon, color }: StatCardProps) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    className={cn(
-      "p-4 rounded-xl border backdrop-blur-sm",
-      "bg-gradient-to-br from-gray-900/50 to-gray-800/50",
-      `border-${color}-500/20`
-    )}
-  >
-    <div className="flex items-center gap-3">
-      <div className={cn(
-        "p-2 rounded-lg",
-        `bg-${color}-500/20`
-      )}>
-        <Icon className={cn("w-5 h-5", `text-${color}-400`)} />
-      </div>
-      <div>
-        <p className="text-xs text-gray-400 uppercase tracking-wider">{title}</p>
-        <p className={cn("text-xl font-bold", `text-${color}-300`)}>{value}</p>
-      </div>
+const StatCard = ({ title, value, icon: Icon }: StatCardProps) => (
+  <div className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+    <div className="flex items-center justify-between">
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+        {title}
+      </span>
+      <Icon className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
     </div>
-  </motion.div>
+    <span className="font-mono text-[20px] font-semibold leading-none text-paper">
+      {value}
+    </span>
+  </div>
 );
 
 import { useQuery } from "@tanstack/react-query";
@@ -716,19 +705,22 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6"
           >
-            {/* Title Section */}
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 shadow-lg shadow-blue-500/20">
-                <FileText className="h-7 w-7 text-white" />
-              </div>
-              <div>
+            {/* Title section */}
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+                <FileText className="h-4 w-4" aria-hidden />
+              </span>
+              <div className="flex flex-col gap-1">
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                  Observability
+                </span>
                 <div className="flex items-center gap-3">
-                  <h1 className="text-3xl font-bold tracking-tight text-white">Query Logs</h1>
+                  <h1 className="text-2xl font-semibold tracking-tight text-paper">Query logs</h1>
                   {!canViewAllLogs && user && (
-                    <Badge variant="secondary" className="bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                      <User className="h-3 w-3 mr-1" />
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                      <User className="h-3 w-3" />
                       Your queries only
-                    </Badge>
+                    </span>
                   )}
                 </div>
               </div>
@@ -748,39 +740,13 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
 
 
 
-        {/* Summary Stats */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="grid grid-cols-2 lg:grid-cols-4 gap-4"
-        >
-          <StatCard
-            title="Total Queries"
-            value={stats.total}
-            icon={Database}
-            color="blue"
-          />
-          <StatCard
-            title="Successful"
-            value={stats.success}
-            icon={CheckCircle2}
-            color="green"
-          />
-          <StatCard
-            title="Failed"
-            value={stats.failed}
-            icon={XCircle}
-            color="red"
-          />
-
-          <StatCard
-            title="Avg Duration"
-            value={`${Math.round(stats.avgDuration)}ms`}
-            icon={Timer}
-            color="purple"
-          />
-        </motion.div>
+        {/* Summary stats — hairline editorial grid */}
+        <div className="grid grid-cols-2 border-l border-t border-ink-500 lg:grid-cols-4">
+          <StatCard title="Total queries" value={stats.total} icon={Database} />
+          <StatCard title="Successful" value={stats.success} icon={CheckCircle2} />
+          <StatCard title="Failed" value={stats.failed} icon={XCircle} />
+          <StatCard title="Avg duration" value={`${Math.round(stats.avgDuration)}ms`} icon={Timer} />
+        </div>
 
 
 
@@ -790,24 +756,21 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
           animate={{ opacity: 1 }}
           transition={{ delay: 0.15 }}
         >
-          <div className={cn(
-            "relative overflow-hidden rounded-2xl border border-white/10 p-4 flex flex-wrap gap-3 items-center",
-            "bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl"
-          )}>
-            <div className="flex items-center gap-2 w-full md:w-[320px]">
-              <Search className="h-4 w-4 text-gray-400" />
+          <div className="flex flex-wrap items-center gap-3 rounded-md border border-ink-500 bg-ink-100 p-3">
+            <div className="flex w-full items-center gap-2 md:w-[320px]">
+              <Search className="h-4 w-4 text-paper-dim" />
               <Input
-                placeholder="Search queries, users, IDs..."
+                placeholder="Search queries, users, IDs…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-white/5 border-white/10"
+                className="h-9 rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-gray-400" />
+              <Filter className="h-4 w-4 text-paper-dim" />
               <Select value={logType} onValueChange={setLogType}>
-                <SelectTrigger className="w-[140px] bg-white/5 border-white/10">
+                <SelectTrigger className="h-9 w-[140px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -823,7 +786,7 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
             {canViewAllLogs && (
               <>
                 <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-gray-400" />
+                  <User className="h-4 w-4 text-paper-dim" />
                   <Select
                     value={selectedUserId}
                     onValueChange={(value) => {
@@ -834,7 +797,7 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
                       }
                     }}
                   >
-                    <SelectTrigger className="w-[180px] bg-white/5 border-white/10 [&>span]:text-left [&>span]:truncate">
+                    <SelectTrigger className="h-9 w-[180px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper [&>span]:text-left [&>span]:truncate">
                       <SelectValue placeholder="All Users" />
                     </SelectTrigger>
                     <SelectContent>
@@ -848,7 +811,7 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
                   </Select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-gray-400" />
+                  <Shield className="h-4 w-4 text-paper-dim" />
                   <Select
                     value={selectedRoleId}
                     onValueChange={(value) => {
@@ -859,7 +822,7 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
                       }
                     }}
                   >
-                    <SelectTrigger className="w-[180px] bg-white/5 border-white/10 [&>span]:text-left [&>span]:truncate">
+                    <SelectTrigger className="h-9 w-[180px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper [&>span]:text-left [&>span]:truncate">
                       <SelectValue placeholder="All Roles" />
                     </SelectTrigger>
                     <SelectContent>
@@ -885,7 +848,7 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
                 }
               }}
             >
-              <SelectTrigger className="w-[120px] bg-white/5 border-white/10">
+              <SelectTrigger className="h-9 w-[120px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper">
                 <SelectValue placeholder="Select rows" />
               </SelectTrigger>
               <SelectContent>
@@ -905,10 +868,10 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
                       variant="outline"
                       size="sm"
                       onClick={clearFilters}
-                      className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 text-gray-400 hover:text-white"
+                      className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-200 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:border-ink-700 hover:bg-ink-300 hover:text-paper"
                     >
-                      <X className="h-4 w-4" />
-                      Clear Filters
+                      <X className="h-3.5 w-3.5" />
+                      Clear filters
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -936,10 +899,10 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-3"
+              className="flex items-center gap-3 rounded-xs border border-red-900/60 bg-red-950/40 p-3"
             >
-              <AlertTriangle className="h-5 w-5 text-red-400" />
-              <p className="text-red-400">{error.message}</p>
+              <AlertTriangle className="h-4 w-4 text-red-300" />
+              <p className="text-[13px] text-red-200">{error.message}</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -951,23 +914,22 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
           transition={{ delay: 0.2 }}
           className="flex-1 min-h-0"
         >
-          <div className={cn(
-            "relative overflow-hidden rounded-2xl border border-white/10 flex flex-col h-full",
-            "bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl"
-          )}>
+          <div className="relative flex h-full flex-col overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <div className="h-full overflow-auto p-4">
               {isLoading ? (
-                <div className="flex items-center justify-center h-64">
-                  <div className="flex flex-col items-center gap-3 text-gray-500">
-                    <RefreshCw className="h-8 w-8 animate-spin" />
-                    <span className="text-sm">Loading logs...</span>
+                <div className="flex h-64 items-center justify-center">
+                  <div className="flex flex-col items-center gap-3 text-paper-dim">
+                    <RefreshCw className="h-6 w-6 animate-spin" />
+                    <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">Loading logs…</span>
                   </div>
                 </div>
               ) : filteredLogs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                  <FileText className="h-16 w-16 opacity-20 mb-4" />
-                  <p className="text-lg font-medium">No logs found</p>
-                  <p className="text-sm">Try adjusting your filters</p>
+                <div className="flex h-64 flex-col items-center justify-center">
+                  <div className="mb-3 grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
+                    <FileText className="h-5 w-5" aria-hidden />
+                  </div>
+                  <p className="text-[15px] font-medium text-paper">No logs found</p>
+                  <p className="text-[13px] text-paper-muted">Try adjusting your filters.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -992,12 +954,11 @@ export default function LogsPage({ embedded = false, refreshKey = 0, autoRefresh
                           }}
                           onClick={() => setExpandedLog(expandedLog === log.query_id ? null : log.query_id)}
                           className={cn(
-                            "flex items-center gap-3 p-3 rounded-xl cursor-pointer",
-                            "hover:bg-white/10 transition-all",
-                            "border border-transparent hover:border-white/10",
-                            expandedLog === log.query_id && "border-white/20 bg-white/10",
-                            hasStatusChanged && "ring-2 ring-offset-2 ring-offset-[#0a0a0a]",
-                            hasStatusChanged && log.type === "QueryFinish" && "ring-green-500/50",
+                            "flex items-center gap-3 cursor-pointer rounded-xs p-3 transition-colors",
+                            "border border-transparent hover:border-ink-500 hover:bg-ink-200",
+                            expandedLog === log.query_id && "border-ink-500 bg-ink-200",
+                            hasStatusChanged && "ring-1 ring-offset-2 ring-offset-ink-100",
+                            hasStatusChanged && log.type === "QueryFinish" && "ring-emerald-500/50",
                             hasStatusChanged && isFailedLog(log) && "ring-red-500/50"
                           )}
                         >

@@ -1,6 +1,5 @@
 import React from "react";
-import { FileX2, Clock, Database, HardDrive } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Clock, Database, HardDrive } from "lucide-react";
 
 interface QueryStatistics {
   elapsed: number;
@@ -12,73 +11,59 @@ interface EmptyQueryResultProps {
   statistics: QueryStatistics;
 }
 
-const EmptyQueryResult: React.FC<EmptyQueryResultProps> = ({ statistics }) => {
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return "0 Bytes";
+  const k = 1024;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+};
 
-  const formatTime = (seconds: number) => {
-    return `${(seconds * 1000).toFixed(2)}ms`;
-  };
+const formatTime = (seconds: number): string => `${(seconds * 1000).toFixed(2)} ms`;
+
+const EmptyQueryResult: React.FC<EmptyQueryResultProps> = ({ statistics }) => {
+  const items = [
+    { icon: Clock, label: "Execution time", value: formatTime(statistics.elapsed) },
+    { icon: Database, label: "Rows read", value: statistics.rows_read.toLocaleString() },
+    { icon: HardDrive, label: "Data read", value: formatBytes(statistics.bytes_read) },
+  ];
 
   return (
-    <div className="h-full flex items-center justify-center p-8">
-      <div className="max-w-md w-full">
-        <div className="flex flex-col items-center mb-8">
-          <h3 className="text-lg font-semibold mb-2">No Results</h3>
-          <p className="text-muted-foreground text-center">
-            This query executed successfully but didn't return any data.
-          </p>
+    <div className="flex h-full items-center justify-center bg-ink-50 p-8">
+      <div className="w-full max-w-xl">
+        <div className="flex flex-col gap-3 border-b border-ink-500 pb-6">
+          <span className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+            <span className="h-px w-6 bg-ink-700" aria-hidden />
+            <span>Query result</span>
+          </span>
+          <h3 className="text-xl font-semibold tracking-tight text-paper">
+            No rows returned.{" "}
+            <span className="text-paper-dim">Query ran cleanly.</span>
+          </h3>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center text-center">
-                <Clock className="h-6 w-6 mb-2 text-blue-500" />
-                <div className="font-medium">Execution Time</div>
-                <div className="text-sm text-muted-foreground">
-                  {formatTime(statistics.elapsed)}
-                </div>
+        <dl className="mt-6 grid grid-cols-3 border-l border-t border-ink-500">
+          {items.map(({ icon: Icon, label, value }) => (
+            <div
+              key={label}
+              className="flex flex-col gap-2 border-b border-r border-ink-500 px-4 py-4"
+            >
+              <div className="flex items-center justify-between">
+                <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                  {label}
+                </dt>
+                <Icon className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
               </div>
-            </CardContent>
-          </Card>
+              <dd className="font-mono text-[18px] font-semibold leading-none text-paper">
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
 
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center text-center">
-                <Database className="h-6 w-6 mb-2 text-emerald-500" />
-                <div className="font-medium">Rows Read</div>
-                <div className="text-sm text-muted-foreground">
-                  {statistics.rows_read.toLocaleString()}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center text-center">
-                <HardDrive className="h-6 w-6 mb-2 text-purple-500" />
-                <div className="font-medium">Data Read</div>
-                <div className="text-sm text-muted-foreground">
-                  {formatBytes(statistics.bytes_read)}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mt-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            Try modifying your query or check the table's contents to ensure
-            there's data to retrieve.
-          </p>
-        </div>
+        <p className="mt-6 text-sm leading-relaxed text-paper-muted">
+          Try modifying your query or check the table's contents to ensure there's data to retrieve.
+        </p>
       </div>
     </div>
   );

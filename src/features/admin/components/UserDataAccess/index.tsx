@@ -20,7 +20,6 @@ import { log } from '@/lib/log';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -206,7 +205,7 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-paper-dim" />
       </div>
     );
   }
@@ -216,80 +215,83 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-blue-400" />
-            <h3 className="text-lg font-medium text-white">Data Access Rules</h3>
-            <Tooltip>
-              <TooltipTrigger>
-                <Info className="h-4 w-4 text-gray-500" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-sm">
-                <p>User-specific rules that supplement role-based permissions. Higher priority rules are evaluated first.</p>
-              </TooltipContent>
-            </Tooltip>
+          <div className="flex flex-col gap-1">
+            <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+              <span className="h-px w-6 bg-ink-700" />
+              <span>Data access rules</span>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Info className="h-3 w-3 text-paper-faint" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm rounded-xs border-ink-500 bg-ink-100 text-paper">
+                  <p>User-specific rules that supplement role-based permissions. Higher priority rules are evaluated first.</p>
+                </TooltipContent>
+              </Tooltip>
+            </span>
+            <p className="text-[12px] text-paper-muted">{rules.length} {rules.length === 1 ? 'rule' : 'rules'} for {userName}.</p>
           </div>
           {canEdit && (
-            <Button size="sm" onClick={openAddDialog} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Add Rule
+            <Button size="sm" onClick={openAddDialog} className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft">
+              <Plus className="h-3.5 w-3.5" />
+              Add rule
             </Button>
           )}
         </div>
 
         {/* Rules Table */}
         {rules.length === 0 ? (
-          <div className="text-center py-8 rounded-lg bg-white/5 border border-white/10">
-            <Shield className="h-10 w-10 text-gray-600 mx-auto mb-2" />
-            <p className="text-gray-400">No user-specific data access rules</p>
-            <p className="text-sm text-gray-500 mt-1">
-              Access is determined by role permissions only
+          <div className="rounded-xs border border-ink-500 bg-ink-100 px-6 py-12 text-center">
+            <Shield className="mx-auto mb-4 h-8 w-8 text-paper-faint" aria-hidden />
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No user-specific data access rules</p>
+            <p className="mt-2 text-[12px] text-paper-muted">
+              Access is determined by role permissions only.
             </p>
           </div>
         ) : (
-          <div className="rounded-lg border border-white/10 overflow-hidden">
+          <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
             <Table>
               <TableHeader>
-                <TableRow className="bg-white/5 hover:bg-white/5">
-                  <TableHead className="text-gray-400">Connection</TableHead>
-                  <TableHead className="text-gray-400">Database</TableHead>
-                  <TableHead className="text-gray-400">Table</TableHead>
-                  <TableHead className="text-gray-400 text-center">Allow/Deny</TableHead>
-                  <TableHead className="text-gray-400 text-center">Priority</TableHead>
-                  {canEdit && <TableHead className="text-gray-400 w-20"></TableHead>}
+                <TableRow className="border-ink-500 hover:bg-transparent">
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Connection</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Database</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Table</TableHead>
+                  <TableHead className="text-center font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Allow/Deny</TableHead>
+                  <TableHead className="text-center font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Priority</TableHead>
+                  {canEdit && <TableHead className="w-20" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rules.map((rule, index) => (
                   <TableRow
                     key={rule.id}
-                    className="hover:bg-white/5 cursor-pointer"
+                    className="cursor-pointer border-ink-500 hover:bg-ink-200"
                     onClick={() => canEdit && openEditDialog(index)}
                   >
-                    <TableCell className="font-medium text-white">
+                    <TableCell className="font-medium text-paper">
                       {getConnectionName(rule.connectionId)}
                     </TableCell>
                     <TableCell>
-                      <code className="px-2 py-0.5 rounded bg-black/30 text-purple-300 text-sm">
+                      <code className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[12px] text-paper-muted">
                         {rule.databasePattern}
                       </code>
                     </TableCell>
                     <TableCell>
-                      <code className="px-2 py-0.5 rounded bg-black/30 text-blue-300 text-sm">
+                      <code className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[12px] text-paper-muted">
                         {rule.tablePattern}
                       </code>
                     </TableCell>
                     <TableCell className="text-center">
                       {rule.isAllowed ? (
-                        <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/30">
+                        <span className="inline-flex items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
                           Allow
-                        </Badge>
+                        </span>
                       ) : (
-                        <Badge variant="outline" className="bg-red-500/20 text-red-300 border-red-500/30">
+                        <span className="inline-flex items-center rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
                           Deny
-                        </Badge>
+                        </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-center text-gray-400">
+                    <TableCell className="text-center font-mono text-[12px] tabular-nums text-paper-dim">
                       {rule.priority}
                     </TableCell>
                     {canEdit && (
@@ -297,13 +299,13 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                          className="h-8 w-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteRule(index);
                           }}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </TableCell>
                     )}
@@ -318,18 +320,17 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
         {canEdit && rules.length > 0 && (
           <div className="flex justify-end">
             <Button
-              variant="outline"
               onClick={handleSaveAll}
               disabled={isSaving}
-              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+              className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
             >
               {isSaving ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Saving…
                 </>
               ) : (
-                'Save Data Access Rules'
+                'Save data access rules'
               )}
             </Button>
           </div>
@@ -337,30 +338,30 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
 
         {/* Add/Edit Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg rounded-xs border-ink-500 bg-ink-100">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5 text-blue-400" />
-                {editingIndex !== null ? 'Edit Rule' : 'Add Data Access Rule'}
+              <DialogTitle className="flex items-center gap-2 text-paper">
+                <Database className="h-4 w-4 text-paper-dim" />
+                {editingIndex !== null ? 'Edit rule' : 'Add data access rule'}
               </DialogTitle>
-              <DialogDescription>
-                Configure database and table access for {userName}
+              <DialogDescription className="text-paper-muted">
+                Configure database and table access for {userName}.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
               {/* Connection */}
               <div className="space-y-2">
-                <Label>Connection</Label>
+                <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Connection</Label>
                 <Select
                   value={formData.connectionId || 'all'}
                   onValueChange={(v) => setFormData({ ...formData, connectionId: v === 'all' ? null : v })}
                 >
-                  <SelectTrigger className="bg-white/5 border-white/10">
+                  <SelectTrigger className="rounded-xs border-ink-500 bg-ink-200 text-paper">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Connections</SelectItem>
+                  <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+                    <SelectItem value="all">All connections</SelectItem>
                     {connections.map((conn) => (
                       <SelectItem key={conn.id} value={conn.id}>
                         {conn.name}
@@ -372,60 +373,60 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
 
               {/* Database Pattern */}
               <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Database className="h-4 w-4 text-purple-400" />
-                  Database Pattern
+                <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                  <Database className="h-3.5 w-3.5 text-paper-faint" />
+                  Database pattern
                 </Label>
                 <Input
                   value={formData.databasePattern}
                   onChange={(e) => setFormData({ ...formData, databasePattern: e.target.value })}
                   placeholder="e.g., * or production or /^prod_.*/"
-                  className="bg-white/5 border-white/10"
+                  className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper"
                 />
-                <p className="text-xs text-gray-500">
-                  Use <code className="bg-black/30 px-1 rounded">*</code> for all, exact name, or regex pattern
+                <p className="text-[11px] text-paper-faint">
+                  Use <code className="rounded-xs border border-ink-500 bg-ink-100 px-1 font-mono">*</code> for all, exact name, or regex pattern.
                 </p>
               </div>
 
               {/* Table Pattern */}
               <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Table2 className="h-4 w-4 text-blue-400" />
-                  Table Pattern
+                <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                  <Table2 className="h-3.5 w-3.5 text-paper-faint" />
+                  Table pattern
                 </Label>
                 <Input
                   value={formData.tablePattern}
                   onChange={(e) => setFormData({ ...formData, tablePattern: e.target.value })}
                   placeholder="e.g., * or users or /^log_.*/"
-                  className="bg-white/5 border-white/10"
+                  className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper"
                 />
               </div>
 
               {/* Info about access type */}
-              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-300">
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-3 text-[12px] text-paper-muted">
                 <p className="flex items-center gap-2">
-                  <Info className="h-4 w-4" />
-                  Access type (read/write/admin) is determined by the user's role permissions
+                  <Info className="h-3.5 w-3.5 text-paper-dim" />
+                  Access type (read/write/admin) is determined by the user's role permissions.
                 </p>
               </div>
 
               {/* Allow/Deny Toggle */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
+              <div className="flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 p-3">
                 <div>
-                  <Label>Rule Type</Label>
-                  <p className="text-xs text-gray-500">
-                    Deny rules take precedence over allow rules
+                  <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Rule type</Label>
+                  <p className="text-[11px] text-paper-faint">
+                    Deny rules take precedence over allow rules.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={formData.isAllowed ? 'text-gray-500' : 'text-red-400 font-medium'}>
+                  <span className={`font-mono text-[10px] uppercase tracking-[0.14em] ${formData.isAllowed ? 'text-paper-faint' : 'text-red-300'}`}>
                     Deny
                   </span>
                   <Switch
                     checked={formData.isAllowed}
                     onCheckedChange={(checked) => setFormData({ ...formData, isAllowed: checked })}
                   />
-                  <span className={formData.isAllowed ? 'text-green-400 font-medium' : 'text-gray-500'}>
+                  <span className={`font-mono text-[10px] uppercase tracking-[0.14em] ${formData.isAllowed ? 'text-emerald-300' : 'text-paper-faint'}`}>
                     Allow
                   </span>
                 </div>
@@ -433,40 +434,43 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
 
               {/* Priority */}
               <div className="space-y-2">
-                <Label>Priority</Label>
+                <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Priority</Label>
                 <Input
                   type="number"
                   value={formData.priority}
                   onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 0 })}
-                  className="bg-white/5 border-white/10"
+                  className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper"
                 />
-                <p className="text-xs text-gray-500">
-                  Higher priority rules are evaluated first
+                <p className="text-[11px] text-paper-faint">
+                  Higher priority rules are evaluated first.
                 </p>
               </div>
 
               {/* Description */}
               <div className="space-y-2">
-                <Label>Description (optional)</Label>
+                <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Description (optional)</Label>
                 <Input
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="e.g., Allow access to production logs"
-                  className="bg-white/5 border-white/10"
+                  className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                 />
               </div>
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowDialog(false)}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowDialog(false)}
+                className="h-9 rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
+              >
                 Cancel
               </Button>
               <Button
-                variant="outline"
                 onClick={handleSaveRule}
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+                className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
               >
-                {editingIndex !== null ? 'Update Rule' : 'Add Rule'}
+                {editingIndex !== null ? 'Update rule' : 'Add rule'}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -37,7 +37,6 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ErrorBoundary>
       <QueryProvider>
         <Toaster
-          richColors
           toastOptions={{ duration: 2000, closeButton: true }}
           expand={true}
         />

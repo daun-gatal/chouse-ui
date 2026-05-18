@@ -153,6 +153,39 @@ The `ApiClient` class (`src/api/client.ts`) is a singleton that handles:
 - **Session recovery** — `onSessionExpired` callback in `App.tsx` automatically reconnects ClickHouse sessions
 - **Request headers** — Adds `Authorization: Bearer <token>`, `X-Session-Id`, and `X-Requested-With: XMLHttpRequest` to all requests
 
+### Design System ("editorial")
+
+Since v2.13.0 the entire SPA renders in a single visual language defined in `src/index.css`. Tailwind v4's `@theme` block declares the tokens; shadcn semantic CSS vars (`--background`, `--primary`, `--border`, etc.) are remapped to those tokens so every primitive (Dialog, Select, Tabs, DropdownMenu, Tooltip, Toast) inherits the look without per-component overrides.
+
+**Token surfaces**
+
+| Family | Tokens | Use |
+|---|---|---|
+| `ink-*` (0/50/100/200/300/500/700/800) | dark canvas → elevated surface → border | `bg-ink-50` canvas, `bg-ink-100` card, `bg-ink-200` nested/elevated, `border-ink-500` hairline divider |
+| `paper`, `paper-muted`, `paper-dim`, `paper-faint` | text scale (high → low contrast) | `text-paper` headings, `text-paper-muted` body, `text-paper-dim` meta, `text-paper-faint` mono eyebrows |
+| `brand`, `brand-soft`, `brand-dim` | ClickHouse-yellow accent | primary CTA, default/active marker, brand tint for selected state — never decoration |
+| Semantic palettes | `emerald-*`, `red-*`, `amber-*` (kept from Tailwind) | only when the color carries meaning (success / destructive / warning) — never for chrome |
+
+**Typography**: Geist Sans + Geist Mono via Google Fonts. Body text is sans; eyebrows, labels, badges, and numeric/code display use mono with `uppercase tracking-[0.14em–0.18em]`.
+
+**Class recipes** (used across the app — see editorial style guide in user memory for full set):
+- **Eyebrow**: `inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim` (with optional `<span className="h-px w-6 bg-ink-700" />` divider)
+- **Page header chip+title**: 9×9 hairline icon chip + 18px semibold title + mono eyebrow subtitle
+- **Card**: `rounded-xs border border-ink-500 bg-ink-100` for default surface, `bg-ink-200` for nested
+- **Primary button**: `h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft`
+- **Outline button**: `h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200`
+- **Variant pills**: 1.5px-padding chips with mono uppercase 10px — `border-emerald-900/60 bg-emerald-950/40 text-emerald-300` (success), `border-red-900/60 bg-red-950/40 text-red-300` (destructive), `border-brand/40 text-brand` (default/active), `border-ink-500 bg-ink-200 text-paper-faint` (neutral)
+- **Stats grid**: hairline `border-l border-t border-ink-500` wrapper with `border-b border-r border-ink-500` per cell, mono label + `font-mono tabular-nums` numeric value
+
+**Role/category encoding**: per-role color maps (e.g. `ROLE_COLORS`, `ACTION_COLORS` with 11 hues) replaced by 2-letter mono codes (`SA/AD/DV/AN/VW/GS` for RBAC roles) or uniform hairline chips. Identity comes from the label, not the hue.
+
+**Shared infrastructure that cascades the look app-wide**:
+- `ConfirmationDialog` (`src/components/common/`) — one component reused by every delete/logout confirmation
+- `Toaster` (`src/components/ui/sonner.tsx`) — sonner without `richColors`, with registered classNames per variant, so every `toast.success/error/warning/info` call inherits the editorial pill
+- `AiChatBubble` (`src/components/common/`) — right-anchored side-sheet (compact 420 / standard 560 / wide 760 width cycle, full viewport height, slide-in from right) replacing the previous draggable floating modal. Industry-standard pattern (Cursor / Copilot Chat / JetBrains AI). Mobile keeps full-screen slide-up via FAB.
+
+**Boundary coercion for ClickHouse numerics**: ClickHouse JSON serializes UInt64 / Float64 fields as strings to preserve precision past 2^53. Hooks that expose these fields (`useQueryLogs`, `useLiveQueriesStats`) run them through a local `toFinite()` / `num()` helper at the API boundary so that downstream reducers can safely use `+` for numeric addition (without the helper, JS coerces to string concatenation, producing the absurd e+58 / e+82 stat displays seen pre-v2.13.0).
+
 ---
 
 ## Backend Architecture

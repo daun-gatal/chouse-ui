@@ -160,15 +160,15 @@ const PipelineNodeComponent = ({ data }: { data: { name: string; parallelism?: n
       )}
       style={{
         backgroundColor: style.bgColor,
-        borderColor: data.isParallel ? '#22c55e' : style.borderColor,
+        borderColor: data.isParallel ? '#34d399' : style.borderColor,
         borderWidth: data.isParallel ? 2 : 1,
       }}
     >
-      <Handle type="target" position={Position.Left} className="!bg-zinc-500 !w-2 !h-2" />
+      <Handle type="target" position={Position.Left} className="!bg-ink-500 !w-2 !h-2" />
 
       {/* Parallel badge */}
       {data.isParallel && data.parallelism && (
-        <div className="absolute -top-2.5 -right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500 text-white text-[10px] font-bold shadow-md">
+        <div className="absolute -top-2.5 -right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-400 text-ink-50 text-[10px] font-bold shadow-md">
           <Shuffle className="w-2.5 h-2.5" />
           {data.parallelism}×
         </div>
@@ -190,13 +190,13 @@ const PipelineNodeComponent = ({ data }: { data: { name: string; parallelism?: n
           >
             {data.name || 'Unknown'}
           </div>
-          <div className="text-[10px] text-zinc-500">
+          <div className="text-[10px] text-paper-dim">
             {style.label}
           </div>
         </div>
       </div>
 
-      <Handle type="source" position={Position.Right} className="!bg-zinc-500 !w-2 !h-2" />
+      <Handle type="source" position={Position.Right} className="!bg-ink-500 !w-2 !h-2" />
     </div>
   );
 };
@@ -278,7 +278,7 @@ function transformPipelineToGraph(stages: PipelineStage[]): { nodes: Node[]; edg
         },
         animated: stage.isParallel,
         style: {
-          stroke: stage.isParallel ? '#22c55e' : style.color,
+          stroke: stage.isParallel ? '#34d399' : style.color,
           strokeWidth: stage.isParallel ? 2 : 1.5,
         },
       });
@@ -298,8 +298,8 @@ const Legend: React.FC = () => {
   const categories: StageCategory[] = ['read', 'filter', 'aggregate', 'sort', 'join', 'merge', 'expression', 'parallel'];
 
   return (
-    <div className="absolute top-3 left-3 bg-zinc-900/90 border border-zinc-800 rounded-lg p-2 z-10 backdrop-blur-sm">
-      <div className="text-[10px] font-semibold text-zinc-400 mb-2">Stage Types</div>
+    <div className="absolute top-3 left-3 rounded-xs border border-ink-500 bg-ink-100 p-2 z-10">
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Stage Types</div>
       <div className="flex flex-wrap gap-2 max-w-[300px]">
         {categories.map((category) => {
           const style = STAGE_STYLES[category];
@@ -309,7 +309,7 @@ const Legend: React.FC = () => {
                 className="w-3 h-3 rounded-sm"
                 style={{ backgroundColor: style.color }}
               />
-              <span className="text-[9px] text-zinc-400">{style.label}</span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-paper-muted">{style.label}</span>
             </div>
           );
         })}
@@ -344,19 +344,19 @@ const StatsPanel: React.FC<{ stages: PipelineStage[] }> = ({ stages }) => {
   }, [stages]);
 
   return (
-    <div className="absolute top-3 right-3 bg-zinc-900/90 border border-zinc-800 rounded-lg p-3 z-10 backdrop-blur-sm">
+    <div className="absolute top-3 right-3 rounded-xs border border-ink-500 bg-ink-100 p-3 z-10">
       <div className="flex gap-4 text-xs">
         <div className="text-center">
-          <div className="text-lg font-bold text-zinc-300">{stats.total}</div>
-          <div className="text-[10px] text-zinc-500">Stages</div>
+          <div className="font-mono text-lg font-semibold tabular-nums text-paper">{stats.total}</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Stages</div>
         </div>
         <div className="text-center">
-          <div className="text-lg font-bold text-green-400">{stats.parallel}</div>
-          <div className="text-[10px] text-zinc-500">Parallel</div>
+          <div className="font-mono text-lg font-semibold tabular-nums text-emerald-400">{stats.parallel}</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Parallel</div>
         </div>
         <div className="text-center">
-          <div className="text-lg font-bold text-blue-400">{stats.maxParallelism}×</div>
-          <div className="text-[10px] text-zinc-500">Max</div>
+          <div className="font-mono text-lg font-semibold tabular-nums text-blue-400">{stats.maxParallelism}×</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Max</div>
         </div>
       </div>
     </div>
@@ -415,12 +415,12 @@ const PipelineViewInner: React.FC<{ content: string; stages: PipelineStage[] }> 
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-2 text-xs bg-zinc-900/90 border-zinc-800 hover:bg-zinc-800"
+          className="h-7 rounded-xs border-ink-500 bg-ink-100 px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
           onClick={handleCopy}
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 mr-1 text-green-400" />
+              <Check className="h-3 w-3 mr-1 text-emerald-400" />
               Copied
             </>
           ) : (
@@ -445,7 +445,7 @@ const PipelineViewInner: React.FC<{ content: string; stages: PipelineStage[] }> 
       >
         <Background gap={12} size={1} color="#27272a" />
         <Controls
-          className="bg-zinc-900 border-zinc-800 text-zinc-100 fill-zinc-100 [&>button]:!bg-zinc-900 [&>button]:!border-zinc-800 [&>button:hover]:!bg-zinc-800 [&_path]:!fill-zinc-100"
+          className="rounded-xs border-ink-500 bg-ink-100 text-paper fill-paper [&>button]:!bg-ink-100 [&>button]:!border-ink-500 [&>button:hover]:!bg-ink-200 [&_path]:!fill-paper"
         >
           <ControlButton onClick={() => onLayout('LR')} title="Horizontal Layout">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -473,7 +473,7 @@ const PipelineView: React.FC<PipelineViewProps> = ({ content }) => {
 
   if (!content) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
         No pipeline data available.
       </div>
     );
@@ -482,7 +482,7 @@ const PipelineView: React.FC<PipelineViewProps> = ({ content }) => {
   return (
     <div className="w-full h-full flex flex-col">
       <ExplainInfoHeader type="pipeline" />
-      <div className="flex-1 bg-zinc-950/50 backdrop-blur-sm relative">
+      <div className="flex-1 bg-ink-50 relative">
         <ReactFlowProvider>
           <PipelineViewInner content={content} stages={stages} />
         </ReactFlowProvider>

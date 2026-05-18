@@ -59,7 +59,10 @@ type DockMode = "floating" | "sidebar";
 
 type DockPreferences = DockPreferencesType;
 
-// Load dock preferences from localStorage (fallback)
+// ============================================
+// localStorage helpers (unchanged)
+// ============================================
+
 function loadDockPlacementFromLocal(): DockPlacement {
   try {
     const saved = localStorage.getItem(DOCK_PLACEMENT_KEY);
@@ -107,7 +110,7 @@ function loadAutoHideFromLocal(): boolean {
   } catch {
     // Ignore errors
   }
-  return true; // Default to auto-hide enabled
+  return true;
 }
 
 function saveAutoHideToLocal(autoHide: boolean): void {
@@ -138,7 +141,6 @@ function saveDockModeToLocal(mode: DockMode): void {
   }
 }
 
-// Database preference functions (device-aware: load/save per device type)
 async function loadDockPreferencesFromDb(deviceType: DeviceType): Promise<DockPreferences> {
   try {
     const preferences = await rbacUserPreferencesApi.getPreferences();
@@ -162,6 +164,13 @@ async function saveDockPreferencesToDb(deviceType: DeviceType, dockPrefs: DockPr
   }
 }
 
+// ============================================
+// Editorial primitives
+// ============================================
+
+const TOOLTIP_CLASS =
+  "z-[100] rounded-xs border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted shadow-lg";
+
 interface DockItemProps {
   icon: React.ElementType;
   label: string;
@@ -170,60 +179,55 @@ interface DockItemProps {
   isVertical?: boolean;
 }
 
-const DockItem = ({ icon: Icon, label, to, isActive, isVertical }: DockItemProps) => {
-  return (
-    <TooltipProvider delayDuration={0}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            to={to}
-            className={cn(
-              "relative flex items-center justify-center rounded-lg transition-all duration-200 group",
-              isVertical ? "w-10 h-10" : "w-10 h-10",
-              isActive
-                ? "bg-white/20 text-white"
-                : "text-gray-400 hover:text-white hover:bg-white/10"
-            )}
-          >
-            {/* Active indicator dot */}
-            {isActive && (
-              <motion.div
-                layoutId="dock-active-dot"
-                className={cn(
-                  "absolute w-1 h-1 rounded-full bg-purple-400",
-                  isVertical ? "-right-0.5" : "-bottom-0.5"
-                )}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              />
-            )}
-
-            <Icon className={cn(
-              "w-[18px] h-[18px] z-10 transition-transform duration-200",
-              isActive ? "text-white" : "group-hover:scale-110"
-            )} />
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent
-          side={isVertical ? "right" : "top"}
-          sideOffset={8}
-          className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl px-2.5 py-1.5 text-xs"
+const DockItem = ({ icon: Icon, label, to, isActive, isVertical }: DockItemProps) => (
+  <TooltipProvider delayDuration={0}>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          to={to}
+          className={cn(
+            "group relative grid h-9 w-9 place-items-center rounded-xs transition-colors",
+            isActive
+              ? "text-paper"
+              : "text-paper-dim hover:bg-ink-200 hover:text-paper"
+          )}
+          aria-label={label}
         >
-          <div className="flex items-center gap-2">
-            <span>{label}</span>
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-};
-
-// Separator component
-const DockSeparator = ({ isVertical }: { isVertical: boolean }) => (
-  <div className={cn(
-    "bg-white/10",
-    isVertical ? "h-px w-6 my-0.5" : "w-px h-6 mx-0.5"
-  )} />
+          {isActive && (
+            <motion.span
+              layoutId="dock-active-marker"
+              className={cn(
+                "absolute bg-brand",
+                isVertical
+                  ? "left-0 top-1/2 h-5 w-[2px] -translate-y-1/2"
+                  : "bottom-0 left-1/2 h-[2px] w-5 -translate-x-1/2"
+              )}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            />
+          )}
+          <Icon className="h-[17px] w-[17px]" aria-hidden />
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side={isVertical ? "right" : "top"} sideOffset={8} className={TOOLTIP_CLASS}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
 );
+
+const DockSeparator = ({ isVertical }: { isVertical: boolean }) => (
+  <div
+    className={cn(
+      "bg-ink-500",
+      isVertical ? "my-1 h-px w-6" : "mx-1 h-6 w-px"
+    )}
+    aria-hidden
+  />
+);
+
+// ============================================
+// Main component
+// ============================================
 
 export default function FloatingDock() {
   const location = useLocation();
@@ -235,7 +239,6 @@ export default function FloatingDock() {
   const dbSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastLoadedDeviceRef = useRef<DeviceType | null>(null);
 
-  // Dock state - initialize from localStorage for quick render
   const [orientation, setOrientation] = useState<DockOrientation>(loadDockOrientationFromLocal);
   const [placement, setPlacement] = useState<DockPlacement>(loadDockPlacementFromLocal);
   const [isDragging, setIsDragging] = useState(false);
@@ -245,17 +248,12 @@ export default function FloatingDock() {
   const [dockMode, setDockMode] = useState<DockMode>(loadDockModeFromLocal);
   const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
 
-  // Sync fullscreen state with browser
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      const fs = !!document.fullscreenElement;
-      setIsFullscreen(fs);
-    };
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  // Toggle fullscreen
   const toggleFullscreen = useCallback(async () => {
     try {
       if (!document.fullscreenElement) {
@@ -270,16 +268,10 @@ export default function FloatingDock() {
     }
   }, []);
 
-  // Use RBAC store for all authentication
-  const {
-    hasPermission,
-    hasAnyPermission,
-    isAuthenticated,
-  } = useRbacStore();
-
+  const { hasAnyPermission, isAuthenticated } = useRbacStore();
   const deviceType = useDeviceType();
 
-  // Load preferences from database (authenticated users, per device type; re-load when device type changes)
+  // Load preferences from database
   useEffect(() => {
     if (!isAuthenticated || lastLoadedDeviceRef.current === deviceType) return;
 
@@ -312,7 +304,7 @@ export default function FloatingDock() {
     loadFromDb();
   }, [isAuthenticated, deviceType]);
 
-  // Debounced save to database (per device type)
+  // Debounced save to database
   const saveToDatabaseDebounced = useCallback(
     (prefs: DockPreferences) => {
       if (dbSyncTimeoutRef.current) {
@@ -328,7 +320,6 @@ export default function FloatingDock() {
     [isAuthenticated, deviceType]
   );
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (dbSyncTimeoutRef.current) {
@@ -337,7 +328,6 @@ export default function FloatingDock() {
     };
   }, []);
 
-  // Check permissions for various sections
   const canViewMonitoring = hasAnyPermission([
     RBAC_PERMISSIONS.LIVE_QUERIES_VIEW,
     RBAC_PERMISSIONS.METRICS_VIEW,
@@ -353,21 +343,17 @@ export default function FloatingDock() {
     RBAC_PERMISSIONS.AUDIT_VIEW,
   ]);
 
-  const canViewOverview = true;
-
   const canViewExplorer = hasAnyPermission([
     RBAC_PERMISSIONS.DB_VIEW,
     RBAC_PERMISSIONS.TABLE_VIEW,
   ]);
 
-  const canViewSettings = true;
-
   const navItems = [
-    ...(canViewOverview ? [{ icon: LayoutDashboard, label: "Home", to: "/overview" }] : []),
+    { icon: LayoutDashboard, label: "Home", to: "/overview" },
     ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer" }] : []),
     ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring" }] : []),
     ...(canViewAdmin ? [{ icon: Shield, label: "Admin", to: "/admin" }] : []),
-    ...(canViewSettings ? [{ icon: UserCog, label: "Preferences", to: "/preferences" }] : []),
+    { icon: UserCog, label: "Preferences", to: "/preferences" },
   ];
 
   // Auto-hide logic
@@ -382,7 +368,6 @@ export default function FloatingDock() {
     }
 
     if (isHovered) {
-      // Mouse is on the dock — stay visible and cancel any hide timer
       setIsVisible(true);
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
@@ -391,8 +376,6 @@ export default function FloatingDock() {
       return;
     }
 
-    // Mouse left the dock — start hide timer with a generous delay
-    // to avoid flickering when moving between dock items
     hideTimeoutRef.current = setTimeout(() => {
       setIsVisible(false);
     }, 3500);
@@ -404,14 +387,12 @@ export default function FloatingDock() {
     };
   }, [autoHide, isHovered, isDragging]);
 
-  // Handle drag end - save placement
   const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     setIsDragging(false);
     const { x, y } = info.point;
     const w = window.innerWidth;
     const h = window.innerHeight;
 
-    // Distances to edges
     const distTop = y;
     const distBottom = h - y;
     const distLeft = x;
@@ -424,7 +405,6 @@ export default function FloatingDock() {
     else if (minDist === distLeft) newPlacement = "left";
     else if (minDist === distRight) newPlacement = "right";
 
-    // Auto-adjust orientation based on placement
     const newOrientation = (newPlacement === "left" || newPlacement === "right") ? "vertical" : "horizontal";
 
     setPlacement(newPlacement);
@@ -434,7 +414,6 @@ export default function FloatingDock() {
     saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, placement: newPlacement });
   };
 
-  // Toggle orientation
   const toggleOrientation = () => {
     const newOrientation = orientation === "horizontal" ? "vertical" : "horizontal";
     setOrientation(newOrientation);
@@ -442,7 +421,6 @@ export default function FloatingDock() {
     saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, placement });
   };
 
-  // Toggle auto-hide
   const toggleAutoHide = () => {
     const newAutoHide = !autoHide;
     setAutoHide(newAutoHide);
@@ -450,7 +428,6 @@ export default function FloatingDock() {
     saveToDatabaseDebounced({ mode: dockMode, orientation, autoHide: newAutoHide, placement });
   };
 
-  // Reset placement
   const resetPosition = () => {
     setPlacement("bottom");
     setOrientation("horizontal");
@@ -459,25 +436,27 @@ export default function FloatingDock() {
     saveToDatabaseDebounced({ mode: dockMode, orientation: "horizontal", autoHide, placement: "bottom" });
   };
 
-  // Toggle dock mode (floating <-> sidebar)
   const toggleDockMode = () => {
     const newMode = dockMode === "floating" ? "sidebar" : "floating";
     setDockMode(newMode);
     saveDockModeToLocal(newMode);
     saveToDatabaseDebounced({ mode: newMode, orientation, autoHide, placement });
-    // Dispatch event so App.tsx can respond
     window.dispatchEvent(new CustomEvent("dock:mode-change", { detail: { mode: newMode } }));
   };
 
-  // Dispatch mode on mount
+  // Sync App.tsx layout state on mount. Defer to a microtask so any parent
+  // effect that attaches a listener has a chance to register first (React
+  // runs child effects before parent effects, otherwise this event is lost).
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent("dock:mode-change", { detail: { mode: dockMode } }));
+    saveDockModeToLocal(dockMode);
+    const id = window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("dock:mode-change", { detail: { mode: dockMode } }));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
-  // Start drag from handle
   const startDrag = (event: React.PointerEvent) => {
-    // Prevent default touch behaviors to ensure smooth dragging on mobile/tablet
-    if (event.pointerType === 'touch') {
+    if (event.pointerType === "touch") {
       event.preventDefault();
     }
     dragControls.start(event);
@@ -486,7 +465,6 @@ export default function FloatingDock() {
   const isVertical = orientation === "vertical";
   const isSidebar = dockMode === "sidebar";
 
-  // Calculate offsets for animations based on placement
   const getVisibleAnimation = () => {
     switch (placement) {
       case "top": return { x: "-50%", y: 12 };
@@ -510,36 +488,34 @@ export default function FloatingDock() {
   const visibleAnim = getVisibleAnimation();
   const hiddenAnim = getHiddenAnimation();
 
-  // Sidebar mode rendering (hidden during fullscreen — falls through to floating dock)
+  // ============================================
+  // Sidebar mode rendering (hidden during fullscreen)
+  // ============================================
   if (isSidebar && !isFullscreen) {
     return (
       <motion.div
         initial={{ x: -80, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed left-0 top-0 h-full w-14 z-[70] flex flex-col bg-black/60 backdrop-blur-2xl border-r border-white/10"
+        className="fixed left-0 top-0 z-[70] flex h-full w-14 flex-col border-r border-ink-500 bg-ink-50"
       >
-        <div className="flex flex-col items-center gap-2 px-2 py-4 h-full">
-          {/* Logo & Branding */}
+        <div className="flex h-full flex-col items-center gap-2 px-2 py-4">
+          {/* Logo */}
           <Link
             to="/overview"
-            className="flex flex-col items-center gap-1 rounded-lg hover:bg-white/10 transition-colors p-2"
+            className="flex flex-col items-center gap-1 rounded-xs p-2 transition-colors hover:bg-ink-200"
           >
-            <img
-              src={Logo}
-              alt="CHouse UI"
-              className="w-6 h-6 object-contain drop-shadow-[0_0_6px_rgba(255,200,0,0.4)]"
-            />
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold text-white/90">CHouse</span>
-              <span className="text-[8px] font-mono text-purple-400/80">v{version}</span>
+            <img src={Logo} alt="CHouse UI" className="h-6 w-6 object-contain" />
+            <div className="flex flex-col items-center gap-0">
+              <span className="text-[10px] font-semibold text-paper">CH<span className="text-paper-dim">/UI</span></span>
+              <span className="font-mono text-[8px] text-paper-faint">v{version}</span>
             </div>
           </Link>
 
-          <DockSeparator isVertical={true} />
+          <DockSeparator isVertical />
 
           {/* Navigation */}
-          <nav className="flex flex-col items-center gap-1 flex-1">
+          <nav className="flex flex-1 flex-col items-center gap-1">
             {navItems.map((item) => (
               <DockItem
                 key={item.to}
@@ -547,12 +523,12 @@ export default function FloatingDock() {
                 label={item.label}
                 to={item.to}
                 isActive={location.pathname.startsWith(item.to)}
-                isVertical={true}
+                isVertical
               />
             ))}
           </nav>
 
-          <DockSeparator isVertical={true} />
+          <DockSeparator isVertical />
 
           {/* Connection & User */}
           <div className="flex flex-col items-center gap-1">
@@ -562,38 +538,42 @@ export default function FloatingDock() {
             <UserMenu isCollapsed={true} />
           </div>
 
-          <DockSeparator isVertical={true} />
+          <DockSeparator isVertical />
 
-          {/* Fullscreen Toggle */}
+          {/* Fullscreen */}
           <TooltipProvider delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  type="button"
                   onClick={toggleFullscreen}
-                  className="flex items-center justify-center w-8 h-8 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                  className="grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
+                  aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
                 >
-                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+              <TooltipContent side="right" className={TOOLTIP_CLASS}>
                 {isFullscreen ? "Exit full screen" : "Enter full screen"}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
-          {/* Switch to Floating Mode */}
+          {/* Switch to floating */}
           <TooltipProvider delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  type="button"
                   onClick={toggleDockMode}
-                  className="flex items-center justify-center w-8 h-8 rounded text-purple-400 hover:text-white hover:bg-white/10 transition-all"
+                  className="grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-brand"
+                  aria-label="Switch to floating dock"
                 >
-                  <Dock className="w-4 h-4" />
+                  <Dock className="h-4 w-4" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
-                Switch to floating dock
+              <TooltipContent side="right" className={TOOLTIP_CLASS}>
+                Switch to floating
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -602,22 +582,23 @@ export default function FloatingDock() {
     );
   }
 
-  // Floating dock mode rendering
+  // ============================================
+  // Floating mode rendering
+  // ============================================
   return (
     <>
-      {/* Drag constraints container */}
-      <div ref={constraintsRef} className="fixed inset-2 z-40 pointer-events-none" />
+      <div ref={constraintsRef} className="pointer-events-none fixed inset-2 z-40" />
 
-      {/* Hover/tap trigger zone when hidden (onPointerDown fixes touch-to-open on mobile) */}
+      {/* Hover trigger when hidden */}
       <AnimatePresence>
         {autoHide && !isVisible && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: 0.2 }}
             onMouseEnter={() => {
-              setIsHovered(false); // Reset so auto-hide timer starts for the dock
+              setIsHovered(false);
               setIsVisible(true);
             }}
             onPointerDown={() => {
@@ -626,66 +607,44 @@ export default function FloatingDock() {
             }}
             className={cn(
               "fixed z-[80] cursor-pointer",
-              placement === "left" && "left-0 top-1/2 -translate-y-1/2 w-16 h-64",
-              placement === "right" && "right-0 top-1/2 -translate-y-1/2 w-16 h-64",
-              placement === "top" && "top-0 left-1/2 -translate-x-1/2 h-16 w-64",
-              placement === "bottom" && "bottom-0 left-1/2 -translate-x-1/2 h-16 w-64"
+              placement === "left" && "left-0 top-1/2 h-64 w-16 -translate-y-1/2",
+              placement === "right" && "right-0 top-1/2 h-64 w-16 -translate-y-1/2",
+              placement === "top" && "left-1/2 top-0 h-16 w-64 -translate-x-1/2",
+              placement === "bottom" && "bottom-0 left-1/2 h-16 w-64 -translate-x-1/2"
             )}
           >
-            <div className={cn(
-              "flex items-center justify-center h-full w-full",
-              isVertical ? "pr-2" : ""
-            )}>
-              <motion.div
-                animate={{
-                  opacity: [0.6, 0.9, 0.6],
-                }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+            <div
+              className={cn(
+                "flex h-full w-full items-center justify-center",
+                isVertical ? "pr-2" : ""
+              )}
+            >
+              <div
                 className={cn(
-                  "rounded-2xl bg-black/60 backdrop-blur-xl flex items-center gap-2.5 border border-white/15 shadow-xl shadow-black/40",
-                  isVertical ? "flex-col py-3 px-2 w-10" : "px-4 py-2"
+                  "flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-3 py-1.5",
+                  isVertical && "flex-col py-2 px-1.5"
                 )}
               >
-                {isVertical ? (
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+                {(() => {
+                  const currentNav = navItems.find((item) => location.pathname.startsWith(item.to));
+                  if (!currentNav) return null;
+                  const NavIcon = currentNav.icon;
+                  return <NavIcon className="h-3.5 w-3.5 text-paper-muted" aria-hidden />;
+                })()}
+                {!isVertical && (
                   <>
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    {(() => {
-                      const currentNav = navItems.find(item => location.pathname.startsWith(item.to));
-                      if (currentNav) {
-                        const NavIcon = currentNav.icon;
-                        return <NavIcon className="w-3.5 h-3.5 text-white/70" />;
-                      }
-                      return null;
-                    })()}
-                    <div className="h-px w-4 bg-white/15" />
-                    <ChevronLeft className="w-3 h-3 text-white/60" />
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      {(() => {
-                        const currentNav = navItems.find(item => location.pathname.startsWith(item.to));
-                        if (currentNav) {
-                          const NavIcon = currentNav.icon;
-                          return (
-                            <>
-                              <NavIcon className="w-3.5 h-3.5 text-white/70" />
-                              <span className="text-[11px] text-white/60 font-medium">{currentNav.label}</span>
-                            </>
-                          );
-                        }
-                        return <span className="text-[11px] text-white/60 font-medium">CHouse</span>;
-                      })()}
-                    </div>
-                    <div className="w-px h-3.5 bg-white/15" />
-                    <div className="flex items-center gap-1.5">
-                      <ChevronUp className="w-3 h-3 text-white/50" />
-                      <span className="text-[10px] text-white/50 font-medium">Hover to show menu</span>
-                    </div>
+                    <span className="h-3 w-px bg-ink-500" aria-hidden />
+                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-paper-dim">
+                      Show dock
+                    </span>
+                    <ChevronUp className="h-3 w-3 text-paper-dim" aria-hidden />
                   </>
                 )}
-              </motion.div>
+                {isVertical && (
+                  <ChevronLeft className="h-3 w-3 text-paper-dim" aria-hidden />
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -703,50 +662,53 @@ export default function FloatingDock() {
         onDragEnd={handleDragEnd}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        initial={{ opacity: 0, scale: 0.9, ...visibleAnim }}
+        initial={{ opacity: 0, ...visibleAnim }}
         animate={{
           opacity: isVisible ? 1 : 0,
-          scale: isVisible ? 1 : 0.95,
-          ...(isVisible ? visibleAnim : hiddenAnim)
+          ...(isVisible ? visibleAnim : hiddenAnim),
         }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        style={{ touchAction: 'none' }}
+        style={{ touchAction: "none" }}
         className={cn(
           "fixed z-[70] pointer-events-auto",
-          placement === "top" && "top-0 left-1/2",
+          placement === "top" && "left-1/2 top-0",
           placement === "bottom" && "bottom-0 left-1/2",
           placement === "left" && "left-0 top-1/2",
           placement === "right" && "right-0 top-1/2",
           !isVisible && "pointer-events-none"
         )}
       >
-        <div className={cn(
-          "flex items-center gap-1 px-1.5 py-1.5 rounded-2xl border transition-all duration-300",
-          isVertical ? "flex-col" : "flex-row",
-          isDragging
-            ? "border-purple-500/50 bg-black/80 backdrop-blur-2xl shadow-lg shadow-purple-500/20"
-            : isHovered
-              ? "border-white/20 bg-black/60 backdrop-blur-2xl shadow-xl shadow-black/40"
-              : "border-white/5 bg-black/40 backdrop-blur-xl shadow-lg shadow-black/30"
-        )}>
-          {/* Drag Handle */}
+        <div
+          className={cn(
+            "flex items-center gap-1 rounded-md border bg-ink-100 px-1.5 py-1.5 transition-colors duration-200",
+            isVertical ? "flex-col" : "flex-row",
+            isDragging
+              ? "border-brand"
+              : isHovered
+                ? "border-ink-700"
+                : "border-ink-500"
+          )}
+        >
+          {/* Drag handle */}
           <TooltipProvider delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  type="button"
                   onPointerDown={startDrag}
-                  style={{ touchAction: 'none' }}
+                  style={{ touchAction: "none" }}
                   className={cn(
-                    "flex items-center justify-center rounded text-gray-500 hover:text-white hover:bg-white/10 active:bg-white/20 transition-all cursor-grab active:cursor-grabbing touch-none",
-                    // Minimum 44x44px touch target for accessibility on mobile/tablet
-                    isVertical ? "w-8 h-6 min-w-[44px] min-h-[44px] sm:w-8 sm:h-6" : "w-6 h-8 min-w-[44px] min-h-[44px] sm:w-6 sm:h-8"
+                    "grid place-items-center rounded-xs text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper active:cursor-grabbing cursor-grab",
+                    isVertical
+                      ? "h-6 w-8 min-h-[44px] min-w-[44px] sm:h-6 sm:w-8"
+                      : "h-8 w-6 min-h-[44px] min-w-[44px] sm:h-8 sm:w-6"
                   )}
                   aria-label="Drag to move dock"
                 >
-                  <GripVertical className={cn("w-3 h-3 sm:w-3 sm:h-3", isVertical && "rotate-90")} />
+                  <GripVertical className={cn("h-3 w-3", isVertical && "rotate-90")} aria-hidden />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+              <TooltipContent side={isVertical ? "right" : "top"} className={TOOLTIP_CLASS}>
                 Drag to move
               </TooltipContent>
             </Tooltip>
@@ -754,35 +716,37 @@ export default function FloatingDock() {
 
           <DockSeparator isVertical={isVertical} />
 
-          {/* Logo & Branding */}
+          {/* Logo */}
           <Link
             to="/overview"
             className={cn(
-              "flex items-center gap-2 rounded-lg hover:bg-white/10 transition-colors px-2",
-              isVertical ? "w-full h-auto py-2 flex-col" : "h-10"
+              "flex items-center gap-2 rounded-xs px-2 transition-colors hover:bg-ink-200",
+              isVertical ? "h-auto w-full flex-col py-2" : "h-9"
             )}
           >
-            <img
-              src={Logo}
-              alt="CHouse UI"
-              className="w-5 h-5 object-contain drop-shadow-[0_0_6px_rgba(255,200,0,0.4)]"
-            />
-            <div className={cn(
-              "flex items-center gap-1.5",
-              isVertical && "flex-col gap-0"
-            )}>
-              <span className="text-xs font-semibold text-white/90">CHouse</span>
-              <span className="text-[9px] font-mono text-purple-400/80">v{version}</span>
+            <img src={Logo} alt="CHouse UI" className="h-5 w-5 object-contain" />
+            <div
+              className={cn(
+                "flex items-center gap-1.5",
+                isVertical && "flex-col gap-0"
+              )}
+            >
+              <span className="text-xs font-semibold text-paper">
+                CH<span className="text-paper-dim">/UI</span>
+              </span>
+              <span className="font-mono text-[9px] text-paper-faint">v{version}</span>
             </div>
           </Link>
 
           <DockSeparator isVertical={isVertical} />
 
           {/* Navigation */}
-          <nav className={cn(
-            "flex items-center gap-0.5",
-            isVertical ? "flex-col" : "flex-row"
-          )}>
+          <nav
+            className={cn(
+              "flex items-center gap-0.5",
+              isVertical ? "flex-col" : "flex-row"
+            )}
+          >
             {navItems.map((item) => (
               <DockItem
                 key={item.to}
@@ -798,10 +762,12 @@ export default function FloatingDock() {
           <DockSeparator isVertical={isVertical} />
 
           {/* Connection & User */}
-          <div className={cn(
-            "flex items-center gap-0.5",
-            isVertical ? "flex-col" : "flex-row"
-          )}>
+          <div
+            className={cn(
+              "flex items-center gap-0.5",
+              isVertical ? "flex-col" : "flex-row"
+            )}
+          >
             <TooltipProvider>
               <ConnectionSelector isCollapsed={true} />
             </TooltipProvider>
@@ -810,80 +776,81 @@ export default function FloatingDock() {
 
           <DockSeparator isVertical={isVertical} />
 
-          {/* Dock Controls */}
-          <div className={cn(
-            "flex items-center gap-0.5",
-            isVertical ? "flex-col" : "flex-row"
-          )}>
-            {/* Fullscreen Toggle — always visible */}
+          {/* Controls */}
+          <div
+            className={cn(
+              "flex items-center gap-0.5",
+              isVertical ? "flex-col" : "flex-row"
+            )}
+          >
             <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    type="button"
                     onClick={toggleFullscreen}
                     className={cn(
-                      "flex items-center justify-center rounded transition-all",
-                      isVertical ? "w-8 h-8" : "w-8 h-8",
-                      isFullscreen
-                        ? "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
-                        : "text-gray-400 hover:text-white hover:bg-white/10"
+                      "grid h-8 w-8 place-items-center rounded-xs transition-colors hover:bg-ink-200",
+                      isFullscreen ? "text-brand" : "text-paper-dim hover:text-paper"
                     )}
+                    aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
                   >
-                    {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                    {isFullscreen ? (
+                      <Minimize2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <Maximize2 className="h-3.5 w-3.5" />
+                    )}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+                <TooltipContent side={isVertical ? "right" : "top"} className={TOOLTIP_CLASS}>
                   {isFullscreen ? "Exit full screen" : "Enter full screen"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
-            {/* Manual Hide — only when auto-hide is enabled */}
             {autoHide && (
               <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
+                      type="button"
                       onClick={() => {
                         setIsHovered(false);
                         setIsVisible(false);
                       }}
-                      className={cn(
-                        "flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all",
-                        isVertical ? "w-8 h-8" : "w-8 h-8"
-                      )}
+                      className="grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
+                      aria-label="Hide dock"
                     >
                       {isVertical ? (
-                        <ChevronRight className="w-3.5 h-3.5" />
+                        <ChevronRight className="h-3.5 w-3.5" />
                       ) : (
-                        <ChevronDown className="w-3.5 h-3.5" />
+                        <ChevronDown className="h-3.5 w-3.5" />
                       )}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+                  <TooltipContent side={isVertical ? "right" : "top"} className={TOOLTIP_CLASS}>
                     Hide dock
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
 
-            {/* Settings Popover — all other dock controls */}
+            {/* Settings popover */}
             <Popover>
               <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <PopoverTrigger asChild>
                     <TooltipTrigger asChild>
                       <button
-                        className={cn(
-                          "flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-white/10 transition-all",
-                          isVertical ? "w-8 h-8" : "w-8 h-8"
-                        )}
+                        type="button"
+                        className="grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
+                        aria-label="Dock settings"
                       >
-                        <Settings className="w-3.5 h-3.5" />
+                        <Settings className="h-3.5 w-3.5" />
                       </button>
                     </TooltipTrigger>
                   </PopoverTrigger>
-                  <TooltipContent side={isVertical ? "right" : "top"} className="z-[100] bg-black/90 text-white border-white/10 backdrop-blur-xl text-xs">
+                  <TooltipContent side={isVertical ? "right" : "top"} className={TOOLTIP_CLASS}>
                     Dock settings
                   </TooltipContent>
                 </Tooltip>
@@ -891,81 +858,54 @@ export default function FloatingDock() {
               <PopoverContent
                 side={isVertical ? "right" : "top"}
                 sideOffset={12}
-                className="z-[100] w-56 p-2 bg-black/90 backdrop-blur-2xl border-white/10 rounded-xl shadow-2xl shadow-black/50"
+                className="z-[100] w-60 rounded-md border border-ink-500 bg-ink-100 p-0 shadow-xl"
               >
-                <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold px-2 py-1">Dock Settings</p>
-
-                  {/* Pin / Unpin */}
-                  <button
+                <div className="border-b border-ink-500 px-3 py-2">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                    Dock settings
+                  </p>
+                </div>
+                <div className="flex flex-col py-1">
+                  <SettingRow
+                    icon={autoHide ? PinOff : Pin}
+                    label="Auto-hide"
+                    sub={autoHide ? "Hides when inactive" : "Always visible"}
                     onClick={toggleAutoHide}
-                    className="flex items-center gap-3 w-full px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
-                  >
-                    <div className={cn(
-                      "p-1.5 rounded-md transition-colors",
-                      autoHide ? "bg-emerald-500/20" : "bg-white/5"
-                    )}>
-                      {autoHide ? <PinOff className="w-3.5 h-3.5 text-emerald-400" /> : <Pin className="w-3.5 h-3.5 text-gray-400" />}
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="text-xs font-medium text-zinc-200">Auto-hide</p>
-                      <p className="text-[10px] text-zinc-500">{autoHide ? "Dock hides when inactive" : "Dock always visible"}</p>
-                    </div>
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full",
-                      autoHide ? "bg-emerald-400" : "bg-zinc-600"
-                    )} />
-                  </button>
+                    state={autoHide ? "on" : "off"}
+                  />
 
-                  {/* Orientation */}
                   {!isSidebar && !isFullscreen && (
-                    <button
+                    <SettingRow
+                      icon={isVertical ? Rows : Columns}
+                      label="Orientation"
+                      sub={isVertical ? "Vertical" : "Horizontal"}
                       onClick={toggleOrientation}
-                      className="flex items-center gap-3 w-full px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
-                    >
-                      <div className="p-1.5 rounded-md bg-white/5">
-                        {isVertical ? <Rows className="w-3.5 h-3.5 text-gray-400" /> : <Columns className="w-3.5 h-3.5 text-gray-400" />}
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-xs font-medium text-zinc-200">Orientation</p>
-                        <p className="text-[10px] text-zinc-500">{isVertical ? "Vertical layout" : "Horizontal layout"}</p>
-                      </div>
-                      <span className="text-[10px] text-zinc-500 font-mono">{isVertical ? "V" : "H"}</span>
-                    </button>
+                      trailing={
+                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                          {isVertical ? "V" : "H"}
+                        </span>
+                      }
+                    />
                   )}
 
-                  {/* Dock Mode */}
                   {!isFullscreen && (
-                    <button
+                    <SettingRow
+                      icon={isSidebar ? Dock : PanelLeft}
+                      label="Dock mode"
+                      sub={isSidebar ? "Sidebar mode" : "Floating mode"}
                       onClick={toggleDockMode}
-                      className="flex items-center gap-3 w-full px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
-                    >
-                      <div className="p-1.5 rounded-md bg-white/5">
-                        {isSidebar ? <Dock className="w-3.5 h-3.5 text-gray-400" /> : <PanelLeft className="w-3.5 h-3.5 text-gray-400" />}
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-xs font-medium text-zinc-200">Dock Mode</p>
-                        <p className="text-[10px] text-zinc-500">{isSidebar ? "Sidebar mode" : "Floating mode"}</p>
-                      </div>
-                    </button>
+                    />
                   )}
 
-                  {/* Reset Position */}
                   {placement !== "bottom" && !isSidebar && (
                     <>
-                      <div className="h-px bg-white/5 mx-1" />
-                      <button
+                      <div className="my-1 h-px bg-ink-500" aria-hidden />
+                      <SettingRow
+                        icon={RotateCcw}
+                        label="Reset position"
+                        sub="Move to default spot"
                         onClick={resetPosition}
-                        className="flex items-center gap-3 w-full px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
-                      >
-                        <div className="p-1.5 rounded-md bg-white/5">
-                          <RotateCcw className="w-3.5 h-3.5 text-gray-400" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="text-xs font-medium text-zinc-200">Reset Position</p>
-                          <p className="text-[10px] text-zinc-500">Move dock to default spot</p>
-                        </div>
-                      </button>
+                      />
                     </>
                   )}
                 </div>
@@ -975,5 +915,48 @@ export default function FloatingDock() {
         </div>
       </motion.div>
     </>
+  );
+}
+
+// ============================================
+// Setting row primitive (popover items)
+// ============================================
+
+interface SettingRowProps {
+  icon: React.ElementType;
+  label: string;
+  sub: string;
+  onClick: () => void;
+  state?: "on" | "off";
+  trailing?: React.ReactNode;
+}
+
+function SettingRow({ icon: Icon, label, sub, onClick, state, trailing }: SettingRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-ink-200"
+    >
+      <span className="grid h-7 w-7 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted transition-colors group-hover:border-ink-700 group-hover:text-paper">
+        <Icon className="h-3.5 w-3.5" aria-hidden />
+      </span>
+      <span className="flex flex-1 flex-col gap-0.5">
+        <span className="text-[13px] font-medium text-paper">{label}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+          {sub}
+        </span>
+      </span>
+      {state && (
+        <span
+          className={cn(
+            "h-1.5 w-1.5 rounded-full",
+            state === "on" ? "bg-brand" : "bg-ink-700"
+          )}
+          aria-hidden
+        />
+      )}
+      {trailing}
+    </button>
   );
 }

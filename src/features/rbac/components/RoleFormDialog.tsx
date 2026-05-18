@@ -22,9 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Collapsible,
@@ -33,18 +31,14 @@ import {
 } from '@/components/ui/collapsible';
 import {
   Shield,
-  ChevronDown,
   ChevronRight,
   Lock,
-  AlertCircle,
-  Sparkles,
   CheckCircle2,
   Search,
   X,
   ChevronsDown,
   ChevronsUp,
   Users,
-  Info,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -153,7 +147,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     mutationFn: (input: CreateRoleInput) => rbacRolesApi.create(input),
     onSuccess: () => {
       toast.success('Role created successfully', {
-        icon: <CheckCircle2 className="h-5 w-5 text-green-400" />,
+        icon: <CheckCircle2 className="h-5 w-5 text-emerald-400" />,
       });
       queryClient.invalidateQueries({ queryKey: ['rbac-roles'] });
       onClose();
@@ -169,7 +163,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
       rbacRolesApi.update(id, input),
     onSuccess: () => {
       toast.success('Role updated successfully', {
-        icon: <CheckCircle2 className="h-5 w-5 text-green-400" />,
+        icon: <CheckCircle2 className="h-5 w-5 text-emerald-400" />,
       });
       queryClient.invalidateQueries({ queryKey: ['rbac-roles'] });
       onClose();
@@ -325,27 +319,30 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border-gray-800/50 shadow-2xl overflow-hidden">
-        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-purple-500/10 border-b border-white/5">
-          <DialogTitle className="flex items-center gap-3 text-xl">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="p-2 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/30"
-            >
-              <Shield className="h-5 w-5 text-purple-300" />
-            </motion.div>
-            <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-              {isEditing ? 'Edit Role' : 'Create Role'}
-            </span>
-            {isEditing && isSystemRole && (
-              <Badge variant="outline" className="ml-2 bg-amber-500/20 text-amber-300 border-amber-500/30">
-                <Lock className="h-3 w-3 mr-1" />
-                System Role
-              </Badge>
-            )}
+      <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 rounded-xs border-ink-500 bg-ink-100 overflow-hidden">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-ink-500">
+          <DialogTitle asChild>
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                <Shield className="h-4 w-4" aria-hidden />
+              </span>
+              <div className="flex flex-1 flex-col gap-0.5 text-left">
+                <h2 className="text-[16px] font-semibold tracking-tight text-paper">
+                  {isEditing ? 'Edit role' : 'Create role'}
+                </h2>
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                  {isEditing ? 'Update role and permissions' : 'Role-based access control'}
+                </p>
+              </div>
+              {isEditing && isSystemRole && (
+                <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                  <Lock className="h-3 w-3" aria-hidden />
+                  System
+                </span>
+              )}
+            </div>
           </DialogTitle>
-          <DialogDescription className="text-gray-400 mt-2">
+          <DialogDescription className="mt-2 text-[12px] text-paper-muted">
             {isEditing
               ? 'Update role details and permissions. System roles can only be modified by super admins.'
               : 'Create a new custom role with specific permissions.'}
@@ -368,8 +365,8 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
                   >
-                    <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
-                      <AlertDescription className="text-red-300">
+                    <Alert variant="destructive" className="rounded-xs border-red-500/40 bg-red-500/10">
+                      <AlertDescription className="font-mono text-[11px] uppercase tracking-[0.14em] text-red-300">
                         This is a system role. Only super admins can modify system roles.
                       </AlertDescription>
                     </Alert>
@@ -382,28 +379,26 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.15 }}
-                className="space-y-4 p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm"
+                className="space-y-4 rounded-xs border border-ink-500 bg-ink-100 p-4"
               >
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Info className="h-4 w-4 text-purple-400" />
-                    Basic Information
-                  </h3>
+                  <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                    <span className="h-px w-6 bg-ink-700" aria-hidden />
+                    <span>Basic information</span>
+                  </span>
                   {isEditing && role && (
-                    <Badge variant="outline" className="bg-blue-500/10 text-blue-300 border-blue-500/20 gap-1.5 pl-2 pr-2.5 py-0.5">
-                      <Users className="h-3.5 w-3.5" />
-                      <span>
-                        {role.userCount || 0} users assigned
-                      </span>
-                    </Badge>
+                    <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                      <Users className="h-3 w-3 text-paper-dim" aria-hidden />
+                      <span>{role.userCount || 0} users assigned</span>
+                    </span>
                   )}
                 </div>
 
                 {/* Name (only for create) */}
                 {!isEditing && (
                   <div className="space-y-2">
-                    <Label htmlFor="name" className="text-gray-300">
-                      Role Name <span className="text-red-400">*</span>
+                    <Label htmlFor="name" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                      Role name <span className="text-red-400">*</span>
                     </Label>
                     <Input
                       id="name"
@@ -411,9 +406,9 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g., custom_role"
                       disabled={!canModify}
-                      className="bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20 transition-all"
+                      className="rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                     />
-                    <p className="text-xs text-gray-400">
+                    <p className="text-[11px] text-paper-faint">
                       Must start with a letter and contain only letters, numbers, underscores, and hyphens.
                       This cannot be changed after creation.
                     </p>
@@ -422,8 +417,8 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
 
                 {/* Display Name */}
                 <div className="space-y-2">
-                  <Label htmlFor="displayName" className="text-gray-300">
-                    Display Name <span className="text-red-400">*</span>
+                  <Label htmlFor="displayName" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                    Display name <span className="text-red-400">*</span>
                   </Label>
                   <Input
                     id="displayName"
@@ -431,13 +426,15 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="e.g., Custom Role"
                     disabled={!canModify}
-                    className="bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20 transition-all"
+                    className="rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                   />
                 </div>
 
                 {/* Description */}
                 <div className="space-y-2">
-                  <Label htmlFor="description" className="text-gray-300">Description</Label>
+                  <Label htmlFor="description" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                    Description
+                  </Label>
                   <Textarea
                     id="description"
                     value={description}
@@ -445,20 +442,20 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                     placeholder="Describe the role's purpose and responsibilities..."
                     disabled={!canModify}
                     rows={3}
-                    className="bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20 resize-none transition-all"
+                    className="resize-none rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                   />
                 </div>
 
                 {/* Is Default */}
-                <div className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                <div className="flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
                   <Checkbox
                     id="isDefault"
                     checked={isDefault}
                     onCheckedChange={(checked) => setIsDefault(checked === true)}
                     disabled={!canModify}
-                    className="data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
+                    className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
                   />
-                  <Label htmlFor="isDefault" className="cursor-pointer text-gray-300">
+                  <Label htmlFor="isDefault" className="cursor-pointer text-[12px] text-paper">
                     Set as default role for new users
                   </Label>
                 </div>
@@ -472,15 +469,16 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                 className="space-y-4"
               >
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-blue-400" />
-                    Permissions <span className="text-red-400">*</span>
-                  </h3>
-                  <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                    <span className="h-px w-6 bg-ink-700" aria-hidden />
+                    <span>Permissions</span>
+                    <span className="text-red-400">*</span>
+                  </span>
+                  <div className="flex items-center gap-2">
                     {selectedCount > 0 && (
-                      <Badge variant="outline" className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-purple-500/30 text-purple-300">
+                      <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                         {selectedCount} selected
-                      </Badge>
+                      </span>
                     )}
                     {categoryKeys.length > 0 && (
                       <Button
@@ -488,18 +486,18 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={handleToggleExpandAll}
-                        className="h-7 text-xs hover:bg-white/10 gap-1.5"
+                        className="h-7 gap-1.5 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
                         title={allExpanded ? "Collapse all categories" : "Expand all categories"}
                       >
                         {allExpanded ? (
                           <>
                             <ChevronsUp className="h-3.5 w-3.5" />
-                            Collapse All
+                            Collapse all
                           </>
                         ) : (
                           <>
                             <ChevronsDown className="h-3.5 w-3.5" />
-                            Expand All
+                            Expand all
                           </>
                         )}
                       </Button>
@@ -510,9 +508,9 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={handleSelectAll}
-                        className="h-7 text-xs hover:bg-white/10"
+                        className="h-7 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
                       >
-                        {allSelected ? 'Deselect All' : 'Select All'}
+                        {allSelected ? 'Deselect all' : 'Select all'}
                       </Button>
                     )}
                   </div>
@@ -521,17 +519,18 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                 {/* Search */}
                 {!loadingPermissions && totalPermissions > 5 && (
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-faint" aria-hidden />
                     <Input
-                      placeholder="Search permissions..."
+                      placeholder="Search permissions"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9 pr-9 bg-white/5 border-white/10 focus:border-purple-500/50 focus:ring-purple-500/20"
+                      className="h-9 rounded-xs border-ink-500 bg-ink-200 pl-9 pr-9 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                     />
                     {searchQuery && (
                       <button
                         onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-paper-faint transition-colors hover:text-paper"
+                        aria-label="Clear search"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -542,13 +541,13 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                 {loadingPermissions ? (
                   <div className="space-y-2">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-20 w-full rounded-lg bg-white/5" />
+                      <Skeleton key={i} className="h-20 w-full rounded-xs bg-ink-200" />
                     ))}
                   </div>
                 ) : !filteredCategories || Object.keys(filteredCategories).length === 0 ? (
-                  <Alert className="border-gray-700 bg-gray-800/50">
-                    <AlertDescription>
-                      {searchQuery ? 'No permissions found matching your search.' : 'No permissions available'}
+                  <Alert className="rounded-xs border-ink-500 bg-ink-100">
+                    <AlertDescription className="text-[12px] text-paper-muted">
+                      {searchQuery ? 'No permissions found matching your search.' : 'No permissions available.'}
                     </AlertDescription>
                   </Alert>
                 ) : (
@@ -574,33 +573,28 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                               open={isExpanded}
                               onOpenChange={() => toggleCategory(category)}
                             >
-                              <div className="rounded-xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] overflow-hidden backdrop-blur-sm hover:border-white/20 transition-all">
-                                <CollapsibleTrigger className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors group">
+                              <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100 transition-colors hover:border-ink-700">
+                                <CollapsibleTrigger className="group flex w-full items-center justify-between p-4 transition-colors hover:bg-ink-200">
                                   <div className="flex items-center gap-3">
                                     <motion.div
                                       animate={{ rotate: isExpanded ? 90 : 0 }}
                                       transition={{ duration: 0.2 }}
                                     >
-                                      {isExpanded ? (
-                                        <ChevronDown className="h-4 w-4 text-purple-400" />
-                                      ) : (
-                                        <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-purple-400 transition-colors" />
-                                      )}
+                                      <ChevronRight className="h-4 w-4 text-paper-dim transition-colors group-hover:text-paper" />
                                     </motion.div>
-                                    <span className="font-semibold text-white">{category}</span>
-                                    <Badge
-                                      variant="outline"
+                                    <span className="text-[13px] font-semibold text-paper">{category}</span>
+                                    <span
                                       className={cn(
-                                        'text-xs transition-colors',
+                                        'inline-flex items-center rounded-xs border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors',
                                         allSelected
-                                          ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                                          ? 'border-brand/40 text-brand'
                                           : someSelected
-                                            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                                            : 'bg-white/5 text-gray-400 border-white/10'
+                                            ? 'border-brand/30 text-brand/80'
+                                            : 'border-ink-500 bg-ink-200 text-paper-muted'
                                       )}
                                     >
                                       {categorySelected.length}/{permissions.length}
-                                    </Badge>
+                                    </span>
                                   </div>
                                   {canModify && (
                                     <Button
@@ -611,9 +605,9 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                                         e.stopPropagation();
                                         handleSelectAllInCategory(category);
                                       }}
-                                      className="h-7 text-xs hover:bg-white/10"
+                                      className="h-7 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-300 hover:text-paper"
                                     >
-                                      {allSelected ? 'Deselect All' : 'Select All'}
+                                      {allSelected ? 'Deselect all' : 'Select all'}
                                     </Button>
                                   )}
                                 </CollapsibleTrigger>
@@ -630,13 +624,11 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                                       return (
                                         <motion.div
                                           key={permission.id}
-                                          whileHover={{ scale: 1.01 }}
-                                          whileTap={{ scale: 0.99 }}
                                           className={cn(
-                                            'flex items-start space-x-3 p-3 rounded-lg cursor-pointer transition-all',
+                                            'flex cursor-pointer items-start gap-3 rounded-xs border p-3 transition-colors',
                                             isSelected
-                                              ? 'bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 shadow-lg shadow-purple-500/10'
-                                              : 'bg-white/5 border border-transparent hover:bg-white/10 hover:border-white/20'
+                                              ? 'border-brand/40 bg-ink-200'
+                                              : 'border-ink-500 bg-ink-100 hover:border-ink-700 hover:bg-ink-200'
                                           )}
                                           onClick={() => togglePermission(permission.id)}
                                         >
@@ -645,32 +637,28 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                                             checked={isSelected}
                                             onCheckedChange={() => togglePermission(permission.id)}
                                             disabled={!canModify}
-                                            className="mt-0.5 data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
+                                            className="mt-0.5 border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
                                           />
-                                          <div className="flex-1 min-w-0">
+                                          <div className="min-w-0 flex-1">
                                             <Label
                                               htmlFor={permission.id}
                                               className={cn(
-                                                'text-sm cursor-pointer block',
-                                                isSelected ? 'text-white font-medium' : 'text-gray-300'
+                                                'block cursor-pointer text-[12px]',
+                                                isSelected ? 'font-medium text-paper' : 'text-paper-muted'
                                               )}
                                             >
                                               {permission.displayName}
                                             </Label>
                                             {permission.description && (
-                                              <p className="text-xs text-gray-400 mt-1">
+                                              <p className="mt-1 text-[11px] text-paper-faint">
                                                 {permission.description}
                                               </p>
                                             )}
                                           </div>
                                           {isSelected && (
-                                            <motion.div
-                                              initial={{ scale: 0 }}
-                                              animate={{ scale: 1 }}
-                                              className="text-purple-400"
-                                            >
+                                            <span className="text-brand" aria-hidden>
                                               <CheckCircle2 className="h-4 w-4" />
-                                            </motion.div>
+                                            </span>
                                           )}
                                         </motion.div>
                                       );
@@ -691,8 +679,8 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                   >
-                    <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
-                      <AlertDescription className="text-red-300">
+                    <Alert variant="destructive" className="rounded-xs border-red-500/40 bg-red-500/10">
+                      <AlertDescription className="font-mono text-[11px] uppercase tracking-[0.14em] text-red-300">
                         At least one permission is required for the role.
                       </AlertDescription>
                     </Alert>
@@ -703,34 +691,33 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="flex-shrink-0 px-6 py-4 border-t border-white/10 bg-gradient-to-r from-gray-900/50 to-gray-900/30 backdrop-blur-sm">
+        <DialogFooter className="flex-shrink-0 border-t border-ink-500 px-6 py-4">
           <Button
             variant="outline"
             onClick={onClose}
             disabled={isLoading}
-            className="hover:bg-white/10"
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
           >
             Cancel
           </Button>
           <Button
-            variant="outline"
             onClick={handleSubmit}
             disabled={!isValid || !canModify || isLoading}
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isLoading ? (
               <>
                 <motion.div
                   animate={{ rotate: 360 }}
                   transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                  className="h-4 w-4 rounded-full border-2 border-white border-t-transparent"
+                  className="h-3.5 w-3.5 rounded-full border-2 border-ink-50 border-t-transparent"
                 />
-                {isEditing ? 'Updating...' : 'Creating...'}
+                {isEditing ? 'Updating' : 'Creating'}
               </>
             ) : (
               <>
-                <CheckCircle2 className="h-4 w-4" />
-                {isEditing ? 'Update Role' : 'Create Role'}
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {isEditing ? 'Update role' : 'Create role'}
               </>
             )}
           </Button>

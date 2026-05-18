@@ -138,74 +138,74 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
                 <Button
                     variant="outline"
                     size="sm"
-                    className="gap-2 bg-red-500/10 border-red-500/20 hover:bg-red-500/20 text-red-400"
+                    className="h-9 gap-2 rounded-xs border-red-900/60 bg-red-950/40 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-red-300 hover:border-red-800 hover:bg-red-950/60 hover:text-red-200"
                 >
-                    <Trash2 className="h-4 w-4" />
-                    Delete Logs
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete logs
                 </Button>
             </DialogTrigger>
-            <DialogContent className="bg-gray-900/95 border-white/10 text-white backdrop-blur-xl shadow-2xl max-w-md">
+            <DialogContent className="max-w-md rounded-xs border-ink-500 bg-ink-100 text-paper">
                 <DialogHeader>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 rounded-full bg-red-500/20">
-                            <AlertTriangle className="h-6 w-6 text-red-400" />
-                        </div>
-                        <DialogTitle className="text-xl">Delete Audit Logs</DialogTitle>
+                    <div className="mb-2 flex items-center gap-3">
+                        <span className="grid h-9 w-9 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+                            <AlertTriangle className="h-4 w-4" aria-hidden />
+                        </span>
+                        <DialogTitle className="text-[16px] font-semibold tracking-tight text-paper">Delete audit logs</DialogTitle>
                     </div>
-                    <DialogDescription className="text-gray-400 text-base">
+                    <DialogDescription className="text-paper-muted">
                         Permanently delete old audit logs based on a retention policy.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                        <Label className="text-gray-300">Retention Policy</Label>
+                        <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Retention policy</Label>
                         <Select
                             value={retentionPeriod}
                             onValueChange={(v) => setRetentionPeriod(v as RetentionPeriod)}
                         >
-                            <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                            <SelectTrigger className="rounded-xs border-ink-500 bg-ink-200 text-paper">
                                 <SelectValue placeholder="Select retention period" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                                 <SelectItem value="7d">Keep last 7 days (Delete older)</SelectItem>
                                 <SelectItem value="30d">Keep last 30 days (Delete older)</SelectItem>
                                 <SelectItem value="90d">Keep last 90 days (Delete older)</SelectItem>
-                                <SelectItem value="custom">Custom Date (Delete older than...)</SelectItem>
-                                <SelectItem value="all" className="text-red-400 focus:text-red-400">
-                                    Delete All Logs
+                                <SelectItem value="custom">Custom date (Delete older than…)</SelectItem>
+                                <SelectItem value="all" className="text-red-300 focus:text-red-200">
+                                    Delete all logs
                                 </SelectItem>
-                                <SelectItem value="current_filter">Delete Matching Current Filters</SelectItem>
+                                <SelectItem value="current_filter">Delete matching current filters</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
                     {retentionPeriod === 'custom' && (
                         <div className="space-y-2">
-                            <Label className="text-gray-300">Delete logs older than</Label>
+                            <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Delete logs older than</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button
                                         variant="outline"
                                         className={cn(
-                                            "w-full justify-start text-left font-normal bg-white/5 border-white/10 text-white hover:bg-white/10",
-                                            !customDate && "text-gray-400"
+                                            "h-9 w-full justify-start rounded-xs border-ink-500 bg-ink-200 px-3 text-left font-normal text-paper hover:border-ink-700 hover:bg-ink-100",
+                                            !customDate && "text-paper-faint"
                                         )}
                                     >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                                         {customDate ? format(customDate, "PPP") : "Pick a date"}
                                     </Button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0 bg-gray-900 border-white/10">
+                                <PopoverContent className="w-auto rounded-xs border-ink-500 bg-ink-100 p-0">
                                     <Calendar
                                         mode="single"
                                         selected={customDate}
                                         onSelect={setCustomDate}
                                         initialFocus
-                                        className="p-3 pointer-events-auto"
+                                        className="pointer-events-auto p-3"
                                         classNames={{
-                                            day_selected: "bg-red-500 text-white hover:bg-red-600 focus:bg-red-500",
-                                            day_today: "bg-white/10 text-white",
+                                            day_selected: "bg-red-600 text-paper hover:bg-red-700 focus:bg-red-600 rounded-xs",
+                                            day_today: "bg-ink-200 text-paper rounded-xs",
                                         }}
                                     />
                                 </PopoverContent>
@@ -214,45 +214,45 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
                     )}
 
                     {cutoffDate && (
-                        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-200">
-                            <p className="font-semibold flex items-center gap-2">
-                                <AlertTriangle className="h-4 w-4" />
+                        <div className="rounded-xs border border-red-900/60 bg-red-950/40 p-4 text-[12px] text-red-200">
+                            <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                                <AlertTriangle className="h-3.5 w-3.5" />
                                 Warning
                             </p>
-                            <p className="mt-1 opacity-90">
+                            <p className="mt-2">
                                 This will permanently delete all logs created before{' '}
-                                <span className="font-bold text-white">
+                                <span className="font-mono font-semibold text-paper">
                                     {format(cutoffDate, "PP pp")}
                                 </span>
                                 {actionFilter !== 'all' ? (
-                                    <span> matching action <span className="font-bold text-white">{actionFilter}</span></span>
+                                    <span> matching action <span className="font-mono font-semibold text-paper">{actionFilter}</span></span>
                                 ) : ''}
-                                {usernameFilter && <span>, user <span className="font-bold text-white">{usernameFilter}</span></span>}
-                                {emailFilter && <span>, email <span className="font-bold text-white">{emailFilter}</span></span>}
-                                {statusFilter !== 'all' && statusFilter && <span>, status <span className="font-bold text-white">{statusFilter}</span></span>}
+                                {usernameFilter && <span>, user <span className="font-mono font-semibold text-paper">{usernameFilter}</span></span>}
+                                {emailFilter && <span>, email <span className="font-mono font-semibold text-paper">{emailFilter}</span></span>}
+                                {statusFilter !== 'all' && statusFilter && <span>, status <span className="font-mono font-semibold text-paper">{statusFilter}</span></span>}
                                 .
                             </p>
-                            <p className="mt-2 text-xs opacity-75">
+                            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300/80">
                                 This action cannot be undone.
                             </p>
                         </div>
                     )}
 
                     {retentionPeriod === 'current_filter' && (
-                        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-200">
-                            <p className="font-semibold flex items-center gap-2">
-                                <AlertTriangle className="h-4 w-4" />
+                        <div className="rounded-xs border border-red-900/60 bg-red-950/40 p-4 text-[12px] text-red-200">
+                            <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                                <AlertTriangle className="h-3.5 w-3.5" />
                                 Warning
                             </p>
-                            <p className="mt-1 opacity-90">
+                            <p className="mt-2">
                                 This will permanently delete logs matching:
                             </p>
-                            <ul className="list-disc list-inside mt-2 opacity-75 space-y-1">
-                                <li>Action: <span className="font-bold text-white">{actionFilter === 'all' || !actionFilter ? 'All Actions' : actionFilter}</span></li>
-                                {usernameFilter && <li>Username: <span className="font-bold text-white">{usernameFilter}</span></li>}
-                                {emailFilter && <li>Email: <span className="font-bold text-white">{emailFilter}</span></li>}
-                                {statusFilter !== 'all' && statusFilter && <li>Status: <span className="font-bold text-white uppercase">{statusFilter}</span></li>}
-                                <li>Date: <span className="font-bold text-white">
+                            <ul className="mt-2 list-inside list-disc space-y-1">
+                                <li>Action: <span className="font-mono font-semibold text-paper">{actionFilter === 'all' || !actionFilter ? 'All Actions' : actionFilter}</span></li>
+                                {usernameFilter && <li>Username: <span className="font-mono font-semibold text-paper">{usernameFilter}</span></li>}
+                                {emailFilter && <li>Email: <span className="font-mono font-semibold text-paper">{emailFilter}</span></li>}
+                                {statusFilter !== 'all' && statusFilter && <li>Status: <span className="font-mono font-semibold uppercase text-paper">{statusFilter}</span></li>}
+                                <li>Date: <span className="font-mono font-semibold text-paper">
                                     {dateRange?.start ? (
                                         dateRange.end ?
                                             `${format(dateRange.start, 'MMM d, yyyy')} - ${format(dateRange.end, 'MMM d, yyyy')}` :
@@ -260,7 +260,7 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
                                     ) : 'All Time'}
                                 </span></li>
                             </ul>
-                            <p className="mt-2 text-xs opacity-75">
+                            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300/80">
                                 This action cannot be undone.
                             </p>
                         </div>
@@ -272,16 +272,16 @@ export const RbacAuditPruneDialog: React.FC<RbacAuditPruneDialogProps> = ({
                         variant="ghost"
                         onClick={() => setIsOpen(false)}
                         disabled={isPruning}
-                        className="hover:bg-white/10 text-white"
+                        className="h-9 rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
                     >
                         Cancel
                     </Button>
                     <Button
                         onClick={handlePrune}
                         disabled={isPruning || (!cutoffDate && retentionPeriod !== 'custom' && retentionPeriod !== 'current_filter')}
-                        className="bg-red-500 hover:bg-red-600 text-white border-none"
+                        className="h-9 gap-2 rounded-xs border-none bg-red-600 px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-paper hover:bg-red-700"
                     >
-                        {isPruning ? 'Deleting...' : 'Confirm Deletion'}
+                        {isPruning ? 'Deleting…' : 'Confirm deletion'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

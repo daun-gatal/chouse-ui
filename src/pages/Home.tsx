@@ -1,39 +1,36 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
-  Database,
   Activity,
   ArrowRight,
-  Terminal,
-  Star,
-  FileCode,
-  Table2,
-  Play,
-  CheckCircle2,
-  XCircle,
-  Sparkles,
-  History,
-  ChevronRight,
-  Plus,
-  Upload,
-  HardDrive,
-  Layers,
-  Users,
-  Zap,
-  ExternalLink,
+  ArrowUpRight,
   BookOpen,
-  Code2,
-  Lightbulb,
-  RefreshCw,
+  CheckCircle2,
+  ChevronRight,
   Clock,
+  Code2,
+  Database,
+  ExternalLink,
+  FileCode,
+  HardDrive,
+  History,
+  Layers,
+  Lightbulb,
+  Play,
+  Plus,
+  RefreshCw,
+  Star,
+  Table2,
+  Terminal,
+  Upload,
+  Users,
+  XCircle,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Badge } from "@/components/ui/badge";
-import { useRecentQueries, useSavedQueries, useSystemStats, useDatabases } from "@/hooks";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRecentQueries, useSavedQueries, useSystemStats, useDatabases } from "@/hooks";
 import { useAuthStore } from "@/stores/auth";
 import { useExplorerStore, type RecentItem } from "@/stores/explorer";
 import { useWorkspaceStore, genTabId } from "@/stores/workspace";
@@ -41,7 +38,9 @@ import { useRbacStore } from "@/stores/rbac";
 import { cn, formatCompactNumber } from "@/lib/utils";
 import UploadFromFile from "@/features/explorer/components/UploadFile";
 
-// --- Helper Functions ---
+// ============================================
+// Helpers (unchanged from previous version)
+// ============================================
 
 function formatRelativeTime(timestamp: number): string {
   const now = Date.now();
@@ -66,81 +65,102 @@ function formatUptime(seconds: number): string {
   return `${minutes}m`;
 }
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
 
+// ============================================
+// Editorial primitives (inline)
+// ============================================
 
-// --- Bento Card Base ---
-const BentoCard: React.FC<{
+const LABEL_MONO = "font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint";
+const LABEL_MONO_BOLDER = "font-mono text-[11px] uppercase tracking-[0.16em] text-paper-muted";
+
+const EditorialCard: React.FC<{
   children: React.ReactNode;
   className?: string;
-  glowColor?: string;
-  noHover?: boolean;
-}> = ({ children, className, glowColor = "bg-blue-500/20", noHover = false }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    whileHover={noHover ? undefined : { scale: 1.005 }}
-    transition={{ duration: 0.2 }}
+}> = ({ children, className }) => (
+  <div
     className={cn(
-      "relative overflow-hidden rounded-2xl border border-white/10",
-      "bg-gradient-to-br from-white/[0.07] to-white/[0.02] backdrop-blur-xl",
-      "hover:border-white/20 transition-all duration-300 flex flex-col",
+      "flex flex-col rounded-md border border-ink-500 bg-ink-100",
       className
     )}
   >
-    <div className={cn("absolute -top-20 -right-20 w-40 h-40 rounded-full blur-3xl opacity-30 pointer-events-none", glowColor)} />
-    <div className="relative z-10 h-full flex flex-col">{children}</div>
-  </motion.div>
-);
-
-// --- Stat Card (for server info) ---
-const StatCard: React.FC<{
-  icon: LucideIcon;
-  label: string;
-  value: string | number;
-  color: string;
-  bgColor: string;
-}> = ({ icon: Icon, label, value, color, bgColor }) => (
-  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
-    <div className={cn("p-2 rounded-lg", bgColor)}>
-      <Icon className={cn("w-4 h-4", color)} />
-    </div>
-    <div className="min-w-0">
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{label}</p>
-      <p className="text-lg font-bold text-white truncate">{value}</p>
-    </div>
+    {children}
   </div>
 );
 
-// --- Quick Action Button ---
-const QuickAction: React.FC<{
+const SectionHeader: React.FC<{
+  eyebrowIndex?: string | number;
+  eyebrow: string;
+  title?: string;
+  action?: React.ReactNode;
+  className?: string;
+}> = ({ eyebrowIndex, eyebrow, title, action, className }) => (
+  <div className={cn("flex items-end justify-between gap-4", className)}>
+    <div className="flex flex-col gap-2">
+      <span className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+        {eyebrowIndex !== undefined && (
+          <span className="text-paper-faint">
+            {String(eyebrowIndex).padStart(2, "0")}
+          </span>
+        )}
+        <span className="h-px w-6 bg-ink-700" aria-hidden />
+        <span>{eyebrow}</span>
+      </span>
+      {title && (
+        <h2 className="text-lg font-semibold tracking-tight text-paper">{title}</h2>
+      )}
+    </div>
+    {action}
+  </div>
+);
+
+const MetricCell: React.FC<{
+  label: string;
+  value: string | number;
+  icon: LucideIcon;
+}> = ({ label, value, icon: Icon }) => (
+  <div className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+    <div className="flex items-center justify-between">
+      <span className={LABEL_MONO}>{label}</span>
+      <Icon className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+    </div>
+    <span className="font-mono text-[20px] font-semibold leading-none text-paper">
+      {value}
+    </span>
+  </div>
+);
+
+const ActionCell: React.FC<{
   icon: LucideIcon;
   label: string;
   description: string;
   onClick: () => void;
-  color: string;
-  bgColor: string;
-}> = ({ icon: Icon, label, description, onClick, color, bgColor }) => (
-  <motion.button
-    whileHover={{ scale: 1.02, y: -2 }}
-    whileTap={{ scale: 0.98 }}
+}> = ({ icon: Icon, label, description, onClick }) => (
+  <button
+    type="button"
     onClick={onClick}
-    className="flex flex-col items-center gap-2 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 transition-all group"
+    className="group flex flex-col gap-3 border-b border-r border-ink-500 px-5 py-5 text-left transition-colors hover:bg-ink-200"
   >
-    <div className={cn("p-3 rounded-xl shadow-lg transition-transform group-hover:scale-110", bgColor)}>
-      <Icon className={cn("w-5 h-5", color)} />
+    <div className="flex items-center justify-between">
+      <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted transition-colors group-hover:border-brand group-hover:text-brand">
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+      <ArrowUpRight className="h-3.5 w-3.5 text-paper-faint transition-colors group-hover:text-paper" aria-hidden />
     </div>
-    <div className="text-center">
-      <p className="text-sm font-medium text-white">{label}</p>
-      <p className="text-[10px] text-zinc-500">{description}</p>
+    <div className="flex flex-col gap-1">
+      <p className="text-[14px] font-semibold leading-tight text-paper">{label}</p>
+      <p className="text-[12px] text-paper-muted">{description}</p>
     </div>
-  </motion.button>
+  </button>
 );
 
-// --- List Item Base (Compact, Clickable) with smooth truncation ---
 const ListItem: React.FC<{
   icon: LucideIcon;
-  iconBgColor: string;
-  iconColor: string;
   title: string;
   subtitle?: string;
   meta?: string;
@@ -148,118 +168,135 @@ const ListItem: React.FC<{
   onClick?: () => void;
   actionIcon?: LucideIcon;
   interactive?: boolean;
-}> = ({ icon: Icon, iconBgColor, iconColor, title, subtitle, meta, badge, onClick, actionIcon: ActionIcon = ChevronRight, interactive = true }) => {
-  return (
-    <motion.button
-      type="button"
-      whileHover={interactive ? { x: 3 } : undefined}
-      onClick={interactive ? onClick : undefined}
-      disabled={!interactive}
+  status?: "success" | "error";
+}> = ({
+  icon: Icon,
+  title,
+  subtitle,
+  meta,
+  badge,
+  onClick,
+  actionIcon: ActionIcon = ChevronRight,
+  interactive = true,
+  status,
+}) => (
+  <button
+    type="button"
+    onClick={interactive ? onClick : undefined}
+    disabled={!interactive}
+    className={cn(
+      "flex w-full items-start gap-3 border-t border-ink-500 px-4 py-3 text-left transition-colors first:border-t-0",
+      interactive && "hover:bg-ink-200 cursor-pointer",
+      !interactive && "cursor-default"
+    )}
+  >
+    <Icon
       className={cn(
-        "flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-transparent transition-all text-left w-full group",
-        interactive && "hover:bg-white/10 hover:border-white/10 cursor-pointer",
-        !interactive && "cursor-default"
+        "mt-0.5 h-4 w-4 shrink-0",
+        status === "success" && "text-emerald-400",
+        status === "error" && "text-red-400",
+        !status && "text-paper-dim"
       )}
-    >
-      <div className={cn("p-2 rounded-lg transition-colors flex-shrink-0", iconBgColor, interactive && "group-hover:brightness-125")}>
-        <Icon className={cn("w-4 h-4", iconColor)} />
+      aria-hidden
+    />
+    <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">
+      <div className="flex items-center gap-2">
+        <p className="truncate text-[13.5px] font-medium text-paper">{title}</p>
+        {badge}
       </div>
-      <div className="flex-1 min-w-0 overflow-hidden">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 min-w-0">
-            <p className="text-sm font-medium text-zinc-200 truncate pr-4">{title}</p>
-            <div className={cn("absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white/5 to-transparent pointer-events-none", interactive && "group-hover:from-white/10")} />
-          </div>
-          {badge && <div className="flex-shrink-0">{badge}</div>}
+      {(subtitle || meta) && (
+        <div className="flex items-center gap-2 text-[11px] text-paper-muted">
+          {subtitle && <span className="truncate font-mono">{subtitle}</span>}
+          {subtitle && meta && <span className="text-paper-faint">·</span>}
+          {meta && <span className="font-mono text-paper-faint">{meta}</span>}
         </div>
-        {(subtitle || meta) && (
-          <div className="flex items-center gap-2 mt-0.5">
-            {subtitle && (
-              <div className="relative flex-1 min-w-0">
-                <p className="text-xs text-zinc-500 font-mono truncate pr-4">{subtitle}</p>
-                <div className={cn("absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-white/5 to-transparent pointer-events-none", interactive && "group-hover:from-white/10")} />
-              </div>
-            )}
-            {meta && <p className="text-[10px] text-zinc-600 flex-shrink-0 whitespace-nowrap">{meta}</p>}
-          </div>
-        )}
-      </div>
-      {interactive && <ActionIcon className="w-4 h-4 text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />}
-    </motion.button>
-  );
-};
-
-// --- Section Header ---
-const SectionHeader: React.FC<{
-  icon: LucideIcon;
-  title: string;
-  iconColor: string;
-  iconBgColor: string;
-  count?: number;
-  action?: React.ReactNode;
-}> = ({ icon: Icon, title, iconColor, iconBgColor, count, action }) => (
-  <div className="flex items-center justify-between mb-4">
-    <div className="flex items-center gap-2.5">
-      <div className={cn("p-1.5 rounded-lg", iconBgColor)}>
-        <Icon className={cn("w-4 h-4", iconColor)} />
-      </div>
-      <h2 className="text-sm font-semibold text-white">{title}</h2>
-      {count !== undefined && count > 0 && (
-        <Badge className={cn("text-[10px] px-1.5 py-0 h-4 border-0", iconBgColor, iconColor)}>
-          {count}
-        </Badge>
       )}
     </div>
-    {action}
-  </div>
+    {interactive && (
+      <ActionIcon className="mt-0.5 h-3.5 w-3.5 text-paper-faint opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+    )}
+  </button>
 );
 
-// --- Empty State ---
 const EmptyState: React.FC<{
-  icon: LucideIcon;
   message: string;
   actionLabel?: string;
   onAction?: () => void;
-}> = ({ icon: Icon, message, actionLabel, onAction }) => (
-  <div className="flex flex-col items-center justify-center py-8 text-center">
-    <div className="p-3 rounded-full bg-white/5 mb-3">
-      <Icon className="w-6 h-6 text-zinc-600" />
-    </div>
-    <p className="text-sm text-zinc-500 mb-3">{message}</p>
+}> = ({ message, actionLabel, onAction }) => (
+  <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-12 text-center">
+    <p className="max-w-xs text-sm text-paper-muted">{message}</p>
     {actionLabel && onAction && (
-      <Button variant="ghost" size="sm" onClick={onAction} className="text-xs text-zinc-400 hover:text-white">
-        {actionLabel} <ArrowRight className="w-3 h-3 ml-1" />
-      </Button>
+      <button
+        type="button"
+        onClick={onAction}
+        className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:text-brand"
+      >
+        {actionLabel}
+        <ArrowRight className="h-3 w-3" />
+      </button>
     )}
   </div>
 );
 
-// --- Tab Toggle ---
 const TabToggle: React.FC<{
-  options: { id: string; label: string; icon: LucideIcon; color: string }[];
+  options: { id: string; label: string }[];
   active: string;
   onChange: (id: string) => void;
 }> = ({ options, active, onChange }) => (
-  <div className="flex gap-1 p-1 rounded-lg bg-white/5">
-    {options.map((opt) => (
-      <button
-        key={opt.id}
-        onClick={() => onChange(opt.id)}
-        className={cn(
-          "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all",
-          active === opt.id
-            ? `bg-white/10 ${opt.color}`
-            : "text-zinc-500 hover:text-zinc-300"
-        )}
-      >
-        <opt.icon className="w-3 h-3" />
-        {opt.label}
-      </button>
-    ))}
+  <div className="inline-flex overflow-hidden rounded-xs border border-ink-500">
+    {options.map((opt) => {
+      const isActive = active === opt.id;
+      return (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onChange(opt.id)}
+          className={cn(
+            "px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+            isActive ? "bg-ink-300 text-paper" : "bg-transparent text-paper-dim hover:text-paper"
+          )}
+          aria-pressed={isActive}
+        >
+          {opt.label}
+        </button>
+      );
+    })}
   </div>
 );
 
-// --- Main Page Component ---
+const InlineLink: React.FC<{
+  onClick?: () => void;
+  href?: string;
+  children: React.ReactNode;
+  external?: boolean;
+}> = ({ onClick, href, children, external }) => {
+  const className =
+    "inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:text-brand";
+  if (href) {
+    return (
+      <a
+        href={href}
+        target={external ? "_blank" : undefined}
+        rel={external ? "noopener noreferrer" : undefined}
+        className={className}
+      >
+        {children}
+        <ArrowRight className="h-3 w-3" />
+      </a>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {children}
+      <ArrowRight className="h-3 w-3" />
+    </button>
+  );
+};
+
+// ============================================
+// Main page
+// ============================================
+
 export default function HomePage() {
   const navigate = useNavigate();
   const { isAdmin, username, activeConnectionId, activeConnectionName, version } = useAuthStore();
@@ -267,37 +304,32 @@ export default function HomePage() {
   const { tabs, setActiveTab, addTab } = useWorkspaceStore();
   const { user: rbacUser } = useRbacStore();
 
-  // Data hooks
   const { data: stats } = useSystemStats();
   const { data: databaseList = [] } = useDatabases();
   const usernameFilter = isAdmin ? undefined : username || undefined;
   const { data: recentQueries = [] } = useRecentQueries(10, usernameFilter);
   const { data: savedQueries = [] } = useSavedQueries(activeConnectionId || undefined);
 
-  // Filter saved queries by active connection
-  const filteredSavedQueries = useMemo(() => {
-    return savedQueries.filter((sq) => sq.connectionId === activeConnectionId);
-  }, [savedQueries, activeConnectionId]);
+  const filteredSavedQueries = useMemo(
+    () => savedQueries.filter((sq) => sq.connectionId === activeConnectionId),
+    [savedQueries, activeConnectionId]
+  );
 
-  // UI State
   const [tablesTab, setTablesTab] = useState<string>("favorites");
   const [refreshCooldown, setRefreshCooldown] = useState(false);
   const queryClient = useQueryClient();
 
-  // Fetch data on mount
   useEffect(() => {
     fetchFavorites();
     fetchRecentItems(8);
   }, [fetchFavorites, fetchRecentItems]);
 
-  // SQL tabs
   const sqlTabs = useMemo(
     () => tabs.filter((tab) => tab.type === "sql" && typeof tab.content === "string" && tab.content.trim()),
     [tabs]
   );
   const unsavedTabs = useMemo(() => sqlTabs.filter((tab) => tab.isDirty), [sqlTabs]);
 
-  // Global refresh handler
   const handleRefresh = () => {
     if (refreshCooldown) return;
     setRefreshCooldown(true);
@@ -307,7 +339,6 @@ export default function HomePage() {
     setTimeout(() => setRefreshCooldown(false), 3000);
   };
 
-  // Navigation handlers
   const handleNewQuery = () => {
     const newTab = {
       id: genTabId(),
@@ -321,26 +352,28 @@ export default function HomePage() {
   };
 
   const handleImport = () => {
-    // Open import wizard directly without navigation
     if (databaseList.length > 0) {
       openUploadFileModal(databaseList[0].name);
     }
   };
 
-  const handleTableClick = (database: string, table?: string, targetConnectionId?: string | null, targetConnectionName?: string | null) => {
-    // Check if we need to switch connections
+  const handleTableClick = (
+    database: string,
+    table?: string,
+    targetConnectionId?: string | null,
+    targetConnectionName?: string | null
+  ) => {
     if (targetConnectionId && targetConnectionId !== activeConnectionId) {
       useAuthStore.getState().setActiveConnection(targetConnectionId, targetConnectionName);
       toast.success(`Switched to connection: ${targetConnectionName || "target connection"}`);
     }
 
-    // Expand the database node in the tree
     expandNode(database);
 
-    // Create info tab directly to avoid duplicate tabs from URL params
     const tabId = `info-${database}${table ? `-${table}` : ""}`;
     const existingTab = tabs.find(
-      (t) => t.type === "information" &&
+      (t) =>
+        t.type === "information" &&
         typeof t.content === "object" &&
         t.content.database === database &&
         t.content.table === table
@@ -378,6 +411,12 @@ export default function HomePage() {
   };
 
   const userDisplayName = rbacUser?.displayName || rbacUser?.username || "User";
+  const userInitials = userDisplayName
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
   const tablesToShow = useMemo(() => {
     const items = tablesTab === "favorites" ? favorites : recentItems;
     return items.filter((item) => item.connectionId === activeConnectionId);
@@ -385,274 +424,258 @@ export default function HomePage() {
   const greeting = getGreeting();
 
   return (
-    <div className="h-full overflow-y-auto">
-      {/* Import Wizard Modal */}
+    <div className="h-full overflow-y-auto bg-ink-50">
       <UploadFromFile />
 
-      <div className="mx-auto p-6 space-y-6">
-
-        {/* Header */}
-        <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-[1280px] px-6 py-10 md:px-10">
+        {/* ─── Header ─── */}
+        <header className="flex flex-col gap-6 border-b border-ink-500 pb-8 md:flex-row md:items-end md:justify-between">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/25">
-              <Sparkles className="w-7 h-7 text-white" />
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 font-mono text-[13px] font-semibold tracking-tight text-paper">
+              {userInitials || "·"}
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">{greeting}, {userDisplayName}</h1>
-              <p className="text-sm text-zinc-500">What would you like to work on today?</p>
+            <div className="flex flex-col gap-1">
+              <span className={LABEL_MONO}>Workspace</span>
+              <h1 className="text-2xl font-semibold tracking-tight text-paper">
+                {greeting}, <span className="text-paper-dim">{userDisplayName}</span>
+              </h1>
             </div>
           </div>
 
-          {/* Connection Info + Refresh */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {activeConnectionName && (
-              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-sm font-medium text-white">{activeConnectionName}</span>
-                </div>
+              <div className="inline-flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-100 px-3 py-2">
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+                  <span className="font-mono text-[12px] text-paper">{activeConnectionName}</span>
+                </span>
                 {version && (
                   <>
-                    <div className="w-px h-4 bg-white/20" />
-                    <span className="text-xs text-zinc-500">v{version}</span>
+                    <span className="h-3 w-px bg-ink-500" aria-hidden />
+                    <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                      v{version}
+                    </span>
                   </>
                 )}
-                {stats?.uptime && (
+                {stats?.uptime !== undefined && stats.uptime > 0 && (
                   <>
-                    <div className="w-px h-4 bg-white/20" />
-                    <span className="text-xs text-zinc-500">up {formatUptime(stats.uptime)}</span>
+                    <span className="h-3 w-px bg-ink-500" aria-hidden />
+                    <span className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                      <Clock className="h-3 w-3" aria-hidden />
+                      {formatUptime(stats.uptime)}
+                    </span>
                   </>
                 )}
               </div>
             )}
 
             <button
+              type="button"
               onClick={handleRefresh}
               disabled={refreshCooldown}
               className={cn(
-                "p-2 rounded-xl border transition-all",
+                "grid h-9 w-9 place-items-center rounded-xs border border-ink-500 text-paper-muted transition-colors",
                 refreshCooldown
-                  ? "bg-white/5 border-white/5 text-zinc-600 cursor-not-allowed"
-                  : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 hover:border-white/20 hover:text-white"
+                  ? "cursor-not-allowed text-paper-faint"
+                  : "hover:border-ink-700 hover:text-paper"
               )}
               title="Refresh all data"
+              aria-label="Refresh"
             >
-              <RefreshCw className={cn("w-4 h-4", refreshCooldown && "animate-spin")} />
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshCooldown && "animate-spin")} />
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Server Stats Row */}
+        {/* ─── Stats ─── */}
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-            <StatCard
-              icon={Database}
-              label="Databases"
-              value={stats.databaseCount}
-              color="text-indigo-400"
-              bgColor="bg-indigo-500/20"
+          <section className="mt-10 flex flex-col gap-5" aria-label="Cluster metrics">
+            <SectionHeader eyebrowIndex={1} eyebrow="Cluster" />
+            <div className="grid grid-cols-2 border-l border-t border-ink-500 sm:grid-cols-3 lg:grid-cols-6">
+              <MetricCell icon={Database} label="Databases" value={stats.databaseCount} />
+              <MetricCell icon={Table2} label="Tables" value={stats.tableCount} />
+              <MetricCell
+                icon={Layers}
+                label="Total rows"
+                value={stats.totalRows !== undefined ? formatCompactNumber(stats.totalRows) : "0"}
+              />
+              <MetricCell icon={HardDrive} label="Storage" value={stats.totalSize} />
+              <MetricCell icon={Users} label="Connections" value={stats.activeConnections} />
+              <MetricCell icon={Zap} label="Active queries" value={stats.activeQueries} />
+            </div>
+          </section>
+        )}
+
+        {/* ─── Quick actions ─── */}
+        <section className="mt-12 flex flex-col gap-5" aria-label="Quick actions">
+          <SectionHeader eyebrowIndex={2} eyebrow="Start" />
+          <div className="grid grid-cols-2 border-l border-t border-ink-500 md:grid-cols-4">
+            <ActionCell
+              icon={Plus}
+              label="New query"
+              description="Open SQL editor"
+              onClick={handleNewQuery}
             />
-            <StatCard
-              icon={Table2}
-              label="Tables"
-              value={stats.tableCount}
-              color="text-blue-400"
-              bgColor="bg-blue-500/20"
+            <ActionCell
+              icon={Upload}
+              label="Import"
+              description="Upload CSV / TSV / JSON"
+              onClick={handleImport}
             />
-            <StatCard
-              icon={Layers}
-              label="Total Rows"
-              value={stats.totalRows !== undefined ? formatCompactNumber(stats.totalRows) : "0"}
-              color="text-emerald-400"
-              bgColor="bg-emerald-500/20"
+            <ActionCell
+              icon={Activity}
+              label="Monitor"
+              description="Live metrics & queries"
+              onClick={() => navigate("/monitoring/metrics")}
             />
-            <StatCard
-              icon={HardDrive}
-              label="Storage"
-              value={stats.totalSize}
-              color="text-amber-400"
-              bgColor="bg-amber-500/20"
-            />
-            <StatCard
-              icon={Users}
-              label="Connections"
-              value={stats.activeConnections}
-              color="text-purple-400"
-              bgColor="bg-purple-500/20"
-            />
-            <StatCard
-              icon={Zap}
-              label="Active Queries"
-              value={stats.activeQueries}
-              color="text-pink-400"
-              bgColor="bg-pink-500/20"
+            <ActionCell
+              icon={History}
+              label="Query history"
+              description="Past executions"
+              onClick={() => navigate("/monitoring/logs")}
             />
           </div>
-        )}
+        </section>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <QuickAction
-            icon={Plus}
-            label="New Query"
-            description="Open SQL editor"
-            onClick={handleNewQuery}
-            color="text-blue-400"
-            bgColor="bg-gradient-to-br from-blue-500 to-blue-600"
-          />
-          <QuickAction
-            icon={Upload}
-            label="Import"
-            description="Upload data"
-            onClick={handleImport}
-            color="text-amber-400"
-            bgColor="bg-gradient-to-br from-amber-500 to-orange-600"
-          />
-          <QuickAction
-            icon={Activity}
-            label="Monitor"
-            description="View performance"
-            onClick={() => navigate("/monitoring/metrics")}
-            color="text-purple-400"
-            bgColor="bg-gradient-to-br from-purple-500 to-pink-600"
-          />
-          <QuickAction
-            icon={History}
-            label="Query History"
-            description="View past queries"
-            onClick={() => navigate("/monitoring/logs")}
-            color="text-cyan-400"
-            bgColor="bg-gradient-to-br from-cyan-500 to-teal-600"
-          />
-        </div>
-
-        {/* Continue Working Banner */}
+        {/* ─── Continue working ─── */}
         {unsavedTabs.length > 0 && (
-          <BentoCard glowColor="bg-amber-500/30" className="p-5">
-            <SectionHeader
-              icon={Terminal}
-              title="Continue Working"
-              iconColor="text-amber-400"
-              iconBgColor="bg-amber-500/20"
-              count={unsavedTabs.length}
-              action={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate("/explorer")}
-                  className="text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                >
-                  Open All <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
-              }
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {unsavedTabs.slice(0, 3).map((tab) => (
-                <ListItem
-                  key={tab.id}
-                  icon={Terminal}
-                  iconBgColor="bg-amber-500/20"
-                  iconColor="text-amber-400"
-                  title={tab.title}
-                  subtitle={typeof tab.content === "string" ? tab.content.slice(0, 40).trim() : ""}
-                  badge={tab.isDirty ? <Badge className="text-[8px] px-1 py-0 h-3.5 bg-amber-500/20 text-amber-400 border-0 animate-pulse">Unsaved</Badge> : undefined}
-                  onClick={() => handleTabClick(tab.id)}
-                  actionIcon={ArrowRight}
-                />
-              ))}
-            </div>
-          </BentoCard>
+          <section className="mt-12" aria-label="Unsaved work">
+            <EditorialCard className="border-brand/30 bg-brand/[0.04]">
+              <div className="flex items-center justify-between gap-4 border-b border-ink-500 px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-2 rounded-xs border border-brand/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-brand">
+                    <Terminal className="h-3 w-3" />
+                    Unsaved
+                  </span>
+                  <span className="text-[13.5px] font-medium text-paper">
+                    Continue working
+                  </span>
+                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                    {unsavedTabs.length} {unsavedTabs.length === 1 ? "tab" : "tabs"}
+                  </span>
+                </div>
+                <InlineLink onClick={() => navigate("/explorer")}>Open all</InlineLink>
+              </div>
+              <div className="flex flex-col">
+                {unsavedTabs.slice(0, 3).map((tab) => (
+                  <ListItem
+                    key={tab.id}
+                    icon={Terminal}
+                    title={tab.title}
+                    subtitle={typeof tab.content === "string" ? tab.content.slice(0, 60).trim() : ""}
+                    onClick={() => handleTabClick(tab.id)}
+                    actionIcon={ArrowRight}
+                  />
+                ))}
+              </div>
+            </EditorialCard>
+          </section>
         )}
 
-        {/* Main Bento Grid - 2 columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-          {/* Quick Access (Favorites/Recent) */}
-          <BentoCard glowColor={tablesTab === "favorites" ? "bg-amber-500/30" : "bg-blue-500/30"} className="p-5 h-[450px]">
-            <SectionHeader
-              icon={tablesTab === "favorites" ? Star : History}
-              title="Quick Access"
-              iconColor={tablesTab === "favorites" ? "text-amber-400" : "text-blue-400"}
-              iconBgColor={tablesTab === "favorites" ? "bg-amber-500/20" : "bg-blue-500/20"}
-              action={
-                <TabToggle
-                  options={[
-                    { id: "favorites", label: "Favorites", icon: Star, color: "text-amber-400" },
-                    { id: "recent", label: "Recent", icon: History, color: "text-blue-400" },
-                  ]}
-                  active={tablesTab}
-                  onChange={setTablesTab}
-                />
-              }
-            />
-            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+        {/* ─── Quick Access + Saved Queries ─── */}
+        <section className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-2" aria-label="Personal workspace">
+          {/* Quick Access */}
+          <EditorialCard className="h-[440px]">
+            <div className="flex items-center justify-between gap-4 border-b border-ink-500 px-5 py-3">
+              <div className="flex items-center gap-3">
+                {tablesTab === "favorites" ? (
+                  <Star className="h-4 w-4 text-paper-muted" aria-hidden />
+                ) : (
+                  <History className="h-4 w-4 text-paper-muted" aria-hidden />
+                )}
+                <span className="text-[13.5px] font-medium text-paper">Quick access</span>
+              </div>
+              <TabToggle
+                options={[
+                  { id: "favorites", label: "Favorites" },
+                  { id: "recent", label: "Recent" },
+                ]}
+                active={tablesTab}
+                onChange={setTablesTab}
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto">
               {tablesToShow.length === 0 ? (
                 <EmptyState
-                  icon={tablesTab === "favorites" ? Star : Table2}
-                  message={tablesTab === "favorites" ? "Star tables in Explorer for quick access" : "Recently visited tables will appear here"}
-                  actionLabel="Browse Explorer"
+                  message={
+                    tablesTab === "favorites"
+                      ? "Star tables in Explorer for quick access."
+                      : "Recently visited tables will appear here."
+                  }
+                  actionLabel="Browse explorer"
                   onAction={() => navigate("/explorer")}
                 />
               ) : (
-                <div className="space-y-1.5 pb-2">
+                <div className="flex flex-col">
                   {tablesToShow.map((item) => (
                     <ListItem
                       key={item.id}
                       icon={item.table ? Table2 : Database}
-                      iconBgColor={item.table ? "bg-blue-500/20" : "bg-indigo-500/20"}
-                      iconColor={item.table ? "text-blue-400" : "text-indigo-400"}
                       title={item.table || item.database}
                       subtitle={item.table ? item.database : undefined}
-                      meta={tablesTab === "recent" ? formatRelativeTime((item as RecentItem).accessedAt) : undefined}
-                      badge={tablesTab === "favorites" ? <Star className="w-3 h-3 text-amber-400 fill-amber-400" /> : undefined}
-                      onClick={() => handleTableClick(item.database, item.table, item.connectionId, item.connectionName)}
+                      meta={
+                        tablesTab === "recent"
+                          ? formatRelativeTime((item as RecentItem).accessedAt)
+                          : undefined
+                      }
+                      badge={
+                        tablesTab === "favorites" ? (
+                          <Star className="h-3 w-3 fill-brand text-brand" aria-hidden />
+                        ) : undefined
+                      }
+                      onClick={() =>
+                        handleTableClick(
+                          item.database,
+                          item.table,
+                          item.connectionId,
+                          item.connectionName
+                        )
+                      }
                     />
                   ))}
                 </div>
               )}
             </div>
-          </BentoCard>
+          </EditorialCard>
 
           {/* Saved Queries */}
-          <BentoCard glowColor="bg-purple-500/30" className="p-5 h-[450px]">
-            <SectionHeader
-              icon={FileCode}
-              title="Saved Queries"
-              iconColor="text-purple-400"
-              iconBgColor="bg-purple-500/20"
-              count={filteredSavedQueries.length}
-              action={
-                filteredSavedQueries.length > 6 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate("/explorer")}
-                    className="text-xs text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
-                  >
-                    View All <ArrowRight className="w-3 h-3 ml-1" />
-                  </Button>
-                )
-              }
-            />
-            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+          <EditorialCard className="h-[440px]">
+            <div className="flex items-center justify-between gap-4 border-b border-ink-500 px-5 py-3">
+              <div className="flex items-center gap-3">
+                <FileCode className="h-4 w-4 text-paper-muted" aria-hidden />
+                <span className="text-[13.5px] font-medium text-paper">Saved queries</span>
+                {filteredSavedQueries.length > 0 && (
+                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                    {filteredSavedQueries.length}
+                  </span>
+                )}
+              </div>
+              {filteredSavedQueries.length > 6 && (
+                <InlineLink onClick={() => navigate("/explorer")}>View all</InlineLink>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto">
               {filteredSavedQueries.length === 0 ? (
                 <EmptyState
-                  icon={FileCode}
-                  message="Save your frequently used queries for quick access"
-                  actionLabel="Create Query"
+                  message="Save your frequently used queries for quick access."
+                  actionLabel="Create query"
                   onAction={() => navigate("/explorer")}
                 />
               ) : (
-                <div className="space-y-1.5 pb-2">
+                <div className="flex flex-col">
                   {filteredSavedQueries.map((sq) => (
                     <ListItem
                       key={sq.id}
                       icon={FileCode}
-                      iconBgColor="bg-purple-500/20"
-                      iconColor="text-purple-400"
                       title={sq.name}
-                      subtitle={sq.query.slice(0, 50)}
-                      badge={sq.isPublic ? <Badge className="text-[8px] px-1 py-0 h-3.5 bg-emerald-500/20 text-emerald-400 border-0">Public</Badge> : undefined}
+                      subtitle={sq.query.slice(0, 60)}
+                      badge={
+                        sq.isPublic ? (
+                          <span className="inline-flex items-center rounded-xs border border-emerald-700/40 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-emerald-300">
+                            Public
+                          </span>
+                        ) : undefined
+                      }
                       onClick={() => handleSavedQueryClick(sq.query, sq.name)}
                       actionIcon={Play}
                     />
@@ -660,129 +683,126 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-          </BentoCard>
-        </div>
+          </EditorialCard>
+        </section>
 
-        {/* Recent Activity - Full Width at Bottom */}
-        <BentoCard glowColor="bg-emerald-500/30" className="p-5" noHover>
+        {/* ─── Recent activity ─── */}
+        <section className="mt-12 flex flex-col gap-5" aria-label="Recent activity">
           <SectionHeader
-            icon={Activity}
-            title="Recent Activity"
-            iconColor="text-emerald-400"
-            iconBgColor="bg-emerald-500/20"
+            eyebrowIndex={3}
+            eyebrow="Recent activity"
             action={
-              recentQueries.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate("/monitoring/logs")}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
-                >
-                  View All <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
-              )
+              recentQueries.length > 0 ? (
+                <InlineLink onClick={() => navigate("/monitoring/logs")}>View all</InlineLink>
+              ) : undefined
             }
           />
           {recentQueries.length === 0 ? (
-            <EmptyState
-              icon={Terminal}
-              message="Your query history will appear here"
-              actionLabel="Run a Query"
-              onAction={() => navigate("/explorer")}
-            />
+            <EditorialCard>
+              <EmptyState
+                message="Your query history will appear here."
+                actionLabel="Run a query"
+                onAction={() => navigate("/explorer")}
+              />
+            </EditorialCard>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 border-l border-t border-ink-500 md:grid-cols-2 lg:grid-cols-3">
               {recentQueries.slice(0, 6).map((q, i) => (
-                <ListItem
+                <div
                   key={i}
-                  icon={q.status === "Success" ? CheckCircle2 : XCircle}
-                  iconBgColor={q.status === "Success" ? "bg-emerald-500/20" : "bg-red-500/20"}
-                  iconColor={q.status === "Success" ? "text-emerald-400" : "text-red-400"}
-                  title={q.query.slice(0, 60)}
-                  subtitle={`${q.duration < 1 ? "<1" : q.duration.toFixed(0)}ms`}
-                  meta={formatRelativeTime(new Date(q.time).getTime())}
-                  interactive={false}
-                />
+                  className="flex flex-col gap-2 border-b border-r border-ink-500 px-4 py-4"
+                >
+                  <div className="flex items-center justify-between">
+                    {q.status === "Success" ? (
+                      <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" aria-hidden />
+                        Success
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-red-400">
+                        <XCircle className="h-3 w-3" aria-hidden />
+                        Error
+                      </span>
+                    )}
+                    <span className="font-mono text-[10px] text-paper-faint">
+                      {formatRelativeTime(new Date(q.time).getTime())}
+                    </span>
+                  </div>
+                  <p
+                    className="line-clamp-2 font-mono text-[12.5px] leading-relaxed text-paper-muted"
+                    title={q.query}
+                  >
+                    {q.query.slice(0, 120)}
+                  </p>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                    {(() => {
+                      const d = Number(q.duration);
+                      if (!Number.isFinite(d)) return "—";
+                      return d < 1 ? "<1" : d.toFixed(0);
+                    })()} ms
+                  </span>
+                </div>
               ))}
             </div>
           )}
-        </BentoCard>
+        </section>
 
-        {/* ClickHouse Resources */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          <a
-            href="https://clickhouse.com/docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 transition-all group"
-          >
-            <div className="p-2 rounded-lg bg-blue-500/20 group-hover:bg-blue-500/30 transition-colors">
-              <BookOpen className="w-4 h-4 text-blue-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-200">Documentation</p>
-              <p className="text-[10px] text-zinc-500">Official ClickHouse docs</p>
-            </div>
-            <ExternalLink className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-          </a>
+        {/* ─── ClickHouse resources ─── */}
+        <section className="mt-12 flex flex-col gap-5" aria-label="ClickHouse resources">
+          <SectionHeader eyebrowIndex={4} eyebrow="Resources" />
+          <div className="grid grid-cols-1 border-l border-t border-ink-500 md:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                icon: BookOpen,
+                label: "Documentation",
+                desc: "Official ClickHouse docs",
+                href: "https://clickhouse.com/docs",
+              },
+              {
+                icon: Code2,
+                label: "SQL reference",
+                desc: "Syntax & functions",
+                href: "https://clickhouse.com/docs/en/sql-reference",
+              },
+              {
+                icon: Lightbulb,
+                label: "Best practices",
+                desc: "Performance tips",
+                href: "https://clickhouse.com/docs/en/operations/tips",
+              },
+              {
+                icon: ExternalLink,
+                label: "GitHub",
+                desc: "Source & issues",
+                href: "https://github.com/ClickHouse/ClickHouse",
+              },
+            ].map(({ icon: Icon, label, desc, href }) => (
+              <a
+                key={href}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-start gap-4 border-b border-r border-ink-500 px-5 py-5 transition-colors hover:bg-ink-200"
+              >
+                <Icon
+                  className="mt-0.5 h-4 w-4 shrink-0 text-paper-muted transition-colors group-hover:text-brand"
+                  aria-hidden
+                />
+                <div className="flex flex-1 flex-col gap-1">
+                  <p className="text-[14px] font-semibold leading-tight text-paper">{label}</p>
+                  <p className="text-[12px] text-paper-muted">{desc}</p>
+                </div>
+                <ArrowUpRight
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-paper-faint transition-colors group-hover:text-paper"
+                  aria-hidden
+                />
+              </a>
+            ))}
+          </div>
+        </section>
 
-          <a
-            href="https://clickhouse.com/docs/en/sql-reference"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 transition-all group"
-          >
-            <div className="p-2 rounded-lg bg-purple-500/20 group-hover:bg-purple-500/30 transition-colors">
-              <Code2 className="w-4 h-4 text-purple-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-200">SQL Reference</p>
-              <p className="text-[10px] text-zinc-500">Syntax & functions</p>
-            </div>
-            <ExternalLink className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-          </a>
-
-          <a
-            href="https://clickhouse.com/docs/en/operations/tips"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 transition-all group"
-          >
-            <div className="p-2 rounded-lg bg-amber-500/20 group-hover:bg-amber-500/30 transition-colors">
-              <Lightbulb className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-200">Best Practices</p>
-              <p className="text-[10px] text-zinc-500">Performance tips</p>
-            </div>
-            <ExternalLink className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-          </a>
-
-          <a
-            href="https://github.com/ClickHouse/ClickHouse"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 transition-all group"
-          >
-            <div className="p-2 rounded-lg bg-emerald-500/20 group-hover:bg-emerald-500/30 transition-colors">
-              <Zap className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-200">GitHub</p>
-              <p className="text-[10px] text-zinc-500">Source & issues</p>
-            </div>
-            <ExternalLink className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-          </a>
-        </div>
+        <div className="h-10" />
       </div>
     </div>
   );
-}
-
-// --- Greeting helper ---
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
 }

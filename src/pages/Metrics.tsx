@@ -60,8 +60,8 @@ interface StatCardProps {
   value: string;
   unit?: string;
   icon: React.ElementType;
-  color: string;
-  bgColor: string;
+  color?: string;    // accepted for API compat, ignored in editorial layout
+  bgColor?: string;  // accepted for API compat, ignored in editorial layout
   trend?: number;
   isLoading?: boolean;
   subtitle?: string;
@@ -72,54 +72,43 @@ const StatCard: React.FC<StatCardProps> = ({
   value,
   unit,
   icon: Icon,
-  color,
-  bgColor,
   trend,
   isLoading,
   subtitle,
 }) => {
   const TrendIcon = trend && trend > 0 ? TrendingUp : trend && trend < 0 ? TrendingDown : Minus;
-  const trendColor = trend && trend > 0 ? "text-green-400" : trend && trend < 0 ? "text-red-400" : "text-gray-400";
+  const trendColor = trend && trend > 0 ? "text-emerald-400" : trend && trend < 0 ? "text-red-400" : "text-paper-faint";
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={cn(
-        "relative overflow-hidden rounded-2xl border border-white/10 p-4",
-        "bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl",
-        "hover:border-white/20 transition-all duration-300 group"
-      )}
-    >
-      <div className={cn("absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-20", bgColor)} />
-
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-2">
-          <div className={cn("p-2 rounded-xl", bgColor)}>
-            <Icon className={cn("h-4 w-4", color)} />
-          </div>
+    <div className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+          {title}
+        </span>
+        <div className="flex items-center gap-2">
           {trend !== undefined && (
-            <div className={cn("flex items-center gap-1 text-xs", trendColor)}>
+            <span className={cn("inline-flex items-center gap-1 font-mono text-[10px]", trendColor)}>
               <TrendIcon className="h-3 w-3" />
-              <span>{Math.abs(trend).toFixed(1)}%</span>
-            </div>
+              {Math.abs(trend).toFixed(1)}%
+            </span>
           )}
-        </div>
-
-        <div className="space-y-0.5">
-          <p className="text-xs text-gray-400">{title}</p>
-          {isLoading ? (
-            <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
-          ) : (
-            <div className="flex items-baseline gap-1">
-              <span className="text-xl font-bold text-white">{value}</span>
-              {unit && <span className="text-xs text-gray-500">{unit}</span>}
-            </div>
-          )}
-          {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+          <Icon className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
         </div>
       </div>
-    </motion.div>
+      {isLoading ? (
+        <div className="h-6 w-20 animate-pulse rounded-xs bg-ink-300" />
+      ) : (
+        <div className="flex items-baseline gap-1.5">
+          <span className="font-mono text-[20px] font-semibold leading-none text-paper">{value}</span>
+          {unit && <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">{unit}</span>}
+        </div>
+      )}
+      {subtitle && (
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+          {subtitle}
+        </span>
+      )}
+    </div>
   );
 };
 
@@ -201,24 +190,15 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
   const unit = chartTitle.replace("Bytes", "").replace("%", "").replace("ms", "");
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3 }}
-      className={cn(
-        "relative overflow-hidden rounded-2xl border border-white/10",
-        "bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl",
-        "hover:border-white/20 transition-all duration-300"
-      )}
-    >
-      <div className="flex items-center justify-between p-4 border-b border-white/5">
+    <div className="relative overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+      <div className="flex items-center justify-between border-b border-ink-500 p-4">
         <div className="flex items-center gap-3">
-          <div className={cn("p-2 rounded-lg", bgClass)}>
-            <Icon className={cn("h-4 w-4", textClass)} />
-          </div>
-          <div>
-            <h3 className="font-semibold text-white">{title}</h3>
-            {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+          <span className="grid h-8 w-8 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+            <Icon className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-[13px] font-semibold text-paper">{title}</h3>
+            {subtitle && <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{subtitle}</p>}
           </div>
         </div>
 
@@ -233,23 +213,23 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
               return (
                 <div key={idx} className="flex flex-col items-end">
                   {showLabel && (
-                    <span className="text-xs text-gray-500 mb-0.5" style={{ color: normalizedColors[idx % normalizedColors.length] }}>
+                    <span className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: normalizedColors[idx % normalizedColors.length] }}>
                       {normalizedLabels[idx] || `Series ${idx + 1}`}
                     </span>
                   )}
                   <div className={cn(
-                    "flex items-baseline gap-1 px-2 py-1 rounded-md bg-white/5 border border-white/10",
-                    !showLabel && "bg-transparent border-none p-0"
+                    "flex items-baseline gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-2 py-1",
+                    !showLabel && "border-none bg-transparent p-0"
                   )}>
                     {!showLabel && (
-                      <Badge variant="outline" className="mr-2 bg-white/5 text-gray-400 border-white/10 font-mono text-[10px] px-1 h-5">
+                      <span className="mr-2 inline-flex h-5 items-center rounded-xs border border-ink-500 bg-ink-200 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                         Latest
-                      </Badge>
+                      </span>
                     )}
-                    <span className={cn("font-bold text-white", showLabel ? "text-sm" : "text-xl")}>
+                    <span className={cn("font-mono font-semibold text-paper", showLabel ? "text-[13px]" : "text-[18px]")}>
                       {formatValue(latestVal)}
                     </span>
-                    <span className="text-[10px] text-gray-500 font-normal">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                       {unit}
                     </span>
                   </div>
@@ -262,10 +242,10 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
 
       <div className="h-[250px] p-4">
         {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="flex flex-col items-center gap-3">
-              <RefreshCw className="h-8 w-8 text-gray-500 animate-spin" />
-              <span className="text-sm text-gray-500">Loading metrics...</span>
+          <div className="flex h-full items-center justify-center">
+            <div className="flex flex-col items-center gap-3 text-paper-dim">
+              <RefreshCw className="h-6 w-6 animate-spin" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Loading metrics…</span>
             </div>
           </div>
         ) : data && data.timestamps.length > 0 ? (
@@ -282,13 +262,13 @@ const MetricChartCard: React.FC<MetricChartCardProps> = ({
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center gap-3 text-gray-500">
-              <BarChart3 className="h-12 w-12 opacity-30" />
-              <span className="text-sm">No data available</span>
+              <BarChart3 className="h-10 w-10 text-paper-dim" aria-hidden />
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">No data available</span>
             </div>
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 
@@ -803,33 +783,31 @@ export default function Metrics({
             animate={{ opacity: 1, y: 0 }}
             className="flex justify-between items-start flex-wrap gap-4"
           >
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
-                  <Activity className="h-7 w-7 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold tracking-tight text-white">
-                    Metrics Dashboard
-                  </h1>
-                  <p className="text-gray-400 text-sm flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    Production-grade monitoring
-                  </p>
-                </div>
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+                <Activity className="h-4 w-4" aria-hidden />
+              </span>
+              <div className="flex flex-col gap-1">
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                  Observability
+                </span>
+                <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-paper">
+                  Metrics dashboard
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" aria-hidden />
+                </h1>
               </div>
             </div>
 
             {/* Controls */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-                <Timer className="h-4 w-4 text-gray-400" />
-                <span className="text-sm text-gray-400">{lastUpdated}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-3 py-2">
+                <Timer className="h-3.5 w-3.5 text-paper-dim" />
+                <span className="font-mono text-[11px] text-paper-muted">{lastUpdated}</span>
               </div>
 
               <Select value={internalTimeRange} onValueChange={setInternalTimeRange}>
-                <SelectTrigger className="w-[130px] bg-white/5 border-white/10">
-                  <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                <SelectTrigger className="h-10 w-[130px] rounded-xs border-ink-500 bg-ink-100 font-mono text-[12px] text-paper">
+                  <Clock className="mr-2 h-3.5 w-3.5 text-paper-dim" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -841,15 +819,15 @@ export default function Metrics({
               </Select>
 
               <Select value={String(internalRefreshInterval)} onValueChange={(v) => setInternalRefreshInterval(Number(v))}>
-                <SelectTrigger className="w-[140px] bg-white/5 border-white/10">
+                <SelectTrigger className="h-9 w-[140px] rounded-xs border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200">
                   {refreshInterval > 0 ? (
-                    <Play className="h-4 w-4 mr-2 text-green-400" />
+                    <Play className="h-3.5 w-3.5 mr-2 text-emerald-400" />
                   ) : (
-                    <Pause className="h-4 w-4 mr-2 text-gray-400" />
+                    <Pause className="h-3.5 w-3.5 mr-2 text-paper-dim" />
                   )}
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                   <SelectItem value="0">Manual</SelectItem>
                   <SelectItem value="10">Every 10s</SelectItem>
                   <SelectItem value="30">Every 30s</SelectItem>
@@ -861,10 +839,10 @@ export default function Metrics({
                 variant="outline"
                 onClick={handleRefresh}
                 disabled={isAnyFetching || isRefreshCooldown}
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+                className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
               >
-                <RefreshCw className={cn("h-4 w-4", isAnyFetching && "animate-spin")} />
-                {isRefreshCooldown ? "Wait..." : "Refresh"}
+                <RefreshCw className={cn("h-3.5 w-3.5", isAnyFetching && "animate-spin")} />
+                {isRefreshCooldown ? "Wait…" : "Refresh"}
               </Button>
             </div>
           </motion.div>
@@ -877,7 +855,7 @@ export default function Metrics({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-between"
+              className="flex items-center justify-between rounded-xs border border-red-900/60 bg-red-950/40 p-3"
             >
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5 text-red-400" />
@@ -895,14 +873,13 @@ export default function Metrics({
         {/* Tabs for different metric views - hidden if only Overview is available */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 space-y-4">
           {hasAdvancedMetrics && (
-            <TabsList className="bg-white/10 border border-white/10 p-1 w-fit rounded-xl justify-start backdrop-blur-md self-start">
+            <TabsList className="h-9 self-start justify-start gap-0.5 rounded-xs border border-ink-500 bg-ink-100 p-0.5">
               <TabsTrigger
                 value="overview"
                 className={cn(
-                  "rounded-lg gap-2 px-4 transition-all duration-300",
-                  "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
-                  "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
-                  "hover:bg-white/5 active:scale-95"
+                  "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                  "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                 )}
               >
                 <BarChart3 className="h-4 w-4" />
@@ -912,10 +889,9 @@ export default function Metrics({
                 <TabsTrigger
                   value="performance"
                   className={cn(
-                    "rounded-lg gap-2 px-4 transition-all duration-300",
-                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
-                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
-                    "hover:bg-white/5 active:scale-95"
+                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
                 >
                   <Gauge className="h-4 w-4" />
@@ -924,10 +900,9 @@ export default function Metrics({
                 <TabsTrigger
                   value="storage"
                   className={cn(
-                    "rounded-lg gap-2 px-4 transition-all duration-300",
-                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
-                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
-                    "hover:bg-white/5 active:scale-95"
+                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
                 >
                   <HardDrive className="h-4 w-4" />
@@ -936,10 +911,9 @@ export default function Metrics({
                 <TabsTrigger
                   value="merges"
                   className={cn(
-                    "rounded-lg gap-2 px-4 transition-all duration-300",
-                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
-                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
-                    "hover:bg-white/5 active:scale-95"
+                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
                 >
                   <GitMerge className="h-4 w-4" />
@@ -948,10 +922,9 @@ export default function Metrics({
                 <TabsTrigger
                   value="errors"
                   className={cn(
-                    "rounded-lg gap-2 px-4 transition-all duration-300",
-                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
-                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
-                    "hover:bg-white/5 active:scale-95"
+                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
                 >
                   <AlertCircle className="h-4 w-4" />
@@ -960,10 +933,9 @@ export default function Metrics({
                 <TabsTrigger
                   value="system"
                   className={cn(
-                    "rounded-lg gap-2 px-4 transition-all duration-300",
-                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
-                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
-                    "hover:bg-white/5 active:scale-95"
+                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
                 >
                   <Cpu className="h-4 w-4" />
@@ -973,10 +945,9 @@ export default function Metrics({
                 <TabsTrigger
                   value="network"
                   className={cn(
-                    "rounded-lg gap-2 px-4 transition-all duration-300",
-                    "data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400",
-                    "data-[state=active]:shadow-[0_0_15px_rgba(16,185,129,0.1)]",
-                    "hover:bg-white/5 active:scale-95"
+                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
                 >
                   <Network className="h-4 w-4" />
@@ -1076,72 +1047,72 @@ export default function Metrics({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 h-full"
+                className="rounded-xs border border-ink-500 bg-ink-100 p-6 h-full"
               >
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-blue-500/20">
-                    <Activity className="h-5 w-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-white">Resource Utilization</h3>
-                    <p className="text-xs text-gray-500">Current system resource usage</p>
+                  <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                    <Activity className="h-4 w-4" aria-hidden />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="text-[14px] font-semibold tracking-tight text-paper">Resource utilization</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Current system resource usage</p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   {/* CPU */}
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">CPU Usage</span>
-                      <span className="text-white font-medium">
+                    <div className="flex justify-between font-mono text-[11px] uppercase tracking-[0.14em]">
+                      <span className="text-paper-dim">CPU</span>
+                      <span className="font-semibold tabular-nums text-paper">
                         {((cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)).toFixed(1)}%
                       </span>
                     </div>
                     <Progress
                       value={(cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)}
                       className={cn(
-                        "h-2 bg-white/10",
+                        "h-1.5 bg-ink-200",
                         ((cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)) > 80 ? "[&>div]:bg-red-500" :
-                          ((cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)) > 60 ? "[&>div]:bg-orange-500" : "[&>div]:bg-emerald-500"
+                          ((cpuBreakdownData?.values[0]?.slice(-1)[0] || 0) + (cpuBreakdownData?.values[1]?.slice(-1)[0] || 0)) > 60 ? "[&>div]:bg-amber-500" : "[&>div]:bg-brand"
                       )}
                     />
                   </div>
 
                   {/* Disk */}
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Disk Usage</span>
-                      <span className="text-white font-medium">
+                    <div className="flex justify-between font-mono text-[11px] uppercase tracking-[0.14em]">
+                      <span className="text-paper-dim">Disk</span>
+                      <span className="font-semibold tabular-nums text-paper">
                         {primaryDisk ? primaryDisk.used_percent.toFixed(1) : "0"}%
                       </span>
                     </div>
                     <Progress
                       value={primaryDisk?.used_percent || 0}
                       className={cn(
-                        "h-2 bg-white/10",
+                        "h-1.5 bg-ink-200",
                         (primaryDisk?.used_percent || 0) > 90 ? "[&>div]:bg-red-500" :
-                          (primaryDisk?.used_percent || 0) > 75 ? "[&>div]:bg-orange-500" : "[&>div]:bg-cyan-500"
+                          (primaryDisk?.used_percent || 0) > 75 ? "[&>div]:bg-amber-500" : "[&>div]:bg-brand"
                       )}
                     />
                   </div>
 
                   {/* Memory */}
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Memory Usage</span>
-                      <span className="text-white font-medium">
+                    <div className="flex justify-between font-mono text-[11px] uppercase tracking-[0.14em]">
+                      <span className="text-paper-dim">Memory</span>
+                      <span className="font-semibold tabular-nums text-paper">
                         {stats?.memoryPercentage?.toFixed(1) || 0}%
                       </span>
                     </div>
                     <Progress
                       value={stats?.memoryPercentage || 0}
                       className={cn(
-                        "h-2 bg-white/10",
+                        "h-1.5 bg-ink-200",
                         (stats?.memoryPercentage || 0) > 90 ? "[&>div]:bg-red-500" :
-                          (stats?.memoryPercentage || 0) > 75 ? "[&>div]:bg-orange-500" : "[&>div]:bg-purple-500"
+                          (stats?.memoryPercentage || 0) > 75 ? "[&>div]:bg-amber-500" : "[&>div]:bg-brand"
                       )}
                     />
-                    <div className="flex justify-between text-xs text-gray-500">
+                    <div className="flex justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                       <span>{stats?.memoryUsage?.toFixed(2) || "0"} GB used</span>
                       <span>{stats?.memoryTotal?.toFixed(2) || "0"} GB total</span>
                     </div>
@@ -1154,42 +1125,42 @@ export default function Metrics({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 h-full"
+                className="rounded-xs border border-ink-500 bg-ink-100 p-6 h-full"
               >
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-amber-500/20">
-                    <Zap className="h-5 w-5 text-amber-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-white">Activity Summary</h3>
-                    <p className="text-xs text-gray-500">Real-time system activity</p>
+                  <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                    <Zap className="h-4 w-4" aria-hidden />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="text-[14px] font-semibold tracking-tight text-paper">Activity summary</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Real-time system activity</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-2xl font-bold text-white mb-1">
+                <div className="grid grid-cols-2 border-l border-t border-ink-500">
+                  <div className="border-b border-r border-ink-500 p-4">
+                    <div className="font-mono text-[20px] font-semibold tabular-nums text-paper">
                       {formatCompactNumber(metrics?.queriesPerSecond?.values?.slice(-1)[0] || 0)}
                     </div>
-                    <div className="text-xs text-gray-500">Queries/s</div>
+                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Queries/s</div>
                   </div>
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-2xl font-bold text-white mb-1">
+                  <div className="border-b border-r border-ink-500 p-4">
+                    <div className="font-mono text-[20px] font-semibold tabular-nums text-paper">
                       {Number(prodMetrics?.merges?.merges_running || 0).toFixed(2)}
                     </div>
-                    <div className="text-xs text-gray-500">Active Merges</div>
+                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Active merges</div>
                   </div>
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-2xl font-bold text-white mb-1">
+                  <div className="border-b border-r border-ink-500 p-4">
+                    <div className="font-mono text-[20px] font-semibold tabular-nums text-paper">
                       {prodMetrics?.resources?.background_pool_tasks || 0}
                     </div>
-                    <div className="text-xs text-gray-500">Background Tasks</div>
+                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Background tasks</div>
                   </div>
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-2xl font-bold text-white mb-1">
+                  <div className="border-b border-r border-ink-500 p-4">
+                    <div className="font-mono text-[20px] font-semibold tabular-nums text-paper">
                       {formatCompactNumber(prodMetrics?.merges?.merged_rows_per_sec || 0)}
                     </div>
-                    <div className="text-xs text-gray-500">Merged Rows/s</div>
+                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Merged rows/s</div>
                   </div>
                 </div>
               </motion.div>
@@ -1200,26 +1171,28 @@ export default function Metrics({
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
-                  className="rounded-2xl border border-red-500/20 bg-red-500/5 backdrop-blur-xl p-6 h-full"
+                  className="rounded-xs border border-red-900/60 bg-red-950/20 p-6 h-full"
                 >
                   <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-5 w-5 text-red-400" />
-                      <h3 className="font-semibold text-white">Recent Errors</h3>
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+                        <AlertTriangle className="h-4 w-4" aria-hidden />
+                      </span>
+                      <h3 className="text-[14px] font-semibold tracking-tight text-paper">Recent errors</h3>
                     </div>
-                    <Badge variant="destructive" className="bg-red-500/20 text-red-400 hover:bg-red-500/30">
-                      {prodMetrics.errors.length} Issues
-                    </Badge>
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                      {prodMetrics.errors.length} issues
+                    </span>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {prodMetrics.errors.slice(0, 3).map((err, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-red-500/10 border border-red-500/10">
-                        <span className="text-sm font-medium text-red-400 truncate max-w-[180px]" title={err.exception_name}>
+                      <div key={idx} className="flex items-center justify-between rounded-xs border border-red-900/60 bg-red-950/30 px-3 py-2">
+                        <span className="truncate font-mono text-[12px] text-red-200 max-w-[180px]" title={err.exception_name}>
                           {err.exception_name}
                         </span>
-                        <Badge variant="secondary" className="bg-red-950/30 text-red-300">
+                        <span className="rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-red-300">
                           {err.count}
-                        </Badge>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -1232,36 +1205,38 @@ export default function Metrics({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
                 className={cn(
-                  "rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 h-full",
+                  "rounded-xs border border-ink-500 bg-ink-100 p-6 h-full",
                   (prodMetrics?.errors && prodMetrics.errors.length > 0) ? "" : "md:col-span-2"
                 )}
               >
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Table2 className="h-5 w-5 text-purple-400" />
-                    <h3 className="font-semibold text-white">Largest Tables</h3>
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                      <Table2 className="h-4 w-4" aria-hidden />
+                    </span>
+                    <h3 className="text-[14px] font-semibold tracking-tight text-paper">Largest tables</h3>
                   </div>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {prodMetrics?.topTables?.slice(0, 5).map((table, idx) => (
-                    <div key={idx} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                    <div key={idx} className="flex items-center justify-between border-b border-ink-500 py-2 last:border-0">
                       <div className="flex items-center gap-3">
-                        <span className="text-xs text-gray-500 w-4">{idx + 1}.</span>
+                        <span className="w-5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{String(idx + 1).padStart(2, "0")}</span>
                         <div className="flex flex-col">
-                          <span className="text-sm font-medium text-white">{table.table}</span>
-                          <span className="text-xs text-gray-500">{table.database}</span>
+                          <span className="text-[13px] font-medium text-paper">{table.table}</span>
+                          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{table.database}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs text-gray-400">{formatCompactNumber(table.rows)} rows</span>
-                        <Badge variant="secondary" className="bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-[11px] tabular-nums text-paper-dim">{formatCompactNumber(table.rows)} rows</span>
+                        <span className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-paper-muted">
                           {table.compressed_size}
-                        </Badge>
+                        </span>
                       </div>
                     </div>
                   ))}
                   {(!prodMetrics?.topTables || prodMetrics.topTables.length === 0) && (
-                    <div className="text-center py-4 text-gray-500 text-sm">No tables found</div>
+                    <div className="py-4 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No tables found</div>
                   )}
                 </div>
               </motion.div>
@@ -1278,40 +1253,34 @@ export default function Metrics({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-1 h-full"
+                className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-1 h-full"
               >
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-blue-500/20">
-                    <Timer className="h-5 w-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-white">Query Latency</h3>
-                    <p className="text-xs text-gray-500">Response time analysis</p>
+                  <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                    <Timer className="h-4 w-4" aria-hidden />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="text-[14px] font-semibold tracking-tight text-paper">Query Latency</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Response time analysis</p>
                   </div>
                 </div>
-                <div className="grid gap-4 grid-cols-2">
+                <div className="grid grid-cols-2 border-l border-t border-ink-500">
                   <StatCard
                     title="Avg Latency"
                     value={formatMs(prodMetrics?.latency?.avg_ms || 0)}
                     icon={Timer}
-                    color="text-blue-400"
-                    bgColor="bg-blue-500/20"
                     isLoading={prodLoading}
                   />
                   <StatCard
                     title="p50 Latency"
                     value={formatMs(prodMetrics?.latency?.p50_ms || 0)}
                     icon={Gauge}
-                    color="text-green-400"
-                    bgColor="bg-green-500/20"
                     isLoading={prodLoading}
                   />
                   <StatCard
                     title="Max Latency"
                     value={formatMs(prodMetrics?.latency?.max_ms || 0)}
                     icon={AlertTriangle}
-                    color="text-red-400"
-                    bgColor="bg-red-500/20"
                     isLoading={prodLoading}
                     subtitle="Worst case"
                   />
@@ -1320,8 +1289,6 @@ export default function Metrics({
                     value={String(prodMetrics?.latency?.slow_queries_count || 0)}
                     subtitle=">1 second"
                     icon={AlertTriangle}
-                    color="text-amber-400"
-                    bgColor="bg-amber-500/20"
                     isLoading={prodLoading}
                   />
                 </div>
@@ -1334,33 +1301,29 @@ export default function Metrics({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-1"
+                className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-1"
               >
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-orange-500/20">
-                    <Activity className="h-5 w-5 text-orange-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-white">Throughput & IO</h3>
-                    <p className="text-xs text-gray-500">Read/Write operations and background tasks</p>
+                  <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                    <Activity className="h-4 w-4" aria-hidden />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="text-[14px] font-semibold tracking-tight text-paper">Throughput & IO</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Read/Write operations and background tasks</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 border-l border-t border-ink-500">
                   <StatCard
                     title="Read Rate"
                     value={formatBytes(prodMetrics?.resources?.read_rate || 0)}
                     unit="/s"
                     icon={HardDriveDownload}
-                    color="text-cyan-400"
-                    bgColor="bg-cyan-500/20"
                     isLoading={prodLoading}
                   />
                   <StatCard
                     title="Background Tasks"
                     value={String(prodMetrics?.resources?.background_pool_tasks || 0)}
                     icon={Layers}
-                    color="text-green-400"
-                    bgColor="bg-green-500/20"
                     isLoading={prodLoading}
                   />
                   <StatCard
@@ -1368,8 +1331,6 @@ export default function Metrics({
                     value={formatCompactNumber(queryThroughputData?.values[1]?.slice(-1)[0] || 0)}
                     unit="/s"
                     icon={Database}
-                    color="text-cyan-400"
-                    bgColor="bg-cyan-500/20"
                     isLoading={prodLoading}
                   />
                   <StatCard
@@ -1377,8 +1338,6 @@ export default function Metrics({
                     value={formatCompactNumber(processThroughputData?.values[0]?.slice(-1)[0] || 0)}
                     unit="/s"
                     icon={HardDriveDownload}
-                    color="text-emerald-400"
-                    bgColor="bg-emerald-500/20"
                     isLoading={prodLoading}
                   />
                 </div>
@@ -1389,15 +1348,15 @@ export default function Metrics({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
-                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-2"
+                className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-2"
               >
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-indigo-500/20">
-                    <Activity className="h-5 w-5 text-indigo-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-white">Detailed Analysis</h3>
-                    <p className="text-xs text-gray-500">Historical throughput trends</p>
+                  <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                    <Activity className="h-4 w-4" aria-hidden />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="text-[14px] font-semibold tracking-tight text-paper">Detailed Analysis</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Historical throughput trends</p>
                   </div>
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
@@ -1463,10 +1422,10 @@ export default function Metrics({
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-8 text-center md:col-span-3"
+                  className="rounded-md border border-ink-500 bg-ink-100 p-8 text-center md:col-span-3"
                 >
-                  <RefreshCw className="h-8 w-8 text-gray-500 mx-auto mb-4 animate-spin" />
-                  <p className="text-gray-400">Loading storage metrics...</p>
+                  <RefreshCw className="h-8 w-8 text-paper-dim mx-auto mb-4 animate-spin" />
+                  <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-muted">Loading storage metrics…</p>
                 </motion.div>
               )}
 
@@ -1477,49 +1436,41 @@ export default function Metrics({
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                    className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-3"
                   >
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-cyan-500/20">
-                        <HardDrive className="h-5 w-5 text-cyan-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">Disk Capacity</h3>
-                        <p className="text-xs text-gray-500">Volume usage and availability</p>
+                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                        <HardDrive className="h-4 w-4" aria-hidden />
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <h3 className="text-[14px] font-semibold tracking-tight text-paper">Disk Capacity</h3>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Volume usage and availability</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 border-l border-t border-ink-500">
                       <StatCard
                         title="Total Storage"
                         value={formatBytes(prodMetrics?.disks?.reduce((sum, d) => sum + d.total_space, 0) || 0)}
                         icon={HardDrive}
-                        color="text-cyan-400"
-                        bgColor="bg-cyan-500/20"
                         isLoading={false}
                       />
                       <StatCard
                         title="Used Storage"
                         value={formatBytes(prodMetrics?.disks?.reduce((sum, d) => sum + d.used_space, 0) || 0)}
                         icon={Database}
-                        color="text-orange-400"
-                        bgColor="bg-orange-500/20"
                         isLoading={false}
                       />
                       <StatCard
                         title="Free Storage"
                         value={formatBytes(prodMetrics?.disks?.reduce((sum, d) => sum + d.free_space, 0) || 0)}
                         icon={Server}
-                        color="text-green-400"
-                        bgColor="bg-green-500/20"
                         isLoading={false}
                       />
                       <StatCard
                         title="Disk Count"
                         value={String(prodMetrics?.disks?.length || 0)}
                         icon={Disc}
-                        color="text-purple-400"
-                        bgColor="bg-purple-500/20"
                         isLoading={false}
                       />
                     </div>
@@ -1530,33 +1481,29 @@ export default function Metrics({
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
-                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                    className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-3"
                   >
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-indigo-500/20">
-                        <Layers className="h-5 w-5 text-indigo-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">MergeTree Diagnostics</h3>
-                        <p className="text-xs text-gray-500">Parts count and partition health</p>
+                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                        <Layers className="h-4 w-4" aria-hidden />
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <h3 className="text-[14px] font-semibold tracking-tight text-paper">MergeTree Diagnostics</h3>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Parts count and partition health</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 border-l border-t border-ink-500">
                       <StatCard
                         title="Total Parts"
                         value={formatCompactNumber(prodMetrics?.resources?.total_parts || 0)}
                         icon={Layers}
-                        color="text-indigo-400"
-                        bgColor="bg-indigo-500/20"
                         isLoading={prodLoading}
                       />
                       <StatCard
                         title="Max Parts/Partition"
                         value={formatCompactNumber(prodMetrics?.resources?.max_parts_per_partition || 0)}
                         icon={AlertTriangle}
-                        color={(prodMetrics?.resources?.max_parts_per_partition || 0) > 3000 ? "text-red-400" : "text-gray-400"}
-                        bgColor={(prodMetrics?.resources?.max_parts_per_partition || 0) > 3000 ? "bg-red-500/20" : "bg-gray-500/20"}
                         isLoading={prodLoading}
                       />
 
@@ -1565,8 +1512,6 @@ export default function Metrics({
                         title="Total Rows"
                         value={formatCompactNumber(prodMetrics?.topTables?.reduce((sum, t) => sum + (t.rows || 0), 0) || 0)}
                         icon={List}
-                        color="text-blue-400"
-                        bgColor="bg-blue-500/20"
                         isLoading={prodLoading}
                       />
                     </div>
@@ -1577,15 +1522,15 @@ export default function Metrics({
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
-                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                    className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-3"
                   >
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-white/5">
-                        <List className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">Detailed Breakdown</h3>
-                        <p className="text-xs text-gray-500">Per-disk usage and largest tables</p>
+                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                        <List className="h-4 w-4" aria-hidden />
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <h3 className="text-[14px] font-semibold tracking-tight text-paper">Detailed Breakdown</h3>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Per-disk usage and largest tables</p>
                       </div>
                     </div>
 
@@ -1593,8 +1538,8 @@ export default function Metrics({
                     <div className="grid gap-6 lg:grid-cols-2">
                       {/* Disk Usage */}
                       <div>
-                        <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                          <Disc className="h-4 w-4 text-cyan-400" />
+                        <h4 className="flex items-center gap-2 mb-4 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                          <Disc className="h-3.5 w-3.5" aria-hidden />
                           Disk Usage
                         </h4>
                         {prodMetrics?.disks && prodMetrics.disks.length > 0 ? (
@@ -1603,14 +1548,14 @@ export default function Metrics({
                               <div key={disk.name} className="space-y-2">
                                 <div className="flex justify-between items-center">
                                   <div className="flex items-center gap-2">
-                                    <HardDrive className="h-4 w-4 text-gray-400" />
-                                    <span className="text-white font-medium text-sm">{disk.name}</span>
-                                    <span className="text-xs text-gray-500">{disk.path}</span>
+                                    <HardDrive className="h-4 w-4 text-paper-dim" aria-hidden />
+                                    <span className="text-[13px] font-medium text-paper">{disk.name}</span>
+                                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{disk.path}</span>
                                   </div>
                                   <span className={cn(
-                                    "text-sm font-medium",
+                                    "font-mono text-[12px] tabular-nums font-semibold",
                                     disk.used_percent > 90 ? "text-red-400" :
-                                      disk.used_percent > 75 ? "text-orange-400" : "text-green-400"
+                                      disk.used_percent > 75 ? "text-amber-400" : "text-paper"
                                   )}>
                                     {disk.used_percent.toFixed(1)}%
                                   </span>
@@ -1618,12 +1563,12 @@ export default function Metrics({
                                 <Progress
                                   value={disk.used_percent}
                                   className={cn(
-                                    "h-2 bg-white/10",
-                                    disk.used_percent > 90 && "[&>div]:bg-red-500",
-                                    disk.used_percent > 75 && disk.used_percent <= 90 && "[&>div]:bg-orange-500"
+                                    "h-1.5 bg-ink-200",
+                                    disk.used_percent > 90 ? "[&>div]:bg-red-500" :
+                                      disk.used_percent > 75 ? "[&>div]:bg-amber-500" : "[&>div]:bg-brand"
                                   )}
                                 />
-                                <div className="flex justify-between text-xs text-gray-500">
+                                <div className="flex justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                                   <span>Used: {formatBytes(disk.used_space)}</span>
                                   <span>Free: {formatBytes(disk.free_space)}</span>
                                 </div>
@@ -1632,47 +1577,47 @@ export default function Metrics({
                           </div>
                         ) : (
                           <div className="text-center py-8">
-                            <HardDrive className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
-                            <p className="text-sm text-gray-400">No disk metrics available</p>
+                            <HardDrive className="h-10 w-10 text-paper-dim mx-auto mb-3 opacity-50" aria-hidden />
+                            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-muted">No disk metrics available</p>
                           </div>
                         )}
                       </div>
 
                       {/* Top Tables */}
                       <div>
-                        <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                          <Table2 className="h-4 w-4 text-purple-400" />
+                        <h4 className="flex items-center gap-2 mb-4 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                          <Table2 className="h-3.5 w-3.5" aria-hidden />
                           Top Tables by Size
                         </h4>
                         {prodMetrics?.topTables && prodMetrics.topTables.length > 0 ? (
                           <div className="overflow-x-auto">
                             <table className="w-full">
                               <thead>
-                                <tr className="border-b border-white/10">
-                                  <th className="text-left text-xs text-gray-400 font-medium pb-2">Table</th>
-                                  <th className="text-right text-xs text-gray-400 font-medium pb-2">Size</th>
-                                  <th className="text-right text-xs text-gray-400 font-medium pb-2">Parts</th>
+                                <tr className="border-b border-ink-500">
+                                  <th className="pb-2 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Table</th>
+                                  <th className="pb-2 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Size</th>
+                                  <th className="pb-2 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Parts</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {prodMetrics.topTables.slice(0, 5).map((table, idx) => (
-                                  <tr key={`${table.database}.${table.table}`} className="border-b border-white/5">
+                                  <tr key={`${table.database}.${table.table}`} className="border-b border-ink-500/60">
                                     <td className="py-2">
                                       <div className="flex items-center gap-2">
-                                        <span className="text-gray-500 text-xs w-4">{idx + 1}.</span>
-                                        <span className="text-white text-sm truncate max-w-[150px]" title={`${table.database}.${table.table}`}>
-                                          {table.database}.<span className="text-blue-400">{table.table}</span>
+                                        <span className="w-5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{String(idx + 1).padStart(2, "0")}</span>
+                                        <span className="text-[13px] truncate max-w-[150px] text-paper" title={`${table.database}.${table.table}`}>
+                                          <span className="text-paper-faint">{table.database}.</span>{table.table}
                                         </span>
                                       </div>
                                     </td>
-                                    <td className="text-right text-gray-300 text-sm">{table.compressed_size}</td>
+                                    <td className="text-right font-mono text-[12px] tabular-nums text-paper-muted">{table.compressed_size}</td>
                                     <td className="text-right">
-                                      <Badge variant="secondary" className={cn(
-                                        "bg-white/10 text-xs",
-                                        table.parts_count > 100 ? "text-orange-400" : "text-gray-300"
+                                      <span className={cn(
+                                        "inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] tabular-nums",
+                                        table.parts_count > 100 ? "text-amber-400" : "text-paper-muted"
                                       )}>
                                         {table.parts_count}
-                                      </Badge>
+                                      </span>
                                     </td>
                                   </tr>
                                 ))}
@@ -1681,8 +1626,8 @@ export default function Metrics({
                           </div>
                         ) : (
                           <div className="text-center py-8">
-                            <Table2 className="h-10 w-10 text-gray-500 mx-auto mb-3 opacity-50" />
-                            <p className="text-sm text-gray-400">No table data available</p>
+                            <Table2 className="h-10 w-10 text-paper-dim mx-auto mb-3 opacity-50" aria-hidden />
+                            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-muted">No table data available</p>
                           </div>
                         )}
                       </div>
@@ -1694,39 +1639,39 @@ export default function Metrics({
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.5 }}
-                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                    className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-3"
                   >
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-emerald-500/20">
-                        <Zap className="h-5 w-5 text-emerald-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">Cache Performance</h3>
-                        <p className="text-xs text-gray-500">Filesystem and page cache efficiency</p>
+                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                        <Zap className="h-4 w-4" aria-hidden />
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <h3 className="text-[14px] font-semibold tracking-tight text-paper">Cache Performance</h3>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Filesystem and page cache efficiency</p>
                       </div>
                     </div>
 
                     <div className="grid gap-6 lg:grid-cols-5">
                       {/* Cache Quick Stats - Clean sidebar */}
                       <div className="lg:col-span-1 flex flex-col justify-center gap-4">
-                        <div className="flex-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                        <div className="flex-1 rounded-xs border border-ink-500 bg-ink-200 p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <Zap className="h-4 w-4 text-emerald-400" />
-                            <span className="text-xs text-gray-400">FS Cache</span>
+                            <Zap className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">FS Cache</span>
                           </div>
-                          <div className="text-lg font-semibold text-white">
+                          <div className="font-mono text-[20px] font-semibold tabular-nums text-paper">
                             {cacheHitRateData?.values[0]?.slice(-1)[0]?.toFixed(1) || "0"}
-                            <span className="text-xs text-gray-400">%</span>
+                            <span className="ml-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">%</span>
                           </div>
                         </div>
-                        <div className="flex-1 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                        <div className="flex-1 rounded-xs border border-ink-500 bg-ink-200 p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <Zap className="h-4 w-4 text-cyan-400" />
-                            <span className="text-xs text-gray-400">Page Cache</span>
+                            <Zap className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Page Cache</span>
                           </div>
-                          <div className="text-lg font-semibold text-white">
+                          <div className="font-mono text-[20px] font-semibold tabular-nums text-paper">
                             {cacheHitRateData?.values[1]?.slice(-1)[0]?.toFixed(1) || "0"}
-                            <span className="text-xs text-gray-400">%</span>
+                            <span className="ml-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">%</span>
                           </div>
                         </div>
                       </div>
@@ -1761,64 +1706,52 @@ export default function Metrics({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                className="rounded-md border border-ink-500 bg-ink-100 p-6"
               >
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-indigo-500/20">
-                    <Layers className="h-5 w-5 text-indigo-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-white">Merge Command Center</h3>
-                    <p className="text-xs text-gray-500">Real-time background processing health & throughput</p>
+                  <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                    <Layers className="h-4 w-4" aria-hidden />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <h3 className="text-[14px] font-semibold tracking-tight text-paper">Merge Command Center</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Real-time background processing health & throughput</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 border-l border-t border-ink-500">
                   <StatCard
                     title="Running Merges"
                     value={Number(prodMetrics?.merges?.merges_running || 0).toFixed(2)}
                     icon={GitMerge}
-                    color="text-purple-400"
-                    bgColor="bg-purple-500/10"
                     isLoading={prodLoading}
                   />
                   <StatCard
                     title="Active Mutations"
                     value={Number(prodMetrics?.merges?.mutations_running || 0).toFixed(2)}
                     icon={Zap}
-                    color="text-amber-400"
-                    bgColor="bg-amber-500/10"
                     isLoading={prodLoading}
                   />
                   <StatCard
                     title="Pending Mutations"
                     value={String(prodMetrics?.merges?.pending_mutations || 0)}
                     icon={Combine}
-                    color="text-orange-400"
-                    bgColor="bg-orange-500/10"
                     isLoading={prodLoading}
                   />
                   <StatCard
                     title="Merged Rows/s"
                     value={formatCompactNumber(prodMetrics?.merges?.merged_rows_per_sec || 0)}
                     icon={FileStack}
-                    color="text-cyan-400"
-                    bgColor="bg-cyan-500/10"
                     isLoading={prodLoading}
                   />
                   <StatCard
                     title="Merged Bytes/s"
                     value={formatBytes(prodMetrics?.merges?.merged_bytes_per_sec || 0)}
                     icon={HardDrive}
-                    color="text-emerald-400"
-                    bgColor="bg-emerald-500/10"
                     isLoading={prodLoading}
                   />
                   <StatCard
                     title="Merge Memory"
                     value={formatBytes(prodMetrics?.merges?.merges_mutations_memory || 0)}
                     icon={MemoryStick}
-                    color="text-blue-400"
-                    bgColor="bg-blue-500/10"
                     isLoading={prodLoading}
                   />
                 </div>
@@ -1878,66 +1811,66 @@ export default function Metrics({
                 transition={{ delay: 0.4 }}
               >
                 {prodMetrics?.replication && prodMetrics.replication.length > 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6">
+                  <div className="rounded-md border border-ink-500 bg-ink-100 p-6">
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-blue-500/20">
-                        <Network className="h-5 w-5 text-blue-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">Replication & Consistency</h3>
-                        <p className="text-xs text-gray-500">Real-time health of replicated table clusters</p>
+                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                        <Network className="h-4 w-4" aria-hidden />
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <h3 className="text-[14px] font-semibold tracking-tight text-paper">Replication & Consistency</h3>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Real-time health of replicated table clusters</p>
                       </div>
                     </div>
 
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead>
-                          <tr className="border-b border-white/10">
-                            <th className="text-left text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Table</th>
-                            <th className="text-center text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Leader</th>
-                            <th className="text-center text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Status</th>
-                            <th className="text-right text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Delay</th>
-                            <th className="text-right text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Queue</th>
-                            <th className="text-right text-xs text-gray-400 font-medium pb-3 uppercase tracking-wider">Replicas</th>
+                          <tr className="border-b border-ink-500">
+                            <th className="pb-3 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Table</th>
+                            <th className="pb-3 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Leader</th>
+                            <th className="pb-3 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Status</th>
+                            <th className="pb-3 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Delay</th>
+                            <th className="pb-3 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Queue</th>
+                            <th className="pb-3 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Replicas</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-white/5">
+                        <tbody className="divide-y divide-ink-500/60">
                           {prodMetrics.replication.map((rep) => (
-                            <tr key={`${rep.database}.${rep.table}`} className="group hover:bg-white/[0.02] transition-colors">
+                            <tr key={`${rep.database}.${rep.table}`} className="group transition-colors hover:bg-ink-200">
                               <td className="py-4">
                                 <div className="flex flex-col">
-                                  <span className="text-xs text-gray-500">{rep.database}</span>
-                                  <span className="text-sm text-white font-medium group-hover:text-blue-400 transition-colors">{rep.table}</span>
+                                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{rep.database}</span>
+                                  <span className="text-[13px] font-medium text-paper transition-colors group-hover:text-brand">{rep.table}</span>
                                 </div>
                               </td>
                               <td className="text-center">
                                 {rep.is_leader ? (
-                                  <CheckCircle2 className="h-4 w-4 text-green-400 mx-auto" />
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-400 mx-auto" aria-label="Leader" />
                                 ) : (
-                                  <Minus className="h-4 w-4 text-gray-500 mx-auto" />
+                                  <Minus className="h-4 w-4 text-paper-faint mx-auto" aria-label="Replica" />
                                 )}
                               </td>
                               <td className="text-center">
                                 {rep.is_readonly ? (
-                                  <Badge variant="outline" className="border-red-500/50 text-red-500 bg-red-500/10 text-[10px]">READONLY</Badge>
+                                  <span className="inline-flex items-center rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">READONLY</span>
                                 ) : (
-                                  <Badge variant="outline" className="border-green-500/50 text-green-500 bg-green-500/10 text-[10px]">HEALTHY</Badge>
+                                  <span className="inline-flex items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">HEALTHY</span>
                                 )}
                               </td>
                               <td className="text-right">
                                 <span className={cn(
-                                  "font-mono text-xs font-medium",
+                                  "font-mono text-[12px] font-medium tabular-nums",
                                   rep.absolute_delay > 300 ? "text-red-400" :
-                                    rep.absolute_delay > 60 ? "text-orange-400" : "text-gray-300"
+                                    rep.absolute_delay > 60 ? "text-amber-400" : "text-paper-muted"
                                 )}>
                                   {rep.absolute_delay}s
                                 </span>
                               </td>
-                              <td className="text-right text-gray-400 font-mono text-xs">{rep.queue_size}</td>
+                              <td className="text-right font-mono text-[12px] tabular-nums text-paper-muted">{rep.queue_size}</td>
                               <td className="text-right">
                                 <span className={cn(
-                                  "font-mono text-xs font-semibold",
-                                  rep.active_replicas < rep.total_replicas ? "text-orange-400" : "text-green-400"
+                                  "font-mono text-[12px] font-semibold tabular-nums",
+                                  rep.active_replicas < rep.total_replicas ? "text-amber-400" : "text-emerald-400"
                                 )}>
                                   {rep.active_replicas}/{rep.total_replicas}
                                 </span>
@@ -1950,9 +1883,9 @@ export default function Metrics({
                   </div>
                 ) : (
                   !prodLoading && (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-16 text-center">
-                      <Network className="h-12 w-12 text-gray-500 mx-auto mb-4 opacity-50" />
-                      <p className="text-sm text-gray-400 max-w-[200px] mx-auto">No replicated tables found in this cluster</p>
+                    <div className="rounded-md border border-ink-500 bg-ink-100 p-16 text-center">
+                      <Network className="h-12 w-12 text-paper-dim mx-auto mb-4 opacity-50" aria-hidden />
+                      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-muted max-w-[260px] mx-auto">No replicated tables found in this cluster</p>
                     </div>
                   )
                 )}
@@ -1997,25 +1930,23 @@ export default function Metrics({
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                  className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-3"
                 >
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-red-500/20">
-                      <AlertTriangle className="h-5 w-5 text-red-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Critical Alerts</h3>
-                      <p className="text-xs text-gray-500">Query failures and exceptions</p>
+                    <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                      <AlertTriangle className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <h3 className="text-[14px] font-semibold tracking-tight text-paper">Critical Alerts</h3>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Query failures and exceptions</p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 border-l border-t border-ink-500">
                     <StatCard
                       title="Failed Queries"
                       value={String(stats?.failedQueries || 0)}
                       icon={XCircle}
-                      color="text-red-400"
-                      bgColor="bg-red-500/20"
                       isLoading={isLoading}
                       subtitle={`of ${stats?.totalQueries || 0} total`}
                     />
@@ -2023,8 +1954,6 @@ export default function Metrics({
                       title="Error Types"
                       value={String(prodMetrics?.errors?.length || 0)}
                       icon={AlertCircle}
-                      color="text-orange-400"
-                      bgColor="bg-orange-500/20"
                       isLoading={prodLoading}
                     />
                     {prodMetrics?.errors?.[0] ? (
@@ -2032,8 +1961,6 @@ export default function Metrics({
                         title="Top Error"
                         value={String(prodMetrics.errors[0].count)}
                         icon={AlertTriangle}
-                        color="text-red-400"
-                        bgColor="bg-red-500/20"
                         isLoading={prodLoading}
                         subtitle={prodMetrics.errors[0].exception_name}
                       />
@@ -2042,8 +1969,6 @@ export default function Metrics({
                         title="Top Error"
                         value="None"
                         icon={CheckCircle2}
-                        color="text-green-400"
-                        bgColor="bg-green-500/20"
                         isLoading={prodLoading}
                         subtitle="System healthy"
                       />
@@ -2056,15 +1981,15 @@ export default function Metrics({
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                  className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-3"
                 >
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-orange-500/20">
-                      <Activity className="h-5 w-5 text-orange-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Failure Analysis</h3>
-                      <p className="text-xs text-gray-500">Trends and distribution over time</p>
+                    <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                      <Activity className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <h3 className="text-[14px] font-semibold tracking-tight text-paper">Failure Analysis</h3>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Trends and distribution over time</p>
                     </div>
                   </div>
 
@@ -2086,36 +2011,36 @@ export default function Metrics({
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
-                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                    className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-3"
                   >
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-white/5">
-                        <List className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">Exception Log</h3>
-                        <p className="text-xs text-gray-500">Detailed error breakdown</p>
+                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                        <List className="h-4 w-4" aria-hidden />
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <h3 className="text-[14px] font-semibold tracking-tight text-paper">Exception Log</h3>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Detailed error breakdown</p>
                       </div>
                     </div>
 
                     <div className="space-y-3">
                       {prodMetrics.errors.map((err) => (
-                        <div key={err.exception_code} className="p-4 rounded-lg bg-white/5 border border-white/10 transition-colors hover:bg-white/10">
+                        <div key={err.exception_code} className="rounded-xs border border-ink-500 bg-ink-200 p-4 transition-colors hover:border-ink-700">
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <Badge variant="secondary" className="bg-red-500/20 text-red-400 hover:bg-red-500/30">
+                                <span className="inline-flex items-center rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
                                   {err.exception_name}
-                                </Badge>
-                                <code className="text-xs text-gray-500 bg-black/20 px-1.5 py-0.5 rounded">Code: {err.exception_code}</code>
+                                </span>
+                                <code className="rounded-xs border border-ink-500 bg-ink-300 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Code: {err.exception_code}</code>
                               </div>
-                              <p className="text-xs text-gray-400 truncate font-mono bg-black/20 p-2 rounded mt-2 border border-white/5">
+                              <p className="mt-2 truncate rounded-xs border border-ink-500 bg-ink-300 p-2 font-mono text-[11px] text-paper-muted">
                                 {err.sample_error}
                               </p>
                             </div>
                             <div className="text-right flex-shrink-0 flex flex-col items-end">
-                              <span className="text-xl font-bold text-white tabular-nums">{err.count}</span>
-                              <span className="text-xs text-gray-500">occurrences</span>
+                              <span className="font-mono text-[20px] font-semibold tabular-nums text-paper">{err.count}</span>
+                              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">occurrences</span>
                             </div>
                           </div>
                         </div>
@@ -2129,11 +2054,13 @@ export default function Metrics({
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-8 text-center md:col-span-3"
+                    className="rounded-md border border-ink-500 bg-ink-100 p-8 text-center md:col-span-3"
                   >
-                    <CheckCircle2 className="h-12 w-12 text-green-400 mx-auto mb-4" />
-                    <p className="text-green-400 font-medium">No errors in the selected time range</p>
-                    <p className="text-xs text-gray-500 mt-2">All queries completed successfully</p>
+                    <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 text-emerald-300">
+                      <CheckCircle2 className="h-5 w-5" aria-hidden />
+                    </span>
+                    <p className="text-[13px] font-medium text-paper">No errors in the selected time range</p>
+                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">All queries completed successfully</p>
                   </motion.div>
                 )}
               </TabsContent>
@@ -2150,15 +2077,15 @@ export default function Metrics({
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                  className="rounded-md border border-ink-500 bg-ink-100 p-6"
                 >
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-blue-500/20">
-                      <Server className="h-5 w-5 text-blue-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white">System Resources</h3>
-                      <p className="text-xs text-gray-500">CPU usage, load, and thread pools</p>
+                    <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                      <Server className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <h3 className="text-[14px] font-semibold tracking-tight text-paper">System Resources</h3>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">CPU usage, load, and thread pools</p>
                     </div>
                   </div>
 
@@ -2187,37 +2114,29 @@ export default function Metrics({
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 border-l border-t border-ink-500">
                     <StatCard
                       title="Load Average (15m)"
                       value={prodMetrics?.resources?.load_average_15?.toFixed(2) || "0.00"}
                       icon={Activity}
-                      color={(prodMetrics?.resources?.load_average_15 || 0) > 4 ? "text-red-400" : "text-emerald-400"}
-                      bgColor={(prodMetrics?.resources?.load_average_15 || 0) > 4 ? "bg-red-500/20" : "bg-emerald-500/20"}
                       isLoading={prodLoading}
                     />
                     <StatCard
                       title="Global Threads"
                       value={String(prodMetrics?.resources?.global_threads || 0)}
                       icon={Network}
-                      color="text-blue-400"
-                      bgColor="bg-blue-500/20"
                       isLoading={prodLoading}
                     />
                     <StatCard
                       title="Schedule Pool"
                       value={String(prodMetrics?.resources?.background_schedule_pool_tasks || 0)}
                       icon={Clock}
-                      color="text-purple-400"
-                      bgColor="bg-purple-500/20"
                       isLoading={prodLoading}
                     />
                     <StatCard
                       title="File Descriptors"
                       value={String(prodMetrics?.resources?.file_descriptors_used || 0)}
                       icon={FileText}
-                      color="text-yellow-400"
-                      bgColor="bg-yellow-500/20"
                       isLoading={prodLoading}
                     />
                   </div>
@@ -2229,15 +2148,15 @@ export default function Metrics({
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                  className="rounded-md border border-ink-500 bg-ink-100 p-6"
                 >
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-purple-500/20">
-                      <MemoryStick className="h-5 w-5 text-purple-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Memory Analysis</h3>
-                      <p className="text-xs text-gray-500">Detailed memory usage, caches, and allocators</p>
+                    <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                      <MemoryStick className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <h3 className="text-[14px] font-semibold tracking-tight text-paper">Memory Analysis</h3>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Detailed memory usage, caches, and allocators</p>
                     </div>
                   </div>
 
@@ -2267,29 +2186,23 @@ export default function Metrics({
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 border-l border-t border-ink-500">
                     <StatCard
                       title="Memory Cache"
                       value={formatBytes(memoryBreakdownData?.values[2]?.slice(-1)[0] || 0)}
                       icon={Zap}
-                      color="text-emerald-400"
-                      bgColor="bg-emerald-500/20"
                       isLoading={prodLoading}
                     />
                     <StatCard
                       title="Jemalloc Allocated"
                       value={formatBytes(allocatorMemoryData?.values[0]?.slice(-1)[0] || 0)}
                       icon={Database}
-                      color="text-emerald-400"
-                      bgColor="bg-emerald-500/20"
                       isLoading={prodLoading}
                     />
                     <StatCard
                       title="Jemalloc Resident"
                       value={formatBytes(allocatorMemoryData?.values[1]?.slice(-1)[0] || 0)}
                       icon={HardDrive}
-                      color="text-cyan-400"
-                      bgColor="bg-cyan-500/20"
                       isLoading={prodLoading}
                     />
                   </div>
@@ -2300,15 +2213,15 @@ export default function Metrics({
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.4 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6"
+                  className="rounded-md border border-ink-500 bg-ink-100 p-6"
                 >
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-emerald-500/20">
-                      <Activity className="h-5 w-5 text-emerald-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white">System Load & ZooKeeper</h3>
-                      <p className="text-xs text-gray-500">Load average history and ZooKeeper/Keeper metrics</p>
+                    <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                      <Activity className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <h3 className="text-[14px] font-semibold tracking-tight text-paper">System Load & ZooKeeper</h3>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Load average history and ZooKeeper/Keeper metrics</p>
                     </div>
                   </div>
 
@@ -2364,25 +2277,23 @@ export default function Metrics({
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
-                  className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-6 md:col-span-3"
+                  className="rounded-md border border-ink-500 bg-ink-100 p-6 md:col-span-3"
                 >
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 rounded-lg bg-indigo-500/20">
-                      <Activity className="h-5 w-5 text-indigo-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white">Network Traffic</h3>
-                      <p className="text-xs text-gray-500">Real-time bandwidth usage</p>
+                    <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+                      <Activity className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <h3 className="text-[14px] font-semibold tracking-tight text-paper">Network Traffic</h3>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Real-time bandwidth usage</p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 border-l border-t border-ink-500">
                     <StatCard
                       title="Total Traffic"
                       value={formatBytesUtil((prodMetrics?.network?.network_receive_speed || 0) + (prodMetrics?.network?.network_send_speed || 0)) + "/s"}
                       icon={Activity}
-                      color="text-indigo-400"
-                      bgColor="bg-indigo-500/20"
                       isLoading={prodLoading}
                       subtitle="Inbound + Outbound"
                     />
@@ -2390,16 +2301,12 @@ export default function Metrics({
                       title="Inbound"
                       value={formatBytesUtil(prodMetrics?.network?.network_receive_speed || 0) + "/s"}
                       icon={TrendingDown}
-                      color="text-green-400"
-                      bgColor="bg-green-500/20"
                       isLoading={prodLoading}
                     />
                     <StatCard
                       title="Outbound"
                       value={formatBytesUtil(prodMetrics?.network?.network_send_speed || 0) + "/s"}
                       icon={TrendingUp}
-                      color="text-blue-400"
-                      bgColor="bg-blue-500/20"
                       isLoading={prodLoading}
                     />
                   </div>
@@ -2435,42 +2342,42 @@ export default function Metrics({
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+                className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                 onClick={() => setInternalTimeRange("15m")}
               >
-                15min
+                15 min
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+                className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                 onClick={() => setInternalTimeRange("1h")}
               >
-                1 Hour
+                1 hour
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+                className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                 onClick={() => setInternalTimeRange("24h")}
               >
-                24 Hours
+                24 hours
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 className={cn(
-                  "gap-2 border-white/10",
+                  "h-9 gap-2 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em]",
                   refreshInterval > 0
-                    ? "bg-green-500/20 border-green-500/30 text-green-400"
-                    : "bg-white/5 hover:bg-white/10"
+                    ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-300 hover:border-emerald-800 hover:bg-emerald-950/60"
+                    : "border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200"
                 )}
                 onClick={() => setInternalRefreshInterval(refreshInterval > 0 ? 0 : 30)}
               >
                 {refreshInterval > 0 ? (
                   <>
                     <Pause className="h-3 w-3" />
-                    Stop Auto
+                    Stop auto
                   </>
                 ) : (
                   <>

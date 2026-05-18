@@ -19,7 +19,6 @@ import {
 import { log } from '@/lib/log';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -179,13 +178,20 @@ export default function ConnectionUserAccess({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[800px] bg-gray-900 border-gray-800 max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto rounded-xs border-ink-500 bg-ink-100">
         <DialogHeader>
-          <DialogTitle className="text-white flex items-center gap-2">
-            <Users className="w-5 h-5" />
-            User Access: {connection.name}
+          <DialogTitle className="flex items-center gap-3 text-paper">
+            <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+              <Users className="h-4 w-4" aria-hidden />
+            </span>
+            <span className="flex flex-col gap-0.5 text-left">
+              <span className="text-[16px] font-semibold tracking-tight">User access</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                {connection.name}
+              </span>
+            </span>
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-paper-muted">
             Manage which users can access this ClickHouse connection. Users can have direct access
             or access via roles through data access rules.
           </DialogDescription>
@@ -194,27 +200,27 @@ export default function ConnectionUserAccess({
         <div className="space-y-4">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-paper-dim" />
             <Input
               placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-gray-800 border-gray-700"
+              className="rounded-xs border-ink-500 bg-ink-200 pl-10 text-paper"
             />
           </div>
 
           {/* Add User Section */}
           {canUpdate && (
-            <div className="flex gap-2 items-end p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+            <div className="flex items-end gap-2 rounded-xs border border-ink-500 bg-ink-200 p-4">
               <div className="flex-1">
-                <label className="text-sm text-gray-400 mb-2 block">Add User Access</label>
+                <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Add user access</label>
                 <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700">
-                    <SelectValue placeholder="Select a user..." />
+                  <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+                    <SelectValue placeholder="Select a user…" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                     {availableUsers.length === 0 ? (
-                      <div className="p-2 text-sm text-gray-400 text-center">
+                      <div className="p-2 text-center font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim">
                         {allUsers.length === 0
                           ? 'No users available'
                           : 'All users already have access'}
@@ -224,7 +230,7 @@ export default function ConnectionUserAccess({
                         <SelectItem key={user.id} value={user.id}>
                           <div className="flex items-center gap-2">
                             <span>{user.displayName || user.username}</span>
-                            <span className="text-xs text-gray-500">({user.email})</span>
+                            <span className="text-[11px] text-paper-faint">({user.email})</span>
                           </div>
                         </SelectItem>
                       ))
@@ -235,96 +241,96 @@ export default function ConnectionUserAccess({
               <Button
                 onClick={handleGrantAccess}
                 disabled={!selectedUserId || isAdding}
-                className="bg-purple-600 hover:bg-purple-700"
+                className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
               >
                 {isAdding ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <UserPlus className="w-4 h-4 mr-2" />
+                  <UserPlus className="h-3.5 w-3.5" />
                 )}
-                Grant Access
+                Grant access
               </Button>
             </div>
           )}
 
           {/* Users with Access List */}
-          <div className="rounded-lg border border-gray-800 overflow-hidden">
+          <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                <Loader2 className="h-6 w-6 animate-spin text-paper-dim" />
               </div>
             ) : filteredUsersWithAccess.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="w-12 h-12 mx-auto text-gray-600 mb-4" />
-                <h3 className="text-lg font-medium text-gray-300">No users with access</h3>
-                <p className="text-gray-500 mt-1">
+              <div className="px-6 py-12 text-center">
+                <Users className="mx-auto mb-4 h-8 w-8 text-paper-faint" aria-hidden />
+                <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No users with access</h3>
+                <p className="mt-2 text-[12px] text-paper-muted">
                   {searchQuery
-                    ? 'No users match your search'
-                    : 'Grant access to users to allow them to use this connection'}
+                    ? 'No users match your search.'
+                    : 'Grant access to users to allow them to use this connection.'}
                 </p>
               </div>
             ) : (
               <TooltipProvider>
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-gray-800 hover:bg-transparent">
-                      <TableHead className="text-gray-400">User</TableHead>
-                      <TableHead className="text-gray-400">Status</TableHead>
-                      <TableHead className="text-gray-400">Access Type</TableHead>
-                      <TableHead className="text-gray-400">Roles</TableHead>
+                    <TableRow className="border-ink-500 hover:bg-transparent">
+                      <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">User</TableHead>
+                      <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Status</TableHead>
+                      <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Access type</TableHead>
+                      <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Roles</TableHead>
                       {canUpdate && (
-                        <TableHead className="text-gray-400 text-right">Actions</TableHead>
+                        <TableHead className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Actions</TableHead>
                       )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredUsersWithAccess.map((user) => (
-                      <TableRow key={user.id} className="border-gray-800">
+                      <TableRow key={user.id} className="border-ink-500">
                         <TableCell>
                           <div>
-                            <div className="font-medium text-white">
+                            <div className="font-medium text-paper">
                               {user.displayName || user.username}
                             </div>
-                            <div className="text-sm text-gray-400">{user.email}</div>
+                            <div className="text-[12px] text-paper-muted">{user.email}</div>
                           </div>
                         </TableCell>
                         <TableCell>
                           {user.isActive ? (
-                            <Badge className="bg-green-500/20 text-green-400">
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                            <span className="inline-flex items-center gap-1 rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+                              <CheckCircle2 className="h-3 w-3" />
                               Active
-                            </Badge>
+                            </span>
                           ) : (
-                            <Badge className="bg-gray-500/20 text-gray-400">
-                              <AlertCircle className="w-3 h-3 mr-1" />
+                            <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                              <AlertCircle className="h-3 w-3" />
                               Inactive
-                            </Badge>
+                            </span>
                           )}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             {user.hasDirectAccess && (
-                              <Badge className="bg-blue-500/20 text-blue-400 text-xs w-fit">
-                                Direct Access
-                              </Badge>
+                              <span className="w-fit rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
+                                Direct access
+                              </span>
                             )}
                             {user.accessViaRoles.length > 0 && (
                               <Tooltip>
                                 <TooltipTrigger>
-                                  <Badge className="bg-purple-500/20 text-purple-400 text-xs w-fit">
-                                    <Shield className="w-3 h-3 mr-1" />
-                                    Via Roles ({user.accessViaRoles.length})
-                                  </Badge>
+                                  <span className="inline-flex w-fit items-center gap-1 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                                    <Shield className="h-3 w-3" />
+                                    Via roles ({user.accessViaRoles.length})
+                                  </span>
                                 </TooltipTrigger>
-                                <TooltipContent>
-                                  <div className="text-sm">
+                                <TooltipContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+                                  <div className="text-[12px]">
                                     Access via roles: {user.accessViaRoles.join(', ')}
                                   </div>
                                 </TooltipContent>
                               </Tooltip>
                             )}
                             {!user.hasDirectAccess && user.accessViaRoles.length === 0 && (
-                              <span className="text-xs text-gray-500">No direct access</span>
+                              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">No direct access</span>
                             )}
                           </div>
                         </TableCell>
@@ -332,29 +338,25 @@ export default function ConnectionUserAccess({
                           <div className="flex flex-wrap gap-1">
                             {user.roles.length > 0 ? (
                               user.roles.slice(0, 2).map((role) => (
-                                <Badge
+                                <span
                                   key={role}
-                                  variant="outline"
-                                  className="text-xs border-gray-700 text-gray-300"
+                                  className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted"
                                 >
                                   {role}
-                                </Badge>
+                                </span>
                               ))
                             ) : (
-                              <span className="text-xs text-gray-500">No roles</span>
+                              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">No roles</span>
                             )}
                             {user.roles.length > 2 && (
                               <Tooltip>
                                 <TooltipTrigger>
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs border-gray-700 text-gray-300"
-                                  >
+                                  <span className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
                                     +{user.roles.length - 2} more
-                                  </Badge>
+                                  </span>
                                 </TooltipTrigger>
-                                <TooltipContent>
-                                  <div className="text-sm">
+                                <TooltipContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+                                  <div className="text-[12px]">
                                     All roles: {user.roles.join(', ')}
                                   </div>
                                 </TooltipContent>
@@ -371,23 +373,23 @@ export default function ConnectionUserAccess({
                                     variant="ghost"
                                     size="icon"
                                     onClick={() => handleRevokeAccess(user.id)}
-                                    className="h-8 w-8 text-red-400 hover:text-red-300"
+                                    className="h-8 w-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
                                   >
-                                    <UserX className="w-4 h-4" />
+                                    <UserX className="h-3.5 w-3.5" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Revoke Direct Access</TooltipContent>
+                                <TooltipContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">Revoke direct access</TooltipContent>
                               </Tooltip>
                             )}
                             {!user.hasDirectAccess && user.accessViaRoles.length > 0 && (
                               <Tooltip>
                                 <TooltipTrigger>
-                                  <span className="text-xs text-gray-500">
+                                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
                                     Access via roles only
                                   </span>
                                 </TooltipTrigger>
-                                <TooltipContent>
-                                  Remove data access rules to revoke access
+                                <TooltipContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+                                  Remove data access rules to revoke access.
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -402,11 +404,10 @@ export default function ConnectionUserAccess({
           </div>
 
           {/* Info Note */}
-          <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-            <p className="text-sm text-blue-200">
-              <strong>Note:</strong> Users can have access through direct assignment or via roles
-              through data access rules. Direct access can be revoked here, but role-based access
-              must be managed through data access rules.
+          <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+            <p className="text-[12px] text-paper-muted">
+              <strong className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Note: </strong>
+              Users can have access through direct assignment or via roles through data access rules. Direct access can be revoked here, but role-based access must be managed through data access rules.
             </p>
           </div>
         </div>

@@ -16,14 +16,14 @@ const SchemaSection: React.FC<SchemaSectionProps> = ({ database, tableName }) =>
   const columns = useMemo<ColumnDef<any>[]>(() => [
     {
       accessorKey: "name",
-      header: () => <span className="font-medium text-white/60 lowercase text-[13px]">column</span>,
+      header: () => <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Column</span>,
       cell: ({ getValue }) => (
-        <span className="font-mono text-[12px] text-white/80">{getValue() as string}</span>
+        <span className="font-mono text-[12px] text-paper">{getValue() as string}</span>
       ),
     },
     {
       accessorKey: "type",
-      header: () => <span className="font-medium text-white/60 lowercase text-[13px]">type</span>,
+      header: () => <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Type</span>,
       cell: ({ getValue }) => {
         const type = (getValue() as string) || "";
         const typeLower = type.toLowerCase();
@@ -40,7 +40,7 @@ const SchemaSection: React.FC<SchemaSectionProps> = ({ database, tableName }) =>
                 (typeLower.includes("int") || typeLower.includes("float") || typeLower.includes("decimal")) ? "bg-[#b5cea8]" :
                   typeLower.includes("bool") ? "bg-[#569cd6]" :
                     (typeLower.includes("date") || typeLower.includes("time")) ? "bg-[#4fc1ff]" :
-                      (typeLower.includes("array") || typeLower.includes("map") || typeLower.includes("tuple") || typeLower.includes("json")) ? "bg-[#9cdcfe]" : "bg-white/20"
+                      (typeLower.includes("array") || typeLower.includes("map") || typeLower.includes("tuple") || typeLower.includes("json")) ? "bg-[#9cdcfe]" : "bg-ink-700"
             )} />
             <span className={cn("font-mono text-[12px]", typeClass)}>
               {type}
@@ -51,23 +51,23 @@ const SchemaSection: React.FC<SchemaSectionProps> = ({ database, tableName }) =>
     },
     {
       accessorKey: "default_type",
-      header: () => <span className="font-medium text-white/60 lowercase text-[13px]">default type</span>,
+      header: () => <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Default Type</span>,
       cell: ({ getValue }) => (
-        <span className="font-mono text-[11px] text-white/40 italic">{getValue() as string || "-"}</span>
+        <span className="font-mono text-[11px] italic text-paper-faint">{getValue() as string || "-"}</span>
       ),
     },
     {
       accessorKey: "default_expression",
-      header: () => <span className="font-medium text-white/60 lowercase text-[13px]">default expression</span>,
+      header: () => <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Default Expression</span>,
       cell: ({ getValue }) => (
-        <span className="font-mono text-[11px] text-white/40">{getValue() as string || "-"}</span>
+        <span className="font-mono text-[11px] text-paper-faint">{getValue() as string || "-"}</span>
       ),
     },
     {
       accessorKey: "comment",
-      header: () => <span className="font-medium text-white/60 lowercase text-[13px]">comment</span>,
+      header: () => <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Comment</span>,
       cell: ({ getValue }) => (
-        <span className="text-[12px] text-white/40 font-light italic leading-relaxed">{getValue() as string || "-"}</span>
+        <span className="text-[12px] italic leading-relaxed text-paper-faint">{getValue() as string || "-"}</span>
       ),
       meta: { wrap: true },
     },
@@ -75,31 +75,31 @@ const SchemaSection: React.FC<SchemaSectionProps> = ({ database, tableName }) =>
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-[300px] bg-white/[0.02] rounded-xl border border-white/5 backdrop-blur-sm">
-        <Loader2 className="h-6 w-6 animate-spin text-cyan-400 opacity-50" />
-        <span className="mt-4 text-white/20 text-xs tracking-[0.3em] font-light uppercase">Analyzing Schema...</span>
+      <div className="flex h-[300px] flex-col items-center justify-center gap-3 rounded-xs border border-ink-500 bg-ink-100">
+        <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Analyzing schema…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[300px]">
-        <p className="text-red-400/60 font-mono text-sm">{error.message}</p>
+      <div className="flex h-[300px] items-center justify-center">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-red-400">{error.message}</p>
       </div>
     );
   }
 
   if (!schema || schema.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[300px]">
-        <p className="text-white/20 font-light tracking-widest uppercase text-xs">No schema information found</p>
+      <div className="flex h-[300px] items-center justify-center">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No schema information found</p>
       </div>
     );
   }
 
   return (
-    <div className="h-[450px] relative">
+    <div className="relative h-[450px]">
       <DataTable
         columns={columns}
         data={schema}

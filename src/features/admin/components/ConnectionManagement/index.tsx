@@ -560,12 +560,17 @@ export default function ConnectionManagement() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-white">ClickHouse Connections</h2>
-          <p className="text-sm text-gray-400 mt-1">
-            Manage your ClickHouse server connections
-          </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+            <Server className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-semibold tracking-tight text-paper">ClickHouse connections</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              Manage your ClickHouse server connections
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -573,59 +578,60 @@ export default function ConnectionManagement() {
             size="sm"
             onClick={fetchConnections}
             disabled={isLoading}
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-200"
           >
-            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
             Refresh
           </Button>
           {canEdit && (
             <Button
-              variant="outline"
               size="sm"
               onClick={openCreateDialog}
-              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+              className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
             >
-              <Plus className="w-4 h-4" />
-              Add Connection
+              <Plus className="h-3.5 w-3.5" />
+              Add connection
             </Button>
           )}
         </div>
       </div>
 
-      {/* Connections Table */}
+      {/* Connections table */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+          <Loader2 className="h-6 w-6 animate-spin text-paper-dim" />
         </div>
       ) : connections.length === 0 ? (
-        <div className="text-center py-12">
-          <Server className="w-12 h-12 mx-auto text-gray-600 mb-4" />
-          <h3 className="text-lg font-medium text-gray-300">No connections configured</h3>
-          <p className="text-gray-500 mt-1">Add your first ClickHouse connection to get started</p>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="mb-3 grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
+            <Server className="h-5 w-5" aria-hidden />
+          </div>
+          <h3 className="text-[15px] font-medium text-paper">No connections configured</h3>
+          <p className="mt-1 text-[13px] text-paper-muted">Add your first ClickHouse connection to get started.</p>
           {canEdit && (
             <Button
               size="sm"
               onClick={openCreateDialog}
-              className="mt-4 bg-purple-600 hover:bg-purple-700"
+              className="mt-4 gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Connection
+              <Plus className="mr-2 h-4 w-4" />
+              Add connection
             </Button>
           )}
         </div>
       ) : (
         <TooltipProvider>
-          <div className="rounded-lg border border-gray-800 overflow-hidden">
+          <div className="overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800 hover:bg-transparent">
-                  <TableHead className="text-gray-400">Name</TableHead>
-                  <TableHead className="text-gray-400">Host</TableHead>
-                  <TableHead className="text-gray-400">User</TableHead>
-                  <TableHead className="text-gray-400">Database</TableHead>
-                  <TableHead className="text-gray-400">Status</TableHead>
-                  <TableHead className="text-gray-400">Users</TableHead>
-                  <TableHead className="text-gray-400 text-right">Actions</TableHead>
+                <TableRow className="border-b-ink-500 bg-ink-200 hover:bg-ink-200">
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Name</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Host</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">User</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Database</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Status</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Users</TableHead>
+                  <TableHead className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -635,10 +641,10 @@ export default function ConnectionManagement() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-white">{conn.name}</span>
                         {conn.isDefault && (
-                          <Badge className="bg-yellow-500/20 text-yellow-400 text-xs">
-                            <Star className="w-3 h-3 mr-1" />
+                          <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
+                            <Star className="h-3 w-3 fill-brand" />
                             Default
-                          </Badge>
+                          </span>
                         )}
                       </div>
                     </TableCell>
@@ -663,15 +669,15 @@ export default function ConnectionManagement() {
                     </TableCell>
                     <TableCell>
                       {conn.isActive ? (
-                        <Badge className="bg-green-500/20 text-green-400">
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                        <span className="inline-flex items-center gap-1 rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+                          <CheckCircle2 className="h-3 w-3" />
                           Active
-                        </Badge>
+                        </span>
                       ) : (
-                        <Badge className="bg-gray-500/20 text-gray-400">
-                          <X className="w-3 h-3 mr-1" />
+                        <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                          <X className="h-3 w-3" />
                           Inactive
-                        </Badge>
+                        </span>
                       )}
                     </TableCell>
                     <TableCell>

@@ -30,10 +30,26 @@ interface ComplexityCardProps {
   complexity: QueryComplexity;
 }
 
-const COMPLEXITY_COLORS: Record<ComplexityLevel, { bg: string; text: string; border: string }> = {
-  low: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
-  medium: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30' },
-  high: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' }
+// Severity → editorial chip recipe. Emerald = low (good), amber = medium,
+// red = high (worst). The bar variant is the solid color used to fill the
+// progress bar; the chip variants follow the destructive/warning/active
+// recipe pattern used elsewhere (border-X-900/60 + bg-X-950/40 + text-X-300).
+const COMPLEXITY_COLORS: Record<ComplexityLevel, { chip: string; text: string; bar: string }> = {
+  low: {
+    chip: 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300',
+    text: 'text-emerald-300',
+    bar: 'bg-emerald-500',
+  },
+  medium: {
+    chip: 'border-amber-900/60 bg-amber-950/40 text-amber-300',
+    text: 'text-amber-300',
+    bar: 'bg-amber-500',
+  },
+  high: {
+    chip: 'border-red-900/60 bg-red-950/40 text-red-300',
+    text: 'text-red-300',
+    bar: 'bg-red-500',
+  },
 };
 
 export const ComplexityCard: React.FC<ComplexityCardProps> = ({ complexity }) => {
@@ -41,37 +57,37 @@ export const ComplexityCard: React.FC<ComplexityCardProps> = ({ complexity }) =>
   const { metrics } = complexity;
 
   return (
-    <div className={cn("rounded-lg border p-4", colors.border, colors.bg)}>
+    <div className="rounded-xs border border-ink-500 bg-ink-100 p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Gauge className={cn("h-5 w-5", colors.text)} />
-          <h3 className="font-semibold text-zinc-200">Query Complexity</h3>
+          <Gauge className={cn("h-4 w-4", colors.text)} aria-hidden />
+          <h3 className="text-[14px] font-semibold tracking-tight text-paper">Query complexity</h3>
         </div>
-        <div className={cn("px-3 py-1 rounded-full text-sm font-medium capitalize", colors.bg, colors.text, "border", colors.border)}>
+        <span className={cn("inline-flex items-center rounded-xs border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]", colors.chip)}>
           {complexity.level}
-        </div>
+        </span>
       </div>
 
       {/* Score Bar */}
       <div className="mb-4">
-        <div className="flex justify-between text-xs text-zinc-500 mb-1">
-          <span>Complexity Score</span>
-          <span className={colors.text}>{complexity.score}/100</span>
+        <div className="mb-1 flex justify-between font-mono text-[10px] uppercase tracking-[0.14em]">
+          <span className="text-paper-dim">Complexity score</span>
+          <span className={cn("tabular-nums", colors.text)}>{complexity.score}/100</span>
         </div>
-        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+        <div className="h-1.5 overflow-hidden rounded-xs bg-ink-200">
           <div
-            className={cn("h-full rounded-full transition-all", colors.text.replace('text-', 'bg-'))}
+            className={cn("h-full transition-all", colors.bar)}
             style={{ width: `${complexity.score}%` }}
           />
         </div>
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <MetricItem icon={Table} label="Tables" value={metrics.tableCount} />
         <MetricItem icon={GitBranch} label="Joins" value={metrics.joinCount} />
-        <MetricItem icon={Layers} label="Subquery Depth" value={metrics.subqueryDepth} />
+        <MetricItem icon={Layers} label="Subquery depth" value={metrics.subqueryDepth} />
         <MetricItem icon={Calculator} label="Aggregations" value={metrics.aggregationCount} />
         <MetricItem icon={Columns} label="Columns" value={metrics.isSelectStar ? 'All (*)' : metrics.columnCount} />
         <MetricItem icon={Hash} label="DISTINCT" value={metrics.hasDistinct ? 'Yes' : 'No'} highlight={metrics.hasDistinct} />
@@ -80,18 +96,18 @@ export const ComplexityCard: React.FC<ComplexityCardProps> = ({ complexity }) =>
       </div>
 
       {/* Additional Info */}
-      <div className="mt-3 pt-3 border-t border-zinc-800 flex flex-wrap gap-2 text-xs">
+      <div className="mt-3 flex flex-wrap gap-1.5 border-t border-ink-500 pt-3">
         {metrics.hasLimit && (
-          <span className="px-2 py-1 bg-green-500/10 text-green-400 rounded border border-green-500/20">LIMIT ✓</span>
+          <span className="inline-flex items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">LIMIT ✓</span>
         )}
         {metrics.hasWhere && (
-          <span className="px-2 py-1 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20">WHERE ✓</span>
+          <span className="inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">WHERE ✓</span>
         )}
         {metrics.hasPrewhere && (
-          <span className="px-2 py-1 bg-purple-500/10 text-purple-400 rounded border border-purple-500/20">PREWHERE ✓</span>
+          <span className="inline-flex items-center rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">PREWHERE ✓</span>
         )}
         {!metrics.hasLimit && (
-          <span className="px-2 py-1 bg-yellow-500/10 text-yellow-400 rounded border border-yellow-500/20">No LIMIT</span>
+          <span className="inline-flex items-center rounded-xs border border-amber-900/60 bg-amber-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300">No LIMIT</span>
         )}
       </div>
     </div>
@@ -106,11 +122,11 @@ interface MetricItemProps {
 }
 
 const MetricItem: React.FC<MetricItemProps> = ({ icon: Icon, label, value, highlight }) => (
-  <div className="flex items-center gap-2 bg-zinc-900/50 rounded p-2">
-    <Icon className={cn("h-4 w-4", highlight ? "text-yellow-400" : "text-zinc-500")} />
-    <div className="flex flex-col">
-      <span className="text-[10px] text-zinc-500">{label}</span>
-      <span className={cn("text-xs font-medium", highlight ? "text-yellow-400" : "text-zinc-300")}>{value}</span>
+  <div className="flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 p-2">
+    <Icon className={cn("h-3.5 w-3.5 shrink-0", highlight ? "text-brand" : "text-paper-dim")} />
+    <div className="flex min-w-0 flex-col">
+      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{label}</span>
+      <span className={cn("text-[12px] font-medium tabular-nums", highlight ? "text-brand" : "text-paper")}>{value}</span>
     </div>
   </div>
 );
@@ -123,21 +139,22 @@ interface RecommendationsCardProps {
   recommendations: PerformanceRecommendation[];
 }
 
-const SEVERITY_CONFIG: Record<RecommendationSeverity, { icon: React.FC<{ className?: string }>; colors: { bg: string; text: string; border: string } }> = {
-  info: { icon: Info, colors: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30' } },
-  warning: { icon: AlertTriangle, colors: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30' } },
-  critical: { icon: AlertCircle, colors: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' } }
+// Severity → editorial chip recipe. Critical = red, warning = amber, info = neutral hairline.
+const SEVERITY_CONFIG: Record<RecommendationSeverity, { icon: React.FC<{ className?: string }>; chip: string; text: string }> = {
+  info:     { icon: Info,          chip: 'border-ink-500 bg-ink-200 text-paper-muted', text: 'text-paper-muted' },
+  warning:  { icon: AlertTriangle, chip: 'border-amber-900/60 bg-amber-950/40 text-amber-300', text: 'text-amber-300' },
+  critical: { icon: AlertCircle,   chip: 'border-red-900/60 bg-red-950/40 text-red-300', text: 'text-red-300' },
 };
 
 export const RecommendationsCard: React.FC<RecommendationsCardProps> = ({ recommendations }) => {
   if (recommendations.length === 0) {
     return (
-      <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4">
+      <div className="rounded-xs border border-emerald-900/60 bg-emerald-950/30 p-4">
         <div className="flex items-center gap-2">
-          <Zap className="h-5 w-5 text-green-400" />
-          <h3 className="font-semibold text-zinc-200">No Issues Found</h3>
+          <Zap className="h-4 w-4 text-emerald-300" aria-hidden />
+          <h3 className="text-[14px] font-semibold tracking-tight text-paper">No issues found</h3>
         </div>
-        <p className="text-sm text-zinc-400 mt-2">
+        <p className="mt-2 text-[12px] text-paper-muted">
           The query looks optimized. No performance recommendations at this time.
         </p>
       </div>
@@ -151,35 +168,38 @@ export const RecommendationsCard: React.FC<RecommendationsCardProps> = ({ recomm
   });
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="rounded-xs border border-ink-500 bg-ink-100 p-4">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-yellow-400" />
-          <h3 className="font-semibold text-zinc-200">Performance Recommendations</h3>
+          <AlertTriangle className="h-4 w-4 text-paper-dim" aria-hidden />
+          <h3 className="text-[14px] font-semibold tracking-tight text-paper">Performance recommendations</h3>
         </div>
-        <span className="text-xs text-zinc-500">{recommendations.length} suggestion{recommendations.length !== 1 ? 's' : ''}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+          {recommendations.length} suggestion{recommendations.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {sortedRecommendations.map((rec) => {
           const config = SEVERITY_CONFIG[rec.severity];
           const Icon = config.icon;
 
           return (
-            <div key={rec.id} className={cn("rounded-lg border p-3", config.colors.border, config.colors.bg)}>
+            <div key={rec.id} className={cn("rounded-xs border p-3", config.chip.replace(/text-[a-z]+-\d+/, ''))}>
               <div className="flex items-start gap-3">
-                <Icon className={cn("h-4 w-4 mt-0.5 flex-shrink-0", config.colors.text)} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h4 className={cn("text-sm font-medium", config.colors.text)}>{rec.title}</h4>
-                    <span className={cn("text-[10px] uppercase px-1.5 py-0.5 rounded", config.colors.bg, config.colors.text, "border", config.colors.border)}>
+                <Icon className={cn("mt-0.5 h-3.5 w-3.5 flex-shrink-0", config.text)} aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className={cn("text-[13px] font-medium", config.text)}>{rec.title}</h4>
+                    <span className={cn("inline-flex items-center rounded-xs border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]", config.chip)}>
                       {rec.severity}
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-400 mt-1">{rec.description}</p>
+                  <p className="mt-1 text-[12px] text-paper-muted">{rec.description}</p>
                   {rec.suggestion && (
-                    <p className="text-xs text-zinc-300 mt-2 bg-black/20 rounded p-2 border border-white/5">
-                      💡 {rec.suggestion}
+                    <p className="mt-2 rounded-xs border border-ink-500 bg-ink-200 p-2 text-[12px] text-paper-muted">
+                      <span className="mr-1 text-brand">→</span>
+                      {rec.suggestion}
                     </p>
                   )}
                 </div>
@@ -203,7 +223,7 @@ interface QueryAnalysisViewProps {
 
 export const QueryAnalysisView: React.FC<QueryAnalysisViewProps> = ({ complexity, recommendations }) => {
   return (
-    <div className="h-full overflow-auto p-4 space-y-4">
+    <div className="h-full space-y-4 overflow-auto p-4">
       <ComplexityCard complexity={complexity} />
       <RecommendationsCard recommendations={recommendations} />
     </div>

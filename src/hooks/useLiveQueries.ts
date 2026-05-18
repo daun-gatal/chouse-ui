@@ -101,7 +101,19 @@ export function useKillQuery() {
 
 /**
  * Hook to get computed stats from live queries
+ *
+ * NOTE: ClickHouse serializes UInt64 fields (memory_usage, read_rows) as JSON
+ * strings to preserve precision past 2^53. If we let `acc + q.memory_usage` run
+ * with a string operand, JS coerces to string concatenation — four queries of
+ * 2.5 GB each end up as the literal "02500000000250000000025000000002500000000"
+ * instead of 10 GB. Coerce each field through Number() (which the toFinite
+ * helper below guards against NaN) before summing.
  */
+function toFinite(input: unknown): number {
+    const n = typeof input === 'number' ? input : Number(input);
+    return Number.isFinite(n) ? n : 0;
+}
+
 export function useLiveQueriesStats(data: LiveQueriesResponse | undefined) {
     if (!data || !data.queries.length) {
         return {
@@ -114,8 +126,8 @@ export function useLiveQueriesStats(data: LiveQueriesResponse | undefined) {
 
     return {
         totalQueries: data.queries.length,
-        longestRunning: Math.max(...data.queries.map(q => q.elapsed_seconds)),
-        totalMemory: data.queries.reduce((acc, q) => acc + q.memory_usage, 0),
-        totalReadRows: data.queries.reduce((acc, q) => acc + q.read_rows, 0),
+        longestRunning: Math.max(...data.queries.map(q => toFinite(q.elapsed_seconds))),
+        totalMemory: data.queries.reduce((acc, q) => acc + toFinite(q.memory_usage), 0),
+        totalReadRows: data.queries.reduce((acc, q) => acc + toFinite(q.read_rows), 0),
     };
 }

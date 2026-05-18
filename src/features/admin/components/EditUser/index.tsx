@@ -1,6 +1,6 @@
 /**
  * RBAC Edit User Component
- * 
+ *
  * Edits users through the RBAC system with role management.
  * No ClickHouse DDL is executed - user management is done through RBAC.
  */
@@ -19,7 +19,6 @@ import {
   Eye,
   EyeOff,
   Mail,
-  Clock,
   Copy,
   AlertCircle,
   Save,
@@ -29,14 +28,13 @@ import {
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { GlassCard, GlassCardContent, GlassCardHeader, GlassCardTitle } from "@/components/ui/glass-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
@@ -66,51 +64,35 @@ const ADMIN_ROLES = ['super_admin', 'admin'];
 // Roles that have pre-defined role-level data access rules (don't require user-level rules)
 const ROLES_WITH_PREDEFINED_RULES = ['guest'];
 
-// Role colors for display
-const ROLE_COLORS: Record<string, { icon: string; color: string; bgColor: string; borderColor: string }> = {
-  super_admin: {
-    icon: "👑",
-    color: "text-red-400",
-    bgColor: "bg-red-500/20",
-    borderColor: "border-red-500/50",
-  },
-  admin: {
-    icon: "🛡️",
-    color: "text-orange-400",
-    bgColor: "bg-orange-500/20",
-    borderColor: "border-orange-500/50",
-  },
-  developer: {
-    icon: "👨‍💻",
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/20",
-    borderColor: "border-blue-500/50",
-  },
-  analyst: {
-    icon: "📊",
-    color: "text-green-400",
-    bgColor: "bg-green-500/20",
-    borderColor: "border-green-500/50",
-  },
-  viewer: {
-    icon: "👁️",
-    color: "text-purple-400",
-    bgColor: "bg-purple-500/20",
-    borderColor: "border-purple-500/50",
-  },
-  guest: {
-    icon: "👋",
-    color: "text-cyan-400",
-    bgColor: "bg-cyan-500/20",
-    borderColor: "border-cyan-500/50",
-  },
+// Editorial: uniform hairline chrome for every role; identity is conveyed by
+// a 2-letter monospace code rather than per-role color theming.
+const ROLE_ICONS: Record<string, string> = {
+  super_admin: 'SA',
+  admin: 'AD',
+  developer: 'DV',
+  analyst: 'AN',
+  viewer: 'VW',
+  guest: 'GS',
 };
 
-// Password requirement indicator component
+const getRoleCode = (roleName: string) =>
+  ROLE_ICONS[roleName] || roleName.slice(0, 2).toUpperCase();
+
+// Password requirement indicator (editorial)
 const RequirementItem = ({ fulfilled, label }: { fulfilled: boolean; label: string }) => (
-  <div className={`flex items-center gap-2 text-xs transition-colors duration-200 ${fulfilled ? "text-green-400" : "text-gray-500"}`}>
-    <div className={`w-4 h-4 rounded-full flex items-center justify-center border ${fulfilled ? "bg-green-500/10 border-green-500/50" : "border-gray-700 bg-gray-800"}`}>
-      {fulfilled ? <Check className="w-2.5 h-2.5" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+  <div
+    className={cn(
+      "flex items-center gap-2 text-[11px] transition-colors",
+      fulfilled ? "text-emerald-300" : "text-paper-faint"
+    )}
+  >
+    <div
+      className={cn(
+        "flex h-3 w-3 items-center justify-center rounded-full border",
+        fulfilled ? "border-emerald-700 bg-emerald-950/40" : "border-ink-500 bg-ink-200"
+      )}
+    >
+      {fulfilled ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
     </div>
     <span>{label}</span>
   </div>
@@ -361,40 +343,36 @@ const EditUser: React.FC = () => {
   // Get role display info
   const getRoleDisplay = (roleName: string) => {
     const role = roles.find((r) => r.name === roleName);
-    const colors = ROLE_COLORS[roleName] || {
-      icon: "🔐",
-      color: "text-gray-400",
-      bgColor: "bg-gray-500/20",
-      borderColor: "border-gray-500/50",
-    };
     return {
       displayName: role?.displayName || roleName,
-      ...colors,
+      code: getRoleCode(roleName),
     };
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-paper-dim" />
       </div>
     );
   }
 
   if (error || !user) {
     return (
-      <div className="container mx-auto p-6 max-w-lg">
-        <GlassCard>
-          <GlassCardContent className="py-12 text-center">
-            <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-white mb-2">Error Loading User</h2>
-            <p className="text-gray-400 mb-6">{error || "User not found"}</p>
-            <Button onClick={() => navigate("/admin")}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Users
-            </Button>
-          </GlassCardContent>
-        </GlassCard>
+      <div className="container mx-auto max-w-lg p-6">
+        <div className="rounded-xs border border-ink-500 bg-ink-100 px-6 py-12 text-center">
+          <AlertTriangle className="mx-auto mb-4 h-8 w-8 text-red-300" aria-hidden />
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Error loading user</h2>
+          <p className="mt-2 text-[12px] text-paper-muted">{error || "User not found"}</p>
+          <Button
+            onClick={() => navigate("/admin")}
+            className="mt-6 h-9 gap-2 rounded-xs border-ink-500 bg-ink-200 px-3 text-paper hover:border-ink-700 hover:bg-ink-300"
+            variant="outline"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to users
+          </Button>
+        </div>
       </div>
     );
   }
@@ -403,23 +381,31 @@ const EditUser: React.FC = () => {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="container mx-auto p-6 space-y-6 max-w-4xl"
+      className="container mx-auto max-w-4xl space-y-6 p-6"
     >
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
-            <ArrowLeft className="h-5 w-5" />
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/admin")}
+            className="h-9 w-9 rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
+            aria-label="Back to admin"
+          >
+            <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex items-center gap-3">
-            <UserCog className="h-6 w-6 text-blue-400" />
-            <div>
-              <h1 className="text-2xl font-bold text-white">Edit User</h1>
-              <p className="text-gray-400 text-sm">
-                @{user.username}
-                {isCurrentUser && <span className="text-purple-400 ml-2">(You)</span>}
-              </p>
-            </div>
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+            <UserCog className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-semibold tracking-tight text-paper">Edit user</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              @{user.username}
+              {isCurrentUser && (
+                <span className="ml-2 text-brand">(you)</span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -427,33 +413,41 @@ const EditUser: React.FC = () => {
           {canDeleteUsers && !isCurrentUser && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm" className="gap-2">
-                  <Trash2 className="h-4 w-4" />
+                <Button
+                  size="sm"
+                  className="h-9 gap-2 rounded-xs border border-red-900/60 bg-red-950/40 px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-red-200 hover:bg-red-950/60"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
                   Delete
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent>
+              <AlertDialogContent className="rounded-xs border-ink-500 bg-ink-100">
                 <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-red-500" />
-                    Delete User
+                  <AlertDialogTitle className="flex items-center gap-2 text-paper">
+                    <AlertTriangle className="h-4 w-4 text-red-300" />
+                    Delete user
                   </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete user <strong>{user.username}</strong>? This action
+                  <AlertDialogDescription className="text-paper-muted">
+                    Are you sure you want to delete user <strong className="text-paper">{user.username}</strong>? This action
                     cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel
+                    disabled={isDeleting}
+                    className="h-9 rounded-xs border-ink-500 bg-ink-200 text-paper hover:border-ink-700 hover:bg-ink-300"
+                  >
+                    Cancel
+                  </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDelete}
-                    className="bg-red-600 hover:bg-red-700"
+                    className="h-9 rounded-xs border border-red-900/60 bg-red-950/40 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-red-200 hover:bg-red-950/60"
                     disabled={isDeleting}
                   >
                     {isDeleting ? (
                       <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Deleting...
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        Deleting…
                       </>
                     ) : (
                       "Delete"
@@ -466,187 +460,194 @@ const EditUser: React.FC = () => {
         </div>
       </div>
 
-      {/* User Info Card */}
-      <GlassCard>
-        <GlassCardHeader>
-          <GlassCardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-purple-400" />
-            User Information
-          </GlassCardTitle>
-        </GlassCardHeader>
-        <GlassCardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-3 rounded-lg bg-white/5">
-              <div className="text-xs text-gray-400 mb-1">Status</div>
-              <div className="flex items-center gap-2">
-                {user.isActive ? (
-                  <>
-                    <UserCheck className="h-4 w-4 text-green-400" />
-                    <span className="text-green-400 font-medium">Active</span>
-                  </>
-                ) : (
-                  <>
-                    <UserX className="h-4 w-4 text-red-400" />
-                    <span className="text-red-400 font-medium">Inactive</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-white/5">
-              <div className="text-xs text-gray-400 mb-1">Created</div>
-              <div className="text-white font-medium">
-                {format(new Date(user.createdAt), "MMM d, yyyy")}
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-white/5">
-              <div className="text-xs text-gray-400 mb-1">Last Login</div>
-              <div className="text-white font-medium">
-                {user.lastLoginAt
-                  ? formatDistanceToNow(new Date(user.lastLoginAt), { addSuffix: true })
-                  : "Never"}
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-white/5">
-              <div className="text-xs text-gray-400 mb-1">Roles</div>
-              <div className="flex flex-wrap gap-1">
-                {user.roles.map((role) => {
-                  const display = getRoleDisplay(role);
-                  return (
-                    <Badge
-                      key={role}
-                      variant="outline"
-                      className={`${display.bgColor} ${display.color} border text-xs`}
-                    >
-                      {display.displayName}
-                    </Badge>
-                  );
-                })}
-              </div>
+      {/* User Info — hairline editorial grid */}
+      <div>
+        <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+          <span className="h-px w-6 bg-ink-700" />
+          <span>User information</span>
+        </span>
+        <div className="mt-3 grid grid-cols-2 border-l border-t border-ink-500 md:grid-cols-4">
+          {/* Status */}
+          <div className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">Status</span>
+            <div className="flex items-center gap-2">
+              {user.isActive ? (
+                <>
+                  <UserCheck className="h-3.5 w-3.5 text-emerald-300" aria-hidden />
+                  <span className="text-[13px] font-medium text-emerald-300">Active</span>
+                </>
+              ) : (
+                <>
+                  <UserX className="h-3.5 w-3.5 text-red-300" aria-hidden />
+                  <span className="text-[13px] font-medium text-red-300">Inactive</span>
+                </>
+              )}
             </div>
           </div>
-        </GlassCardContent>
-      </GlassCard>
+
+          {/* Created */}
+          <div className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">Created</span>
+            <span className="text-[13px] font-medium text-paper">
+              {format(new Date(user.createdAt), "MMM d, yyyy")}
+            </span>
+          </div>
+
+          {/* Last login */}
+          <div className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">Last login</span>
+            <span className="text-[13px] font-medium text-paper">
+              {user.lastLoginAt
+                ? formatDistanceToNow(new Date(user.lastLoginAt), { addSuffix: true })
+                : "Never"}
+            </span>
+          </div>
+
+          {/* Roles */}
+          <div className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">Roles</span>
+            <div className="flex flex-wrap gap-1">
+              {user.roles.map((role) => {
+                const display = getRoleDisplay(role);
+                return (
+                  <span
+                    key={role}
+                    className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted"
+                  >
+                    <span className="font-semibold text-paper">{display.code}</span>
+                    <span>{display.displayName}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Tabs */}
       <Tabs defaultValue="details" className="space-y-6">
-        <TabsList className="bg-white/5 border border-white/10 p-1">
-          <TabsTrigger value="details" className="data-[state=active]:bg-blue-500/20">
-            <UserCog className="h-4 w-4 mr-2" />
+        <TabsList className="rounded-xs border border-ink-500 bg-ink-100 p-1">
+          <TabsTrigger
+            value="details"
+            className="rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-200 data-[state=active]:text-paper"
+          >
+            <UserCog className="mr-2 h-3.5 w-3.5" />
             Details
           </TabsTrigger>
-          <TabsTrigger value="roles" className="data-[state=active]:bg-purple-500/20">
-            <Shield className="h-4 w-4 mr-2" />
+          <TabsTrigger
+            value="roles"
+            className="rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-200 data-[state=active]:text-paper"
+          >
+            <Shield className="mr-2 h-3.5 w-3.5" />
             Roles
           </TabsTrigger>
           {showDataAccessUI && (
             <TabsTrigger
               value="data-access"
-              className={`data-[state=active]:bg-cyan-500/20 ${requiresDataAccess && !dataAccessValid ? "text-red-400" : ""}`}
+              className={cn(
+                "rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                requiresDataAccess && !dataAccessValid && "text-red-300 data-[state=active]:text-red-200"
+              )}
             >
-              <Database className="h-4 w-4 mr-2" />
-              Data Access
+              <Database className="mr-2 h-3.5 w-3.5" />
+              Data access
               {requiresDataAccess && !dataAccessValid && (
-                <span className="ml-1 text-red-400">*</span>
+                <span className="ml-1 text-red-300">*</span>
               )}
             </TabsTrigger>
           )}
-          <TabsTrigger value="security" className="data-[state=active]:bg-yellow-500/20">
-            <Key className="h-4 w-4 mr-2" />
+          <TabsTrigger
+            value="security"
+            className="rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-200 data-[state=active]:text-paper"
+          >
+            <Key className="mr-2 h-3.5 w-3.5" />
             Security
           </TabsTrigger>
         </TabsList>
 
         {/* Details Tab */}
         <TabsContent value="details">
-          <GlassCard>
-            <GlassCardHeader>
-              <GlassCardTitle className="flex items-center gap-2">
-                <UserCog className="h-5 w-5 text-blue-400" />
-                User Details
-              </GlassCardTitle>
-            </GlassCardHeader>
-            <GlassCardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xs border border-ink-500 bg-ink-100">
+            <div className="flex items-center gap-2 border-b border-ink-500 px-4 py-3">
+              <UserCog className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+              <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">User details</h3>
+            </div>
+            <div className="space-y-4 p-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label className="text-white">Email</Label>
+                  <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Email</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-paper-dim" />
                     <Input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="bg-white/5 border-white/10 pl-10"
+                      className="rounded-xs border-ink-500 bg-ink-200 pl-9 text-paper"
                       disabled={!canUpdateUsers}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-white">Username</Label>
+                  <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Username</Label>
                   <Input
                     value={username}
                     onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-                    className="bg-white/5 border-white/10"
+                    className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                     disabled={!canUpdateUsers}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-white">Display Name</Label>
+                  <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Display name</Label>
                   <Input
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="John Doe"
-                    className="bg-white/5 border-white/10"
+                    className="rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint"
                     disabled={!canUpdateUsers}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-white">Status</Label>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                  <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Status</Label>
+                  <div className="flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
                     <Switch
                       checked={isActive}
                       onCheckedChange={setIsActive}
                       disabled={!canUpdateUsers || isCurrentUser}
                     />
-                    <span className={isActive ? "text-green-400" : "text-red-400"}>
+                    <span className={cn("text-[13px] font-medium", isActive ? "text-emerald-300" : "text-red-300")}>
                       {isActive ? "Active" : "Inactive"}
                     </span>
                     {isCurrentUser && (
-                      <span className="text-xs text-gray-500">(Cannot deactivate yourself)</span>
+                      <span className="text-[11px] text-paper-faint">(Cannot deactivate yourself)</span>
                     )}
                   </div>
                 </div>
               </div>
-            </GlassCardContent>
-          </GlassCard>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Roles Tab */}
         <TabsContent value="roles">
-          <GlassCard>
-            <GlassCardHeader>
-              <GlassCardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-purple-400" />
-                Role Assignment
-              </GlassCardTitle>
-            </GlassCardHeader>
-            <GlassCardContent className="space-y-4">
+          <div className="rounded-xs border border-ink-500 bg-ink-100">
+            <div className="flex items-center gap-2 border-b border-ink-500 px-4 py-3">
+              <Shield className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+              <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Role assignment</h3>
+            </div>
+            <div className="space-y-4 p-4">
               {!canAssignRoles && (
-                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-400">
-                  You don't have permission to modify roles.
+                <div className="rounded-xs border border-amber-900/60 bg-amber-950/40 p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300">No permission</p>
+                  <p className="mt-1 text-[12px] text-amber-200">You don't have permission to modify roles.</p>
                 </div>
               )}
 
               <div className="space-y-3">
                 {roles.map((role) => {
-                  const colors = ROLE_COLORS[role.name] || {
-                    icon: "🔐",
-                    color: "text-gray-400",
-                    bgColor: "bg-gray-500/20",
-                    borderColor: "border-gray-500/50",
-                  };
+                  const code = getRoleCode(role.name);
                   const isSelected = selectedRoles.includes(role.id);
 
                   return (
@@ -655,48 +656,64 @@ const EditUser: React.FC = () => {
                       type="button"
                       onClick={() => toggleRole(role.id)}
                       disabled={!canAssignRoles}
-                      className={`w-full p-4 rounded-lg border-2 transition-all text-left ${isSelected
-                        ? `${colors.bgColor} ${colors.borderColor}`
-                        : "bg-white/5 border-white/10 hover:bg-white/10"
-                        } ${!canAssignRoles && "opacity-50 cursor-not-allowed"}`}
+                      className={cn(
+                        "w-full rounded-xs border p-4 text-left transition-all",
+                        isSelected
+                          ? "border-brand/60 bg-ink-200"
+                          : "border-ink-500 bg-ink-100 hover:border-ink-700",
+                        !canAssignRoles && "cursor-not-allowed opacity-50"
+                      )}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="text-2xl">{colors.icon}</div>
+                        <span
+                          className={cn(
+                            "grid h-9 w-9 shrink-0 place-items-center rounded-xs border font-mono text-[11px] font-semibold uppercase tracking-[0.14em]",
+                            isSelected
+                              ? "border-brand/60 bg-brand/10 text-brand"
+                              : "border-ink-500 bg-ink-200 text-paper-muted"
+                          )}
+                        >
+                          {code}
+                        </span>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className={`font-semibold ${isSelected ? colors.color : "text-white"}`}>
+                            <span className="text-[13px] font-semibold text-paper">
                               {role.displayName}
                             </span>
                             {role.isDefault && (
-                              <span className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                                 Default
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-400 mt-1">{role.description}</p>
-                          <div className="flex flex-wrap gap-1 mt-2">
+                          <p className="mt-1 text-[12px] text-paper-muted">{role.description}</p>
+                          <div className="mt-2 flex flex-wrap gap-1">
                             {role.permissions.slice(0, 5).map((perm) => (
                               <span
                                 key={perm}
-                                className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-gray-300"
+                                className="inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted"
                               >
                                 {perm}
                               </span>
                             ))}
                             {role.permissions.length > 5 && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-white/10 text-gray-400">
+                              <span className="inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-faint">
                                 +{role.permissions.length - 5} more
                               </span>
                             )}
                           </div>
                         </div>
                         <div className="shrink-0">
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected
-                            ? 'border-cyan-400 bg-cyan-400'
-                            : 'border-gray-500 bg-transparent'
-                            }`}>
+                          <div
+                            className={cn(
+                              "flex h-5 w-5 items-center justify-center rounded-full border-2",
+                              isSelected
+                                ? "border-brand bg-brand"
+                                : "border-ink-700 bg-transparent"
+                            )}
+                          >
                             {isSelected && (
-                              <div className="w-2.5 h-2.5 rounded-full bg-white" />
+                              <Check className="h-3 w-3 text-ink-50" />
                             )}
                           </div>
                         </div>
@@ -707,49 +724,66 @@ const EditUser: React.FC = () => {
               </div>
 
               {selectedRoles.length === 0 && (
-                <p className="text-sm text-amber-400">⚠️ User must have a role</p>
+                <div className="flex items-center gap-2 rounded-xs border border-amber-900/60 bg-amber-950/40 px-3 py-2">
+                  <AlertCircle className="h-3.5 w-3.5 text-amber-300" aria-hidden />
+                  <p className="text-[12px] text-amber-200">User must have a role.</p>
+                </div>
               )}
-            </GlassCardContent>
-          </GlassCard>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Data Access Tab */}
         {showDataAccessUI && (
           <TabsContent value="data-access">
-            <GlassCard className={requiresDataAccess && !dataAccessValid ? "border-red-500/50" : ""}>
-              <GlassCardHeader>
-                <GlassCardTitle className="flex items-center gap-2">
-                  <Database className={`h-5 w-5 ${requiresDataAccess && !dataAccessValid ? "text-red-400" : "text-cyan-400"}`} />
-                  Database & Table Access
+            <div
+              className={cn(
+                "rounded-xs border bg-ink-100",
+                requiresDataAccess && !dataAccessValid ? "border-red-900/60" : "border-ink-500"
+              )}
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-ink-500 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <Database
+                    className={cn(
+                      "h-3.5 w-3.5",
+                      requiresDataAccess && !dataAccessValid ? "text-red-300" : "text-paper-dim"
+                    )}
+                    aria-hidden
+                  />
+                  <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Database &amp; table access</h3>
                   {requiresDataAccess && (
-                    <span className="text-red-400 text-xs">*</span>
+                    <span className="text-[11px] text-red-300">*</span>
                   )}
+                </div>
+                <div className="flex items-center gap-2">
                   {dataAccessRulesCount > 0 && (
-                    <Badge variant="secondary" className="ml-2">
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
                       {dataAccessRulesCount} rule{dataAccessRulesCount !== 1 ? 's' : ''}
-                    </Badge>
+                    </span>
                   )}
                   {requiresDataAccess && !dataAccessValid && (
-                    <Badge variant="destructive" className="ml-2 text-xs">
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
                       Required
-                    </Badge>
+                    </span>
                   )}
-                </GlassCardTitle>
-              </GlassCardHeader>
-              <GlassCardContent>
+                </div>
+              </div>
+              <div className="p-4">
                 {requiresDataAccess && !dataAccessValid ? (
-                  <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <div className="mb-4 flex items-start gap-2 rounded-xs border border-red-900/60 bg-red-950/40 p-3">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-300" aria-hidden />
                     <div>
-                      <p className="font-medium">Data access rules required</p>
-                      <p className="text-xs text-red-400/80 mt-1">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Data access rules required</p>
+                      <p className="mt-1 text-[12px] text-red-200">
                         Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
                       </p>
                     </div>
                   </div>
                 ) : (
-                  <div className="mb-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-300">
-                    <p>
+                  <div className="mb-4 rounded-xs border border-ink-500 bg-ink-200 p-3">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">About data access</p>
+                    <p className="mt-1 text-[12px] text-paper-muted">
                       These rules define which databases and tables this user can access.
                       User-specific rules supplement the permissions from assigned roles.
                     </p>
@@ -761,27 +795,25 @@ const EditUser: React.FC = () => {
                   canEdit={canUpdateUsers}
                   onRulesChange={(count) => setDataAccessRulesCount(count)}
                 />
-              </GlassCardContent>
-            </GlassCard>
+              </div>
+            </div>
           </TabsContent>
         )}
 
         {/* Security Tab */}
         <TabsContent value="security">
-          <GlassCard>
-            <GlassCardHeader>
-              <GlassCardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5 text-yellow-400" />
-                Security
-              </GlassCardTitle>
-            </GlassCardHeader>
-            <GlassCardContent className="space-y-6">
+          <div className="rounded-xs border border-ink-500 bg-ink-100">
+            <div className="flex items-center gap-2 border-b border-ink-500 px-4 py-3">
+              <Key className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+              <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Security</h3>
+            </div>
+            <div className="space-y-4 p-4">
               {/* Password Reset */}
-              <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-                <div className="flex items-center justify-between">
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-4">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-medium text-white">Password</h3>
-                    <p className="text-sm text-gray-400">Reset the user's password</p>
+                    <h4 className="text-[13px] font-semibold text-paper">Password</h4>
+                    <p className="mt-1 text-[12px] text-paper-muted">Reset the user's password.</p>
                   </div>
                   {canUpdateUsers && (
                     <Button
@@ -793,25 +825,26 @@ const EditUser: React.FC = () => {
                         setConfirmPassword("");
                         setUseGeneratedPassword(true);
                       }}
+                      className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-300"
                     >
-                      <Key className="h-4 w-4 mr-2" />
-                      Reset Password
+                      <Key className="h-3.5 w-3.5" />
+                      Reset password
                     </Button>
                   )}
                 </div>
               </div>
 
               {/* Permissions Summary */}
-              <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-                <h3 className="font-medium text-white mb-3">Effective Permissions</h3>
-                <div className="flex flex-wrap gap-2">
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-4">
+                <h4 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Effective permissions</h4>
+                <div className="flex flex-wrap gap-1.5">
                   {user.permissions.length === 0 ? (
-                    <span className="text-sm text-gray-500 italic">No permissions</span>
+                    <span className="text-[12px] italic text-paper-faint">No permissions</span>
                   ) : (
                     user.permissions.map((perm) => (
                       <span
                         key={perm}
-                        className="px-2 py-1 rounded text-xs bg-white/10 text-gray-300 border border-white/10"
+                        className="inline-flex items-center rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted"
                       >
                         {perm}
                       </span>
@@ -819,47 +852,50 @@ const EditUser: React.FC = () => {
                   )}
                 </div>
               </div>
-            </GlassCardContent>
-          </GlassCard>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 
       {/* Save Button */}
       {canUpdateUsers && (
-        <div className="flex items-center justify-between pt-6 border-t border-white/10">
-          <div>
+        <div className="flex items-center justify-between border-t border-ink-500 pt-6">
+          <div className="flex flex-col gap-1">
             {hasChanges && (
-              <span className="text-sm text-amber-400 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
+              <span className="flex items-center gap-2 text-[12px] text-amber-300">
+                <AlertCircle className="h-3.5 w-3.5" />
                 You have unsaved changes
               </span>
             )}
             {requiresDataAccess && !dataAccessValid && (
-              <span className="text-sm text-red-400 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
+              <span className="flex items-center gap-2 text-[12px] text-red-300">
+                <AlertCircle className="h-3.5 w-3.5" />
                 Data access rules required for non-admin roles
               </span>
             )}
           </div>
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => navigate("/admin")}>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate("/admin")}
+              className="h-9 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-200"
+            >
               Cancel
             </Button>
             <Button
-              variant="outline"
               onClick={handleSave}
               disabled={!hasChanges || isSaving || selectedRoles.length === 0 || !dataAccessValid}
-              className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+              className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
             >
               {isSaving ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Saving…
                 </>
               ) : (
                 <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Changes
+                  <Save className="h-3.5 w-3.5" />
+                  Save changes
                 </>
               )}
             </Button>
@@ -869,23 +905,23 @@ const EditUser: React.FC = () => {
 
       {/* Reset Password Dialog */}
       <Dialog open={showResetPasswordDialog} onOpenChange={setShowResetPasswordDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-xs border-ink-500 bg-ink-100">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5 text-yellow-500" />
-              Reset Password
+            <DialogTitle className="flex items-center gap-2 text-paper">
+              <Key className="h-4 w-4 text-paper-dim" aria-hidden />
+              Reset password
             </DialogTitle>
-            <DialogDescription>
-              Reset the password for user <strong>{user.username}</strong>.
+            <DialogDescription className="text-paper-muted">
+              Reset the password for user <strong className="text-paper">{user.username}</strong>.
             </DialogDescription>
           </DialogHeader>
 
           {generatedPassword ? (
             <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-                <p className="text-sm text-green-300 mb-2">Password reset successfully!</p>
+              <div className="rounded-xs border border-emerald-900/60 bg-emerald-950/40 p-4">
+                <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">Password reset successfully</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm break-all">
+                  <code className="flex-1 rounded-xs border border-ink-500 bg-ink-100 p-2 font-mono text-[12px] text-paper break-all">
                     {generatedPassword}
                   </code>
                   <Button
@@ -893,27 +929,32 @@ const EditUser: React.FC = () => {
                     size="sm"
                     variant="outline"
                     onClick={copyPassword}
+                    className="h-8 rounded-xs border-ink-500 bg-ink-200 text-paper hover:border-ink-700 hover:bg-ink-300"
+                    aria-label="Copy password"
                   >
-                    <Copy className="h-4 w-4" />
+                    <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="mt-2 text-[11px] text-emerald-200/80">
                   Save this password securely. It won't be shown again.
                 </p>
               </div>
-              <Button onClick={() => setShowResetPasswordDialog(false)} className="w-full">
+              <Button
+                onClick={() => setShowResetPasswordDialog(false)}
+                className="h-9 w-full rounded-xs bg-brand font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
+              >
                 Done
               </Button>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+              <div className="flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
                 <Checkbox
                   id="use-generated"
                   checked={useGeneratedPassword}
                   onCheckedChange={(checked) => setUseGeneratedPassword(!!checked)}
                 />
-                <Label htmlFor="use-generated" className="text-white cursor-pointer">
+                <Label htmlFor="use-generated" className="cursor-pointer text-[13px] text-paper">
                   Generate a secure password automatically
                 </Label>
               </div>
@@ -921,7 +962,7 @@ const EditUser: React.FC = () => {
               {!useGeneratedPassword && (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-white">New Password</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">New password</Label>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <Input
@@ -929,38 +970,44 @@ const EditUser: React.FC = () => {
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder="Enter new password"
-                          className="bg-white/5 border-white/10 pr-10"
+                          className="rounded-xs border-ink-500 bg-ink-200 pr-10 text-paper placeholder:text-paper-faint"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-paper-dim hover:text-paper"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
                         >
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
-                      <Button type="button" variant="outline" onClick={handleGeneratePasswordManually}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleGeneratePasswordManually}
+                        className="h-9 shrink-0 rounded-xs border-ink-500 bg-ink-200 text-paper hover:border-ink-700 hover:bg-ink-300"
+                      >
                         Generate
                       </Button>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-white">Confirm Password</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Confirm password</Label>
                     <Input
                       type={showPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Confirm password"
-                      className="bg-white/5 border-white/10"
+                      className="rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint"
                     />
                     {confirmPassword && !passwordsMatch && (
-                      <p className="text-xs text-red-400">Passwords do not match</p>
+                      <p className="text-[11px] text-red-300">Passwords do not match.</p>
                     )}
                   </div>
 
-                  <div className="p-3 rounded-lg bg-white/5 border border-white/10">
-                    <p className="text-xs text-gray-400 mb-2">Requirements:</p>
+                  <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                    <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Requirements</p>
                     <div className="grid grid-cols-2 gap-1">
                       <RequirementItem fulfilled={passwordReqs.length} label="12+ characters" />
                       <RequirementItem fulfilled={passwordReqs.upper} label="Uppercase" />
@@ -977,22 +1024,22 @@ const EditUser: React.FC = () => {
                   variant="outline"
                   onClick={() => setShowResetPasswordDialog(false)}
                   disabled={isResettingPassword}
-                  className="flex-1"
+                  className="h-9 flex-1 rounded-xs border-ink-500 bg-ink-200 text-paper hover:border-ink-700 hover:bg-ink-300"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleResetPassword}
                   disabled={isResettingPassword || (!useGeneratedPassword && (!isPasswordValid || !passwordsMatch))}
-                  className="flex-1"
+                  className="h-9 flex-1 gap-2 rounded-xs bg-brand font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
                 >
                   {isResettingPassword ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Resetting...
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Resetting…
                     </>
                   ) : (
-                    "Reset Password"
+                    "Reset password"
                   )}
                 </Button>
               </div>

@@ -624,95 +624,90 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
     ? "Create a new copy of this query with a different name:"
     : (tab?.isSaved ? "Update the saved query name:" : "Enter a name for this query:");
 
-  // Render save status indicator
+  // Render save status indicator — editorial mono pill, semantic dot
   const renderSaveStatus = () => {
     if (!tab.isSaved) return null;
 
-    switch (saveStatus) {
-      case "saving":
-        return (
-          <span className="flex items-center gap-1 text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded animate-pulse">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Saving...
-          </span>
-        );
-      case "saved":
-        return (
-          <span className="flex items-center gap-1 text-[10px] text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-            <Check className="h-3 w-3" />
-            Saved
-          </span>
-        );
-      case "unsaved":
-        return (
-          <span className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
-            <Cloud className="h-3 w-3" />
-            Unsaved
-          </span>
-        );
-      default:
-        return (
-          <span className="flex items-center gap-1 text-[10px] text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">
-            <Cloud className="h-3 w-3" />
-            Synced
-          </span>
-        );
-    }
+    const statusMap: Record<SaveStatus, { dot: string; label: string; icon: React.ReactNode }> = {
+      saving: { dot: "bg-blue-400", label: "Saving", icon: <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> },
+      saved: { dot: "bg-emerald-400", label: "Saved", icon: <Check className="h-3 w-3" aria-hidden /> },
+      unsaved: { dot: "bg-brand", label: "Unsaved", icon: <Cloud className="h-3 w-3" aria-hidden /> },
+      idle: { dot: "bg-paper-faint", label: "Synced", icon: <Cloud className="h-3 w-3" aria-hidden /> },
+    };
+    const s = statusMap[saveStatus];
+
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+        <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden />
+        {s.label}
+      </span>
+    );
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#14141a]">
-      <div className="px-4 py-2 flex items-center justify-between border-b border-white/5 bg-white/5 backdrop-blur-md sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-              <FileCode className="h-4 w-4" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider leading-none mb-1">Editor</span>
-              <span className="text-sm font-semibold truncate max-w-[200px] leading-none">
+    <div className="flex h-full flex-col bg-ink-50">
+      <div className="sticky top-0 z-10 flex flex-none items-center justify-between border-b border-ink-500 bg-ink-100 px-3 py-2">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+              <FileCode className="h-3.5 w-3.5" aria-hidden />
+            </span>
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint leading-none">
+                Editor
+              </span>
+              <span className="truncate max-w-[260px] font-mono text-[13px] text-paper leading-none">
                 {tab.title}
               </span>
             </div>
           </div>
-          <Separator orientation="vertical" className="h-6 mx-1" />
-          {renderSaveStatus()}
+          {tab.isSaved && (
+            <>
+              <span className="h-5 w-px bg-ink-500" aria-hidden />
+              {renderSaveStatus()}
+            </>
+          )}
         </div>
 
         {onOpenShortcuts && (
           <button
+            type="button"
             onClick={onOpenShortcuts}
-            className="p-2 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-white/10 transition-colors"
+            className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
             title="Keyboard shortcuts"
+            aria-label="Keyboard shortcuts"
           >
-            <Keyboard className="h-4 w-4" />
+            <Keyboard className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
       <div ref={editorRef} className="flex-1" />
 
-      {/* Save Query Dialog */}
+      {/* Save query dialog */}
       <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="overflow-hidden rounded-md border-ink-500 bg-ink-100 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{dialogTitle}</DialogTitle>
-            <DialogDescription>{dialogDescription}</DialogDescription>
+            <DialogTitle className="text-paper">{dialogTitle}</DialogTitle>
+            <DialogDescription className="text-paper-muted">{dialogDescription}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2">
             <Input
               type="text"
-              placeholder="Query Name"
+              placeholder="Query name"
               value={queryName}
               onChange={handleQueryNameChange}
               onKeyDown={handleQueryNameKeyDown}
               autoFocus
-              className={cn(isDuplicateName && "border-amber-500 focus-visible:ring-amber-500")}
+              className={cn(
+                "h-10 rounded-xs border-ink-500 bg-ink-200 font-mono text-[13px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0",
+                isDuplicateName && "border-brand focus-visible:border-brand"
+              )}
             />
 
             {isDuplicateName && (
-              <div className="flex items-start gap-2 text-amber-500 text-sm">
-                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <div className="flex items-start gap-2 rounded-xs border border-brand/30 bg-brand/[0.04] p-3 text-[13px] text-paper-muted">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
                 <span>
                   A query with this name already exists.
                   {saveMode === "save-as" && " A new copy will be created."}
@@ -722,14 +717,15 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)} className="rounded-xs border-ink-500 bg-transparent text-paper hover:border-ink-700 hover:bg-ink-200">
               Cancel
             </Button>
             <Button
               onClick={handleSaveQuery}
               disabled={!queryName.trim() || isSaving}
+              className="rounded-xs bg-brand text-ink-50 hover:bg-brand-soft disabled:opacity-60"
             >
-              {isSaving ? "Saving..." : (saveMode === "save-as" ? "Save As New" : "Save")}
+              {isSaving ? "Saving…" : saveMode === "save-as" ? "Save as new" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -737,24 +733,26 @@ const SQLEditor = React.forwardRef<SqlEditorHandle, SQLEditorProps>(function SQL
 
 
 
-      {/* Kill Query Confirmation Dialog */}
+      {/* Kill query confirmation */}
       <AlertDialog open={isKillDialogOpen} onOpenChange={setIsKillDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-md border-ink-500 bg-ink-100">
           <AlertDialogHeader>
-            <AlertDialogTitle>Stop Query Execution?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-paper">Stop query execution?</AlertDialogTitle>
+            <AlertDialogDescription className="text-paper-muted">
               This will attempt to terminate the currently running query on the ClickHouse server.
               Any partial results may be lost.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="rounded-xs border-ink-500 bg-transparent text-paper hover:border-ink-700 hover:bg-ink-200">
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleKillQuery}
               disabled={killQueryMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="rounded-xs bg-red-600 text-paper hover:bg-red-500"
             >
-              {killQueryMutation.isPending ? "Stopping..." : "Stop Query"}
+              {killQueryMutation.isPending ? "Stopping…" : "Stop query"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

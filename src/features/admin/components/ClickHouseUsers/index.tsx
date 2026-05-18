@@ -683,15 +683,20 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[800px] bg-gray-900 border-gray-800 h-[90vh] overflow-hidden flex flex-col p-0">
-        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-800">
-          <DialogTitle className="text-white flex items-center gap-2 text-xl">
-            <div className="p-2 rounded-lg bg-purple-500/20">
-              <Users className="w-5 h-5 text-purple-400" />
-            </div>
-            {isEditing ? 'Edit ClickHouse User' : 'Create ClickHouse User'}
+      <DialogContent className="sm:max-w-[800px] h-[90vh] overflow-hidden flex flex-col p-0 rounded-xs border-ink-500 bg-ink-100">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-ink-500">
+          <DialogTitle className="flex items-center gap-3 text-paper">
+            <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+              <Users className="h-4 w-4" aria-hidden />
+            </span>
+            <span className="flex flex-col gap-0.5 text-left">
+              <span className="text-[16px] font-semibold tracking-tight">{isEditing ? 'Edit ClickHouse user' : 'Create ClickHouse user'}</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                {isEditing ? 'Update configuration' : 'Role-based access control'}
+              </span>
+            </span>
           </DialogTitle>
-          <DialogDescription className="text-gray-400 mt-2">
+          <DialogDescription className="mt-2 text-paper-muted">
             {isEditing
               ? 'Update the ClickHouse user configuration.'
               : 'Create a new ClickHouse database user with role-based access control.'}
@@ -699,19 +704,19 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
         </DialogHeader>
 
         {/* Progress Indicator */}
-        <div className="py-6 px-6 flex-shrink-0 border-b border-gray-800">
+        <div className="py-6 px-6 flex-shrink-0 border-b border-ink-500">
           <div className="flex items-center justify-between relative">
             {/* Progress Line */}
-            <div className="absolute top-5 left-0 right-0 h-0.5 bg-gray-800 -z-10">
+            <div className="absolute top-5 left-0 right-0 h-px bg-ink-500 -z-10">
               <motion.div
-                className="h-full bg-gradient-to-r from-purple-500 to-blue-500"
+                className="h-full bg-brand"
                 initial={{ width: '0%' }}
                 animate={{ width: `${((step - 1) / 3) * 100}%` }}
                 transition={{ duration: 0.3 }}
               />
             </div>
 
-            {steps.map((s, idx) => {
+            {steps.map((s) => {
               const isActive = step === s.number;
               const isCompleted = step > s.number;
               const Icon = s.icon;
@@ -719,22 +724,22 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
               return (
                 <div key={s.number} className="flex flex-col items-center flex-1 relative">
                   <motion.div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${isCompleted
-                      ? 'bg-gradient-to-br from-purple-500 to-blue-500 border-purple-500 text-white'
+                    className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all ${isCompleted
+                      ? 'bg-brand border-brand text-ink-50'
                       : isActive
-                        ? 'bg-purple-500/20 border-purple-500 text-purple-400'
-                        : 'bg-gray-800 border-gray-700 text-gray-500'
+                        ? 'bg-ink-200 border-brand text-brand'
+                        : 'bg-ink-100 border-ink-500 text-paper-faint'
                       }`}
-                    whileHover={{ scale: 1.1 }}
+                    whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
                     {isCompleted ? (
-                      <Check className="w-5 h-5" />
+                      <Check className="w-4 h-4" />
                     ) : (
-                      <Icon className="w-5 h-5" />
+                      <Icon className="w-4 h-4" />
                     )}
                   </motion.div>
-                  <span className={`text-xs mt-2 font-medium ${isActive ? 'text-white' : 'text-gray-500'
+                  <span className={`mt-2 font-mono text-[10px] uppercase tracking-[0.14em] ${isActive ? 'text-paper' : 'text-paper-faint'
                     }`}>
                     {s.title}
                   </span>
@@ -759,9 +764,9 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                 {step === 1 && (
                   <div className="space-y-4">
                     {isEditing && (
-                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
-                        <p className="text-sm text-blue-400 font-medium">Editing existing user</p>
-                        <p className="text-xs text-gray-400 mt-1">All fields below show current values. Modify as needed.</p>
+                      <div className="mb-4 rounded-xs border border-ink-500 bg-ink-200 p-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Editing existing user</p>
+                        <p className="mt-1 text-[12px] text-paper-muted">All fields below show current values. Modify as needed.</p>
                       </div>
                     )}
                     <div className="space-y-2">
@@ -771,10 +776,10 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         placeholder="user_name"
-                        className="bg-gray-800 border-gray-700"
+                        className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                         disabled={isEditing}
                       />
-                      <p className="text-xs text-gray-500">Must start with a letter or underscore</p>
+                      <p className="text-[11px] text-paper-faint">Must start with a letter or underscore.</p>
                     </div>
 
                     {!isEditing ? (
@@ -791,13 +796,13 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder={authType === 'no_password' ? 'Not required' : '••••••••'}
-                                className="bg-gray-800 border-gray-700 pr-10"
+                                className="rounded-xs border-ink-500 bg-ink-200 pr-10 text-paper"
                                 disabled={authType === 'no_password'}
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-2 top-2.5 text-gray-400 hover:text-white"
+                                className="absolute right-2 top-2.5 text-paper-dim hover:text-paper"
                                 disabled={authType === 'no_password'}
                               >
                                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -816,44 +821,44 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                               </Button>
                             )}
                           </div>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-[11px] text-paper-faint">
                             {authType === 'no_password'
-                              ? 'Password is not required when using no_password authentication'
-                              : 'Password for the user account'}
+                              ? 'Password is not required when using no_password authentication.'
+                              : 'Password for the user account.'}
                           </p>
 
                           {/* Password Requirements */}
                           {authType !== 'no_password' && password && (
-                            <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700 mt-2">
-                              <p className="text-xs text-gray-400 mb-2">Password Requirements:</p>
+                            <div className="mt-2 rounded-xs border border-ink-500 bg-ink-100 p-3">
+                              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Password requirements</p>
                               <div className="grid grid-cols-2 gap-2">
-                                <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.length ? 'text-green-400' : 'text-gray-500'}`}>
-                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.length ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                    {passwordReqs.length ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                                <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.length ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.length ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                    {passwordReqs.length ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                   </div>
                                   <span>At least 8 characters</span>
                                 </div>
-                                <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.upper ? 'text-green-400' : 'text-gray-500'}`}>
-                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.upper ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                    {passwordReqs.upper ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                                <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.upper ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.upper ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                    {passwordReqs.upper ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                   </div>
                                   <span>Uppercase letter</span>
                                 </div>
-                                <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.lower ? 'text-green-400' : 'text-gray-500'}`}>
-                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.lower ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                    {passwordReqs.lower ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                                <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.lower ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.lower ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                    {passwordReqs.lower ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                   </div>
                                   <span>Lowercase letter</span>
                                 </div>
-                                <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.number ? 'text-green-400' : 'text-gray-500'}`}>
-                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.number ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                    {passwordReqs.number ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                                <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.number ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.number ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                    {passwordReqs.number ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                   </div>
                                   <span>Number</span>
                                 </div>
-                                <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.special ? 'text-green-400' : 'text-gray-500'}`}>
-                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.special ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                    {passwordReqs.special ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                                <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.special ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                  <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.special ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                    {passwordReqs.special ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                   </div>
                                   <span>Special character</span>
                                 </div>
@@ -871,10 +876,10 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                               value={confirmPassword}
                               onChange={(e) => setConfirmPassword(e.target.value)}
                               placeholder="••••••••"
-                              className="bg-gray-800 border-gray-700"
+                              className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                             />
                             {confirmPassword && password !== confirmPassword && (
-                              <p className="text-xs text-red-400">Passwords do not match</p>
+                              <p className="text-[11px] text-red-300">Passwords do not match.</p>
                             )}
                           </div>
                         )}
@@ -892,13 +897,13 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                               value={password}
                               onChange={(e) => setPassword(e.target.value)}
                               placeholder={authType === 'no_password' ? 'Not required' : 'Leave empty to keep current password'}
-                              className="bg-gray-800 border-gray-700 pr-10"
+                              className="rounded-xs border-ink-500 bg-ink-200 pr-10 text-paper"
                               disabled={authType === 'no_password'}
                             />
                             <button
                               type="button"
                               onClick={() => setShowPassword(!showPassword)}
-                              className="absolute right-2 top-2.5 text-gray-400 hover:text-white"
+                              className="absolute right-2 top-2.5 text-paper-dim hover:text-paper"
                               disabled={authType === 'no_password'}
                             >
                               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -917,44 +922,44 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                             </Button>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-[11px] text-paper-faint">
                           {authType === 'no_password'
-                            ? 'Password is not required when using no_password authentication'
-                            : 'Leave empty to keep the current password'}
+                            ? 'Password is not required when using no_password authentication.'
+                            : 'Leave empty to keep the current password.'}
                         </p>
 
                         {/* Password Requirements for Edit */}
                         {authType !== 'no_password' && password && (
-                          <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700 mt-2">
-                            <p className="text-xs text-gray-400 mb-2">Password Requirements:</p>
+                          <div className="mt-2 rounded-xs border border-ink-500 bg-ink-100 p-3">
+                            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Password requirements</p>
                             <div className="grid grid-cols-2 gap-2">
-                              <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.length ? 'text-green-400' : 'text-gray-500'}`}>
-                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.length ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                  {passwordReqs.length ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                              <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.length ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.length ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                  {passwordReqs.length ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                 </div>
                                 <span>At least 8 characters</span>
                               </div>
-                              <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.upper ? 'text-green-400' : 'text-gray-500'}`}>
-                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.upper ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                  {passwordReqs.upper ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                              <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.upper ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.upper ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                  {passwordReqs.upper ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                 </div>
                                 <span>Uppercase letter</span>
                               </div>
-                              <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.lower ? 'text-green-400' : 'text-gray-500'}`}>
-                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.lower ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                  {passwordReqs.lower ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                              <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.lower ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.lower ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                  {passwordReqs.lower ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                 </div>
                                 <span>Lowercase letter</span>
                               </div>
-                              <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.number ? 'text-green-400' : 'text-gray-500'}`}>
-                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.number ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                  {passwordReqs.number ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                              <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.number ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.number ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                  {passwordReqs.number ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                 </div>
                                 <span>Number</span>
                               </div>
-                              <div className={`flex items-center gap-2 text-xs transition-colors ${passwordReqs.special ? 'text-green-400' : 'text-gray-500'}`}>
-                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.special ? 'bg-green-500/10 border-green-500/50' : 'border-gray-700 bg-gray-800'}`}>
-                                  {passwordReqs.special ? <Check className="w-2 h-2" /> : <div className="w-1 h-1 rounded-full bg-gray-600" />}
+                              <div className={`flex items-center gap-2 text-[11px] transition-colors ${passwordReqs.special ? 'text-emerald-300' : 'text-paper-faint'}`}>
+                                <div className={`w-3 h-3 rounded-full flex items-center justify-center border ${passwordReqs.special ? 'border-emerald-700 bg-emerald-950/40' : 'border-ink-500 bg-ink-200'}`}>
+                                  {passwordReqs.special ? <Check className="h-2 w-2" /> : <div className="h-1 w-1 rounded-full bg-paper-faint" />}
                                 </div>
                                 <span>Special character</span>
                               </div>
@@ -972,7 +977,7 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                           value={hostIp}
                           onChange={(e) => setHostIp(e.target.value)}
                           placeholder="192.168.1.1"
-                          className="bg-gray-800 border-gray-700"
+                          className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                         />
                       </div>
 
@@ -983,7 +988,7 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                           value={hostNames}
                           onChange={(e) => setHostNames(e.target.value)}
                           placeholder="example.com"
-                          className="bg-gray-800 border-gray-700"
+                          className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                         />
                       </div>
                     </div>
@@ -998,7 +1003,7 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                         onValueChange={(value) => setCluster(value === "none" ? "" : value)}
                         disabled={isLoadingClusters}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700">
+                        <SelectTrigger className="rounded-xs border-ink-500 bg-ink-200 text-paper">
                           <SelectValue placeholder={isLoadingClusters ? "Loading clusters..." : "Select cluster (optional)"} />
                         </SelectTrigger>
                         <SelectContent>
@@ -1010,7 +1015,7 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-gray-500">Leave empty for local user, or select a cluster</p>
+                      <p className="text-[11px] text-paper-faint">Leave empty for local user, or select a cluster.</p>
                     </div>
 
                     <div className="space-y-2">
@@ -1022,7 +1027,7 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                         onValueChange={(value) => setAuthType(value)}
                         disabled={isEditing}
                       >
-                        <SelectTrigger className={`bg-gray-800 border-gray-700 ${isEditing ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                        <SelectTrigger className={`rounded-xs border-ink-500 bg-ink-200 text-paper ${isEditing ? 'opacity-60 cursor-not-allowed' : ''}`}>
                           <SelectValue placeholder="Select authentication type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1032,9 +1037,9 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                           <SelectItem value="no_password">No Password (Use with host restrictions)</SelectItem>
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-[11px] text-paper-faint">
                         {isEditing
-                          ? 'Authentication type cannot be changed after user creation'
+                          ? 'Authentication type cannot be changed after user creation.'
                           : authType === 'no_password'
                             ? 'User can connect without password. Recommended to use with host IP/name restrictions for security.'
                             : 'Password encryption method for the user'}
@@ -1046,99 +1051,77 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                 {step === 2 && (
                   <div className="space-y-6">
                     {isEditing && role && (
-                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                        <p className="text-sm text-blue-400 font-medium">Current Role: <span className="capitalize">{role}</span></p>
-                        <p className="text-xs text-gray-400 mt-1">Select a different role below to change it</p>
+                      <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Current role: <span className="text-paper">{role}</span></p>
+                        <p className="mt-1 text-[12px] text-paper-muted">Select a different role below to change it.</p>
                       </div>
                     )}
                     <div>
-                      <Label className="text-lg">Select Role *</Label>
-                      <p className="text-sm text-gray-400 mt-1">Choose the access level for this user</p>
+                      <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                        <span className="h-px w-6 bg-ink-700" />
+                        <span>Select role</span>
+                      </span>
+                      <p className="mt-2 text-[12px] text-paper-muted">Choose the access level for this user.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4">
+                    <div className="grid grid-cols-1 gap-3">
                       {([
-                        { role: 'developer' as ClickHouseUserRole, icon: FileCode, color: 'purple', description: 'Full DDL/DML access' },
-                        { role: 'analyst' as ClickHouseUserRole, icon: BarChart3, color: 'blue', description: 'Read/write data access' },
-                        { role: 'viewer' as ClickHouseUserRole, icon: EyeIcon, color: 'green', description: 'Read-only access' },
-                      ]).map(({ role: r, icon: RoleIcon, color, description }) => {
+                        { role: 'developer' as ClickHouseUserRole, icon: FileCode, code: 'DV', description: 'Full DDL/DML access' },
+                        { role: 'analyst' as ClickHouseUserRole, icon: BarChart3, code: 'AN', description: 'Read/write data access' },
+                        { role: 'viewer' as ClickHouseUserRole, icon: EyeIcon, code: 'VW', description: 'Read-only access' },
+                      ]).map(({ role: r, icon: RoleIcon, code, description }) => {
                         const isSelected = role === r;
-                        const colorClasses = {
-                          purple: {
-                            selected: 'border-purple-500 bg-purple-500/10 shadow-lg shadow-purple-500/20',
-                            iconBg: 'bg-purple-500/20',
-                            icon: 'text-purple-400',
-                            check: 'bg-purple-500',
-                          },
-                          blue: {
-                            selected: 'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20',
-                            iconBg: 'bg-blue-500/20',
-                            icon: 'text-blue-400',
-                            check: 'bg-blue-500',
-                          },
-                          green: {
-                            selected: 'border-green-500 bg-green-500/10 shadow-lg shadow-green-500/20',
-                            iconBg: 'bg-green-500/20',
-                            icon: 'text-green-400',
-                            check: 'bg-green-500',
-                          },
-                        };
-                        const colors = colorClasses[color as keyof typeof colorClasses];
 
                         return (
                           <motion.button
                             key={r}
                             type="button"
                             onClick={() => setRole(r)}
-                            className={`p-4 rounded-lg border-2 text-left transition-all ${isSelected
-                              ? colors.selected
-                              : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                            className={`rounded-xs border p-4 text-left transition-all ${isSelected
+                              ? 'border-brand/60 bg-ink-200'
+                              : 'border-ink-500 bg-ink-100 hover:border-ink-700'
                               }`}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
+                            whileTap={{ scale: 0.99 }}
                           >
                             <div className="flex items-start gap-3">
-                              <div className={`p-2 rounded-lg ${isSelected ? colors.iconBg : 'bg-gray-700/50'
-                                }`}>
-                                <RoleIcon className={`w-5 h-5 ${isSelected ? colors.icon : 'text-gray-400'
-                                  }`} />
-                              </div>
+                              <span className={`grid h-9 w-9 place-items-center rounded-xs border font-mono text-[10px] uppercase tracking-[0.14em] ${isSelected ? 'border-brand/60 bg-brand/10 text-brand' : 'border-ink-500 bg-ink-200 text-paper-muted'}`}>
+                                {code}
+                              </span>
                               <div className="flex-1">
                                 <div className="flex items-center justify-between">
-                                  <h3 className="font-semibold text-white capitalize">{r}</h3>
+                                  <h3 className="text-[13px] font-semibold capitalize text-paper">{r}</h3>
                                   {isSelected && (
-                                    <motion.div
+                                    <motion.span
                                       initial={{ scale: 0 }}
                                       animate={{ scale: 1 }}
-                                      className={`w-5 h-5 rounded-full ${colors.check} flex items-center justify-center`}
+                                      className="grid h-5 w-5 place-items-center rounded-xs bg-brand text-ink-50"
                                     >
-                                      <Check className="w-3 h-3 text-white" />
-                                    </motion.div>
+                                      <Check className="h-3 w-3" />
+                                    </motion.span>
                                   )}
                                 </div>
-                                <p className="text-sm text-gray-400 mt-1">{description}</p>
-                                <div className="mt-3 pt-3 border-t border-gray-700">
-                                  <ul className="text-xs text-gray-300 space-y-1">
-                                    {r === 'developer' && (
-                                      <>
-                                        <li>✓ Create/Drop databases and tables</li>
-                                        <li>✓ ALTER tables</li>
-                                        <li>✓ SELECT, INSERT, UPDATE, DELETE</li>
-                                      </>
-                                    )}
-                                    {r === 'analyst' && (
-                                      <>
-                                        <li>✓ SELECT, INSERT, UPDATE, DELETE</li>
-                                        <li>✗ No DDL operations</li>
-                                      </>
-                                    )}
-                                    {r === 'viewer' && (
-                                      <>
-                                        <li>✓ SELECT only (read-only)</li>
-                                      </>
-                                    )}
-                                  </ul>
-                                </div>
+                                <p className="mt-1 flex items-center gap-2 text-[12px] text-paper-muted">
+                                  <RoleIcon className="h-3.5 w-3.5 text-paper-faint" aria-hidden />
+                                  {description}
+                                </p>
+                                <ul className="mt-3 space-y-1 border-t border-ink-500 pt-3 font-mono text-[11px] text-paper-muted">
+                                  {r === 'developer' && (
+                                    <>
+                                      <li>+ Create/Drop databases and tables</li>
+                                      <li>+ ALTER tables</li>
+                                      <li>+ SELECT, INSERT, UPDATE, DELETE</li>
+                                    </>
+                                  )}
+                                  {r === 'analyst' && (
+                                    <>
+                                      <li>+ SELECT, INSERT, UPDATE, DELETE</li>
+                                      <li>- No DDL operations</li>
+                                    </>
+                                  )}
+                                  {r === 'viewer' && (
+                                    <li>+ SELECT only (read-only)</li>
+                                  )}
+                                </ul>
                               </div>
                             </div>
                           </motion.button>
@@ -1151,97 +1134,91 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                 {step === 3 && (
                   <div className="space-y-6">
                     {isEditing && (allowedDatabases.length > 0 || allowedTables.length > 0) && (
-                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                        <p className="text-sm text-blue-400 font-medium">Current Access Restrictions</p>
-                        <div className="mt-2 text-xs text-gray-400 space-y-1">
+                      <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Current access restrictions</p>
+                        <div className="mt-2 space-y-1 text-[12px] text-paper-muted">
                           {allowedDatabases.length > 0 && (
-                            <p>• Databases: {allowedDatabases.length} selected</p>
+                            <p>· Databases: {allowedDatabases.length} selected</p>
                           )}
                           {allowedTables.length > 0 && (
-                            <p>• Tables: {allowedTables.length} selected</p>
+                            <p>· Tables: {allowedTables.length} selected</p>
                           )}
                           {allowedDatabases.length === 0 && allowedTables.length === 0 && (
-                            <p>• Full access to all databases and tables</p>
+                            <p>· Full access to all databases and tables</p>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">Modify selections below to change access</p>
+                        <p className="mt-2 text-[11px] text-paper-faint">Modify selections below to change access.</p>
                       </div>
                     )}
                     <div>
-                      <Label className="text-lg flex items-center gap-2">
-                        <Database className="w-5 h-5" />
-                        Access Restrictions (Optional)
-                      </Label>
-                      <p className="text-sm text-gray-400 mt-2">
+                      <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                        <span className="h-px w-6 bg-ink-700" />
+                        <span>Access restrictions (optional)</span>
+                      </span>
+                      <p className="mt-2 text-[12px] text-paper-muted">
                         Leave empty to allow access to all databases/tables. Select specific databases and tables to restrict access.
                       </p>
                     </div>
 
                     {/* Search */}
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-paper-dim" />
                       <Input
                         type="text"
                         placeholder="Search databases and tables..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10 bg-gray-800 border-gray-700"
+                        className="rounded-xs border-ink-500 bg-ink-200 pl-10 text-paper"
                       />
                     </div>
 
                     {/* Summary Cards */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <motion.div
-                        className="p-4 rounded-lg border border-gray-700 bg-gray-800/50"
-                        whileHover={{ scale: 1.02 }}
-                      >
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xs border border-ink-500 bg-ink-100 p-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm text-gray-400">Selected Databases</p>
-                            <p className="text-2xl font-bold text-white mt-1">
+                            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Selected databases</p>
+                            <p className="mt-1 font-mono text-[20px] font-semibold tabular-nums text-paper">
                               {allowedDatabases.length || 'All'}
                             </p>
                           </div>
-                          <Database className="w-8 h-8 text-purple-400" />
+                          <Database className="h-6 w-6 text-paper-faint" aria-hidden />
                         </div>
-                      </motion.div>
-                      <motion.div
-                        className="p-4 rounded-lg border border-gray-700 bg-gray-800/50"
-                        whileHover={{ scale: 1.02 }}
-                      >
+                      </div>
+                      <div className="rounded-xs border border-ink-500 bg-ink-100 p-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm text-gray-400">Selected Tables</p>
-                            <p className="text-2xl font-bold text-white mt-1">
+                            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Selected tables</p>
+                            <p className="mt-1 font-mono text-[20px] font-semibold tabular-nums text-paper">
                               {allowedTables.length || 'All'}
                             </p>
                           </div>
-                          <Table className="w-8 h-8 text-blue-400" />
+                          <Table className="h-6 w-6 text-paper-faint" aria-hidden />
                         </div>
-                      </motion.div>
+                      </div>
                     </div>
 
                     {/* Database Tree */}
                     {isLoadingDatabases ? (
                       <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
-                        <span className="ml-2 text-gray-400">Loading databases...</span>
+                        <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+                        <span className="ml-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim">Loading databases…</span>
                       </div>
                     ) : filteredDatabases.length === 0 ? (
-                      <div className="text-center py-12 text-gray-500">
-                        <Database className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p>No databases found</p>
+                      <div className="rounded-xs border border-ink-500 bg-ink-100 py-12 text-center">
+                        <Database className="mx-auto mb-2 h-8 w-8 text-paper-faint" aria-hidden />
+                        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No databases found</p>
                         {searchQuery ? (
-                          <p className="text-sm mt-1">Try a different search term</p>
+                          <p className="mt-1 text-[12px] text-paper-muted">Try a different search term.</p>
                         ) : databases.length === 0 ? (
-                          <p className="text-sm mt-1">No databases available. Make sure you're connected to ClickHouse.</p>
+                          <p className="mt-1 text-[12px] text-paper-muted">No databases available. Make sure you're connected to ClickHouse.</p>
                         ) : (
-                          <p className="text-sm mt-1">No databases match your search</p>
+                          <p className="mt-1 text-[12px] text-paper-muted">No databases match your search.</p>
                         )}
                       </div>
                     ) : (
-                      <div className="border border-gray-700 rounded-lg bg-gray-800/30">
-                        <div className="h-[400px] overflow-y-auto overflow-x-hidden relative">
+                      <div className="rounded-xs border border-ink-500 bg-ink-100">
+                        <div className="relative h-[400px] overflow-y-auto overflow-x-hidden">
                           <div className="p-2">
                             {filteredDatabases.map((db) => {
                               const isExpanded = expandedDatabases.has(db.name);
@@ -1255,7 +1232,7 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                                 <div key={db.name} className="mb-1">
                                   {/* Database Row - Frozen Header */}
                                   <div
-                                    className={`flex items-center gap-3 p-3 hover:bg-gray-700/30 transition-colors bg-gray-800/98 backdrop-blur-sm border border-gray-700 rounded-lg ${isExpanded ? 'shadow-lg border-b-2 border-purple-500/30' : ''
+                                    className={`flex items-center gap-3 rounded-xs border p-3 transition-colors hover:bg-ink-200 ${isExpanded ? 'border-brand/40 bg-ink-200' : 'border-ink-500 bg-ink-100'
                                       }`}
                                     style={isExpanded ? {
                                       position: 'sticky',
@@ -1268,31 +1245,31 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                                     <button
                                       type="button"
                                       onClick={() => toggleDatabase(db.name)}
-                                      className="text-gray-400 hover:text-white transition-colors"
+                                      className="text-paper-dim transition-colors hover:text-paper"
                                     >
                                       <ChevronRight
-                                        className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                        className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                                       />
                                     </button>
 
                                     <Checkbox
                                       checked={isDbSelected}
                                       onCheckedChange={() => toggleDatabaseSelection(db.name)}
-                                      className="border-gray-600"
+                                      className="border-ink-500"
                                     />
 
-                                    <div className="flex-1 flex items-center gap-2">
-                                      <Database className="w-4 h-4 text-purple-400" />
-                                      <span className="font-medium text-white">{db.name}</span>
+                                    <div className="flex flex-1 items-center gap-2">
+                                      <Database className="h-3.5 w-3.5 text-paper-faint" aria-hidden />
+                                      <span className="font-medium text-paper">{db.name}</span>
                                       {tables.length > 0 && (
-                                        <Badge variant="outline" className="text-xs border-gray-600 text-gray-400">
+                                        <span className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                           {tables.length} {tables.length === 1 ? 'table' : 'tables'}
-                                        </Badge>
+                                        </span>
                                       )}
                                       {isDbSelected && selectedTablesCount > 0 && (
-                                        <Badge className="text-xs bg-purple-500/20 text-purple-300 border-purple-500/30">
+                                        <span className="rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                                           {selectedTablesCount} selected
-                                        </Badge>
+                                        </span>
                                       )}
                                     </div>
                                   </div>
@@ -1305,12 +1282,12 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                                         animate={{ height: 'auto', opacity: 1 }}
                                         exit={{ height: 0, opacity: 0 }}
                                         transition={{ duration: 0.2 }}
-                                        className="overflow-visible pl-2 mt-1"
+                                        className="mt-1 overflow-visible pl-2"
                                       >
-                                        <div className="pl-9 pr-3 pb-2 pt-2 space-y-1 border-l-2 border-gray-700/50 ml-4">
+                                        <div className="ml-4 space-y-1 border-l border-ink-500 py-2 pl-9 pr-3">
                                           {/* Select All Tables */}
                                           {isDbSelected && tables.length > 0 && (
-                                            <div className="flex items-center gap-2 p-2 rounded hover:bg-gray-700/20 cursor-pointer"
+                                            <div className="flex cursor-pointer items-center gap-2 rounded-xs p-2 hover:bg-ink-200"
                                               onClick={() => {
                                                 if (allTablesSelected) {
                                                   deselectAllTablesInDatabase(db.name);
@@ -1329,15 +1306,15 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                                                       deselectAllTablesInDatabase(db.name);
                                                     }
                                                   }}
-                                                  className="border-gray-600"
+                                                  className="border-ink-500"
                                                 />
                                                 {someTablesSelected && !allTablesSelected && (
                                                   <div className="absolute inset-0 flex items-center justify-center">
-                                                    <div className="w-2 h-2 bg-purple-400 rounded-sm" />
+                                                    <div className="h-2 w-2 rounded-xs bg-brand" />
                                                   </div>
                                                 )}
                                               </div>
-                                              <span className="text-sm text-gray-400">
+                                              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim">
                                                 {allTablesSelected ? 'Deselect all tables' : 'Select all tables'}
                                                 {someTablesSelected && !allTablesSelected && ` (${selectedTablesCount}/${tables.length})`}
                                               </span>
@@ -1354,25 +1331,24 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                                             if (!matchesSearch) return null;
 
                                             return (
-                                              <motion.div
+                                              <div
                                                 key={`${db.name}.${table.name}`}
-                                                className="flex items-center gap-2 p-2 rounded hover:bg-gray-700/20 transition-colors"
-                                                whileHover={{ x: 4 }}
+                                                className="flex items-center gap-2 rounded-xs p-2 transition-colors hover:bg-ink-200"
                                               >
                                                 <Checkbox
                                                   checked={isTableSel}
                                                   onCheckedChange={() => toggleTableSelection(db.name, table.name)}
                                                   disabled={!isDbSelected}
-                                                  className="border-gray-600"
+                                                  className="border-ink-500"
                                                 />
-                                                <Table className="w-3 h-3 text-blue-400" />
-                                                <span className="text-sm text-gray-300 flex-1">{table.name}</span>
+                                                <Table className="h-3 w-3 text-paper-faint" aria-hidden />
+                                                <span className="flex-1 text-[12px] text-paper-muted">{table.name}</span>
                                                 {table.type === 'view' && (
-                                                  <Badge variant="outline" className="text-xs border-gray-600 text-gray-500">
+                                                  <span className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                                                     view
-                                                  </Badge>
+                                                  </span>
                                                 )}
-                                              </motion.div>
+                                              </div>
                                             );
                                           })}
                                         </div>
@@ -1389,11 +1365,12 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
 
                     {/* Info Message */}
                     {allowedDatabases.length === 0 && allowedTables.length === 0 && (
-                      <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <div className="rounded-xs border border-ink-500 bg-ink-200 p-4">
                         <div className="flex items-start gap-2">
-                          <AlertCircle className="w-4 h-4 text-blue-400 mt-0.5" />
-                          <div className="text-sm text-blue-200">
-                            <strong>No restrictions selected.</strong> The user will have access to all databases and tables based on their role permissions.
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                          <div className="text-[12px] text-paper-muted">
+                            <strong className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">No restrictions selected.</strong>
+                            <p className="mt-1">The user will have access to all databases and tables based on their role permissions.</p>
                           </div>
                         </div>
                       </div>
@@ -1406,22 +1383,25 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                     {ddl ? (
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <Label>Generated DDL</Label>
+                          <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                            <span className="h-px w-6 bg-ink-700" />
+                            <span>Generated DDL</span>
+                          </span>
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
                             onClick={copyDDL}
-                            className="border-gray-700"
+                            className="h-8 gap-2 rounded-xs border-ink-500 bg-ink-100 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                           >
                             {ddlCopied ? (
                               <>
-                                <Check className="w-4 h-4 mr-1" />
+                                <Check className="h-3 w-3" />
                                 Copied
                               </>
                             ) : (
                               <>
-                                <Copy className="w-4 h-4 mr-1" />
+                                <Copy className="h-3 w-3" />
                                 Copy DDL
                               </>
                             )}
@@ -1431,22 +1411,22 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                         <Textarea
                           value={ddl.fullDDL}
                           readOnly
-                          className="bg-gray-800 border-gray-700 font-mono text-sm h-64"
+                          className="h-64 rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper"
                         />
 
-                        <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                        <div className="rounded-xs border border-amber-900/60 bg-amber-950/40 p-3">
                           <div className="flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-yellow-400 mt-0.5" />
-                            <p className="text-sm text-yellow-200">
-                              Review the DDL above. Click "Create User" to execute these statements in ClickHouse.
+                            <AlertCircle className="mt-0.5 h-3.5 w-3.5 text-amber-300" aria-hidden />
+                            <p className="text-[12px] text-amber-200">
+                              Review the DDL above. Click "Create user" to execute these statements in ClickHouse.
                             </p>
                           </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="text-center py-8">
-                        <Code className="w-12 h-12 mx-auto text-gray-600 mb-4" />
-                        <p className="text-gray-400">Click "Generate DDL" to preview the SQL statements</p>
+                      <div className="rounded-xs border border-ink-500 bg-ink-100 py-12 text-center">
+                        <Code className="mx-auto mb-4 h-8 w-8 text-paper-faint" aria-hidden />
+                        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Click "Generate DDL" to preview SQL</p>
                       </div>
                     )}
                   </div>
@@ -1456,45 +1436,43 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
           </div>
         </ScrollArea>
 
-        <DialogFooter className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-t border-gray-800">
+        <DialogFooter className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-t border-ink-500">
           <Button
             variant="outline"
             onClick={prevStep}
             disabled={step === 1}
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
           >
-            <ChevronLeft className="w-4 h-4 mr-2" />
+            <ChevronLeft className="h-3.5 w-3.5" />
             Previous
           </Button>
 
           <div className="flex gap-2">
             {step < 4 ? (
               <Button
-                variant="outline"
                 onClick={nextStep}
                 disabled={!canProceed()}
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+                className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
               >
                 Next
-                <ChevronRight className="w-4 h-4 ml-2" />
+                <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             ) : (
               <>
                 {!ddl ? (
                   <Button
-                    variant="outline"
                     onClick={handleGenerateDDL}
                     disabled={isGeneratingDDL}
-                    className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+                    className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                   >
                     {isGeneratingDDL ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Generating...
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Generating…
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-4 h-4 mr-2" />
+                        <Sparkles className="h-3.5 w-3.5" />
                         Generate DDL
                       </>
                     )}
@@ -1504,34 +1482,33 @@ log.debug('[ClickHouse Users] Setting databases and tables', { databasesCount: u
                     <Button
                       onClick={copyDDL}
                       variant="outline"
-                      className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+                      className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                     >
                       {ddlCopied ? (
                         <>
-                          <Check className="w-4 h-4 mr-2" />
-                          Copied!
+                          <Check className="h-3.5 w-3.5" />
+                          Copied
                         </>
                       ) : (
                         <>
-                          <Copy className="w-4 h-4 mr-2" />
+                          <Copy className="h-3.5 w-3.5" />
                           Copy DDL
                         </>
                       )}
                     </Button>
                     <Button
-                      variant="outline"
                       onClick={handleSubmit}
                       disabled={isSubmitting}
-                      className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+                      className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                     >
                       {isSubmitting ? (
                         <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          {isEditing ? 'Updating...' : 'Creating...'}
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          {isEditing ? 'Updating…' : 'Creating…'}
                         </>
                       ) : (
                         <>
-                          {isEditing ? 'Update User' : 'Create User'}
+                          {isEditing ? 'Update user' : 'Create user'}
                         </>
                       )}
                     </Button>
@@ -1716,8 +1693,8 @@ export default function ClickHouseUsersManagement() {
   if (!canView) {
     return (
       <div className="p-6 text-center">
-        <AlertCircle className="w-12 h-12 mx-auto text-gray-600 mb-4" />
-        <p className="text-gray-400">You don't have permission to view ClickHouse users</p>
+        <AlertCircle className="mx-auto mb-4 h-8 w-8 text-paper-faint" aria-hidden />
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">You don't have permission to view ClickHouse users</p>
       </div>
     );
   }
@@ -1726,8 +1703,8 @@ export default function ClickHouseUsersManagement() {
   if (isCheckingSession) {
     return (
       <div className="p-6 text-center">
-        <Loader2 className="w-8 h-8 mx-auto text-purple-500 animate-spin mb-4" />
-        <p className="text-gray-400">Checking ClickHouse connection...</p>
+        <Loader2 className="mx-auto mb-4 h-6 w-6 animate-spin text-paper-dim" />
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Checking ClickHouse connection…</p>
       </div>
     );
   }
@@ -1736,21 +1713,20 @@ export default function ClickHouseUsersManagement() {
   if (!hasClickHouseSession) {
     return (
       <div className="p-6">
-        <div className="max-w-2xl mx-auto mt-12">
-          <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-8 text-center">
-            <Database className="w-16 h-16 mx-auto text-gray-500 mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">
-              No Active ClickHouse Connection
+        <div className="mx-auto mt-12 max-w-2xl">
+          <div className="rounded-xs border border-ink-500 bg-ink-100 p-8 text-center">
+            <Database className="mx-auto mb-4 h-10 w-10 text-paper-faint" aria-hidden />
+            <h3 className="mb-2 text-[16px] font-semibold tracking-tight text-paper">
+              No active ClickHouse connection
             </h3>
-            <p className="text-gray-400 mb-6">
-              You need to connect to a ClickHouse server before managing users.
-              Please select a connection from the sidebar to get started.
+            <p className="mb-6 text-[12px] text-paper-muted">
+              You need to connect to a ClickHouse server before managing users. Please select a connection from the sidebar to get started.
             </p>
-            <div className="flex flex-col gap-3 items-center">
-              <div className="text-sm text-gray-500 space-y-1">
-                <p>1. Select a ClickHouse connection from the sidebar</p>
-                <p>2. Click "Connect" to establish a session</p>
-                <p>3. Return here to manage ClickHouse users</p>
+            <div className="flex flex-col items-center gap-3">
+              <div className="space-y-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                <p>01 — Select a ClickHouse connection from the sidebar</p>
+                <p>02 — Click "Connect" to establish a session</p>
+                <p>03 — Return here to manage ClickHouse users</p>
               </div>
               <Button
                 variant="outline"
@@ -1761,10 +1737,10 @@ export default function ClickHouseUsersManagement() {
                   }
                 }}
                 disabled={isCheckingSession || isLoading}
-                className="mt-4 border-gray-700"
+                className="mt-4 h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${(isCheckingSession || isLoading) ? 'animate-spin' : ''}`} />
-                Check Connection
+                <RefreshCw className={`h-3.5 w-3.5 ${(isCheckingSession || isLoading) ? 'animate-spin' : ''}`} />
+                Check connection
               </Button>
             </div>
           </div>
@@ -1776,12 +1752,17 @@ export default function ClickHouseUsersManagement() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-white">ClickHouse Users</h2>
-          <p className="text-sm text-gray-400 mt-1">
-            Manage ClickHouse database users with role-based access control
-          </p>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+            <Users className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-semibold tracking-tight text-paper">ClickHouse users</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              {users.length} {users.length === 1 ? 'user' : 'users'} · Role-based access control
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -1789,9 +1770,9 @@ export default function ClickHouseUsersManagement() {
             size="sm"
             onClick={checkSessionAndFetchUsers}
             disabled={isLoading || isCheckingSession}
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
           >
-            <RefreshCw className={cn("h-4 w-4", (isLoading || isCheckingSession) && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5", (isLoading || isCheckingSession) && "animate-spin")} />
             Refresh
           </Button>
           {canCreate && (
@@ -1801,20 +1782,19 @@ export default function ClickHouseUsersManagement() {
                 size="sm"
                 onClick={handleSync}
                 disabled={isSyncing || !hasClickHouseSession}
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+                className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                 title="Sync unregistered ClickHouse users to metadata"
               >
-                <Download className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                <Download className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
                 Sync
               </Button>
               <Button
-                variant="outline"
                 size="sm"
                 onClick={openCreateDialog}
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+                className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
               >
-                <Plus className="w-4 h-4" />
-                Create User
+                <Plus className="h-3.5 w-3.5" />
+                Create user
               </Button>
             </>
           )}
@@ -1824,58 +1804,58 @@ export default function ClickHouseUsersManagement() {
       {/* Users Table */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+          <Loader2 className="h-6 w-6 animate-spin text-paper-dim" />
         </div>
       ) : users.length === 0 ? (
-        <div className="text-center py-12">
-          <Users className="w-12 h-12 mx-auto text-gray-600 mb-4" />
-          <h3 className="text-lg font-medium text-gray-300">No ClickHouse users found</h3>
-          <p className="text-gray-500 mt-1">Create your first ClickHouse user to get started</p>
+        <div className="rounded-xs border border-ink-500 bg-ink-100 px-6 py-12 text-center">
+          <Users className="mx-auto mb-4 h-8 w-8 text-paper-faint" aria-hidden />
+          <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No ClickHouse users found</h3>
+          <p className="mt-2 text-[12px] text-paper-muted">Create your first ClickHouse user to get started.</p>
           {canCreate && (
             <Button
               size="sm"
               onClick={openCreateDialog}
-              className="mt-4 bg-purple-600 hover:bg-purple-700"
+              className="mt-4 h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Create User
+              <Plus className="h-3.5 w-3.5" />
+              Create user
             </Button>
           )}
         </div>
       ) : (
         <TooltipProvider>
-          <div className="rounded-lg border border-gray-800 overflow-hidden">
+          <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
             <UITable>
               <TableHeader>
-                <TableRow className="border-gray-800 hover:bg-transparent">
-                  <TableHead className="text-gray-400">Username</TableHead>
-                  <TableHead className="text-gray-400">Host Restrictions</TableHead>
-                  <TableHead className="text-gray-400">Auth Type</TableHead>
-                  <TableHead className="text-gray-400 text-right">Actions</TableHead>
+                <TableRow className="border-ink-500 hover:bg-transparent">
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Username</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Host restrictions</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Auth type</TableHead>
+                  <TableHead className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((user) => (
-                  <TableRow key={user.name} className="border-gray-800">
-                    <TableCell className="font-medium text-white">{user.name}</TableCell>
+                  <TableRow key={user.name} className="border-ink-500">
+                    <TableCell className="font-medium text-paper">{user.name}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         {user.host_ip && (
-                          <Badge variant="outline" className="text-xs border-gray-700 text-gray-300 w-fit">
+                          <span className="w-fit rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
                             IP: {user.host_ip}
-                          </Badge>
+                          </span>
                         )}
                         {user.host_names && (
-                          <Badge variant="outline" className="text-xs border-gray-700 text-gray-300 w-fit">
+                          <span className="w-fit rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
                             Host: {user.host_names}
-                          </Badge>
+                          </span>
                         )}
                         {!user.host_ip && !user.host_names && (
-                          <span className="text-xs text-gray-500">Any host</span>
+                          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">Any host</span>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-gray-300">
+                    <TableCell className="font-mono text-[12px] text-paper-muted">
                       {user.auth_type || 'sha256_password'}
                     </TableCell>
                     <TableCell className="text-right">
@@ -1887,12 +1867,12 @@ export default function ClickHouseUsersManagement() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => openEditDialog(user)}
-                                className="h-8 w-8"
+                                className="h-8 w-8 rounded-xs text-paper-muted hover:bg-ink-200 hover:text-paper"
                               >
-                                <Pencil className="w-4 h-4" />
+                                <Pencil className="h-3.5 w-3.5" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Edit User</TooltipContent>
+                            <TooltipContent>Edit user</TooltipContent>
                           </Tooltip>
                         )}
                         {canDelete && (
@@ -1902,12 +1882,12 @@ export default function ClickHouseUsersManagement() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => setDeleteUser(user)}
-                                className="h-8 w-8 text-red-400 hover:text-red-300"
+                                className="h-8 w-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Delete User</TooltipContent>
+                            <TooltipContent>Delete user</TooltipContent>
                           </Tooltip>
                         )}
                       </div>

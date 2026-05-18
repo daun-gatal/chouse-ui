@@ -157,11 +157,11 @@ const ExplainNodeComponent = ({ data }: { data: { label: string; type: string; d
                 borderColor: style.borderColor,
             }}
         >
-            <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
+            <Handle type="target" position={Position.Top} className="!bg-ink-500" />
 
             {/* Step badge */}
             <div
-                className="absolute -top-3 -right-3 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md border border-zinc-800"
+                className="absolute -top-3 -right-3 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md border border-ink-500"
                 style={{ backgroundColor: style.color, color: '#fff' }}
             >
                 #{data.step}
@@ -185,46 +185,46 @@ const ExplainNodeComponent = ({ data }: { data: { label: string; type: string; d
 
             {/* Show SQL content if available */}
             {sqlContent ? (
-                <div className="bg-black/30 p-2 rounded text-[10px] font-mono mb-2 overflow-x-auto whitespace-pre-wrap max-h-[120px] overflow-y-auto border border-white/10 text-zinc-300">
+                <div className="mb-2 max-h-[120px] overflow-x-auto overflow-y-auto whitespace-pre-wrap rounded-xs border border-ink-500 bg-ink-200 p-2 font-mono text-[10px] text-paper">
                     {sqlContent}
                 </div>
             ) : (
-                <div className="text-[10px] text-zinc-400 truncate mb-2" title={data.label}>
+                <div className="text-[10px] text-paper-muted truncate mb-2" title={data.label}>
                     {data.label}
                 </div>
             )}
 
             {/* Key metrics */}
             {hasMetrics && (
-                <div className="flex flex-wrap gap-2 text-[9px] text-zinc-400 border-t border-white/10 pt-2 mt-1">
+                <div className="mt-1 flex flex-wrap gap-2 border-t border-ink-500 pt-2 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-dim">
                     {readRows !== undefined && (
-                        <span className="flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded">
-                            Rows: <span className="text-blue-400 font-medium">{readRows.toLocaleString()}</span>
+                        <span className="flex items-center gap-1 rounded-xs bg-ink-200 px-1.5 py-0.5">
+                            Rows: <span className="font-medium text-blue-400">{readRows.toLocaleString()}</span>
                         </span>
                     )}
                     {readBytes !== undefined && (
-                        <span className="flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded">
-                            Bytes: <span className="text-purple-400 font-medium">{formatBytes(readBytes)}</span>
+                        <span className="flex items-center gap-1 rounded-xs bg-ink-200 px-1.5 py-0.5">
+                            Bytes: <span className="font-medium text-purple-400">{formatBytes(readBytes)}</span>
                         </span>
                     )}
                     {parts !== undefined && (
-                        <span className="flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded">
-                            Parts: <span className="text-green-400 font-medium">{parts.toLocaleString()}</span>
+                        <span className="flex items-center gap-1 rounded-xs bg-ink-200 px-1.5 py-0.5">
+                            Parts: <span className="font-medium text-green-400">{parts.toLocaleString()}</span>
                         </span>
                     )}
                     {marks !== undefined && (
-                        <span className="flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded">
-                            Marks: <span className="text-yellow-400 font-medium">{marks.toLocaleString()}</span>
+                        <span className="flex items-center gap-1 rounded-xs bg-ink-200 px-1.5 py-0.5">
+                            Marks: <span className="font-medium text-yellow-400">{marks.toLocaleString()}</span>
                         </span>
                     )}
                     {granules !== undefined && (
-                        <span className="flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded">
-                            Granules: <span className="text-cyan-400 font-medium">{granules.toLocaleString()}</span>
+                        <span className="flex items-center gap-1 rounded-xs bg-ink-200 px-1.5 py-0.5">
+                            Granules: <span className="font-medium text-cyan-400">{granules.toLocaleString()}</span>
                         </span>
                     )}
                 </div>
             )}
-            <Handle type="source" position={Position.Bottom} className="!bg-zinc-500" />
+            <Handle type="source" position={Position.Bottom} className="!bg-ink-500" />
         </div>
     );
 };
@@ -374,8 +374,8 @@ const Legend: React.FC = () => {
     ];
 
     return (
-        <div className="absolute top-3 left-3 bg-zinc-900/90 border border-zinc-800 rounded-lg p-2 z-10 backdrop-blur-sm">
-            <div className="text-[10px] font-semibold text-zinc-400 mb-2">Node Types</div>
+        <div className="absolute top-3 left-3 z-10 rounded-xs border border-ink-500 bg-ink-100 p-2">
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Node Types</div>
             <div className="flex flex-wrap gap-2">
                 {categories.map(({ category, label }) => (
                     <div key={category} className="flex items-center gap-1.5">
@@ -383,7 +383,7 @@ const Legend: React.FC = () => {
                             className="w-3 h-3 rounded-sm"
                             style={{ backgroundColor: NODE_STYLES[category].color }}
                         />
-                        <span className="text-[9px] text-zinc-400">{label}</span>
+                        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-paper-muted">{label}</span>
                     </div>
                 ))}
             </div>
@@ -441,7 +441,7 @@ const VisualExplainInner: React.FC<{ plan: ExplainResult }> = ({ plan }) => {
             >
                 <Background gap={12} size={1} color="#27272a" />
                 <Controls
-                    className="bg-zinc-900 border-zinc-800 text-zinc-100 fill-zinc-100 [&>button]:!bg-zinc-900 [&>button]:!border-zinc-800 [&>button:hover]:!bg-zinc-800 [&_path]:!fill-zinc-100"
+                    className="rounded-xs border-ink-500 bg-ink-100 text-paper fill-paper [&>button]:!bg-ink-100 [&>button]:!border-ink-500 [&>button:hover]:!bg-ink-200 [&_path]:!fill-paper"
                 >
                     <ControlButton onClick={() => onLayout('TB')} title="Vertical Layout">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -467,7 +467,7 @@ const VisualExplain: React.FC<VisualExplainProps> = ({ plan }) => {
     return (
         <div className="w-full h-full flex flex-col">
             <ExplainInfoHeader type="plan" />
-            <div className="flex-1 bg-zinc-950/50 backdrop-blur-sm relative">
+            <div className="flex-1 bg-ink-50 relative">
                 <ReactFlowProvider>
                     <VisualExplainInner plan={plan} />
                 </ReactFlowProvider>

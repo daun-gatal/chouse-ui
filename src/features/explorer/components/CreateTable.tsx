@@ -22,7 +22,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ResponsiveDraggableDialog } from "@/components/common/ResponsiveDraggableDialog";
 import {
@@ -50,21 +49,21 @@ interface Column {
 }
 
 const COMMON_TYPES = [
-  { value: "String", label: "String", icon: "📝" },
-  { value: "Int32", label: "Int32", icon: "🔢" },
-  { value: "Int64", label: "Int64", icon: "🔢" },
-  { value: "UInt32", label: "UInt32", icon: "🔢" },
-  { value: "UInt64", label: "UInt64", icon: "🔢" },
-  { value: "Float32", label: "Float32", icon: "📊" },
-  { value: "Float64", label: "Float64", icon: "📊" },
-  { value: "DateTime", label: "DateTime", icon: "📅" },
-  { value: "DateTime64(3)", label: "DateTime64", icon: "📅" },
-  { value: "Date", label: "Date", icon: "📆" },
-  { value: "Bool", label: "Boolean", icon: "✓" },
-  { value: "UUID", label: "UUID", icon: "🔑" },
-  { value: "JSON", label: "JSON", icon: "{ }" },
-  { value: "Array(String)", label: "Array(String)", icon: "[]" },
-  { value: "Map(String, String)", label: "Map", icon: "🗺️" },
+  { value: "String", label: "String", code: "ST" },
+  { value: "Int32", label: "Int32", code: "I3" },
+  { value: "Int64", label: "Int64", code: "I6" },
+  { value: "UInt32", label: "UInt32", code: "U3" },
+  { value: "UInt64", label: "UInt64", code: "U6" },
+  { value: "Float32", label: "Float32", code: "F3" },
+  { value: "Float64", label: "Float64", code: "F6" },
+  { value: "DateTime", label: "DateTime", code: "DT" },
+  { value: "DateTime64(3)", label: "DateTime64", code: "D6" },
+  { value: "Date", label: "Date", code: "DA" },
+  { value: "Bool", label: "Boolean", code: "BL" },
+  { value: "UUID", label: "UUID", code: "ID" },
+  { value: "JSON", label: "JSON", code: "JS" },
+  { value: "Array(String)", label: "Array(String)", code: "AR" },
+  { value: "Map(String, String)", label: "Map", code: "MP" },
 ];
 
 const ENGINES = [
@@ -292,11 +291,16 @@ const CreateTable: React.FC = () => {
 
   const dialogTitle = (
     <DialogHeader className="pb-0 border-0 flex-none">
-      <DialogTitle className="flex items-center gap-3 text-xl text-white">
-        <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 shrink-0">
-          <Table2 className="h-5 w-5 text-white" />
-        </div>
-        Create New Table
+      <DialogTitle className="flex items-center gap-3 text-paper">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+          <Table2 className="h-4 w-4" aria-hidden />
+        </span>
+        <span className="flex flex-col gap-0.5 text-left">
+          <span className="text-[16px] font-semibold tracking-tight">Create new table</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+            Define columns, engine, and storage
+          </span>
+        </span>
       </DialogTitle>
     </DialogHeader>
   );
@@ -307,30 +311,35 @@ const CreateTable: React.FC = () => {
       onOpenChange={(open) => { if (!open) handleClose(); }}
       dialogId="createTable"
       title={dialogTitle}
-      windowClassName="rounded-2xl shadow-lg bg-gradient-to-br from-gray-900 to-gray-950 border-white/10 text-white"
-      headerClassName="pb-4 border-white/10"
-      footerClassName="pt-4 border-t border-white/10 px-6"
-      closeButtonClassName="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg"
-      contentClassName="bg-gradient-to-br from-gray-900 to-gray-950 text-white"
+      windowClassName="rounded-xs border border-ink-500 bg-ink-100 text-paper shadow-lg"
+      headerClassName="pb-4 border-b border-ink-500"
+      footerClassName="pt-4 border-t border-ink-500 px-6"
+      closeButtonClassName="rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
+      contentClassName="bg-ink-100 text-paper"
       footer={
-        <DialogFooter className="pt-4 border-t border-white/10 px-0">
-          <Button type="button" variant="outline" onClick={handleClose} className="border-white/10 text-gray-300 hover:bg-white/5">
+        <DialogFooter className="pt-4 border-t border-ink-500 px-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleClose}
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+          >
             Cancel
           </Button>
           <Button
             type="submit"
             form="create-table-form"
             disabled={executeQuery.isPending}
-            className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500"
+            className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
           >
             {executeQuery.isPending ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Creating...
               </>
             ) : (
               <>
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="h-3.5 w-3.5" />
                 Create Table
               </>
             )}
@@ -343,12 +352,12 @@ const CreateTable: React.FC = () => {
             {/* Basic Settings */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-gray-300">
-                  <Database className="h-4 w-4 text-blue-400" />
+                <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                  <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                   Database
                 </Label>
                 <Select value={database} onValueChange={setDatabase}>
-                  <SelectTrigger className="bg-white/5 border-white/10">
+                  <SelectTrigger className="rounded-xs border-ink-500 bg-ink-200 text-paper">
                     <SelectValue placeholder="Select database" />
                   </SelectTrigger>
                   <SelectContent>
@@ -361,26 +370,26 @@ const CreateTable: React.FC = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-gray-300">
-                  <Table2 className="h-4 w-4 text-green-400" />
+                <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                  <Table2 className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                   Table Name
                 </Label>
                 <Input
                   value={tableName}
                   onChange={(e) => setTableName(e.target.value)}
                   placeholder="my_table"
-                  className="bg-white/5 border-white/10"
+                  className="rounded-xs border-ink-500 bg-ink-200 text-paper"
                 />
               </div>
             </div>
 
             {/* Cluster Option */}
             {clusters.length > 0 && (
-              <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-3">
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Server className="h-4 w-4 text-orange-400" />
-                    <Label className="text-gray-300">Create on Cluster</Label>
+                    <Server className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Create on Cluster</Label>
                   </div>
                   <Switch checked={useCluster} onCheckedChange={setUseCluster} />
                 </div>
@@ -392,7 +401,7 @@ const CreateTable: React.FC = () => {
                       exit={{ opacity: 0, height: 0 }}
                     >
                       <Select value={selectedCluster} onValueChange={setSelectedCluster}>
-                        <SelectTrigger className="bg-white/5 border-white/10">
+                        <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                           <SelectValue placeholder="Select cluster" />
                         </SelectTrigger>
                         <SelectContent>
@@ -411,12 +420,12 @@ const CreateTable: React.FC = () => {
 
             {/* Engine Selection */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-2 text-gray-300">
-                <Layers className="h-4 w-4 text-purple-400" />
+              <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                <Layers className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                 Table Engine
               </Label>
               <Select value={engine} onValueChange={setEngine}>
-                <SelectTrigger className="bg-white/5 border-white/10">
+                <SelectTrigger className="rounded-xs border-ink-500 bg-ink-200 text-paper">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -424,7 +433,7 @@ const CreateTable: React.FC = () => {
                     <SelectItem key={eng.value} value={eng.value}>
                       <div className="flex flex-col">
                         <span>{eng.label}</span>
-                        <span className="text-xs text-gray-400">{eng.description}</span>
+                        <span className="text-[11px] text-paper-faint">{eng.description}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -435,12 +444,18 @@ const CreateTable: React.FC = () => {
             {/* Columns */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="flex items-center gap-2 text-gray-300">
-                  <GripVertical className="h-4 w-4 text-gray-400" />
+                <Label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                  <GripVertical className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
                   Columns
                 </Label>
-                <Button type="button" size="sm" variant="outline" onClick={handleAddColumn} className="gap-1">
-                  <Plus className="h-4 w-4" /> Add Column
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddColumn}
+                  className="h-8 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Column
                 </Button>
               </div>
 
@@ -453,40 +468,40 @@ const CreateTable: React.FC = () => {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ duration: 0.2 }}
-                      className={`flex flex-col gap-3 p-4 rounded-xl border transition-all ${orderByColumns.includes(column.name)
-                        ? "bg-blue-500/10 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]"
-                        : "bg-white/5 border-white/10 hover:border-white/20"
+                      className={`flex flex-col gap-3 p-4 rounded-xs border transition-colors ${orderByColumns.includes(column.name)
+                        ? "border-brand/40 bg-ink-200"
+                        : "border-ink-500 bg-ink-200 hover:border-ink-700"
                         }`}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-black/40 text-xs text-gray-400 font-mono shrink-0 mt-6">
+                          <span className="grid h-6 w-6 shrink-0 mt-6 place-items-center rounded-xs border border-ink-500 bg-ink-100 font-mono text-[10px] text-paper-faint">
                             {index + 1}
                           </span>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1">
                             <div className="space-y-1.5">
-                              <Label className="text-xs text-gray-400">Column Name</Label>
+                              <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Column Name</Label>
                               <Input
                                 placeholder="name"
                                 value={column.name}
                                 onChange={(e) => handleColumnChange(column.id, "name", e.target.value)}
-                                className="bg-black/20 border-white/10 h-9 transition-colors focus-visible:ring-1 focus-visible:ring-purple-500"
+                                className="h-9 rounded-xs border-ink-500 bg-ink-100 text-paper"
                               />
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-xs text-gray-400">Type</Label>
+                              <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Type</Label>
                               <Select
                                 value={column.type}
                                 onValueChange={(value) => handleColumnChange(column.id, "type", value)}
                               >
-                                <SelectTrigger className="w-full bg-black/20 border-white/10 h-9 transition-colors focus:ring-1 focus:ring-purple-500">
+                                <SelectTrigger className="h-9 w-full rounded-xs border-ink-500 bg-ink-100 text-paper">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {COMMON_TYPES.map((type) => (
                                     <SelectItem key={type.value} value={type.value}>
                                       <span className="flex items-center gap-2">
-                                        <span className="w-4 text-center">{type.icon}</span>
+                                        <span className="rounded-xs border border-ink-500 bg-ink-200 px-1 py-0.5 font-mono text-[10px] text-paper-muted">{type.code}</span>
                                         <span>{type.label}</span>
                                       </span>
                                     </SelectItem>
@@ -503,14 +518,14 @@ const CreateTable: React.FC = () => {
                               type="button"
                               size="sm"
                               variant={orderByColumns.includes(column.name) ? "default" : "outline"}
-                              className={`h-9 px-3 transition-all ${orderByColumns.includes(column.name)
-                                ? "bg-blue-600 hover:bg-blue-700 shadow-[0_0_10px_rgba(37,99,235,0.4)] text-white border-transparent"
-                                : "bg-black/20 border-white/10 hover:bg-white/10 text-gray-300"
+                              className={`h-9 gap-1.5 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors ${orderByColumns.includes(column.name)
+                                ? "bg-brand text-ink-50 hover:bg-brand-soft border-transparent"
+                                : "border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200"
                                 }`}
                               onClick={() => toggleOrderByColumn(column.name)}
                               title="Toggle ORDER BY inclusion"
                             >
-                              <Database className={`h-3.5 w-3.5 mr-1.5 ${orderByColumns.includes(column.name) ? "text-white" : "text-gray-400"}`} />
+                              <Database className="h-3.5 w-3.5" />
                               {orderByColumns.includes(column.name) ? `Sort Key #${orderByColumns.indexOf(column.name) + 1}` : "Sort Key"}
                             </Button>
                           )}
@@ -520,7 +535,7 @@ const CreateTable: React.FC = () => {
                             variant="ghost"
                             onClick={() => handleRemoveColumn(column.id)}
                             disabled={columns.length === 1}
-                            className="h-9 w-9 text-red-400/70 hover:text-red-300 hover:bg-red-500/20 disabled:opacity-30 disabled:hover:bg-transparent"
+                            className="h-9 w-9 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300 disabled:opacity-30 disabled:hover:bg-transparent"
                             title="Remove column"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -529,40 +544,40 @@ const CreateTable: React.FC = () => {
                       </div>
 
                       {/* Advanced Column Settings (Nullable & Default Value) */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pl-9 pt-1.5 border-t border-white/5 mx-[-1rem] px-[1rem] sm:mx-0 sm:px-0 sm:border-0 sm:pt-0">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pl-9 pt-1.5 border-t border-ink-500 mx-[-1rem] px-[1rem] sm:mx-0 sm:px-0 sm:border-0 sm:pt-0">
                         <div className="flex items-center gap-2 mt-2 sm:mt-0">
                           <Switch
                             id={`nullable-${column.id}`}
                             checked={column.nullable}
                             onCheckedChange={(checked) => handleColumnChange(column.id, "nullable", checked)}
-                            className="data-[state=checked]:bg-purple-500 scale-90"
+                            className="scale-90"
                           />
-                          <Label htmlFor={`nullable-${column.id}`} className="text-xs text-gray-400 cursor-pointer hover:text-gray-200 transition-colors">
+                          <Label htmlFor={`nullable-${column.id}`} className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim cursor-pointer hover:text-paper transition-colors">
                             Nullable
                           </Label>
                         </div>
 
-                        <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
+                        <div className="h-4 w-px bg-ink-500 hidden sm:block"></div>
 
                         <div className="flex-1 w-full flex items-center gap-2 pb-1 sm:pb-0">
-                          <Label className="text-xs text-gray-400 whitespace-nowrap hidden sm:block">Default</Label>
+                          <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim whitespace-nowrap hidden sm:block">Default</Label>
                           <Input
                             placeholder="Default value (e.g. '', 0, now())"
                             value={column.defaultValue}
                             onChange={(e) => handleColumnChange(column.id, "defaultValue", e.target.value)}
-                            className="flex-1 bg-black/20 border-white/10 h-8 text-xs transition-colors focus-visible:ring-1 focus-visible:ring-purple-500 pl-2.5"
+                            className="flex-1 h-8 rounded-xs border-ink-500 bg-ink-100 pl-2.5 text-[12px] text-paper"
                           />
                         </div>
 
-                        <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
+                        <div className="h-4 w-px bg-ink-500 hidden sm:block"></div>
 
                         <div className="flex-1 w-full flex items-center gap-2 pb-1 sm:pb-0">
-                          <Label className="text-xs text-gray-400 whitespace-nowrap hidden sm:block">Description</Label>
+                          <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim whitespace-nowrap hidden sm:block">Description</Label>
                           <Input
                             placeholder="Column description (optional)"
                             value={column.description}
                             onChange={(e) => handleColumnChange(column.id, "description", e.target.value)}
-                            className="flex-1 bg-black/20 border-white/10 h-8 text-xs transition-colors focus-visible:ring-1 focus-visible:ring-purple-500 pl-2.5"
+                            className="flex-1 h-8 rounded-xs border-ink-500 bg-ink-100 pl-2.5 text-[12px] text-paper"
                           />
                         </div>
                       </div>
@@ -575,30 +590,30 @@ const CreateTable: React.FC = () => {
             {/* Query Preview */}
             <Collapsible open={queryPreviewOpen} onOpenChange={setQueryPreviewOpen}>
               <CollapsibleTrigger className="w-full">
-                <div className={`flex items-center justify-between w-full p-3 rounded-xl border transition-all ${queryPreviewOpen
-                    ? "bg-blue-500/10 border-blue-500/30 text-white shadow-[0_0_15px_rgba(59,130,246,0.1)]"
-                    : "bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20"
+                <div className={`flex items-center justify-between w-full p-3 rounded-xs border transition-colors ${queryPreviewOpen
+                    ? "border-brand/40 bg-ink-200 text-paper"
+                    : "border-ink-500 bg-ink-200 text-paper-dim hover:border-ink-700 hover:text-paper"
                   }`}>
-                  <span className="flex items-center gap-2 font-medium">
-                    <Code className={`h-4 w-4 ${queryPreviewOpen ? "text-blue-400" : ""}`} />
+                  <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em]">
+                    <Code className={`h-3.5 w-3.5 ${queryPreviewOpen ? "text-brand" : "text-paper-dim"}`} aria-hidden />
                     CREATE TABLE Query
                   </span>
                   {queryPreviewOpen ? (
-                    <ChevronUp className="h-4 w-4 transition-transform text-blue-400" />
+                    <ChevronUp className="h-4 w-4 transition-transform text-brand" />
                   ) : (
                     <ChevronDown className="h-4 w-4 transition-transform" />
                   )}
                 </div>
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-3">
-                <div className="rounded-xl border border-white/10 overflow-hidden bg-black/40">
-                  <div className="p-3 border-b border-white/10 bg-white/5 flex items-center justify-between">
-                    <span className="text-xs text-gray-400 font-mono">SQL Preview</span>
+                <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-0">
+                  <div className="flex items-center justify-between border-b border-ink-500 bg-ink-200 px-4 py-2">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">SQL Preview</span>
                   </div>
                   <Textarea
                     readOnly
                     value={queryPreview}
-                    className="min-h-[120px] max-h-[300px] font-mono text-xs sm:text-sm text-blue-300 bg-transparent border-none resize-none overflow-auto p-4 focus-visible:ring-0"
+                    className="min-h-[120px] max-h-[300px] resize-none overflow-auto border-none bg-transparent p-4 font-mono text-[12px] sm:text-[13px] text-paper-muted focus-visible:ring-0"
                     style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                   />
                 </div>
@@ -608,35 +623,35 @@ const CreateTable: React.FC = () => {
             {/* Advanced Settings */}
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger className="w-full">
-                <div className={`flex items-center justify-between w-full p-3 rounded-xl border transition-all ${advancedOpen
-                    ? "bg-purple-500/10 border-purple-500/30 text-white shadow-[0_0_15px_rgba(168,85,247,0.1)]"
-                    : "bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20"
+                <div className={`flex items-center justify-between w-full p-3 rounded-xs border transition-colors ${advancedOpen
+                    ? "border-brand/40 bg-ink-200 text-paper"
+                    : "border-ink-500 bg-ink-200 text-paper-dim hover:border-ink-700 hover:text-paper"
                   }`}>
-                  <span className="flex items-center gap-2 font-medium">
-                    <Settings2 className={`h-4 w-4 ${advancedOpen ? "text-purple-400" : ""}`} />
+                  <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em]">
+                    <Settings2 className={`h-3.5 w-3.5 ${advancedOpen ? "text-brand" : "text-paper-dim"}`} aria-hidden />
                     Advanced Settings
                   </span>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180 text-purple-400" : ""}`} />
+                  <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180 text-brand" : ""}`} />
                 </div>
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-3">
-                <div className="p-5 rounded-xl border border-white/10 bg-white/5 space-y-5">
+                <div className="rounded-xs border border-ink-500 bg-ink-200 p-5 space-y-5">
                   <div className="space-y-2">
-                    <Label className="text-gray-300">Partition By</Label>
+                    <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Partition By</Label>
                     <Input
                       value={partitionBy}
                       onChange={(e) => setPartitionBy(e.target.value)}
                       placeholder="e.g., toYYYYMM(created_at) or leave empty for none"
-                      className="bg-black/20 border-white/10 focus-visible:ring-1 focus-visible:ring-purple-500"
+                      className="rounded-xs border-ink-500 bg-ink-100 text-paper"
                     />
                     <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <span className="text-xs text-gray-500 font-medium mr-1">Quick Picks:</span>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint mr-1">Quick Picks:</span>
                       {validColumnNames.map((col) => (
                         <button
                           key={col}
                           type="button"
                           onClick={() => setPartitionBy(col)}
-                          className="px-2.5 py-1 text-xs rounded-md bg-white/10 hover:bg-white/20 text-gray-300 transition-colors border border-white/5"
+                          className="rounded-xs border border-ink-500 bg-ink-100 px-2.5 py-1 font-mono text-[11px] text-paper-muted transition-colors hover:border-ink-700 hover:bg-ink-200 hover:text-paper"
                         >
                           {col}
                         </button>
@@ -651,7 +666,7 @@ const CreateTable: React.FC = () => {
                             key={`${col}-yyyymm`}
                             type="button"
                             onClick={() => setPartitionBy(`toYYYYMM(${col})`)}
-                            className="px-2.5 py-1 text-xs rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors border border-blue-500/20"
+                            className="rounded-xs border border-brand/40 px-2.5 py-1 font-mono text-[11px] text-brand transition-colors hover:bg-brand/10"
                           >
                             toYYYYMM({col})
                           </button>,
@@ -659,7 +674,7 @@ const CreateTable: React.FC = () => {
                             key={`${col}-yyyymmdd`}
                             type="button"
                             onClick={() => setPartitionBy(`toYYYYMMDD(${col})`)}
-                            className="px-2.5 py-1 text-xs rounded-md bg-green-500/20 hover:bg-green-500/30 text-green-300 transition-colors border border-green-500/20"
+                            className="rounded-xs border border-brand/40 px-2.5 py-1 font-mono text-[11px] text-brand transition-colors hover:bg-brand/10"
                           >
                             toYYYYMMDD({col})
                           </button>,
@@ -668,23 +683,23 @@ const CreateTable: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-white/10">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-ink-500">
                     <div className="space-y-2">
-                      <Label className="text-gray-300">TTL Expression</Label>
+                      <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">TTL Expression</Label>
                       <Input
                         value={ttlExpression}
                         onChange={(e) => setTtlExpression(e.target.value)}
                         placeholder="e.g., created_at + INTERVAL 30 DAY"
-                        className="bg-black/20 border-white/10 focus-visible:ring-1 focus-visible:ring-purple-500"
+                        className="rounded-xs border-ink-500 bg-ink-100 text-paper"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-gray-300">Table Comment</Label>
+                      <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Table Comment</Label>
                       <Input
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
                         placeholder="Optional description for the table"
-                        className="bg-black/20 border-white/10 focus-visible:ring-1 focus-visible:ring-purple-500"
+                        className="rounded-xs border-ink-500 bg-ink-100 text-paper"
                       />
                     </div>
                   </div>

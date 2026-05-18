@@ -5,7 +5,6 @@
  */
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import {
   FileText,
   RefreshCw,
@@ -30,11 +29,8 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { format, subDays, startOfToday, endOfToday, startOfYesterday, endOfYesterday } from 'date-fns';
-import { toast } from 'sonner';
 
 import { Button, buttonVariants } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -57,7 +53,6 @@ import {
 } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Tooltip,
   TooltipContent,
@@ -72,27 +67,12 @@ import { RbacAuditPruneDialog } from './RbacAuditPruneDialog';
 import { RbacAuditExportDialog } from './RbacAuditExportDialog';
 
 // ============================================
-// Action Colors
+// Action Categories
 // ============================================
+// Editorial: all category badges use uniform hairline + mono uppercase.
+// The category itself encodes meaning; no per-category color needed.
 
-const ACTION_COLORS: Record<string, { bg: string; text: string }> = {
-  'auth': { bg: 'bg-blue-500/20', text: 'text-blue-300' },
-  'user': { bg: 'bg-green-500/20', text: 'text-green-300' },
-  'role': { bg: 'bg-purple-500/20', text: 'text-purple-300' },
-  'clickhouse': { bg: 'bg-orange-500/20', text: 'text-orange-300' },
-  'settings': { bg: 'bg-cyan-500/20', text: 'text-cyan-300' },
-  'ai_provider': { bg: 'bg-pink-500/20', text: 'text-pink-300' },
-  'ai_model': { bg: 'bg-rose-500/20', text: 'text-rose-300' },
-  'ai_config': { bg: 'bg-fuchsia-500/20', text: 'text-fuchsia-300' },
-  'connection': { bg: 'bg-amber-500/20', text: 'text-amber-300' },
-  'data_access': { bg: 'bg-teal-500/20', text: 'text-teal-300' },
-  'saved_query': { bg: 'bg-indigo-500/20', text: 'text-indigo-300' },
-};
-
-const getActionColor = (action: string) => {
-  const category = action.split('.')[0];
-  return ACTION_COLORS[category] || { bg: 'bg-gray-500/20', text: 'text-gray-300' };
-};
+const ACTION_BADGE = 'inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted';
 
 const DeviceIcon: React.FC<{ type?: string | null; className?: string }> = ({ type, className = 'h-3 w-3' }) => {
   switch (type) {
@@ -169,12 +149,14 @@ export const RbacAuditLogs: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-cyan-500/20">
-            <FileText className="h-5 w-5 text-cyan-400" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-white">Audit Logs</h2>
-            <p className="text-sm text-gray-400">{total} total events</p>
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+            <FileText className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-semibold tracking-tight text-paper">Audit logs</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              {total} total events
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -183,9 +165,9 @@ export const RbacAuditLogs: React.FC = () => {
             size="sm"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
           >
-            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
             Refresh
           </Button>
           {canExport && (
@@ -213,24 +195,24 @@ export const RbacAuditLogs: React.FC = () => {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-4 gap-4">
-          <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-            <p className="text-sm text-gray-400">Last 24 Hours</p>
-            <p className="text-2xl font-bold text-white">{stats.last24Hours}</p>
+        <div className="grid grid-cols-4 overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+          <div className="border-r border-ink-500 p-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Last 24 hours</p>
+            <p className="mt-2 font-mono text-[22px] font-semibold tabular-nums text-paper">{stats.last24Hours}</p>
           </div>
-          <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-            <p className="text-sm text-gray-400">Successful</p>
-            <p className="text-2xl font-bold text-green-400">{stats.byStatus.success || 0}</p>
+          <div className="border-r border-ink-500 p-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Successful</p>
+            <p className="mt-2 font-mono text-[22px] font-semibold tabular-nums text-emerald-300">{stats.byStatus.success || 0}</p>
           </div>
-          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-            <p className="text-sm text-gray-400">Failed</p>
-            <p className="text-2xl font-bold text-red-400">
+          <div className="border-r border-ink-500 p-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Failed</p>
+            <p className="mt-2 font-mono text-[22px] font-semibold tabular-nums text-red-300">
               {(stats.byStatus.failed || 0) + (stats.byStatus.failure || 0)}
             </p>
           </div>
-          <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
-            <p className="text-sm text-gray-400">Logins</p>
-            <p className="text-2xl font-bold text-blue-400">
+          <div className="p-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Logins</p>
+            <p className="mt-2 font-mono text-[22px] font-semibold tabular-nums text-paper">
               {(stats.byAction['auth.login'] || 0) + (stats.byAction['auth.login_failed'] || 0)}
             </p>
           </div>
@@ -238,10 +220,10 @@ export const RbacAuditLogs: React.FC = () => {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <Select value={usernameFilter} onValueChange={(v) => { setUsernameFilter(v === 'all' ? '' : v); setPage(1); }}>
-          <SelectTrigger className="w-[160px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
-            <UserIcon className="h-4 w-4 mr-2 text-gray-500" />
+          <SelectTrigger className="relative h-9 w-[160px] rounded-xs border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200">
+            <UserIcon className="mr-2 h-3.5 w-3.5 text-paper-dim" />
             <SelectValue placeholder="Username" />
             {usernameFilter && (
               <span className="absolute right-8 top-1/2 -translate-y-1/2" onClick={(e) => {
@@ -249,12 +231,12 @@ export const RbacAuditLogs: React.FC = () => {
                 setUsernameFilter('');
                 setPage(1);
               }}>
-                <X className="h-3 w-3 text-gray-500 hover:text-white" />
+                <X className="h-3 w-3 text-paper-dim hover:text-paper" />
               </span>
             )}
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Usernames</SelectItem>
+          <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+            <SelectItem value="all">All usernames</SelectItem>
             {metadata.usernames.map((username) => (
               <SelectItem key={username} value={username}>{username}</SelectItem>
             ))}
@@ -262,8 +244,8 @@ export const RbacAuditLogs: React.FC = () => {
         </Select>
 
         <Select value={emailFilter} onValueChange={(v) => { setEmailFilter(v === 'all' ? '' : v); setPage(1); }}>
-          <SelectTrigger className="w-[180px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
-            <Mail className="h-4 w-4 mr-2 text-gray-500" />
+          <SelectTrigger className="relative h-9 w-[180px] rounded-xs border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200">
+            <Mail className="mr-2 h-3.5 w-3.5 text-paper-dim" />
             <SelectValue placeholder="Email" />
             {emailFilter && (
               <span className="absolute right-8 top-1/2 -translate-y-1/2" onClick={(e) => {
@@ -271,12 +253,12 @@ export const RbacAuditLogs: React.FC = () => {
                 setEmailFilter('');
                 setPage(1);
               }}>
-                <X className="h-3 w-3 text-gray-500 hover:text-white" />
+                <X className="h-3 w-3 text-paper-dim hover:text-paper" />
               </span>
             )}
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Emails</SelectItem>
+          <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+            <SelectItem value="all">All emails</SelectItem>
             {metadata.emails.map((email) => (
               <SelectItem key={email} value={email}>{email}</SelectItem>
             ))}
@@ -284,12 +266,12 @@ export const RbacAuditLogs: React.FC = () => {
         </Select>
 
         <Select value={statusFilter} onValueChange={(v: any) => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[130px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
-            <Activity className="h-4 w-4 mr-2 text-cyan-400" />
+          <SelectTrigger className="h-9 w-[130px] rounded-xs border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200">
+            <Activity className="mr-2 h-3.5 w-3.5 text-paper-dim" />
             <SelectValue placeholder="Status" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
+          <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+            <SelectItem value="all">All status</SelectItem>
             {metadata.statuses.map((status) => (
               <SelectItem key={status} value={status}>
                 {status === 'success' ? 'Success' : (status === 'failed' || status === 'failure') ? 'Failed' : status}
@@ -299,15 +281,15 @@ export const RbacAuditLogs: React.FC = () => {
         </Select>
 
         <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[180px] bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
-            <Filter className="h-4 w-4 mr-2 text-cyan-400" />
+          <SelectTrigger className="h-9 w-[180px] rounded-xs border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200">
+            <Filter className="mr-2 h-3.5 w-3.5 text-paper-dim" />
             <SelectValue placeholder="Action" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Actions</SelectItem>
+          <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+            <SelectItem value="all">All actions</SelectItem>
             {Object.entries(actions).map(([category, categoryActions]) => (
               <React.Fragment key={category}>
-                <div className="px-2 py-1 text-xs text-gray-400 uppercase">{category}</div>
+                <div className="px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{category}</div>
                 {categoryActions.map((action) => (
                   <SelectItem key={action} value={action}>
                     {action}
@@ -320,32 +302,32 @@ export const RbacAuditLogs: React.FC = () => {
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2 bg-white/5 border-white/10 rounded-xl hover:bg-white/10 transition-colors h-9">
-              <Calendar className="h-4 w-4 text-cyan-400" />
+            <Button variant="outline" className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-200">
+              <Calendar className="h-3.5 w-3.5 text-paper-dim" />
               {dateRange.start ? (
                 dateRange.end && format(dateRange.start, 'MMM d, yyyy') !== format(dateRange.end, 'MMM d, yyyy')
                   ? `${format(dateRange.start, 'MMM d')} - ${format(dateRange.end, 'MMM d, yyyy')}`
                   : format(dateRange.start, 'MMM d, yyyy')
-              ) : 'Date Range'}
+              ) : 'Date range'}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 bg-[#0B0D11] border-white/10 shadow-2xl rounded-2xl border backdrop-blur-3xl" align="start">
+          <PopoverContent className="w-auto rounded-xs border border-ink-500 bg-ink-100 p-0" align="start">
             <div className="flex h-auto">
               {/* Presets Sidebar */}
-              <div className="w-40 bg-white/[0.03] p-4 flex flex-col gap-1.5 border-r border-white/5">
-                <p className="px-2 mb-3 text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Presets</p>
+              <div className="flex w-40 flex-col gap-1 border-r border-ink-500 bg-ink-200 p-3">
+                <p className="mb-2 px-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">Presets</p>
                 {[
                   { label: 'Today', getValue: () => ({ start: startOfToday(), end: endOfToday() }) },
                   { label: 'Yesterday', getValue: () => ({ start: startOfYesterday(), end: endOfYesterday() }) },
-                  { label: 'Last 7 Days', getValue: () => ({ start: subDays(new Date(), 7), end: new Date() }) },
-                  { label: 'Last 30 Days', getValue: () => ({ start: subDays(new Date(), 30), end: new Date() }) },
-                  { label: 'All Time', getValue: () => ({ start: undefined, end: undefined }) },
+                  { label: 'Last 7 days', getValue: () => ({ start: subDays(new Date(), 7), end: new Date() }) },
+                  { label: 'Last 30 days', getValue: () => ({ start: subDays(new Date(), 30), end: new Date() }) },
+                  { label: 'All time', getValue: () => ({ start: undefined, end: undefined }) },
                 ].map((preset) => (
                   <Button
                     key={preset.label}
                     variant="ghost"
                     size="sm"
-                    className="justify-start font-medium text-gray-400 hover:text-white hover:bg-white/5 rounded-lg h-9 w-full"
+                    className="h-8 w-full justify-start rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-100 hover:text-paper"
                     onClick={() => {
                       const range = preset.getValue();
                       setDateRange(range);
@@ -356,23 +338,23 @@ export const RbacAuditLogs: React.FC = () => {
                   </Button>
                 ))}
 
-                <div className="mt-auto pt-4 border-t border-white/5">
+                <div className="mt-auto border-t border-ink-500 pt-3">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="justify-start font-medium text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-lg h-9 w-full"
+                    className="h-8 w-full justify-start rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-red-400 hover:bg-red-950/40 hover:text-red-300"
                     onClick={() => {
                       setDateRange({});
                       setPage(1);
                     }}
                   >
-                    Clear Filter
+                    Clear filter
                   </Button>
                 </div>
               </div>
 
               {/* Calendar Section */}
-              <div className="flex-1 p-6 bg-transparent min-w-[340px]">
+              <div className="min-w-[340px] flex-1 bg-ink-100 p-6">
                 <CalendarComponent
                   mode="range"
                   selected={{ from: dateRange.start, to: dateRange.end }}
@@ -387,29 +369,29 @@ export const RbacAuditLogs: React.FC = () => {
                     months: "w-full",
                     month: "space-y-4 w-full",
                     month_caption: "flex justify-center pt-1 relative items-center mb-6",
-                    caption_label: "text-sm font-bold text-white uppercase tracking-widest",
+                    caption_label: "font-mono text-[11px] font-semibold text-paper uppercase tracking-[0.18em]",
                     nav: "space-x-1 flex items-center",
                     button_previous: cn(
                       buttonVariants({ variant: "outline" }),
-                      "h-8 w-8 bg-white/5 border-white/10 p-0 text-gray-400 hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                      "h-8 w-8 rounded-xs border-ink-500 bg-ink-100 p-0 text-paper-dim hover:border-ink-700 hover:bg-ink-200 hover:text-paper"
                     ),
                     button_next: cn(
                       buttonVariants({ variant: "outline" }),
-                      "h-8 w-8 bg-white/5 border-white/10 p-0 text-gray-400 hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                      "h-8 w-8 rounded-xs border-ink-500 bg-ink-100 p-0 text-paper-dim hover:border-ink-700 hover:bg-ink-200 hover:text-paper"
                     ),
                     month_grid: "w-full border-collapse select-none",
                     weekdays: "grid grid-cols-7 w-full mb-4 px-1",
-                    weekday: "text-gray-500 font-bold uppercase text-[9px] tracking-[0.2em] text-center flex items-center justify-center h-8",
+                    weekday: "text-paper-faint font-mono uppercase text-[10px] tracking-[0.18em] text-center flex items-center justify-center h-8",
                     week: "grid grid-cols-7 w-full mt-1 px-1",
                     day: "h-11 w-full text-center text-sm p-0 relative flex items-center justify-center",
                     day_button: cn(
                       buttonVariants({ variant: "ghost" }),
-                      "h-10 w-10 p-0 font-semibold text-gray-300 hover:bg-white/10 hover:text-white rounded-xl transition-all duration-200 flex items-center justify-center text-[13px] tracking-tight"
+                      "h-10 w-10 p-0 font-medium text-paper-muted hover:bg-ink-200 hover:text-paper rounded-xs transition-all flex items-center justify-center text-[13px] tabular-nums"
                     ),
-                    selected: "!bg-cyan-500 !text-white hover:!bg-cyan-600 focus:!bg-cyan-500 rounded-xl shadow-[0_8px_16px_rgba(6,182,212,0.3)] opacity-100 border-none",
-                    today: "border border-cyan-500/50 text-cyan-400 font-black rounded-xl bg-cyan-500/5",
-                    outside: "text-gray-800 opacity-10",
-                    range_middle: "aria-selected:bg-cyan-500/10 aria-selected:text-cyan-200 !rounded-none",
+                    selected: "!bg-brand !text-ink-50 hover:!bg-brand-soft focus:!bg-brand rounded-xs opacity-100 border-none",
+                    today: "border border-brand/50 text-brand font-semibold rounded-xs bg-brand/5",
+                    outside: "text-paper-faint opacity-30",
+                    range_middle: "aria-selected:bg-brand/10 aria-selected:text-brand !rounded-none",
                   }}
                 />
               </div>
@@ -429,125 +411,121 @@ export const RbacAuditLogs: React.FC = () => {
               setDateRange({});
               setPage(1);
             }}
-            className="text-gray-400 hover:text-white hover:bg-white/5 rounded-xl px-4 h-9"
+            className="h-9 gap-2 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
           >
-            <X className="h-4 w-4 mr-2" />
+            <X className="h-3.5 w-3.5" />
             Reset
           </Button>
         )}
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-white/10 bg-white/5 overflow-x-auto">
+      <div className="overflow-x-auto rounded-xs border border-ink-500 bg-ink-100">
         <Table className="min-w-[1200px]">
           <TableHeader>
-            <TableRow className="border-white/10 hover:bg-white/5">
-              <TableHead className="text-gray-400 w-[180px] whitespace-nowrap">Timestamp</TableHead>
-              <TableHead className="text-gray-400 whitespace-nowrap">Action</TableHead>
-              <TableHead className="text-gray-400 whitespace-nowrap">Display Name</TableHead>
-              <TableHead className="text-gray-400 whitespace-nowrap">Username</TableHead>
-              <TableHead className="text-gray-400 whitespace-nowrap">Email</TableHead>
-              <TableHead className="text-gray-400 whitespace-nowrap">Resource</TableHead>
-              <TableHead className="text-gray-400 whitespace-nowrap">Status</TableHead>
-              <TableHead className="text-gray-400 whitespace-nowrap">Client Info</TableHead>
+            <TableRow className="border-ink-500 hover:bg-transparent">
+              <TableHead className="w-[180px] whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Timestamp</TableHead>
+              <TableHead className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Action</TableHead>
+              <TableHead className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Display name</TableHead>
+              <TableHead className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Username</TableHead>
+              <TableHead className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Email</TableHead>
+              <TableHead className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Resource</TableHead>
+              <TableHead className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Status</TableHead>
+              <TableHead className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Client info</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               Array.from({ length: 10 }).map((_, i) => (
-                <TableRow key={i} className="border-white/10">
-                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                <TableRow key={i} className="border-ink-500">
+                  <TableCell><Skeleton className="h-4 w-32 bg-ink-200" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-24 bg-ink-200" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24 bg-ink-200" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20 bg-ink-200" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-32 bg-ink-200" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-28 bg-ink-200" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-16 bg-ink-200" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24 bg-ink-200" /></TableCell>
                 </TableRow>
               ))
             ) : logs.length === 0 ? (
-              <TableRow className="border-white/10">
-                <TableCell colSpan={8} className="text-center py-8 text-gray-400">
+              <TableRow className="border-ink-500">
+                <TableCell colSpan={8} className="py-8 text-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
                   No audit logs found
                 </TableCell>
               </TableRow>
             ) : (
               logs.map((log) => {
-                const actionColor = getActionColor(log.action);
                 return (
-                  <TableRow key={log.id} className="border-white/10 hover:bg-white/5">
-                    <TableCell className="text-gray-400 text-sm font-mono">
+                  <TableRow key={log.id} className="border-ink-500 hover:bg-ink-200">
+                    <TableCell className="font-mono text-[12px] text-paper-dim">
                       {format(new Date(log.createdAt), 'MMM d, HH:mm:ss')}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(actionColor.bg, actionColor.text, 'text-xs')}
-                      >
+                      <span className={ACTION_BADGE}>
                         {log.action}
-                      </Badge>
+                      </span>
                     </TableCell>
-                    <TableCell className="text-white">
+                    <TableCell className="text-paper">
                       {log.displayNameSnapshot ? (
                         <div className="flex items-center gap-2">
-                          <User className="h-3 w-3 text-cyan-400" />
-                          <span className="text-sm font-medium">{log.displayNameSnapshot}</span>
+                          <User className="h-3 w-3 text-paper-dim" />
+                          <span className="text-[13px] font-medium">{log.displayNameSnapshot}</span>
                         </div>
                       ) : (
-                        <span className="text-gray-500">-</span>
+                        <span className="text-paper-faint">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-gray-400 text-sm">
-                      {log.usernameSnapshot || (log.userId ? log.userId.slice(0, 8) + '...' : '-')}
+                    <TableCell className="font-mono text-[12px] text-paper-muted">
+                      {log.usernameSnapshot || (log.userId ? log.userId.slice(0, 8) + '…' : '—')}
                     </TableCell>
-                    <TableCell className="text-gray-400 text-sm">
-                      {log.emailSnapshot || '-'}
+                    <TableCell className="text-[12px] text-paper-muted">
+                      {log.emailSnapshot || '—'}
                     </TableCell>
-                    <TableCell className="text-gray-400 text-sm">
+                    <TableCell className="font-mono text-[12px] text-paper-muted">
                       {log.resourceType ? (
                         <span>
                           {log.resourceType}
                           {log.resourceId && (
-                            <span className="text-gray-500">/{log.resourceId.slice(0, 8)}...</span>
+                            <span className="text-paper-faint">/{log.resourceId.slice(0, 8)}…</span>
                           )}
                         </span>
                       ) : (
-                        '-'
+                        '—'
                       )}
                     </TableCell>
                     <TableCell>
                       {log.status === 'success' ? (
-                        <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/30">
-                          <CheckCircle className="h-3 w-3 mr-1" />
+                        <span className="inline-flex items-center gap-1 rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+                          <CheckCircle className="h-3 w-3" />
                           Success
-                        </Badge>
+                        </span>
                       ) : (log.status === 'failed' || log.status === 'failure') ? (
-                        <Badge variant="outline" className="bg-red-500/20 text-red-300 border-red-500/30">
-                          <XCircle className="h-3 w-3 mr-1" />
+                        <span className="inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                          <XCircle className="h-3 w-3" />
                           Failed
-                        </Badge>
+                        </span>
                       ) : (
-                        <Badge variant="outline" className="bg-gray-500/20 text-gray-300 border-gray-500/30">
-                          <Info className="h-3 w-3 mr-1" />
+                        <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                          <Info className="h-3 w-3" />
                           Unknown
-                        </Badge>
+                        </span>
                       )}
                     </TableCell>
                     <TableCell>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <div className="space-y-1 cursor-help min-w-[180px]">
+                            <div className="min-w-[180px] cursor-help space-y-1">
                               {(log.browser || log.os) ? (
                                 <>
                                   {/* Row 1: device icon + browser + OS */}
-                                  <div className="flex items-center gap-1.5 text-sm text-white">
-                                    <DeviceIcon type={log.deviceType} className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                                  <div className="flex items-center gap-1.5 text-[13px] text-paper">
+                                    <DeviceIcon type={log.deviceType} className="h-3.5 w-3.5 shrink-0 text-paper-dim" />
                                     <span className="truncate">
                                       {[log.browser, log.browserVersion].filter(Boolean).join(' ')}
                                       {log.os && (
-                                        <span className="text-gray-400">
+                                        <span className="text-paper-muted">
                                           {' · '}{[log.os, log.osVersion].filter(Boolean).join(' ')}
                                         </span>
                                       )}
@@ -555,18 +533,18 @@ export const RbacAuditLogs: React.FC = () => {
                                   </div>
                                   {/* Row 2: device model (mobile/tablet only) */}
                                   {log.deviceModel && (
-                                    <div className="flex items-center gap-1 text-xs text-gray-400">
+                                    <div className="flex items-center gap-1 text-[11px] text-paper-muted">
                                       <Layers className="h-3 w-3 shrink-0" />
                                       <span className="truncate">{log.deviceModel}</span>
                                       {log.architecture && (
-                                        <span className="ml-1 px-1 rounded bg-white/5 text-gray-500 font-mono text-[10px]">
+                                        <span className="ml-1 rounded-xs border border-ink-500 bg-ink-200 px-1 font-mono text-[10px] text-paper-faint">
                                           {log.architecture}
                                         </span>
                                       )}
                                     </div>
                                   )}
                                   {/* Row 3: geo + locale + IP */}
-                                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                                  <div className="flex items-center gap-2 text-[11px] text-paper-faint">
                                     {(log.country || log.city) && (
                                       <span className="flex items-center gap-0.5">
                                         <Globe className="h-3 w-3 shrink-0" />
@@ -575,56 +553,56 @@ export const RbacAuditLogs: React.FC = () => {
                                     )}
                                     {log.language && <span>{log.language}</span>}
                                     {log.ipAddress && (
-                                      <span className="font-mono truncate max-w-[110px]">{log.ipAddress}</span>
+                                      <span className="max-w-[110px] truncate font-mono">{log.ipAddress}</span>
                                     )}
                                   </div>
                                 </>
                               ) : (
-                                <span className="text-gray-500 text-sm font-mono">{log.ipAddress || '-'}</span>
+                                <span className="font-mono text-[12px] text-paper-faint">{log.ipAddress || '—'}</span>
                               )}
                             </div>
                           </TooltipTrigger>
-                          <TooltipContent side="left" className="max-w-[360px] bg-gray-900 border-white/10 p-3">
-                            <div className="space-y-3 text-xs">
+                          <TooltipContent side="left" className="max-w-[360px] rounded-xs border border-ink-500 bg-ink-100 p-3">
+                            <div className="space-y-3 text-[12px]">
                               {/* Browser & OS */}
                               {(log.browser || log.os || log.deviceType) && (
                                 <div className="space-y-1.5">
-                                  <p className="text-gray-500 uppercase tracking-wider text-[10px] font-semibold">Client</p>
+                                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-dim">Client</p>
                                   <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                                     {log.deviceType && (
                                       <>
-                                        <span className="text-gray-500">Device</span>
-                                        <span className="text-white flex items-center gap-1">
-                                          <DeviceIcon type={log.deviceType} className="h-3 w-3 text-cyan-400" />
+                                        <span className="text-paper-faint">Device</span>
+                                        <span className="flex items-center gap-1 text-paper">
+                                          <DeviceIcon type={log.deviceType} className="h-3 w-3 text-paper-dim" />
                                           {log.deviceType}
                                         </span>
                                       </>
                                     )}
                                     {log.deviceModel && (
                                       <>
-                                        <span className="text-gray-500">Model</span>
-                                        <span className="text-white">{log.deviceModel}</span>
+                                        <span className="text-paper-faint">Model</span>
+                                        <span className="text-paper">{log.deviceModel}</span>
                                       </>
                                     )}
                                     {log.architecture && (
                                       <>
-                                        <span className="text-gray-500">Arch</span>
-                                        <span className="text-white font-mono">{log.architecture}</span>
+                                        <span className="text-paper-faint">Arch</span>
+                                        <span className="font-mono text-paper">{log.architecture}</span>
                                       </>
                                     )}
                                     {log.browser && (
                                       <>
-                                        <span className="text-gray-500">Browser</span>
-                                        <span className="text-white">
-                                          {log.browser}{log.browserVersion && <span className="text-gray-400"> {log.browserVersion}</span>}
+                                        <span className="text-paper-faint">Browser</span>
+                                        <span className="text-paper">
+                                          {log.browser}{log.browserVersion && <span className="text-paper-muted"> {log.browserVersion}</span>}
                                         </span>
                                       </>
                                     )}
                                     {log.os && (
                                       <>
-                                        <span className="text-gray-500">OS</span>
-                                        <span className="text-white">
-                                          {log.os}{log.osVersion && <span className="text-gray-400"> {log.osVersion}</span>}
+                                        <span className="text-paper-faint">OS</span>
+                                        <span className="text-paper">
+                                          {log.os}{log.osVersion && <span className="text-paper-muted"> {log.osVersion}</span>}
                                         </span>
                                       </>
                                     )}
@@ -634,32 +612,32 @@ export const RbacAuditLogs: React.FC = () => {
                               {/* Geo */}
                               {(log.country || log.city || log.countryRegion || log.timezone || log.language) && (
                                 <div className="space-y-1.5">
-                                  <p className="text-gray-500 uppercase tracking-wider text-[10px] font-semibold">Location</p>
+                                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-dim">Location</p>
                                   <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                                     {log.city && (
                                       <>
-                                        <span className="text-gray-500 flex items-center gap-1"><MapPin className="h-3 w-3" />City</span>
-                                        <span className="text-white">{log.city}</span>
+                                        <span className="flex items-center gap-1 text-paper-faint"><MapPin className="h-3 w-3" />City</span>
+                                        <span className="text-paper">{log.city}</span>
                                       </>
                                     )}
                                     {(log.country || log.countryRegion) && (
                                       <>
-                                        <span className="text-gray-500 flex items-center gap-1"><Globe className="h-3 w-3" />Country</span>
-                                        <span className="text-white">
+                                        <span className="flex items-center gap-1 text-paper-faint"><Globe className="h-3 w-3" />Country</span>
+                                        <span className="text-paper">
                                           {[log.country, log.countryRegion].filter(Boolean).join(' / ')}
                                         </span>
                                       </>
                                     )}
                                     {log.timezone && (
                                       <>
-                                        <span className="text-gray-500 flex items-center gap-1"><Clock className="h-3 w-3" />TZ</span>
-                                        <span className="text-white font-mono">{log.timezone}</span>
+                                        <span className="flex items-center gap-1 text-paper-faint"><Clock className="h-3 w-3" />TZ</span>
+                                        <span className="font-mono text-paper">{log.timezone}</span>
                                       </>
                                     )}
                                     {log.language && (
                                       <>
-                                        <span className="text-gray-500">Lang</span>
-                                        <span className="text-white">{log.language}</span>
+                                        <span className="text-paper-faint">Lang</span>
+                                        <span className="text-paper">{log.language}</span>
                                       </>
                                     )}
                                   </div>
@@ -668,22 +646,22 @@ export const RbacAuditLogs: React.FC = () => {
                               {/* Network */}
                               {log.ipAddress && (
                                 <div className="space-y-1.5">
-                                  <p className="text-gray-500 uppercase tracking-wider text-[10px] font-semibold">Network</p>
+                                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-dim">Network</p>
                                   <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                                    <span className="text-gray-500">IP</span>
-                                    <span className="text-white font-mono">{log.ipAddress}</span>
+                                    <span className="text-paper-faint">IP</span>
+                                    <span className="font-mono text-paper">{log.ipAddress}</span>
                                   </div>
                                 </div>
                               )}
                               {/* Raw UA */}
                               {log.userAgent && (
-                                <div className="space-y-1 pt-1 border-t border-white/5">
-                                  <p className="text-gray-500 uppercase tracking-wider text-[10px] font-semibold">User-Agent</p>
-                                  <p className="text-gray-400 break-all font-mono text-[10px] leading-relaxed">{log.userAgent}</p>
+                                <div className="space-y-1 border-t border-ink-500 pt-1">
+                                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-dim">User-agent</p>
+                                  <p className="break-all font-mono text-[10px] leading-relaxed text-paper-muted">{log.userAgent}</p>
                                 </div>
                               )}
                               {!log.browser && !log.os && !log.country && !log.ipAddress && !log.userAgent && (
-                                <p className="text-gray-500">No client data available</p>
+                                <p className="text-paper-faint">No client data available</p>
                               )}
                             </div>
                           </TooltipContent>
@@ -701,7 +679,7 @@ export const RbacAuditLogs: React.FC = () => {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-400">
+          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim">
             Page {page} of {totalPages}
           </p>
           <div className="flex items-center gap-2">
@@ -710,6 +688,7 @@ export const RbacAuditLogs: React.FC = () => {
               size="sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
+              className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
             >
               Previous
             </Button>
@@ -718,6 +697,7 @@ export const RbacAuditLogs: React.FC = () => {
               size="sm"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
+              className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
             >
               Next
             </Button>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -32,7 +32,7 @@ interface ExplainCache {
 const EstimateView: React.FC<{ data: any[] | null | undefined }> = ({ data }) => {
     if (!data || data.length === 0) {
         return (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
+            <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
                 No estimate data available.
             </div>
         );
@@ -51,51 +51,57 @@ const EstimateView: React.FC<{ data: any[] | null | undefined }> = ({ data }) =>
     const formatNumber = (n: number) => n.toLocaleString();
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="flex h-full flex-col">
             <ExplainInfoHeader type="estimate" />
-            <div className="flex-1 overflow-auto p-4 space-y-4">
+            <div className="flex-1 space-y-4 overflow-auto p-4">
                 {/* Summary Card */}
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
-                    <h3 className="text-sm font-semibold text-zinc-300 mb-3">Cost Estimation Summary</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="text-center">
-                            <div className="text-2xl font-bold text-blue-400">{formatNumber(totals.rows)}</div>
-                            <div className="text-xs text-zinc-500">Estimated Rows</div>
+                <div className="rounded-xs border border-ink-500 bg-ink-100 p-4">
+                    <span className="mb-3 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                        <span className="h-px w-6 bg-ink-700" />
+                        <span>Cost estimation summary</span>
+                    </span>
+                    <div className="mt-2 grid grid-cols-3 border-l border-t border-ink-500">
+                        <div className="border-b border-r border-ink-500 p-4 text-center">
+                            <div className="font-mono text-[22px] font-semibold tabular-nums text-paper">{formatNumber(totals.rows)}</div>
+                            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Estimated rows</div>
                         </div>
-                        <div className="text-center">
-                            <div className="text-2xl font-bold text-purple-400">{formatNumber(totals.parts)}</div>
-                            <div className="text-xs text-zinc-500">Parts to Read</div>
+                        <div className="border-b border-r border-ink-500 p-4 text-center">
+                            <div className="font-mono text-[22px] font-semibold tabular-nums text-paper">{formatNumber(totals.parts)}</div>
+                            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Parts to read</div>
                         </div>
-                        <div className="text-center">
-                            <div className="text-2xl font-bold text-green-400">{formatNumber(totals.marks)}</div>
-                            <div className="text-xs text-zinc-500">Marks to Read</div>
+                        <div className="border-b border-r border-ink-500 p-4 text-center">
+                            <div className="font-mono text-[22px] font-semibold tabular-nums text-paper">{formatNumber(totals.marks)}</div>
+                            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Marks to read</div>
                         </div>
                     </div>
                 </div>
 
                 {/* Per-table breakdown */}
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg overflow-hidden">
-                    <div className="px-4 py-3 border-b border-zinc-800">
-                        <h3 className="text-sm font-semibold text-zinc-300">Table Breakdown</h3>
+                <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+                    <div className="border-b border-ink-500 px-4 py-3">
+                        <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                            <span className="h-px w-6 bg-ink-700" />
+                            <span>Table breakdown</span>
+                        </span>
                     </div>
-                    <table className="w-full text-xs">
-                        <thead className="bg-zinc-800/50">
+                    <table className="w-full text-[12px]">
+                        <thead className="bg-ink-200">
                             <tr>
-                                <th className="px-4 py-2 text-left text-zinc-400 font-medium">Database</th>
-                                <th className="px-4 py-2 text-left text-zinc-400 font-medium">Table</th>
-                                <th className="px-4 py-2 text-right text-zinc-400 font-medium">Rows</th>
-                                <th className="px-4 py-2 text-right text-zinc-400 font-medium">Parts</th>
-                                <th className="px-4 py-2 text-right text-zinc-400 font-medium">Marks</th>
+                                <th className="px-4 py-2 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Database</th>
+                                <th className="px-4 py-2 text-left font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Table</th>
+                                <th className="px-4 py-2 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Rows</th>
+                                <th className="px-4 py-2 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Parts</th>
+                                <th className="px-4 py-2 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Marks</th>
                             </tr>
                         </thead>
                         <tbody>
                             {data.map((row, i) => (
-                                <tr key={i} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
-                                    <td className="px-4 py-2 text-zinc-300">{row.database}</td>
-                                    <td className="px-4 py-2 text-zinc-300 font-mono">{row.table}</td>
-                                    <td className="px-4 py-2 text-right text-blue-400">{formatNumber(Number(row.rows) || 0)}</td>
-                                    <td className="px-4 py-2 text-right text-purple-400">{formatNumber(Number(row.parts) || 0)}</td>
-                                    <td className="px-4 py-2 text-right text-green-400">{formatNumber(Number(row.marks) || 0)}</td>
+                                <tr key={i} className="border-t border-ink-500 hover:bg-ink-200">
+                                    <td className="px-4 py-2 text-paper-muted">{row.database}</td>
+                                    <td className="px-4 py-2 font-mono text-paper">{row.table}</td>
+                                    <td className="px-4 py-2 text-right font-mono tabular-nums text-paper">{formatNumber(Number(row.rows) || 0)}</td>
+                                    <td className="px-4 py-2 text-right font-mono tabular-nums text-paper">{formatNumber(Number(row.parts) || 0)}</td>
+                                    <td className="px-4 py-2 text-right font-mono tabular-nums text-paper">{formatNumber(Number(row.marks) || 0)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -231,7 +237,7 @@ const ExplainPopout = () => {
         if (activeView === 'analysis') {
             if (!query) {
                 return (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
                         No query available for analysis.
                     </div>
                 );
@@ -239,9 +245,9 @@ const ExplainPopout = () => {
 
             if (analysisLoading) {
                 return (
-                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                        <span>Analyzing query...</span>
+                    <div className="flex h-full flex-col items-center justify-center gap-3">
+                        <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+                        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Analyzing query…</span>
                     </div>
                 );
             }
@@ -249,8 +255,8 @@ const ExplainPopout = () => {
             if (analysisError) {
                 return (
                     <div className="p-4">
-                        <Alert variant="destructive">
-                            <AlertTitle>Error</AlertTitle>
+                        <Alert variant="destructive" className="rounded-xs border-red-900/60 bg-red-950/40 text-red-200">
+                            <AlertTitle className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Error</AlertTitle>
                             <AlertDescription>{analysisError}</AlertDescription>
                         </Alert>
                     </div>
@@ -259,14 +265,14 @@ const ExplainPopout = () => {
 
             if (!analysisData) {
                 return (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
                         No analysis data available.
                     </div>
                 );
             }
 
             return (
-                <div className="h-full flex flex-col">
+                <div className="flex h-full flex-col">
                     <ExplainInfoHeader type="analysis" />
                     <div className="flex-1 overflow-hidden">
                         <QueryAnalysisView complexity={analysisData.complexity} recommendations={analysisData.recommendations} />
@@ -278,9 +284,11 @@ const ExplainPopout = () => {
         // Show loading state
         if (isLoading) {
             return (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                    <span>Loading {EXPLAIN_TYPES[activeView as ExplainType]?.label.toLowerCase() || ''} explain...</span>
+                <div className="flex h-full flex-col items-center justify-center gap-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+                    <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
+                        Loading {EXPLAIN_TYPES[activeView as ExplainType]?.label.toLowerCase() || ''} explain…
+                    </span>
                 </div>
             );
         }
@@ -289,8 +297,8 @@ const ExplainPopout = () => {
         if (loadError) {
             return (
                 <div className="p-4">
-                    <Alert variant="destructive">
-                        <AlertTitle>Error</AlertTitle>
+                    <Alert variant="destructive" className="rounded-xs border-red-900/60 bg-red-950/40 text-red-200">
+                        <AlertTitle className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Error</AlertTitle>
                         <AlertDescription>{loadError}</AlertDescription>
                     </Alert>
                 </div>
@@ -302,7 +310,7 @@ const ExplainPopout = () => {
 
         if (!currentResult) {
             return (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
+                <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
                     No data available for this view.
                 </div>
             );
@@ -345,10 +353,10 @@ const ExplainPopout = () => {
 
     if (error) {
         return (
-            <div className="h-screen w-screen flex items-center justify-center bg-[#0a0a0a] text-white">
-                <div className="text-center p-8 border border-white/10 rounded-lg bg-white/5 backdrop-blur-sm">
-                    <h1 className="text-xl font-bold mb-2">Error</h1>
-                    <p className="text-muted-foreground">{error}</p>
+            <div className="flex h-screen w-screen items-center justify-center bg-ink-50 text-paper">
+                <div className="rounded-xs border border-ink-500 bg-ink-100 p-8 text-center">
+                    <h1 className="mb-2 text-[18px] font-semibold tracking-tight text-paper">Error</h1>
+                    <p className="text-[12px] text-paper-muted">{error}</p>
                 </div>
             </div>
         );
@@ -357,34 +365,32 @@ const ExplainPopout = () => {
     // Show loading if we don't have any cached data yet
     if (Object.keys(explainCache).length === 0) {
         return (
-            <div className="h-screen w-screen flex items-center justify-center bg-[#0a0a0a] text-white">
-                <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                    <span>Loading explain data...</span>
+            <div className="flex h-screen w-screen items-center justify-center bg-ink-50">
+                <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+                    <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Loading explain data…</span>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="h-screen w-screen bg-[#0a0a0a] text-white overflow-hidden flex flex-col">
+        <div className="flex h-screen w-screen flex-col overflow-hidden bg-ink-50 text-paper">
             {/* Type Selector */}
-            <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-900/30 px-2">
+            <div className="flex-shrink-0 border-b border-ink-500 bg-ink-100 px-2">
                 <Tabs value={activeView} onValueChange={handleViewChange}>
-                    <TabsList className="bg-transparent h-9 gap-1">
+                    <TabsList className="h-9 gap-0.5 bg-transparent">
                         {viewTypes.map(({ key, label, description }) => (
                             <TabsTrigger
                                 key={key}
                                 value={key}
                                 className={cn(
-                                    "text-xs px-3 py-1.5 rounded-md transition-colors",
-                                    "data-[state=active]:bg-zinc-800 data-[state=active]:text-white",
-                                    "data-[state=inactive]:text-zinc-500 hover:text-zinc-300",
-                                    key === 'analysis' && "flex items-center gap-1.5"
+                                    "rounded-xs px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                                    "data-[state=inactive]:text-paper-dim hover:text-paper"
                                 )}
                                 title={description}
                             >
-                                {key === 'analysis' && <Sparkles className="h-3 w-3" />}
                                 {label}
                             </TabsTrigger>
                         ))}

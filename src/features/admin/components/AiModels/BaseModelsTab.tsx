@@ -123,49 +123,55 @@ export default function BaseModelsTab() {
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium text-white">SDK Models</h3>
+            <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1">
+                    <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                        <span className="h-px w-6 bg-ink-700" />
+                        <span>SDK models</span>
+                    </span>
+                    <p className="text-[12px] text-paper-muted">Underlying provider model identifiers used by deployments.</p>
+                </div>
                 {canEdit && (
-                    <Button size="sm" onClick={() => { setEditingItem(undefined); setIsFormOpen(true); }} className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all text-white">
-                        <Plus className="w-4 h-4 text-white" />
-                        <span className="text-white">Add Base Model</span>
+                    <Button size="sm" onClick={() => { setEditingItem(undefined); setIsFormOpen(true); }} className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft">
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Add base model</span>
                     </Button>
                 )}
             </div>
 
             {isLoading ? (
-                <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-purple-500" /></div>
+                <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-paper-dim" /></div>
             ) : models.length === 0 ? (
-                <div className="text-center py-12 border border-gray-800 rounded-lg">
-                    <Bot className="w-12 h-12 mx-auto text-gray-600 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-300">No Base Models configured</h3>
-                    <p className="text-gray-500 mt-1">Add underlying provider models (e.g. gpt-4o, claude-3-5-sonnet-20240620)</p>
+                <div className="rounded-xs border border-ink-500 bg-ink-100 px-6 py-12 text-center">
+                    <Bot className="mx-auto mb-4 h-8 w-8 text-paper-faint" aria-hidden />
+                    <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No base models configured</h3>
+                    <p className="mt-2 text-[12px] text-paper-muted">Add underlying provider models (e.g. gpt-4o, claude-3-5-sonnet-20240620).</p>
                 </div>
             ) : (
                 <TooltipProvider>
-                    <div className="rounded-lg border border-gray-800 overflow-hidden">
+                    <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
                         <Table>
                             <TableHeader>
-                                <TableRow className="border-gray-800 hover:bg-transparent">
-                                    <TableHead className="text-gray-400">Name</TableHead>
-                                    <TableHead className="text-gray-400">Provider</TableHead>
-                                    <TableHead className="text-gray-400">SDK Model ID</TableHead>
-                                    <TableHead className="text-gray-400 text-right">Actions</TableHead>
+                                <TableRow className="border-ink-500 hover:bg-transparent">
+                                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Name</TableHead>
+                                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Provider</TableHead>
+                                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">SDK model ID</TableHead>
+                                    <TableHead className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {models.map(item => (
-                                    <TableRow key={item.id} className="border-gray-800">
-                                        <TableCell className="font-medium text-white">{item.name}</TableCell>
-                                        <TableCell className="text-gray-300 font-medium">{getProviderName(item.providerId)}</TableCell>
-                                        <TableCell className="text-gray-400 font-mono text-sm max-w-xs">{item.modelId}</TableCell>
+                                    <TableRow key={item.id} className="border-ink-500">
+                                        <TableCell className="font-medium text-paper">{item.name}</TableCell>
+                                        <TableCell className="text-paper-muted">{getProviderName(item.providerId)}</TableCell>
+                                        <TableCell className="max-w-xs font-mono text-[12px] text-paper-dim">{item.modelId}</TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-1">
                                                 {canEdit && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingItem(item); setIsFormOpen(true); }} className="h-8 w-8">
-                                                                <Pencil className="w-4 h-4 text-white" />
+                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingItem(item); setIsFormOpen(true); }} className="h-8 w-8 rounded-xs text-paper-muted hover:bg-ink-200 hover:text-paper">
+                                                                <Pencil className="h-3.5 w-3.5" />
                                                             </Button>
                                                         </TooltipTrigger>
                                                         <TooltipContent>Edit</TooltipContent>
@@ -174,8 +180,8 @@ export default function BaseModelsTab() {
                                                 {canDelete && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            <Button variant="ghost" size="icon" onClick={() => setDeleteItem(item)} className="h-8 w-8 text-red-400 hover:text-red-300">
-                                                                <Trash2 className="w-4 h-4" />
+                                                            <Button variant="ghost" size="icon" onClick={() => setDeleteItem(item)} className="h-8 w-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300">
+                                                                <Trash2 className="h-3.5 w-3.5" />
                                                             </Button>
                                                         </TooltipTrigger>
                                                         <TooltipContent>Delete</TooltipContent>
@@ -192,27 +198,27 @@ export default function BaseModelsTab() {
             )}
 
             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogContent className="sm:max-w-[500px] bg-gray-900 border-gray-800">
+                <DialogContent className="sm:max-w-[500px] rounded-xs border-ink-500 bg-ink-100">
                     <DialogHeader>
-                        <DialogTitle className="text-white flex items-center gap-2">
-                            <Bot className="w-5 h-5" />
-                            {isEditing ? 'Edit Base Model' : 'Add Base Model'}
+                        <DialogTitle className="flex items-center gap-2 text-paper">
+                            <Bot className="h-4 w-4 text-paper-dim" />
+                            {isEditing ? 'Edit base model' : 'Add base model'}
                         </DialogTitle>
-                        <DialogDescription>Define an underlying SDK model identifier</DialogDescription>
+                        <DialogDescription className="text-paper-muted">Define an underlying SDK model identifier.</DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                             {!isEditing && (
                                 <FormField control={form.control} name="providerId" render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Provider</FormLabel>
+                                        <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Provider</FormLabel>
                                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                                             <FormControl>
-                                                <SelectTrigger className="bg-gray-800 border-gray-700">
-                                                    <SelectValue placeholder="Select a Provider" />
+                                                <SelectTrigger className="rounded-xs border-ink-500 bg-ink-200 text-paper">
+                                                    <SelectValue placeholder="Select a provider" />
                                                 </SelectTrigger>
                                             </FormControl>
-                                            <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                                            <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                                                 {providers.map(p => (
                                                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                                                 ))}
@@ -225,22 +231,22 @@ export default function BaseModelsTab() {
 
                             <FormField control={form.control} name="name" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Name</FormLabel>
-                                    <FormControl><Input placeholder="GPT-4o" className="bg-gray-800 border-gray-700" {...field} /></FormControl>
+                                    <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Name</FormLabel>
+                                    <FormControl><Input placeholder="GPT-4o" className="rounded-xs border-ink-500 bg-ink-200 text-paper" {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )} />
                             <FormField control={form.control} name="modelId" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>SDK Model ID</FormLabel>
-                                    <FormControl><Input placeholder="gpt-4o" className="bg-gray-800 border-gray-700 font-mono" {...field} /></FormControl>
-                                    <FormDescription>The exact ID string expected by the provider (e.g. gpt-4o)</FormDescription>
+                                    <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">SDK model ID</FormLabel>
+                                    <FormControl><Input placeholder="gpt-4o" className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
+                                    <FormDescription className="text-[11px] text-paper-faint">The exact ID string expected by the provider (e.g. gpt-4o).</FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )} />
                             <DialogFooter className="mt-6">
-                                <Button type="submit" disabled={isSubmitting} className="bg-white/10 hover:bg-white/20 text-white">
-                                    {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : isEditing ? <Check className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                                <Button type="submit" disabled={isSubmitting} className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft">
+                                    {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isEditing ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                                     {isEditing ? 'Update' : 'Create'}
                                 </Button>
                             </DialogFooter>
