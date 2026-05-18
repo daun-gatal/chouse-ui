@@ -1,135 +1,157 @@
-import { useState, useEffect } from 'react';
-import { Menu, X, Github } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState } from "react";
+import { Menu, X, Github, ArrowUpRight } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+const NAV_ITEMS = [
+  { label: "Features", href: "#features" },
+  { label: "Highlights", href: "#highlights" },
+  { label: "Try Lab", href: "#try-lab" },
+  { label: "Quick Start", href: "#quick-start" },
+  { label: "FAQ", href: "#faq" },
+  { label: "Changelog", href: "#changelog" },
+] as const;
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 100);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    const onScroll = () => setScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const navItems = [
-    { label: 'Features', href: '#features' },
-    { label: 'Highlights', href: '#highlights' },
-    { label: 'Try Lab', href: '#try-lab' },
-    { label: 'Quick Start', href: '#quick-start' },
-    { label: 'FAQ', href: '#faq' },
-    { label: 'Tech Stack', href: '#tech-stack' },
-    { label: 'Latest Release', href: '#changelog' },
-  ];
-
-  const scrollTo = (href: string) => {
-    const element = document.querySelector(href);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-      setMobileMenuOpen(false);
+  const handleScrollTo = (href: string) => {
+    const el = document.querySelector(href);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setMobileOpen(false);
     }
   };
 
   return (
-    <motion.nav
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled
-          ? 'bg-black/95 backdrop-blur-xl border-b border-white/10 shadow-lg'
-          : 'bg-transparent'
-        }`}
+    <header
+      className={cn(
+        "fixed inset-x-0 top-0 z-50 transition-colors duration-200",
+        scrolled
+          ? "border-b border-ink-500 bg-ink-50/85 backdrop-blur-md"
+          : "border-b border-transparent bg-transparent"
+      )}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-3">
-            <img
-              src={`${import.meta.env.BASE_URL}logo.svg`}
-              alt="CHouse UI Logo"
-              className="w-8 h-8 drop-shadow-[0_0_10px_rgba(255,200,0,0.3)]"
-              width="32"
-              height="32"
-              loading="eager"
-            />
-            <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              CHouse UI
-            </span>
-          </div>
+      <div className="container-editorial flex h-14 items-center justify-between gap-6">
+        {/* Wordmark */}
+        <a
+          href="/"
+          className="group flex items-center gap-2.5"
+          aria-label="CHouse UI — home"
+        >
+          <img
+            src={`${import.meta.env.BASE_URL}logo.svg`}
+            alt=""
+            aria-hidden="true"
+            className="h-6 w-6"
+            width="24"
+            height="24"
+            loading="eager"
+          />
+          <span className="text-[15px] font-semibold tracking-tight text-paper">
+            CHouse<span className="text-paper-dim">UI</span>
+          </span>
+        </a>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-6">
-            {navItems.map((item) => (
-              <motion.button
-                key={item.href}
-                onClick={() => scrollTo(item.href)}
-                whileHover={{ y: -2 }}
-                className="text-gray-300 hover:text-white transition-colors font-medium relative group"
-              >
-                {item.label}
-                <motion.span
-                  className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-purple-400 to-blue-400 group-hover:w-full transition-all duration-300"
-                  initial={false}
-                />
-              </motion.button>
-            ))}
-            <a
-              href="https://github.com/daun-gatal/chouse-ui"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-300 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg"
-              aria-label="GitHub Repository"
+        {/* Desktop nav */}
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.href}
+              onClick={() => handleScrollTo(item.href)}
+              className="rounded-xs px-3 py-1.5 text-[13px] font-medium text-paper-muted transition-colors hover:text-paper"
             >
-              <Github className="w-5 h-5" />
-            </a>
-          </div>
+              {item.label}
+            </button>
+          ))}
+        </nav>
 
-          {/* Mobile Menu Button */}
-          <button
-            className="md:hidden p-2"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        {/* Right actions */}
+        <div className="flex items-center gap-2">
+          <a
+            href="https://github.com/daun-gatal/chouse-ui"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden items-center gap-2 rounded-xs border border-ink-500 px-3 py-1.5 text-[13px] font-medium text-paper-muted transition-colors hover:border-ink-700 hover:text-paper md:inline-flex"
+            aria-label="GitHub repository"
           >
-            {mobileMenuOpen ? (
-              <X className="w-6 h-6" />
-            ) : (
-              <Menu className="w-6 h-6" />
-            )}
+            <Github className="h-3.5 w-3.5" aria-hidden />
+            <span>GitHub</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={() => handleScrollTo("#quick-start")}
+            className="hidden h-8 items-center gap-2 rounded-xs bg-accent px-3 text-[13px] font-semibold tracking-tight text-ink-50 transition-colors hover:bg-accent-soft md:inline-flex"
+          >
+            Get started
+            <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+          </button>
+
+          {/* Mobile menu trigger */}
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xs border border-ink-500 text-paper-muted transition-colors hover:text-paper md:hidden"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+          >
+            {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
         </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile menu */}
       <AnimatePresence>
-        {mobileMenuOpen && (
+        {mobileOpen && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-white/10 bg-black/95 backdrop-blur-xl"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="border-t border-ink-500 bg-ink-50/95 backdrop-blur-md md:hidden"
           >
-            <div className="px-4 py-4 space-y-3">
-              {navItems.map((item) => (
+            <div className="container-editorial flex flex-col py-4">
+              {NAV_ITEMS.map((item) => (
                 <button
                   key={item.href}
-                  onClick={() => scrollTo(item.href)}
-                  className="block w-full text-left text-gray-300 hover:text-white transition-colors py-2"
+                  onClick={() => handleScrollTo(item.href)}
+                  className="border-b border-ink-500 py-3 text-left text-sm text-paper-muted last:border-b-0 hover:text-paper"
                 >
                   {item.label}
                 </button>
               ))}
-              <a
-                href="https://github.com/daun-gatal/chouse-ui"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors py-2"
-              >
-                <Github className="w-5 h-5" />
-                <span>GitHub</span>
-              </a>
+              <div className="mt-4 flex items-center gap-2">
+                <a
+                  href="https://github.com/daun-gatal/chouse-ui"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xs border border-ink-500 px-3 py-2 text-sm font-medium text-paper-muted"
+                >
+                  <Github className="h-4 w-4" />
+                  GitHub
+                </a>
+                <button
+                  type="button"
+                  onClick={() => handleScrollTo("#quick-start")}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xs bg-accent px-3 py-2 text-sm font-semibold text-ink-50"
+                >
+                  Get started
+                  <ArrowUpRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.nav>
+    </header>
   );
 }

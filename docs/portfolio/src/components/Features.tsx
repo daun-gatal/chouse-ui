@@ -1,231 +1,159 @@
-import { motion } from 'framer-motion';
-import { useState } from 'react';
-import { GlassCard, GlassCardContent, GlassCardTitle, GlassCardDescription } from './GlassCard';
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Shield,
-  Database,
-  BarChart3,
-  Palette,
-  Lock,
-  Users,
-  FileText,
-  Zap,
-  Search,
-  Download,
-  Settings,
-  Eye,
-  ChevronRight,
-  Activity,
-  Star,
-  Sparkles,
-  Bot,
-  MessageSquare,
-} from 'lucide-react';
+  Shield, Database, BarChart3, Palette, Lock, Users, FileText, Zap, Search,
+  Download, Settings, Eye, Plus, Minus, Activity, Star, Sparkles, Bot, MessageSquare,
+  type LucideIcon,
+} from "lucide-react";
+import { Section, Container, SectionHeader } from "./Section";
 
-const features = [
+interface FeatureItem {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+}
+
+interface FeatureGroup {
+  category: string;
+  icon: LucideIcon;
+  items: FeatureItem[];
+}
+
+const GROUPS: FeatureGroup[] = [
   {
-    category: 'AI & Automation',
+    category: "AI & Automation",
     icon: Sparkles,
-    color: 'from-amber-500 to-amber-700',
     items: [
-      { icon: Zap, title: 'AI Query Optimizer', desc: 'Intelligent query rewriting for performance' },
-      { icon: Bot, title: 'Smart Query Debugging', desc: 'Automated error analysis and fix suggestions' },
-      { icon: MessageSquare, title: 'AI Chat Assistant', desc: 'Conversational data exploration and visualization' },
+      { icon: Zap, title: "Query Optimizer", desc: "Intelligent query rewriting for performance" },
+      { icon: Bot, title: "Query Debugging", desc: "Automated error analysis and fix suggestions" },
+      { icon: MessageSquare, title: "Chat Assistant", desc: "Conversational data exploration and charts" },
     ],
   },
   {
-    category: 'Security & Access Control',
+    category: "Security & Access Control",
     icon: Shield,
-    color: 'from-purple-500 to-purple-700',
     items: [
-      { icon: Shield, title: 'RBAC System', desc: 'Role-based permissions (Super Admin, Admin, Developer, Analyst, Viewer, Guest)' },
-      { icon: Lock, title: 'Encrypted Credentials', desc: 'AES-256-GCM encryption with PBKDF2 key derivation for ClickHouse connection passwords' },
-      { icon: Users, title: 'JWT Authentication', desc: 'Secure token-based sessions with access and refresh tokens' },
-      { icon: FileText, title: 'Audit Logging', desc: 'Track all user actions and query history' },
+      { icon: Shield, title: "RBAC System", desc: "Six predefined roles, granular permissions per user" },
+      { icon: Lock, title: "Encrypted Credentials", desc: "AES-256-GCM with PBKDF2 key derivation" },
+      { icon: Users, title: "JWT Authentication", desc: "Short-lived access tokens, long-lived refresh tokens" },
+      { icon: FileText, title: "Audit Logging", desc: "Every user action and query history with user-agent/geo context" },
     ],
   },
   {
-    category: 'Database Management',
+    category: "Database Management",
     icon: Database,
-    color: 'from-blue-500 to-blue-700',
     items: [
-      { icon: Database, title: 'Multi-Connection Support', desc: 'Manage multiple ClickHouse servers' },
-      { icon: Activity, title: 'Live Query Management', desc: 'View and kill running queries in real-time' },
-      { icon: Search, title: 'Database Explorer', desc: 'Tree view with schema inspection' },
-      { icon: Settings, title: 'Table Management', desc: 'Create, alter, and drop tables with various engines' },
-      { icon: Download, title: 'File Upload', desc: 'Upload CSV, TSV, or JSON files to existing tables' },
+      { icon: Database, title: "Multi-Connection", desc: "Manage multiple ClickHouse servers from one UI" },
+      { icon: Activity, title: "Live Queries", desc: "View and kill running queries in real-time" },
+      { icon: Search, title: "Database Explorer", desc: "Tree view with schema inspection and DDL" },
+      { icon: Settings, title: "Table Management", desc: "Create, alter, drop with MergeTree variants" },
+      { icon: Download, title: "File Upload", desc: "CSV, TSV, or JSON into existing tables" },
     ],
   },
   {
-    category: 'Query & Analytics',
+    category: "Query & Analytics",
     icon: BarChart3,
-    color: 'from-green-500 to-green-700',
     items: [
-      { icon: FileText, title: 'SQL Editor', desc: 'Monaco editor with syntax highlighting and auto-completion' },
-      { icon: Zap, title: 'Query Execution', desc: 'Run queries with execution statistics' },
-      { icon: Eye, title: 'Query History', desc: 'View and filter query logs with auto-refresh' },
-      { icon: FileText, title: 'Auto-Save Queries', desc: 'Real-time sync like Google Docs with ⌘S instant save' },
-      { icon: Download, title: 'Data Export', desc: 'CSV, JSON, TSV formats' },
+      { icon: FileText, title: "SQL Editor", desc: "Monaco with syntax highlighting and auto-completion" },
+      { icon: Zap, title: "Execution Stats", desc: "Inline timing, rows read, bytes scanned" },
+      { icon: Eye, title: "Query History", desc: "View and filter logs with auto-refresh" },
+      { icon: FileText, title: "Auto-Save", desc: "Real-time sync like Google Docs, instant ⌘S" },
+      { icon: Download, title: "Data Export", desc: "CSV, JSON, TSV formats" },
     ],
   },
   {
-    category: 'User Experience',
+    category: "User Experience",
     icon: Palette,
-    color: 'from-pink-500 to-pink-700',
     items: [
-      { icon: Palette, title: 'Modern UI', desc: 'Glassmorphism design with dark theme' },
-      { icon: Star, title: 'Favorites & Recent', desc: 'Star databases and tables for quick access' },
-      { icon: Settings, title: 'Responsive', desc: 'Works on desktop and tablet' },
-      { icon: Zap, title: 'Keyboard Shortcuts', desc: 'Power user support' },
+      { icon: Star, title: "Favorites & Recent", desc: "Pin databases and tables for instant access" },
+      { icon: Settings, title: "Responsive", desc: "Desktop and tablet, with draggable modals" },
+      { icon: Zap, title: "Keyboard Shortcuts", desc: "Power-user shortcuts across the workspace" },
+      { icon: Palette, title: "Dark Theme", desc: "Editorial dark UI tuned for long sessions" },
     ],
   },
 ];
 
 export default function Features() {
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [openIndex, setOpenIndex] = useState<number>(0);
 
   return (
-    <section id="features" className="py-24 px-4 relative overflow-hidden" aria-label="Features section">
-      {/* Background decoration */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-purple-500 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500 rounded-full blur-3xl" />
-      </div>
+    <Section id="features" aria-label="Features">
+      <Container>
+        <SectionHeader
+          eyebrow="What's inside"
+          eyebrowIndex={2}
+          title="Everything you need to give ClickHouse to a team."
+          description="Five domains, one consistent UI. Click a category to expand its items."
+        />
 
-      <div className="max-w-7xl mx-auto relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-20"
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="inline-block mb-6"
-          >
-            <span className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-              Powerful Features
-            </span>
-          </motion.div>
-          <p className="text-gray-400 text-xl max-w-2xl mx-auto mt-4">
-            Everything you need to manage ClickHouse databases securely and efficiently
-          </p>
-          <p className="text-gray-500 text-sm max-w-xl mx-auto mt-2">
-            Click on any category below to explore detailed features
-          </p>
-        </motion.div>
+        <div className="mt-16 grid grid-cols-12 gap-x-6 gap-y-4">
+          {GROUPS.map((group, idx) => {
+            const Icon = group.icon;
+            const isOpen = openIndex === idx;
+            const number = String(idx + 1).padStart(2, "0");
 
-        <div className="space-y-8">
-          {features.map((category, categoryIndex) => (
-            <motion.div
-              key={category.category}
-              initial={{ opacity: 0, x: -50 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, delay: categoryIndex * 0.1 }}
-            >
-              <motion.button
-                onClick={() => setExpandedCategory(expandedCategory === category.category ? null : category.category)}
-                className="w-full"
-                whileHover={{ scale: 1.01, y: -2 }}
-                whileTap={{ scale: 0.99 }}
-              >
-                <GlassCard className={`overflow-hidden transition-all ${expandedCategory === category.category
-                  ? 'border-purple-500/40 shadow-lg shadow-purple-500/20'
-                  : 'hover:border-white/20'
-                  }`}>
-                  <div className="p-6 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <motion.div
-                        animate={{
-                          scale: expandedCategory === category.category ? 1.1 : 1,
-                          rotate: expandedCategory === category.category ? 5 : 0
-                        }}
-                        className={`w-14 h-14 rounded-xl bg-gradient-to-br ${category.color} flex items-center justify-center shadow-lg`}
-                      >
-                        <category.icon className="w-7 h-7 text-white" />
-                      </motion.div>
-                      <div className="text-left">
-                        <h3 className="text-2xl font-bold text-white mb-1">{category.category}</h3>
-                        <p className="text-sm text-gray-400">
-                          {category.items.length} {category.items.length === 1 ? 'feature' : 'features'}
-                        </p>
-                      </div>
-                    </div>
+            return (
+              <div key={group.category} className="col-span-12 border-t border-ink-500 first:border-t-0">
+                <button
+                  type="button"
+                  onClick={() => setOpenIndex(isOpen ? -1 : idx)}
+                  aria-expanded={isOpen}
+                  className="group flex w-full items-center gap-4 py-6 text-left transition-colors hover:bg-ink-50/40 md:gap-6"
+                >
+                  <span className="hidden w-8 shrink-0 font-mono text-[11px] uppercase tracking-[0.18em] text-paper-faint md:inline">
+                    {number}
+                  </span>
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted transition-colors group-hover:border-ink-700 group-hover:text-paper">
+                    <Icon className="h-4 w-4" aria-hidden />
+                  </span>
+                  <span className="flex flex-1 flex-col gap-1 md:flex-row md:items-baseline md:gap-3">
+                    <span className="text-2xl font-semibold leading-tight text-paper md:text-display-md">
+                      {group.category}
+                    </span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint md:text-[11px] md:tracking-[0.14em]">
+                      {group.items.length} {group.items.length === 1 ? "feature" : "features"}
+                    </span>
+                  </span>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-ink-500 text-paper-muted transition-colors group-hover:text-paper">
+                    {isOpen ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                  </span>
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {isOpen && (
                     <motion.div
-                      animate={{
-                        rotate: expandedCategory === category.category ? 90 : 0,
-                        scale: expandedCategory === category.category ? 1.1 : 1
-                      }}
-                      transition={{ duration: 0.3 }}
-                      className="text-gray-400"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                      className="overflow-hidden"
                     >
-                      <ChevronRight className="w-6 h-6" />
-                    </motion.div>
-                  </div>
-
-                  <motion.div
-                    initial={false}
-                    animate={{
-                      height: expandedCategory === category.category ? 'auto' : 0,
-                      opacity: expandedCategory === category.category ? 1 : 0,
-                    }}
-                    transition={{ duration: 0.3 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-6 pb-6 pt-0">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        {category.items.map((item, itemIndex) => (
-                          <motion.div
-                            key={item.title}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{
-                              opacity: expandedCategory === category.category ? 1 : 0,
-                              y: expandedCategory === category.category ? 0 : 10,
-                            }}
-                            transition={{ delay: itemIndex * 0.05 }}
-                            whileHover={{ y: -4 }}
-                          >
-                            <motion.div
-                              whileHover={{ y: -4, scale: 1.02 }}
-                              transition={{ duration: 0.2 }}
-                            >
-                              <GlassCard className="bg-white/5 border-white/10 hover:border-purple-500/30 transition-all duration-300 h-full group">
-                                <GlassCardContent className="p-5">
-                                  <div className="flex items-start gap-4">
-                                    <motion.div
-                                      whileHover={{ rotate: 5, scale: 1.1 }}
-                                      className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-400/30 flex items-center justify-center flex-shrink-0 group-hover:border-purple-400/50 transition-colors"
-                                    >
-                                      <item.icon className="w-5 h-5 text-purple-400 group-hover:text-purple-300 transition-colors" />
-                                    </motion.div>
-                                    <div className="flex-1 min-w-0">
-                                      <GlassCardTitle className="text-base mb-2 text-white group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-blue-400 group-hover:bg-clip-text transition-all">
-                                        {item.title}
-                                      </GlassCardTitle>
-                                      <GlassCardDescription className="text-sm text-gray-400 leading-relaxed group-hover:text-gray-300 transition-colors">
-                                        {item.desc}
-                                      </GlassCardDescription>
-                                    </div>
-                                  </div>
-                                </GlassCardContent>
-                              </GlassCard>
-                            </motion.div>
-                          </motion.div>
-                        ))}
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-6 pb-10 pl-16 pr-4 md:pl-20 md:grid-cols-2 lg:grid-cols-3">
+                        {group.items.map((item) => {
+                          const ItemIcon = item.icon;
+                          return (
+                            <div key={item.title} className="flex items-start gap-3">
+                              <ItemIcon className="mt-1 h-4 w-4 shrink-0 text-paper-dim" aria-hidden />
+                              <div className="flex flex-col gap-1">
+                                <h3 className="text-[15px] font-semibold leading-tight text-paper">
+                                  {item.title}
+                                </h3>
+                                <p className="text-sm leading-relaxed text-paper-muted">
+                                  {item.desc}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    </div>
-                  </motion.div>
-                </GlassCard>
-              </motion.button>
-            </motion.div>
-          ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </div>
-      </div>
-    </section>
+      </Container>
+    </Section>
   );
 }

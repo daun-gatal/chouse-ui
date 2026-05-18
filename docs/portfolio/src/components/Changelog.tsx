@@ -1,254 +1,229 @@
-import { motion, useInView, AnimatePresence } from 'framer-motion';
-import { useRef, useEffect, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { GlassCard, GlassCardContent } from './GlassCard';
-import { Calendar, Tag, ChevronDown } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { ArrowUpRight } from "lucide-react";
+import { Section, Container, SectionHeader, Tag } from "./Section";
+import { cn } from "@/lib/utils";
 
-interface ChangelogEntry {
-  version: string;
-  date: string;
-  content: string;
+interface CategoryBlock {
+  name: string;
+  count: number;
+  highlights: string[];
 }
 
+interface Release {
+  version: string;
+  date: string;
+  categories: CategoryBlock[];
+  topHighlights: string[];
+}
+
+const GITHUB_CHANGELOG_BASE = "https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md";
+
+const CATEGORY_ORDER = ["Added", "Changed", "Fixed", "Removed", "Deprecated", "Security"];
+
+function parseChangelog(markdown: string): Release[] {
+  const releases: Release[] = [];
+  const versionRe = /^## \[(v[\d.]+)\] - (\d{4}-\d{2}-\d{2})/gm;
+  const matches: Array<{ version: string; date: string; index: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = versionRe.exec(markdown)) !== null) {
+    matches.push({ version: m[1], date: m[2], index: m.index });
+  }
+
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i];
+    const nextIndex = i < matches.length - 1 ? matches[i + 1].index : markdown.length;
+    const body = markdown.substring(current.index, nextIndex);
+
+    // Split into ### Category sections. Header line only — no newline/bullet content.
+    const sectionRe = /^### ([^\n]+)/gm;
+    const sectionMatches: Array<{ name: string; index: number }> = [];
+    let s: RegExpExecArray | null;
+    while ((s = sectionRe.exec(body)) !== null) {
+      sectionMatches.push({ name: s[1].trim(), index: s.index });
+    }
+
+    const categories: CategoryBlock[] = sectionMatches.map((sec, idx) => {
+      const sectionBody = body.substring(
+        sec.index,
+        idx < sectionMatches.length - 1 ? sectionMatches[idx + 1].index : body.length
+      );
+      // Match top-level bullet titles: lines starting with `- **Title**`.
+      const bulletTitles = Array.from(sectionBody.matchAll(/^-\s+\*\*(.+?)\*\*/gm)).map(
+        (b) => b[1].trim()
+      );
+      // If no bolded titles, fall back to first sentence of each `-` bullet.
+      const fallback =
+        bulletTitles.length > 0
+          ? bulletTitles
+          : Array.from(sectionBody.matchAll(/^-\s+(.+?)(?:[.:]|$)/gm))
+              .map((b) => b[1].trim())
+              .filter(Boolean);
+      return { name: sec.name, count: fallback.length, highlights: fallback };
+    });
+
+    // Pick top highlights across categories, preferred order.
+    const sortedCats = [...categories].sort(
+      (a, b) =>
+        (CATEGORY_ORDER.indexOf(a.name) === -1 ? 99 : CATEGORY_ORDER.indexOf(a.name)) -
+        (CATEGORY_ORDER.indexOf(b.name) === -1 ? 99 : CATEGORY_ORDER.indexOf(b.name))
+    );
+    const top: string[] = [];
+    outer: for (const cat of sortedCats) {
+      for (const h of cat.highlights) {
+        top.push(h);
+        if (top.length >= 3) break outer;
+      }
+    }
+
+    releases.push({
+      version: current.version,
+      date: current.date,
+      categories: categories.filter((c) => c.count > 0),
+      topHighlights: top,
+    });
+  }
+
+  return releases.slice(0, 3);
+}
+
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+
+const CATEGORY_DOT: Record<string, string> = {
+  Added: "bg-accent",
+  Changed: "bg-paper",
+  Fixed: "bg-paper-muted",
+  Removed: "bg-paper-dim",
+  Deprecated: "bg-paper-dim",
+  Security: "bg-accent",
+};
+
 export default function Changelog() {
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-100px" });
-  const [changelog, setChangelog] = useState<string>('');
+  const [releases, setReleases] = useState<Release[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // Fetch changelog from public folder using base URL
-    const baseUrl = import.meta.env.BASE_URL || '/';
-    const changelogPath = `${baseUrl}CHANGELOG.md`.replace(/\/+/g, '/'); // Normalize slashes
-    fetch(changelogPath)
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load changelog');
-        return res.text();
-      })
+    const base = import.meta.env.BASE_URL || "/";
+    const path = `${base}CHANGELOG.md`.replace(/\/+/g, "/");
+    fetch(path)
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error("failed"))))
       .then((text) => {
-        setChangelog(text);
+        setReleases(parseChangelog(text));
         setLoading(false);
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setError(err.message);
         setLoading(false);
       });
   }, []);
 
-  // Parse changelog entries
-  const parseChangelog = (markdown: string): ChangelogEntry[] => {
-    const entries: ChangelogEntry[] = [];
-    const versionRegex = /^## \[(v[\d.]+)\] - (\d{4}-\d{2}-\d{2})/gm;
-    
-    // Find all version matches first
-    const matches: Array<{ version: string; date: string; index: number }> = [];
-    let match;
-    
-    while ((match = versionRegex.exec(markdown)) !== null) {
-      matches.push({
-        version: match[1],
-        date: match[2],
-        index: match.index,
-      });
-    }
-    
-    // Extract content for each version
-    for (let i = 0; i < matches.length; i++) {
-      const current = matches[i];
-      const nextIndex = i < matches.length - 1 ? matches[i + 1].index : markdown.length;
-      let content = markdown.substring(current.index, nextIndex).trim();
-      
-      // Remove the version header line from content since we display it separately
-      const headerRegex = /^## \[v[\d.]+\] - \d{4}-\d{2}-\d{2}\s*\n?/m;
-      content = content.replace(headerRegex, '').trim();
-      
-      entries.push({
-        version: current.version,
-        date: current.date,
-        content: content,
-      });
-    }
-
-    // Return the last 3 releases (first 3 entries)
-    return entries.slice(0, 3);
-  };
-
-  const entries = changelog ? parseChangelog(changelog) : [];
-
-  // Initialize expanded state: expand only the latest release by default
-  useEffect(() => {
-    if (entries.length > 0 && expandedVersions.size === 0) {
-      setExpandedVersions(new Set([entries[0].version]));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [changelog]);
-
-  const toggleExpand = (version: string) => {
-    setExpandedVersions(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(version)) {
-        newSet.delete(version);
-      } else {
-        newSet.add(version);
-      }
-      return newSet;
-    });
-  };
-
-  const isExpanded = (version: string) => expandedVersions.has(version);
-
   return (
-    <section id="changelog" className="py-24 px-4 relative overflow-hidden">
-      {/* Background decoration */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-indigo-500 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-500 rounded-full blur-3xl" />
-      </div>
+    <Section id="changelog" aria-label="Changelog">
+      <Container>
+        <SectionHeader
+          eyebrow="Recent releases"
+          eyebrowIndex={10}
+          title="What shipped lately."
+          description="Three latest from CHANGELOG.md. Full history on GitHub."
+          action={
+            <a
+              href={GITHUB_CHANGELOG_BASE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:text-paper"
+            >
+              Full changelog
+              <ArrowUpRight className="h-3 w-3" />
+            </a>
+          }
+        />
 
-      <div className="max-w-5xl mx-auto relative z-10" ref={ref}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-16"
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={isInView ? { opacity: 1, scale: 1 } : {}}
-            transition={{ duration: 0.5 }}
-            className="inline-block mb-6"
-          >
-            <span className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Latest Releases
-            </span>
-          </motion.div>
-          <p className="text-gray-400 text-xl max-w-2xl mx-auto mt-4 mb-2">
-            See what's new in the latest releases
-          </p>
-          <p className="text-gray-500 text-sm max-w-xl mx-auto">
-            Click on any version to view detailed changelog
-          </p>
-        </motion.div>
+        <div className="mt-16">
+          {loading && (
+            <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-paper-dim">
+              Loading…
+            </p>
+          )}
 
-        {loading && (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-400"></div>
-            <p className="text-gray-400 mt-4">Loading changelog...</p>
-          </div>
-        )}
+          {error && (
+            <p className="rounded-md border border-ink-500 bg-ink-100 p-6 text-sm text-paper-muted">
+              Could not load changelog ({error}). It is generated at build time by CI.
+            </p>
+          )}
 
-        {error && (
-          <GlassCard className="bg-red-500/10 border-red-500/20">
-            <GlassCardContent className="p-6">
-              <p className="text-red-400">Error loading changelog: {error}</p>
-            </GlassCardContent>
-          </GlassCard>
-        )}
-
-        {!loading && !error && entries.length === 0 && changelog && (
-          <GlassCard>
-            <GlassCardContent className="p-6">
-              <p className="text-gray-400">No version entries found in changelog.</p>
-            </GlassCardContent>
-          </GlassCard>
-        )}
-
-        {!loading && !error && entries.length > 0 && (
-          <div className="space-y-8">
-            {entries.map((entry, index) => (
-              <motion.div
-                key={entry.version}
-                initial={{ opacity: 0, y: 20 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.6, delay: index * 0.1 }}
-              >
-                <GlassCard className={`overflow-hidden transition-all ${
-                  isExpanded(entry.version) 
-                    ? 'border-purple-500/40 shadow-lg shadow-purple-500/20' 
-                    : 'hover:border-white/20'
-                }`}>
-                  <GlassCardContent className="p-8">
-                    <motion.div 
-                      className="flex items-center gap-4 mb-6 pb-6 border-b border-white/10 cursor-pointer hover:border-white/20 transition-all group"
-                      onClick={() => toggleExpand(entry.version)}
-                      whileHover={{ x: 4 }}
-                    >
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
-                        <Tag className="w-6 h-6 text-white" />
+          {!loading && !error && releases.length > 0 && (
+            <ul className="border-t border-ink-500">
+              {releases.map((release, idx) => {
+                const anchor = release.version.replace(/\./g, "");
+                return (
+                  <li
+                    key={release.version}
+                    className="grid grid-cols-12 gap-x-6 gap-y-4 border-b border-ink-500 py-8"
+                  >
+                    {/* Meta */}
+                    <div className="col-span-12 flex flex-col gap-3 md:col-span-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-mono text-[15px] text-paper">{release.version}</h3>
+                        {idx === 0 && <Tag variant="accent">Latest</Tag>}
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-1">
-                          <h3 className="text-2xl font-bold text-white">
-                            {entry.version}
-                          </h3>
-                          {index === 0 && (
-                            <span className="px-3 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 text-green-400 animate-pulse">
-                              Latest
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-400 text-sm">
-                          <Calendar className="w-4 h-4" />
-                          <span>{new Date(entry.date).toLocaleDateString('en-US', { 
-                            year: 'numeric', 
-                            month: 'long', 
-                            day: 'numeric' 
-                          })}</span>
-                        </div>
+                      <time className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                        {formatDate(release.date)}
+                      </time>
+                      <div className="flex flex-wrap gap-2">
+                        {release.categories.map((cat) => (
+                          <span
+                            key={cat.name}
+                            className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-dim"
+                          >
+                            <span
+                              className={cn(
+                                "h-1.5 w-1.5 rounded-full",
+                                CATEGORY_DOT[cat.name] ?? "bg-paper-faint"
+                              )}
+                              aria-hidden
+                            />
+                            {cat.name} {cat.count}
+                          </span>
+                        ))}
                       </div>
-                      <motion.div
-                        animate={{ rotate: isExpanded(entry.version) ? 180 : 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="text-gray-400 group-hover:text-white transition-colors"
-                      >
-                        <ChevronDown className="w-6 h-6" />
-                      </motion.div>
-                    </motion.div>
-                    
-                    <AnimatePresence initial={false}>
-                      {isExpanded(entry.version) && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.3, ease: 'easeInOut' }}
-                          className="overflow-hidden"
-                        >
-                          <div className="prose prose-invert prose-purple max-w-none">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                h1: ({node, ...props}) => <h1 className="text-2xl font-bold text-white mt-6 mb-4" {...props} />,
-                                h2: ({node, ...props}) => <h2 className="text-xl font-bold text-white mt-5 mb-3" {...props} />,
-                                h3: ({node, ...props}) => <h3 className="text-lg font-semibold text-white mt-4 mb-2" {...props} />,
-                                h4: ({node, ...props}) => <h4 className="text-base font-semibold text-white mt-3 mb-2" {...props} />,
-                                p: ({node, ...props}) => <p className="text-gray-300 mb-3 leading-relaxed" {...props} />,
-                                ul: ({node, ...props}) => <ul className="list-disc list-inside text-gray-300 mb-4 space-y-2 ml-4" {...props} />,
-                                ol: ({node, ...props}) => <ol className="list-decimal list-inside text-gray-300 mb-4 space-y-2 ml-4" {...props} />,
-                                li: ({node, ...props}) => <li className="text-gray-300 leading-relaxed" {...props} />,
-                                strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
-                                code: ({node, ...props}) => <code className="bg-white/10 px-2 py-1 rounded text-purple-300 text-sm font-mono" {...props} />,
-                                pre: ({node, ...props}) => <pre className="bg-black/30 p-4 rounded-lg overflow-x-auto mb-4 border border-white/10" {...props} />,
-                                a: ({node, ...props}) => <a className="text-purple-400 hover:text-purple-300 underline" {...props} />,
-                                blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-purple-500 pl-4 italic text-gray-400 my-4" {...props} />,
-                              }}
-                            >
-                              {entry.content}
-                            </ReactMarkdown>
-                          </div>
-                        </motion.div>
+                    </div>
+
+                    {/* Highlights */}
+                    <div className="col-span-12 flex flex-col gap-3 md:col-span-7">
+                      {release.topHighlights.length > 0 ? (
+                        <ul className="flex flex-col gap-2.5">
+                          {release.topHighlights.map((title, hidx) => (
+                            <li key={hidx} className="flex items-start gap-3 text-[14px] leading-snug text-paper-muted">
+                              <span className="mt-2 h-px w-3 shrink-0 bg-ink-700" aria-hidden />
+                              <span className="text-paper">{title}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-[14px] text-paper-dim">No highlight bullets parsed.</p>
                       )}
-                    </AnimatePresence>
-                  </GlassCardContent>
-                </GlassCard>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+                    </div>
+
+                    {/* Link */}
+                    <div className="col-span-12 flex items-start md:col-span-2 md:justify-end">
+                      <a
+                        href={`${GITHUB_CHANGELOG_BASE}#${anchor}---${release.date}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:text-paper"
+                      >
+                        Read notes
+                        <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                      </a>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </Container>
+    </Section>
   );
 }

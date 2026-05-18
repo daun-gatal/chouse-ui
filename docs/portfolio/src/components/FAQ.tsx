@@ -1,180 +1,126 @@
-import { motion, useInView } from 'framer-motion';
-import { useRef, useState } from 'react';
-import { HelpCircle, ChevronDown } from 'lucide-react';
-import { GlassCard, GlassCardContent } from './GlassCard';
+import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Plus, Minus } from "lucide-react";
+import { Section, Container, SectionHeader } from "./Section";
 
-const faqs = [
+interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+const FAQS: FaqItem[] = [
   {
-    question: 'What is CHouse UI?',
-    answer: 'CHouse UI is an open-source web UI for managing ClickHouse databases. It provides a secure, user-friendly way to interact with ClickHouse through a modern web browser, featuring built-in Role-Based Access Control (RBAC), encrypted credential storage, SQL query editor, and comprehensive database management tools.',
+    question: "What is CHouse UI, exactly?",
+    answer: "An open-source web UI for managing ClickHouse — encrypted credential storage, RBAC, audit logging, SQL editor, and AI-assisted query tooling. Built so a team can share one workspace without sharing one password.",
   },
   {
-    question: 'How is CHouse UI different from other ClickHouse management tools?',
-    answer: 'CHouse UI is designed specifically for teams requiring enterprise-grade security and centralized access control. Key features include server-side encrypted credential storage (credentials never reach the browser), comprehensive RBAC with 6 predefined roles and granular permissions, complete audit logging, and multi-connection support. Different tools serve different use cases - CHouse UI focuses on security, access control, and team collaboration for ClickHouse database management.',
+    question: "How is it different from other ClickHouse UIs?",
+    answer: "Server-side encrypted credentials, full RBAC with 6 predefined roles and granular data-access rules, audit logging that captures the actual session context, and multi-connection support. Other tools optimize for solo dashboards; this one optimizes for teams that need access control.",
   },
   {
-    question: 'Is CHouse UI free and open source?',
-    answer: 'Yes, CHouse UI is completely free and open source, licensed under Apache License 2.0. You can use it for personal projects, commercial applications, or contribute to its development. The source code is available on GitHub.',
+    question: "Is it free and open source?",
+    answer: "Yes. Apache License 2.0. Use it commercially, modify it, redistribute it — see the LICENSE file. Contributions welcome.",
   },
   {
-    question: 'What security features does CHouse UI provide?',
-    answer: 'CHouse UI includes multiple security layers: AES-256-GCM encryption for ClickHouse passwords, Argon2id password hashing for user accounts, JWT-based authentication with refresh tokens, comprehensive RBAC system with 6 predefined roles, granular data access rules, complete audit logging, and AI-powered query analysis to identify potential performance bottlenecks or security risks.',
+    question: "What security primitives are used?",
+    answer: "AES-256-GCM for ClickHouse passwords, Argon2id (via Bun.password) for user passwords, JWT (jose) with short access + long refresh tokens, CSP and security headers, request size + rate limits, and SQL parsing before every query reaches ClickHouse.",
   },
   {
-    question: 'Can I use CHouse UI with multiple ClickHouse servers?',
-    answer: 'Yes, CHouse UI supports managing multiple ClickHouse connections simultaneously. You can easily switch between different ClickHouse servers, and each connection\'s credentials are stored securely and encrypted separately.',
+    question: "Can I connect multiple ClickHouse servers?",
+    answer: "Yes. Multi-connection is first-class — switch between servers from the connection selector. Each connection's credentials are encrypted independently.",
   },
   {
-    question: 'What database backends does CHouse UI support for RBAC?',
-    answer: 'CHouse UI supports two backend options for storing RBAC metadata: SQLite (default, perfect for single-instance deployments) and PostgreSQL (recommended for production with high availability requirements and multi-instance support).',
+    question: "Which database backends are supported for RBAC metadata?",
+    answer: "SQLite (default, perfect for single-instance) and PostgreSQL (for multi-instance / production HA). Same schema via Drizzle ORM, switched by RBAC_DB_TYPE.",
   },
   {
-    question: 'How do I deploy CHouse UI?',
-    answer: 'CHouse UI can be deployed using Docker Compose or Kubernetes in minutes. For production deployments, you must configure three required environment variables: JWT_SECRET (min 32 chars), RBAC_ENCRYPTION_KEY (min 32 chars), and RBAC_ENCRYPTION_SALT (exactly 64 hex chars). See the Deployment section for detailed instructions.',
+    question: "How do I deploy it?",
+    answer: "Docker Compose or Kubernetes. In production NODE_ENV, the server refuses to start without JWT_SECRET, RBAC_ENCRYPTION_KEY, and RBAC_ENCRYPTION_SALT — by design. See the Production section above for the manifests and config.",
   },
   {
-    question: 'Does CHouse UI require direct ClickHouse access from the browser?',
-    answer: 'No, CHouse UI uses a secure backend proxy architecture. All ClickHouse connections are made server-side, and credentials never reach the browser. This zero-trust architecture ensures maximum security.',
+    question: "Does the browser ever talk to ClickHouse directly?",
+    answer: "No. Every request goes through the Bun/Hono backend. The browser never sees a ClickHouse password. This is the whole point.",
   },
   {
-    question: 'What roles are available in CHouse UI?',
-    answer: 'CHouse UI includes 6 predefined roles: Super Admin (full system access), Admin (server management), Developer (write access, DDL operations), Analyst (read access, queries), Viewer (read-only access), and Guest (read-only with system tables access). Each role has specific permissions tailored for different use cases and team responsibilities.',
+    question: "What roles ship by default?",
+    answer: "Six: Super Admin (priority 100), Admin (80), Developer (60), Analyst (40), Viewer (20), Guest (10). You can create custom roles with any subset of ~40 permissions, plus row-level data access rules with wildcard / regex / deny.",
   },
   {
-    question: 'Can I integrate CHouse UI with my existing infrastructure?',
-    answer: 'Yes, CHouse UI is designed to integrate seamlessly with existing infrastructure. It can connect to any ClickHouse server (cloud or self-hosted), supports Docker deployments, Kubernetes, and can be deployed behind reverse proxies with HTTPS.',
-  },
-  {
-    question: 'What is the AI Optimizer feature?',
-    answer: 'The AI Optimizer is an advanced feature that uses Large Language Models (LLMs) to analyze your SQL queries. It can suggest performance optimizations, explain complex queries in plain language, and help debug errors. It supports multiple providers including OpenAI, Anthropic, and local models via Ollama.',
+    question: "How does the AI Optimizer work?",
+    answer: "The optimizer and debugger run as tool-using agents on top of Vercel AI SDK v6 — they call shared ClickHouse tools (list databases, get DDL, run EXPLAIN, validate SQL) under RBAC, then return structured suggestions. Supports OpenAI, Anthropic, Google, HuggingFace, and OpenAI-compatible providers.",
   },
 ];
 
 export default function FAQ() {
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-100px" });
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [openIndex, setOpenIndex] = useState<number>(0);
 
-  const toggleExpand = (index: number) => {
-    setExpandedIndex(expandedIndex === index ? null : index);
-  };
-
-  // Generate FAQ Schema for SEO
-  const faqSchema = {
+  const schema = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    "mainEntity": faqs.map(faq => ({
+    mainEntity: FAQS.map((f) => ({
       "@type": "Question",
-      "name": faq.question,
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": faq.answer
-      }
-    }))
+      name: f.question,
+      acceptedAnswer: { "@type": "Answer", text: f.answer },
+    })),
   };
 
   return (
     <>
-      {/* FAQ Schema for SEO */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
+      <Section id="faq" aria-label="Frequently asked questions">
+        <Container>
+          <SectionHeader
+            eyebrow="Frequently asked"
+            eyebrowIndex={9}
+            title="Questions, answered straight."
+            description="If you have a different one, the GitHub issues are the right place."
+          />
 
-      <section id="faq" className="py-24 px-4 relative overflow-hidden" aria-label="Frequently asked questions" ref={ref}>
-        {/* Background decoration */}
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500 rounded-full blur-3xl" />
-        </div>
-
-        <div className="max-w-4xl mx-auto relative z-10">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-16"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={isInView ? { opacity: 1, scale: 1 } : {}}
-              transition={{ duration: 0.5 }}
-              className="inline-block mb-6"
-            >
-              <HelpCircle className="w-16 h-16 text-purple-400 mx-auto" />
-            </motion.div>
-            <h2 className="text-5xl md:text-6xl font-bold mb-4">
-              <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-                Frequently Asked Questions
-              </span>
-            </h2>
-            <p className="text-gray-400 text-xl mb-2">Everything you need to know about CHouse UI</p>
-            <p className="text-gray-500 text-sm">Click on any question to see the answer</p>
-          </motion.div>
-
-          <div className="space-y-4">
-            {faqs.map((faq, index) => {
-              const isExpanded = expandedIndex === index;
-              return (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={isInView ? { opacity: 1, y: 0 } : {}}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                >
-                  <motion.button
-                    onClick={() => toggleExpand(index)}
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    className="w-full text-left"
-                    aria-expanded={isExpanded}
-                    aria-controls={`faq-answer-${index}`}
-                  >
-                    <GlassCard className={`overflow-hidden transition-all ${isExpanded
-                      ? 'border-purple-500/40 shadow-lg shadow-purple-500/20'
-                      : 'hover:border-white/20'
-                      }`}>
-                      <GlassCardContent className="p-6">
-                        <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-                            <HelpCircle className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="text-lg font-bold text-white mb-2 pr-8">
-                              {faq.question}
-                            </h3>
-                            <motion.div
-                              initial={false}
-                              animate={{
-                                height: isExpanded ? 'auto' : 0,
-                                opacity: isExpanded ? 1 : 0,
-                              }}
-                              transition={{ duration: 0.3 }}
-                              className="overflow-hidden"
-                              id={`faq-answer-${index}`}
-                            >
-                              <p className="text-gray-300 leading-relaxed pt-2">
-                                {faq.answer}
-                              </p>
-                            </motion.div>
-                          </div>
-                          <motion.div
-                            animate={{ rotate: isExpanded ? 180 : 0 }}
-                            transition={{ duration: 0.3 }}
-                            className="flex-shrink-0 text-gray-400"
-                          >
-                            <ChevronDown className="w-5 h-5" />
-                          </motion.div>
-                        </div>
-                      </GlassCardContent>
-                    </GlassCard>
-                  </motion.button>
-                </motion.div>
-              );
-            })}
+          <div className="mt-16 grid grid-cols-12 gap-x-6 gap-y-0">
+            <div className="col-span-12">
+              {FAQS.map((faq, idx) => {
+                const isOpen = openIndex === idx;
+                const number = String(idx + 1).padStart(2, "0");
+                return (
+                  <div key={faq.question} className="border-t border-ink-500 last:border-b">
+                    <button
+                      type="button"
+                      onClick={() => setOpenIndex(isOpen ? -1 : idx)}
+                      aria-expanded={isOpen}
+                      className="group flex w-full items-start gap-6 py-6 text-left transition-colors hover:bg-ink-50/40"
+                    >
+                      <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-faint w-8 shrink-0 pt-1">
+                        {number}
+                      </span>
+                      <span className="flex-1 text-[18px] font-medium leading-snug text-paper">
+                        {faq.question}
+                      </span>
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 text-paper-muted transition-colors group-hover:text-paper">
+                        {isOpen ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                      </span>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                          className="overflow-hidden"
+                        >
+                          <p className="max-w-3xl pb-8 pl-14 pr-12 text-[15px] leading-relaxed text-paper-muted">
+                            {faq.answer}
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </section>
+        </Container>
+      </Section>
     </>
   );
 }

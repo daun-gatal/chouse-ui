@@ -1,89 +1,97 @@
+/* Geist & Geist Mono via Google Fonts — no extra npm deps */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply bg-[#0a0a0a] text-white;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    overflow-x: hidden;
+  :root {
+    color-scheme: dark;
   }
 
   html {
     scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-ink-50 text-paper font-sans antialiased;
+    font-feature-settings: "ss01", "cv11", "calt", "kern";
+    overflow-x: hidden;
+  }
+
+  /* Editorial defaults */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans tracking-tight;
+  }
+
+  ::selection {
+    @apply bg-accent text-ink-50;
   }
 }
 
 @layer utilities {
-  .bg-size-200 {
-    background-size: 200% 100%;
+  /* Hairline border helpers */
+  .border-hairline {
+    @apply border border-ink-500;
+  }
+  .border-b-hairline {
+    @apply border-b border-ink-500;
+  }
+  .border-t-hairline {
+    @apply border-t border-ink-500;
   }
 
-  .bg-pos-0 {
-    background-position: 0% 0%;
+  /* Reusable container width matching editorial grid */
+  .container-editorial {
+    @apply mx-auto w-full max-w-container px-6 md:px-10;
   }
 
-  .bg-pos-100 {
-    background-position: 100% 0%;
+  /* Mono uppercase label used as eyebrow / overline */
+  .label-mono {
+    @apply font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim;
+  }
+
+  /* Subtle dot grid background — replaces noisy purple grid */
+  .bg-dot-grid {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* Static, very subtle vignette */
+  .bg-vignette {
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255, 204, 1, 0.04), transparent 60%),
+      #0a0a0a;
   }
 }
 
-/* Custom scrollbar */
+/* Scrollbar — minimal, editorial */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #0a0a0a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(112, 112, 112, 0.5);
-  border-radius: 10px;
+  background: #262626;
+  border: 2px solid #0a0a0a;
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(112, 112, 112, 0.7);
+  background: #404040;
 }
 
-/* Smooth transitions for interactive elements */
-* {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
-/* Enhanced focus styles for accessibility */
-button:focus-visible,
-a:focus-visible {
-  outline: 2px solid rgba(147, 51, 234, 0.5);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-/* Selection color */
-::selection {
-  background-color: rgba(147, 51, 234, 0.3);
-  color: white;
-}
-
-@layer utilities {
-  .animate-marquee {
-    animation: marquee 80s linear infinite;
-  }
-
-  .pause-on-hover:hover .animate-marquee {
-    animation-play-state: paused;
-  }
-}
-
-@keyframes marquee {
-  0% {
-    transform: translateX(0);
-  }
-
-  100% {
-    transform: translateX(-50%);
-  }
+/* Focus styles — accent ring, not purple glow */
+:where(button, a, [role="button"]):focus-visible {
+  outline: 2px solid #FFCC01;
+  outline-offset: 3px;
+  border-radius: 2px;
 }
