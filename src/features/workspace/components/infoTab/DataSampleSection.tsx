@@ -85,8 +85,8 @@ const DataSampleSection = ({
       return {
         accessorKey: col.name,
         header: () => (
-          <div className="flex items-center justify-between w-full group cursor-default h-full">
-            <span className="truncate font-medium text-white/60 group-hover:text-white/90 transition-colors duration-300 lowercase text-[13px]">
+          <div className="group flex h-full w-full cursor-default items-center justify-between gap-2">
+            <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim transition-colors group-hover:text-paper">
               {col.name}
             </span>
             <span className={cn("cell-type-badge text-[9px] font-mono transition-all duration-500", typeClass)}>
@@ -111,31 +111,31 @@ const DataSampleSection = ({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[300px] bg-black/5 rounded-lg border border-white/5 backdrop-blur-sm">
-        <Loader2 className="h-6 w-6 animate-spin text-cyan-400 opacity-50" />
-        <span className="ml-3 text-white/20 text-sm tracking-widest uppercase font-light">Loading sample data...</span>
+      <div className="flex h-[300px] flex-col items-center justify-center gap-3 rounded-xs border border-ink-500 bg-ink-100">
+        <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Loading sample data…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[300px]">
-        <p className="text-red-400/60 font-mono text-sm">{error instanceof Error ? error.message : 'Unknown error'}</p>
+      <div className="flex h-[300px] items-center justify-center">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-red-400">{error instanceof Error ? error.message : 'Unknown error'}</p>
       </div>
     );
   }
 
   if (!sample || sample.data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[300px]">
-        <p className="text-white/20 font-light tracking-widest uppercase text-xs">No data available in this table</p>
+      <div className="flex h-[300px] items-center justify-center">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No data available in this table</p>
       </div>
     );
   }
 
   return (
-    <div className="h-[450px] relative">
+    <div className="relative h-[450px]">
       <DataTable
         columns={columns}
         data={sample.data}

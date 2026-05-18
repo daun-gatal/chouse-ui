@@ -87,51 +87,69 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
-        <span className="ml-2 text-gray-400">Loading information...</span>
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Loading information…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="flex h-full items-center justify-center px-6">
         <div className="text-center">
-          <p className="text-red-400 mb-2">Failed to load information</p>
-          <p className="text-gray-500 text-sm">{error.message}</p>
+          <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.18em] text-red-400">Failed to load information</p>
+          <p className="text-[12px] text-paper-dim">{error.message}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col p-4 overflow-auto">
+    <div className="flex h-full flex-col overflow-auto p-4">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        {tableName ? (
-          <Table className="h-6 w-6 text-green-400" />
-        ) : (
-          <Database className="h-6 w-6 text-blue-400" />
-        )}
+      <div className="mb-6 flex items-center gap-3">
+        <div className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-dim">
+          {tableName ? (
+            <Table className="h-4 w-4" />
+          ) : (
+            <Database className="h-4 w-4" />
+          )}
+        </div>
         <div>
-          <h2 className="text-xl font-semibold text-white">
+          <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+            <span className="h-px w-6 bg-ink-700" />
+            <span>{tableName ? `Table in ${database}` : "Database"}</span>
+          </span>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight text-paper">
             {tableName || database}
           </h2>
-          <p className="text-sm text-gray-400">
-            {tableName ? `Table in ${database}` : "Database"}
-          </p>
         </div>
       </div>
 
       {/* Content Tabs */}
       <Tabs defaultValue="overview" className="flex-1">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsList className="h-9 gap-0.5 rounded-xs border border-ink-500 bg-ink-100 p-0.5">
+          <TabsTrigger
+            value="overview"
+            className="rounded-xs px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors data-[state=active]:bg-ink-200 data-[state=active]:text-paper data-[state=inactive]:text-paper-dim hover:text-paper"
+          >
+            Overview
+          </TabsTrigger>
           {tableName && (
             <>
-              <TabsTrigger value="schema">Schema</TabsTrigger>
-              <TabsTrigger value="sample">Data Sample</TabsTrigger>
+              <TabsTrigger
+                value="schema"
+                className="rounded-xs px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors data-[state=active]:bg-ink-200 data-[state=active]:text-paper data-[state=inactive]:text-paper-dim hover:text-paper"
+              >
+                Schema
+              </TabsTrigger>
+              <TabsTrigger
+                value="sample"
+                className="rounded-xs px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors data-[state=active]:bg-ink-200 data-[state=active]:text-paper data-[state=inactive]:text-paper-dim hover:text-paper"
+              >
+                Data Sample
+              </TabsTrigger>
             </>
           )}
         </TabsList>
@@ -142,20 +160,20 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
               <>
                 {/* CREATE TABLE Query - Full width */}
                 {info.create_table_query && (
-                  <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                  <div className="rounded-xs border border-ink-500 bg-ink-100 p-3">
                     <Collapsible open={createTableQueryOpen} onOpenChange={setCreateTableQueryOpen}>
                       <CollapsibleTrigger asChild>
-                        <div className="w-full text-left cursor-pointer">
-                          <div className="flex items-center justify-between w-full mb-2">
-                            <p className="text-xs text-gray-400 capitalize flex items-center gap-2">
+                        <div className="w-full cursor-pointer text-left">
+                          <div className="mb-2 flex w-full items-center justify-between">
+                            <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
                               <Code className="h-3 w-3" />
                               Create Table Query
-                            </p>
+                            </span>
                             <div className="flex items-center gap-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-6 text-xs gap-1.5 px-2"
+                                className="h-6 gap-1.5 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   copyToClipboard();
@@ -163,8 +181,8 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
                               >
                                 {copied ? (
                                   <>
-                                    <Check className="h-3 w-3 text-green-400" />
-                                    <span className="text-green-400">Copied</span>
+                                    <Check className="h-3 w-3 text-emerald-400" />
+                                    <span className="text-emerald-400">Copied</span>
                                   </>
                                 ) : (
                                   <>
@@ -174,14 +192,14 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
                                 )}
                               </Button>
                               {createTableQueryOpen ? (
-                                <ChevronUp className="h-4 w-4 text-gray-400" />
+                                <ChevronUp className="h-4 w-4 text-paper-dim" />
                               ) : (
-                                <ChevronDown className="h-4 w-4 text-gray-400" />
+                                <ChevronDown className="h-4 w-4 text-paper-dim" />
                               )}
                             </div>
                           </div>
                           {!createTableQueryOpen && (
-                            <p className="text-sm text-white font-mono truncate text-left w-full">
+                            <p className="w-full truncate text-left font-mono text-[12px] text-paper-muted">
                               {formattedQuery.substring(0, 100)}...
                             </p>
                           )}
@@ -192,19 +210,19 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
                           <Textarea
                             readOnly
                             value={formattedQuery}
-                            className="h-[300px] font-mono text-xs sm:text-sm text-gray-300 bg-black/40 border-white/10 resize-none overflow-auto pr-20"
+                            className="h-[300px] resize-none overflow-auto rounded-xs border-ink-500 bg-ink-200 pr-20 font-mono text-xs text-paper-muted sm:text-sm"
                             style={{ whiteSpace: 'pre', wordBreak: 'break-word' }}
                           />
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="absolute top-2 right-2 h-7 text-xs gap-1.5 px-2 bg-white/10 hover:bg-white/20"
+                            className="absolute right-2 top-2 h-7 gap-1.5 rounded-xs border border-ink-500 bg-ink-100 px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
                             onClick={copyToClipboard}
                           >
                             {copied ? (
                               <>
-                                <Check className="h-3 w-3 text-green-400" />
-                                <span className="text-green-400">Copied</span>
+                                <Check className="h-3 w-3 text-emerald-400" />
+                                <span className="text-emerald-400">Copied</span>
                               </>
                             ) : (
                               <>
@@ -225,12 +243,12 @@ const InfoTab: React.FC<InfoTabProps> = ({ database, tableName }) => {
                     {regularFields.map(([key, value]) => (
                       <div
                         key={key}
-                        className="p-3 rounded-lg bg-white/5 border border-white/10"
+                        className="rounded-xs border border-ink-500 bg-ink-100 p-3"
                       >
-                        <p className="text-xs text-gray-400 mb-1 capitalize">
+                        <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                           {key.replace(/_/g, " ")}
                         </p>
-                        <p className="text-sm text-white font-mono truncate">
+                        <p className="truncate font-mono text-[12px] text-paper">
                           {typeof value === "object"
                             ? JSON.stringify(value)
                             : String(value) || "-"}

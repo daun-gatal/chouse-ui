@@ -14,7 +14,6 @@ import { log } from '@/lib/log';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { DiffEditor } from './DiffEditor';
-import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
 import {
     Select,
@@ -130,7 +129,7 @@ export function OptimizeQueryDialog({
 
         setIsOptimizing(true);
         // We keep the previous result visible while optimizing for better UX, or clear it?
-        // Let's clear it to show we are working on new data, or keep it as "stale"? 
+        // Let's clear it to show we are working on new data, or keep it as "stale"?
         // Clearing is safer to avoid confusion.
         setResult(null);
         setError(null);
@@ -175,7 +174,7 @@ export function OptimizeQueryDialog({
     useEffect(() => {
         if (isOpen && !result && !isOptimizing && query?.trim()) {
             // Optional: Auto-start optimization?
-            // handleOptimize(); 
+            // handleOptimize();
             // Let's wait for user to click "Optimize" to allow them to adjust prompt first?
             // Or maybe just run it. The previous implementation had it commented out.
             // Let's stick to manual trigger for now to give users control over the prompt.
@@ -184,21 +183,23 @@ export function OptimizeQueryDialog({
 
     const dialogTitle = (
         <div className="flex items-center justify-between gap-2 w-full">
-            <DialogHeader className="space-y-1 min-w-0">
-                <DialogTitle className="flex items-center gap-2 text-xl font-semibold text-white">
-                    <div className="p-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 shrink-0">
-                        <Sparkles className="w-5 h-5 text-purple-400" />
-                    </div>
-                    AI Query Optimizer
-                </DialogTitle>
-                <p className="text-sm text-gray-400 font-normal">
-                    Optimize your ClickHouse queries with intelligent analysis and recommendations.
-                </p>
-            </DialogHeader>
+            <div className="flex items-center gap-3 min-w-0">
+                <span className="grid h-9 w-9 place-items-center rounded-xs border border-brand/40 bg-brand/5 text-brand shrink-0" aria-hidden>
+                    <Sparkles className="w-4 h-4" />
+                </span>
+                <DialogHeader className="space-y-0.5 min-w-0">
+                    <DialogTitle className="text-[16px] font-semibold tracking-tight text-paper">
+                        AI Query Optimizer
+                    </DialogTitle>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                        Optimize ClickHouse queries with intelligent analysis
+                    </p>
+                </DialogHeader>
+            </div>
             {!isOptimizing && result && (
-                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 shrink-0">
-                    <span className="text-xs text-gray-400">Model:</span>
-                    <span className="text-xs font-medium text-purple-300 truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
+                <div className="hidden sm:flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-1.5 shrink-0">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Model</span>
+                    <span className="text-[11px] font-medium text-paper truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
                 </div>
             )}
         </div>
@@ -210,38 +211,38 @@ export function OptimizeQueryDialog({
             onOpenChange={(open) => { if (!open) handleCancel(); }}
             dialogId="aiOptimizer"
             title={dialogTitle}
-            windowClassName="rounded-2xl shadow-2xl bg-[#0F1117] border-gray-800 text-white"
-            headerClassName="px-6 py-4 border-white/10 bg-[#14141a]"
-            footerClassName="px-6 py-4 border-white/10 bg-[#14141a]"
-            closeButtonClassName="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg -mr-2"
-            contentClassName="bg-[#0F1117] text-white"
+            windowClassName="rounded-xs border border-ink-500 bg-ink-100 text-paper shadow-xl"
+            headerClassName="px-6 py-4 border-b border-ink-500 bg-ink-100"
+            footerClassName="px-6 py-4 border-t border-ink-500 bg-ink-100"
+            closeButtonClassName="text-paper-dim hover:text-paper hover:bg-ink-200 rounded-xs -mr-1"
+            contentClassName="bg-ink-100 text-paper"
             footer={
                 <DialogFooter className="px-0 py-0 border-0 bg-transparent">
                     <Button
-                        variant="ghost"
+                        variant="outline"
                         onClick={handleCancel}
-                        className="text-gray-400 hover:text-white hover:bg-white/5"
+                        className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                     >
                         Close
                     </Button>
                     {result && (
                         <div className="flex gap-2">
                             <Button
-                                variant="secondary"
+                                variant="outline"
                                 onClick={() => {
                                     navigator.clipboard.writeText(result.optimizedQuery);
                                     toast.success('Copied to clipboard');
                                 }}
-                                className="gap-2"
+                                className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                             >
-                                <Copy className="w-4 h-4" />
+                                <Copy className="w-3.5 h-3.5" />
                                 Copy Code
                             </Button>
                             <Button
                                 onClick={handleAccept}
-                                className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-lg shadow-green-500/20"
+                                className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                             >
-                                <Check className="w-4 h-4" />
+                                <Check className="w-3.5 h-3.5" />
                                 Apply Changes
                             </Button>
                         </div>
@@ -249,11 +250,11 @@ export function OptimizeQueryDialog({
                 </DialogFooter>
             }
         >
-            <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col bg-[#0F1117]">
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col bg-ink-100">
                 <ResizablePanelGroup direction={isNarrow ? "vertical" : "horizontal"} className="flex-1 min-h-0 min-w-0">
 
                         {/* Left Panel: Diff Editor */}
-                        <ResizablePanel defaultSize={65} minSize={25} className="bg-[#1e1e1e] flex flex-col min-h-0 min-w-0">
+                        <ResizablePanel defaultSize={65} minSize={25} className="bg-ink-200 flex flex-col min-h-0 min-w-0">
                             <div className="flex-1 relative min-h-0 min-w-0">
                                 {result ? (
                                     <DiffEditor
@@ -263,38 +264,41 @@ export function OptimizeQueryDialog({
                                         className="absolute inset-0"
                                     />
                                 ) : (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-[#0F1117]">
+                                    <div className="absolute inset-0 flex items-center justify-center bg-ink-100">
                                         {isOptimizing ? (
                                             <div className="flex flex-col items-center gap-4 text-center p-8">
-                                                <div className="relative">
-                                                    <div className="absolute inset-0 bg-purple-500 blur-xl opacity-20 animate-pulse rounded-full"></div>
-                                                    <Loader2 className="w-12 h-12 text-purple-500 animate-spin relative z-10" />
+                                                <div className="grid h-12 w-12 place-items-center rounded-xs border border-brand/40 bg-brand/5">
+                                                    <Loader2 className="w-5 h-5 text-brand animate-spin" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <h3 className="text-lg font-medium text-white">Analyzing Query Structure...</h3>
-                                                    <p className="text-sm text-gray-400 max-w-xs">
+                                                    <h3 className="text-[14px] font-semibold text-paper tracking-tight">Analyzing Query Structure</h3>
+                                                    <p className="text-[12px] text-paper-muted max-w-xs">
                                                         Examining schema, indexes, and execution plan to find improvements.
                                                     </p>
                                                 </div>
                                             </div>
                                         ) : error ? (
                                             <div className="text-center p-8 max-w-md">
-                                                <div className="inline-flex p-3 rounded-full bg-red-500/10 mb-4">
-                                                    <AlertCircle className="w-8 h-8 text-red-500" />
+                                                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xs border border-red-900/60 bg-red-950/40 mb-4">
+                                                    <AlertCircle className="w-5 h-5 text-red-300" />
                                                 </div>
-                                                <h3 className="text-lg font-medium text-white mb-2">Optimization Failed</h3>
-                                                <p className="text-sm text-gray-400 mb-6">{error}</p>
-                                                <Button onClick={handleOptimize} variant="secondary">
+                                                <h3 className="text-[14px] font-semibold text-paper mb-2 tracking-tight">Optimization Failed</h3>
+                                                <p className="text-[12px] text-paper-muted mb-6">{error}</p>
+                                                <Button
+                                                    onClick={handleOptimize}
+                                                    className="h-9 gap-2 rounded-xs border border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+                                                >
+                                                    <RefreshCw className="w-3.5 h-3.5" />
                                                     Retry Optimization
                                                 </Button>
                                             </div>
                                         ) : (
                                             <div className="text-center p-8 max-w-md">
-                                                <div className="inline-flex p-3 rounded-full bg-slate-800 mb-4">
-                                                    <Sparkles className="w-8 h-8 text-slate-400" />
+                                                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xs border border-brand/40 bg-brand/5 mb-4">
+                                                    <Sparkles className="w-5 h-5 text-brand" />
                                                 </div>
-                                                <h3 className="text-lg font-medium text-white mb-2">Ready to Optimize</h3>
-                                                <p className="text-sm text-gray-400 mb-6">
+                                                <h3 className="text-[14px] font-semibold text-paper mb-2 tracking-tight">Ready to Optimize</h3>
+                                                <p className="text-[12px] text-paper-muted mb-6">
                                                     Click "Optimize Query" to analyze your SQL and get performance recommendations.
                                                 </p>
                                             </div>
@@ -307,33 +311,33 @@ export function OptimizeQueryDialog({
                         <ResizableHandle withHandle />
 
                         {/* Right Panel: Controls & Analysis */}
-                        <ResizablePanel defaultSize={35} minSize={25} className="bg-[#0F1117] flex flex-col border-l border-white/5 min-h-0 min-w-0">
+                        <ResizablePanel defaultSize={35} minSize={25} className="bg-ink-100 flex flex-col border-l border-ink-500 min-h-0 min-w-0">
                             <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 
                                 {/* Controls Section */}
                                 <div className="space-y-5">
-                                    <div className="space-y-3">
-                                        <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                    <div className="space-y-2">
+                                        <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                             AI Model
                                         </Label>
                                         <Select
                                             value={selectedModelId}
                                             onValueChange={(value) => setSelectedModelId(value)}
                                         >
-                                            <SelectTrigger className="w-full bg-[#1a1c24] border-white/10 text-sm focus:ring-1 focus:ring-purple-500/50 transition-colors h-11">
+                                            <SelectTrigger className="w-full h-10 rounded-xs border-ink-500 bg-ink-200 text-[12px] text-paper focus-visible:border-brand focus-visible:ring-0 transition-colors">
                                                 <SelectValue placeholder="Select an AI Model" />
                                             </SelectTrigger>
-                                            <SelectContent className="bg-[#14141a] border-white/10 rounded-lg">
+                                            <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
                                                 {aiModels.length === 0 ? (
-                                                    <div className="p-4 text-center text-[13px] text-gray-500">
+                                                    <div className="p-4 text-center text-[12px] text-paper-dim">
                                                         No AI models configured.<br />Please add one in the Admin UI.
                                                     </div>
                                                 ) : (
                                                     aiModels.map(m => (
-                                                        <SelectItem key={m.id} value={m.id} className="focus:bg-purple-500/10 focus:text-purple-200 cursor-pointer py-2.5 rounded-md mx-1 my-0.5">
+                                                        <SelectItem key={m.id} value={m.id} className="focus:bg-ink-200 focus:text-paper cursor-pointer py-2 rounded-xs mx-1 my-0.5">
                                                             <div className="flex flex-col gap-0.5 text-left">
-                                                                <span className="font-medium text-[13px] text-gray-200">{m.name}</span>
-                                                                <span className="text-[10px] text-gray-500 font-medium tracking-wide uppercase leading-none">{m.provider || 'AI Provider'}</span>
+                                                                <span className="font-medium text-[12px] text-paper">{m.name}</span>
+                                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim leading-none">{m.provider || 'AI Provider'}</span>
                                                             </div>
                                                         </SelectItem>
                                                     ))
@@ -342,8 +346,8 @@ export function OptimizeQueryDialog({
                                         </Select>
                                     </div>
 
-                                    <div className="space-y-3">
-                                        <Label htmlFor="prompt" className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="prompt" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                             Optimization Goal
                                         </Label>
                                         <Textarea
@@ -351,7 +355,7 @@ export function OptimizeQueryDialog({
                                             value={additionalPrompt}
                                             onChange={(e) => setAdditionalPrompt(e.target.value)}
                                             placeholder="Specific instructions (e.g., 'Use PREWHERE', 'Avoid JOINs')..."
-                                            className="bg-[#1a1c24] border-white/10 text-sm min-h-[80px] focus:border-purple-500/50 transition-colors"
+                                            className="rounded-xs border-ink-500 bg-ink-200 text-[12px] text-paper placeholder:text-paper-faint min-h-[80px] focus-visible:border-brand focus-visible:ring-0 transition-colors"
                                         />
                                     </div>
 
@@ -359,20 +363,20 @@ export function OptimizeQueryDialog({
                                         onClick={handleOptimize}
                                         disabled={isOptimizing}
                                         className={cn(
-                                            "w-full font-medium transition-all",
+                                            "w-full h-10 gap-2 rounded-xs font-mono text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors",
                                             isOptimizing
-                                                ? "bg-purple-500/10 text-purple-400"
-                                                : "bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-500/20"
+                                                ? "bg-ink-200 text-paper-muted border border-ink-500"
+                                                : "bg-brand text-ink-50 hover:bg-brand-soft"
                                         )}
                                     >
                                         {isOptimizing ? (
                                             <>
-                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                Optimizing...
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                Optimizing
                                             </>
                                         ) : (
                                             <>
-                                                {result ? <RefreshCw className="w-4 h-4 mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                                                {result ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
                                                 {result ? "Re-Optimize" : "Optimize Query"}
                                             </>
                                         )}
@@ -381,43 +385,43 @@ export function OptimizeQueryDialog({
 
                                 {/* Analysis Results */}
                                 {result && (
-                                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <div className="space-y-6">
 
                                         {/* Summary Card */}
-                                        <div className="p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/20 space-y-2">
-                                            <div className="flex items-center gap-2 text-purple-400 font-medium text-sm">
-                                                <Sparkles className="w-4 h-4" />
+                                        <div className="rounded-xs border border-brand/40 bg-brand/5 p-4 space-y-2">
+                                            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
+                                                <Sparkles className="w-3.5 h-3.5" />
                                                 <span>Summary</span>
                                             </div>
-                                            <p className="text-sm text-gray-200 leading-relaxed font-medium">
+                                            <p className="text-[13px] text-paper leading-relaxed">
                                                 {result.summary}
                                             </p>
                                         </div>
 
                                         {/* Detailed Explanation */}
                                         <div className="space-y-3">
-                                            <div className="flex items-center gap-2 text-gray-400 text-xs font-semibold uppercase tracking-wider">
+                                            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                                 <FileText className="w-3.5 h-3.5" />
                                                 Changes Explanation
                                             </div>
-                                            <div className="prose prose-invert prose-sm max-w-none text-gray-300 text-sm leading-relaxed">
+                                            <div className="prose prose-invert prose-sm max-w-none text-[13px] text-paper-muted leading-relaxed">
                                                 <ReactMarkdown components={{
-                                                    h1: ({ node, ...props }) => <h1 className="text-lg font-bold text-purple-400 mt-4 mb-2" {...props} />,
-                                                    h2: ({ node, ...props }) => <h2 className="text-base font-bold text-purple-300 mt-3 mb-2" {...props} />,
-                                                    h3: ({ node, ...props }) => <h3 className="text-sm font-bold text-white mt-3 mb-1" {...props} />,
-                                                    p: ({ node, ...props }) => <p className="text-gray-300 leading-relaxed mb-3 last:mb-0" {...props} />,
+                                                    h1: ({ node, ...props }) => <h1 className="text-[16px] font-semibold text-paper mt-4 mb-2" {...props} />,
+                                                    h2: ({ node, ...props }) => <h2 className="text-[14px] font-semibold text-paper mt-3 mb-2" {...props} />,
+                                                    h3: ({ node, ...props }) => <h3 className="text-[13px] font-semibold text-paper mt-3 mb-1" {...props} />,
+                                                    p: ({ node, ...props }) => <p className="text-[13px] text-paper-muted leading-relaxed mb-3 last:mb-0" {...props} />,
                                                     ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1" {...props} />,
                                                     ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1" {...props} />,
-                                                    li: ({ node, ...props }) => <li className="text-gray-300" {...props} />,
-                                                    strong: ({ node, ...props }) => <strong className="text-purple-200 font-semibold" {...props} />,
+                                                    li: ({ node, ...props }) => <li className="text-[13px] text-paper-muted marker:text-brand/60" {...props} />,
+                                                    strong: ({ node, ...props }) => <strong className="text-paper font-semibold" {...props} />,
                                                     code({ node, className, children, ...props }) {
                                                         const match = /language-(\w+)/.exec(className || '')
                                                         return match ? (
-                                                            <code className="bg-black/30 rounded px-1.5 py-0.5 text-purple-300 font-mono text-xs" {...props}>
+                                                            <code className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 text-paper font-mono text-[12px]" {...props}>
                                                                 {children}
                                                             </code>
                                                         ) : (
-                                                            <code className="bg-black/30 rounded px-1.5 py-0.5 text-purple-300 font-mono text-xs" {...props}>
+                                                            <code className="rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 text-paper font-mono text-[12px]" {...props}>
                                                                 {children}
                                                             </code>
                                                         )
@@ -431,14 +435,14 @@ export function OptimizeQueryDialog({
                                         {/* Performance Tips */}
                                         {result.tips?.length > 0 && (
                                             <div className="space-y-3">
-                                                <div className="flex items-center gap-2 text-gray-400 text-xs font-semibold uppercase tracking-wider">
+                                                <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                                     <Lightbulb className="w-3.5 h-3.5" />
                                                     Performance Tips
                                                 </div>
                                                 <ul className="space-y-2">
                                                     {result.tips?.map((tip, idx) => (
-                                                        <li key={idx} className="flex gap-3 text-sm text-gray-400 bg-white/5 p-3 rounded-lg border border-white/5">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-yellow-500/50 mt-1.5 shrink-0" />
+                                                        <li key={idx} className="flex gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3 text-[12px] text-paper-muted">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
                                                             <span>{tip}</span>
                                                         </li>
                                                     ))}

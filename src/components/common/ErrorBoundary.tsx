@@ -66,51 +66,51 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.3),rgba(255,255,255,0))] px-4">
-          <div className="max-w-md w-full">
-            <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-8 text-center">
-              <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-red-500/10 flex items-center justify-center">
-                <AlertTriangle className="w-8 h-8 text-red-400" />
-              </div>
+        <div className="flex min-h-screen items-center justify-center bg-ink-50 px-4">
+          <div className="w-full max-w-md">
+            <div className="rounded-xs border border-ink-500 bg-ink-100 p-8 text-center">
+              <span className="mx-auto mb-6 grid h-12 w-12 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+                <AlertTriangle className="h-5 w-5" aria-hidden />
+              </span>
 
-              <h1 className="text-2xl font-bold text-white mb-2">
+              <h1 className="mb-2 text-[18px] font-semibold tracking-tight text-paper">
                 Something went wrong
               </h1>
-              
-              <p className="text-gray-400 mb-6">
+
+              <p className="mb-6 text-[12px] text-paper-muted">
                 An unexpected error occurred. We've been notified and are working on it.
               </p>
 
               {process.env.NODE_ENV !== 'production' && this.state.error && (
-                <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-left">
-                  <p className="text-sm font-mono text-red-300 break-all">
+                <div className="mb-6 rounded-xs border border-red-900/60 bg-red-950/40 p-4 text-left">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Error</p>
+                  <p className="mt-1 break-all font-mono text-[12px] text-red-200">
                     {this.state.error.message}
                   </p>
                   {this.state.errorInfo && (
-                    <pre className="mt-2 text-xs text-red-400/70 overflow-auto max-h-40">
+                    <pre className="mt-2 max-h-40 overflow-auto font-mono text-[11px] text-red-300/80">
                       {this.state.errorInfo.componentStack}
                     </pre>
                   )}
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <div className="flex flex-col justify-center gap-2 sm:flex-row">
                 <Button
                   variant="outline"
                   onClick={this.handleRetry}
-                  className="gap-2"
+                  className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
                 >
-                  <RefreshCcw className="w-4 h-4" />
-                  Try Again
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                  Try again
                 </Button>
-                
+
                 <Button
-                  variant="outline"
                   onClick={this.handleGoHome}
-                  className="gap-2"
+                  className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                 >
-                  <Home className="w-4 h-4" />
-                  Go Home
+                  <Home className="h-3.5 w-3.5" />
+                  Go home
                 </Button>
               </div>
             </div>
@@ -151,28 +151,26 @@ interface QueryErrorBoundaryProps {
 
 export function QueryErrorFallback({ error, resetErrorBoundary }: QueryErrorBoundaryProps) {
   return (
-    <div className="p-6 bg-red-500/10 border border-red-500/20 rounded-xl">
+    <div className="rounded-xs border border-red-900/60 bg-red-950/40 p-6">
       <div className="flex items-start gap-4">
-        <div className="p-2 bg-red-500/20 rounded-lg">
-          <AlertTriangle className="w-5 h-5 text-red-400" />
-        </div>
-        
+        <span className="grid h-9 w-9 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+        </span>
+
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-red-300 mb-1">
-            Failed to load data
-          </h3>
-          
-          <p className="text-sm text-red-400/80 mb-4">
+          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Failed to load data</p>
+
+          <p className="mb-4 text-[12px] text-red-200/90">
             {error.message}
           </p>
-          
+
           <Button
             size="sm"
             variant="outline"
             onClick={resetErrorBoundary}
-            className="gap-2 border-red-500/30 hover:bg-red-500/10"
+            className="h-9 gap-2 rounded-xs border-red-900/60 bg-red-950/40 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-red-300 hover:border-red-800 hover:bg-red-950/60 hover:text-red-200"
           >
-            <RefreshCcw className="w-4 h-4" />
+            <RefreshCcw className="h-3.5 w-3.5" />
             Retry
           </Button>
         </div>
