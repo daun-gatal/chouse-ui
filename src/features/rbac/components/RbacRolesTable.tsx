@@ -58,60 +58,28 @@ import { RoleFormDialog } from './RoleFormDialog';
 // Role Colors
 // ============================================
 
-const ROLE_COLORS: Record<string, { bg: string; text: string; border: string; icon: string; gradient: string }> = {
-  super_admin: {
-    bg: 'bg-gradient-to-br from-red-500/20 via-red-500/10 to-red-500/20',
-    text: 'text-red-300',
-    border: 'border-red-500/30',
-    icon: '👑',
-    gradient: 'from-red-500/30 to-orange-500/30',
-  },
-  admin: {
-    bg: 'bg-gradient-to-br from-orange-500/20 via-orange-500/10 to-orange-500/20',
-    text: 'text-orange-300',
-    border: 'border-orange-500/30',
-    icon: '🛡️',
-    gradient: 'from-orange-500/30 to-yellow-500/30',
-  },
-  developer: {
-    bg: 'bg-gradient-to-br from-blue-500/20 via-blue-500/10 to-blue-500/20',
-    text: 'text-blue-300',
-    border: 'border-blue-500/30',
-    icon: '👨‍💻',
-    gradient: 'from-blue-500/30 to-cyan-500/30',
-  },
-  analyst: {
-    bg: 'bg-gradient-to-br from-green-500/20 via-green-500/10 to-green-500/20',
-    text: 'text-green-300',
-    border: 'border-green-500/30',
-    icon: '📊',
-    gradient: 'from-green-500/30 to-emerald-500/30',
-  },
-  viewer: {
-    bg: 'bg-gradient-to-br from-purple-500/20 via-purple-500/10 to-purple-500/20',
-    text: 'text-purple-300',
-    border: 'border-purple-500/30',
-    icon: '👁️',
-    gradient: 'from-purple-500/30 to-pink-500/30',
-  },
-  guest: {
-    bg: 'bg-gradient-to-br from-cyan-500/20 via-cyan-500/10 to-cyan-500/20',
-    text: 'text-cyan-300',
-    border: 'border-cyan-500/30',
-    icon: '👋',
-    gradient: 'from-cyan-500/30 to-blue-500/30',
-  },
+// Editorial: uniform hairline chrome for every role; identity comes from the
+// role name itself, not from per-role color theming.
+const ROLE_STYLE = {
+  bg: 'bg-ink-200',
+  text: 'text-paper',
+  border: 'border-ink-500',
+  gradient: 'from-ink-200 to-ink-200', // unused but kept for API compat
+} as const;
+
+const ROLE_ICONS: Record<string, string> = {
+  super_admin: 'SA',
+  admin: 'AD',
+  developer: 'DV',
+  analyst: 'AN',
+  viewer: 'VW',
+  guest: 'GS',
 };
 
-const getRoleStyle = (role: string) => {
-  return ROLE_COLORS[role] || {
-    bg: 'bg-gradient-to-br from-gray-500/20 via-gray-500/10 to-gray-500/20',
-    text: 'text-gray-300',
-    border: 'border-gray-500/30',
-    icon: '🔐',
-    gradient: 'from-gray-500/30 to-gray-600/30',
-  };
-};
+const getRoleStyle = (role: string) => ({
+  ...ROLE_STYLE,
+  icon: ROLE_ICONS[role] || role.slice(0, 2).toUpperCase(),
+});
 
 // ============================================
 // Permission Categories for Display
@@ -226,15 +194,14 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
         className="flex items-center justify-between"
       >
         <div className="flex items-center gap-3">
-          <motion.div
-            whileHover={{ scale: 1.1, rotate: 5 }}
-            className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/30"
-          >
-            <Shield className="h-6 w-6 text-purple-400" />
-          </motion.div>
-          <div>
-            <h2 className="text-xl font-bold text-white">Roles</h2>
-            <p className="text-sm text-gray-400">{roles.length} roles defined</p>
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+            <Shield className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-semibold tracking-tight text-paper">Roles</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              {roles.length} role{roles.length !== 1 ? 's' : ''} defined
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -243,28 +210,20 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
             size="sm"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-200"
           >
-            <motion.div
-              animate={{ rotate: isFetching ? 360 : 0 }}
-              transition={{ duration: 1, repeat: isFetching ? Infinity : 0, ease: 'linear' }}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </motion.div>
+            <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
             Refresh
           </Button>
           {canCreate && (
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsCreateDialogOpen(true)}
-                className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
-              >
-                <Plus className="h-4 w-4" />
-                Add Role
-              </Button>
-            </motion.div>
+            <Button
+              size="sm"
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add role
+            </Button>
           )}
         </div>
       </motion.div>
@@ -273,18 +232,16 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
       <div className="space-y-3">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl bg-white/5" />
+            <Skeleton key={i} className="h-24 w-full rounded-xs bg-ink-200" />
           ))
         ) : roles.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-16 text-gray-400"
-          >
-            <Shield className="h-12 w-12 mx-auto mb-4 text-gray-600" />
-            <p className="text-lg">No roles found</p>
-            <p className="text-sm mt-2">Create your first role to get started</p>
-          </motion.div>
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
+              <Shield className="h-5 w-5" aria-hidden />
+            </div>
+            <p className="text-[15px] font-semibold text-paper">No roles found</p>
+            <p className="mt-1 text-[13px] text-paper-muted">Create your first role to get started.</p>
+          </div>
         ) : (
           <AnimatePresence mode="popLayout">
             {roles.map((role, index) => {
@@ -300,117 +257,90 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
                   exit={{ opacity: 0, y: -20, scale: 0.95 }}
                   transition={{ delay: index * 0.05, duration: 0.3 }}
                   whileHover={{ scale: 1.01 }}
-                  className={cn(
-                    'rounded-xl border overflow-hidden backdrop-blur-sm transition-all',
-                    style.bg,
-                    style.border,
-                    'hover:shadow-lg hover:shadow-purple-500/10'
-                  )}
+                  className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100 transition-colors hover:border-ink-700"
                 >
                   <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(role.id)}>
-                    {/* Role Header */}
-                    <div className="flex items-center justify-between p-5">
-                      <div className="flex items-center gap-4 flex-1">
-                        <CollapsibleTrigger className="h-9 w-9 p-0 inline-flex items-center justify-center rounded-lg hover:bg-white/10 transition-all group">
-                          <motion.div
-                            animate={{ rotate: isExpanded ? 90 : 0 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="h-5 w-5 text-purple-400" />
-                            ) : (
-                              <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-purple-400 transition-colors" />
-                            )}
-                          </motion.div>
+                    {/* Role header */}
+                    <div className="flex items-center justify-between p-4">
+                      <div className="flex flex-1 items-center gap-3">
+                        <CollapsibleTrigger className="group grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
                         </CollapsibleTrigger>
-                        <motion.div
-                          whileHover={{ scale: 1.1, rotate: 5 }}
-                          className="text-3xl"
-                        >
+                        <span className="grid h-10 w-10 place-items-center rounded-xs border border-ink-500 bg-ink-200 font-mono text-[12px] font-semibold tracking-tight text-paper">
                           {style.icon}
-                        </motion.div>
+                        </span>
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className={cn('text-lg font-bold', style.text)}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-[15px] font-semibold text-paper">
                               {role.displayName}
                             </h3>
                             {role.isSystem && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-amber-500/20 text-amber-300 border-amber-500/30"
-                              >
-                                <Lock className="h-3 w-3 mr-1" />
+                              <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                                <Lock className="h-3 w-3" />
                                 System
-                              </Badge>
+                              </span>
                             )}
                             {role.isDefault && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-300 border-green-500/30"
-                              >
-                                <CheckCircle2 className="h-3 w-3 mr-1" />
+                              <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
+                                <CheckCircle2 className="h-3 w-3" />
                                 Default
-                              </Badge>
+                              </span>
                             )}
                           </div>
-                          <p className="text-sm text-gray-400 mt-1">{role.description || 'No description'}</p>
+                          <p className="mt-1 text-[12px] text-paper-muted">{role.description || 'No description'}</p>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3">
                         {/* Stats */}
-                        <div className="flex items-center gap-4 text-sm">
-                          <motion.div
-                            whileHover={{ scale: 1.1 }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10"
-                          >
-                            <Users className="h-4 w-4 text-blue-400" />
-                            <span className="text-gray-300 font-medium">{role.userCount || 0}</span>
-                            <span className="text-gray-500 text-xs">users</span>
-                          </motion.div>
-                          <motion.div
-                            whileHover={{ scale: 1.1 }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10"
-                          >
-                            <Shield className="h-4 w-4 text-purple-400" />
-                            <span className="text-gray-300 font-medium">{role.permissions.length}</span>
-                            <span className="text-gray-500 text-xs">perms</span>
-                          </motion.div>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[11px]">
+                            <Users className="h-3 w-3 text-paper-dim" />
+                            <span className="text-paper">{role.userCount || 0}</span>
+                            <span className="uppercase tracking-[0.14em] text-paper-faint">users</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[11px]">
+                            <Shield className="h-3 w-3 text-paper-dim" />
+                            <span className="text-paper">{role.permissions.length}</span>
+                            <span className="uppercase tracking-[0.14em] text-paper-faint">perms</span>
+                          </span>
                         </div>
 
                         {/* Actions */}
                         {(canUpdate || canDelete) && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-9 w-9 p-0 hover:bg-white/10"
-                                >
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </motion.div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 rounded-xs p-0 text-paper-dim hover:bg-ink-200 hover:text-paper"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800">
+                            <DropdownMenuContent align="end" className="rounded-md border-ink-500 bg-ink-100">
                               {canUpdate && (
                                 <DropdownMenuItem
                                   onClick={() => setEditingRole(role)}
-                                  className="hover:bg-white/10 cursor-pointer"
+                                  className="cursor-pointer hover:bg-ink-200"
                                 >
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit Role
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit role
                                 </DropdownMenuItem>
                               )}
-                              {canUpdate && canDelete && !role.isSystem && <DropdownMenuSeparator className="bg-gray-800" />}
+                              {canUpdate && canDelete && !role.isSystem && <DropdownMenuSeparator className="bg-ink-500" />}
                               {canDelete && !role.isSystem && (
                                 <DropdownMenuItem
                                   onClick={() => setDeleteRoleId(role.id)}
-                                  className="text-red-400 focus:text-red-400 hover:bg-red-500/10 cursor-pointer"
+                                  className="cursor-pointer text-red-400 hover:bg-red-950/40 focus:text-red-300"
                                   disabled={(role.userCount ?? 0) > 0}
                                 >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Role
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete role
                                 </DropdownMenuItem>
                               )}
                             </DropdownMenuContent>
@@ -442,18 +372,17 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
                                 transition={{ delay: 0.1 }}
                                 className="space-y-2 p-3 rounded-lg bg-white/5 border border-white/10"
                               >
-                                <h5 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                                <h5 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-faint">
                                   {category}
                                 </h5>
                                 <div className="flex flex-wrap gap-1.5">
                                   {perms.map((perm) => (
-                                    <Badge
+                                    <span
                                       key={perm}
-                                      variant="outline"
-                                      className="text-xs bg-gradient-to-r from-purple-500/10 to-blue-500/10 border-purple-500/20 text-purple-300 hover:border-purple-500/40 transition-colors"
+                                      className="inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-2 py-0.5 font-mono text-[11px] text-paper-muted transition-colors hover:border-ink-700 hover:text-paper"
                                     >
                                       {perm.split(':').slice(1).join(':')}
-                                    </Badge>
+                                    </span>
                                   ))}
                                 </div>
                               </motion.div>

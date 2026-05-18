@@ -293,47 +293,49 @@ const UserManagement: React.FC = () => {
       className="p-6 space-y-6"
     >
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-500/20">
-            <Users className="h-6 w-6 text-blue-400" />
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-white">User Management</h2>
-            <p className="text-sm text-gray-400">
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+            <Users className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-semibold tracking-tight text-paper">User management</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
               {total} user{total !== 1 ? "s" : ""} in the system
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
           {/* Search */}
-          <div className="relative flex-1 md:w-64 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <div className="relative min-w-[200px] flex-1 md:w-64">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-paper-dim" />
             <Input
-              placeholder="Search by name, email..."
+              placeholder="Search by name, email…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-white/5 border-white/10"
+              className="h-9 rounded-xs border-ink-500 bg-ink-200 pl-9 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-xs text-paper-dim hover:bg-ink-300 hover:text-paper"
+                aria-label="Clear search"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
 
-          {/* Role Filter */}
+          {/* Role filter */}
           <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-[140px] bg-white/5 border-white/10">
-              <Filter className="h-4 w-4 mr-2 text-gray-400" />
+            <SelectTrigger className="h-9 w-[140px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper">
+              <Filter className="mr-2 h-3.5 w-3.5 text-paper-dim" />
               <SelectValue placeholder="Filter role" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Roles</SelectItem>
+              <SelectItem value="all">All roles</SelectItem>
               {roles.map((role) => (
                 <SelectItem key={role.id} value={role.id}>
                   {role.displayName}
@@ -342,27 +344,27 @@ const UserManagement: React.FC = () => {
             </SelectContent>
           </Select>
 
-          {/* Status Filter */}
+          {/* Status filter */}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[120px] bg-white/5 border-white/10">
+            <SelectTrigger className="h-9 w-[120px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="all">All status</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
 
-          {/* Clear Filters */}
+          {/* Clear filters */}
           {hasActiveFilters && (
             <Button
               variant="ghost"
               size="sm"
               onClick={clearFilters}
-              className="text-gray-400 hover:text-white"
+              className="h-9 rounded-xs px-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
             >
-              <X className="h-4 w-4 mr-1" />
+              <X className="mr-1 h-3.5 w-3.5" />
               Clear
             </Button>
           )}
@@ -372,56 +374,41 @@ const UserManagement: React.FC = () => {
             size="sm"
             onClick={fetchUsers}
             disabled={isFetching}
-            className="gap-2 bg-white/5 border-white/10 hover:bg-white/10"
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-200"
           >
-            <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
             Refresh
           </Button>
 
           {canCreateUsers && (
             <Button
-              variant="outline"
               size="sm"
               onClick={() => navigate("/admin/users/create")}
-              className="gap-2 shrink-0 bg-white/5 border-white/10 hover:bg-white/10 transition-all"
+              className="h-9 shrink-0 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
             >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Create User</span>
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Create user</span>
             </Button>
           )}
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
-            <Users className="h-4 w-4" />
-            Total Users
+      {/* Stats — hairline editorial grid */}
+      <div className="grid grid-cols-2 border-l border-t border-ink-500 md:grid-cols-4">
+        {[
+          { icon: Users, label: "Total users", value: total },
+          { icon: UserCheck, label: "Active", value: statusCounts.active },
+          { icon: UserX, label: "Inactive", value: statusCounts.inactive },
+          { icon: Shield, label: "Roles", value: roles.length },
+        ].map(({ icon: Icon, label, value }) => (
+          <div key={label} className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">{label}</span>
+              <Icon className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+            </div>
+            <span className="font-mono text-[20px] font-semibold leading-none text-paper">{value}</span>
           </div>
-          <div className="text-2xl font-bold text-white">{total}</div>
-        </div>
-        <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
-          <div className="flex items-center gap-2 text-green-400 text-sm mb-1">
-            <UserCheck className="h-4 w-4" />
-            Active
-          </div>
-          <div className="text-2xl font-bold text-white">{statusCounts.active}</div>
-        </div>
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
-          <div className="flex items-center gap-2 text-red-400 text-sm mb-1">
-            <UserX className="h-4 w-4" />
-            Inactive
-          </div>
-          <div className="text-2xl font-bold text-white">{statusCounts.inactive}</div>
-        </div>
-        <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
-          <div className="flex items-center gap-2 text-purple-400 text-sm mb-1">
-            <Shield className="h-4 w-4" />
-            Roles
-          </div>
-          <div className="text-2xl font-bold text-white">{roles.length}</div>
-        </div>
+        ))}
       </div>
 
       {/* Filter Results Summary */}
@@ -448,10 +435,10 @@ const UserManagement: React.FC = () => {
 
       {/* Error State */}
       {error && (
-        <div className="p-6 rounded-xl bg-red-500/10 border border-red-500/30 text-center">
-          <AlertTriangle className="h-8 w-8 text-red-400 mx-auto mb-2" />
-          <p className="text-red-400">{error}</p>
-          <Button variant="outline" onClick={fetchUsers} className="mt-4">
+        <div className="rounded-xs border border-red-900/60 bg-red-950/40 p-6 text-center">
+          <AlertTriangle className="mx-auto mb-2 h-6 w-6 text-red-300" />
+          <p className="text-[13px] text-red-200">{error}</p>
+          <Button variant="outline" onClick={fetchUsers} className="mt-4 rounded-xs border-ink-500 bg-ink-200 text-paper hover:border-ink-700 hover:bg-ink-300">
             Retry
           </Button>
         </div>
@@ -460,7 +447,7 @@ const UserManagement: React.FC = () => {
       {/* Loading State */}
       {isLoading && !error && (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+          <Loader2 className="h-6 w-6 animate-spin text-paper-dim" />
         </div>
       )}
 
@@ -492,14 +479,14 @@ const UserManagement: React.FC = () => {
 
                   {/* User Avatar & Name */}
                   <div className="flex items-start gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-lg uppercase">
+                    <div className="grid h-10 w-10 place-items-center rounded-xs border border-ink-500 bg-ink-200 font-mono text-[13px] font-semibold uppercase tracking-tight text-paper">
                       {user.displayName?.slice(0, 2) || user.username.slice(0, 2)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-white text-lg truncate">
                         {user.displayName || user.username}
                         {isCurrentUser && (
-                          <span className="ml-2 text-xs text-purple-400">(You)</span>
+                          <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">(You)</span>
                         )}
                       </h3>
                       <p className="text-sm text-gray-400 truncate">@{user.username}</p>
@@ -761,8 +748,8 @@ const UserManagement: React.FC = () => {
 
           {generatedPassword ? (
             <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-                <p className="text-sm text-green-300 mb-2">Password reset successfully!</p>
+              <div className="rounded-xs border border-emerald-900/60 bg-emerald-950/40 p-4">
+                <p className="mb-2 text-[13px] text-emerald-200">Password reset successfully!</p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 p-2 rounded bg-black/30 text-white font-mono text-sm">
                     {generatedPassword}
