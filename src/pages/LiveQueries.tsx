@@ -104,33 +104,22 @@ interface StatsCardProps {
     icon: React.ElementType;
     label: string;
     value: string | number;
-    color: string;
+    color?: string; // accepted for API compatibility, not used in editorial layout
 }
 
-function StatsCard({ icon: Icon, label, value, color }: StatsCardProps) {
+function StatsCard({ icon: Icon, label, value }: StatsCardProps) {
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={cn(
-                "p-4 rounded-xl border backdrop-blur-sm",
-                "bg-gradient-to-br from-gray-900/50 to-gray-800/50",
-                `border-${color}-500/20`
-            )}
-        >
-            <div className="flex items-center gap-3">
-                <div className={cn(
-                    "p-2 rounded-lg",
-                    `bg-${color}-500/20`
-                )}>
-                    <Icon className={cn("w-5 h-5", `text-${color}-400`)} />
-                </div>
-                <div>
-                    <p className="text-xs text-gray-400 uppercase tracking-wider">{label}</p>
-                    <p className={cn("text-xl font-bold", `text-${color}-300`)}>{value}</p>
-                </div>
+        <div className="flex flex-col gap-2 border-b border-r border-ink-500 px-5 py-4">
+            <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                    {label}
+                </span>
+                <Icon className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
             </div>
-        </motion.div>
+            <span className="font-mono text-[20px] font-semibold leading-none text-paper">
+                {value}
+            </span>
+        </div>
     );
 }
 
@@ -157,8 +146,9 @@ function QueryRow({ query, onKill, canKill, isKilling }: QueryRowProps) {
     }, [query.query_id]);
 
     const getDurationColor = (seconds: number) => {
-        if (seconds < 5) return 'text-green-400';
-        if (seconds < 30) return 'text-yellow-400';
+        // Semantic latency tier — kept colored intentionally (performance signal)
+        if (seconds < 5) return 'text-emerald-400';
+        if (seconds < 30) return 'text-amber-400';
         return 'text-red-400';
     };
 
@@ -286,7 +276,7 @@ function QueryRow({ query, onKill, canKill, isKilling }: QueryRowProps) {
                             >
                                 <div className="p-4 bg-gray-800/50 border-t border-gray-700/50">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <Terminal className="w-4 h-4 text-purple-400" />
+                                        <Terminal className="w-4 h-4 text-paper-muted" />
                                         <span className="text-sm font-medium text-gray-300">Full Query</span>
                                     </div>
                                     <pre className="text-xs text-gray-300 bg-gray-900/50 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap">
@@ -398,14 +388,14 @@ export default function LiveQueriesTable({
 
     if (error) {
         return (
-            <div className="p-8 text-center">
-                <div className="inline-flex items-center justify-center p-4 rounded-full bg-red-500/20 mb-4">
-                    <AlertCircle className="w-8 h-8 text-red-400" />
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+                <div className="mb-4 grid h-12 w-12 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+                    <AlertCircle className="h-5 w-5" aria-hidden />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Failed to load live queries</h3>
-                <p className="text-gray-400 mb-4">{error.message}</p>
-                <Button onClick={() => refetch()} variant="outline">
-                    <RefreshCw className="w-4 h-4 mr-2" />
+                <h3 className="mb-2 text-[15px] font-semibold text-paper">Failed to load live queries</h3>
+                <p className="mb-4 text-[13px] text-paper-muted">{error.message}</p>
+                <Button onClick={() => refetch()} variant="outline" className="rounded-xs border-ink-500 bg-transparent text-paper hover:border-ink-700 hover:bg-ink-200">
+                    <RefreshCw className="mr-2 h-4 w-4" />
                     Retry
                 </Button>
             </div>
@@ -417,46 +407,40 @@ export default function LiveQueriesTable({
             <div className="flex-1 flex flex-col gap-6 min-h-0">
                 {/* Header - hidden when embedded */}
                 {!embedded && (
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-amber-500/20">
-                                <Zap className="w-5 h-5 text-amber-400" />
-                            </div>
-                            <div>
-                                <h2 className="text-xl font-semibold text-white">Live Queries</h2>
-                                <p className="text-sm text-gray-400">
-                                    Real-time view of running ClickHouse queries
-                                </p>
-                            </div>
+                    <div className="flex items-center gap-3">
+                        <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+                            <Zap className="h-4 w-4" aria-hidden />
+                        </span>
+                        <div className="flex flex-col gap-0.5">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                                Observability
+                            </span>
+                            <h2 className="text-[18px] font-semibold tracking-tight text-paper">Live queries</h2>
                         </div>
                     </div>
                 )}
 
-                {/* Stats Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Stats grid — editorial hairline */}
+                <div className="grid grid-cols-2 border-l border-t border-ink-500 md:grid-cols-4">
                     <StatsCard
                         icon={Zap}
-                        label="Active Queries"
+                        label="Active queries"
                         value={stats.totalQueries}
-                        color="amber"
                     />
                     <StatsCard
                         icon={Clock}
-                        label="Longest Running"
+                        label="Longest running"
                         value={stats.longestRunning > 0 ? formatDuration(stats.longestRunning) : '-'}
-                        color="purple"
                     />
                     <StatsCard
                         icon={MemoryStick}
-                        label="Total Memory"
+                        label="Total memory"
                         value={formatBytes(stats.totalMemory)}
-                        color="cyan"
                     />
                     <StatsCard
                         icon={Hash}
-                        label="Rows Read"
+                        label="Rows read"
                         value={formatNumber(stats.totalReadRows)}
-                        color="green"
                     />
                 </div>
 
@@ -465,10 +449,10 @@ export default function LiveQueriesTable({
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                         <Input
-                            placeholder="Search by query ID, user, or query text..."
+                            placeholder="Search by query ID, user, or query text…"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 bg-white/5 border-white/10 focus:border-amber-500/50 transition-colors"
+                            className="h-10 rounded-xs border-ink-500 bg-ink-100 pl-10 font-mono text-[13px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                         />
                     </div>
 
@@ -481,7 +465,7 @@ export default function LiveQueriesTable({
                                     value={internalRefreshInterval.toString()}
                                     onValueChange={(v) => setInternalRefreshInterval(parseInt(v))}
                                 >
-                                    <SelectTrigger className="w-24 h-10 bg-white/5 border-white/10">
+                                    <SelectTrigger className="w-24 h-10 rounded-xs border-ink-500 bg-ink-100 font-mono text-[12px] text-paper">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -501,7 +485,7 @@ export default function LiveQueriesTable({
                                 variant="outline"
                                 onClick={() => refetch()}
                                 disabled={isFetching}
-                                className="h-10 px-4 bg-white/5 border-white/10 hover:bg-white/10"
+                                className="h-10 rounded-xs border-ink-500 bg-ink-100 px-4 text-paper hover:border-ink-700 hover:bg-ink-200"
                             >
                                 <RefreshCw className={cn(
                                     "w-4 h-4 mr-2",
@@ -514,38 +498,38 @@ export default function LiveQueriesTable({
                 </div>
 
                 {/* Table */}
-                <div className="flex-1 min-h-0 border border-gray-700/50 rounded-lg overflow-hidden">
+                <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-ink-500 bg-ink-100">
                     {isLoading ? (
-                        <div className="p-12 text-center">
-                            <Loader2 className="w-8 h-8 animate-spin text-amber-400 mx-auto mb-4" />
-                            <p className="text-gray-400">Loading live queries...</p>
+                        <div className="flex flex-col items-center justify-center p-16 text-center">
+                            <Loader2 className="mx-auto mb-4 h-6 w-6 animate-spin text-paper-dim" />
+                            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">Loading live queries…</p>
                         </div>
                     ) : filteredQueries.length === 0 ? (
-                        <div className="p-12 text-center">
-                            <div className="inline-flex items-center justify-center p-4 rounded-full bg-gray-800/50 mb-4">
-                                <Database className="w-8 h-8 text-gray-500" />
+                        <div className="flex flex-col items-center justify-center p-16 text-center">
+                            <div className="mb-4 grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
+                                <Database className="h-5 w-5" aria-hidden />
                             </div>
-                            <h3 className="text-lg font-semibold text-white mb-2">
+                            <h3 className="mb-2 text-[15px] font-semibold text-paper">
                                 {searchQuery ? 'No matching queries' : 'No running queries'}
                             </h3>
-                            <p className="text-gray-400">
+                            <p className="text-[13px] text-paper-muted">
                                 {searchQuery
-                                    ? 'Try adjusting your search criteria'
-                                    : 'There are currently no queries running on the active connection'}
+                                    ? 'Try adjusting your search criteria.'
+                                    : 'There are currently no queries running on the active connection.'}
                             </p>
                         </div>
                     ) : (
                         <ScrollArea className="h-full">
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="bg-gray-800/50 hover:bg-gray-800/50">
-                                        <TableHead className="text-gray-400 font-medium">Query ID</TableHead>
-                                        <TableHead className="text-gray-400 font-medium">User</TableHead>
-                                        <TableHead className="text-gray-400 font-medium">Query</TableHead>
-                                        <TableHead className="text-gray-400 font-medium">Duration</TableHead>
-                                        <TableHead className="text-gray-400 font-medium">Memory</TableHead>
-                                        <TableHead className="text-gray-400 font-medium">Rows</TableHead>
-                                        <TableHead className="text-gray-400 font-medium w-[80px]">Action</TableHead>
+                                    <TableRow className="border-b-ink-500 bg-ink-200 hover:bg-ink-200">
+                                        <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Query ID</TableHead>
+                                        <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">User</TableHead>
+                                        <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Query</TableHead>
+                                        <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Duration</TableHead>
+                                        <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Memory</TableHead>
+                                        <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Rows</TableHead>
+                                        <TableHead className="w-[80px] font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Action</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -574,8 +558,8 @@ export default function LiveQueriesTable({
                 description={
                     <div className="space-y-3">
                         <p>Are you sure you want to kill this query?</p>
-                        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                            <p className="text-sm text-red-300">
+                        <div className="rounded-xs border border-red-900/60 bg-red-950/40 p-3">
+                            <p className="text-[13px] text-red-300">
                                 This action will immediately terminate the query execution.
                                 Any partial results will be lost.
                             </p>
