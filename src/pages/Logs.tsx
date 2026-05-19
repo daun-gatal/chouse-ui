@@ -39,10 +39,12 @@ import {
   useQueryProfileEvents,
   type ByTableRow,
   type ByTableSort,
+  type HistogramMetric,
   type ProfileEventEntry,
   type QueryPattern,
   type QueryPatternSort,
 } from "@/hooks/useMonitoringTimeline";
+import { QueryHistogramChart } from "@/components/monitoring/QueryHistogramChart";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { cn } from "@/lib/utils";
 import { DataControls } from "@/components/common/DataControls";
@@ -343,8 +345,9 @@ export default function LogsPage({
       )
     : timeRangeHours;
 
-  // Sub-view inside Logs — flat query list, aggregated patterns, or by-table.
-  const [view, setView] = useState<"queries" | "patterns" | "tables">("queries");
+  // Sub-view inside Logs — flat query list, aggregated patterns, by-table, or histogram.
+  const [view, setView] = useState<"queries" | "patterns" | "tables" | "histogram">("queries");
+  const [histogramMetric, setHistogramMetric] = useState<HistogramMetric>("duration");
   const [patternSort, setPatternSort] = useState<QueryPatternSort>("total_duration_ms");
   const [patternPage, setPatternPage] = useState(0);
   const [byTableSort, setByTableSort] = useState<ByTableSort>("total_duration_ms");
@@ -838,15 +841,17 @@ export default function LogsPage({
               Bucket · {bucket}
             </span>
 
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-              Total ·{" "}
-              {(view === "patterns"
-                ? patternTotalRows
-                : view === "tables"
-                  ? byTableTotalRows
-                  : totalRows
-              ).toLocaleString()}
-            </span>
+            {view !== "histogram" && (
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                Total ·{" "}
+                {(view === "patterns"
+                  ? patternTotalRows
+                  : view === "tables"
+                    ? byTableTotalRows
+                    : totalRows
+                ).toLocaleString()}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -869,19 +874,20 @@ export default function LogsPage({
           </div>
         )}
 
-        {/* View tabs — queries / patterns / by-table */}
+        {/* View tabs — queries / patterns / by-table / histogram */}
         <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
           {[
             { id: "queries", label: "Queries", hint: "Every execution" },
             { id: "patterns", label: "Patterns", hint: "Grouped by query shape" },
             { id: "tables", label: "By table", hint: "Hot tables" },
+            { id: "histogram", label: "Histogram", hint: "Metric distribution" },
           ].map((tab) => {
             const active = view === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setView(tab.id as "queries" | "patterns" | "tables")}
+                onClick={() => setView(tab.id as typeof view)}
                 className={cn(
                   "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                   active
@@ -904,7 +910,17 @@ export default function LogsPage({
           })}
         </div>
 
-        {/* Table card */}
+        {/* Histogram view sits on its own — own card, no pagination */}
+        {view === "histogram" ? (
+          <div className="flex-1 min-h-0 overflow-auto">
+            <QueryHistogramChart
+              hoursBack={effectiveHours}
+              customRange={customRangeSql}
+              metric={histogramMetric}
+              onMetricChange={setHistogramMetric}
+            />
+          </div>
+        ) : (
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-md border border-ink-500 bg-ink-100">
           <div className="flex-1 overflow-auto">
             {view === "queries" ? (
@@ -1048,6 +1064,7 @@ export default function LogsPage({
             <span className="sr-only" aria-live="polite">Refreshing…</span>
           )}
         </div>
+        )}
       </div>
     </div>
   );

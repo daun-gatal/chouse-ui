@@ -368,6 +368,104 @@ export function useQueryByTable(
   });
 }
 
+export type HistogramMetric = "duration" | "memory" | "read_rows" | "read_bytes";
+
+interface HistogramSpec {
+  field: string;
+  /** Bucket upper bounds. Final bucket catches everything ≥ last bound. */
+  boundaries: number[];
+  labels: string[];
+}
+
+export const HISTOGRAM_SPECS: Record<HistogramMetric, HistogramSpec> = {
+  duration: {
+    field: "query_duration_ms",
+    boundaries: [50, 200, 1000, 5000, 30000, 120000],
+    labels: ["< 50ms", "50–200ms", "200ms–1s", "1–5s", "5–30s", "30s–2min", "> 2min"],
+  },
+  memory: {
+    field: "memory_usage",
+    boundaries: [1_000_000, 10_000_000, 100_000_000, 1_000_000_000, 10_000_000_000, 100_000_000_000],
+    labels: ["< 1MB", "1–10MB", "10–100MB", "100MB–1GB", "1–10GB", "10–100GB", "> 100GB"],
+  },
+  read_rows: {
+    field: "read_rows",
+    boundaries: [1_000, 100_000, 1_000_000, 100_000_000, 1_000_000_000],
+    labels: ["< 1K", "1K–100K", "100K–1M", "1M–100M", "100M–1B", "> 1B"],
+  },
+  read_bytes: {
+    field: "read_bytes",
+    boundaries: [1_000_000, 100_000_000, 1_000_000_000, 10_000_000_000, 100_000_000_000],
+    labels: ["< 1MB", "1–100MB", "100MB–1GB", "1–10GB", "10–100GB", "> 100GB"],
+  },
+};
+
+export interface HistogramBucket {
+  bucket: number;
+  label: string;
+  count: number;
+}
+
+/**
+ * Distribution histogram of one metric (duration / memory / read rows /
+ * read bytes) across the active time window. Lets users see the shape of
+ * the workload — e.g. long-tail vs bimodal — rather than just an average.
+ */
+export function useQueryHistogram(
+  metric: HistogramMetric,
+  hoursBack: number = 6,
+  customRange?: AbsoluteRange,
+  options?: Partial<UseQueryOptions<HistogramBucket[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+  const spec = HISTOGRAM_SPECS[metric];
+
+  return useQuery({
+    queryKey: [
+      "queryHistogram",
+      metric,
+      hoursBack,
+      customRange?.start ?? null,
+      customRange?.end ?? null,
+      activeConnectionId,
+    ] as const,
+    queryFn: async () => {
+      const multiIfArgs = spec.boundaries
+        .map((b, i) => `${spec.field} < ${b}, ${i}`)
+        .join(",\n            ");
+      const lastIdx = spec.boundaries.length;
+      const sql = `
+        SELECT
+          bucket_idx AS bucket,
+          count() AS count
+        FROM (
+          SELECT multiIf(
+            ${multiIfArgs},
+            ${lastIdx}
+          ) AS bucket_idx
+          FROM system.query_log
+          WHERE ${timeWindowWhere(hoursBack, customRange)}
+            AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
+        )
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `;
+      const result = await queryApi.executeQuery(sql);
+      const raw = result.data as Array<Record<string, unknown>>;
+      const seen = new Map(raw.map((r) => [num(r.bucket), num(r.count)]));
+      // Ensure every bucket label has a row, even if zero — keeps the chart
+      // axis stable as the time window changes.
+      return spec.labels.map((label, idx) => ({
+        bucket: idx,
+        label,
+        count: seen.get(idx) ?? 0,
+      }));
+    },
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
 export interface SchemaLintRow {
   database: string;
   table: string;
