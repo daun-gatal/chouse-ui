@@ -10,9 +10,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PartLogTimelineChart } from "@/components/monitoring/PartLogTimelineChart";
+import { PaginationBar } from "@/components/monitoring/PaginationBar";
 import { SkeletonRows } from "@/components/common/Skeletons";
 import { usePartLog } from "@/hooks/useMonitoringTimeline";
 import { cn } from "@/lib/utils";
+
+const PART_LOG_FETCH_LIMIT = 5000;
 
 interface PartsPageProps {
   embedded?: boolean;
@@ -64,9 +67,10 @@ export default function PartsPage({
 }: PartsPageProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [eventType, setEventType] = useState<string>("all");
-  const [limit, setLimit] = useState(200);
+  const [pageSize, setPageSize] = useState(100);
+  const [currentPage, setCurrentPage] = useState(0);
 
-  const { data, isLoading, isFetching, error, refetch } = usePartLog(limit, 6);
+  const { data, isLoading, isFetching, error, refetch } = usePartLog(PART_LOG_FETCH_LIMIT, 6);
 
   // Notify parent of refresh status.
   useEffect(() => {
@@ -100,6 +104,21 @@ export default function PartsPage({
       );
     });
   }, [data, searchTerm, eventType]);
+
+  const totalRows = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const safePage = Math.min(currentPage, totalPages - 1);
+  const startIndex = safePage * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalRows);
+  const paginatedRows = useMemo(
+    () => rows.slice(startIndex, endIndex),
+    [rows, startIndex, endIndex]
+  );
+
+  // Reset to the first page when filters or page size change.
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchTerm, eventType, pageSize]);
 
   return (
     <div className="h-full overflow-hidden">
@@ -135,22 +154,37 @@ export default function PartsPage({
             </Select>
           </div>
 
-          <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-            <SelectTrigger className="h-9 w-[120px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper">
+          <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+            <SelectTrigger className="h-9 w-[130px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[12px] text-paper">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="100">100 rows</SelectItem>
-              <SelectItem value="200">200 rows</SelectItem>
-              <SelectItem value="500">500 rows</SelectItem>
-              <SelectItem value="1000">1000 rows</SelectItem>
+              <SelectItem value="50">50 / page</SelectItem>
+              <SelectItem value="100">100 / page</SelectItem>
+              <SelectItem value="250">250 / page</SelectItem>
+              <SelectItem value="500">500 / page</SelectItem>
+              <SelectItem value="1000">1000 / page</SelectItem>
             </SelectContent>
           </Select>
+
+          <span
+            className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint"
+            title={
+              (data?.length ?? 0) >= PART_LOG_FETCH_LIMIT
+                ? `Showing the most recent ${PART_LOG_FETCH_LIMIT.toLocaleString()} events — narrow the filter or time range to see older ones.`
+                : undefined
+            }
+          >
+            Total · {totalRows.toLocaleString()}
+            {(data?.length ?? 0) >= PART_LOG_FETCH_LIMIT && (
+              <span className="ml-1 text-paper-dim">(latest)</span>
+            )}
+          </span>
         </div>
 
         {/* Table card */}
-        <div className="flex-1 min-h-0 overflow-hidden rounded-md border border-ink-500 bg-ink-100">
-          <div className="h-full overflow-auto">
+        <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+          <div className="flex-1 overflow-auto">
             {isLoading ? (
               <table className="w-full">
                 <tbody>
@@ -202,7 +236,7 @@ export default function PartsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => (
+                  {paginatedRows.map((r, i) => (
                     <tr
                       key={`${r.part_name}-${r.event_time}-${i}`}
                       className="border-b border-ink-500/60 transition-colors hover:bg-ink-200/60"
@@ -244,20 +278,31 @@ export default function PartsPage({
               </table>
             )}
           </div>
+
+          {totalRows > 0 && (
+            <PaginationBar
+              page={safePage}
+              totalPages={totalPages}
+              startIndex={startIndex}
+              endIndex={endIndex}
+              totalRows={totalRows}
+              rowLabel="events"
+              onPrev={() => setCurrentPage((p) => Math.max(0, p - 1))}
+              onNext={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+              onFirst={() => setCurrentPage(0)}
+              onLast={() => setCurrentPage(totalPages - 1)}
+            />
+          )}
         </div>
 
-        {/* Bottom strip */}
-        <div className="flex items-center justify-between border-t border-ink-500 pt-3 text-[11px] text-paper-faint">
-          <span className="font-mono uppercase tracking-[0.14em]">
-            {rows.length.toLocaleString()} / {(data?.length ?? 0).toLocaleString()} events
-          </span>
-          {isFetching && (
+        {isFetching && (
+          <div className="flex shrink-0 items-center justify-end text-[11px] text-paper-faint">
             <span className="inline-flex items-center gap-1.5 font-mono uppercase tracking-[0.14em]">
               <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />
               Refreshing
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
