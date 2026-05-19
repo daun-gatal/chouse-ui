@@ -466,6 +466,132 @@ export function useQueryHistogram(
   });
 }
 
+export interface MutationRow {
+  database: string;
+  table: string;
+  mutation_id: string;
+  command: string;
+  create_time: string;
+  parts_to_do: number;
+  is_done: number;
+  latest_failed_part: string;
+  latest_fail_reason: string;
+  latest_fail_time: string;
+}
+
+/**
+ * ALTER … UPDATE/DELETE mutations from system.mutations. Anything still in
+ * flight or finished in the last 7 days. Surfaces stuck mutations (high
+ * parts_to_do, latest_fail_reason set) that are otherwise invisible to the
+ * BI users running the SQL.
+ */
+export function useMutations(
+  options?: Partial<UseQueryOptions<MutationRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["mutations", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          table,
+          mutation_id,
+          command,
+          formatDateTime(create_time, '%Y-%m-%d %H:%i:%S') AS create_time,
+          parts_to_do,
+          is_done,
+          latest_failed_part,
+          latest_fail_reason,
+          formatDateTime(latest_fail_time, '%Y-%m-%d %H:%i:%S') AS latest_fail_time
+        FROM system.mutations
+        WHERE is_done = 0 OR create_time >= now() - INTERVAL 7 DAY
+        ORDER BY is_done ASC, create_time DESC
+        LIMIT 500
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        database: String(row.database ?? ""),
+        table: String(row.table ?? ""),
+        mutation_id: String(row.mutation_id ?? ""),
+        command: String(row.command ?? ""),
+        create_time: String(row.create_time ?? ""),
+        parts_to_do: num(row.parts_to_do),
+        is_done: num(row.is_done),
+        latest_failed_part: String(row.latest_failed_part ?? ""),
+        latest_fail_reason: String(row.latest_fail_reason ?? ""),
+        latest_fail_time: String(row.latest_fail_time ?? ""),
+      }));
+    },
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export interface ReplicationQueueRow {
+  database: string;
+  table: string;
+  replica_name: string;
+  type: string;
+  source_replica: string;
+  new_part_name: string;
+  parts_to_merge: number;
+  last_attempt_time: string;
+  num_tries: number;
+  last_exception: string;
+  create_time: string;
+}
+
+/**
+ * Pending replication tasks per replica. Long-running entries with rising
+ * num_tries usually mean a sick replica or partition that needs intervention.
+ */
+export function useReplicationQueue(
+  options?: Partial<UseQueryOptions<ReplicationQueueRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["replicationQueue", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          table,
+          replica_name,
+          type,
+          source_replica,
+          new_part_name,
+          length(parts_to_merge) AS parts_to_merge,
+          formatDateTime(last_attempt_time, '%Y-%m-%d %H:%i:%S') AS last_attempt_time,
+          num_tries,
+          last_exception,
+          formatDateTime(create_time, '%Y-%m-%d %H:%i:%S') AS create_time
+        FROM system.replication_queue
+        ORDER BY num_tries DESC, create_time DESC
+        LIMIT 500
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        database: String(row.database ?? ""),
+        table: String(row.table ?? ""),
+        replica_name: String(row.replica_name ?? ""),
+        type: String(row.type ?? ""),
+        source_replica: String(row.source_replica ?? ""),
+        new_part_name: String(row.new_part_name ?? ""),
+        parts_to_merge: num(row.parts_to_merge),
+        last_attempt_time: String(row.last_attempt_time ?? ""),
+        num_tries: num(row.num_tries),
+        last_exception: String(row.last_exception ?? ""),
+        create_time: String(row.create_time ?? ""),
+      }));
+    },
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
 export interface SchemaLintRow {
   database: string;
   table: string;

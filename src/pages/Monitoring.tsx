@@ -8,6 +8,7 @@ import {
   BarChart3,
   Layers,
   Stethoscope,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import InfoDialog from "@/components/common/InfoDialog";
@@ -21,6 +22,7 @@ import MetricsPage from "./Metrics";
 import LiveQueriesTable from "./LiveQueries";
 import PartsPage from "./Parts";
 import SchemaDoctorPage from "./SchemaDoctor";
+import ClusterActivityPage from "./ClusterActivity";
 
 interface TabConfig {
   icon: LucideIcon;
@@ -56,9 +58,20 @@ const TAB_CONFIG: Record<TabKey, TabConfig> = {
     label: "Schema doctor",
     description: "Nullable & oversized column lints",
   },
+  cluster: {
+    icon: Network,
+    label: "Cluster activity",
+    description: "Mutations & replication queue",
+  },
 };
 
-type TabKey = "live-queries" | "logs" | "metrics" | "parts" | "schema";
+type TabKey =
+  | "live-queries"
+  | "logs"
+  | "metrics"
+  | "parts"
+  | "schema"
+  | "cluster";
 
 interface TabCardProps {
   tabKey: TabKey;
@@ -139,12 +152,14 @@ export default function Monitoring() {
   ]);
   const canViewParts = canViewMetrics;
   const canViewSchema = canViewMetrics;
+  const canViewCluster = canViewMetrics;
 
   const availableTabs: TabKey[] = [
     ...(canViewLogs ? (["logs"] as TabKey[]) : []),
     ...(canViewMetrics ? (["metrics"] as TabKey[]) : []),
     ...(canViewParts ? (["parts"] as TabKey[]) : []),
     ...(canViewSchema ? (["schema"] as TabKey[]) : []),
+    ...(canViewCluster ? (["cluster"] as TabKey[]) : []),
     ...(canViewLiveQueries ? (["live-queries"] as TabKey[]) : []),
   ];
 
@@ -299,6 +314,17 @@ export default function Monitoring() {
             />
           </div>
         )}
+
+        {activeTab === "cluster" && canViewCluster && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <ClusterActivityPage
+              embedded
+              refreshKey={refreshKey}
+              autoRefresh={autoRefresh}
+              onRefreshChange={setIsRefreshing}
+            />
+          </div>
+        )}
       </div>
 
       {/* Info dialog */}
@@ -332,6 +358,7 @@ export default function Monitoring() {
                       {key === "metrics" && "Analyze system performance and resource usage."}
                       {key === "parts" && "Track MergeTree merges, mutations, downloads, and removals."}
                       {key === "schema" && "Lint columns for needless Nullable wrappers and oversized integers."}
+                      {key === "cluster" && "Track in-flight ALTER mutations and the per-replica replication queue."}
                     </span>
                   </div>
                 </div>
