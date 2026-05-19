@@ -289,6 +289,9 @@ export function useQueryViewsLog(
   return useQuery({
     queryKey: ["queryViewsLog", queryId, activeConnectionId] as const,
     enabled: !!queryId,
+    // Server-level opt-in: many clusters ship with <query_views_log> disabled,
+    // so the table doesn't exist. Don't retry that — it's not transient.
+    retry: false,
     queryFn: async () => {
       const sql = `
         SELECT
@@ -308,19 +311,32 @@ export function useQueryViewsLog(
         ORDER BY view_duration_ms DESC
         LIMIT 200
       `;
-      const result = await queryApi.executeQuery(sql);
-      return (result.data as Array<Record<string, unknown>>).map((row) => ({
-        view_name: String(row.view_name ?? ""),
-        view_type: String(row.view_type ?? ""),
-        status: String(row.status ?? ""),
-        view_duration_ms: num(row.view_duration_ms),
-        read_rows: num(row.read_rows),
-        read_bytes: num(row.read_bytes),
-        written_rows: num(row.written_rows),
-        written_bytes: num(row.written_bytes),
-        peak_memory_usage: num(row.peak_memory_usage),
-        exception: String(row.exception ?? ""),
-      }));
+      try {
+        const result = await queryApi.executeQuery(sql);
+        return (result.data as Array<Record<string, unknown>>).map((row) => ({
+          view_name: String(row.view_name ?? ""),
+          view_type: String(row.view_type ?? ""),
+          status: String(row.status ?? ""),
+          view_duration_ms: num(row.view_duration_ms),
+          read_rows: num(row.read_rows),
+          read_bytes: num(row.read_bytes),
+          written_rows: num(row.written_rows),
+          written_bytes: num(row.written_bytes),
+          peak_memory_usage: num(row.peak_memory_usage),
+          exception: String(row.exception ?? ""),
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Table not configured on this cluster — treat as "no views" so the
+        // expanded panel hides the section instead of showing a scary error.
+        if (
+          /query_views_log/i.test(msg) &&
+          /Unknown table|UNKNOWN_TABLE|doesn'?t exist/i.test(msg)
+        ) {
+          return [];
+        }
+        throw err;
+      }
     },
     staleTime: 5 * 60 * 1000,
     ...options,
