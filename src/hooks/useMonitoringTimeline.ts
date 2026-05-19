@@ -166,6 +166,96 @@ export function usePartLogTimeline(
   });
 }
 
+export interface QueryPattern {
+  pattern: string;
+  executions: number;
+  avg_duration_ms: number;
+  total_duration_ms: number;
+  max_duration_ms: number;
+  avg_memory: number;
+  max_memory: number;
+  total_read_rows: number;
+  total_read_bytes: number;
+  sample_user: string;
+  sample_query_id: string;
+}
+
+export type QueryPatternSort =
+  | "total_duration_ms"
+  | "executions"
+  | "avg_duration_ms"
+  | "max_duration_ms"
+  | "max_memory"
+  | "total_read_rows"
+  | "total_read_bytes";
+
+/**
+ * Aggregate queries by normalized pattern. normalizeQuery() replaces
+ * literals/placeholders so SELECT a FROM b WHERE id=42 and id=43 fold into
+ * one row — surfaces hot query shapes for ETL/Redash workloads where the
+ * same template runs thousands of times.
+ */
+export function useQueryPatterns(
+  hoursBack: number = 6,
+  sortBy: QueryPatternSort = "total_duration_ms",
+  limit: number = 200,
+  customRange?: AbsoluteRange,
+  options?: Partial<UseQueryOptions<QueryPattern[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: [
+      "queryPatterns",
+      hoursBack,
+      sortBy,
+      limit,
+      customRange?.start ?? null,
+      customRange?.end ?? null,
+      activeConnectionId,
+    ] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          normalizeQuery(query) AS pattern,
+          count() AS executions,
+          avg(query_duration_ms) AS avg_duration_ms,
+          sum(query_duration_ms) AS total_duration_ms,
+          max(query_duration_ms) AS max_duration_ms,
+          avg(memory_usage) AS avg_memory,
+          max(memory_usage) AS max_memory,
+          sum(read_rows) AS total_read_rows,
+          sum(read_bytes) AS total_read_bytes,
+          anyLast(user) AS sample_user,
+          anyLast(query_id) AS sample_query_id
+        FROM system.query_log
+        WHERE ${timeWindowWhere(hoursBack, customRange)}
+          AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
+          AND query != ''
+        GROUP BY pattern
+        ORDER BY ${sortBy} DESC
+        LIMIT ${limit}
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        pattern: String(row.pattern ?? ""),
+        executions: num(row.executions),
+        avg_duration_ms: num(row.avg_duration_ms),
+        total_duration_ms: num(row.total_duration_ms),
+        max_duration_ms: num(row.max_duration_ms),
+        avg_memory: num(row.avg_memory),
+        max_memory: num(row.max_memory),
+        total_read_rows: num(row.total_read_rows),
+        total_read_bytes: num(row.total_read_bytes),
+        sample_user: String(row.sample_user ?? ""),
+        sample_query_id: String(row.sample_query_id ?? ""),
+      }));
+    },
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
 export interface ProfileEventEntry {
   name: string;
   value: number;

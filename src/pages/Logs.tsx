@@ -34,8 +34,11 @@ import { Calendar } from "@/components/ui/calendar";
 import { useQueryLogs, usePaginationPreference, useLogsPreferences } from "@/hooks";
 import {
   useClusterMemoryTotal,
+  useQueryPatterns,
   useQueryProfileEvents,
   type ProfileEventEntry,
+  type QueryPattern,
+  type QueryPatternSort,
 } from "@/hooks/useMonitoringTimeline";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { cn } from "@/lib/utils";
@@ -336,6 +339,44 @@ export default function LogsPage({
         (customRange!.to!.getTime() - customRange!.from!.getTime()) / 3_600_000
       )
     : timeRangeHours;
+
+  // Sub-view inside Logs — flat query list vs aggregated patterns.
+  const [view, setView] = useState<"queries" | "patterns">("queries");
+  const [patternSort, setPatternSort] = useState<QueryPatternSort>("total_duration_ms");
+  const [patternPage, setPatternPage] = useState(0);
+
+  const {
+    data: patterns = [],
+    isLoading: patternsLoading,
+    isFetching: patternsFetching,
+    error: patternsError,
+  } = useQueryPatterns(
+    effectiveHours,
+    patternSort,
+    1000,
+    customRangeSql,
+    { enabled: view === "patterns" }
+  );
+
+  useEffect(() => {
+    setPatternPage(0);
+  }, [
+    patternSort,
+    timeRangeHours,
+    customRangeSql?.start,
+    customRangeSql?.end,
+    view,
+  ]);
+
+  const patternTotalRows = patterns.length;
+  const patternTotalPages = Math.max(1, Math.ceil(patternTotalRows / pageSize));
+  const patternSafePage = Math.min(patternPage, patternTotalPages - 1);
+  const patternStart = patternSafePage * pageSize;
+  const patternEnd = Math.min(patternStart + pageSize, patternTotalRows);
+  const paginatedPatterns = useMemo(
+    () => patterns.slice(patternStart, patternEnd),
+    [patterns, patternStart, patternEnd]
+  );
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -760,7 +801,7 @@ export default function LogsPage({
             </span>
 
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-              Total · {totalRows.toLocaleString()}
+              Total · {(view === "patterns" ? patternTotalRows : totalRows).toLocaleString()}
             </span>
           </div>
         </div>
@@ -784,42 +825,106 @@ export default function LogsPage({
           </div>
         )}
 
+        {/* View tabs — flat queries vs aggregated patterns */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
+          {[
+            { id: "queries", label: "Queries", hint: "Every execution" },
+            { id: "patterns", label: "Patterns", hint: "Grouped by query shape" },
+          ].map((tab) => {
+            const active = view === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setView(tab.id as "queries" | "patterns")}
+                className={cn(
+                  "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  active
+                    ? "text-paper"
+                    : "text-paper-muted hover:text-paper"
+                )}
+              >
+                <span>{tab.label}</span>
+                <span className="font-mono text-[9px] tracking-[0.14em] text-paper-faint">
+                  · {tab.hint}
+                </span>
+                {active && (
+                  <span
+                    className="absolute -bottom-px left-0 right-0 h-px bg-brand"
+                    aria-hidden
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Table card */}
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-md border border-ink-500 bg-ink-100">
           <div className="flex-1 overflow-auto">
-            {isLoading ? (
+            {view === "queries" ? (
+              isLoading ? (
+                <table className="w-full">
+                  <tbody>
+                    <SkeletonRows count={10} cols={9} />
+                  </tbody>
+                </table>
+              ) : totalRows === 0 ? (
+                <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
+                  <span className="grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
+                    <FileText className="h-5 w-5" aria-hidden />
+                  </span>
+                  <span className="text-[13px] text-paper">No queries match</span>
+                  <span className="text-[12px] text-paper-muted">
+                    {hasActiveFilters
+                      ? "Adjust filters or widen the time range."
+                      : `Nothing logged in the last ${timeRangeHours < 1 ? `${Math.round(timeRangeHours * 60)}m` : `${timeRangeHours}h`}.`}
+                  </span>
+                </div>
+              ) : (
+                <LogsTable
+                  rows={paginatedRows}
+                  expanded={expandedLog}
+                  onToggle={(id) => setExpandedLog((cur) => (cur === id ? null : id))}
+                  isFailed={isFailedLog}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                  clusterMemoryBytes={clusterMemoryBytes}
+                />
+              )
+            ) : patternsLoading ? (
               <table className="w-full">
                 <tbody>
-                  <SkeletonRows count={10} cols={9} />
+                  <SkeletonRows count={10} cols={7} />
                 </tbody>
               </table>
-            ) : totalRows === 0 ? (
+            ) : patternsError ? (
+              <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
+                <span className="text-[13px] text-paper">Couldn't load patterns</span>
+                <span className="text-[12px] text-paper-muted">{patternsError.message}</span>
+              </div>
+            ) : patternTotalRows === 0 ? (
               <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
                 <span className="grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
                   <FileText className="h-5 w-5" aria-hidden />
                 </span>
-                <span className="text-[13px] text-paper">No queries match</span>
+                <span className="text-[13px] text-paper">No patterns yet</span>
                 <span className="text-[12px] text-paper-muted">
-                  {hasActiveFilters
-                    ? "Adjust filters or widen the time range."
-                    : `Nothing logged in the last ${timeRangeHours < 1 ? `${Math.round(timeRangeHours * 60)}m` : `${timeRangeHours}h`}.`}
+                  Widen the time range — needs a handful of queries to group.
                 </span>
               </div>
             ) : (
-              <LogsTable
-                rows={paginatedRows}
-                expanded={expandedLog}
-                onToggle={(id) => setExpandedLog((cur) => (cur === id ? null : id))}
-                isFailed={isFailedLog}
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onSort={toggleSort}
+              <PatternsTable
+                rows={paginatedPatterns}
+                sortKey={patternSort}
+                onSort={setPatternSort}
                 clusterMemoryBytes={clusterMemoryBytes}
               />
             )}
           </div>
 
-          {totalRows > 0 && (
+          {view === "queries" && totalRows > 0 && (
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
@@ -832,6 +937,25 @@ export default function LogsPage({
               onFirst={() => setCurrentPage(0)}
               onLast={() => setCurrentPage(totalPages - 1)}
             />
+          )}
+
+          {view === "patterns" && patternTotalRows > 0 && (
+            <PaginationBar
+              page={patternSafePage}
+              totalPages={patternTotalPages}
+              startIndex={patternStart}
+              endIndex={patternEnd}
+              totalRows={patternTotalRows}
+              rowLabel="patterns"
+              onPrev={() => setPatternPage((p) => Math.max(0, p - 1))}
+              onNext={() => setPatternPage((p) => Math.min(patternTotalPages - 1, p + 1))}
+              onFirst={() => setPatternPage(0)}
+              onLast={() => setPatternPage(patternTotalPages - 1)}
+            />
+          )}
+
+          {patternsFetching && view === "patterns" && (
+            <span className="sr-only" aria-live="polite">Refreshing patterns…</span>
           )}
         </div>
       </div>
@@ -1011,6 +1135,153 @@ function LogsTable({
       </tbody>
     </table>
     </TooltipProvider>
+  );
+}
+
+/* ============================================================
+   Patterns table — normalizeQuery() rollup
+   ============================================================ */
+
+interface PatternColumn {
+  key: QueryPatternSort | null;
+  label: string;
+  align: "left" | "right";
+  w?: string;
+}
+
+const PATTERN_COLUMNS: PatternColumn[] = [
+  { key: null, label: "Pattern", align: "left" },
+  { key: "executions", label: "Runs", align: "right", w: "w-[80px]" },
+  { key: "avg_duration_ms", label: "Avg dur", align: "right", w: "w-[88px]" },
+  { key: "total_duration_ms", label: "Total dur", align: "right", w: "w-[100px]" },
+  { key: "max_memory", label: "Max mem", align: "right", w: "w-[92px]" },
+  { key: "total_read_rows", label: "Read rows", align: "right", w: "w-[112px]" },
+  { key: "total_read_bytes", label: "Read bytes", align: "right", w: "w-[108px]" },
+];
+
+interface PatternsTableProps {
+  rows: QueryPattern[];
+  sortKey: QueryPatternSort;
+  onSort: (key: QueryPatternSort) => void;
+  clusterMemoryBytes: number;
+}
+
+function PatternsTable({ rows, sortKey, onSort, clusterMemoryBytes }: PatternsTableProps) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <table className="w-full text-[12px]">
+        <thead className="sticky top-0 z-10 bg-ink-200/90 backdrop-blur">
+          <tr className="border-b border-ink-500">
+            {PATTERN_COLUMNS.map((c, i) => {
+              const isActive = c.key !== null && c.key === sortKey;
+              const sortable = c.key !== null;
+              return (
+                <th
+                  key={`${c.label}-${i}`}
+                  className={cn(
+                    "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint",
+                    c.align === "right" ? "text-right" : "text-left",
+                    c.w
+                  )}
+                >
+                  {sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => onSort(c.key as QueryPatternSort)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-xs transition-colors hover:text-paper",
+                        c.align === "right" && "flex-row-reverse",
+                        isActive && "text-brand"
+                      )}
+                      aria-label={`Sort by ${c.label}`}
+                    >
+                      <span>{c.label}</span>
+                      {isActive ? (
+                        <ArrowDown className="h-3 w-3" aria-hidden />
+                      ) : (
+                        <ArrowUpDown className="h-2.5 w-2.5 opacity-40" aria-hidden />
+                      )}
+                    </button>
+                  ) : (
+                    c.label
+                  )}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((p, i) => (
+            <PatternRow key={`${p.sample_query_id}-${i}`} pattern={p} clusterMemoryBytes={clusterMemoryBytes} />
+          ))}
+        </tbody>
+      </table>
+    </TooltipProvider>
+  );
+}
+
+interface PatternRowProps {
+  pattern: QueryPattern;
+  clusterMemoryBytes: number;
+}
+
+function PatternRow({ pattern, clusterMemoryBytes }: PatternRowProps) {
+  const memTier = memoryTier(pattern.max_memory, clusterMemoryBytes);
+  const memRatioPct =
+    clusterMemoryBytes > 0 ? (pattern.max_memory / clusterMemoryBytes) * 100 : 0;
+
+  return (
+    <tr className="border-b border-ink-500/60 transition-colors hover:bg-ink-200/60">
+      <td className="px-3 py-1.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="cursor-help font-mono text-paper line-clamp-1">
+              {pattern.pattern}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            align="start"
+            sideOffset={6}
+            className="max-w-[640px] rounded-xs border border-ink-700 bg-ink-200 p-0 text-paper shadow-2xl ring-1 ring-black/30"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-ink-500 bg-ink-300 px-3 py-1.5">
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-paper-muted">
+                Pattern
+              </span>
+              <span className="font-mono text-[10px] text-paper-dim">
+                {pattern.pattern.length.toLocaleString()} chars
+              </span>
+            </div>
+            <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-[1.55] text-paper">
+              {highlightSql(pattern.pattern)}
+            </pre>
+          </TooltipContent>
+        </Tooltip>
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono tabular-nums text-paper">
+        {pattern.executions.toLocaleString()}
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono text-paper-muted">
+        {formatDuration(pattern.avg_duration_ms)}
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono text-paper">
+        {formatDuration(pattern.total_duration_ms)}
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono">
+        <MemoryCell
+          bytes={pattern.max_memory}
+          tier={memTier}
+          ratioPct={memRatioPct}
+        />
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono text-paper-muted">
+        {pattern.total_read_rows.toLocaleString()}
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono text-paper-muted">
+        {formatBytes(pattern.total_read_bytes)}
+      </td>
+    </tr>
   );
 }
 
