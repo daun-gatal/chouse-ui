@@ -879,6 +879,7 @@ interface LogsTableProps {
 
 function LogsTable({ rows, expanded, onToggle, isFailed, sortKey, sortDir, onSort }: LogsTableProps) {
   return (
+    <TooltipProvider delayDuration={300}>
     <table className="w-full text-[12px]">
       <thead className="sticky top-0 z-10 bg-ink-200/90 backdrop-blur">
         <tr className="border-b border-ink-500">
@@ -936,6 +937,7 @@ function LogsTable({ rows, expanded, onToggle, isFailed, sortKey, sortDir, onSor
         ))}
       </tbody>
     </table>
+    </TooltipProvider>
   );
 }
 
@@ -973,9 +975,31 @@ function LogRow({ log, isExpanded, onToggle, failed }: LogRowProps) {
           <StatusIcon className={cn("h-3.5 w-3.5", statusColor)} aria-hidden />
         </td>
         <td className="px-3 py-1.5">
-          <span className="font-mono text-paper line-clamp-1" title={log.query}>
-            {log.query}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="cursor-help font-mono text-paper line-clamp-1">
+                {log.query}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              align="start"
+              sideOffset={6}
+              className="max-w-[640px] rounded-xs border border-ink-500 bg-ink-100 p-0 text-paper shadow-xl"
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-ink-500 px-3 py-1.5">
+                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-paper-faint">
+                  Query preview
+                </span>
+                <span className="font-mono text-[10px] text-paper-dim">
+                  {log.query.length.toLocaleString()} chars
+                </span>
+              </div>
+              <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-[1.55] text-paper">
+                {log.query}
+              </pre>
+            </TooltipContent>
+          </Tooltip>
         </td>
         <td className="px-3 py-1.5 text-paper truncate">
           {log.rbacUser ? (
