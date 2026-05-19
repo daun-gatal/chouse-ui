@@ -218,6 +218,19 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+/**
+ * Compact event time for the table — drops the date when it matches today, so
+ * recent rows stay short (e.g. "16:58:00") and older rows reveal context
+ * ("May 18 16:58:00").
+ */
+function formatRowTime(eventDate: string, eventTime: string): string {
+  const today = formatDate(new Date(), "yyyy-MM-dd");
+  if (eventDate === today) return eventTime;
+  const parsed = new Date(`${eventDate}T${eventTime}`);
+  if (isNaN(parsed.getTime())) return `${eventDate} ${eventTime}`;
+  return formatDate(parsed, "MMM d HH:mm:ss");
+}
+
 interface LogsPageProps {
   embedded?: boolean;
   refreshKey?: number;
@@ -582,105 +595,115 @@ export default function LogsPage({
 
           {/* Spacer */}
           <div className="ml-auto flex items-center gap-3">
-            {/* Time range chips */}
-            <div
-              role="radiogroup"
-              aria-label="Time range"
-              className="flex items-center gap-0.5 rounded-xs border border-ink-500 bg-ink-200 p-0.5"
-            >
-              {RANGE_OPTIONS.map((opt) => {
-                const active = !customRangeActive && timeRangeHours === opt.hours;
-                return (
-                  <button
-                    key={opt.label}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => {
-                      setCustomRange(null);
-                      setTimeRangeHours(opt.hours);
-                    }}
-                    className={cn(
-                      "rounded-xs px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
-                      active
-                        ? "bg-brand text-ink-50"
-                        : "text-paper-muted hover:bg-ink-300 hover:text-paper"
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-
-              <Popover open={rangePopoverOpen} onOpenChange={setRangePopoverOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={customRangeActive}
-                    aria-label="Custom date range"
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-xs px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
-                      customRangeActive
-                        ? "bg-brand text-ink-50"
-                        : "text-paper-muted hover:bg-ink-300 hover:text-paper"
-                    )}
-                  >
-                    <CalendarRange className="h-3 w-3" aria-hidden />
+            {/* Time range — single unified popover (presets + custom calendar) */}
+            <Popover open={rangePopoverOpen} onOpenChange={setRangePopoverOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Time range"
+                  className={cn(
+                    "inline-flex h-8 items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-2.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors hover:border-ink-700 hover:bg-ink-300",
+                    customRangeActive ? "text-brand" : "text-paper"
+                  )}
+                >
+                  <CalendarRange className="h-3.5 w-3.5" aria-hidden />
+                  <span>
                     {customRangeActive && customRange?.from && customRange?.to
                       ? `${formatDate(customRange.from, "MMM d HH:mm")} → ${formatDate(customRange.to, "MMM d HH:mm")}`
-                      : "Custom"}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="end"
-                  className="w-auto rounded-xs border-ink-500 bg-ink-100 p-3"
-                >
-                  <Calendar
-                    mode="range"
-                    selected={{ from: customRange?.from, to: customRange?.to }}
-                    onSelect={(r) => setCustomRange({ from: r?.from, to: r?.to })}
-                    numberOfMonths={2}
-                    className="pointer-events-auto"
-                    classNames={{
-                      day_selected:
-                        "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
-                      day_today: "bg-ink-200 text-paper rounded-xs",
-                      range_middle: "bg-brand/10 text-brand !rounded-none",
-                    }}
-                  />
-                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-ink-500 pt-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomRange(null);
-                        setRangePopoverOpen(false);
-                      }}
-                      className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:text-paper"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!customRange?.from || !customRange?.to}
-                      onClick={() => {
-                        if (customRange?.from && !customRange.to) {
-                          // Single-day selection: cover the full day.
-                          setCustomRange({
-                            from: customRange.from,
-                            to: customRange.from,
-                          });
-                        }
-                        setRangePopoverOpen(false);
-                      }}
-                      className="rounded-xs bg-brand px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-40"
-                    >
-                      Apply
-                    </button>
+                      : `Last ${timeRangeHours < 1 ? Math.round(timeRangeHours * 60) + "m" : timeRangeHours + "h"}`}
+                  </span>
+                  <ChevronDown className="h-3 w-3 text-paper-dim" aria-hidden />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="w-auto rounded-xs border-ink-500 bg-ink-100 p-0"
+              >
+                {/* Presets column */}
+                <div className="flex">
+                  <div className="flex w-[150px] flex-col gap-0.5 border-r border-ink-500 p-2">
+                    <span className="px-2 pb-1 pt-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-paper-faint">
+                      Quick
+                    </span>
+                    {RANGE_OPTIONS.map((opt) => {
+                      const active = !customRangeActive && timeRangeHours === opt.hours;
+                      return (
+                        <button
+                          key={opt.label}
+                          type="button"
+                          onClick={() => {
+                            setCustomRange(null);
+                            setTimeRangeHours(opt.hours);
+                            setRangePopoverOpen(false);
+                          }}
+                          className={cn(
+                            "flex items-center justify-between rounded-xs px-2 py-1.5 text-left font-mono text-[11px] transition-colors",
+                            active
+                              ? "bg-brand text-ink-50"
+                              : "text-paper-muted hover:bg-ink-200 hover:text-paper"
+                          )}
+                        >
+                          <span className="uppercase tracking-[0.14em]">{opt.label}</span>
+                          <span className={cn("text-[10px]", active ? "text-ink-50/70" : "text-paper-faint")}>
+                            {opt.hours < 1
+                              ? `${Math.round(opt.hours * 60)} min`
+                              : `${opt.hours} hour${opt.hours > 1 ? "s" : ""}`}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+
+                  {/* Calendar column */}
+                  <div className="flex flex-col p-3">
+                    <span className="px-1 pb-2 font-mono text-[9px] uppercase tracking-[0.18em] text-paper-faint">
+                      Custom range
+                    </span>
+                    <Calendar
+                      mode="range"
+                      selected={{ from: customRange?.from, to: customRange?.to }}
+                      onSelect={(r) => setCustomRange({ from: r?.from, to: r?.to })}
+                      numberOfMonths={2}
+                      className="pointer-events-auto"
+                      classNames={{
+                        day_selected:
+                          "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
+                        day_today: "bg-ink-200 text-paper rounded-xs",
+                        range_middle: "bg-brand/10 text-brand !rounded-none",
+                      }}
+                    />
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-ink-500 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomRange(null);
+                          setRangePopoverOpen(false);
+                        }}
+                        className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:text-paper"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!customRange?.from || !customRange?.to}
+                        onClick={() => {
+                          if (customRange?.from && !customRange.to) {
+                            setCustomRange({
+                              from: customRange.from,
+                              to: customRange.from,
+                            });
+                          }
+                          setRangePopoverOpen(false);
+                        }}
+                        className="rounded-xs bg-brand px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-40"
+                      >
+                        Apply range
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
 
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
               Bucket · {bucket}
@@ -788,7 +811,7 @@ interface ColumnSpec {
 }
 
 const COLUMNS: ColumnSpec[] = [
-  { key: "event_time", label: "Time", align: "left", w: "w-[88px]" },
+  { key: "event_time", label: "Time", align: "left", w: "w-[140px]" },
   { key: "type", label: "", align: "left", w: "w-[28px]" },
   { key: "query", label: "Query", align: "left" },
   { key: "user", label: "User", align: "left", w: "w-[140px]" },
@@ -932,7 +955,9 @@ function LogRow({ log, isExpanded, onToggle, failed }: LogRowProps) {
         )}
       >
         <td className="px-3 py-1.5 font-mono text-paper-muted whitespace-nowrap">
-          {log.event_time}
+          <span title={`${log.event_date} ${log.event_time}`}>
+            {formatRowTime(log.event_date, log.event_time)}
+          </span>
         </td>
         <td className="px-3 py-1.5">
           <StatusIcon className={cn("h-3.5 w-3.5", statusColor)} aria-hidden />
