@@ -18,18 +18,18 @@ function Calendar({
       showOutsideDays={showOutsideDays}
       className={cn("p-3", className)}
       classNames={{
-        months: "flex flex-col sm:flex-row gap-4 sm:gap-6",
+        months: "flex flex-col sm:flex-row gap-4 sm:gap-6 relative",
         month: "space-y-4",
-        month_caption: "flex justify-center pt-1 relative items-center text-paper",
+        month_caption: "flex justify-center pt-1 relative items-center text-paper text-sm font-medium",
         caption_label: "text-sm font-medium",
-        nav: "flex items-center justify-between absolute top-3 left-3 right-3 z-10 pointer-events-none",
+        nav: "absolute top-0 inset-x-0 flex items-center justify-between px-1 pointer-events-none z-10",
         button_previous: cn(
           buttonVariants({ variant: "outline" }),
-          "h-7 w-7 p-0 pointer-events-auto rounded-xs border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:bg-ink-300 hover:text-paper"
+          "h-6 w-6 p-0 pointer-events-auto rounded-xs border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:bg-ink-300 hover:text-paper"
         ),
         button_next: cn(
           buttonVariants({ variant: "outline" }),
-          "h-7 w-7 p-0 pointer-events-auto rounded-xs border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:bg-ink-300 hover:text-paper"
+          "h-6 w-6 p-0 pointer-events-auto rounded-xs border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:bg-ink-300 hover:text-paper"
         ),
         month_grid: "w-full border-collapse space-y-1",
         weekdays: "flex",

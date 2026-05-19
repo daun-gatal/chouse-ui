@@ -219,6 +219,16 @@ function formatDuration(ms: number): string {
 }
 
 /**
+ * Compact label for the time-range trigger. Drops the 00:00 suffix when both
+ * ends sit at midnight (the common "pick days" case) so the chip stays short.
+ */
+function formatRangeLabel(from: Date, to: Date): string {
+  const isMidnight = (d: Date) => d.getHours() === 0 && d.getMinutes() === 0;
+  const fmt = isMidnight(from) && isMidnight(to) ? "MMM d" : "MMM d HH:mm";
+  return `${formatDate(from, fmt)} → ${formatDate(to, fmt)}`;
+}
+
+/**
  * Compact event time for the table — drops the date when it matches today, so
  * recent rows stay short (e.g. "16:58:00") and older rows reveal context
  * ("May 18 16:58:00").
@@ -609,7 +619,7 @@ export default function LogsPage({
                   <CalendarRange className="h-3.5 w-3.5" aria-hidden />
                   <span>
                     {customRangeActive && customRange?.from && customRange?.to
-                      ? `${formatDate(customRange.from, "MMM d HH:mm")} → ${formatDate(customRange.to, "MMM d HH:mm")}`
+                      ? formatRangeLabel(customRange.from, customRange.to)
                       : `Last ${timeRangeHours < 1 ? Math.round(timeRangeHours * 60) + "m" : timeRangeHours + "h"}`}
                   </span>
                   <ChevronDown className="h-3 w-3 text-paper-dim" aria-hidden />
