@@ -534,6 +534,9 @@ export function useQueryLogs(
     queryFn: async () => {
       // event_date >= today() - 1 keeps partition pruning for the common 24h window;
       // event_time provides sub-day precision for narrower selections (15m/1h/6h).
+      // substring(query, 1, 2000) caps payload — full query texts can run to
+      // hundreds of KB on ETL workloads and dominate transfer time. type IN
+      // (...) is more selective than `!= 'QueryStart'` for the index.
       const result = await queryApi.executeQuery(`
           SELECT
             type,
@@ -541,18 +544,18 @@ export function useQueryLogs(
             formatDateTime(event_time, '%H:%i:%S') as event_time,
             toUnixTimestamp(__table1.event_time) as event_timestamp,
             query_id,
-            query,
+            substring(query, 1, 2000) as query,
             query_duration_ms,
             read_rows,
             read_bytes,
             memory_usage,
             user,
-            exception,
+            substring(exception, 1, 2000) as exception,
             Settings['log_comment'] as log_comment_json
           FROM system.query_log AS __table1
           WHERE event_date >= today() - 1
           AND __table1.event_time >= now() - INTERVAL ${hoursBack} HOUR
-          AND type != 'QueryStart'
+          AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
           ${userFilter}
           ORDER BY __table1.event_time DESC
           LIMIT ${limit}

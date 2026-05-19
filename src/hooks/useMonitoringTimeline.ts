@@ -48,18 +48,20 @@ export function useQueryTimeline(
   return useQuery({
     queryKey: ["queryTimeline", hoursBack, bucket, activeConnectionId] as const,
     queryFn: async () => {
+      // Categorize purely off query_kind (cheap enum compare). The previous LIKE
+      // fallback on the raw query text ran string ops over potentially huge
+      // SQL bodies for every row in the window — empty query_kind rows are
+      // rare enough to bucket as Other.
       const sql = `
         SELECT
           formatDateTime(${truncFunc(bucket)}, '%Y-%m-%d %H:%i:%S') AS time,
-          countIf(query_kind = 'Select' OR (query_kind = '' AND upper(trimLeft(query)) LIKE 'SELECT%')) AS \`Select\`,
-          countIf(query_kind IN ('Insert', 'AsyncInsertFlush') OR (query_kind = '' AND upper(trimLeft(query)) LIKE 'INSERT%')) AS \`Insert\`,
-          countIf(query_kind = 'Delete' OR (query_kind = '' AND upper(trimLeft(query)) LIKE 'DELETE%')) AS \`Delete\`,
-          countIf(
-            query_kind NOT IN ('Select', 'Insert', 'AsyncInsertFlush', 'Delete', '')
-            OR (query_kind = '' AND upper(trimLeft(query)) NOT LIKE 'SELECT%' AND upper(trimLeft(query)) NOT LIKE 'INSERT%' AND upper(trimLeft(query)) NOT LIKE 'DELETE%')
-          ) AS \`Other\`
+          countIf(query_kind = 'Select') AS \`Select\`,
+          countIf(query_kind IN ('Insert', 'AsyncInsertFlush')) AS \`Insert\`,
+          countIf(query_kind = 'Delete') AS \`Delete\`,
+          countIf(query_kind NOT IN ('Select', 'Insert', 'AsyncInsertFlush', 'Delete')) AS \`Other\`
         FROM system.query_log
-        WHERE ${hoursBackWhere(hoursBack)} AND type != 'QueryStart'
+        WHERE ${hoursBackWhere(hoursBack)}
+          AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
         GROUP BY time
         ORDER BY time ASC
       `;
