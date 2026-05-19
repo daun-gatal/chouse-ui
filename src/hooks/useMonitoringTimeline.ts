@@ -261,6 +261,104 @@ export interface ProfileEventEntry {
   value: number;
 }
 
+export interface ByTableRow {
+  table_qualified: string;
+  queries: number;
+  selects: number;
+  inserts: number;
+  total_duration_ms: number;
+  avg_duration_ms: number;
+  total_read_rows: number;
+  total_read_bytes: number;
+  total_written_rows: number;
+  max_memory: number;
+}
+
+export type ByTableSort =
+  | "total_duration_ms"
+  | "queries"
+  | "total_read_rows"
+  | "total_read_bytes"
+  | "max_memory";
+
+/**
+ * Aggregate queries grouped by the tables they touched. Uses
+ * arrayJoin(tables) to explode the per-query touched-tables list, then rolls
+ * up per-table cost. Surfaces hot tables that dominate read/write traffic.
+ */
+export function useQueryByTable(
+  hoursBack: number = 6,
+  sortBy: ByTableSort = "total_duration_ms",
+  limit: number = 500,
+  customRange?: AbsoluteRange,
+  options?: Partial<UseQueryOptions<ByTableRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: [
+      "queryByTable",
+      hoursBack,
+      sortBy,
+      limit,
+      customRange?.start ?? null,
+      customRange?.end ?? null,
+      activeConnectionId,
+    ] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          table_qualified,
+          count() AS queries,
+          countIf(query_kind = 'Select') AS selects,
+          countIf(query_kind IN ('Insert', 'AsyncInsertFlush')) AS inserts,
+          sum(query_duration_ms) AS total_duration_ms,
+          avg(query_duration_ms) AS avg_duration_ms,
+          sum(read_rows) AS total_read_rows,
+          sum(read_bytes) AS total_read_bytes,
+          sum(written_rows) AS total_written_rows,
+          max(memory_usage) AS max_memory
+        FROM (
+          SELECT
+            arrayJoin(tables) AS table_qualified,
+            query_kind,
+            query_duration_ms,
+            read_rows,
+            read_bytes,
+            written_rows,
+            memory_usage
+          FROM system.query_log
+          WHERE ${timeWindowWhere(hoursBack, customRange)}
+            AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
+            AND length(tables) > 0
+        )
+        WHERE table_qualified NOT LIKE 'system.%'
+          AND table_qualified NOT LIKE 'INFORMATION_SCHEMA.%'
+          AND table_qualified NOT LIKE 'information_schema.%'
+          AND table_qualified != ''
+        GROUP BY table_qualified
+        ORDER BY ${sortBy} DESC
+        LIMIT ${limit}
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        table_qualified: String(row.table_qualified ?? ""),
+        queries: num(row.queries),
+        selects: num(row.selects),
+        inserts: num(row.inserts),
+        total_duration_ms: num(row.total_duration_ms),
+        avg_duration_ms: num(row.avg_duration_ms),
+        total_read_rows: num(row.total_read_rows),
+        total_read_bytes: num(row.total_read_bytes),
+        total_written_rows: num(row.total_written_rows),
+        max_memory: num(row.max_memory),
+      }));
+    },
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
 export interface SchemaLintRow {
   database: string;
   table: string;

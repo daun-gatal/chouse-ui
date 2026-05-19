@@ -34,8 +34,11 @@ import { Calendar } from "@/components/ui/calendar";
 import { useQueryLogs, usePaginationPreference, useLogsPreferences } from "@/hooks";
 import {
   useClusterMemoryTotal,
+  useQueryByTable,
   useQueryPatterns,
   useQueryProfileEvents,
+  type ByTableRow,
+  type ByTableSort,
   type ProfileEventEntry,
   type QueryPattern,
   type QueryPatternSort,
@@ -340,10 +343,12 @@ export default function LogsPage({
       )
     : timeRangeHours;
 
-  // Sub-view inside Logs — flat query list vs aggregated patterns.
-  const [view, setView] = useState<"queries" | "patterns">("queries");
+  // Sub-view inside Logs — flat query list, aggregated patterns, or by-table.
+  const [view, setView] = useState<"queries" | "patterns" | "tables">("queries");
   const [patternSort, setPatternSort] = useState<QueryPatternSort>("total_duration_ms");
   const [patternPage, setPatternPage] = useState(0);
+  const [byTableSort, setByTableSort] = useState<ByTableSort>("total_duration_ms");
+  const [byTablePage, setByTablePage] = useState(0);
 
   const {
     data: patterns = [],
@@ -376,6 +381,39 @@ export default function LogsPage({
   const paginatedPatterns = useMemo(
     () => patterns.slice(patternStart, patternEnd),
     [patterns, patternStart, patternEnd]
+  );
+
+  const {
+    data: byTable = [],
+    isLoading: byTableLoading,
+    isFetching: byTableFetching,
+    error: byTableError,
+  } = useQueryByTable(
+    effectiveHours,
+    byTableSort,
+    500,
+    customRangeSql,
+    { enabled: view === "tables" }
+  );
+
+  useEffect(() => {
+    setByTablePage(0);
+  }, [
+    byTableSort,
+    timeRangeHours,
+    customRangeSql?.start,
+    customRangeSql?.end,
+    view,
+  ]);
+
+  const byTableTotalRows = byTable.length;
+  const byTableTotalPages = Math.max(1, Math.ceil(byTableTotalRows / pageSize));
+  const byTableSafePage = Math.min(byTablePage, byTableTotalPages - 1);
+  const byTableStart = byTableSafePage * pageSize;
+  const byTableEnd = Math.min(byTableStart + pageSize, byTableTotalRows);
+  const paginatedByTable = useMemo(
+    () => byTable.slice(byTableStart, byTableEnd),
+    [byTable, byTableStart, byTableEnd]
   );
 
   const toggleSort = (key: SortKey) => {
@@ -801,7 +839,13 @@ export default function LogsPage({
             </span>
 
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-              Total · {(view === "patterns" ? patternTotalRows : totalRows).toLocaleString()}
+              Total ·{" "}
+              {(view === "patterns"
+                ? patternTotalRows
+                : view === "tables"
+                  ? byTableTotalRows
+                  : totalRows
+              ).toLocaleString()}
             </span>
           </div>
         </div>
@@ -825,18 +869,19 @@ export default function LogsPage({
           </div>
         )}
 
-        {/* View tabs — flat queries vs aggregated patterns */}
+        {/* View tabs — queries / patterns / by-table */}
         <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
           {[
             { id: "queries", label: "Queries", hint: "Every execution" },
             { id: "patterns", label: "Patterns", hint: "Grouped by query shape" },
+            { id: "tables", label: "By table", hint: "Hot tables" },
           ].map((tab) => {
             const active = view === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setView(tab.id as "queries" | "patterns")}
+                onClick={() => setView(tab.id as "queries" | "patterns" | "tables")}
                 className={cn(
                   "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                   active
@@ -893,32 +938,62 @@ export default function LogsPage({
                   clusterMemoryBytes={clusterMemoryBytes}
                 />
               )
-            ) : patternsLoading ? (
+            ) : view === "patterns" ? (
+              patternsLoading ? (
+                <table className="w-full">
+                  <tbody>
+                    <SkeletonRows count={10} cols={7} />
+                  </tbody>
+                </table>
+              ) : patternsError ? (
+                <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
+                  <span className="text-[13px] text-paper">Couldn't load patterns</span>
+                  <span className="text-[12px] text-paper-muted">{patternsError.message}</span>
+                </div>
+              ) : patternTotalRows === 0 ? (
+                <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
+                  <span className="grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
+                    <FileText className="h-5 w-5" aria-hidden />
+                  </span>
+                  <span className="text-[13px] text-paper">No patterns yet</span>
+                  <span className="text-[12px] text-paper-muted">
+                    Widen the time range — needs a handful of queries to group.
+                  </span>
+                </div>
+              ) : (
+                <PatternsTable
+                  rows={paginatedPatterns}
+                  sortKey={patternSort}
+                  onSort={setPatternSort}
+                  clusterMemoryBytes={clusterMemoryBytes}
+                />
+              )
+            ) : byTableLoading ? (
               <table className="w-full">
                 <tbody>
                   <SkeletonRows count={10} cols={7} />
                 </tbody>
               </table>
-            ) : patternsError ? (
+            ) : byTableError ? (
               <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
-                <span className="text-[13px] text-paper">Couldn't load patterns</span>
-                <span className="text-[12px] text-paper-muted">{patternsError.message}</span>
+                <span className="text-[13px] text-paper">Couldn't load by-table rollup</span>
+                <span className="text-[12px] text-paper-muted">{byTableError.message}</span>
               </div>
-            ) : patternTotalRows === 0 ? (
+            ) : byTableTotalRows === 0 ? (
               <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
                 <span className="grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-dim">
                   <FileText className="h-5 w-5" aria-hidden />
                 </span>
-                <span className="text-[13px] text-paper">No patterns yet</span>
+                <span className="text-[13px] text-paper">No table activity</span>
                 <span className="text-[12px] text-paper-muted">
-                  Widen the time range — needs a handful of queries to group.
+                  Widen the time range — needs queries that touched user tables.
                 </span>
               </div>
             ) : (
-              <PatternsTable
-                rows={paginatedPatterns}
-                sortKey={patternSort}
-                onSort={setPatternSort}
+              <ByTableTable
+                rows={paginatedByTable}
+                sortKey={byTableSort}
+                onSort={setByTableSort}
                 clusterMemoryBytes={clusterMemoryBytes}
               />
             )}
@@ -954,8 +1029,23 @@ export default function LogsPage({
             />
           )}
 
-          {patternsFetching && view === "patterns" && (
-            <span className="sr-only" aria-live="polite">Refreshing patterns…</span>
+          {view === "tables" && byTableTotalRows > 0 && (
+            <PaginationBar
+              page={byTableSafePage}
+              totalPages={byTableTotalPages}
+              startIndex={byTableStart}
+              endIndex={byTableEnd}
+              totalRows={byTableTotalRows}
+              rowLabel="tables"
+              onPrev={() => setByTablePage((p) => Math.max(0, p - 1))}
+              onNext={() => setByTablePage((p) => Math.min(byTableTotalPages - 1, p + 1))}
+              onFirst={() => setByTablePage(0)}
+              onLast={() => setByTablePage(byTableTotalPages - 1)}
+            />
+          )}
+
+          {(patternsFetching || byTableFetching) && (
+            <span className="sr-only" aria-live="polite">Refreshing…</span>
           )}
         </div>
       </div>
@@ -1280,6 +1370,140 @@ function PatternRow({ pattern, clusterMemoryBytes }: PatternRowProps) {
       </td>
       <td className="px-3 py-1.5 text-right font-mono text-paper-muted">
         {formatBytes(pattern.total_read_bytes)}
+      </td>
+    </tr>
+  );
+}
+
+/* ============================================================
+   By-table table — arrayJoin(tables) rollup
+   ============================================================ */
+
+interface ByTableColumn {
+  key: ByTableSort | null;
+  label: string;
+  align: "left" | "right";
+  w?: string;
+}
+
+const BY_TABLE_COLUMNS: ByTableColumn[] = [
+  { key: null, label: "Table", align: "left" },
+  { key: "queries", label: "Queries", align: "right", w: "w-[80px]" },
+  { key: null, label: "Select / Insert", align: "right", w: "w-[120px]" },
+  { key: "total_duration_ms", label: "Total dur", align: "right", w: "w-[100px]" },
+  { key: "total_read_rows", label: "Read rows", align: "right", w: "w-[112px]" },
+  { key: "total_read_bytes", label: "Read bytes", align: "right", w: "w-[108px]" },
+  { key: "max_memory", label: "Max mem", align: "right", w: "w-[92px]" },
+];
+
+interface ByTableTableProps {
+  rows: ByTableRow[];
+  sortKey: ByTableSort;
+  onSort: (key: ByTableSort) => void;
+  clusterMemoryBytes: number;
+}
+
+function ByTableTable({ rows, sortKey, onSort, clusterMemoryBytes }: ByTableTableProps) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <table className="w-full text-[12px]">
+        <thead className="sticky top-0 z-10 bg-ink-200/90 backdrop-blur">
+          <tr className="border-b border-ink-500">
+            {BY_TABLE_COLUMNS.map((c, i) => {
+              const isActive = c.key !== null && c.key === sortKey;
+              const sortable = c.key !== null;
+              return (
+                <th
+                  key={`${c.label}-${i}`}
+                  className={cn(
+                    "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint",
+                    c.align === "right" ? "text-right" : "text-left",
+                    c.w
+                  )}
+                >
+                  {sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => onSort(c.key as ByTableSort)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-xs transition-colors hover:text-paper",
+                        c.align === "right" && "flex-row-reverse",
+                        isActive && "text-brand"
+                      )}
+                      aria-label={`Sort by ${c.label}`}
+                    >
+                      <span>{c.label}</span>
+                      {isActive ? (
+                        <ArrowDown className="h-3 w-3" aria-hidden />
+                      ) : (
+                        <ArrowUpDown className="h-2.5 w-2.5 opacity-40" aria-hidden />
+                      )}
+                    </button>
+                  ) : (
+                    c.label
+                  )}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <ByTableTableRow
+              key={`${r.table_qualified}-${i}`}
+              row={r}
+              clusterMemoryBytes={clusterMemoryBytes}
+            />
+          ))}
+        </tbody>
+      </table>
+    </TooltipProvider>
+  );
+}
+
+function ByTableTableRow({
+  row,
+  clusterMemoryBytes,
+}: {
+  row: ByTableRow;
+  clusterMemoryBytes: number;
+}) {
+  const memTier = memoryTier(row.max_memory, clusterMemoryBytes);
+  const memRatioPct =
+    clusterMemoryBytes > 0 ? (row.max_memory / clusterMemoryBytes) * 100 : 0;
+  const [database, ...tableParts] = row.table_qualified.split(".");
+  const table = tableParts.join(".");
+
+  return (
+    <tr className="border-b border-ink-500/60 transition-colors hover:bg-ink-200/60">
+      <td className="px-3 py-1.5 font-mono">
+        <span className="text-paper-muted">{database}</span>
+        <span className="text-paper-faint">.</span>
+        <span className="text-paper">{table || row.table_qualified}</span>
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono tabular-nums text-paper">
+        {row.queries.toLocaleString()}
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono text-[11px] tabular-nums">
+        <span className="text-brand">{row.selects.toLocaleString()}</span>
+        <span className="text-paper-faint"> / </span>
+        <span className="text-emerald-400">{row.inserts.toLocaleString()}</span>
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono text-paper">
+        {formatDuration(row.total_duration_ms)}
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono text-paper-muted">
+        {row.total_read_rows.toLocaleString()}
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono text-paper-muted">
+        {formatBytes(row.total_read_bytes)}
+      </td>
+      <td className="px-3 py-1.5 text-right font-mono">
+        <MemoryCell
+          bytes={row.max_memory}
+          tier={memTier}
+          ratioPct={memRatioPct}
+        />
       </td>
     </tr>
   );
