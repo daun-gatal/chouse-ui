@@ -7,6 +7,7 @@ import {
   Zap,
   BarChart3,
   Layers,
+  Stethoscope,
   type LucideIcon,
 } from "lucide-react";
 import InfoDialog from "@/components/common/InfoDialog";
@@ -19,6 +20,7 @@ import LogsPage from "./Logs";
 import MetricsPage from "./Metrics";
 import LiveQueriesTable from "./LiveQueries";
 import PartsPage from "./Parts";
+import SchemaDoctorPage from "./SchemaDoctor";
 
 interface TabConfig {
   icon: LucideIcon;
@@ -49,9 +51,14 @@ const TAB_CONFIG: Record<TabKey, TabConfig> = {
     label: "Parts",
     description: "Merges, mutations & part movements",
   },
+  schema: {
+    icon: Stethoscope,
+    label: "Schema doctor",
+    description: "Nullable & oversized column lints",
+  },
 };
 
-type TabKey = "live-queries" | "logs" | "metrics" | "parts";
+type TabKey = "live-queries" | "logs" | "metrics" | "parts" | "schema";
 
 interface TabCardProps {
   tabKey: TabKey;
@@ -131,11 +138,13 @@ export default function Monitoring() {
     RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
   ]);
   const canViewParts = canViewMetrics;
+  const canViewSchema = canViewMetrics;
 
   const availableTabs: TabKey[] = [
     ...(canViewLogs ? (["logs"] as TabKey[]) : []),
     ...(canViewMetrics ? (["metrics"] as TabKey[]) : []),
     ...(canViewParts ? (["parts"] as TabKey[]) : []),
+    ...(canViewSchema ? (["schema"] as TabKey[]) : []),
     ...(canViewLiveQueries ? (["live-queries"] as TabKey[]) : []),
   ];
 
@@ -280,6 +289,16 @@ export default function Monitoring() {
             />
           </div>
         )}
+
+        {activeTab === "schema" && canViewSchema && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <SchemaDoctorPage
+              embedded
+              refreshKey={refreshKey}
+              onRefreshChange={setIsRefreshing}
+            />
+          </div>
+        )}
       </div>
 
       {/* Info dialog */}
@@ -312,6 +331,7 @@ export default function Monitoring() {
                       {key === "logs" && "Browse historical query logs and execution history."}
                       {key === "metrics" && "Analyze system performance and resource usage."}
                       {key === "parts" && "Track MergeTree merges, mutations, downloads, and removals."}
+                      {key === "schema" && "Lint columns for needless Nullable wrappers and oversized integers."}
                     </span>
                   </div>
                 </div>

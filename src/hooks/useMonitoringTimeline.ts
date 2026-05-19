@@ -261,6 +261,117 @@ export interface ProfileEventEntry {
   value: number;
 }
 
+export interface SchemaLintRow {
+  database: string;
+  table: string;
+  column: string;
+  type: string;
+  total_rows: number;
+  compressed_bytes: number;
+  uncompressed_bytes: number;
+}
+
+const SCHEMA_SYSTEM_EXCLUDE =
+  "database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')";
+
+/**
+ * Columns declared Nullable(T) — Nullable carries a per-row null-bitmap byte
+ * even when no rows are actually null, so on huge tables it's worth checking
+ * whether the column actually needs the wrapper.
+ */
+export function useSchemaNullables(
+  options?: Partial<UseQueryOptions<SchemaLintRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["schemaNullables", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          table,
+          column,
+          type,
+          sum(rows) AS total_rows,
+          sum(column_data_compressed_bytes) AS compressed_bytes,
+          sum(column_data_uncompressed_bytes) AS uncompressed_bytes
+        FROM system.parts_columns
+        WHERE active = 1
+          AND type LIKE 'Nullable(%)'
+          AND ${SCHEMA_SYSTEM_EXCLUDE}
+        GROUP BY database, table, column, type
+        ORDER BY compressed_bytes DESC
+        LIMIT 500
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        database: String(row.database ?? ""),
+        table: String(row.table ?? ""),
+        column: String(row.column ?? ""),
+        type: String(row.type ?? ""),
+        total_rows: num(row.total_rows),
+        compressed_bytes: num(row.compressed_bytes),
+        uncompressed_bytes: num(row.uncompressed_bytes),
+      }));
+    },
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+/**
+ * Wide integer columns (Int64/UInt64/Int128/…) — frequently end up that way
+ * out of habit but, if the actual value range fits a smaller width, the bigger
+ * type costs 2-8× compressed bytes for nothing.
+ */
+export function useSchemaOversized(
+  options?: Partial<UseQueryOptions<SchemaLintRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["schemaOversized", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          table,
+          column,
+          type,
+          sum(rows) AS total_rows,
+          sum(column_data_compressed_bytes) AS compressed_bytes,
+          sum(column_data_uncompressed_bytes) AS uncompressed_bytes
+        FROM system.parts_columns
+        WHERE active = 1
+          AND ${SCHEMA_SYSTEM_EXCLUDE}
+          AND (
+            type IN ('Int64', 'UInt64', 'Int128', 'UInt128', 'Int256', 'UInt256')
+            OR type LIKE 'Nullable(Int64)%'
+            OR type LIKE 'Nullable(UInt64)%'
+            OR type LIKE 'Nullable(Int128)%'
+            OR type LIKE 'Nullable(UInt128)%'
+          )
+        GROUP BY database, table, column, type
+        ORDER BY compressed_bytes DESC
+        LIMIT 500
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        database: String(row.database ?? ""),
+        table: String(row.table ?? ""),
+        column: String(row.column ?? ""),
+        type: String(row.type ?? ""),
+        total_rows: num(row.total_rows),
+        compressed_bytes: num(row.compressed_bytes),
+        uncompressed_bytes: num(row.uncompressed_bytes),
+      }));
+    },
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
 /**
  * Lazy-fetch the ProfileEvents map for a single query. Only invoked when a
  * row in Monitoring → Logs is expanded — keeps the list fetch slim.
