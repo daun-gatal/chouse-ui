@@ -15,7 +15,9 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  CalendarRange,
 } from "lucide-react";
+import { format as formatDate } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { useQueryLogs, usePaginationPreference, useLogsPreferences } from "@/hooks";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { cn } from "@/lib/utils";
@@ -249,10 +253,26 @@ export default function LogsPage({
     logsPrefs.defaultSelectedRoleId || "all"
   );
   const [timeRangeHours, setTimeRangeHours] = useState<number>(6);
+  const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date } | null>(null);
+  const [rangePopoverOpen, setRangePopoverOpen] = useState(false);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [sortKey, setSortKey] = useState<SortKey>("event_time");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const customRangeActive = !!(customRange?.from && customRange?.to);
+  const customRangeSql = customRangeActive
+    ? {
+        start: formatDate(customRange!.from!, "yyyy-MM-dd HH:mm:ss"),
+        end: formatDate(customRange!.to!, "yyyy-MM-dd HH:mm:ss"),
+      }
+    : undefined;
+  const effectiveHours = customRangeActive
+    ? Math.max(
+        0.25,
+        (customRange!.to!.getTime() - customRange!.from!.getTime()) / 3_600_000
+      )
+    : timeRangeHours;
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -263,7 +283,7 @@ export default function LogsPage({
     }
   };
 
-  const bucket = bucketFor(timeRangeHours);
+  const bucket = bucketFor(effectiveHours);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -334,7 +354,15 @@ export default function LogsPage({
     refetch,
     error,
     dataUpdatedAt,
-  } = useQueryLogs(fetchLimit, undefined, rbacUserIdFilter, timeRangeHours, sortKey, sortDir);
+  } = useQueryLogs(
+    fetchLimit,
+    undefined,
+    rbacUserIdFilter,
+    timeRangeHours,
+    sortKey,
+    sortDir,
+    customRangeSql
+  );
 
   const isAnyLoading = isLoading || isFetching;
 
@@ -384,7 +412,16 @@ export default function LogsPage({
   // Reset to the first page when the filter set, time range, or page size changes.
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, logType, selectedUserId, selectedRoleId, timeRangeHours, pageSize]);
+  }, [
+    searchTerm,
+    logType,
+    selectedUserId,
+    selectedRoleId,
+    timeRangeHours,
+    pageSize,
+    customRangeSql?.start,
+    customRangeSql?.end,
+  ]);
 
   const isFailedLog = useCallback(
     (log: LogEntry): boolean => {
@@ -552,14 +589,17 @@ export default function LogsPage({
               className="flex items-center gap-0.5 rounded-xs border border-ink-500 bg-ink-200 p-0.5"
             >
               {RANGE_OPTIONS.map((opt) => {
-                const active = timeRangeHours === opt.hours;
+                const active = !customRangeActive && timeRangeHours === opt.hours;
                 return (
                   <button
                     key={opt.label}
                     type="button"
                     role="radio"
                     aria-checked={active}
-                    onClick={() => setTimeRangeHours(opt.hours)}
+                    onClick={() => {
+                      setCustomRange(null);
+                      setTimeRangeHours(opt.hours);
+                    }}
                     className={cn(
                       "rounded-xs px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
                       active
@@ -571,6 +611,75 @@ export default function LogsPage({
                   </button>
                 );
               })}
+
+              <Popover open={rangePopoverOpen} onOpenChange={setRangePopoverOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={customRangeActive}
+                    aria-label="Custom date range"
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-xs px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
+                      customRangeActive
+                        ? "bg-brand text-ink-50"
+                        : "text-paper-muted hover:bg-ink-300 hover:text-paper"
+                    )}
+                  >
+                    <CalendarRange className="h-3 w-3" aria-hidden />
+                    {customRangeActive && customRange?.from && customRange?.to
+                      ? `${formatDate(customRange.from, "MMM d HH:mm")} → ${formatDate(customRange.to, "MMM d HH:mm")}`
+                      : "Custom"}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="w-auto rounded-xs border-ink-500 bg-ink-100 p-3"
+                >
+                  <Calendar
+                    mode="range"
+                    selected={{ from: customRange?.from, to: customRange?.to }}
+                    onSelect={(r) => setCustomRange({ from: r?.from, to: r?.to })}
+                    numberOfMonths={2}
+                    className="pointer-events-auto"
+                    classNames={{
+                      day_selected:
+                        "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
+                      day_today: "bg-ink-200 text-paper rounded-xs",
+                      range_middle: "bg-brand/10 text-brand !rounded-none",
+                    }}
+                  />
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-ink-500 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomRange(null);
+                        setRangePopoverOpen(false);
+                      }}
+                      className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:text-paper"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!customRange?.from || !customRange?.to}
+                      onClick={() => {
+                        if (customRange?.from && !customRange.to) {
+                          // Single-day selection: cover the full day.
+                          setCustomRange({
+                            from: customRange.from,
+                            to: customRange.from,
+                          });
+                        }
+                        setRangePopoverOpen(false);
+                      }}
+                      className="rounded-xs bg-brand px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-40"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
@@ -588,9 +697,10 @@ export default function LogsPage({
       <div className={cn("flex flex-1 min-h-0 flex-col gap-4 overflow-hidden", embedded ? "p-4" : "p-6")}>
         {/* Chart card */}
         <QueryTimelineChart
-          hoursBack={timeRangeHours}
+          hoursBack={effectiveHours}
           bucket={bucket}
           refreshKey={refreshKey}
+          customRange={customRangeSql}
         />
 
         {/* Error banner */}

@@ -11,6 +11,15 @@ import { useAuthStore } from "@/stores";
 
 export type TimelineBucket = "minute" | "hour";
 
+/**
+ * Absolute time window — when present, replaces hoursBack on the SQL.
+ * Strings are 'YYYY-MM-DD HH:mm:ss' literals that ClickHouse parses as DateTime.
+ */
+export interface AbsoluteRange {
+  start: string;
+  end: string;
+}
+
 export interface QueryTimelinePoint {
   time: string;
   Select: number;
@@ -24,11 +33,19 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-function truncFunc(bucket: TimelineBucket): string {
-  return bucket === "hour" ? "toStartOfHour(event_time)" : "toStartOfMinute(event_time)";
+function truncFunc(bucket: TimelineBucket, table?: string): string {
+  const col = table ? `${table}.event_time` : "event_time";
+  return bucket === "hour" ? `toStartOfHour(${col})` : `toStartOfMinute(${col})`;
 }
 
-function hoursBackWhere(hoursBack: number): string {
+/**
+ * Build the time-window WHERE clause. Custom range wins when provided;
+ * otherwise falls back to the relative `now() - INTERVAL X HOUR` form.
+ */
+function timeWindowWhere(hoursBack: number, range?: AbsoluteRange): string {
+  if (range) {
+    return `event_time >= toDateTime('${range.start}') AND event_time <= toDateTime('${range.end}')`;
+  }
   return `event_time >= now() - INTERVAL ${hoursBack} HOUR`;
 }
 
@@ -40,13 +57,21 @@ export function useQueryTimeline(
   hoursBack: number = 6,
   bucket: TimelineBucket = "minute",
   rbacUserId?: string,
+  customRange?: AbsoluteRange,
   options?: Partial<UseQueryOptions<QueryTimelinePoint[], Error>>
 ) {
   const { activeConnectionId } = useAuthStore();
   void rbacUserId; // reserved for per-user filtering once query_log carries rbac mapping
 
   return useQuery({
-    queryKey: ["queryTimeline", hoursBack, bucket, activeConnectionId] as const,
+    queryKey: [
+      "queryTimeline",
+      hoursBack,
+      bucket,
+      customRange?.start ?? null,
+      customRange?.end ?? null,
+      activeConnectionId,
+    ] as const,
     queryFn: async () => {
       // Categorize purely off query_kind (cheap enum compare). The previous LIKE
       // fallback on the raw query text ran string ops over potentially huge
@@ -60,7 +85,7 @@ export function useQueryTimeline(
           countIf(query_kind = 'Delete') AS \`Delete\`,
           countIf(query_kind NOT IN ('Select', 'Insert', 'AsyncInsertFlush', 'Delete')) AS \`Other\`
         FROM system.query_log
-        WHERE ${hoursBackWhere(hoursBack)}
+        WHERE ${timeWindowWhere(hoursBack, customRange)}
           AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
         GROUP BY time
         ORDER BY time ASC
@@ -121,7 +146,7 @@ export function usePartLogTimeline(
           countIf(event_type = 'MutatePart') AS MutatePart,
           countIf(event_type NOT IN ('NewPart', 'MergeParts', 'DownloadPart', 'RemovePart', 'MutatePart')) AS \`Other\`
         FROM system.part_log
-        WHERE ${hoursBackWhere(hoursBack)}
+        WHERE ${timeWindowWhere(hoursBack)}
         GROUP BY time
         ORDER BY time ASC
       `;

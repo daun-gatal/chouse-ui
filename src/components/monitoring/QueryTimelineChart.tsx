@@ -15,7 +15,11 @@ import {
 import { format } from "date-fns";
 import { Activity, RefreshCw, BarChart3, AreaChart as AreaIcon, LineChart as LineIcon } from "lucide-react";
 
-import { useQueryTimeline, type TimelineBucket } from "@/hooks/useMonitoringTimeline";
+import {
+  useQueryTimeline,
+  type AbsoluteRange,
+  type TimelineBucket,
+} from "@/hooks/useMonitoringTimeline";
 import { SkeletonChart } from "@/components/common/Skeletons";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +49,8 @@ interface QueryTimelineChartProps {
   hoursBack?: number;
   bucket?: TimelineBucket;
   refreshKey?: number;
+  /** Absolute window; overrides hoursBack when both ends are set. */
+  customRange?: AbsoluteRange;
 }
 
 function formatTime(t: string, bucket: TimelineBucket): string {
@@ -57,8 +63,14 @@ export function QueryTimelineChart({
   hoursBack = 6,
   bucket = "minute",
   refreshKey,
+  customRange,
 }: QueryTimelineChartProps) {
-  const { data, isLoading, isFetching, error, refetch } = useQueryTimeline(hoursBack, bucket);
+  const { data, isLoading, isFetching, error, refetch } = useQueryTimeline(
+    hoursBack,
+    bucket,
+    undefined,
+    customRange
+  );
   const [chartType, setChartType] = useState<ChartType>("stacked-bar");
 
   useEffect(() => {
@@ -96,7 +108,9 @@ export function QueryTimelineChart({
           </span>
           <div className="flex flex-col leading-tight">
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-              Last {hoursBack}h · by query kind
+              {customRange
+                ? `Custom · by query kind`
+                : `Last ${hoursBack < 1 ? Math.round(hoursBack * 60) + "m" : hoursBack + "h"} · by query kind`}
             </span>
             <span className="text-[13px] font-medium text-paper">Query timeline</span>
           </div>

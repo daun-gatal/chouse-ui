@@ -509,14 +509,20 @@ const QUERY_LOG_SORT_COLUMNS: Record<string, string> = {
   query_id: 'query_id',
 };
 
+export interface QueryLogRange {
+  start: string;
+  end: string;
+}
+
 /**
  * Hook to fetch query logs
  * @param limit - Number of logs to fetch
  * @param username - Optional ClickHouse username to filter by (legacy, for backward compatibility)
  * @param rbacUserId - Optional RBAC user ID to filter by (for non-super-admin users)
- * @param hoursBack - Time window (defaults to 24h to preserve legacy behavior)
+ * @param hoursBack - Time window when no customRange given (defaults to 24h)
  * @param sortBy - Column name to sort the SQL fetch by (must match QUERY_LOG_SORT_COLUMNS)
  * @param sortDir - Sort direction; defaults to DESC
+ * @param customRange - Absolute time window; overrides hoursBack when both ends are set
  */
 export function useQueryLogs(
   limit: number = 100,
@@ -525,6 +531,7 @@ export function useQueryLogs(
   hoursBack: number = 24,
   sortBy: string = 'event_time',
   sortDir: 'asc' | 'desc' = 'desc',
+  customRange?: QueryLogRange,
   options?: Partial<UseQueryOptions<Array<{
     type: string;
     event_date: string;
@@ -552,6 +559,16 @@ export function useQueryLogs(
   const orderColumn = QUERY_LOG_SORT_COLUMNS[sortBy] ?? '__table1.event_time';
   const orderDir = sortDir === 'asc' ? 'ASC' : 'DESC';
 
+  // Custom absolute range overrides the relative hoursBack window.
+  const timeFilter = customRange
+    ? `__table1.event_time >= toDateTime('${customRange.start}') AND __table1.event_time <= toDateTime('${customRange.end}')`
+    : `__table1.event_time >= now() - INTERVAL ${hoursBack} HOUR`;
+  // For custom ranges we extend the partition prune so multi-day windows still
+  // get a tight `event_date >=` bound; the substring extracts YYYY-MM-DD.
+  const datePrune = customRange
+    ? `event_date >= toDate('${customRange.start.substring(0, 10)}')`
+    : `event_date >= today() - 1`;
+
   return useQuery({
     queryKey: [
       'queryLogs',
@@ -561,6 +578,8 @@ export function useQueryLogs(
       hoursBack,
       sortBy,
       sortDir,
+      customRange?.start ?? null,
+      customRange?.end ?? null,
       activeConnectionId,
     ] as const,
     queryFn: async () => {
@@ -585,8 +604,8 @@ export function useQueryLogs(
             substring(exception, 1, 2000) as exception,
             Settings['log_comment'] as log_comment_json
           FROM system.query_log AS __table1
-          WHERE event_date >= today() - 1
-          AND __table1.event_time >= now() - INTERVAL ${hoursBack} HOUR
+          WHERE ${datePrune}
+          AND ${timeFilter}
           AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
           ${userFilter}
           ORDER BY ${orderColumn} ${orderDir}
