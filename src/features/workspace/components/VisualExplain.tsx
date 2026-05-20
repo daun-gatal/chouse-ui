@@ -171,9 +171,9 @@ const ExplainNodeComponent = ({ data }: { data: { label: string; type: string; d
             <div className="flex items-center gap-2 mb-2">
                 <div
                     className="p-1.5 rounded-md"
-                    style={{ backgroundColor: `${style.color}20` }}
+                    style={{ backgroundColor: `${style.color}20`, color: style.color }}
                 >
-                    <NodeIcon category={category} className="text-white" />
+                    <NodeIcon category={category} />
                 </div>
                 <div
                     className="font-semibold text-xs"

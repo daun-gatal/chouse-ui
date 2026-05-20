@@ -144,18 +144,18 @@ function tokenizeSQL(sql: string): Token[] {
 
 // Token styling
 const TOKEN_STYLES: Record<TokenType, string> = {
-  clause: 'text-blue-400 font-semibold',
-  join: 'text-purple-400 font-semibold',
-  operator: 'text-yellow-400',
-  function: 'text-cyan-400',
-  type: 'text-orange-400',
-  modifier: 'text-pink-400',
-  string: 'text-green-400',
-  number: 'text-emerald-400',
+  clause: 'text-blue-700 dark:text-blue-400 font-semibold',
+  join: 'text-purple-700 dark:text-purple-400 font-semibold',
+  operator: 'text-amber-700 dark:text-yellow-400',
+  function: 'text-cyan-700 dark:text-cyan-400',
+  type: 'text-orange-700 dark:text-orange-400',
+  modifier: 'text-pink-700 dark:text-pink-400',
+  string: 'text-green-700 dark:text-green-400',
+  number: 'text-emerald-700 dark:text-emerald-400',
   comment: 'text-zinc-500 italic',
-  identifier: 'text-zinc-200',
-  punctuation: 'text-zinc-400',
-  default: 'text-zinc-300',
+  identifier: 'text-zinc-800 dark:text-zinc-200',
+  punctuation: 'text-zinc-600 dark:text-zinc-400',
+  default: 'text-zinc-700 dark:text-zinc-300',
 };
 
 // SQL Formatter - beautifies SQL with proper indentation

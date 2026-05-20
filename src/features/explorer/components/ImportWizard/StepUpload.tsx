@@ -64,8 +64,8 @@ export function StepUpload({
                 <div
                     {...getRootProps()}
                     className={cn(
-                        'relative flex flex-col items-center justify-center min-h-[220px] w-full rounded-xl border-2 border-dashed cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900',
-                        'border-white/15 hover:border-emerald-500/40 hover:bg-white/[0.02]'
+                        'relative flex flex-col items-center justify-center min-h-[220px] w-full rounded-xs border-2 border-dashed cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50',
+                        'border-ink-500 hover:border-emerald-500/40 hover:bg-ink-200'
                     )}
                     role="button"
                     tabIndex={0}
@@ -73,27 +73,27 @@ export function StepUpload({
                 >
                     <input {...getInputProps()} aria-hidden />
                     <div className="flex flex-col items-center gap-3 text-center px-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                             <Upload className="h-6 w-6" />
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-white">Drop a file</p>
-                            <p className="text-xs text-gray-500 mt-0.5">or browse · CSV / JSON / TSV</p>
+                            <p className="text-sm font-medium text-paper">Drop a file</p>
+                            <p className="text-xs text-paper-muted mt-0.5">or browse · CSV / JSON / TSV</p>
                         </div>
                     </div>
                 </div>
             ) : (
                 <div className="flex flex-col gap-4">
-                    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 shrink-0">
+                    <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 shrink-0">
                         <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                                 <FileUp className="h-5 w-5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="font-medium text-white truncate" title={file.name}>
+                                <p className="font-medium text-paper truncate" title={file.name}>
                                     {file.name}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-0.5">
+                                <p className="text-xs text-paper-muted mt-0.5">
                                     {formatFileSize(file.size)} · {getFormat(file.name)}
                                 </p>
                             </div>
@@ -103,21 +103,21 @@ export function StepUpload({
                                 size="icon"
                                 onClick={onRemoveFile}
                                 disabled={isAnalyzing}
-                                className="shrink-0 h-8 w-8 text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                                className="shrink-0 h-8 w-8 text-paper-muted hover:text-red-500 hover:bg-red-500/10 dark:hover:text-red-400"
                                 aria-label="Remove file"
                             >
                                 <X className="h-4 w-4" />
                             </Button>
                         </div>
                         {isCSVOrTSV && (
-                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
+                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-ink-500">
                                 <Checkbox
                                     id="hasHeader"
                                     checked={hasHeader}
                                     onCheckedChange={(c) => onHasHeaderChange(c === true)}
-                                    className="border-white/20 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                                    className="border-ink-500 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
                                 />
-                                <Label htmlFor="hasHeader" className="text-sm text-gray-400 cursor-pointer">
+                                <Label htmlFor="hasHeader" className="text-sm text-paper-muted cursor-pointer">
                                     First row is header
                                 </Label>
                             </div>
@@ -132,7 +132,7 @@ export function StepUpload({
                         >
                             Review schema
                         </Button>
-                        <p className="text-xs text-gray-500 text-center">We’ll detect columns and types from your file.</p>
+                        <p className="text-xs text-paper-muted text-center">We’ll detect columns and types from your file.</p>
                     </div>
                 </div>
             )}

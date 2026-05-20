@@ -40,11 +40,11 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                     )}
                     <div
                         className={cn(
-                            'flex h-16 w-16 items-center justify-center rounded-2xl',
-                            status === 'creating_table' && 'bg-emerald-500/10 text-emerald-400',
-                            status === 'uploading' && 'bg-emerald-500/10 text-emerald-400',
-                            status === 'success' && 'bg-emerald-500/15 text-emerald-400',
-                            status === 'error' && 'bg-red-500/10 text-red-400'
+                            'flex h-16 w-16 items-center justify-center rounded-xs',
+                            status === 'creating_table' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                            status === 'uploading' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                            status === 'success' && 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+                            status === 'error' && 'bg-red-500/10 text-red-600 dark:text-red-400'
                         )}
                     >
                         {status === 'creating_table' && <Database className="h-8 w-8" />}
@@ -56,13 +56,13 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
 
                 {/* Text */}
                 <div className="space-y-1">
-                    <h3 className="text-lg font-semibold text-white">
+                    <h3 className="text-lg font-semibold text-paper">
                         {status === 'creating_table' && 'Creating table…'}
                         {status === 'uploading' && 'Importing…'}
                         {status === 'success' && 'Done'}
                         {status === 'error' && 'Import failed'}
                     </h3>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-paper-muted">
                         {status === 'creating_table' && 'Setting up your table.'}
                         {status === 'uploading' && 'Uploading your data.'}
                         {status === 'success' && 'Your data is ready to query.'}
@@ -72,7 +72,7 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
 
                 {/* Progress bar */}
                 {(status === 'uploading' || status === 'creating_table') && (
-                    <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
+                    <div className="w-full h-1 rounded-full bg-ink-300 overflow-hidden">
                         <motion.div
                             className="h-full bg-emerald-500"
                             initial={{ x: '-100%' }}
@@ -104,7 +104,7 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                             onClick={onClose}
                             variant="outline"
                             className={cn(
-                                "flex-1 h-11 border-white/15 text-gray-300 hover:bg-white/10 hover:text-white",
+                                "flex-1 h-11 border-ink-500 bg-ink-100 text-paper hover:bg-ink-200",
                                 canViewTable && "sm:flex-initial"
                             )}
                         >
@@ -122,8 +122,8 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                         className="w-full space-y-4"
                         aria-live="assertive"
                     >
-                        <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-4 text-left">
-                            <p className="text-sm font-mono text-red-200 break-words max-h-36 overflow-auto">
+                        <div className="rounded-xs bg-red-500/10 border border-red-500/20 p-4 text-left dark:bg-red-500/10">
+                            <p className="text-sm font-mono text-red-700 dark:text-red-200 break-words max-h-36 overflow-auto">
                                 {error || 'An unknown error occurred.'}
                             </p>
                         </div>
@@ -132,17 +132,17 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                                 variant="outline"
                                 size="sm"
                                 onClick={handleCopyError}
-                                className="border-white/10 text-gray-400 hover:bg-white/10 h-9"
+                                className="border-ink-500 bg-ink-100 text-paper-muted hover:bg-ink-200 h-9"
                             >
                                 <Copy className="h-3.5 w-3.5 mr-1.5" />
                                 Copy
                             </Button>
                             {onTryAgain && (
-                                <Button onClick={onTryAgain} size="sm" className="bg-emerald-600 hover:bg-emerald-500 h-9">
+                                <Button onClick={onTryAgain} size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white h-9">
                                     Try again
                                 </Button>
                             )}
-                            <Button variant="ghost" size="sm" onClick={onClose} className="text-gray-400 hover:bg-white/10 h-9">
+                            <Button variant="ghost" size="sm" onClick={onClose} className="text-paper-muted hover:text-paper hover:bg-ink-200 h-9">
                                 Cancel
                             </Button>
                         </div>

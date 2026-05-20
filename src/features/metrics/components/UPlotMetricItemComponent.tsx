@@ -219,7 +219,7 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
 
   if (!data.timestamps.length) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500">
+      <div className="flex items-center justify-center h-full text-paper-faint">
         No data available
       </div>
     );
@@ -229,14 +229,14 @@ const UPlotMetricItemComponent: React.FC<UPlotMetricItemComponentProps> = ({
     <div className="relative w-full h-full">
       {/* Hover tooltip */}
       {hoveredValues && (
-        <div className="absolute top-2 right-2 z-10 px-3 py-2 rounded-lg bg-black/80 border border-white/10 backdrop-blur-md pointer-events-none">
-          <div className="text-xs text-gray-400 mb-1">{hoveredValues.time}</div>
+        <div className="absolute top-2 right-2 z-10 px-3 py-2 rounded-xs bg-ink-100 border border-ink-500 shadow-sm backdrop-blur-md pointer-events-none">
+          <div className="text-xs text-paper-muted mb-1">{hoveredValues.time}</div>
           <div className="flex flex-col gap-1">
             {hoveredValues.values.map((v, i) => (
               <div key={i} className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: v.color }} />
-                <span className="text-xs text-gray-300">{v.label}:</span>
-                <span className="text-sm font-medium text-white">{v.value}{unit}</span>
+                <span className="text-xs text-paper-muted">{v.label}:</span>
+                <span className="text-sm font-medium text-paper">{v.value}{unit}</span>
               </div>
             ))}
           </div>

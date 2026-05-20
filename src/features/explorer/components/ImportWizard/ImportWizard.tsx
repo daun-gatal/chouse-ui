@@ -333,10 +333,10 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
         <DialogHeader className="p-0 border-0 flex-none min-w-0" aria-label="Import wizard">
             <div className="flex items-center gap-4 min-w-0">
                 <div className="flex items-center gap-2 min-w-0 shrink">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400" aria-hidden>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xs bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" aria-hidden>
                         <FileUp className="h-4 w-4" />
                     </div>
-                    <DialogTitle className="text-base font-semibold text-white truncate">Import data</DialogTitle>
+                    <DialogTitle className="text-base font-semibold text-paper truncate">Import data</DialogTitle>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                     {STEPS.map((s, i) => (
@@ -344,7 +344,7 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                             key={s.id}
                             className={cn(
                                 "h-1.5 w-1.5 rounded-full transition-colors",
-                                i + 1 === currentStepIndex ? "bg-emerald-400" : i + 1 < currentStepIndex ? "bg-emerald-400/60" : "bg-white/20"
+                                i + 1 === currentStepIndex ? "bg-emerald-500" : i + 1 < currentStepIndex ? "bg-emerald-500/60" : "bg-ink-500"
                             )}
                             aria-hidden
                         />
@@ -352,13 +352,13 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                 </div>
                 <div className="flex-1 min-w-0 flex justify-end">
                     <Select value={selectedDb} onValueChange={setSelectedDb}>
-                        <SelectTrigger className="h-8 w-[130px] text-xs bg-white/5 border-white/10 text-gray-300 focus:ring-1 focus:ring-emerald-500/50 rounded-lg">
-                            <DatabaseIcon className="h-3.5 w-3.5 text-gray-500 mr-1.5 shrink-0" />
+                        <SelectTrigger className="h-8 w-[130px] text-xs bg-ink-200 border-ink-500 text-paper-muted focus:ring-1 focus:ring-emerald-500/50 rounded-xs">
+                            <DatabaseIcon className="h-3.5 w-3.5 text-paper-faint mr-1.5 shrink-0" />
                             <SelectValue placeholder="Database" />
                         </SelectTrigger>
-                        <SelectContent className="z-[100] border-white/10 bg-gray-900 text-gray-300">
+                        <SelectContent className="z-[100] border-ink-500 bg-ink-100 text-paper">
                             {databases.map(db => (
-                                <SelectItem key={db.name} value={db.name} className="focus:bg-emerald-500/15 focus:text-emerald-400 text-sm">
+                                <SelectItem key={db.name} value={db.name} className="focus:bg-emerald-500/15 focus:text-emerald-600 dark:focus:text-emerald-400 text-sm">
                                     {db.name}
                                 </SelectItem>
                             ))}
@@ -375,21 +375,21 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
             onOpenChange={(open) => { if (!open) handleClose(); }}
             dialogId="uploadFile"
             title={dialogTitle}
-            windowClassName="rounded-2xl border border-white/10 bg-gray-900 text-white shadow-2xl shadow-black/40"
-            headerClassName="px-5 py-3 border-b border-white/10 bg-gray-900/80"
-            footerClassName="px-5 py-4 border-t border-white/10 bg-gray-900/95"
-            closeButtonClassName="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg"
-            contentClassName="bg-gray-900 text-gray-100"
+            windowClassName="rounded-xs border border-ink-500 bg-ink-100 text-paper shadow-xl"
+            headerClassName="px-5 py-3 border-b border-ink-500 bg-ink-100"
+            footerClassName="px-5 py-4 border-t border-ink-500 bg-ink-100"
+            closeButtonClassName="text-paper-muted hover:text-paper hover:bg-ink-200 rounded-xs"
+            contentClassName="bg-ink-100 text-paper"
             footer={
                 <DialogFooter className="p-0 border-0 bg-transparent gap-3 flex-wrap sm:flex-nowrap">
                     {step === 'upload' && (
-                        <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-white/10" onClick={handleClose} aria-label="Cancel">
+                        <Button variant="ghost" className="text-paper-muted hover:text-paper hover:bg-ink-200" onClick={handleClose} aria-label="Cancel">
                             Cancel
                         </Button>
                     )}
                     {step === 'preview' && (
                         <>
-                            <Button variant="ghost" onClick={reset} className="text-gray-400 hover:text-white hover:bg-white/10 gap-2 order-2 sm:order-1" aria-label="Back">
+                            <Button variant="ghost" onClick={reset} className="text-paper-muted hover:text-paper hover:bg-ink-200 gap-2 order-2 sm:order-1" aria-label="Back">
                                 <ChevronRight className="h-4 w-4 rotate-180" /> Back
                             </Button>
                             <Button
@@ -406,7 +406,7 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
             }
         >
             <div
-                className="flex-1 min-h-0 overflow-auto relative bg-gray-900"
+                className="flex-1 min-h-0 overflow-auto relative bg-ink-100"
                 role="region"
                 aria-label={step === 'upload' ? 'Upload file' : step === 'preview' ? 'Preview schema' : 'Import progress'}
             >
@@ -427,10 +427,10 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                                 isAnalyzing={isAnalyzing}
                             />
                             {isAnalyzing && (
-                                <div className="absolute inset-0 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-10" aria-live="polite" aria-busy="true">
-                                    <div className="flex flex-col items-center gap-4 rounded-xl bg-gray-800/90 border border-white/10 px-8 py-6">
-                                        <div className="h-10 w-10 rounded-full border-2 border-emerald-500/40 border-t-emerald-400 animate-spin" />
-                                        <p className="text-sm text-gray-300">Analyzing file…</p>
+                                <div className="absolute inset-0 bg-ink-100/80 backdrop-blur-sm flex items-center justify-center z-10" aria-live="polite" aria-busy="true">
+                                    <div className="flex flex-col items-center gap-4 rounded-xs bg-ink-200 border border-ink-500 px-8 py-6">
+                                        <div className="h-10 w-10 rounded-full border-2 border-emerald-500/40 border-t-emerald-500 animate-spin" />
+                                        <p className="text-sm text-paper-muted">Analyzing file…</p>
                                     </div>
                                 </div>
                             )}
