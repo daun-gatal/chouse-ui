@@ -256,6 +256,103 @@ export function useQueryPatterns(
   });
 }
 
+export interface ByRedashRow {
+  redash_query_id: string;        // numeric id pulled from /* … query_id: N … */
+  redash_username: string;        // pulled from /* … Username: … */, anyLast
+  executions: number;
+  avg_duration_ms: number;
+  total_duration_ms: number;
+  max_duration_ms: number;
+  avg_memory: number;
+  max_memory: number;
+  total_read_rows: number;
+  total_read_bytes: number;
+  sample_query_id: string;        // ClickHouse query_id (for drill-down)
+}
+
+export type ByRedashSort =
+  | "total_duration_ms"
+  | "executions"
+  | "avg_duration_ms"
+  | "max_duration_ms"
+  | "max_memory"
+  | "total_read_rows"
+  | "total_read_bytes";
+
+/**
+ * Aggregate queries by the Redash query_id embedded in the SQL leading
+ * comment. Redash submits queries with
+ *   /* Username: ..., query_id: NNNN, Queue: ..., Job ID: ... *\/
+ * so we can roll up every execution of the same saved Redash query
+ * (across schedules, ad-hoc reruns, snapshot fetches) into one row.
+ * Filters out queries with no matching comment so the result is purely
+ * "things Redash sent".
+ */
+export function useQueryByRedashId(
+  hoursBack: number = 6,
+  sortBy: ByRedashSort = "total_duration_ms",
+  limit: number = 500,
+  customRange?: AbsoluteRange,
+  options?: Partial<UseQueryOptions<ByRedashRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: [
+      "queryByRedashId",
+      hoursBack,
+      sortBy,
+      limit,
+      customRange?.start ?? null,
+      customRange?.end ?? null,
+      activeConnectionId,
+    ] as const,
+    queryFn: async () => {
+      // Aliases use _str suffix where they shadow source columns — same
+      // alias-shadow trap we hit on Mutations / Replication earlier on
+      // ClickHouse 24.11 (NO_COMMON_TYPE String vs DateTime).
+      const sql = `
+        SELECT
+          extract(query, 'query_id:\\\\s*(\\\\d+)') AS redash_query_id,
+          anyLast(trim(extract(query, 'Username:\\\\s*([^,]+)'))) AS redash_username,
+          count() AS executions,
+          avg(query_duration_ms) AS avg_duration_ms,
+          sum(query_duration_ms) AS total_duration_ms,
+          max(query_duration_ms) AS max_duration_ms,
+          avg(memory_usage) AS avg_memory,
+          max(memory_usage) AS max_memory,
+          sum(read_rows) AS total_read_rows,
+          sum(read_bytes) AS total_read_bytes,
+          anyLast(query_id) AS sample_query_id
+        FROM system.query_log
+        WHERE ${timeWindowWhere(hoursBack, customRange)}
+          AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
+          AND query LIKE '%query_id:%'
+        GROUP BY redash_query_id
+        HAVING redash_query_id != ''
+        ORDER BY ${sortBy} DESC
+        LIMIT ${limit}
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        redash_query_id: String(row.redash_query_id ?? ""),
+        redash_username: String(row.redash_username ?? ""),
+        executions: num(row.executions),
+        avg_duration_ms: num(row.avg_duration_ms),
+        total_duration_ms: num(row.total_duration_ms),
+        max_duration_ms: num(row.max_duration_ms),
+        avg_memory: num(row.avg_memory),
+        max_memory: num(row.max_memory),
+        total_read_rows: num(row.total_read_rows),
+        total_read_bytes: num(row.total_read_bytes),
+        sample_query_id: String(row.sample_query_id ?? ""),
+      }));
+    },
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
 export interface ProfileEventEntry {
   name: string;
   value: number;
