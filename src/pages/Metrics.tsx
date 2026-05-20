@@ -53,8 +53,6 @@ import { Progress } from "@/components/ui/progress";
 import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
 import { ServerMemoryBreakdown } from "@/components/monitoring/ServerMemoryBreakdown";
 import { TopResourceQueriesPanel } from "@/components/monitoring/TopResourceQueriesPanel";
-import { MemoryExceptionStrip } from "@/components/monitoring/MemoryExceptionStrip";
-import { BackgroundPoolStrip } from "@/components/monitoring/BackgroundPoolStrip";
 import { useMetrics, useProductionMetrics } from "@/hooks";
 import { cn, formatBytes as formatBytesUtil, formatCompactNumber, formatNumber } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
@@ -2147,11 +2145,6 @@ export default function Metrics({
                 >
                   <ServerMemoryBreakdown variant="inline" />
 
-                  {/* Memory exceptions strip — OOM / timeout / etc. roll-up */}
-                  <div className="border-t border-ink-500">
-                    <MemoryExceptionStrip hoursBack={1} />
-                  </div>
-
                   {allocatorMemoryData && allocatorMemoryData.values.some(v => v.some(n => n > 0)) && (
                     <div className="border-t border-ink-500 p-4">
                       <div className="mb-3 flex items-center gap-2.5">
@@ -2230,16 +2223,6 @@ export default function Metrics({
                         value={String(prodMetrics?.resources?.file_descriptors_used || 0)}
                       />
                     </div>
-                  </div>
-
-                  {/* Background pool snapshot — merges, fetches, schedules, etc. */}
-                  <div className="border-t border-ink-500">
-                    <div className="px-4 pt-3 pb-1">
-                      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-                        Background pools · live workers
-                      </span>
-                    </div>
-                    <BackgroundPoolStrip />
                   </div>
 
                   {/* Time-series stack inside the same card */}
