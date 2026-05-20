@@ -21,7 +21,6 @@ function Calendar({
         months: "flex flex-col sm:flex-row gap-4 sm:gap-6 relative",
         month: "space-y-4",
         month_caption: "flex justify-center pt-1 relative items-center text-paper text-sm font-medium",
-        caption_label: "text-sm font-medium",
         dropdowns: "flex items-center gap-2",
         dropdown_root:
           "relative inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-2 py-0.5 text-paper hover:border-ink-700 hover:bg-ink-300 cursor-pointer",

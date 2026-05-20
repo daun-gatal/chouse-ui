@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { RangePickerDrilldown } from "@/components/monitoring/RangePickerDrilldown";
 import {
   Dialog,
   DialogContent,
@@ -832,9 +832,9 @@ export default function LogsPage({
                   </div>
 
                   {/* Calendar column */}
-                  <div className="flex flex-col p-3">
+                  <div className="flex w-[300px] flex-col">
                     {/* Mode toggle — Range vs Single day */}
-                    <div className="mb-3 flex items-center gap-1 self-start rounded-xs border border-ink-500 bg-ink-200 p-0.5">
+                    <div className="m-3 mb-0 flex items-center gap-1 self-start rounded-xs border border-ink-500 bg-ink-200 p-0.5">
                       {(["range", "single"] as const).map((m) => {
                         const active = pickMode === m;
                         return (
@@ -855,51 +855,16 @@ export default function LogsPage({
                       })}
                     </div>
 
-                    {pickMode === "range" ? (
-                      <Calendar
-                        mode="range"
-                        selected={{ from: customRange?.from, to: customRange?.to }}
-                        onSelect={(r) => setCustomRange({ from: r?.from, to: r?.to })}
-                        numberOfMonths={2}
-                        captionLayout="dropdown"
-                        startMonth={new Date(2015, 0)}
-                        endMonth={new Date(new Date().getFullYear() + 1, 11)}
-                        className="pointer-events-auto"
-                        classNames={{
-                          day_selected:
-                            "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
-                          day_today: "bg-ink-200 text-paper rounded-xs",
-                          range_middle: "bg-brand/10 text-brand !rounded-none",
-                        }}
-                      />
-                    ) : (
-                      <Calendar
-                        mode="single"
-                        selected={customRange?.from}
-                        onSelect={(d) => {
-                          if (!d) return;
-                          // Single-day pick — span the entire day 00:00:00 to 23:59:59.
-                          const start = new Date(d);
-                          start.setHours(0, 0, 0, 0);
-                          const end = new Date(d);
-                          end.setHours(23, 59, 59, 999);
-                          setCustomRange({ from: start, to: end });
-                          setRangePopoverOpen(false);
-                        }}
-                        numberOfMonths={2}
-                        captionLayout="dropdown"
-                        startMonth={new Date(2015, 0)}
-                        endMonth={new Date(new Date().getFullYear() + 1, 11)}
-                        className="pointer-events-auto"
-                        classNames={{
-                          day_selected:
-                            "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
-                          day_today: "bg-ink-200 text-paper rounded-xs",
-                        }}
-                      />
-                    )}
+                    <RangePickerDrilldown
+                      mode={pickMode}
+                      range={customRange}
+                      onChange={(r) =>
+                        setCustomRange(r ? { from: r.from, to: r.to } : null)
+                      }
+                      onSingleDayApply={() => setRangePopoverOpen(false)}
+                    />
 
-                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-ink-500 pt-3">
+                    <div className="flex items-center justify-between gap-3 border-t border-ink-500 px-3 py-3">
                       <button
                         type="button"
                         onClick={() => {
@@ -927,11 +892,7 @@ export default function LogsPage({
                         >
                           Apply range
                         </button>
-                      ) : (
-                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                          Click a day to apply
-                        </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
