@@ -837,6 +837,69 @@ export function useBlockedTaskSummary(
   });
 }
 
+export interface ServerMemoryBreakdown {
+  total_bytes: number;            // OSMemoryTotal — physical RAM on the box
+  available_bytes: number;        // OSMemoryAvailable — free + cacheable
+  clickhouse_rss_bytes: number;   // MemoryResident — actual ClickHouse RSS
+  active_queries_bytes: number;   // SUM(memory_usage) FROM system.processes
+  merges_mutations_bytes: number; // CurrentMetric_MergesMutationsMemoryTracking
+  mark_cache_bytes: number;       // CurrentMetric_MarkCacheBytes
+  uncompressed_cache_bytes: number; // CurrentMetric_UncompressedCacheBytes
+  primary_key_bytes: number;      // TotalPrimaryKeyBytesInMemoryAllocated
+  index_granularity_bytes: number;// TotalIndexGranularityBytesInMemoryAllocated
+}
+
+/**
+ * One-shot snapshot of the "where did the RAM go?" question. Surfaces the
+ * RSS that ClickHouse actually holds, the slices we can attribute (caches,
+ * merges, in-flight queries, index data structures), and the OS-level
+ * total/free numbers so the page can show "X of Y used, here's why".
+ *
+ * Every component is read from a separate scalar subquery so the call
+ * gracefully reports 0 for any metric the server build doesn't expose,
+ * instead of dropping the whole row.
+ */
+export function useServerMemoryBreakdown(
+  options?: Partial<UseQueryOptions<ServerMemoryBreakdown, Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["serverMemoryBreakdown", activeConnectionId] as const,
+    queryFn: async () => {
+      // Scalar subqueries individually — each returns NULL if the metric or
+      // table is absent, and num(NULL) → 0 keeps the math sane.
+      const sql = `
+        SELECT
+          (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSMemoryTotal' LIMIT 1) AS total_bytes,
+          (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSMemoryAvailable' LIMIT 1) AS available_bytes,
+          (SELECT value FROM system.asynchronous_metrics WHERE metric = 'MemoryResident' LIMIT 1) AS clickhouse_rss_bytes,
+          (SELECT sum(memory_usage) FROM system.processes) AS active_queries_bytes,
+          (SELECT value FROM system.metrics WHERE metric = 'MergesMutationsMemoryTracking' LIMIT 1) AS merges_mutations_bytes,
+          (SELECT value FROM system.metrics WHERE metric = 'MarkCacheBytes' LIMIT 1) AS mark_cache_bytes,
+          (SELECT value FROM system.metrics WHERE metric = 'UncompressedCacheBytes' LIMIT 1) AS uncompressed_cache_bytes,
+          (SELECT value FROM system.asynchronous_metrics WHERE metric = 'TotalPrimaryKeyBytesInMemoryAllocated' LIMIT 1) AS primary_key_bytes,
+          (SELECT value FROM system.asynchronous_metrics WHERE metric = 'TotalIndexGranularityBytesInMemoryAllocated' LIMIT 1) AS index_granularity_bytes
+      `;
+      const result = await queryApi.executeQuery(sql);
+      const row = (result.data as Array<Record<string, unknown>>)[0] ?? {};
+      return {
+        total_bytes: num(row.total_bytes),
+        available_bytes: num(row.available_bytes),
+        clickhouse_rss_bytes: num(row.clickhouse_rss_bytes),
+        active_queries_bytes: num(row.active_queries_bytes),
+        merges_mutations_bytes: num(row.merges_mutations_bytes),
+        mark_cache_bytes: num(row.mark_cache_bytes),
+        uncompressed_cache_bytes: num(row.uncompressed_cache_bytes),
+        primary_key_bytes: num(row.primary_key_bytes),
+        index_granularity_bytes: num(row.index_granularity_bytes),
+      };
+    },
+    staleTime: 15_000,
+    ...options,
+  });
+}
+
 export interface SchemaLintRow {
   database: string;
   table: string;

@@ -54,6 +54,7 @@ import ConfirmationDialog from '@/components/common/ConfirmationDialog';
 import { toast } from 'sonner';
 import { useLiveQueries, useKillQuery, useLiveQueriesStats } from '@/hooks/useLiveQueries';
 import { useBlockedTaskSummary } from '@/hooks/useMonitoringTimeline';
+import { ServerMemoryBreakdown } from '@/components/monitoring/ServerMemoryBreakdown';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
 import { cn } from '@/lib/utils';
 import type { LiveQuery } from '@/api/live-queries';
@@ -597,6 +598,9 @@ export default function LiveQueriesTable({
                         pct={serverMemoryPct}
                     />
                 )}
+
+                {/* Detailed breakdown — what's eating the RSS */}
+                <ServerMemoryBreakdown />
 
                 {/* Stats grid — editorial hairline */}
                 <div className="grid grid-cols-2 border-l border-t border-ink-500 md:grid-cols-4">
