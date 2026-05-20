@@ -16,6 +16,11 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Palette,
+  Sun,
+  Moon,
+  Clock,
+  MonitorSmartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthStore, useRbacStore } from "@/stores";
@@ -24,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId } from "@/api/client";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";
+import { useTheme } from "@/components/common/theme-provider";
 import { log } from "@/lib/log";
 
 // ============================================
@@ -110,6 +116,89 @@ const StatusFooter: React.FC<{
       </div>
       <span className={MONO_FAINT}>{meta}</span>
     </div>
+  );
+};
+
+// ============================================
+// Appearance Card — theme selector
+// ============================================
+
+type ThemeMode = "auto" | "system" | "light" | "dark";
+
+const THEME_OPTIONS: Array<{
+  id: ThemeMode;
+  label: string;
+  hint: string;
+  icon: React.ElementType;
+}> = [
+  { id: "auto", label: "Auto", hint: "Light 06:00–18:00 local · dark otherwise", icon: Clock },
+  { id: "system", label: "System", hint: "Follow your OS preference", icon: MonitorSmartphone },
+  { id: "light", label: "Light", hint: "Always paper", icon: Sun },
+  { id: "dark", label: "Dark", hint: "Always ink", icon: Moon },
+];
+
+const AppearanceCard: React.FC = () => {
+  const { theme, resolvedTheme, setTheme } = useTheme();
+
+  return (
+    <SettingCard
+      title="Appearance"
+      description="How the interface looks for you"
+      icon={Palette}
+      delay={0.25}
+      className="md:col-span-1"
+    >
+      <div className="flex flex-col gap-2">
+        {THEME_OPTIONS.map((opt) => {
+          const active = theme === opt.id;
+          const Icon = opt.icon;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setTheme(opt.id)}
+              aria-pressed={active}
+              className={cn(
+                "group flex w-full items-center justify-between gap-3 rounded-xs border bg-ink-200 px-3 py-2.5 text-left transition-colors",
+                active
+                  ? "border-brand"
+                  : "border-ink-500 hover:border-ink-700 hover:bg-ink-300"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className={cn(
+                    "grid h-7 w-7 place-items-center rounded-xs border transition-colors",
+                    active
+                      ? "border-brand bg-ink-100 text-brand"
+                      : "border-ink-500 bg-ink-100 text-paper-muted"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" aria-hidden />
+                </span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[13px] font-medium text-paper">{opt.label}</span>
+                  <span className={MONO_FAINT}>{opt.hint}</span>
+                </div>
+              </div>
+              {active && (
+                <span
+                  className="rounded-xs border border-brand/40 bg-brand/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-brand"
+                  aria-hidden
+                >
+                  Active
+                </span>
+              )}
+            </button>
+          );
+        })}
+        <StatusFooter
+          label="Now rendering"
+          meta={resolvedTheme === "dark" ? "Dark" : "Light"}
+          tone="brand"
+        />
+      </div>
+    </SettingCard>
   );
 };
 
@@ -641,6 +730,7 @@ export default function Preferences() {
             <ConnectionDetailsCard url={url} version={version} />
             <DataAccessCard rules={allRules} connections={connections} isAdmin={isAdmin()} />
             <EffectivePermissionsCard permissions={user?.permissions || []} />
+            <AppearanceCard />
           </div>
         </div>
       </div>

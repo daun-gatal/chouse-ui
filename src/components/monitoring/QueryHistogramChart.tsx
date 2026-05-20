@@ -16,6 +16,7 @@ import {
   type HistogramMetric,
 } from "@/hooks/useMonitoringTimeline";
 import { SkeletonChart } from "@/components/common/Skeletons";
+import { useChartColors } from "@/hooks/useChartColors";
 import { cn } from "@/lib/utils";
 
 interface QueryHistogramChartProps {
@@ -38,6 +39,7 @@ export function QueryHistogramChart({
   metric,
   onMetricChange,
 }: QueryHistogramChartProps) {
+  const c = useChartColors();
   const { data = [], isLoading, isFetching, error } = useQueryHistogram(
     metric,
     hoursBack,
@@ -131,40 +133,40 @@ export function QueryHistogramChart({
           <div className="h-60 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                 <XAxis
                   dataKey="label"
                   tick={{
                     fontSize: 10,
-                    fill: "#71717a",
+                    fill: c.tick,
                     fontFamily: "var(--font-mono, monospace)",
                   }}
-                  axisLine={{ stroke: "#262626" }}
-                  tickLine={{ stroke: "#262626" }}
+                  axisLine={{ stroke: c.grid }}
+                  tickLine={{ stroke: c.grid }}
                   interval={0}
                 />
                 <YAxis
                   tick={{
                     fontSize: 10,
-                    fill: "#71717a",
+                    fill: c.tick,
                     fontFamily: "var(--font-mono, monospace)",
                   }}
-                  axisLine={{ stroke: "#262626" }}
-                  tickLine={{ stroke: "#262626" }}
+                  axisLine={{ stroke: c.grid }}
+                  tickLine={{ stroke: c.grid }}
                   width={50}
                   allowDecimals={false}
                   tickFormatter={(v) => v.toLocaleString()}
                 />
                 <Tooltip
-                  cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                  cursor={{ fill: c.cursor }}
                   contentStyle={{
-                    backgroundColor: "#141414",
-                    border: "1px solid #262626",
+                    backgroundColor: c.tooltipBg,
+                    border: `1px solid ${c.tooltipBorder}`,
                     borderRadius: 2,
                     fontSize: 11,
-                    color: "#ffffff",
+                    color: c.tooltipText,
                   }}
-                  labelStyle={{ color: "#a1a1aa", fontSize: 10, marginBottom: 4 }}
+                  labelStyle={{ color: c.tooltipLabel, fontSize: 10, marginBottom: 4 }}
                   formatter={(value: unknown) => [
                     Number(value ?? 0).toLocaleString(),
                     "Queries",

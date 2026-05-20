@@ -21,7 +21,7 @@ export const DiffEditor: React.FC<DiffEditorProps> = ({
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
-    const { theme } = useTheme();
+    const { resolvedTheme: theme } = useTheme();
 
     const updateDecorations = (editor: monaco.editor.IStandaloneDiffEditor, originalText: string, modifiedText: string) => {
         const changes = diffLines(originalText, modifiedText);

@@ -13,6 +13,7 @@ import { Layers, RefreshCw } from "lucide-react";
 
 import { usePartLogTimeline, type TimelineBucket } from "@/hooks/useMonitoringTimeline";
 import { SkeletonChart } from "@/components/common/Skeletons";
+import { useChartColors } from "@/hooks/useChartColors";
 import { cn } from "@/lib/utils";
 
 interface Series {
@@ -51,6 +52,7 @@ export function PartLogTimelineChart({
   refreshKey,
 }: PartLogTimelineChartProps) {
   const { data, isLoading, isFetching, error, refetch } = usePartLogTimeline(hoursBack, bucket);
+  const c = useChartColors();
 
   useEffect(() => {
     if (refreshKey !== undefined && refreshKey > 0) refetch();
@@ -144,32 +146,32 @@ export function PartLogTimelineChart({
                     </linearGradient>
                   ))}
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
                 <XAxis
                   dataKey="time"
                   tickFormatter={(t) => formatTime(t, bucket)}
-                  tick={{ fontSize: 10, fill: "#71717a", fontFamily: "var(--font-mono, monospace)" }}
-                  axisLine={{ stroke: "#262626" }}
-                  tickLine={{ stroke: "#262626" }}
+                  tick={{ fontSize: 10, fill: c.tick, fontFamily: "var(--font-mono, monospace)" }}
+                  axisLine={{ stroke: c.grid }}
+                  tickLine={{ stroke: c.grid }}
                   minTickGap={32}
                 />
                 <YAxis
-                  tick={{ fontSize: 10, fill: "#71717a", fontFamily: "var(--font-mono, monospace)" }}
-                  axisLine={{ stroke: "#262626" }}
-                  tickLine={{ stroke: "#262626" }}
+                  tick={{ fontSize: 10, fill: c.tick, fontFamily: "var(--font-mono, monospace)" }}
+                  axisLine={{ stroke: c.grid }}
+                  tickLine={{ stroke: c.grid }}
                   width={36}
                   tickFormatter={(v) => v.toLocaleString()}
                   allowDecimals={false}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#141414",
-                    border: "1px solid #262626",
+                    backgroundColor: c.tooltipBg,
+                    border: `1px solid ${c.tooltipBorder}`,
                     borderRadius: 2,
                     fontSize: 11,
-                    color: "#ffffff",
+                    color: c.tooltipText,
                   }}
-                  labelStyle={{ color: "#a1a1aa", fontSize: 10, marginBottom: 4 }}
+                  labelStyle={{ color: c.tooltipLabel, fontSize: 10, marginBottom: 4 }}
                   labelFormatter={(label) => formatTime(String(label ?? ""), bucket)}
                   formatter={(value: unknown, name?: unknown) => [
                     Number(value ?? 0).toLocaleString(),

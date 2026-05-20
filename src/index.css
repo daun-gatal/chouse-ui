@@ -3,22 +3,27 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Editorial design tokens — exposed as Tailwind v4 utilities (bg-ink-50, text-paper-muted, font-mono, etc). */
+/*
+ * Editorial design tokens — exposed as Tailwind v4 utilities (bg-ink-50,
+ * text-paper-muted, font-mono, etc). The ink/paper scales are wired to
+ * CSS variables so they can flip between light and dark themes via the
+ * `.dark` class on <html>. Brand stays constant.
+ */
 @theme {
-  --color-ink-0: #000000;
-  --color-ink-50: #0a0a0a;
-  --color-ink-100: #0f0f0f;
-  --color-ink-200: #141414;
-  --color-ink-300: #1a1a1a;
-  --color-ink-400: #1f1f1f;
-  --color-ink-500: #262626;
-  --color-ink-700: #404040;
-  --color-ink-800: #525252;
+  --color-ink-0: var(--ink-0);
+  --color-ink-50: var(--ink-50);
+  --color-ink-100: var(--ink-100);
+  --color-ink-200: var(--ink-200);
+  --color-ink-300: var(--ink-300);
+  --color-ink-400: var(--ink-400);
+  --color-ink-500: var(--ink-500);
+  --color-ink-700: var(--ink-700);
+  --color-ink-800: var(--ink-800);
 
-  --color-paper: #fafafa;
-  --color-paper-muted: #a1a1aa;
-  --color-paper-dim: #71717a;
-  --color-paper-faint: #52525b;
+  --color-paper: var(--paper);
+  --color-paper-muted: var(--paper-muted);
+  --color-paper-dim: var(--paper-dim);
+  --color-paper-faint: var(--paper-faint);
 
   --color-brand: #ffcc01;
   --color-brand-soft: #ffe680;
@@ -28,6 +33,65 @@
   --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 }
 
+/* Light defaults — applied to :root and used when no `.dark` class is on <html>. */
+:root {
+  --ink-0: #ffffff;
+  --ink-50: #fafafa;      /* page bg */
+  --ink-100: #f4f4f5;     /* card bg */
+  --ink-200: #e4e4e7;     /* input bg / subtle hover */
+  --ink-300: #d4d4d8;     /* divider tint */
+  --ink-400: #a1a1aa;
+  --ink-500: #d4d4d8;     /* hairline border on light */
+  --ink-700: #a1a1aa;     /* stronger border */
+  --ink-800: #71717a;
+
+  --paper: #18181b;       /* primary text — near-black */
+  --paper-muted: #52525b;
+  --paper-dim: #71717a;
+  --paper-faint: #a1a1aa;
+
+  /* Recharts + inline references — light values */
+  --chart-grid: #d4d4d8;
+  --chart-tick: #71717a;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #d4d4d8;
+  --chart-tooltip-text: #18181b;
+  --chart-tooltip-label: #52525b;
+  --chart-cursor: rgba(0, 0, 0, 0.04);
+
+  --scrollbar-thumb: #d4d4d8;
+  --scrollbar-thumb-hover: #a1a1aa;
+}
+
+/* Dark overrides — applied when <html> has the `.dark` class. */
+.dark {
+  --ink-0: #000000;
+  --ink-50: #0a0a0a;
+  --ink-100: #0f0f0f;
+  --ink-200: #141414;
+  --ink-300: #1a1a1a;
+  --ink-400: #1f1f1f;
+  --ink-500: #262626;
+  --ink-700: #404040;
+  --ink-800: #525252;
+
+  --paper: #fafafa;
+  --paper-muted: #a1a1aa;
+  --paper-dim: #71717a;
+  --paper-faint: #52525b;
+
+  --chart-grid: #262626;
+  --chart-tick: #71717a;
+  --chart-tooltip-bg: #141414;
+  --chart-tooltip-border: #262626;
+  --chart-tooltip-text: #ffffff;
+  --chart-tooltip-label: #a1a1aa;
+  --chart-cursor: rgba(255, 255, 255, 0.03);
+
+  --scrollbar-thumb: #262626;
+  --scrollbar-thumb-hover: #404040;
+}
+
 @layer base {
   * {
     @reference border-border;
@@ -35,7 +99,7 @@
 
     /* Editorial scrollbar: hairline ink, slightly more visible on hover */
     scrollbar-width: thin;
-    scrollbar-color: #404040 transparent;
+    scrollbar-color: var(--scrollbar-thumb-hover) transparent;
 
     &::-webkit-scrollbar {
       width: 10px;
@@ -47,14 +111,14 @@
     }
 
     &::-webkit-scrollbar-thumb {
-      background-color: #262626;
+      background-color: var(--scrollbar-thumb);
       border: 2px solid transparent;
       background-clip: content-box;
       border-radius: 6px;
     }
 
     &::-webkit-scrollbar-thumb:hover {
-      background-color: #404040;
+      background-color: var(--scrollbar-thumb-hover);
       background-clip: content-box;
     }
   }
@@ -72,7 +136,7 @@
 
   ::selection {
     background-color: #ffcc01;
-    color: #0a0a0a;
+    color: #18181b;
   }
 }
 

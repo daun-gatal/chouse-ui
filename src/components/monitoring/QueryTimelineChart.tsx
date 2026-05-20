@@ -21,6 +21,7 @@ import {
   type TimelineBucket,
 } from "@/hooks/useMonitoringTimeline";
 import { SkeletonChart } from "@/components/common/Skeletons";
+import { useChartColors, type ChartColors } from "@/hooks/useChartColors";
 import { cn } from "@/lib/utils";
 
 interface Series {
@@ -72,6 +73,7 @@ export function QueryTimelineChart({
     customRange
   );
   const [chartType, setChartType] = useState<ChartType>("stacked-bar");
+  const chartColors = useChartColors();
 
   useEffect(() => {
     if (refreshKey !== undefined && refreshKey > 0) refetch();
@@ -173,7 +175,7 @@ export function QueryTimelineChart({
         ) : (
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              {renderChart(chartType, data ?? [], bucket)}
+              {renderChart(chartType, data ?? [], bucket, chartColors)}
             </ResponsiveContainer>
           </div>
         )}
@@ -208,18 +210,18 @@ export function QueryTimelineChart({
   );
 }
 
-function sharedTooltip(bucket: TimelineBucket) {
+function sharedTooltip(bucket: TimelineBucket, c: ChartColors) {
   return (
     <Tooltip
-      cursor={{ fill: "rgba(255,255,255,0.03)" }}
+      cursor={{ fill: c.cursor }}
       contentStyle={{
-        backgroundColor: "#141414",
-        border: "1px solid #262626",
+        backgroundColor: c.tooltipBg,
+        border: `1px solid ${c.tooltipBorder}`,
         borderRadius: 2,
         fontSize: 11,
-        color: "#ffffff",
+        color: c.tooltipText,
       }}
-      labelStyle={{ color: "#a1a1aa", fontSize: 10, marginBottom: 4 }}
+      labelStyle={{ color: c.tooltipLabel, fontSize: 10, marginBottom: 4 }}
       labelFormatter={(label) => formatTime(String(label ?? ""), bucket)}
       formatter={(value: unknown, name?: unknown) => [
         Number(value ?? 0).toLocaleString(),
@@ -233,22 +235,22 @@ function sharedTooltip(bucket: TimelineBucket) {
   );
 }
 
-function sharedAxes(bucket: TimelineBucket) {
+function sharedAxes(bucket: TimelineBucket, c: ChartColors) {
   return (
     <>
-      <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
+      <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
       <XAxis
         dataKey="time"
         tickFormatter={(t) => formatTime(t, bucket)}
-        tick={{ fontSize: 10, fill: "#71717a", fontFamily: "var(--font-mono, monospace)" }}
-        axisLine={{ stroke: "#262626" }}
-        tickLine={{ stroke: "#262626" }}
+        tick={{ fontSize: 10, fill: c.tick, fontFamily: "var(--font-mono, monospace)" }}
+        axisLine={{ stroke: c.grid }}
+        tickLine={{ stroke: c.grid }}
         minTickGap={32}
       />
       <YAxis
-        tick={{ fontSize: 10, fill: "#71717a", fontFamily: "var(--font-mono, monospace)" }}
-        axisLine={{ stroke: "#262626" }}
-        tickLine={{ stroke: "#262626" }}
+        tick={{ fontSize: 10, fill: c.tick, fontFamily: "var(--font-mono, monospace)" }}
+        axisLine={{ stroke: c.grid }}
+        tickLine={{ stroke: c.grid }}
         width={36}
         tickFormatter={(v) => v.toLocaleString()}
         allowDecimals={false}
@@ -257,7 +259,7 @@ function sharedAxes(bucket: TimelineBucket) {
   );
 }
 
-function renderChart(type: ChartType, data: unknown[], bucket: TimelineBucket) {
+function renderChart(type: ChartType, data: unknown[], bucket: TimelineBucket, c: ChartColors) {
   const dataAny = data as Array<Record<string, number | string>>;
   if (type === "stacked-area") {
     return (
@@ -270,8 +272,8 @@ function renderChart(type: ChartType, data: unknown[], bucket: TimelineBucket) {
             </linearGradient>
           ))}
         </defs>
-        {sharedAxes(bucket)}
-        {sharedTooltip(bucket)}
+        {sharedAxes(bucket, c)}
+        {sharedTooltip(bucket, c)}
         {SERIES.map((s) => (
           <Area
             key={s.key}
@@ -291,8 +293,8 @@ function renderChart(type: ChartType, data: unknown[], bucket: TimelineBucket) {
   if (type === "line") {
     return (
       <LineChart data={dataAny} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-        {sharedAxes(bucket)}
-        {sharedTooltip(bucket)}
+        {sharedAxes(bucket, c)}
+        {sharedTooltip(bucket, c)}
         {SERIES.map((s) => (
           <Line
             key={s.key}
@@ -310,8 +312,8 @@ function renderChart(type: ChartType, data: unknown[], bucket: TimelineBucket) {
 
   return (
     <BarChart data={dataAny} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-      {sharedAxes(bucket)}
-      {sharedTooltip(bucket)}
+      {sharedAxes(bucket, c)}
+      {sharedTooltip(bucket, c)}
       {SERIES.map((s) => (
         <Bar key={s.key} dataKey={s.key} stackId="qk" fill={s.color} fillOpacity={0.9} />
       ))}

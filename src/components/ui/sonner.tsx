@@ -27,11 +27,11 @@ const editorialClassNames = {
 };
 
 const Toaster = ({ toastOptions, ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
+  const { resolvedTheme } = useTheme();
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={resolvedTheme as ToasterProps["theme"]}
       className="toaster group"
       toastOptions={{
         ...toastOptions,
