@@ -556,7 +556,7 @@ export default function LiveQueriesTable({
     if (error) {
         return (
             <div className="flex flex-col items-center justify-center p-12 text-center">
-                <div className="mb-4 grid h-12 w-12 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+                <div className="mb-4 grid h-12 w-12 place-items-center rounded-xs border border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                     <AlertCircle className="h-5 w-5" aria-hidden />
                 </div>
                 <h3 className="mb-2 text-[15px] font-semibold text-paper">Failed to load live queries</h3>

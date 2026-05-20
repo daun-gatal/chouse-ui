@@ -1870,7 +1870,7 @@ export default function AiChatBubble() {
                                                     <button
                                                         type="button"
                                                         onClick={handleStop}
-                                                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300 transition-colors hover:border-red-700 hover:bg-red-900/50"
+                                                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xs border border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300 transition-colors hover:border-red-700 hover:bg-red-900/50"
                                                         title="Stop generating"
                                                         aria-label="Stop generating"
                                                     >

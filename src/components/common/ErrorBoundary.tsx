@@ -69,7 +69,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="flex min-h-screen items-center justify-center bg-ink-50 px-4">
           <div className="w-full max-w-md">
             <div className="rounded-xs border border-ink-500 bg-ink-100 p-8 text-center">
-              <span className="mx-auto mb-6 grid h-12 w-12 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+              <span className="mx-auto mb-6 grid h-12 w-12 place-items-center rounded-xs border border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                 <AlertTriangle className="h-5 w-5" aria-hidden />
               </span>
 
@@ -153,7 +153,7 @@ export function QueryErrorFallback({ error, resetErrorBoundary }: QueryErrorBoun
   return (
     <div className="rounded-xs border border-red-900/60 bg-red-950/40 p-6">
       <div className="flex items-start gap-4">
-        <span className="grid h-9 w-9 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+        <span className="grid h-9 w-9 place-items-center rounded-xs border border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
           <AlertTriangle className="h-4 w-4" aria-hidden />
         </span>
 
@@ -168,7 +168,7 @@ export function QueryErrorFallback({ error, resetErrorBoundary }: QueryErrorBoun
             size="sm"
             variant="outline"
             onClick={resetErrorBoundary}
-            className="h-9 gap-2 rounded-xs border-red-900/60 bg-red-950/40 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-red-300 hover:border-red-800 hover:bg-red-950/60 hover:text-red-200"
+            className="h-9 gap-2 rounded-xs border-red-300 bg-red-50 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300 hover:border-red-800 hover:bg-red-950/60 hover:text-red-200"
           >
             <RefreshCcw className="h-3.5 w-3.5" />
             Retry

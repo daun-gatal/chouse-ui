@@ -282,11 +282,11 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
                     </TableCell>
                     <TableCell className="text-center">
                       {rule.isAllowed ? (
-                        <span className="inline-flex items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+                        <span className="inline-flex items-center rounded-xs border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
                           Allow
                         </span>
                       ) : (
-                        <span className="inline-flex items-center rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                        <span className="inline-flex items-center rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                           Deny
                         </span>
                       )}
@@ -299,7 +299,7 @@ export const UserDataAccess: React.FC<UserDataAccessProps> = ({
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                          className="h-8 w-8 rounded-xs text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteRule(index);

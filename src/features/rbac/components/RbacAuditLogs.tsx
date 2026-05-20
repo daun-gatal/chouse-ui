@@ -202,11 +202,11 @@ export const RbacAuditLogs: React.FC = () => {
           </div>
           <div className="border-r border-ink-500 p-4">
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Successful</p>
-            <p className="mt-2 font-mono text-[22px] font-semibold tabular-nums text-emerald-300">{stats.byStatus.success || 0}</p>
+            <p className="mt-2 font-mono text-[22px] font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{stats.byStatus.success || 0}</p>
           </div>
           <div className="border-r border-ink-500 p-4">
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Failed</p>
-            <p className="mt-2 font-mono text-[22px] font-semibold tabular-nums text-red-300">
+            <p className="mt-2 font-mono text-[22px] font-semibold tabular-nums text-red-700 dark:text-red-300">
               {(stats.byStatus.failed || 0) + (stats.byStatus.failure || 0)}
             </p>
           </div>
@@ -342,7 +342,7 @@ export const RbacAuditLogs: React.FC = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-full justify-start rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                    className="h-8 w-full justify-start rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
                     onClick={() => {
                       setDateRange({});
                       setPage(1);
@@ -496,12 +496,12 @@ export const RbacAuditLogs: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       {log.status === 'success' ? (
-                        <span className="inline-flex items-center gap-1 rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+                        <span className="inline-flex items-center gap-1 rounded-xs border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
                           <CheckCircle className="h-3 w-3" />
                           Success
                         </span>
                       ) : (log.status === 'failed' || log.status === 'failure') ? (
-                        <span className="inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                        <span className="inline-flex items-center gap-1 rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                           <XCircle className="h-3 w-3" />
                           Failed
                         </span>

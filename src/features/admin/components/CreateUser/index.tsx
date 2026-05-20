@@ -371,7 +371,7 @@ const CreateUser: React.FC = () => {
       >
         <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
           <div className="flex items-center gap-3 border-b border-ink-500 px-5 py-4">
-            <span className="grid h-9 w-9 place-items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 text-emerald-300">
+            <span className="grid h-9 w-9 place-items-center rounded-xs border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
               <Check className="h-4 w-4" aria-hidden />
             </span>
             <div className="flex flex-col gap-0.5">
@@ -736,7 +736,7 @@ const CreateUser: React.FC = () => {
                       </span>
                     )}
                     {requiresDataAccess && dataAccessRules.length === 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                      <span className="inline-flex items-center gap-1 rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                         Required
                       </span>
                     )}
@@ -787,8 +787,8 @@ const CreateUser: React.FC = () => {
                             <div className="flex flex-wrap items-center gap-2">
                               <span className={
                                 rule.isAllowed
-                                  ? "inline-flex items-center gap-1 rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300"
-                                  : "inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300"
+                                  ? "inline-flex items-center gap-1 rounded-xs border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                  : "inline-flex items-center gap-1 rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
                               }>
                                 {rule.isAllowed ? "Allow" : "Deny"}
                               </span>
@@ -815,7 +815,7 @@ const CreateUser: React.FC = () => {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="h-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                              className="h-8 rounded-xs text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
                               onClick={() => handleDeleteDataAccessRule(index)}
                             >
                               <Trash2 className="h-4 w-4" />

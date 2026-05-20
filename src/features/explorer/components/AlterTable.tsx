@@ -456,7 +456,7 @@ const AlterTable: React.FC = () => {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 rounded-xs opacity-0 group-hover:opacity-100 text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                          className="h-7 w-7 rounded-xs opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -464,7 +464,7 @@ const AlterTable: React.FC = () => {
                       <AlertDialogContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <AlertDialogHeader>
                           <AlertDialogTitle className="flex items-center gap-3 text-paper">
-                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xs border border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                               <AlertTriangle className="h-4 w-4" aria-hidden />
                             </span>
                             <span className="flex flex-col gap-0.5 text-left">

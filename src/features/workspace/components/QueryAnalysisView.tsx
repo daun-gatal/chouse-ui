@@ -36,7 +36,7 @@ interface ComplexityCardProps {
 // recipe pattern used elsewhere (border-X-900/60 + bg-X-950/40 + text-X-300).
 const COMPLEXITY_COLORS: Record<ComplexityLevel, { chip: string; text: string; bar: string }> = {
   low: {
-    chip: 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300',
+    chip: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300',
     text: 'text-emerald-300',
     bar: 'bg-emerald-500',
   },
@@ -46,7 +46,7 @@ const COMPLEXITY_COLORS: Record<ComplexityLevel, { chip: string; text: string; b
     bar: 'bg-amber-500',
   },
   high: {
-    chip: 'border-red-900/60 bg-red-950/40 text-red-300',
+    chip: 'border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300',
     text: 'text-red-300',
     bar: 'bg-red-500',
   },
@@ -98,7 +98,7 @@ export const ComplexityCard: React.FC<ComplexityCardProps> = ({ complexity }) =>
       {/* Additional Info */}
       <div className="mt-3 flex flex-wrap gap-1.5 border-t border-ink-500 pt-3">
         {metrics.hasLimit && (
-          <span className="inline-flex items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">LIMIT ✓</span>
+          <span className="inline-flex items-center rounded-xs border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">LIMIT ✓</span>
         )}
         {metrics.hasWhere && (
           <span className="inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">WHERE ✓</span>
@@ -143,7 +143,7 @@ interface RecommendationsCardProps {
 const SEVERITY_CONFIG: Record<RecommendationSeverity, { icon: React.FC<{ className?: string }>; chip: string; text: string }> = {
   info:     { icon: Info,          chip: 'border-ink-500 bg-ink-200 text-paper-muted', text: 'text-paper-muted' },
   warning:  { icon: AlertTriangle, chip: 'border-amber-900/60 bg-amber-950/40 text-amber-300', text: 'text-amber-300' },
-  critical: { icon: AlertCircle,   chip: 'border-red-900/60 bg-red-950/40 text-red-300', text: 'text-red-300' },
+  critical: { icon: AlertCircle,   chip: 'border-red-300 bg-red-50 text-red-300', text: 'text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300' },
 };
 
 export const RecommendationsCard: React.FC<RecommendationsCardProps> = ({ recommendations }) => {

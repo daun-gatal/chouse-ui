@@ -1189,12 +1189,12 @@ export default function Metrics({
                 >
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+                      <span className="grid h-9 w-9 place-items-center rounded-xs border border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                         <AlertTriangle className="h-4 w-4" aria-hidden />
                       </span>
                       <h3 className="text-[14px] font-semibold tracking-tight text-paper">Recent errors</h3>
                     </div>
-                    <span className="inline-flex items-center gap-1 rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                       {prodMetrics.errors.length} issues
                     </span>
                   </div>
@@ -1204,7 +1204,7 @@ export default function Metrics({
                         <span className="truncate font-mono text-[12px] text-red-200 max-w-[180px]" title={err.exception_name}>
                           {err.exception_name}
                         </span>
-                        <span className="rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-red-300">
+                        <span className="rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                           {err.count}
                         </span>
                       </div>
@@ -1866,9 +1866,9 @@ export default function Metrics({
                               </td>
                               <td className="text-center">
                                 {rep.is_readonly ? (
-                                  <span className="inline-flex items-center rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">READONLY</span>
+                                  <span className="inline-flex items-center rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">READONLY</span>
                                 ) : (
-                                  <span className="inline-flex items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">HEALTHY</span>
+                                  <span className="inline-flex items-center rounded-xs border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">HEALTHY</span>
                                 )}
                               </td>
                               <td className="text-right">
@@ -2043,7 +2043,7 @@ export default function Metrics({
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="inline-flex items-center rounded-xs border border-red-900/60 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+                                <span className="inline-flex items-center rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                                   {err.exception_name}
                                 </span>
                                 <code className="rounded-xs border border-ink-500 bg-ink-300 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Code: {err.exception_code}</code>
@@ -2070,7 +2070,7 @@ export default function Metrics({
                     animate={{ opacity: 1, y: 0 }}
                     className="rounded-md border border-ink-500 bg-ink-100 p-8 text-center md:col-span-3"
                   >
-                    <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xs border border-emerald-900/60 bg-emerald-950/40 text-emerald-300">
+                    <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xs border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
                       <CheckCircle2 className="h-5 w-5" aria-hidden />
                     </span>
                     <p className="text-[13px] font-medium text-paper">No errors in the selected time range</p>
@@ -2383,7 +2383,7 @@ export default function Metrics({
                 className={cn(
                   "h-9 gap-2 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em]",
                   refreshInterval > 0
-                    ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-300 hover:border-emerald-800 hover:bg-emerald-950/60"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 hover:border-emerald-800 hover:bg-emerald-950/60"
                     : "border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200"
                 )}
                 onClick={() => setInternalRefreshInterval(refreshInterval > 0 ? 0 : 30)}

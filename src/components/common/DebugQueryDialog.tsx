@@ -149,7 +149,7 @@ export function DebugQueryDialog({
             Fix Available
         </span>
     ) : apiError ? (
-        <span className="inline-flex items-center gap-1.5 rounded-xs border border-red-900/60 bg-red-950/40 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">
+        <span className="inline-flex items-center gap-1.5 rounded-xs border border-red-300 bg-red-50 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
             Failed
         </span>
     ) : (

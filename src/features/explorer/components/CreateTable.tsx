@@ -535,7 +535,7 @@ const CreateTable: React.FC = () => {
                             variant="ghost"
                             onClick={() => handleRemoveColumn(column.id)}
                             disabled={columns.length === 1}
-                            className="h-9 w-9 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300 disabled:opacity-30 disabled:hover:bg-transparent"
+                            className="h-9 w-9 rounded-xs text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300 disabled:opacity-30 disabled:hover:bg-transparent"
                             title="Remove column"
                           >
                             <Trash2 className="h-4 w-4" />

@@ -457,8 +457,8 @@ const DataAccessCard: React.FC<{
                                           className={cn(
                                             "inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]",
                                             rule.isAllowed
-                                              ? "border border-emerald-900/60 bg-emerald-950/40 text-emerald-300"
-                                              : "border border-red-900/60 bg-red-950/40 text-red-300",
+                                              ? "border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                              : "border border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
                                           )}
                                         >
                                           {rule.isAllowed ? "Allow" : "Deny"}

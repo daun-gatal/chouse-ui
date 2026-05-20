@@ -1887,7 +1887,7 @@ export default function ClickHouseUsersManagement() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => setDeleteUser(user)}
-                                className="h-8 w-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                                className="h-8 w-8 rounded-xs text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>

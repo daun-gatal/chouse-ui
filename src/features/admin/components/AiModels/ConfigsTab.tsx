@@ -204,7 +204,7 @@ export default function ConfigsTab() {
                                         <TableCell className="text-paper-dim">{item.provider?.name}</TableCell>
                                         <TableCell>
                                             {item.isActive ? (
-                                                <span className="inline-flex items-center gap-1 rounded-xs border border-emerald-900/60 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+                                                <span className="inline-flex items-center gap-1 rounded-xs border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
                                                     <CheckCircle2 className="h-3 w-3" />Active
                                                 </span>
                                             ) : (
@@ -248,7 +248,7 @@ export default function ConfigsTab() {
                                                 {canDelete && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            <Button variant="ghost" size="icon" onClick={() => setDeleteItem(item)} className="h-8 w-8 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300">
+                                                            <Button variant="ghost" size="icon" onClick={() => setDeleteItem(item)} className="h-8 w-8 rounded-xs text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/40 dark:hover:text-red-300">
                                                                 <Trash2 className="h-3.5 w-3.5" />
                                                             </Button>
                                                         </TooltipTrigger>
