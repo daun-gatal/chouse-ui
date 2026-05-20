@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react"
 import { DayPicker } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
@@ -22,6 +22,16 @@ function Calendar({
         month: "space-y-4",
         month_caption: "flex justify-center pt-1 relative items-center text-paper text-sm font-medium",
         caption_label: "text-sm font-medium",
+        dropdowns: "flex items-center gap-2",
+        dropdown_root:
+          "relative inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-2 py-0.5 text-paper hover:border-ink-700 hover:bg-ink-300 cursor-pointer",
+        // <select> sits invisibly on top of the visible caption_label so the
+        // browser-native picker still works while we control the chrome.
+        dropdown:
+          "absolute inset-0 z-10 cursor-pointer appearance-none bg-transparent text-transparent opacity-0",
+        caption_label:
+          "inline-flex items-center gap-1 text-[12px] font-medium tracking-tight text-paper pointer-events-none",
+        chevron: "ml-0.5 h-3 w-3 text-paper-dim shrink-0",
         nav: "absolute top-0 inset-x-0 flex items-center justify-between px-1 pointer-events-none z-10",
         button_previous: cn(
           buttonVariants({ variant: "outline" }),
@@ -54,14 +64,14 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        // react-day-picker v9 renders a single Chevron component for both nav
-        // buttons and orientation is passed via props.
-        Chevron: ({ orientation }: { orientation?: "up" | "down" | "left" | "right" }) =>
-          orientation === "right" ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          ),
+        // react-day-picker v9 uses a single Chevron component for both nav
+        // buttons (left/right) and dropdown indicators (down/up).
+        Chevron: ({ orientation }: { orientation?: "up" | "down" | "left" | "right" }) => {
+          if (orientation === "right") return <ChevronRight className="h-4 w-4" />;
+          if (orientation === "down") return <ChevronDown className="h-3 w-3" />;
+          if (orientation === "up") return <ChevronUp className="h-3 w-3" />;
+          return <ChevronLeft className="h-4 w-4" />;
+        },
       }}
       {...props}
     />

@@ -333,6 +333,7 @@ export default function LogsPage({
   const [timeRangeHours, setTimeRangeHours] = useState<number>(6);
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date } | null>(null);
   const [rangePopoverOpen, setRangePopoverOpen] = useState(false);
+  const [pickMode, setPickMode] = useState<"range" | "single">("range");
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [sortKey, setSortKey] = useState<SortKey>("event_time");
@@ -832,22 +833,72 @@ export default function LogsPage({
 
                   {/* Calendar column */}
                   <div className="flex flex-col p-3">
-                    <span className="px-1 pb-2 font-mono text-[9px] uppercase tracking-[0.18em] text-paper-faint">
-                      Custom range
-                    </span>
-                    <Calendar
-                      mode="range"
-                      selected={{ from: customRange?.from, to: customRange?.to }}
-                      onSelect={(r) => setCustomRange({ from: r?.from, to: r?.to })}
-                      numberOfMonths={2}
-                      className="pointer-events-auto"
-                      classNames={{
-                        day_selected:
-                          "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
-                        day_today: "bg-ink-200 text-paper rounded-xs",
-                        range_middle: "bg-brand/10 text-brand !rounded-none",
-                      }}
-                    />
+                    {/* Mode toggle — Range vs Single day */}
+                    <div className="mb-3 flex items-center gap-1 self-start rounded-xs border border-ink-500 bg-ink-200 p-0.5">
+                      {(["range", "single"] as const).map((m) => {
+                        const active = pickMode === m;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setPickMode(m)}
+                            className={cn(
+                              "rounded-xs px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
+                              active
+                                ? "bg-brand text-ink-50"
+                                : "text-paper-muted hover:bg-ink-300 hover:text-paper"
+                            )}
+                          >
+                            {m === "range" ? "Range" : "Single day"}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {pickMode === "range" ? (
+                      <Calendar
+                        mode="range"
+                        selected={{ from: customRange?.from, to: customRange?.to }}
+                        onSelect={(r) => setCustomRange({ from: r?.from, to: r?.to })}
+                        numberOfMonths={2}
+                        captionLayout="dropdown"
+                        startMonth={new Date(2015, 0)}
+                        endMonth={new Date(new Date().getFullYear() + 1, 11)}
+                        className="pointer-events-auto"
+                        classNames={{
+                          day_selected:
+                            "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
+                          day_today: "bg-ink-200 text-paper rounded-xs",
+                          range_middle: "bg-brand/10 text-brand !rounded-none",
+                        }}
+                      />
+                    ) : (
+                      <Calendar
+                        mode="single"
+                        selected={customRange?.from}
+                        onSelect={(d) => {
+                          if (!d) return;
+                          // Single-day pick — span the entire day 00:00:00 to 23:59:59.
+                          const start = new Date(d);
+                          start.setHours(0, 0, 0, 0);
+                          const end = new Date(d);
+                          end.setHours(23, 59, 59, 999);
+                          setCustomRange({ from: start, to: end });
+                          setRangePopoverOpen(false);
+                        }}
+                        numberOfMonths={2}
+                        captionLayout="dropdown"
+                        startMonth={new Date(2015, 0)}
+                        endMonth={new Date(new Date().getFullYear() + 1, 11)}
+                        className="pointer-events-auto"
+                        classNames={{
+                          day_selected:
+                            "bg-brand text-ink-50 hover:bg-brand-soft focus:bg-brand rounded-xs",
+                          day_today: "bg-ink-200 text-paper rounded-xs",
+                        }}
+                      />
+                    )}
+
                     <div className="mt-3 flex items-center justify-between gap-3 border-t border-ink-500 pt-3">
                       <button
                         type="button"
@@ -859,22 +910,28 @@ export default function LogsPage({
                       >
                         Clear
                       </button>
-                      <button
-                        type="button"
-                        disabled={!customRange?.from || !customRange?.to}
-                        onClick={() => {
-                          if (customRange?.from && !customRange.to) {
-                            setCustomRange({
-                              from: customRange.from,
-                              to: customRange.from,
-                            });
-                          }
-                          setRangePopoverOpen(false);
-                        }}
-                        className="rounded-xs bg-brand px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-40"
-                      >
-                        Apply range
-                      </button>
+                      {pickMode === "range" ? (
+                        <button
+                          type="button"
+                          disabled={!customRange?.from || !customRange?.to}
+                          onClick={() => {
+                            if (customRange?.from && !customRange.to) {
+                              setCustomRange({
+                                from: customRange.from,
+                                to: customRange.from,
+                              });
+                            }
+                            setRangePopoverOpen(false);
+                          }}
+                          className="rounded-xs bg-brand px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-40"
+                        >
+                          Apply range
+                        </button>
+                      ) : (
+                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                          Click a day to apply
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
