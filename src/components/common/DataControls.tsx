@@ -1,13 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Play, Pause, RefreshCw, Clock } from "lucide-react";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { Play, Pause, RefreshCw } from "lucide-react";
 
 interface DataControlsProps {
     lastUpdated: string;
@@ -17,9 +10,6 @@ interface DataControlsProps {
     onAutoRefreshChange: (value: boolean) => void;
     className?: string;
     showLastUpdated?: boolean;
-    showTimeRange?: boolean;
-    timeRange?: string;
-    onTimeRangeChange?: (value: string) => void;
 }
 
 export function DataControls({
@@ -30,9 +20,6 @@ export function DataControls({
     onAutoRefreshChange,
     className,
     showLastUpdated = true,
-    showTimeRange = false,
-    timeRange = "1h",
-    onTimeRangeChange,
 }: DataControlsProps) {
     return (
         <div className={cn("flex items-center gap-3", className)}>
@@ -41,26 +28,6 @@ export function DataControls({
                     Updated {lastUpdated}
                 </span>
             )}
-
-            {/* Reserve the time-range slot regardless of showTimeRange so the
-                surrounding header layout stays stable when switching tabs.
-                Visibility is the only thing that toggles. */}
-            <div className="w-[120px] shrink-0">
-                {showTimeRange && onTimeRangeChange && (
-                    <Select value={timeRange} onValueChange={onTimeRangeChange}>
-                        <SelectTrigger className="w-full bg-ink-200 border-ink-500 h-8 text-paper font-mono text-[11px]">
-                            <Clock className="h-3.5 w-3.5 mr-2 text-paper-muted" />
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="15m">15 minutes</SelectItem>
-                            <SelectItem value="1h">1 hour</SelectItem>
-                            <SelectItem value="6h">6 hours</SelectItem>
-                            <SelectItem value="24h">24 hours</SelectItem>
-                        </SelectContent>
-                    </Select>
-                )}
-            </div>
 
             <div className="flex items-center p-1 gap-1 bg-ink-200 rounded-xs border border-ink-500">
                 <Button

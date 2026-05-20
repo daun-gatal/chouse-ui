@@ -312,7 +312,6 @@ interface MetricsProps {
   embedded?: boolean;
   refreshKey?: number;
   autoRefresh?: boolean;
-  timeRange?: string;
   onRefreshChange?: (isRefreshing: boolean) => void;
 }
 
@@ -320,7 +319,6 @@ export default function Metrics({
   embedded = false,
   refreshKey,
   autoRefresh: externalAutoRefresh = false,
-  timeRange: externalTimeRange = "1h",
   onRefreshChange
 }: MetricsProps) {
   const { hasPermission } = useRbacStore();
@@ -331,8 +329,7 @@ export default function Metrics({
   const [activeTab, setActiveTab] = useState("overview");
   const [isRefreshCooldown, setIsRefreshCooldown] = useState(false);
 
-  // Use external timeRange if embedded, otherwise internal
-  const timeRange = embedded ? externalTimeRange : internalTimeRange;
+  const timeRange = internalTimeRange;
 
   // Use external autoRefresh if embedded (fixed 10s), otherwise internal
   const refreshInterval = embedded
@@ -872,8 +869,9 @@ export default function Metrics({
 
         {/* Tabs for different metric views - hidden if only Overview is available */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 space-y-4">
-          {hasAdvancedMetrics && (
-            <TabsList className="h-9 self-start justify-start gap-0.5 rounded-xs border border-ink-500 bg-ink-100 p-0.5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            {hasAdvancedMetrics ? (
+              <TabsList className="h-9 justify-start gap-0.5 rounded-xs border border-ink-500 bg-ink-100 p-0.5">
               <TabsTrigger
                 value="overview"
                 className={cn(
@@ -955,7 +953,23 @@ export default function Metrics({
                 </TabsTrigger>
               </>
             </TabsList>
-          )}
+            ) : <span />}
+
+            {embedded && (
+              <Select value={internalTimeRange} onValueChange={setInternalTimeRange}>
+                <SelectTrigger className="h-8 w-[130px] rounded-xs border-ink-500 bg-ink-100 font-mono text-[11px] text-paper">
+                  <Clock className="mr-2 h-3.5 w-3.5 text-paper-dim" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15m">15 minutes</SelectItem>
+                  <SelectItem value="1h">1 hour</SelectItem>
+                  <SelectItem value="6h">6 hours</SelectItem>
+                  <SelectItem value="24h">24 hours</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </div>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="flex-1 overflow-auto space-y-4 pr-1 min-h-0 data-[state=active]:flex flex-col">

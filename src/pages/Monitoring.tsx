@@ -167,7 +167,6 @@ export default function Monitoring() {
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [timeRange, setTimeRange] = useState("1h");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
 
@@ -229,9 +228,6 @@ export default function Monitoring() {
               onRefresh={handleRefresh}
               autoRefresh={autoRefresh}
               onAutoRefreshChange={handleAutoRefreshChange}
-              showTimeRange={activeTab === "metrics"}
-              timeRange={timeRange}
-              onTimeRangeChange={setTimeRange}
             />
             <Button
               variant="ghost"
@@ -276,7 +272,6 @@ export default function Monitoring() {
               embedded
               refreshKey={refreshKey}
               autoRefresh={autoRefresh}
-              timeRange={timeRange}
               onRefreshChange={setIsRefreshing}
             />
           </div>
