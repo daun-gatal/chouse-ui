@@ -16,7 +16,7 @@ const BOOT_LOG = [
   { kind: "muted", text: "" },
   { kind: "muted", text: "[RBAC] Initializing RBAC system…" },
   { kind: "muted", text: "[RBAC] Database type: sqlite" },
-  { kind: "muted", text: "[RBAC] App version: 2.12.9" },
+  { kind: "muted", text: "[RBAC] App version: 2.15.0" },
   { kind: "muted", text: "[RBAC] Running migration: 1.17.1" },
   { kind: "accent", text: "[RBAC] system ready" },
   { kind: "muted", text: "" },
@@ -107,8 +107,9 @@ export default function Hero() {
             >
               Open-source web interface for ClickHouse with{" "}
               <span className="text-paper">first-class RBAC</span>, encrypted credentials,
-              audit logging, and a SQL workspace that does not pretend the database is
-              a toy.
+              audit logging, a SQL workspace, and{" "}
+              <span className="text-paper">ClickHouse-native monitoring</span> — that does
+              not pretend the database is a toy.
             </motion.p>
 
             {/* Actions */}

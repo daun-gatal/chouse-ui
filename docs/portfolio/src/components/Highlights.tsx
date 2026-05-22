@@ -30,9 +30,9 @@ const HIGHLIGHTS: Highlight[] = [
   },
   {
     icon: Activity,
-    title: "Live operations",
-    description: "Real-time query monitoring, system metrics dashboard, comprehensive audit logs.",
-    meta: "Always on",
+    title: "Deep observability",
+    description: "ClickHouse-native monitoring — query logs, memory breakdown, top-resource queries, replica lag, schema lints. No exporter to install.",
+    meta: "No exporter",
   },
 ];
 

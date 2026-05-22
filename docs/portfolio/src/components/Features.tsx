@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, Database, BarChart3, Palette, Lock, Users, FileText, Zap, Search,
   Download, Settings, Eye, Plus, Minus, Activity, Star, Sparkles, Bot, MessageSquare,
+  Gauge, MemoryStick, Layers, Stethoscope, Network, SunMoon,
   type LucideIcon,
 } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
@@ -51,6 +52,20 @@ const GROUPS: FeatureGroup[] = [
     ],
   },
   {
+    category: "Monitoring & Observability",
+    icon: Gauge,
+    items: [
+      { icon: FileText, title: "Query Logs", desc: "Five rollups: every execution, by pattern, by table, by Redash query_id, and a duration/memory histogram" },
+      { icon: MemoryStick, title: "Memory Breakdown", desc: "Server RSS attributed to queries, caches, merges, primary keys — vs total RAM" },
+      { icon: BarChart3, title: "Top Resource Queries", desc: "Heaviest queries by memory and CPU, straight from system.query_log" },
+      { icon: Activity, title: "Live Queries", desc: "Running queries with CPU time + thread count, sortable, with kill support" },
+      { icon: Network, title: "Cluster Activity", desc: "Mutations, replication queue, per-replica lag, blocked-task indicators" },
+      { icon: Layers, title: "Parts & Merges", desc: "system.part_log timeline of merges, mutations, downloads, removals" },
+      { icon: Stethoscope, title: "Schema Doctor", desc: "Nullable + oversized-integer lints ranked by on-disk bytes" },
+      { icon: Zap, title: "Latency Percentiles", desc: "p50 / p95 / p99 on the query histogram, no exporter required" },
+    ],
+  },
+  {
     category: "Query & Analytics",
     icon: BarChart3,
     items: [
@@ -65,10 +80,10 @@ const GROUPS: FeatureGroup[] = [
     category: "User Experience",
     icon: Palette,
     items: [
+      { icon: SunMoon, title: "Light + Dark + Auto", desc: "Warm-stone light theme, editorial dark, and an Auto mode that switches by local time of day" },
       { icon: Star, title: "Favorites & Recent", desc: "Pin databases and tables for instant access" },
-      { icon: Settings, title: "Responsive", desc: "Desktop and tablet, with draggable modals" },
-      { icon: Zap, title: "Keyboard Shortcuts", desc: "Power-user shortcuts across the workspace" },
-      { icon: Palette, title: "Dark Theme", desc: "Editorial dark UI tuned for long sessions" },
+      { icon: Settings, title: "Responsive", desc: "Container-query layouts adapt per component, not just per viewport" },
+      { icon: Zap, title: "Keyboard Shortcuts", desc: "Power-user shortcuts + ⌘K command palette" },
     ],
   },
 ];
@@ -83,7 +98,7 @@ export default function Features() {
           eyebrow="What's inside"
           eyebrowIndex={2}
           title="Everything you need to give ClickHouse to a team."
-          description="Five domains, one consistent UI. Click a category to expand its items."
+          description="Six domains, one consistent UI. Click a category to expand its items."
         />
 
         <div className="mt-16 grid grid-cols-12 gap-x-6 gap-y-4">

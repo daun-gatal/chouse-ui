@@ -48,6 +48,7 @@ CHouse UI provides security and access control features for teams that need:
 | **Access Control** | Full RBAC with granular permissions |
 | **Multi-Connection** | Manage multiple ClickHouse servers |
 | **Audit Trail** | Audit logging |
+| **Monitoring** | ClickHouse-native observability — query logs, memory breakdown, top-resource queries, replica lag, parts/merges, schema lints — no exporter required |
 
 > **Note**: Other ClickHouse tools serve different use cases well. CHouse UI is designed specifically for teams requiring centralized credential management, role-based access control, and audit capabilities.
 
@@ -82,23 +83,28 @@ CHouse UI provides security and access control features for teams that need:
 - **Overview Dashboard** - System stats, recent queries, and quick actions (admin only)
 
 ### 🔬 Monitoring & Observability
-- **Query logs** with four sub-views over `system.query_log`:
+- **Query logs** with five sub-views over `system.query_log`:
   - **Queries** — every execution as a dense table with sortable columns, SQL-keyword tooltip preview, memory-pressure flag (Flame ≥ 25 % / AlertTriangle ≥ 10 % cluster RAM), row checkboxes for side-by-side **Compare**, expanded-row drill-downs for **Profile events** and **Views triggered** (`system.query_views_log`)
   - **Patterns** — `normalizeQuery()` rollup with cumulative cost (Runs / Avg dur / **Total dur** / Max mem / Read rows / Read bytes), default sort Total dur DESC — finds the patterns hogging the most wall-clock time across all repetitions
   - **By table** — `arrayJoin(tables)` per-table rollup with `arrayFilter` push-down so busy clusters return in ~1 s
-  - **Histogram** — distribution of duration / memory / read rows / read bytes across the active window
+  - **By Redash** — groups every Redash-originated query by the `query_id` embedded in its leading SQL comment (`/* … query_id: NNNN … */`), so you can map cluster load back to the saved dashboard query. Runs / Min·Avg·Max·Total duration / Min·Max memory / read rows / read bytes, all sortable
+  - **Histogram** — distribution of duration / memory / read rows / read bytes across the active window, with **p50 / p95 / p99** chips (p99 amber-tinted to flag the tail)
 - **Query timeline chart** — stacked bar / stacked area / line variants, per `query_kind`
-- **Custom time range** — 15 m / 1 h / 6 h / 24 h presets unified with a 2-month range calendar in one popover
+- **Custom time range** — 15 m / 1 h / 6 h / 24 h presets + a Grafana-style drill-down calendar (day → month → year) in one popover
 - **Parts** — `system.part_log` stacked area chart of merges, mutations, downloads, removals + paginated event table
 - **Schema doctor** — Nullable column + oversized integer linter over `system.parts_columns`, ranked by on-disk bytes
-- **Cluster activity** — `system.mutations` + `system.replication_queue` with status chips and auto-refresh
-- **Live queries** — running queries with kill support
-- **Metrics** — 7 sub-tabs (Overview / Performance / Storage / Merges / Errors / System / Network)
+- **Cluster activity** — `system.mutations` + `system.replication_queue` with status chips, a blocked-task indicator strip (long queries / long merges / open mutations / max replica lag), and a per-replica status panel (`system.replicas` lag + queue depth)
+- **Live queries** — running queries with **CPU time + thread count**, sortable by duration / memory / rows / CPU, and kill support. A server-memory pressure strip puts the per-query totals in context (resident / total %)
+- **Metrics** — Overview / Performance / Storage / Merges / Errors / **Memory** / **CPU** / **ZooKeeper** / Network tabs:
+  - **Memory** — server RAM breakdown (RSS attributed to active queries / caches / merges / primary keys / index, vs total), allocator history, and a top-memory-queries table
+  - **CPU** — load avg / threads / pools, CPU mode-split + concurrency charts, and a top-CPU-queries table
+  - **ZooKeeper** — Keeper transactions, traffic, and system-load time-series
 
 ### 🎨 User Experience
-- **Editorial design system** — dark monochrome canvas with ClickHouse-yellow accent, Geist Sans + Geist Mono typography, hairline borders. Light theme on the roadmap (phase 3)
+- **Editorial design system** — ClickHouse-yellow accent, Geist Sans + Geist Mono typography, hairline borders
+- **Light + dark themes** — full light theme with a warm-stone palette and amber-shifted brand, plus an **Auto** mode that switches by local time of day (light 06:00–18:00, dark otherwise). Every chart, table, and pill is theme-aware
 - **Command palette** — ⌘/Ctrl+K opens RBAC-gated quick switcher (recent queries, pages, databases, tables, saved queries, actions, help)
-- **Responsive** — Works on desktop and tablet
+- **Responsive** — works on desktop and tablet; container-query layouts adapt per component, not just per viewport
 - **Connection Selector** - Quick server switching
 - **Keyboard Shortcuts** - Power user support
 
@@ -146,7 +152,7 @@ CHouse UI provides security and access control features for teams that need:
 ### Tested Compatibility
 
 Successfully tested with:
-- **ClickHouse**: Version 25
+- **ClickHouse**: Version 24.11 and 25 (monitoring suite verified end-to-end against a production 24.11 cluster)
 - **PostgreSQL**: Version 18 (for RBAC database)
 - **SQLite**: Version 3.51.0 (via Bun, for RBAC database)
 
