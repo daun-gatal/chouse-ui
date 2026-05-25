@@ -11,7 +11,7 @@
  * connectionId (via getUserConnections / super_admin override).
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { sql } from "drizzle-orm";
@@ -449,7 +449,7 @@ fleet.get(
 // Secrets are never returned; on save, a blank secret means "keep existing".
 // ============================================
 
-function requireSuperAdmin(c: Parameters<Parameters<typeof fleet.get>[1]>[0]): boolean {
+function requireSuperAdmin(c: Context): boolean {
   const user = getRbacUser(c);
   return (user.roles ?? []).includes("super_admin");
 }

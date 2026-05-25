@@ -306,7 +306,7 @@ function queryNodeTool(connections: { id: string; name: string }[]) {
             // Fail a slow/heavy diagnostic query fast (8s) instead of grinding —
             // on a busy prod cluster a system.query_log scan can otherwise eat
             // 15s+ per step and make the whole scan take minutes.
-            max_execution_time: "8",
+            max_execution_time: 8,
             max_result_rows: "200",
             result_overflow_mode: "break",
           },
@@ -355,7 +355,7 @@ async function recentHeavyQueries(connectionId: string, hours: number): Promise<
     const result = await client.query({
       query: recentHeavyQueriesSql(hours),
       format: "JSON",
-      clickhouse_settings: { readonly: "1", max_execution_time: "20", max_result_rows: "50" },
+      clickhouse_settings: { readonly: "1", max_execution_time: 20, max_result_rows: "50" },
     });
     const json = (await result.json()) as { data?: Record<string, unknown>[] };
     return (json.data ?? []).map((r) => {
@@ -404,7 +404,7 @@ async function explainEstimate(
     const result = await client.query({
       query: `EXPLAIN ESTIMATE ${sql}`,
       format: "JSON",
-      clickhouse_settings: { readonly: "1", max_execution_time: "10" },
+      clickhouse_settings: { readonly: "1", max_execution_time: 10 },
     });
     const json = (await result.json()) as {
       data?: { rows?: unknown; parts?: unknown; marks?: unknown }[];
