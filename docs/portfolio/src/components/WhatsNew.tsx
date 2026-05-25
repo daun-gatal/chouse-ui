@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { LayoutGrid, Stethoscope, BellRing, ArrowUpRight, type LucideIcon } from "lucide-react";
+import { LayoutGrid, Stethoscope, BellRing, Sparkles, ArrowUpRight, type LucideIcon } from "lucide-react";
 import { Section, Container } from "./Section";
 
 /**
@@ -32,6 +32,11 @@ const ITEMS: NewItem[] = [
     icon: BellRing,
     title: "Alerts to Slack, with auto-RCA",
     desc: "Threshold alerts on memory, heavy queries, and long-runners fire to Slack and email. On a breach, Chouse AI auto-runs root-cause analysis and delivers it straight to the channel.",
+  },
+  {
+    icon: Sparkles,
+    title: "Optimize & diagnose in-place",
+    desc: "Optimize any logged query with Chouse AI — a rewrite with a before→after EXPLAIN — or diagnose a server error or part-log row, right where you spot the problem.",
   },
 ];
 
@@ -73,7 +78,7 @@ export default function WhatsNew() {
         </motion.div>
 
         {/* Cards — stagger in on scroll */}
-        <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-ink-500 bg-ink-500 md:grid-cols-3">
+        <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-ink-500 bg-ink-500 sm:grid-cols-2 lg:grid-cols-4">
           {ITEMS.map((item, idx) => {
             const Icon = item.icon;
             return (
