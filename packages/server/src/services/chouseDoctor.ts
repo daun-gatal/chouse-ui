@@ -700,11 +700,15 @@ async function fetchQueryById(
     const config = await buildFleetConfig(connectionId);
     const client = ClientManager.getInstance().getClient(config);
     const result = await client.query({
+      // Match ANY logged entry for this query_id (QueryStart / QueryFinish /
+      // Exception*) — a still-running or not-yet-flushed query may only have a
+      // QueryStart row, which still carries the full query text. Prefer the most
+      // complete row (longest query), then the one with real peak memory.
       query: `SELECT query, user, round(memory_usage / 1e9, 2) AS peak_gb
               FROM system.query_log
               WHERE query_id = {qid:String}
-                AND type IN ('QueryFinish', 'ExceptionWhileProcessing')
-              ORDER BY memory_usage DESC
+                AND query != ''
+              ORDER BY length(query) DESC, memory_usage DESC
               LIMIT 1`,
       query_params: { qid: queryId },
       format: "JSON",
