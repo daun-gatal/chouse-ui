@@ -59,7 +59,7 @@ import {
 } from "@/hooks/useMonitoringTimeline";
 import { QueryHistogramChart } from "@/components/monitoring/QueryHistogramChart";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
-import { cn } from "@/lib/utils";
+import { cn, formatCompactNumber } from "@/lib/utils";
 import { DataControls } from "@/components/common/DataControls";
 import {
   Tooltip,
@@ -224,7 +224,9 @@ const RANGE_OPTIONS: Array<{ label: string; hours: number }> = [
 ];
 
 function bucketFor(hours: number): TimelineBucket {
-  return hours > 12 ? "hour" : "minute";
+  if (hours > 48) return "day";   // multi-day ranges → one point per day
+  if (hours > 12) return "hour";
+  return "minute";
 }
 
 function formatBytes(bytes: number): string {
@@ -935,7 +937,8 @@ export default function LogsPage({
 
       {/* Body — chart on top, table below */}
       <div className={cn("flex flex-1 min-h-0 flex-col gap-4 overflow-hidden", embedded ? "p-4" : "p-6")}>
-        {/* Chart card */}
+        {/* Chart card — query-kind counts + resource metrics in one chart
+            (metric toggle), so the table below stays in view. */}
         <QueryTimelineChart
           hoursBack={effectiveHours}
           bucket={bucket}
@@ -2154,6 +2157,17 @@ function LogRow({
                 <span className="font-mono text-[10px] text-paper-dim">
                   {log.query.length.toLocaleString()} chars
                 </span>
+              </div>
+              {/* Resource summary — saves a click into the expanded row for the
+                  at-a-glance "how heavy was this query" read. */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-ink-500 px-3 py-1.5 font-mono text-[10px] tabular-nums text-paper-muted">
+                <span className="text-paper">{formatDuration(log.query_duration_ms)}</span>
+                <span className="text-ink-700" aria-hidden>·</span>
+                <span>{formatBytes(log.memory_usage)} peak</span>
+                <span className="text-ink-700" aria-hidden>·</span>
+                <span>{formatCompactNumber(log.read_rows)} rows</span>
+                <span className="text-ink-700" aria-hidden>·</span>
+                <span>{formatBytes(log.read_bytes)} read</span>
               </div>
               <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-[1.55] text-paper">
                 {highlightSql(log.query)}

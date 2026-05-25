@@ -21,7 +21,7 @@ import { queryKeys } from '@/hooks/useQuery';
 export interface Tab {
   id: string;
   title: string;
-  type: 'sql' | 'home' | 'information';
+  type: 'sql' | 'home' | 'information' | 'schema-inventory';
   content: string | { database?: string; table?: string };
   error?: string | null;
   isLoading?: boolean;

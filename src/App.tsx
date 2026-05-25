@@ -4,6 +4,8 @@ import FloatingDock from "@/components/common/FloatingDock";
 import AiChatBubble from "@/components/common/AiChatBubble";
 import CommandPalette from "@/components/common/CommandPalette";
 import HomePage from "@/pages/Home";
+import FleetPage from "@/pages/Fleet";
+import DoctorPage from "@/pages/Doctor";
 import MonitoringPage from "@/pages/Monitoring";
 import PreferencesPage from "@/pages/Preferences";
 import { DefaultRedirect } from "@/components/common/DefaultRedirect";
@@ -145,7 +147,27 @@ export default function App() {
               {/* Default redirect based on user role */}
               <Route path="/" element={<DefaultRedirect />} />
 
-              {/* Overview - Default landing page for all authenticated users */}
+              {/* Fleet - Multi-cluster monitor; primary landing page for chouse-fleet */}
+              <Route
+                path="/fleet"
+                element={
+                  <AdminRoute requiredPermission={RBAC_PERMISSIONS.FLEET_VIEW}>
+                    <FleetPage />
+                  </AdminRoute>
+                }
+              />
+
+              {/* Doctor - ChouseD AI fleet health checks + report history */}
+              <Route
+                path="/doctor/:reportId?"
+                element={
+                  <AdminRoute requiredPermission={RBAC_PERMISSIONS.DOCTOR_VIEW}>
+                    <DoctorPage />
+                  </AdminRoute>
+                }
+              />
+
+              {/* Overview - Per-cluster home, reached by drilling into a fleet card */}
               <Route
                 path="/overview"
                 element={
@@ -164,8 +186,11 @@ export default function App() {
                       RBAC_PERMISSIONS.LIVE_QUERIES_VIEW,
                       RBAC_PERMISSIONS.METRICS_VIEW,
                       RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
-                      RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
-                      RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
+                      RBAC_PERMISSIONS.LOGS_VIEW,
+                      RBAC_PERMISSIONS.PARTS_VIEW,
+                      RBAC_PERMISSIONS.SCHEMA_ADVISOR_VIEW,
+                      RBAC_PERMISSIONS.CLUSTER_VIEW,
+                      RBAC_PERMISSIONS.ERRORS_VIEW,
                     ]}
                   >
                     <MonitoringPage />

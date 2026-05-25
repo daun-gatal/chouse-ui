@@ -380,6 +380,24 @@ export class ClickHouseService {
 
   async getSystemStats(): Promise<SystemStats> {
     try {
+      // CPU load reads system.metric_log, which can be disabled in config (and
+      // is absent on some builds). Run it on its own — in parallel — with a
+      // fallback so a missing metric_log degrades CPU to 0 instead of failing
+      // the whole stats call.
+      const cpuLoadPromise: Promise<number> = this.client
+        .query({
+          query: `
+            SELECT (SELECT avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000
+                    FROM system.metric_log
+                    WHERE event_time >= now() - INTERVAL 5 SECOND) as cpu_load
+          `,
+        })
+        .then(
+          async (r) =>
+            Number(((await r.json()) as JsonResponse<{ cpu_load: number }>).data[0]?.cpu_load || 0)
+        )
+        .catch(() => 0);
+
       const [
         versionRes,
         uptimeRes,
@@ -387,7 +405,6 @@ export class ClickHouseService {
         tableCountRes,
         sizeRes,
         memRes,
-        cpuRes,
         connRes,
         activeQueriesRes,
       ] = await Promise.all([
@@ -404,19 +421,13 @@ export class ClickHouseService {
               (SELECT value FROM system.metrics WHERE metric = 'MemoryTracking' LIMIT 1) as mem_tracking
           `
         }),
-        // Use ProfileEvent-based cores usage for summary cards
-        this.client.query({
-          query: `
-            SELECT 
-              (SELECT avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000 
-               FROM system.metric_log 
-               WHERE event_time >= now() - INTERVAL 5 SECOND) as cpu_load
-          `
-        }),
         this.client.query({
           query: "SELECT sum(value) as value FROM system.metrics WHERE metric IN ('TCPConnection', 'HTTPConnection', 'InterserverConnection', 'MySQLConnection', 'PostgreSQLConnection')"
         }),
-        this.client.query({ query: "SELECT count() as cnt FROM system.processes WHERE query_id != currentQueryID()" }),
+        // Exclude monitoring queries (which read system.processes) so the
+        // count reflects real workload. CH has no portable "current query id"
+        // function — currentQueryID() doesn't exist on 24.11.
+        this.client.query({ query: "SELECT count() as cnt FROM system.processes WHERE query NOT LIKE '%system.processes%'" }),
       ]);
 
       // Note: .json() returns { data: [...], meta: [...], ... }, extract the data array
@@ -426,7 +437,7 @@ export class ClickHouseService {
       const tableCount = await tableCountRes.json() as JsonResponse<{ "count()": number }>;
       const sizeData = await sizeRes.json() as JsonResponse<{ size: string; rows: string }>;
       const memData = await memRes.json() as JsonResponse<{ mem_resident: string; mem_total: string; mem_tracking: string }>;
-      const cpuData = await cpuRes.json() as JsonResponse<{ cpu_load: number }>;
+      const cpuLoad = await cpuLoadPromise;
       const connData = await connRes.json() as JsonResponse<{ value: number }>;
       const activeQueriesData = await activeQueriesRes.json() as JsonResponse<{ cnt: number }>;
 
@@ -454,7 +465,7 @@ export class ClickHouseService {
         memoryUsage: formatSize(memResident),
         memoryTotal: formatSize(memTotal),
         memoryPercentage: memTotal > 0 ? (memResident / memTotal) * 100 : 0,
-        cpuLoad: Number(cpuData.data[0]?.cpu_load || 0),
+        cpuLoad,
         activeConnections: Number(connData.data[0]?.value || 0),
         activeQueries: Number(activeQueriesData.data[0]?.cnt || 0),
       };
@@ -566,7 +577,10 @@ export class ClickHouseService {
 
       switch (explainType) {
         case 'plan':
-          explainQuery = `EXPLAIN json = 1 ${query}`;
+          // indexes = 1 adds the per-index granule/part filtering stats
+          // (PrimaryKey / MinMax / Partition / Skip) that drive the index
+          // effectiveness view. json = 1 gives the structured plan tree.
+          explainQuery = `EXPLAIN json = 1, indexes = 1 ${query}`;
           break;
         case 'ast':
           explainQuery = `EXPLAIN AST ${query}`;
@@ -581,7 +595,7 @@ export class ClickHouseService {
           explainQuery = `EXPLAIN ESTIMATE ${query}`;
           break;
         default:
-          explainQuery = `EXPLAIN json = 1 ${query}`;
+          explainQuery = `EXPLAIN json = 1, indexes = 1 ${query}`;
       }
 
       // For text-based explain types (AST, SYNTAX, PIPELINE), get raw text

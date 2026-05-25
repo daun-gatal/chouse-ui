@@ -414,14 +414,14 @@ function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; 
         <div className="mb-3 rounded-xs border border-ink-500 bg-ink-200 overflow-hidden">
             {/* Subtle pulse bar while running */}
             {isRunning && (
-                <div className="h-px w-full bg-brand/50 animate-pulse" />
+                <div className="h-px w-full bg-brand/50 motion-safe:animate-pulse" />
             )}
             <button
                 onClick={() => setExpanded((v) => !v)}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-ink-300"
             >
                 {isRunning
-                    ? <Loader2 className="w-3.5 h-3.5 text-brand animate-spin flex-shrink-0" />
+                    ? <Loader2 className="w-3.5 h-3.5 text-brand motion-safe:animate-spin flex-shrink-0" />
                     : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/80 flex-shrink-0" />
                 }
                 <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">{label}</span>
@@ -436,7 +436,7 @@ function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; 
                         <div key={i} className="pt-2.5 flex gap-2.5">
                             <div className="flex-shrink-0 pt-0.5">
                                 {step.status === 'running'
-                                    ? <Loader2 className="w-3 h-3 text-brand animate-spin" />
+                                    ? <Loader2 className="w-3 h-3 text-brand motion-safe:animate-spin" />
                                     : <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
                                 }
                             </div>
@@ -1417,8 +1417,11 @@ export default function AiChatBubble() {
                         animate={isMobile ? { opacity: 1 } : { x: 0 }}
                         exit={isMobile ? { opacity: 0 } : { x: '100%' }}
                         transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+                        role="dialog"
+                        aria-modal="false"
+                        aria-label="AI chat assistant"
                         className={`pointer-events-auto flex flex-col overflow-hidden bg-ink-100 shadow-2xl shadow-black/40 w-full h-full
-                                    ${isMobile ? 'border-0 rounded-none animate-[slideUpFull_0.3s_ease-out]' : 'border-l border-ink-500'}`}
+                                    ${isMobile ? 'border-0 rounded-none motion-safe:animate-[slideUpFull_0.3s_ease-out]' : 'border-l border-ink-500'}`}
                     >
                         {/* Main content wrapper */}
                         <div className="flex flex-col flex-1 relative w-full h-full">
@@ -1568,7 +1571,7 @@ export default function AiChatBubble() {
                                             </div>
                                             {isLoadingThreads ? (
                                                 <div className="flex items-center justify-center py-8">
-                                                    <Loader2 className="w-4 h-4 text-paper-dim animate-spin" />
+                                                    <Loader2 className="w-4 h-4 text-paper-dim motion-safe:animate-spin" />
                                                 </div>
                                             ) : threads.length === 0 ? (
                                                 <p className="text-[12px] text-paper-faint text-center py-8">No conversations yet</p>
@@ -1771,7 +1774,7 @@ export default function AiChatBubble() {
                                                                         )}
                                                                         {msg.isStreaming && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
                                                                             <div className="flex items-center gap-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
-                                                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                                                <Loader2 className="w-3 h-3 motion-safe:animate-spin" />
                                                                                 <span>{msg.toolStatus}</span>
                                                                             </div>
                                                                         )}
@@ -1874,7 +1877,7 @@ export default function AiChatBubble() {
                                                         title="Stop generating"
                                                         aria-label="Stop generating"
                                                     >
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                        <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
                                                     </button>
                                                 ) : (
                                                     <button
@@ -1894,7 +1897,7 @@ export default function AiChatBubble() {
                                                 </span>
                                                 {isStreaming && toolStatus && (
                                                     <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
-                                                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                                        <Loader2 className="h-2.5 w-2.5 motion-safe:animate-spin" />
                                                         {toolStatus}
                                                     </span>
                                                 )}

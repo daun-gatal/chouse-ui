@@ -4,6 +4,7 @@ import {
   Database,
   FileCode2,
   Gauge,
+  Globe2,
   Home,
   Keyboard,
   LayoutGrid,
@@ -39,6 +40,7 @@ import {
 import { useRecentQueries } from "@/hooks";
 import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId } from "@/api/client";
+import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
 
 // Maximum items per section — keeps the palette skim-able even on dense DBs.
@@ -76,6 +78,7 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
     setTimeout(fn, 0);
   };
 
+  const canViewFleet = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canViewExplorer = hasPermission(RBAC_PERMISSIONS.DB_VIEW) || hasPermission(RBAC_PERMISSIONS.TABLE_VIEW);
   const canViewMonitoring =
     hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_VIEW) ||
@@ -161,6 +164,19 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
 
         {/* Pages */}
         <CommandGroup heading="Pages">
+          {canViewFleet && (
+            <CommandItem
+              value="fleet clusters multi-cluster"
+              onSelect={() => runAction(() => navigate("/fleet"))}
+            >
+              <Globe2 className="mr-2 h-3.5 w-3.5 text-paper-dim" />
+              Fleet
+              <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                All clusters
+              </span>
+            </CommandItem>
+          )}
+
           <CommandItem value="overview home" onSelect={() => runAction(() => navigate("/overview"))}>
             <Home className="mr-2 h-3.5 w-3.5 text-paper-dim" />
             Overview
@@ -379,16 +395,30 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
       </CommandList>
 
       {/* Footer with active connection + brand hint */}
-      <div className="flex items-center justify-between border-t border-ink-500 bg-ink-200 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+      <div className="flex items-center justify-between border-t border-ink-500 bg-ink-200 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
         <span className="inline-flex items-center gap-1.5">
           <Search className="h-3 w-3" aria-hidden />
           Search
         </span>
-        <span>
-          {activeConnectionId ? "Connected" : "Not connected"} ·{" "}
-          <span className="text-paper-dim">↑↓</span> nav ·{" "}
-          <span className="text-paper-dim">↵</span> run ·{" "}
-          <span className="text-paper-dim">esc</span> close
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                activeConnectionId
+                  ? "bg-emerald-500 dark:bg-emerald-400"
+                  : "bg-paper-faint",
+              )}
+            />
+            {activeConnectionId ? "Connected" : "No connection"}
+          </span>
+          <span className="text-paper-faint">·</span>
+          <kbd className="text-paper">↑↓</kbd> nav
+          <span className="text-paper-faint">·</span>
+          <kbd className="text-paper">↵</kbd> run
+          <span className="text-paper-faint">·</span>
+          <kbd className="text-paper">esc</kbd> close
         </span>
       </div>
     </CommandDialog>

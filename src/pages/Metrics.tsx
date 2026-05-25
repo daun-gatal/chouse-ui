@@ -53,6 +53,7 @@ import { Progress } from "@/components/ui/progress";
 import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
 import { ServerMemoryBreakdown } from "@/components/monitoring/ServerMemoryBreakdown";
 import { TopResourceQueriesPanel } from "@/components/monitoring/TopResourceQueriesPanel";
+import ConnectionBreakdownPanel from "@/components/monitoring/ConnectionBreakdownPanel";
 import { useMetrics, useProductionMetrics } from "@/hooks";
 import { cn, formatBytes as formatBytesUtil, formatCompactNumber, formatNumber } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
@@ -1104,6 +1105,15 @@ export default function Metrics({
                 bgColor="bg-purple-500/20"
                 isLoading={isLoading}
               />
+            </motion.div>
+
+            {/* Connections breakdown — drill-down behind the Active Connections tile */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.25 }}
+            >
+              <ConnectionBreakdownPanel refreshKey={refreshKey} autoRefresh={refreshInterval > 0} />
             </motion.div>
 
             {/* Resource & Activity Summary */}

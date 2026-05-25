@@ -429,7 +429,7 @@ function ConnectionFormDialog({
                   </span>
                 </div>
                 {testResult.success && testResult.version && (
-                  <div className="flex items-center gap-3 pl-6 font-mono text-[11px] text-emerald-200/80">
+                  <div className="flex items-center gap-3 pl-6 font-mono text-[11px] text-emerald-700 dark:text-emerald-300">
                     <span>v{testResult.version}</span>
                     {testResult.latencyMs && (
                       <span className="inline-flex items-center gap-1">
@@ -440,7 +440,7 @@ function ConnectionFormDialog({
                   </div>
                 )}
                 {!testResult.success && testResult.error && (
-                  <p className="pl-6 font-mono text-[11px] text-red-200/80">{testResult.error}</p>
+                  <p className="pl-6 font-mono text-[11px] leading-[1.5] text-red-700 dark:text-red-300">{testResult.error}</p>
                 )}
               </div>
             )}

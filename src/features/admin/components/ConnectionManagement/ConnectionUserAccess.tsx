@@ -155,10 +155,13 @@ export default function ConnectionUserAccess({
     }
   };
 
-  // Filter users for the add dropdown (exclude users who already have access)
+  // Filter users for the add dropdown. Exclude only users who already have
+  // DIRECT access — a user who appears in the list solely via a data-access
+  // rule still has no real connection access (the backend gates that on direct
+  // grants), so they must stay selectable or there's no way to grant them.
   const availableUsers = allUsers.filter(
     (user) =>
-      !usersWithAccess.some((u) => u.id === user.id) &&
+      !usersWithAccess.some((u) => u.id === user.id && u.hasDirectAccess) &&
       (searchQuery === '' ||
         user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
         user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||

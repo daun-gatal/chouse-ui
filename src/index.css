@@ -95,7 +95,10 @@
   --paper: #fafafa;
   --paper-muted: #a1a1aa;
   --paper-dim: #71717a;
-  --paper-faint: #52525b;
+  /* Bumped from #52525b (3.07:1, fail WCAG AA) → #838388 (5.01:1, pass AA).
+     The "quietest" rung of the scale must still be readable; visual hierarchy
+     on dark mode comes from font size/weight, not from token color alone. */
+  --paper-faint: #838388;
 
   /* Brand — full ClickHouse yellow on dark surfaces */
   --brand: #ffcc01;
@@ -768,4 +771,56 @@
 }
 .ai-chat-fab:active {
   transform: translateY(0);
+}
+/*
+ * Global accessibility floors — applied app-wide so individual components
+ * don't have to remember.
+ *
+ * 1. prefers-reduced-motion → strip Tailwind's `animate-*` utilities that
+ *    don't already have a `motion-safe:` prefix. Caps every spinner / pulse
+ *    / bounce in the codebase at "static, no flicker" for users who set it.
+ *
+ * 2. :focus-visible default ring on interactive elements that don't define
+ *    their own focus style. Keyboard users always see where focus lives;
+ *    components that already have `focus-visible:ring-*` keep winning
+ *    because utility classes (@layer utilities) outrank @layer base.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer base {
+  :focus {
+    outline: none;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  [role="radio"]:focus-visible,
+  [role="tab"]:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /*
+   * Tailwind v4 dropped the v3-default `cursor: pointer` on <button>.
+   * Re-add it so the cursor language across the app stays unambiguous —
+   * a hand cursor on clickable elements is a baseline UX expectation, and
+   * grep-and-add per component is unmaintainable. Disabled buttons keep
+   * the not-allowed cursor (Tailwind's `disabled:` utilities still apply).
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }

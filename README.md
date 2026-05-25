@@ -5,7 +5,7 @@
 <h1 align="center">CHouse UI</h1>
 
 <p align="center">
-  <strong>A web interface for ClickHouse with built-in RBAC</strong>
+  <strong>A web interface for ClickHouse with built-in RBAC, fleet monitoring, and an AI SRE</strong>
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@
 
 ## Overview
 
-CHouse UI is a web interface for managing ClickHouse databases with server-side credential management and **Role-Based Access Control (RBAC)**. Credentials are stored encrypted on the server, and access is controlled through a permission system.
+CHouse UI is a web interface for managing ClickHouse databases with server-side credential management and **Role-Based Access Control (RBAC)**. Credentials are stored encrypted on the server, and access is controlled through a permission system. Beyond the query workspace it ships **multi-cluster fleet monitoring** and **Chouse AI** — an autonomous, read-only SRE that runs root-cause fleet scans and delivers alerts + auto-RCA to Slack/email.
 
 ### Why CHouse UI?
 
@@ -49,6 +49,8 @@ CHouse UI provides security and access control features for teams that need:
 | **Multi-Connection** | Manage multiple ClickHouse servers |
 | **Audit Trail** | Audit logging |
 | **Monitoring** | ClickHouse-native observability — query logs, memory breakdown, top-resource queries, replica lag, parts/merges, schema lints — no exporter required |
+| **Fleet view** | Watch every cluster at once — one pane, per-card polling, status / memory / lag / exceptions, drill into any node |
+| **Chouse AI (SRE)** | Autonomous read-only diagnostics — root-cause fleet scans, structured reports with history, and auto-RCA delivered to Slack/email on alert breach |
 
 > **Note**: Other ClickHouse tools serve different use cases well. CHouse UI is designed specifically for teams requiring centralized credential management, role-based access control, and audit capabilities.
 
@@ -92,13 +94,20 @@ CHouse UI provides security and access control features for teams that need:
 - **Query timeline chart** — stacked bar / stacked area / line variants, per `query_kind`
 - **Custom time range** — 15 m / 1 h / 6 h / 24 h presets + a Grafana-style drill-down calendar (day → month → year) in one popover
 - **Parts** — `system.part_log` stacked area chart of merges, mutations, downloads, removals + paginated event table
-- **Schema doctor** — Nullable column + oversized integer linter over `system.parts_columns`, ranked by on-disk bytes
+- **Schema advisor** — Nullable column + oversized integer linter over `system.parts_columns`, ranked by on-disk bytes (renamed from "Schema doctor" to disambiguate from the AI Fleet Doctor)
 - **Cluster activity** — `system.mutations` + `system.replication_queue` with status chips, a blocked-task indicator strip (long queries / long merges / open mutations / max replica lag), and a per-replica status panel (`system.replicas` lag + queue depth)
 - **Live queries** — running queries with **CPU time + thread count**, sortable by duration / memory / rows / CPU, and kill support. A server-memory pressure strip puts the per-query totals in context (resident / total %)
 - **Metrics** — Overview / Performance / Storage / Merges / Errors / **Memory** / **CPU** / **ZooKeeper** / Network tabs:
   - **Memory** — server RAM breakdown (RSS attributed to active queries / caches / merges / primary keys / index, vs total), allocator history, and a top-memory-queries table
   - **CPU** — load avg / threads / pools, CPU mode-split + concurrency charts, and a top-CPU-queries table
   - **ZooKeeper** — Keeper transactions, traffic, and system-load time-series
+
+### 🛰️ Fleet & Chouse AI
+- **Fleet view** (`/fleet`) — every configured connection side by side, grid or row layout. Each card polls its own connection independently, so a slow/down cluster never blocks the grid. Status (healthy / degraded / down), memory %, active queries, longest-running, exceptions feed, inventory strip, per-node trend sparklines. Drill into any card → that cluster's monitoring.
+- **Fleet poller** — a backend worker caches per-cluster metric snapshots to SQLite on a schedule (`FLEET_POLL_INTERVAL_SECONDS`), so the fleet page reads one fast endpoint instead of every browser hammering every cluster. HA-safe via a single-instance advisory lease. Toggle with `FLEET_POLLER_ENABLED`.
+- **Threshold alerts** — node memory %, per-query memory, and long-running-query rules with hysteresis to avoid flapping. Delivered as Slack Block Kit cards + email (SMTP), configured per install.
+- **Chouse AI — Fleet Doctor** (`/doctor`) — an autonomous, **read-only** AI SRE. Scans the fleet with a guarded `query_node` tool (single `SELECT`, `system.*` only, ClickHouse `readonly=1`), pins root causes, and writes a structured report: per-node verdict, recommendations, evidence, and a heavy-query deep-dive. Reports persist with a history rail; scope (node subset) + time-window selectable. On an alert breach it can auto-run RCA and deliver the analysis to Slack/email. Advisory only — the AI never mutates the cluster.
+- **Errors** (`/errors`) — a viewer over `system.errors` + the crash log, searchable and paginated, so recurring server-side errors surface without ad-hoc SQL.
 
 ### 🎨 User Experience
 - **Editorial design system** — ClickHouse-yellow accent, Geist Sans + Geist Mono typography, hairline borders
@@ -354,6 +363,8 @@ Features:
 - **Connection Management**: Add/edit ClickHouse connections
 - **Query Operations**: Execute queries, DML, DDL
 - **Table Operations**: Select, insert, update, delete
+- **Metrics & Monitoring**: Per-tab view grants — `logs:view`, `parts:view`, `schema_advisor:view`, `cluster:view`, `errors:view`
+- **Fleet Monitoring**: `fleet:view`, `doctor:view` (read reports), `doctor:run` (generate scans + schedules)
 - **System**: Audit logs, settings
 
 ---

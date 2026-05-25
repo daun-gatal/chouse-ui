@@ -8,15 +8,25 @@ services:
       - "5521:5521"
     environment:
       NODE_ENV: production
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      RBAC_ENCRYPTION_KEY: ${RBAC_ENCRYPTION_KEY:-dev-key-change-me}
-      RBAC_ENCRYPTION_SALT: ${RBAC_ENCRYPTION_SALT:-dev-salt-change-me}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-min-32-characters-long}
+      RBAC_ENCRYPTION_KEY: ${RBAC_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      RBAC_ENCRYPTION_SALT: ${RBAC_ENCRYPTION_SALT:-fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210}
+      # Fleet snapshot poller (alerts + fleet cards depend on it)
+      FLEET_POLLER_ENABLED: "true"
+      FLEET_POLL_INTERVAL_SECONDS: "30"
       # Uncomment and provide a config.yaml to use hierarchical configuration
       # CHOUSE_CONFIG_PATH: /app/config.yaml
     volumes:
       - ./data:/app/data
       # - ./config.yaml:/app/config.yaml:ro
     restart: unless-stopped
+    # Cap container logs so they can't fill the disk over time (default json-file
+    # has no rotation). 10m x 3 = 30 MB hard ceiling.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -28,3 +38,8 @@ services:
       CLICKHOUSE_PASSWORD: password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

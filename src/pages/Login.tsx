@@ -89,7 +89,7 @@ export default function Login() {
           <div className="mb-10 flex items-center justify-center gap-2.5">
             <img src={Logo} alt="" aria-hidden className="h-7 w-7" />
             <span className="text-[16px] font-semibold tracking-tight text-paper">
-              CHouse<span className="text-paper-dim">UI</span>
+              chouse<span className="text-paper-dim">-fleet</span>
             </span>
           </div>
 
@@ -107,7 +107,7 @@ export default function Login() {
                   Welcome back.
                 </h1>
                 <p className="mt-1 text-sm text-paper-muted">
-                  Authenticate against the RBAC system to continue.
+                  Sign in to see every ClickHouse cluster you can reach.
                 </p>
               </div>
             </div>
@@ -167,8 +167,9 @@ export default function Login() {
                             <button
                               type="button"
                               onClick={() => setShowPassword((v) => !v)}
-                              className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper"
+                              className="absolute right-1.5 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
                               aria-label={showPassword ? "Hide password" : "Show password"}
+                              aria-pressed={showPassword}
                             >
                               {showPassword ? (
                                 <EyeOff className="h-3.5 w-3.5" />
@@ -196,17 +197,18 @@ export default function Login() {
                   <Button
                     type="submit"
                     disabled={isLoading}
-                    className="group h-11 w-full rounded-xs bg-brand text-ink-50 hover:bg-brand-soft hover:-translate-y-px font-semibold tracking-tight transition-[transform,background-color] duration-200 disabled:opacity-60 disabled:translate-y-0"
+                    aria-busy={isLoading}
+                    className="group h-11 w-full rounded-xs bg-brand text-ink-50 hover:bg-brand-soft motion-safe:hover:-translate-y-px font-semibold tracking-tight transition-[transform,background-color] duration-200 disabled:opacity-60 disabled:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-ink-100"
                   >
                     {isLoading ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
                         Signing in…
                       </>
                     ) : (
                       <>
                         Sign in
-                        <ArrowUpRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                        <ArrowUpRight className="ml-2 h-4 w-4 transition-transform motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
                       </>
                     )}
                   </Button>

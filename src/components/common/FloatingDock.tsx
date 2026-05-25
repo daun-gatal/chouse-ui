@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
+  Globe2,
   LayoutDashboard,
   Database,
   Activity,
+  Stethoscope,
   Shield,
   Settings,
   GripVertical,
@@ -36,6 +38,7 @@ import { motion, useDragControls, PanInfo, AnimatePresence } from "framer-motion
 import { withBasePath } from "@/lib/basePath";
 import ConnectionSelector from "./ConnectionSelector";
 import UserMenu from "@/components/sidebar/UserMenu";
+import FleetAlertsDockItem from "@/features/fleet/components/FleetAlertsDockItem";
 import { version } from "../../../package.json";
 import { rbacUserPreferencesApi } from "@/api/rbac";
 import { useDeviceType } from "@/hooks/useDeviceType";
@@ -192,6 +195,7 @@ const DockItem = ({ icon: Icon, label, to, isActive, isVertical }: DockItemProps
               : "text-paper-dim hover:bg-ink-200 hover:text-paper"
           )}
           aria-label={label}
+          aria-current={isActive ? "page" : undefined}
         >
           {isActive && (
             <motion.span
@@ -332,8 +336,11 @@ export default function FloatingDock() {
     RBAC_PERMISSIONS.LIVE_QUERIES_VIEW,
     RBAC_PERMISSIONS.METRICS_VIEW,
     RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
-    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
-    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
+    RBAC_PERMISSIONS.LOGS_VIEW,
+    RBAC_PERMISSIONS.PARTS_VIEW,
+    RBAC_PERMISSIONS.SCHEMA_ADVISOR_VIEW,
+    RBAC_PERMISSIONS.CLUSTER_VIEW,
+    RBAC_PERMISSIONS.ERRORS_VIEW,
   ]);
 
   const canViewAdmin = hasAnyPermission([
@@ -348,7 +355,12 @@ export default function FloatingDock() {
     RBAC_PERMISSIONS.TABLE_VIEW,
   ]);
 
+  const canViewFleet = hasAnyPermission([RBAC_PERMISSIONS.FLEET_VIEW]);
+  const canViewDoctor = hasAnyPermission([RBAC_PERMISSIONS.DOCTOR_VIEW]);
+
   const navItems = [
+    ...(canViewFleet ? [{ icon: Globe2, label: "Fleet", to: "/fleet" }] : []),
+    ...(canViewDoctor ? [{ icon: Stethoscope, label: "Doctor", to: "/doctor" }] : []),
     { icon: LayoutDashboard, label: "Home", to: "/overview" },
     ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer" }] : []),
     ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring" }] : []),
@@ -540,6 +552,7 @@ export default function FloatingDock() {
 
           {/* Connection & User */}
           <div className="flex flex-col items-center gap-1">
+            {canViewFleet && <FleetAlertsDockItem side="right" />}
             <TooltipProvider>
               <ConnectionSelector isCollapsed={true} />
             </TooltipProvider>
@@ -776,6 +789,7 @@ export default function FloatingDock() {
               isVertical ? "flex-col" : "flex-row"
             )}
           >
+            {canViewFleet && <FleetAlertsDockItem side={isVertical ? "right" : "top"} />}
             <TooltipProvider>
               <ConnectionSelector isCollapsed={true} />
             </TooltipProvider>

@@ -9,7 +9,7 @@ import { useQuery, UseQueryOptions } from "@tanstack/react-query";
 import { queryApi } from "@/api";
 import { useAuthStore } from "@/stores";
 
-export type TimelineBucket = "minute" | "hour";
+export type TimelineBucket = "minute" | "hour" | "day";
 
 /**
  * Absolute time window — when present, replaces hoursBack on the SQL.
@@ -35,7 +35,9 @@ const num = (v: unknown): number => {
 
 function truncFunc(bucket: TimelineBucket, table?: string): string {
   const col = table ? `${table}.event_time` : "event_time";
-  return bucket === "hour" ? `toStartOfHour(${col})` : `toStartOfMinute(${col})`;
+  if (bucket === "day") return `toStartOfDay(${col})`;
+  if (bucket === "hour") return `toStartOfHour(${col})`;
+  return `toStartOfMinute(${col})`;
 }
 
 /**
@@ -97,6 +99,66 @@ export function useQueryTimeline(
         Insert: num(row.Insert),
         Delete: num(row.Delete),
         Other: num(row.Other),
+      }));
+    },
+    staleTime: 15_000,
+    ...options,
+  });
+}
+
+export interface ResourceTimelinePoint {
+  time: string;
+  memory_bytes: number;       // sum(memory_usage) — total query memory in bucket
+  peak_memory_bytes: number;  // max(memory_usage) — heaviest single query in bucket
+  cpu_seconds: number;        // sum(OSCPUVirtualTimeMicroseconds) / 1e6
+  read_bytes: number;         // sum(read_bytes) — bytes scanned in bucket
+}
+
+/**
+ * Resource consumption of the query workload per time bucket — total memory,
+ * peak memory, CPU seconds, and bytes read — from system.query_log. Powers
+ * the Resource timeline chart on Monitoring → Query logs, answering "how
+ * much memory / CPU did queries burn per hour/day" alongside the count-based
+ * Query timeline.
+ */
+export function useQueryResourceTimeline(
+  hoursBack: number = 6,
+  bucket: TimelineBucket = "minute",
+  customRange?: AbsoluteRange,
+  options?: Partial<UseQueryOptions<ResourceTimelinePoint[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: [
+      "queryResourceTimeline",
+      hoursBack,
+      bucket,
+      customRange?.start ?? null,
+      customRange?.end ?? null,
+      activeConnectionId,
+    ] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          formatDateTime(${truncFunc(bucket)}, '%Y-%m-%d %H:%i:%S') AS time,
+          sum(memory_usage) AS memory_bytes,
+          max(memory_usage) AS peak_memory_bytes,
+          sum(ProfileEvents['OSCPUVirtualTimeMicroseconds']) / 1000000 AS cpu_seconds,
+          sum(read_bytes) AS read_bytes
+        FROM system.query_log
+        WHERE ${timeWindowWhere(hoursBack, customRange)}
+          AND type IN ('QueryFinish', 'ExceptionWhileProcessing', 'ExceptionBeforeStart')
+        GROUP BY time
+        ORDER BY time ASC
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        time: String(row.time ?? ""),
+        memory_bytes: num(row.memory_bytes),
+        peak_memory_bytes: num(row.peak_memory_bytes),
+        cpu_seconds: num(row.cpu_seconds),
+        read_bytes: num(row.read_bytes),
       }));
     },
     staleTime: 15_000,
@@ -1224,6 +1286,365 @@ export function useSchemaOversized(
 }
 
 /**
+ * Per-column on-disk vs uncompressed size, biggest columns first. The schema
+ * doctor's storage angle: a large column whose compressed size is close to its
+ * uncompressed size (ratio near 1×) is barely compressing and is usually
+ * fixable with a better codec (Delta/DoubleDelta/Gorilla for sequences &
+ * timestamps, a higher ZSTD level, or LowCardinality for repetitive strings).
+ * Reuses SchemaLintRow — it already carries compressed + uncompressed bytes.
+ */
+export function useSchemaCompression(
+  options?: Partial<UseQueryOptions<SchemaLintRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["schemaCompression", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          table,
+          column,
+          type,
+          sum(rows) AS total_rows,
+          sum(column_data_compressed_bytes) AS compressed_bytes,
+          sum(column_data_uncompressed_bytes) AS uncompressed_bytes
+        FROM system.parts_columns
+        WHERE active = 1
+          AND ${SCHEMA_SYSTEM_EXCLUDE}
+        GROUP BY database, table, column, type
+        HAVING compressed_bytes > 0
+        ORDER BY compressed_bytes DESC
+        LIMIT 500
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        database: String(row.database ?? ""),
+        table: String(row.table ?? ""),
+        column: String(row.column ?? ""),
+        type: String(row.type ?? ""),
+        total_rows: num(row.total_rows),
+        compressed_bytes: num(row.compressed_bytes),
+        uncompressed_bytes: num(row.uncompressed_bytes),
+      }));
+    },
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+// ============================================
+// MergeTree acceleration structures — projections & skip indexes
+// ============================================
+
+export interface ProjectionRow {
+  database: string;
+  table: string;
+  name: string;
+  type: string; // "Normal" (reordering) or "Aggregate" (pre-aggregation)
+  sorting_key: string;
+  query: string;
+}
+
+/**
+ * Projections defined on MergeTree tables (system.projections). A projection
+ * is a precomputed reordering or aggregation stored inside the table's parts —
+ * it can turn a full scan into a targeted read. Gracefully empty on builds
+ * without the table.
+ */
+export function useProjections(
+  options?: Partial<UseQueryOptions<ProjectionRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+  return useQuery({
+    queryKey: ["projections", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          table,
+          name,
+          type,
+          arrayStringConcat(sorting_key, ', ') AS sorting_key,
+          query
+        FROM system.projections
+        ORDER BY database, table, name
+      `;
+      try {
+        const result = await queryApi.executeQuery(sql);
+        return (result.data as Array<Record<string, unknown>>).map((row) => ({
+          database: String(row.database ?? ""),
+          table: String(row.table ?? ""),
+          name: String(row.name ?? ""),
+          type: String(row.type ?? ""),
+          sorting_key: String(row.sorting_key ?? ""),
+          query: String(row.query ?? ""),
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/projections/i.test(msg) && /Unknown table|UNKNOWN_TABLE|doesn'?t exist/i.test(msg)) {
+          return [];
+        }
+        throw err;
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+export interface SkipIndexRow {
+  database: string;
+  table: string;
+  name: string;
+  type_full: string; // e.g. "set(100)", "minmax", "bloom_filter(0.01)"
+  expr: string;
+  granularity: number;
+  compressed_bytes: number;
+  uncompressed_bytes: number;
+}
+
+/**
+ * Data-skipping (secondary) indexes (system.data_skipping_indices). Each lets
+ * ClickHouse skip granules that can't match a predicate. Sorted by on-disk
+ * size so the heaviest indexes — which carry their own read/maintenance cost —
+ * surface first.
+ */
+export function useDataSkippingIndices(
+  options?: Partial<UseQueryOptions<SkipIndexRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+  return useQuery({
+    queryKey: ["dataSkippingIndices", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          table,
+          name,
+          type_full,
+          expr,
+          granularity,
+          data_compressed_bytes AS compressed_bytes,
+          data_uncompressed_bytes AS uncompressed_bytes
+        FROM system.data_skipping_indices
+        ORDER BY data_compressed_bytes DESC
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        database: String(row.database ?? ""),
+        table: String(row.table ?? ""),
+        name: String(row.name ?? ""),
+        type_full: String(row.type_full ?? ""),
+        expr: String(row.expr ?? ""),
+        granularity: num(row.granularity),
+        compressed_bytes: num(row.compressed_bytes),
+        uncompressed_bytes: num(row.uncompressed_bytes),
+      }));
+    },
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+// ============================================
+// Schema inventory — tables vs views per database
+// ============================================
+
+export interface SchemaInventoryRow {
+  database: string;
+  tables: number;
+  views: number;
+  bytes: number;
+  rows: number;
+}
+
+/**
+ * Per-database object inventory, split into tables vs views.
+ *
+ * Views are everything whose engine name contains "View" (View +
+ * MaterializedView + Live/WindowView); everything else (MergeTree family,
+ * Distributed/StorageProxy, Dictionary, Memory, Log…) counts as a table.
+ * total_bytes / total_rows are Nullable for view-like and proxy engines, so
+ * the sums are coalesced to 0 to keep the row numeric.
+ */
+export function useSchemaInventory(
+  options?: Partial<UseQueryOptions<SchemaInventoryRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["schemaInventory", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          countIf(engine NOT LIKE '%View%') AS tables,
+          countIf(engine LIKE '%View%') AS views,
+          coalesce(sum(total_bytes), 0) AS bytes,
+          coalesce(sum(total_rows), 0) AS rows
+        FROM system.tables
+        WHERE ${SCHEMA_SYSTEM_EXCLUDE}
+        GROUP BY database
+        ORDER BY (tables + views) DESC, database ASC
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        database: String(row.database ?? ""),
+        tables: num(row.tables),
+        views: num(row.views),
+        bytes: num(row.bytes),
+        rows: num(row.rows),
+      }));
+    },
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+export interface DatabaseObjectRow {
+  name: string;
+  engine: string;
+  isView: boolean;
+  rows: number;
+  bytes: number;
+}
+
+/**
+ * Object list for ONE database — the drill-down behind a row in the schema
+ * inventory. Only fetched when a database is expanded (pass enabled). Returns
+ * every table/view with its engine, row count, and on-disk size; the UI
+ * splits them into a Tables section and a Views section.
+ */
+export function useDatabaseObjects(
+  database: string | null,
+  options?: Partial<UseQueryOptions<DatabaseObjectRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["databaseObjects", database, activeConnectionId] as const,
+    enabled: !!database,
+    queryFn: async () => {
+      // Escape the identifier as a ClickHouse string literal — backslash then
+      // single-quote — so an exotic database name can't break out of the WHERE.
+      const esc = (database ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      const sql = `
+        SELECT
+          name,
+          engine,
+          engine LIKE '%View%' AS is_view,
+          coalesce(total_rows, 0) AS rows,
+          coalesce(total_bytes, 0) AS bytes
+        FROM system.tables
+        WHERE database = '${esc}'
+        ORDER BY is_view ASC, bytes DESC, name ASC
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        name: String(row.name ?? ""),
+        engine: String(row.engine ?? ""),
+        isView: num(row.is_view) === 1,
+        rows: num(row.rows),
+        bytes: num(row.bytes),
+      }));
+    },
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+/**
+ * The CREATE statement (DDL) for a single object, read from
+ * system.tables.create_table_query — the same source the table info tab uses,
+ * and populated for views/materialized views too. Lazy: only fetched when a
+ * row's DDL is opened, so the drill-down list stays light even for
+ * view-heavy databases.
+ */
+export function useTableDDL(
+  database: string | null,
+  name: string | null,
+  options?: Partial<UseQueryOptions<string, Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["tableDDL", database, name, activeConnectionId] as const,
+    enabled: !!database && !!name,
+    queryFn: async () => {
+      const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      const sql = `
+        SELECT create_table_query
+        FROM system.tables
+        WHERE database = '${esc(database ?? "")}' AND name = '${esc(name ?? "")}'
+        LIMIT 1
+      `;
+      const result = await queryApi.executeQuery(sql);
+      const row = result.data[0] as Record<string, unknown> | undefined;
+      return String(row?.create_table_query ?? "");
+    },
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+// ============================================
+// Connection breakdown — what makes up the "connections" count
+// ============================================
+
+export interface ConnectionBreakdownRow {
+  /** Friendly protocol label, e.g. "TCP", "HTTP". */
+  protocol: string;
+  count: number;
+}
+
+const CONNECTION_METRICS: { metric: string; protocol: string }[] = [
+  { metric: "TCPConnection", protocol: "TCP" },
+  { metric: "HTTPConnection", protocol: "HTTP" },
+  { metric: "MySQLConnection", protocol: "MySQL" },
+  { metric: "PostgreSQLConnection", protocol: "PostgreSQL" },
+  { metric: "InterserverConnection", protocol: "Interserver" },
+];
+
+/**
+ * The "connections" tile is a single number — sum of the per-protocol
+ * connection gauges. ClickHouse has no table of individual connections, so
+ * this breakdown (the per-protocol counts that compose that number) is the
+ * deepest honest drill-down available. Returns every protocol, including
+ * zero-count ones, in a stable order so the panel layout doesn't jump.
+ */
+export function useConnectionBreakdown(
+  options?: Partial<UseQueryOptions<ConnectionBreakdownRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+
+  return useQuery({
+    queryKey: ["connectionBreakdown", activeConnectionId] as const,
+    queryFn: async () => {
+      const list = CONNECTION_METRICS.map((m) => `'${m.metric}'`).join(", ");
+      const sql = `
+        SELECT metric, value
+        FROM system.metrics
+        WHERE metric IN (${list})
+      `;
+      const result = await queryApi.executeQuery(sql);
+      const byMetric = new Map<string, number>();
+      for (const row of result.data as Array<Record<string, unknown>>) {
+        byMetric.set(String(row.metric ?? ""), num(row.value));
+      }
+      // Map to friendly labels in our fixed order; default missing to 0.
+      return CONNECTION_METRICS.map((m) => ({
+        protocol: m.protocol,
+        count: byMetric.get(m.metric) ?? 0,
+      }));
+    },
+    staleTime: 10_000,
+    ...options,
+  });
+}
+
+/**
  * Lazy-fetch the ProfileEvents map for a single query. Only invoked when a
  * row in Monitoring → Logs is expanded — keeps the list fetch slim.
  */
@@ -1338,6 +1759,344 @@ export function usePartLog(
       }));
     },
     staleTime: 15_000,
+    ...options,
+  });
+}
+
+// ============================================
+// Errors & crashes (Monitoring → Errors tab)
+// ============================================
+
+export interface ServerErrorRow {
+  code: number;
+  name: string;
+  count: number;            // cumulative since server start (system.errors.value)
+  last_error_time: string;
+  last_error_message: string;
+  remote: number;
+}
+
+/**
+ * Cumulative error counters from system.errors. This is the canonical "what
+ * is this server erroring on" table — every error code with its hit count,
+ * last occurrence, and last message. Always present.
+ */
+export function useServerErrors(
+  options?: Partial<UseQueryOptions<ServerErrorRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+  return useQuery({
+    queryKey: ["serverErrors", activeConnectionId] as const,
+    queryFn: async () => {
+      // _str suffix on the DateTime alias — CH 24.11 NO_COMMON_TYPE trap.
+      const sql = `
+        SELECT
+          code,
+          name,
+          value AS count,
+          formatDateTime(last_error_time, '%Y-%m-%d %H:%i:%S') AS last_error_time_str,
+          substring(last_error_message, 1, 600) AS last_error_message,
+          remote
+        FROM system.errors
+        WHERE value > 0
+        ORDER BY value DESC
+        LIMIT 300
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        code: num(row.code),
+        name: String(row.name ?? ""),
+        count: num(row.count),
+        last_error_time: String(row.last_error_time_str ?? ""),
+        last_error_message: String(row.last_error_message ?? ""),
+        remote: num(row.remote),
+      }));
+    },
+    staleTime: 15_000,
+    ...options,
+  });
+}
+
+export interface CrashLogRow {
+  event_time: string;
+  signal: number;
+  thread_id: number;
+  query_id: string;
+  version: string;
+  trace: string;
+}
+
+/**
+ * Recent crashes from system.crash_log. Usually empty (which is good).
+ * Server-level opt-in table — gracefully returns [] when it doesn't exist on
+ * the build, same as useQueryViewsLog.
+ */
+export function useCrashLog(
+  options?: Partial<UseQueryOptions<CrashLogRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+  return useQuery({
+    queryKey: ["crashLog", activeConnectionId] as const,
+    retry: false,
+    queryFn: async () => {
+      // crash_log is build-dependent (absent unless crash logging is compiled
+      // in / enabled). Querying it directly on a server that lacks it surfaces
+      // a raw Code 60 (UNKNOWN_TABLE) to the user. Gate on system.tables —
+      // which always exists — so the failing query is never sent at all. The
+      // regex catch below stays as a backstop for the drop-between-checks race.
+      const existsRes = await queryApi.executeQuery(
+        "SELECT count() AS c FROM system.tables WHERE database = 'system' AND name = 'crash_log'"
+      );
+      const exists = num((existsRes.data as Array<{ c: unknown }>)[0]?.c) > 0;
+      if (!exists) return [];
+
+      const sql = `
+        SELECT
+          formatDateTime(event_time, '%Y-%m-%d %H:%i:%S') AS event_time_str,
+          signal,
+          thread_id,
+          query_id,
+          version,
+          substring(arrayStringConcat(trace_full, '\\n'), 1, 4000) AS trace
+        FROM system.crash_log
+        ORDER BY event_time DESC
+        LIMIT 50
+      `;
+      try {
+        const result = await queryApi.executeQuery(sql);
+        return (result.data as Array<Record<string, unknown>>).map((row) => ({
+          event_time: String(row.event_time_str ?? ""),
+          signal: num(row.signal),
+          thread_id: num(row.thread_id),
+          query_id: String(row.query_id ?? ""),
+          version: String(row.version ?? ""),
+          trace: String(row.trace ?? ""),
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/crash_log/i.test(msg) && /Unknown table|UNKNOWN_TABLE|doesn'?t exist/i.test(msg)) {
+          return [];
+        }
+        throw err;
+      }
+    },
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+// ============================================
+// Distributed / cluster (Monitoring → Distributed tab)
+// ============================================
+
+export interface ClusterTopologyRow {
+  cluster: string;
+  shard_num: number;
+  replica_num: number;
+  host_name: string;
+  host_address: string;
+  port: number;
+  is_local: number;
+  errors_count: number;
+  slowdowns_count: number;
+  estimated_recovery_time: number;  // seconds until a failed host is retried
+}
+
+/**
+ * Cluster topology + per-host health from system.clusters. errors_count and
+ * slowdowns_count per (cluster, shard, replica) are the canonical "is a node
+ * in this distributed cluster flaky" signal; estimated_recovery_time > 0
+ * means ClickHouse has temporarily benched that host.
+ */
+export function useClusterTopology(
+  options?: Partial<UseQueryOptions<ClusterTopologyRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+  return useQuery({
+    queryKey: ["clusterTopology", activeConnectionId] as const,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          cluster,
+          shard_num,
+          replica_num,
+          host_name,
+          host_address,
+          port,
+          is_local,
+          errors_count,
+          slowdowns_count,
+          estimated_recovery_time
+        FROM system.clusters
+        ORDER BY cluster, shard_num, replica_num
+        LIMIT 2000
+      `;
+      const result = await queryApi.executeQuery(sql);
+      return (result.data as Array<Record<string, unknown>>).map((row) => ({
+        cluster: String(row.cluster ?? ""),
+        shard_num: num(row.shard_num),
+        replica_num: num(row.replica_num),
+        host_name: String(row.host_name ?? ""),
+        host_address: String(row.host_address ?? ""),
+        port: num(row.port),
+        is_local: num(row.is_local),
+        errors_count: num(row.errors_count),
+        slowdowns_count: num(row.slowdowns_count),
+        estimated_recovery_time: num(row.estimated_recovery_time),
+      }));
+    },
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export interface DistributionQueueRow {
+  database: string;
+  table: string;
+  is_blocked: number;
+  error_count: number;
+  data_files: number;
+  data_compressed_bytes: number;
+  broken_data_files: number;
+  last_exception: string;
+}
+
+/**
+ * Pending async distributed-insert backlog from system.distribution_queue.
+ * A growing data_files / non-zero error_count means inserts to a Distributed
+ * table aren't draining to the shards. Graceful when the table is absent.
+ */
+export function useDistributionQueue(
+  options?: Partial<UseQueryOptions<DistributionQueueRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+  return useQuery({
+    queryKey: ["distributionQueue", activeConnectionId] as const,
+    retry: false,
+    queryFn: async () => {
+      const sql = `
+        SELECT
+          database,
+          table,
+          is_blocked,
+          error_count,
+          data_files,
+          data_compressed_bytes,
+          broken_data_files,
+          last_exception
+        FROM system.distribution_queue
+        ORDER BY error_count DESC, data_files DESC
+        LIMIT 500
+      `;
+      try {
+        const result = await queryApi.executeQuery(sql);
+        return (result.data as Array<Record<string, unknown>>).map((row) => ({
+          database: String(row.database ?? ""),
+          table: String(row.table ?? ""),
+          is_blocked: num(row.is_blocked),
+          error_count: num(row.error_count),
+          data_files: num(row.data_files),
+          data_compressed_bytes: num(row.data_compressed_bytes),
+          broken_data_files: num(row.broken_data_files),
+          last_exception: String(row.last_exception ?? ""),
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/distribution_queue/i.test(msg) && /Unknown table|UNKNOWN_TABLE|doesn'?t exist/i.test(msg)) {
+          return [];
+        }
+        throw err;
+      }
+    },
+    staleTime: 15_000,
+    ...options,
+  });
+}
+
+export interface DistributedDDLRow {
+  entry: string;
+  host_name: string;
+  status: string;
+  cluster: string;
+  query_preview: string;
+  exception_code: number;
+  exception_text: string;
+  query_start_time: string;
+  query_duration_ms: number;
+}
+
+/**
+ * Distributed DDL queue (ON CLUSTER operations) from
+ * system.distributed_ddl_queue over the last day. Stuck or failed entries
+ * (status != 'Finished', non-zero exception_code) flag DDL that didn't
+ * propagate to every node. Graceful when the table is absent.
+ */
+export function useDistributedDDLQueue(
+  options?: Partial<UseQueryOptions<DistributedDDLRow[], Error>>
+) {
+  const { activeConnectionId } = useAuthStore();
+  return useQuery({
+    queryKey: ["distributedDDLQueue", activeConnectionId] as const,
+    retry: false,
+    queryFn: async () => {
+      // Column names per CH 24.11: the per-host column is `host` (not
+      // host_name) and the timestamp is `query_create_time`. Alias to our
+      // field names with a fresh name (no shadow of a source column).
+      const sql = `
+        SELECT
+          entry,
+          host AS host_name,
+          status,
+          cluster,
+          substring(query, 1, 200) AS query_preview,
+          exception_code,
+          substring(exception_text, 1, 400) AS exception_text,
+          formatDateTime(query_create_time, '%Y-%m-%d %H:%i:%S') AS query_start_time_str,
+          query_duration_ms
+        FROM system.distributed_ddl_queue
+        WHERE query_create_time >= now() - INTERVAL 1 DAY
+        ORDER BY query_create_time DESC
+        LIMIT 300
+      `;
+      try {
+        const result = await queryApi.executeQuery(sql);
+        return (result.data as Array<Record<string, unknown>>).map((row) => ({
+          entry: String(row.entry ?? ""),
+          host_name: String(row.host_name ?? ""),
+          status: String(row.status ?? ""),
+          cluster: String(row.cluster ?? ""),
+          query_preview: String(row.query_preview ?? ""),
+          exception_code: num(row.exception_code),
+          exception_text: String(row.exception_text ?? ""),
+          query_start_time: String(row.query_start_time_str ?? ""),
+          query_duration_ms: num(row.query_duration_ms),
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Treat "table absent" AND "no ZooKeeper/Keeper configured" as an empty
+        // queue: a standalone server with no ZK can't have an ON CLUSTER DDL
+        // queue, so there's genuinely nothing to show — not an error worth a
+        // scary red banner.
+        const tableAbsent =
+          /distributed_ddl_queue/i.test(msg) &&
+          /Unknown table|UNKNOWN_TABLE|doesn'?t exist/i.test(msg);
+        const noZooKeeper = /zookeeper|keeper/i.test(msg) && /no .*configuration|NO_ZOOKEEPER|not configured/i.test(msg);
+        // system.distributed_ddl_queue is the one system table whose columns
+        // churn across versions (we target the 24.x names: host, query_create_time).
+        // If a future major renames them, the query hits an identifier/column
+        // error — degrade to an empty queue rather than a red banner, since this
+        // catch is scoped to that one query so any such error is a schema drift.
+        const schemaDrift =
+          /Unknown identifier|UNKNOWN_IDENTIFIER|Missing columns|NO_SUCH_COLUMN|There'?s no column|There is no column|Not found column/i.test(
+            msg
+          );
+        if (tableAbsent || noZooKeeper || schemaDrift) {
+          return [];
+        }
+        throw err;
+      }
+    },
+    staleTime: 30_000,
     ...options,
   });
 }

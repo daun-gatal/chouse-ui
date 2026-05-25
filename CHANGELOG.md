@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.16.0] - 2026-05-25
+
+The big one: chouse-ui grows from a single-cluster console into a **multi-cluster fleet monitor with an AI SRE**. A `/fleet` page watches every connection at once, a backend poller caches snapshots, threshold alerts fire to Slack/email, and **Chouse AI** — an autonomous read-only diagnostic agent — runs root-cause analysis and writes optimized queries with before→after `EXPLAIN` proof. The closed loop is: detect → diagnose (AI) → fix (optimized SQL) → act (Open in Explorer). All read-only / advisory — the AI never mutates your cluster.
+
+### Added
+
+- **Fleet view** (`/fleet`) — grid + row layouts showing every configured connection side by side. Each card polls its own connection independently, so a slow or down cluster never blocks the rest of the grid. Status (healthy / degraded / down), memory %, active queries, longest-running, exceptions feed, inventory strip, and per-node trend sparklines. Sort by status / memory / name, filter by status, drill into a card → the per-cluster Monitoring/Overview view.
+- **Backend fleet poller** (`fleetPoller.ts` + `fleetMetrics.ts`) — one worker per backend polls each connection on a schedule (`FLEET_POLL_INTERVAL_SECONDS`, default 30) and writes per-cluster metric snapshots to SQLite (`fleet_snapshots`, migration 1.18.0). The `/fleet` page reads one fast cached endpoint (`/api/fleet/snapshots`, `/history`) instead of N browsers × M metrics hitting every cluster live. A single-row advisory lease (`fleet_poller_lease`, migration 1.19.0) keeps only one instance polling when multiple replicas share a Postgres DB. Gated by `FLEET_POLLER_ENABLED`.
+- **Threshold alerts (Slack + email)** — client engine watches node memory %, per-query memory, and long-running queries with hysteresis + latch to avoid flapping. Backend `fleetAlerter.ts` delivers Slack Block Kit cards + email (nodemailer) on breach, config in `/app/data/alert-config.json` re-read each tick. In-app alert bell, dock item, toast, and a delivery-config dialog.
+- **Chouse AI — Fleet Doctor** (`/doctor`) — an autonomous, read-only AI SRE. Backend `chouseDoctor.ts` runs a tool-loop agent with a guarded `query_node` tool (single `SELECT`, `system.*` only, ClickHouse `readonly=1`) to scan the fleet, pin root causes, and produce a structured report: per-node verdict + status chips, memory bars, recommendations, evidence, and a **heavy-query deep-dive** (offending query + tables + suggested rewrite). Reports persist to `doctor_reports` (migrations 1.20.0 / 1.21.0) — master-detail page with a history rail, scope picker (subset of nodes), and time-window selector (1 / 6 / 24 / 72h). A lean built-in ClickHouse playbook is injected into the prompt **only when a heavy query is present**, so healthy scans stay fast.
+- **Autonomous RCA on breach** — when an alert breaches (with a cooldown), Chouse AI auto-runs a fleet scan, saves the report (`trigger='auto'`), and delivers the root-cause analysis to Slack/email. Toggle in the alert delivery dialog.
+- **Errors page** (`/errors`) — a viewer over `system.errors` + the crash log, with a search filter and pagination, so recurring server-side errors surface without ad-hoc SQL.
+- **New monitoring panels** — Connection breakdown, MergeTree objects, and Schema inventory views.
+- **Granular monitoring/fleet RBAC** — per-tab/page permissions instead of one blanket `metrics:view`: `logs:view`, `parts:view`, `schema_advisor:view`, `cluster:view`, `errors:view` (group "Metrics & Monitoring"), and `fleet:view`, `doctor:view`, `doctor:run` (group "Fleet Monitoring"). `doctor:view` reads reports/history; `doctor:run` generates scans + schedules. Migrations 1.22.0–1.24.0 grant the new perms to existing roles on a "preserve" strategy so nobody loses access. Pages render an inline `NoPermission` notice instead of redirecting.
+
+### Changed
+
+- **Schema Doctor → Schema Advisor** — the rule-based schema linter (Nullable / oversized-int lints) renamed to disambiguate from the new AI Fleet Doctor. Its icon moves from stethoscope to `TableProperties`; the stethoscope is now exclusively Chouse AI's.
+- **Connection visibility fix** — `getUserConnections()` now also returns connections named by an explicit ALLOW data-access rule (user-level or via the user's roles), not only direct connection grants. Fixes cases where a user with a data-access rule to a connection still couldn't see or connect to it.
+- **docker-compose** — added `FLEET_POLLER_ENABLED` / `FLEET_POLL_INTERVAL_SECONDS`, `json-file` log rotation (10 MB × 3) on both services, and proper-length dev placeholder secrets.
+- **AI brand** — the autonomous agent is **Chouse AI** (the "ChouseD" / "Fleet Doctor" names are now internal codenames only). The existing chat bubble stays as the reactive "Ask" copilot; Chouse AI is the autonomous diagnostic surface.
+
+
 ## [v2.15.1] - 2026-05-21
 
 Docs + landing-page refresh to match what actually shipped in v2.15.0. No app code changes.
