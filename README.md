@@ -52,7 +52,7 @@ CHouse UI provides security and access control features for teams that need:
 | **Fleet view** | Watch every cluster at once — one pane, per-card polling, status / memory / lag / exceptions, drill into any node |
 | **Chouse AI (SRE)** | Autonomous read-only diagnostics — root-cause fleet scans with history + auto-RCA to Slack/email, plus in-tab query optimization (before→after `EXPLAIN`) and error/parts diagnosis |
 
-> **Note**: Other ClickHouse tools serve different use cases well. CHouse UI is designed specifically for teams requiring centralized credential management, role-based access control, and audit capabilities.
+> **Note**: Plenty of ClickHouse tools nail one piece — a query workspace, a dashboard, an AI assistant, a cluster monitor. CHouse UI is the *combination*: a team access layer (app-level RBAC, audit logging, encrypted server-side credentials) paired with multi-cluster fleet monitoring and an autonomous, read-only AI SRE that diagnoses and writes fixes. The operator's console for teams running ClickHouse in production.
 
 ---
 
