@@ -7,8 +7,9 @@ import {
   Zap,
   BarChart3,
   Layers,
-  Stethoscope,
+  TableProperties,
   Network,
+  ShieldAlert,
   type LucideIcon,
 } from "lucide-react";
 import InfoDialog from "@/components/common/InfoDialog";
@@ -22,7 +23,9 @@ import MetricsPage from "./Metrics";
 import LiveQueriesTable from "./LiveQueries";
 import PartsPage from "./Parts";
 import SchemaDoctorPage from "./SchemaDoctor";
+import NoPermission from "@/components/common/NoPermission";
 import ClusterActivityPage from "./ClusterActivity";
+import ErrorsPage from "./Errors";
 
 interface TabConfig {
   icon: LucideIcon;
@@ -54,14 +57,19 @@ const TAB_CONFIG: Record<TabKey, TabConfig> = {
     description: "Merges, mutations & part movements",
   },
   schema: {
-    icon: Stethoscope,
-    label: "Schema doctor",
+    icon: TableProperties,
+    label: "Schema advisor",
     description: "Nullable & oversized column lints",
   },
   cluster: {
     icon: Network,
-    label: "Cluster activity",
-    description: "Mutations & replication queue",
+    label: "Cluster",
+    description: "Replication, mutations, topology, insert backlog & DDL",
+  },
+  errors: {
+    icon: ShieldAlert,
+    label: "Errors",
+    description: "Error counters & crashes",
   },
 };
 
@@ -71,7 +79,8 @@ type TabKey =
   | "metrics"
   | "parts"
   | "schema"
-  | "cluster";
+  | "cluster"
+  | "errors";
 
 interface TabPillProps {
   tabKey: TabKey;
@@ -94,18 +103,28 @@ function TabPill({ tabKey, isActive, onClick, disabled }: TabPillProps) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-pressed={isActive}
+      aria-current={isActive ? "page" : undefined}
       className={cn(
-        "group relative inline-flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+        "group relative inline-flex h-9 items-center gap-2 px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
         isActive ? "text-paper" : "text-paper-muted hover:text-paper",
         disabled && "cursor-not-allowed opacity-50"
       )}
     >
-      <Icon className={cn("h-3.5 w-3.5", isActive ? "text-brand" : "text-paper-dim group-hover:text-paper")} aria-hidden />
+      <Icon
+        className={cn(
+          "h-3.5 w-3.5",
+          isActive ? "text-brand" : "text-paper-dim group-hover:text-paper"
+        )}
+        aria-hidden
+      />
       <span>{config.label}</span>
       {config.liveBadge && (
         <span className="inline-flex items-center gap-1 rounded-xs border border-red-300 bg-red-50 px-1 py-px font-mono text-[8px] uppercase tracking-[0.16em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
-          <span className="h-1 w-1 animate-pulse rounded-full bg-red-500 dark:bg-red-400" aria-hidden />
+          <span
+            className="h-1 w-1 rounded-full bg-red-500 motion-safe:animate-pulse dark:bg-red-400"
+            aria-hidden
+          />
           Live
         </span>
       )}
@@ -126,17 +145,15 @@ export default function Monitoring() {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
 
   const canViewLiveQueries = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_VIEW);
-  const canViewLogs = hasAnyPermission([
-    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW,
-    RBAC_PERMISSIONS.QUERY_HISTORY_VIEW_ALL,
-  ]);
+  const canViewLogs = hasPermission(RBAC_PERMISSIONS.LOGS_VIEW);
   const canViewMetrics = hasAnyPermission([
     RBAC_PERMISSIONS.METRICS_VIEW,
     RBAC_PERMISSIONS.METRICS_VIEW_ADVANCED,
   ]);
-  const canViewParts = canViewMetrics;
-  const canViewSchema = canViewMetrics;
-  const canViewCluster = canViewMetrics;
+  const canViewParts = hasPermission(RBAC_PERMISSIONS.PARTS_VIEW);
+  const canViewSchema = hasPermission(RBAC_PERMISSIONS.SCHEMA_ADVISOR_VIEW);
+  const canViewCluster = hasPermission(RBAC_PERMISSIONS.CLUSTER_VIEW);
+  const canViewErrors = hasPermission(RBAC_PERMISSIONS.ERRORS_VIEW);
 
   const availableTabs: TabKey[] = [
     ...(canViewLogs ? (["logs"] as TabKey[]) : []),
@@ -144,8 +161,15 @@ export default function Monitoring() {
     ...(canViewParts ? (["parts"] as TabKey[]) : []),
     ...(canViewSchema ? (["schema"] as TabKey[]) : []),
     ...(canViewCluster ? (["cluster"] as TabKey[]) : []),
+    ...(canViewErrors ? (["errors"] as TabKey[]) : []),
     ...(canViewLiveQueries ? (["live-queries"] as TabKey[]) : []),
   ];
+
+  const allTabKeys = Object.keys(TAB_CONFIG) as TabKey[];
+  // A real tab the user isn't allowed to see → show a "no permission" message
+  // rather than silently bouncing them to another tab.
+  const deniedTab =
+    tab != null && allTabKeys.includes(tab as TabKey) && !availableTabs.includes(tab as TabKey);
 
   const getInitialTab = (): TabKey => {
     if (tab && availableTabs.includes(tab as TabKey)) {
@@ -157,13 +181,13 @@ export default function Monitoring() {
   const activeTab = getInitialTab();
 
   useEffect(() => {
-    if (!tab || !availableTabs.includes(tab as TabKey)) {
+    if (!deniedTab && (!tab || !availableTabs.includes(tab as TabKey))) {
       const firstAvailable = availableTabs[0];
       if (firstAvailable) {
         navigate(`/monitoring/${firstAvailable}`, { replace: true });
       }
     }
-  }, [tab, availableTabs, navigate]);
+  }, [tab, deniedTab, availableTabs, navigate]);
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -189,7 +213,7 @@ export default function Monitoring() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50">
-      {/* ─── Header — compact: title + tabs share one row on laptop ─── */}
+      {/* ─── Header — compact: title + tabs + controls share one row ─── */}
       <header className="flex-none border-b border-ink-500 px-6 pt-4">
         <div className="flex flex-wrap items-end justify-between gap-4 pb-0">
           <div className="flex items-center gap-3">
@@ -233,7 +257,7 @@ export default function Monitoring() {
               variant="ghost"
               size="icon"
               onClick={() => setIsInfoOpen(true)}
-              className="h-8 w-8 rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
+              className="h-9 w-9 rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
               aria-label="About monitoring"
             >
               <InfoIcon className="h-4 w-4" />
@@ -244,6 +268,10 @@ export default function Monitoring() {
 
       {/* ─── Content ─── */}
       <div className="flex-1 overflow-hidden p-4">
+        {deniedTab ? (
+          <NoPermission inline feature={TAB_CONFIG[tab as TabKey].label} />
+        ) : (
+          <>
         {activeTab === "live-queries" && canViewLiveQueries && (
           <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <LiveQueriesTable
@@ -308,6 +336,19 @@ export default function Monitoring() {
             />
           </div>
         )}
+
+        {activeTab === "errors" && canViewErrors && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <ErrorsPage
+              embedded
+              refreshKey={refreshKey}
+              autoRefresh={autoRefresh}
+              onRefreshChange={setIsRefreshing}
+            />
+          </div>
+        )}
+          </>
+        )}
       </div>
 
       {/* Info dialog */}
@@ -341,7 +382,8 @@ export default function Monitoring() {
                       {key === "metrics" && "Analyze system performance and resource usage."}
                       {key === "parts" && "Track MergeTree merges, mutations, downloads, and removals."}
                       {key === "schema" && "Lint columns for needless Nullable wrappers and oversized integers."}
-                      {key === "cluster" && "Track in-flight ALTER mutations and the per-replica replication queue."}
+                      {key === "cluster" && "Replication queue & mutations, plus cluster topology, Distributed insert backlog, and the ON CLUSTER DDL queue."}
+                      {key === "errors" && "Server-wide error counters from system.errors and any crashes from system.crash_log."}
                     </span>
                   </div>
                 </div>

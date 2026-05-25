@@ -85,10 +85,11 @@ function TabCard({ tabKey, isActive, onClick, disabled }: TabCardProps) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-pressed={isActive}
+      aria-current={isActive ? "page" : undefined}
       className={cn(
         "group @container relative flex flex-1 min-w-[160px] items-center gap-3 border border-ink-500 px-4 py-3 text-left transition-colors",
         "rounded-xs",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50",
         isActive
           ? "border-ink-700 bg-ink-200 text-paper"
           : "bg-ink-100 text-paper-muted hover:border-ink-700 hover:bg-ink-200 hover:text-paper",

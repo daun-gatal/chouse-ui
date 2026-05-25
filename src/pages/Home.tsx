@@ -28,7 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRecentQueries, useSavedQueries, useSystemStats, useDatabases } from "@/hooks";
 import { useAuthStore } from "@/stores/auth";
@@ -436,7 +436,19 @@ export default function HomePage() {
               {userInitials || "·"}
             </div>
             <div className="flex flex-col gap-1">
-              <span className={LABEL_MONO}>Workspace</span>
+              {/* Breadcrumb-style cluster context — this page is now a per-cluster
+                  home reached by drilling into a fleet card. Link back to /fleet
+                  so the operator can see all clusters at a glance again. */}
+              <span className={cn(LABEL_MONO, "inline-flex items-center gap-1.5")}>
+                <Link
+                  to="/fleet"
+                  className="text-paper-dim transition-colors hover:text-brand focus:outline-none focus-visible:text-brand"
+                >
+                  Fleet
+                </Link>
+                <ChevronRight className="h-2.5 w-2.5 text-paper-faint" aria-hidden />
+                <span>{activeConnectionName ? activeConnectionName : "Workspace"}</span>
+              </span>
               <h1 className="text-2xl font-semibold tracking-tight text-paper">
                 {greeting}, <span className="text-paper-dim">{userDisplayName}</span>
               </h1>

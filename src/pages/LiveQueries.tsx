@@ -396,7 +396,7 @@ function QueryRow({ query, onKill, canKill, isKilling }: QueryRowProps) {
                                     )}
                                 >
                                     {isKilling ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <Loader2 className="w-4 h-4 motion-safe:animate-spin" />
                                     ) : (
                                         <Skull className="w-4 h-4" />
                                     )}
@@ -669,7 +669,7 @@ export default function LiveQueriesTable({
                             >
                                 <RefreshCw className={cn(
                                     "w-4 h-4 mr-2",
-                                    isFetching && "animate-spin"
+                                    isFetching && "motion-safe:animate-spin"
                                 )} />
                                 Refresh
                             </Button>

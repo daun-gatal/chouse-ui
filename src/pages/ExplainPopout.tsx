@@ -246,7 +246,7 @@ const ExplainPopout = () => {
             if (analysisLoading) {
                 return (
                     <div className="flex h-full flex-col items-center justify-center gap-3">
-                        <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+                        <Loader2 className="h-5 w-5 motion-safe:animate-spin text-paper-dim" />
                         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Analyzing query…</span>
                     </div>
                 );
@@ -285,7 +285,7 @@ const ExplainPopout = () => {
         if (isLoading) {
             return (
                 <div className="flex h-full flex-col items-center justify-center gap-3">
-                    <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+                    <Loader2 className="h-5 w-5 motion-safe:animate-spin text-paper-dim" />
                     <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
                         Loading {EXPLAIN_TYPES[activeView as ExplainType]?.label.toLowerCase() || ''} explain…
                     </span>
@@ -367,7 +367,7 @@ const ExplainPopout = () => {
         return (
             <div className="flex h-screen w-screen items-center justify-center bg-ink-50">
                 <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
+                    <Loader2 className="h-5 w-5 motion-safe:animate-spin text-paper-dim" />
                     <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Loading explain data…</span>
                 </div>
             </div>

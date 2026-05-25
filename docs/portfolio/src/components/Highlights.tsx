@@ -1,4 +1,4 @@
-import { Shield, Users, Database, Activity, type LucideIcon } from "lucide-react";
+import { Shield, Users, FileText, LayoutGrid, Stethoscope, Activity, type LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { Section, Container, SectionHeader } from "./Section";
 
@@ -9,24 +9,38 @@ interface Highlight {
   meta: string;
 }
 
+// The six pillars that make up the "combination" — a team access layer
+// (security / RBAC / audit) × fleet monitoring × an autonomous AI SRE.
 const HIGHLIGHTS: Highlight[] = [
   {
     icon: Shield,
-    title: "Enterprise security",
-    description: "AES-256-GCM for connection passwords, Argon2id for user passwords, JWT with refresh.",
+    title: "Encrypted credentials",
+    description: "AES-256-GCM connection passwords, Argon2id user passwords, JWT with refresh — secrets live server-side, so the browser never sees a ClickHouse password.",
     meta: "Server-side only",
   },
   {
     icon: Users,
     title: "Role-based access",
-    description: "Six predefined roles. Granular data-access rules per user, database, and table.",
+    description: "Six predefined roles, ~40 permissions, and granular data-access rules per user, database, and table.",
     meta: "RBAC built-in",
   },
   {
-    icon: Database,
-    title: "Multi-connection",
-    description: "Manage many ClickHouse servers from one UI. Switch connections instantly.",
-    meta: "One workspace",
+    icon: FileText,
+    title: "Audit logging",
+    description: "Every action and query recorded with the real session context — user, user-agent, and geo.",
+    meta: "Full trail",
+  },
+  {
+    icon: LayoutGrid,
+    title: "Multi-cluster fleet",
+    description: "Every connected cluster in one pane — status, memory, exceptions, trends — each card polling independently.",
+    meta: "One pane",
+  },
+  {
+    icon: Stethoscope,
+    title: "Autonomous AI SRE",
+    description: "Chouse AI runs read-only root-cause scans, writes fixes with before→after EXPLAIN proof, and delivers RCA to Slack on a breach.",
+    meta: "Read-only",
   },
   {
     icon: Activity,
@@ -44,10 +58,10 @@ export default function Highlights() {
           eyebrow="Why teams pick it"
           eyebrowIndex={5}
           title="Built for the parts your DBA actually cares about."
-          description="Not feature theater — the things you need to deploy ClickHouse where money or compliance is involved."
+          description="Plenty of ClickHouse tools nail one of these — CHouse UI is the combination. The things that matter when money or compliance is on the line."
         />
 
-        <div className="mt-16 grid grid-cols-1 divide-y divide-ink-500 border-t border-ink-500 md:grid-cols-2 md:divide-x md:divide-y-0 lg:grid-cols-4">
+        <div className="mt-16 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-ink-500 bg-ink-500 sm:grid-cols-2 lg:grid-cols-3">
           {HIGHLIGHTS.map((h, idx) => {
             const Icon = h.icon;
             return (
@@ -56,11 +70,11 @@ export default function Highlights() {
                 initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-80px" }}
-                transition={{ duration: 0.5, delay: idx * 0.06, ease: [0.16, 1, 0.3, 1] }}
-                className="group flex flex-col gap-6 px-6 py-10 first:pl-0 lg:px-8 lg:first:pl-0 lg:last:pr-0"
+                transition={{ duration: 0.5, delay: (idx % 3) * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                className="group flex flex-col gap-6 bg-ink-100 p-6 transition-colors hover:bg-ink-200 md:p-8"
               >
                 <div className="flex items-center justify-between">
-                  <span className="grid h-10 w-10 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper transition-colors group-hover:border-accent group-hover:text-accent">
+                  <span className="grid h-10 w-10 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper transition-colors group-hover:border-accent group-hover:text-accent">
                     <Icon className="h-4 w-4" aria-hidden />
                   </span>
                   <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">

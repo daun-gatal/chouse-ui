@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { SunMoon, Gauge, FileSearch, ArrowUpRight, type LucideIcon } from "lucide-react";
+import { LayoutGrid, Stethoscope, BellRing, Sparkles, ArrowUpRight, type LucideIcon } from "lucide-react";
 import { Section, Container } from "./Section";
 
 /**
@@ -9,7 +9,7 @@ import { Section, Container } from "./Section";
  * a release ships a few headline features worth surfacing above the fold.
  */
 
-const RELEASE = "v2.15.0";
+const RELEASE = "v2.16.0";
 
 interface NewItem {
   icon: LucideIcon;
@@ -19,19 +19,24 @@ interface NewItem {
 
 const ITEMS: NewItem[] = [
   {
-    icon: SunMoon,
-    title: "Light + dark, auto by time",
-    desc: "Full light theme on a warm-stone palette, plus an Auto mode that follows your local clock. Every chart, table, and pill is theme-aware.",
+    icon: LayoutGrid,
+    title: "Multi-cluster fleet view",
+    desc: "Watch every ClickHouse connection from one pane — status, memory %, active queries, exceptions, and per-node trends. Each card polls on its own, so one slow cluster never blocks the grid.",
   },
   {
-    icon: Gauge,
-    title: "Monitoring deep-dive",
-    desc: "Server memory breakdown, top memory/CPU queries, blocked-task indicators, per-replica lag, and p50/p95/p99 latency — no exporter required.",
+    icon: Stethoscope,
+    title: "Chouse AI · Fleet Doctor",
+    desc: "An autonomous, read-only AI SRE. It scans the fleet, pins the root cause, and writes a structured report with a heavy-query deep-dive and suggested rewrites — never mutating your cluster.",
   },
   {
-    icon: FileSearch,
-    title: "By Redash rollup",
-    desc: "Group every query by the Redash query_id in its SQL comment, so cluster load maps straight back to the saved dashboard that caused it.",
+    icon: BellRing,
+    title: "Alerts to Slack, with auto-RCA",
+    desc: "Threshold alerts on memory, heavy queries, and long-runners fire to Slack and email. On a breach, Chouse AI auto-runs root-cause analysis and delivers it straight to the channel.",
+  },
+  {
+    icon: Sparkles,
+    title: "Optimize & diagnose in-place",
+    desc: "Optimize any logged query with Chouse AI — a rewrite with a before→after EXPLAIN — or diagnose a server error or part-log row, right where you spot the problem.",
   },
 ];
 
@@ -73,7 +78,7 @@ export default function WhatsNew() {
         </motion.div>
 
         {/* Cards — stagger in on scroll */}
-        <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-ink-500 bg-ink-500 md:grid-cols-3">
+        <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-ink-500 bg-ink-500 sm:grid-cols-2 lg:grid-cols-4">
           {ITEMS.map((item, idx) => {
             const Icon = item.icon;
             return (

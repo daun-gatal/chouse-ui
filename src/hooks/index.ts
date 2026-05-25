@@ -70,3 +70,36 @@ export {
   useLiveQueries,
   useKillQuery,
 } from './useLiveQueries';
+// Fleet monitoring hooks (multi-connection — backs the /fleet page)
+export {
+  useFleetConnections,
+  useFleetSummary,
+  useFleetLongestQuery,
+  useFleetLastException,
+  computeFleetStatus,
+  fetchFleetSummary,
+  fleetSummaryQueryKey,
+  useFleetSnapshots,
+  isSnapshotFresh,
+  summaryFromSnapshot,
+  longestQueryFromSnapshot,
+  lastExceptionFromSnapshot,
+  flattenFleetExceptions,
+  useFleetExceptions,
+  useFleetHistory,
+  pivotHistory,
+  nodeSeries,
+  FLEET_TREND_FIELDS,
+  nodeStatusFromSnapshot,
+  FLEET_STATUS_RANK,
+} from './useFleetMetrics';
+export type {
+  FleetSummary,
+  FleetLongestQuery,
+  FleetLastException,
+  FleetCardStatus,
+  FleetExceptionEntry,
+  FleetHistory,
+  FleetTrendField,
+  FleetTrendPoint,
+} from './useFleetMetrics';

@@ -11,11 +11,22 @@ import {
 } from "@/components/ui/select";
 import { PartLogTimelineChart } from "@/components/monitoring/PartLogTimelineChart";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
+import { AiDiagnoseButton } from "@/components/monitoring/AiDiagnoseButton";
 import { SkeletonRows } from "@/components/common/Skeletons";
+import { diagnoseTableParts } from "@/api/query";
 import { usePartLog } from "@/hooks/useMonitoringTimeline";
+import { ProjectionsView, SkipIndexesView } from "@/components/monitoring/MergeTreeObjects";
 import { cn } from "@/lib/utils";
 
 const PART_LOG_FETCH_LIMIT = 5000;
+
+type PartsView = "log" | "projections" | "skipindex";
+
+const SUBVIEWS: { id: PartsView; title: string; hint: string }[] = [
+  { id: "log", title: "Part log", hint: "MergeTree part events" },
+  { id: "projections", title: "Projections", hint: "Precomputed reorder / aggregate" },
+  { id: "skipindex", title: "Skip indexes", hint: "Data-skipping (secondary)" },
+];
 
 interface PartsPageProps {
   embedded?: boolean;
@@ -65,17 +76,22 @@ export default function PartsPage({
   autoRefresh = false,
   onRefreshChange,
 }: PartsPageProps) {
+  const [view, setView] = useState<PartsView>("log");
   const [searchTerm, setSearchTerm] = useState("");
   const [eventType, setEventType] = useState<string>("all");
   const [pageSize, setPageSize] = useState(100);
   const [currentPage, setCurrentPage] = useState(0);
 
-  const { data, isLoading, isFetching, error, refetch } = usePartLog(PART_LOG_FETCH_LIMIT, 6);
+  const { data, isLoading, isFetching, error, refetch } = usePartLog(PART_LOG_FETCH_LIMIT, 6, {
+    enabled: view === "log",
+  });
 
-  // Notify parent of refresh status.
+  // Notify parent of refresh status — only the part-log view drives it from
+  // here; the projections / skip-index views drive it themselves.
   useEffect(() => {
+    if (view !== "log") return;
     onRefreshChange?.(isFetching);
-  }, [isFetching, onRefreshChange]);
+  }, [isFetching, onRefreshChange, view]);
 
   // Manual refresh trigger from Monitoring header.
   useEffect(() => {
@@ -123,6 +139,39 @@ export default function PartsPage({
   return (
     <div className="h-full overflow-hidden">
       <div className={cn("flex h-full flex-col gap-4", embedded ? "p-4" : "p-6")}>
+        {/* Sub-tabs */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
+          {SUBVIEWS.map((sv) => {
+            const activeTab = view === sv.id;
+            return (
+              <button
+                key={sv.id}
+                type="button"
+                onClick={() => setView(sv.id)}
+                className={cn(
+                  "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  activeTab ? "text-paper" : "text-paper-muted hover:text-paper"
+                )}
+              >
+                <span>{sv.title}</span>
+                <span className="font-mono text-[9px] tracking-[0.14em] text-paper-faint">· {sv.hint}</span>
+                {activeTab && (
+                  <span className="absolute -bottom-px left-0 right-0 h-px bg-brand" aria-hidden />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {view === "projections" && (
+          <ProjectionsView refreshKey={refreshKey} onRefreshChange={onRefreshChange} />
+        )}
+        {view === "skipindex" && (
+          <SkipIndexesView refreshKey={refreshKey} onRefreshChange={onRefreshChange} />
+        )}
+
+        {view === "log" && (
+        <>
         {/* Chart card */}
         <PartLogTimelineChart hoursBack={6} bucket="minute" refreshKey={refreshKey} />
 
@@ -222,9 +271,10 @@ export default function PartsPage({
                       "Duration",
                       "Rows",
                       "Size",
+                      "",
                     ].map((h, i) => (
                       <th
-                        key={h}
+                        key={h || "ai"}
                         className={cn(
                           "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint",
                           i >= 6 ? "text-right" : "text-left"
@@ -272,6 +322,16 @@ export default function PartsPage({
                       <td className="px-3 py-1.5 text-right font-mono text-paper">
                         {formatBytes(r.size_in_bytes)}
                       </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <AiDiagnoseButton
+                          compact
+                          label="Diagnose"
+                          title="Diagnose parts with Chouse AI"
+                          badge={`${r.database}.${r.table}`}
+                          subtitle="Chouse AI inspects this table's parts/partitions read-only and proposes a fix (merge pressure, too many parts, partition key). Review before acting."
+                          runDiagnosis={(modelId) => diagnoseTableParts(r.database, r.table, modelId)}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -298,10 +358,12 @@ export default function PartsPage({
         {isFetching && (
           <div className="flex shrink-0 items-center justify-end text-[11px] text-paper-faint">
             <span className="inline-flex items-center gap-1.5 font-mono uppercase tracking-[0.14em]">
-              <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />
+              <RefreshCw className="h-3 w-3 motion-safe:animate-spin" aria-hidden />
               Refreshing
             </span>
           </div>
+        )}
+        </>
         )}
       </div>
     </div>

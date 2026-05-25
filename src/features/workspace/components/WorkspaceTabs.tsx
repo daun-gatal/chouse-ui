@@ -8,6 +8,7 @@ import {
   GripVertical,
   Home,
   Info,
+  Layers,
   Plus,
   Save,
   Terminal,
@@ -34,6 +35,7 @@ import HomeTab from "@/features/workspace/components/HomeTab";
 import { useWorkspaceStore, genTabId, Tab } from "@/stores";
 import SqlTab from "@/features/workspace/components/SqlTab";
 import InformationTab from "@/features/workspace/components/infoTab/InfoTab";
+import SchemaInventory from "@/components/monitoring/SchemaInventory";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -66,6 +68,7 @@ function SortableTab({ tab, isActive, onActivate }: SortableTabProps) {
     if (tab.type === "sql" && tab.isSaved) return <Save className="h-3.5 w-3.5" />;
     if (tab.type === "sql") return <Terminal className="h-3.5 w-3.5" />;
     if (tab.type === "information") return <Info className="h-3.5 w-3.5" />;
+    if (tab.type === "schema-inventory") return <Layers className="h-3.5 w-3.5" />;
     return null;
   };
 
@@ -329,6 +332,8 @@ function WorkspaceTabs() {
                     typeof tab.content === "object" ? tab.content.table : undefined
                   }
                 />
+              ) : tab.type === "schema-inventory" ? (
+                <SchemaInventory />
               ) : null}
             </TabsContent>
           ))}

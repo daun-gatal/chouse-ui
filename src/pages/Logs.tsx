@@ -18,6 +18,8 @@ import {
   ArrowUpDown,
   CalendarRange,
   GitCompare,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { format as formatDate } from "date-fns";
 
@@ -58,8 +60,9 @@ import {
   type ViewLogRow,
 } from "@/hooks/useMonitoringTimeline";
 import { QueryHistogramChart } from "@/components/monitoring/QueryHistogramChart";
-import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
-import { cn } from "@/lib/utils";
+import { useRbacStore, RBAC_PERMISSIONS, useWorkspaceStore, genTabId } from "@/stores";
+import { useNavigate } from "react-router-dom";
+import { cn, formatCompactNumber } from "@/lib/utils";
 import { DataControls } from "@/components/common/DataControls";
 import {
   Tooltip,
@@ -67,8 +70,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { rbacUsersApi, rbacRolesApi } from "@/api/rbac";
+import { optimizeQueryFromLog, fetchOptimizeModels } from "@/api/query";
+import { HeavyQueryCard } from "@/features/fleet/components/DoctorReportView";
 import { SkeletonRows } from "@/components/common/Skeletons";
 import { QueryTimelineChart } from "@/components/monitoring/QueryTimelineChart";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
@@ -224,7 +229,9 @@ const RANGE_OPTIONS: Array<{ label: string; hours: number }> = [
 ];
 
 function bucketFor(hours: number): TimelineBucket {
-  return hours > 12 ? "hour" : "minute";
+  if (hours > 48) return "day";   // multi-day ranges → one point per day
+  if (hours > 12) return "hour";
+  return "minute";
 }
 
 function formatBytes(bytes: number): string {
@@ -935,7 +942,8 @@ export default function LogsPage({
 
       {/* Body — chart on top, table below */}
       <div className={cn("flex flex-1 min-h-0 flex-col gap-4 overflow-hidden", embedded ? "p-4" : "p-6")}>
-        {/* Chart card */}
+        {/* Chart card — query-kind counts + resource metrics in one chart
+            (metric toggle), so the table below stays in view. */}
         <QueryTimelineChart
           hoursBack={effectiveHours}
           bucket={bucket}
@@ -2080,7 +2088,7 @@ function LogRow({
       <tr
         onClick={onToggle}
         className={cn(
-          "cursor-pointer border-b border-ink-500/60 transition-colors",
+          "group cursor-pointer border-b border-ink-500/60 transition-colors",
           isExpanded
             ? "bg-ink-200"
             : selected
@@ -2135,9 +2143,10 @@ function LogRow({
           <StatusIcon className={cn("h-3.5 w-3.5", statusColor)} aria-hidden />
         </td>
         <td className="px-3 py-1.5">
+          <div className="flex items-center gap-1.5">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="cursor-help font-mono text-paper line-clamp-1">
+              <span className="min-w-0 flex-1 cursor-help font-mono text-paper line-clamp-1">
                 {log.query}
               </span>
             </TooltipTrigger>
@@ -2155,11 +2164,29 @@ function LogRow({
                   {log.query.length.toLocaleString()} chars
                 </span>
               </div>
+              {/* Resource summary — saves a click into the expanded row for the
+                  at-a-glance "how heavy was this query" read. */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-ink-500 px-3 py-1.5 font-mono text-[10px] tabular-nums text-paper-muted">
+                <span className="text-paper">{formatDuration(log.query_duration_ms)}</span>
+                <span className="text-ink-700" aria-hidden>·</span>
+                <span>{formatBytes(log.memory_usage)} peak</span>
+                <span className="text-ink-700" aria-hidden>·</span>
+                <span>{formatCompactNumber(log.read_rows)} rows</span>
+                <span className="text-ink-700" aria-hidden>·</span>
+                <span>{formatBytes(log.read_bytes)} read</span>
+              </div>
               <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-[1.55] text-paper">
                 {highlightSql(log.query)}
               </pre>
             </TooltipContent>
           </Tooltip>
+          <OptimizeWithChouseAI
+            compact
+            queryId={log.query_id}
+            query={log.query}
+            heavy={memTier !== "ok"}
+          />
+          </div>
         </td>
         <td className="px-3 py-1.5 text-paper truncate">
           {log.rbacUser ? (
@@ -2201,6 +2228,203 @@ function LogRow({
           </td>
         </tr>
       )}
+    </>
+  );
+}
+
+/**
+ * "Optimize Query With Chouse AI" — runs the same heavy-query engine as Fleet
+ * Doctor on this one query (by its query_id, so the backend works from the FULL
+ * query, never the truncated preview) and shows the result in a dialog using the
+ * same HeavyQueryCard the Doctor report uses: cause, tables, suggestions, the
+ * complete optimized query, and a before -> after EXPLAIN estimate.
+ */
+function OptimizeWithChouseAI({
+  queryId,
+  query,
+  compact = false,
+  heavy = false,
+}: {
+  queryId: string;
+  query: string;
+  /** Icon-only trigger for dense table rows (vs. the full text button). */
+  compact?: boolean;
+  /** Heavy query → keep the compact trigger always visible + brand-tinted. */
+  heavy?: boolean;
+}) {
+  const { hasPermission } = useRbacStore();
+  const navigate = useNavigate();
+  const addTab = useWorkspaceStore((s) => s.addTab);
+  const canOptimize = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+  // Only SELECT / WITH queries can be optimized (read-only). Strip BOTH block
+  // /* … */ and line -- comments first — Redash prefixes a /* … */--DP-1234
+  // banner, so stripping only block comments leaves a leading -- and the check
+  // would wrongly fail.
+  const isReadOnly = /^(select|with)\b/i.test(
+    query
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/--[^\n]*/g, " ")
+      .trim(),
+  );
+  const [open, setOpen] = useState(false);
+  const [modelId, setModelId] = useState<string | undefined>(undefined);
+  const modelsQuery = useQuery({
+    queryKey: ["optimize-models"],
+    queryFn: fetchOptimizeModels,
+    enabled: open && canOptimize,
+    staleTime: 5 * 60_000,
+  });
+  const mutation = useMutation({ mutationFn: (mid?: string) => optimizeQueryFromLog(queryId, mid) });
+
+  if (!canOptimize || !isReadOnly) return null;
+
+  const models = modelsQuery.data ?? [];
+
+  const start = (e?: React.MouseEvent) => {
+    e?.stopPropagation(); // don't toggle the row's expand when launching
+    setOpen(true); // open only — do NOT auto-run, so the user can pick a model first
+  };
+
+  // Drop the optimized query into a fresh SQL tab in the Explorer workspace and
+  // jump there so the operator can run it immediately.
+  const openInExplorer = () => {
+    const sql = mutation.data?.optimizedQuery;
+    if (!sql) return;
+    addTab({ id: genTabId(), title: "Optimized · Chouse AI", type: "sql", content: sql, isSaved: false });
+    setOpen(false);
+    navigate("/explorer");
+  };
+
+  const trigger = compact ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={start}
+          aria-label="Optimize with Chouse AI"
+          className={cn(
+            "grid h-6 w-6 shrink-0 place-items-center rounded-xs border transition-all",
+            heavy
+              ? "border-brand/40 bg-brand/10 text-brand hover:bg-brand/20"
+              : "border-transparent text-paper-faint opacity-0 hover:bg-ink-300 hover:text-brand group-hover:opacity-100",
+          )}
+        >
+          <Sparkles className="h-3 w-3" aria-hidden />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>Optimize with Chouse AI</TooltipContent>
+    </Tooltip>
+  ) : (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={start}
+      className="h-6 gap-1.5 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand hover:bg-brand/10"
+    >
+      <Sparkles className="h-3 w-3" />
+      Optimize with Chouse AI
+    </Button>
+  );
+
+  return (
+    <>
+      {trigger}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="flex h-[88vh] max-w-4xl flex-col overflow-hidden rounded-xs border-ink-500 bg-ink-100 p-0">
+          <DialogHeader className="flex-shrink-0 border-b border-ink-500 px-6 pb-4 pt-6">
+            <DialogTitle asChild>
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-brand" aria-hidden />
+                <span className="text-[15px] font-semibold text-paper">Optimize Query With Chouse AI</span>
+              </div>
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-[12px] text-paper-muted">
+              Same engine as Fleet Doctor — works from the full query, proposes an optimized version with the
+              identical result, and proves it with a before → after EXPLAIN estimate. Review before running.
+            </DialogDescription>
+            {models.length > 1 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Model</span>
+                <select
+                  value={modelId ?? ""}
+                  onChange={(e) => setModelId(e.target.value || undefined)}
+                  disabled={mutation.isPending}
+                  className="h-8 max-w-[280px] rounded-xs border border-ink-500 bg-ink-200 px-2 text-[11px] text-paper focus:border-brand focus:outline-none disabled:opacity-50"
+                  title="Model used for the optimization"
+                >
+                  <option value="">Default model</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} · {m.model}
+                      {m.isDefault ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {mutation.data && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => mutation.mutate(modelId)}
+                    disabled={mutation.isPending}
+                    className="h-8 gap-1.5 rounded-xs border-ink-500 px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
+                  >
+                    <Sparkles className="h-3 w-3" /> Re-run
+                  </Button>
+                )}
+              </div>
+            )}
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+            {mutation.isPending ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <Loader2 className="h-7 w-7 animate-spin text-brand" aria-hidden />
+                <p className="text-[13px] text-paper-muted">Chouse AI is investigating the query &amp; its tables…</p>
+                <p className="text-[11px] text-paper-faint">A heavy query can take ~30–60s.</p>
+              </div>
+            ) : mutation.isError ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <AlertTriangle className="h-7 w-7 text-red-400" aria-hidden />
+                <p className="max-w-md text-[13px] text-paper-muted">
+                  {mutation.error instanceof Error ? mutation.error.message : "Optimization failed."}
+                </p>
+                <Button variant="outline" size="sm" onClick={() => mutation.mutate(modelId)} className="rounded-xs">
+                  Try again
+                </Button>
+              </div>
+            ) : mutation.data ? (
+              <HeavyQueryCard hq={mutation.data} />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <Sparkles className="h-8 w-8 text-brand/70" aria-hidden />
+                <p className="max-w-md text-[13px] text-paper-muted">
+                  Pick a model above (or keep the default), then optimize. Chouse AI works from the full query
+                  and proves the result with a before → after EXPLAIN.
+                </p>
+                <Button
+                  onClick={() => mutation.mutate(modelId)}
+                  className="h-9 gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
+                >
+                  <Sparkles className="h-3.5 w-3.5" /> Optimize query
+                </Button>
+              </div>
+            )}
+          </div>
+          {mutation.data?.optimizedQuery && (
+            <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-ink-500 px-6 py-3">
+              <span className="mr-auto font-mono text-[10px] text-paper-faint">
+                Review before running — opens in a new Explorer tab.
+              </span>
+              <Button
+                onClick={openInExplorer}
+                className="h-8 gap-1.5 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Open in Explorer
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -2253,15 +2477,18 @@ function LogDetail({ log, failed, onClose }: LogDetailProps) {
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
             Query
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => copy(log.query)}
-            className="h-6 gap-1.5 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
-          >
-            <Copy className="h-3 w-3" />
-            Copy
-          </Button>
+          <div className="flex items-center gap-1">
+            <OptimizeWithChouseAI queryId={log.query_id} query={log.query} />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => copy(log.query)}
+              className="h-6 gap-1.5 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
+            >
+              <Copy className="h-3 w-3" />
+              Copy
+            </Button>
+          </div>
         </div>
         <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-xs border border-ink-500 bg-ink-200 p-3 font-mono text-[12px] text-paper">
           {log.query}

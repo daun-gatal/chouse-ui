@@ -3,6 +3,7 @@
  */
 
 import { api } from './client';
+import type { FleetDoctorHeavyQuery, FleetDoctorModel } from './fleet';
 
 // ============================================
 // Types
@@ -357,4 +358,62 @@ export async function checkQueryOptimization(
   modelId?: string
 ): Promise<{ canOptimize: boolean; reason: string }> {
   return api.post<{ canOptimize: boolean; reason: string }>('/query/check-optimization', { query, modelId });
+}
+
+/**
+ * Optimize a query straight from the Query Logs view by its query_id, using
+ * Chouse AI's heavy-query engine. The backend pulls the FULL query text from
+ * system.query_log (so it's never truncated like the preview), proposes an
+ * optimized version under the hard requirements, and computes a before -> after
+ * EXPLAIN estimate. Returns a heavy-query-shaped result for HeavyQueryCard.
+ */
+export async function optimizeQueryFromLog(
+  queryId: string,
+  modelId?: string,
+  signal?: AbortSignal
+): Promise<FleetDoctorHeavyQuery> {
+  return api.post<FleetDoctorHeavyQuery>('/query/optimize-log', { queryId, modelId }, { signal });
+}
+
+/** Active AI models available to the "Optimize with Chouse AI" picker. */
+export async function fetchOptimizeModels(): Promise<FleetDoctorModel[]> {
+  return api.get<FleetDoctorModel[]>('/query/optimize-models');
+}
+
+/** Chouse AI's diagnosis of a system.errors entry — cause + concrete fix steps. */
+export interface ErrorDiagnosis {
+  code?: number;
+  name: string;
+  summary: string;
+  cause: string;
+  impact: string;
+  solutions: string[];
+}
+
+/**
+ * Ask Chouse AI to diagnose a server error and propose a SOLUTION (not an
+ * optimized query). The backend may inspect the node's system.* read-only to
+ * ground the cause, then returns a structured diagnosis + ordered fix steps.
+ */
+export async function diagnoseServerError(
+  name: string,
+  code?: number,
+  message?: string,
+  modelId?: string,
+  signal?: AbortSignal
+): Promise<ErrorDiagnosis> {
+  return api.post<ErrorDiagnosis>('/query/diagnose-error', { name, code, message, modelId }, { signal });
+}
+
+/**
+ * Ask Chouse AI to diagnose the part/partition health of a table (Parts tab) and
+ * propose a solution — too many parts, merge pressure, bad partition key, etc.
+ */
+export async function diagnoseTableParts(
+  database: string,
+  table: string,
+  modelId?: string,
+  signal?: AbortSignal
+): Promise<ErrorDiagnosis> {
+  return api.post<ErrorDiagnosis>('/query/diagnose-parts', { database, table, modelId }, { signal });
 }

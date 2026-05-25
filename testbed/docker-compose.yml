@@ -1,0 +1,154 @@
+# chouse-fleet test bed — 3 memory-capped ClickHouse nodes (v25+).
+#
+#   docker compose up -d        # start all three
+#   docker compose ps           # watch them turn healthy (~20-30s)
+#   docker compose down         # stop  (add -v to wipe the data volumes)
+#
+# Register these as three nodes in chouse-fleet (HTTP interface):
+#   ch-1  ->  http://localhost:8200   user: default   password: fleet
+#   ch-2  ->  http://localhost:8201   user: default   password: fleet
+#   ch-3  ->  http://localhost:8202   user: default   password: fleet
+#
+# Why the tuning: a stock ClickHouse grabs multiple GB of cache per instance,
+# so 3 of them would OOM an 8 GB box instantly. The inline config below caps
+# each node hard. This is a LOCAL test rig — the default user's password is a
+# throwaway ("fleet"); do not expose these ports off your machine.
+#
+# Override the image tag if you want a newer 25.x:  CH_VERSION=25.8 docker compose up -d
+
+name: chouse-fleet-testbed
+
+x-clickhouse: &clickhouse
+  image: clickhouse/clickhouse-server:${CH_VERSION:-25.3}
+  restart: unless-stopped
+  # Cap container logs. These nodes log to console (<console>1</console>), so the
+  # default json-file driver grows UNBOUNDED — a crash/merge loop can fill the
+  # Docker VM disk in minutes. 10m x 3 = 30 MB hard ceiling per node.
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  # Hard ceiling per node. Sized for THIS machine: Docker VM ~11.7 GB with
+  # ~9 GB free, so 3 x 2 GiB = 6 GiB fits with headroom. Drop to 1024m if you
+  # move this to a box where Docker has less memory (e.g. an 8 GB Mac).
+  mem_limit: 2048m
+  mem_reservation: 512m
+  cpus: "2.0"
+  ulimits:
+    nofile:
+      soft: 262144
+      hard: 262144
+  healthcheck:
+    test: ["CMD", "clickhouse-client", "--password", "fleet", "--query", "SELECT 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 30s
+  configs:
+    - source: low_mem_and_cluster
+      target: /etc/clickhouse-server/config.d/zz-fleet-testbed.xml
+    - source: per_query_limits
+      target: /etc/clickhouse-server/users.d/zz-fleet-testbed.xml
+
+services:
+  clickhouse-1:
+    <<: *clickhouse
+    container_name: ch-fleet-1
+    ports:
+      - "8200:8123"   # HTTP  (register this in chouse-fleet)
+      - "9100:9000"   # native (clickhouse-client from the host)
+    volumes:
+      - ch1-data:/var/lib/clickhouse
+
+  clickhouse-2:
+    <<: *clickhouse
+    container_name: ch-fleet-2
+    ports:
+      - "8201:8123"
+      - "9101:9000"
+    volumes:
+      - ch2-data:/var/lib/clickhouse
+
+  clickhouse-3:
+    <<: *clickhouse
+    container_name: ch-fleet-3
+    ports:
+      - "8202:8123"
+      - "9102:9000"
+    volumes:
+      - ch3-data:/var/lib/clickhouse
+
+configs:
+  # Server-level config (config.d): memory caps + a logical 3-node cluster.
+  low_mem_and_cluster:
+    content: |
+      <clickhouse>
+          <!-- Log to the container's stdout so `docker compose logs` shows the
+               REAL server log (errors + "Ready for connections"), not just the
+               entrypoint preamble. The stock image logs only to files inside
+               the container, which is why `docker logs` looked empty/looping. -->
+          <logger>
+              <console>1</console>
+              <level>information</level>
+          </logger>
+
+          <!-- Use at most 70% of THIS container's limit. ClickHouse reads the
+               cgroup limit set by mem_limit, NOT the host's 8 GB. -->
+          <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+
+          <!-- Stock caches are multiple GB each — far too big for 3 shared
+               nodes. A test rig needs almost nothing here. -->
+          <mark_cache_size>268435456</mark_cache_size>                  <!-- 256 MiB -->
+          <uncompressed_cache_size>134217728</uncompressed_cache_size>  <!-- 128 MiB -->
+
+          <!-- Don't lock pages into RAM on a tiny box. -->
+          <mlock_executable>false</mlock_executable>
+
+          <!-- NOTE: background pool sizes are left at their defaults on purpose.
+               Shrinking background_pool_size trips ClickHouse 25.x's mutation-pool
+               sanity check (pool_size * ratio must exceed the default reserve of
+               20) and the server refuses to start. Memory is already bounded by
+               the cache caps above + max_server_memory_usage_to_ram_ratio, so the
+               background threads cost little. -->
+
+          <!-- Cap concurrency so one query can't blow the budget. -->
+          <max_concurrent_queries>16</max_concurrent_queries>
+
+          <!-- Bonus: a logical 3-node cluster so the Cluster -> Topology view
+               isn't empty. Sharded, no replication => no Keeper needed. -->
+          <remote_servers replace="true">
+              <fleet_cluster>
+                  <shard><replica><host>clickhouse-1</host><port>9000</port></replica></shard>
+                  <shard><replica><host>clickhouse-2</host><port>9000</port></replica></shard>
+                  <shard><replica><host>clickhouse-3</host><port>9000</port></replica></shard>
+              </fleet_cluster>
+          </remote_servers>
+      </clickhouse>
+
+  # User profile (users.d): bound a single query so an accidental heavy one
+  # can't OOM the node; it spills to disk past these thresholds.
+  per_query_limits:
+    content: |
+      <clickhouse>
+          <!-- Give the default user a throwaway password so the fleet connects
+               with credentials (user: default, password: fleet). Plaintext is
+               fine for a local test rig. -->
+          <users>
+              <default>
+                  <password>fleet</password>
+              </default>
+          </users>
+          <profiles>
+              <default>
+                  <max_memory_usage>1073741824</max_memory_usage>                       <!-- 1 GiB -->
+                  <max_bytes_before_external_group_by>536870912</max_bytes_before_external_group_by>
+                  <max_bytes_before_external_sort>536870912</max_bytes_before_external_sort>
+              </default>
+          </profiles>
+      </clickhouse>
+
+volumes:
+  ch1-data:
+  ch2-data:
+  ch3-data:

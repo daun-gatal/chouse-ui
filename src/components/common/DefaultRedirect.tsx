@@ -30,7 +30,10 @@ export const DefaultRedirect = () => {
     return <Navigate to="/login" replace />;
   }
 
-  // Check what pages user has access to, in priority order
+  // Check what pages user has access to, in priority order.
+  // chouse-fleet pivots the default landing to /fleet — operators arriving at
+  // the app should see every cluster, not a single-connection home.
+  const canViewFleet = hasAnyPermission([RBAC_PERMISSIONS.CONNECTIONS_VIEW]);
   const canViewOverview = true; // Visible to all authenticated users
   const canViewExplorer = hasAnyPermission([
     RBAC_PERMISSIONS.DB_VIEW,
@@ -53,6 +56,9 @@ export const DefaultRedirect = () => {
   const canViewSettings = hasPermission(RBAC_PERMISSIONS.SETTINGS_VIEW);
 
   // Redirect to first available page in priority order
+  if (canViewFleet) {
+    return <Navigate to="/fleet" replace />;
+  }
   if (canViewOverview) {
     return <Navigate to="/overview" replace />;
   }

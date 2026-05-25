@@ -411,6 +411,24 @@ const DatabaseExplorer: React.FC = () => {
     }
   }, [activeTab, canViewSavedQueries]);
 
+  // Open (or focus) the schema inventory in the main work area. getState()
+  // avoids colliding with the local sidebar-tab setActiveTab above and keeps
+  // this out of the render deps.
+  const openSchemaInventory = useCallback(() => {
+    const ws = useWorkspaceStore.getState();
+    const existing = ws.tabs.find((t) => t.type === "schema-inventory");
+    if (existing) {
+      ws.setActiveTab(existing.id);
+      return;
+    }
+    ws.addTab({
+      id: genTabId(),
+      title: "Schema inventory",
+      type: "schema-inventory",
+      content: "",
+    });
+  }, []);
+
   return (
     <div className="flex h-full flex-col bg-ink-50">
       {/* Tab navigation */}
@@ -492,6 +510,21 @@ const DatabaseExplorer: React.FC = () => {
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Refresh</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={openSchemaInventory}
+                        className="h-8 w-8 rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
+                      >
+                        <Layers className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Schema inventory — tables vs views</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
                 <DropdownMenu>

@@ -26,47 +26,43 @@ interface ConfirmationDialogProps {
   isLoading?: boolean;
 }
 
+/**
+ * Variant style table. Chip uses the shared `.status-*` utility classes from
+ * index.css so light/dark mode flip is handled centrally — no per-variant
+ * dark: pairings to maintain. Confirm button colours stay inline because they
+ * carry intent (danger button needs to look dangerous in both modes).
+ */
 const variantStyles: Record<
   Variant,
   {
     icon: React.ReactNode;
-    chipBorder: string;
-    chipBg: string;
-    chipText: string;
+    chipClass: string;
     confirmBtn: string;
   }
 > = {
   danger: {
     icon: <AlertCircle className="h-4 w-4" aria-hidden />,
-    chipBorder: "border-red-900/60",
-    chipBg: "bg-red-950/40",
-    chipText: "text-red-300",
+    chipClass: "status-danger",
     confirmBtn:
-      "bg-red-600 hover:bg-red-700 text-paper border border-red-700",
+      "bg-red-600 text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600",
   },
   warning: {
     icon: <AlertTriangle className="h-4 w-4" aria-hidden />,
-    chipBorder: "border-amber-900/60",
-    chipBg: "bg-amber-950/40",
-    chipText: "text-amber-300",
+    chipClass: "status-warn",
     confirmBtn:
-      "bg-amber-600 hover:bg-amber-700 text-ink-50 border border-amber-700",
+      "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500",
   },
   info: {
     icon: <Info className="h-4 w-4" aria-hidden />,
-    chipBorder: "border-ink-500",
-    chipBg: "bg-ink-200",
-    chipText: "text-paper-muted",
+    chipClass: "status-neutral",
     confirmBtn:
-      "bg-brand hover:bg-brand-soft text-ink-50 border border-brand",
+      "bg-brand text-ink-50 hover:bg-brand-soft",
   },
   success: {
     icon: <CheckCircle className="h-4 w-4" aria-hidden />,
-    chipBorder: "border-emerald-900/60",
-    chipBg: "bg-emerald-950/40",
-    chipText: "text-emerald-300",
+    chipClass: "status-success",
     confirmBtn:
-      "bg-emerald-600 hover:bg-emerald-700 text-ink-50 border border-emerald-700",
+      "bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500",
   },
 };
 
@@ -81,7 +77,7 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   variant = "danger",
   isLoading = false,
 }) => {
-  const { icon, chipBorder, chipBg, chipText, confirmBtn } = variantStyles[variant];
+  const { icon, chipClass, confirmBtn } = variantStyles[variant];
 
   const renderDescription = () => {
     if (typeof description === 'string') {
@@ -104,9 +100,7 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       <DialogContent className="sm:max-w-[425px] rounded-xs border border-ink-500 bg-ink-100 text-paper">
         <DialogHeader className="space-y-3">
           <DialogTitle className="flex items-center gap-3 text-paper">
-            <span
-              className={`grid h-9 w-9 place-items-center rounded-xs border ${chipBorder} ${chipBg} ${chipText}`}
-            >
+            <span className={`${chipClass} grid h-9 w-9 place-items-center !p-0`}>
               {icon}
             </span>
             <span className="text-[16px] font-semibold tracking-tight">{title}</span>
@@ -127,9 +121,10 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           <Button
             onClick={onConfirm}
             disabled={isLoading}
+            aria-busy={isLoading}
             className={`h-9 gap-2 rounded-xs px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] ${confirmBtn}`}
           >
-            {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isLoading && <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />}
             {confirmText}
           </Button>
         </DialogFooter>

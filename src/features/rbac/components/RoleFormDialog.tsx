@@ -574,8 +574,10 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                               onOpenChange={() => toggleCategory(category)}
                             >
                               <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100 transition-colors hover:border-ink-700">
-                                <CollapsibleTrigger className="group flex w-full items-center justify-between p-4 transition-colors hover:bg-ink-200">
-                                  <div className="flex items-center gap-3">
+                                {/* Trigger and the per-category Select-all are SIBLINGS — a button
+                                    must never nest inside another button (invalid DOM + a11y). */}
+                                <div className="flex items-center justify-between transition-colors hover:bg-ink-200">
+                                  <CollapsibleTrigger className="group flex flex-1 items-center gap-3 p-4 text-left">
                                     <motion.div
                                       animate={{ rotate: isExpanded ? 90 : 0 }}
                                       transition={{ duration: 0.2 }}
@@ -595,22 +597,19 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                                     >
                                       {categorySelected.length}/{permissions.length}
                                     </span>
-                                  </div>
+                                  </CollapsibleTrigger>
                                   {canModify && (
                                     <Button
                                       type="button"
                                       variant="ghost"
                                       size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleSelectAllInCategory(category);
-                                      }}
-                                      className="h-7 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-300 hover:text-paper"
+                                      onClick={() => handleSelectAllInCategory(category)}
+                                      className="mr-2 h-7 shrink-0 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-300 hover:text-paper"
                                     >
                                       {allSelected ? 'Deselect all' : 'Select all'}
                                     </Button>
                                   )}
-                                </CollapsibleTrigger>
+                                </div>
                                 <CollapsibleContent>
                                   <motion.div
                                     initial={{ height: 0, opacity: 0 }}
@@ -621,34 +620,50 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                                   >
                                     {permissions.map((permission) => {
                                       const isSelected = selectedPermissionIds.has(permission.id);
+                                      // The whole row IS the accessible checkbox: a single click toggles
+                                      // once (no row-onClick + control-onChange double-fire), and it's
+                                      // keyboard-operable. The inner Checkbox is purely presentational.
                                       return (
                                         <motion.div
                                           key={permission.id}
+                                          role="checkbox"
+                                          aria-checked={isSelected}
+                                          aria-label={permission.displayName}
+                                          aria-disabled={canModify ? undefined : true}
+                                          tabIndex={canModify ? 0 : -1}
+                                          onClick={() => togglePermission(permission.id)}
+                                          onKeyDown={(e) => {
+                                            if (!canModify) return;
+                                            if (e.key === ' ' || e.key === 'Enter') {
+                                              e.preventDefault();
+                                              togglePermission(permission.id);
+                                            }
+                                          }}
                                           className={cn(
-                                            'flex cursor-pointer items-start gap-3 rounded-xs border p-3 transition-colors',
+                                            'flex items-start gap-3 rounded-xs border p-3 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand',
+                                            canModify ? 'cursor-pointer' : 'cursor-default opacity-70',
                                             isSelected
                                               ? 'border-brand/40 bg-ink-200'
-                                              : 'border-ink-500 bg-ink-100 hover:border-ink-700 hover:bg-ink-200'
+                                              : 'border-ink-500 bg-ink-100',
+                                            !isSelected && canModify && 'hover:border-ink-700 hover:bg-ink-200'
                                           )}
-                                          onClick={() => togglePermission(permission.id)}
                                         >
                                           <Checkbox
-                                            id={permission.id}
                                             checked={isSelected}
-                                            onCheckedChange={() => togglePermission(permission.id)}
                                             disabled={!canModify}
-                                            className="mt-0.5 border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
+                                            tabIndex={-1}
+                                            aria-hidden
+                                            className="pointer-events-none mt-0.5 border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
                                           />
                                           <div className="min-w-0 flex-1">
-                                            <Label
-                                              htmlFor={permission.id}
+                                            <span
                                               className={cn(
-                                                'block cursor-pointer text-[12px]',
+                                                'block text-[12px]',
                                                 isSelected ? 'font-medium text-paper' : 'text-paper-muted'
                                               )}
                                             >
                                               {permission.displayName}
-                                            </Label>
+                                            </span>
                                             {permission.description && (
                                               <p className="mt-1 text-[11px] text-paper-faint">
                                                 {permission.description}

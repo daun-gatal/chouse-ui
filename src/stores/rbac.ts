@@ -371,6 +371,12 @@ export const RBAC_PERMISSIONS = {
   // Metrics
   METRICS_VIEW: 'metrics:view',
   METRICS_VIEW_ADVANCED: 'metrics:view:advanced',
+  // Per-tab monitoring views (granular)
+  LOGS_VIEW: 'logs:view',
+  PARTS_VIEW: 'parts:view',
+  SCHEMA_ADVISOR_VIEW: 'schema_advisor:view',
+  CLUSTER_VIEW: 'cluster:view',
+  ERRORS_VIEW: 'errors:view',
 
   // Settings
   SETTINGS_VIEW: 'settings:view',
@@ -390,6 +396,11 @@ export const RBAC_PERMISSIONS = {
   CONNECTIONS_VIEW: 'connections:view',
   CONNECTIONS_EDIT: 'connections:edit',
   CONNECTIONS_DELETE: 'connections:delete',
+
+  // Fleet & Chouse AI (Fleet Doctor)
+  FLEET_VIEW: 'fleet:view',
+  DOCTOR_VIEW: 'doctor:view',
+  DOCTOR_RUN: 'doctor:run',
 
   // AI Features
   AI_OPTIMIZE: 'ai:optimize',

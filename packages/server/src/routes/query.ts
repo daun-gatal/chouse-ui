@@ -1109,6 +1109,217 @@ const OptimizeQuerySchema = z.object({
   modelId: z.string().optional(),
 });
 
+/**
+ * POST /query/optimize-log
+ * Optimize a query the operator points at from the Query Logs view (by its
+ * query_id). Reuses Chouse AI's heavy-query engine: pulls the FULL query from
+ * system.query_log, proposes an optimized version under the hard requirements,
+ * and returns a before -> after EXPLAIN estimate. Gated by ai:optimize.
+ */
+query.post(
+  "/optimize-log",
+  zValidator("json", z.object({ queryId: z.string().min(1), modelId: z.string().optional() })),
+  async (c) => {
+    const { queryId, modelId } = c.req.valid("json");
+    const rbacUserId = c.get("rbacUserId");
+    const isRbacAdmin = c.get("isRbacAdmin");
+    const rbacPermissions = c.get("rbacPermissions");
+    const session = c.get("session");
+    const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
+
+    try {
+      await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
+
+      if (!connectionId) {
+        return c.json(
+          { success: false, error: { code: "NO_CONNECTION", message: "No active ClickHouse connection." } },
+          400 as any,
+        );
+      }
+
+      const { optimizeSingleQuery } = await import("../services/chouseDoctor");
+      const result = await optimizeSingleQuery({ connectionId, queryId, modelId });
+
+      if (rbacUserId) {
+        try {
+          await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
+            details: { action: "ai_optimize_log", queryId, connectionId },
+            status: "success",
+          });
+        } catch {
+          /* audit is best-effort */
+        }
+      }
+
+      return c.json({ success: true, data: result });
+    } catch (error) {
+      const err = error as { statusCode?: number; message?: string };
+      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+      return c.json(
+        { success: false, error: { code: "OPTIMIZE_FAILED", message: err?.message || "Failed to optimize query." } },
+        status as any,
+      );
+    }
+  },
+);
+
+/**
+ * GET /query/optimize-models
+ * Active AI models for the "Optimize with Chouse AI" picker (no secrets).
+ * Gated by ai:optimize so it's reachable wherever the optimize button shows.
+ */
+query.get("/optimize-models", async (c) => {
+  const rbacUserId = c.get("rbacUserId");
+  const isRbacAdmin = c.get("isRbacAdmin");
+  const rbacPermissions = c.get("rbacPermissions");
+  try {
+    await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
+  } catch (error) {
+    const err = error as { statusCode?: number; message?: string };
+    return c.json(
+      { success: false, error: { code: "FORBIDDEN", message: err?.message || "Forbidden" } },
+      (err?.statusCode as any) || 403,
+    );
+  }
+  try {
+    const { listAiConfigs } = await import("../rbac/services/aiModels");
+    const { configs } = await listAiConfigs({ activeOnly: true });
+    return c.json({
+      success: true,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: configs.map((cfg: any) => ({
+        id: cfg.id,
+        label: cfg.name,
+        model: cfg.model?.modelId ?? cfg.model?.name ?? "",
+        provider: cfg.provider?.name ?? cfg.provider?.providerType ?? "",
+        isDefault: Boolean(cfg.isDefault),
+      })),
+    });
+  } catch {
+    return c.json({ success: true, data: [] });
+  }
+});
+
+/**
+ * POST /query/diagnose-error
+ * Chouse AI diagnoses a system.errors entry and proposes a SOLUTION (not an
+ * optimized query). Gated by ai:optimize; uses the active session connection so
+ * the AI can investigate that node's system.* tables read-only.
+ */
+query.post(
+  "/diagnose-error",
+  zValidator(
+    "json",
+    z.object({
+      name: z.string().min(1),
+      code: z.number().int().optional(),
+      message: z.string().optional(),
+      modelId: z.string().optional(),
+    }),
+  ),
+  async (c) => {
+    const { name, code, message, modelId } = c.req.valid("json");
+    const rbacUserId = c.get("rbacUserId");
+    const isRbacAdmin = c.get("isRbacAdmin");
+    const rbacPermissions = c.get("rbacPermissions");
+    const session = c.get("session");
+    const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
+
+    try {
+      await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
+
+      if (!connectionId) {
+        return c.json(
+          { success: false, error: { code: "NO_CONNECTION", message: "No active ClickHouse connection." } },
+          400 as any,
+        );
+      }
+
+      const { diagnoseError } = await import("../services/chouseDoctor");
+      const result = await diagnoseError({ connectionId, code, name, message, modelId });
+
+      if (rbacUserId) {
+        try {
+          await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
+            details: { action: "ai_diagnose_error", errorName: name, code, connectionId },
+            status: "success",
+          });
+        } catch {
+          /* audit is best-effort */
+        }
+      }
+
+      return c.json({ success: true, data: result });
+    } catch (error) {
+      const err = error as { statusCode?: number; message?: string };
+      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+      return c.json(
+        { success: false, error: { code: "DIAGNOSE_FAILED", message: err?.message || "Failed to diagnose error." } },
+        status as any,
+      );
+    }
+  },
+);
+
+/**
+ * POST /query/diagnose-parts
+ * Chouse AI diagnoses the part/partition health of one table (Parts tab) and
+ * proposes a SOLUTION. Gated by ai:optimize; uses the active session connection.
+ */
+query.post(
+  "/diagnose-parts",
+  zValidator(
+    "json",
+    z.object({
+      database: z.string().min(1),
+      table: z.string().min(1),
+      modelId: z.string().optional(),
+    }),
+  ),
+  async (c) => {
+    const { database, table, modelId } = c.req.valid("json");
+    const rbacUserId = c.get("rbacUserId");
+    const isRbacAdmin = c.get("isRbacAdmin");
+    const rbacPermissions = c.get("rbacPermissions");
+    const session = c.get("session");
+    const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
+
+    try {
+      await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
+
+      if (!connectionId) {
+        return c.json(
+          { success: false, error: { code: "NO_CONNECTION", message: "No active ClickHouse connection." } },
+          400 as any,
+        );
+      }
+
+      const { diagnoseParts } = await import("../services/chouseDoctor");
+      const result = await diagnoseParts({ connectionId, database, table, modelId });
+
+      if (rbacUserId) {
+        try {
+          await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
+            details: { action: "ai_diagnose_parts", database, table, connectionId },
+            status: "success",
+          });
+        } catch {
+          /* audit is best-effort */
+        }
+      }
+
+      return c.json({ success: true, data: result });
+    } catch (error) {
+      const err = error as { statusCode?: number; message?: string };
+      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+      return c.json(
+        { success: false, error: { code: "DIAGNOSE_FAILED", message: err?.message || "Failed to diagnose parts." } },
+        status as any,
+      );
+    }
+  },
+);
+
 query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
   const { query: sql, database, additionalPrompt, modelId } = c.req.valid("json");
   const service = c.get("service");

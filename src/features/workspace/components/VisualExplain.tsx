@@ -23,7 +23,10 @@ import {
     ArrowUpDown,
     GitMerge,
     Code,
-    Box
+    Box,
+    KeyRound,
+    Check,
+    AlertTriangle,
 } from 'lucide-react';
 import { ExplainPlanNode, ExplainResult, getNodeCategory, getNodeStyle, NodeCategory, NODE_STYLES } from '@/types/explain';
 import ExplainInfoHeader from './ExplainInfoHeader';
@@ -118,6 +121,44 @@ function extractIndexMetrics(details: ExplainPlanNode): { parts?: number; granul
 }
 
 /**
+ * Per-index filtering breakdown for a ReadFromMergeTree node — the ordered
+ * list of indexes ClickHouse applied (MinMax → Partition → PrimaryKey → Skip),
+ * each with how many granules it narrowed. This is what powers the index
+ * effectiveness view: instead of one summed number we keep each index's own
+ * before/after so an operator can see *which* index did the work (or that none
+ * did → full scan).
+ */
+interface IndexStep {
+    label: string;            // e.g. "PrimaryKey (id)" / "Skip idx_country" / "MinMax"
+    initialGranules?: number;
+    selectedGranules?: number;
+}
+
+function extractIndexBreakdown(details: ExplainPlanNode): IndexStep[] {
+    const indexes = details['Indexes'];
+    if (!Array.isArray(indexes) || indexes.length === 0) return [];
+    return indexes.map((idx): IndexStep => {
+        const type = String(idx['Type'] ?? 'Index');
+        const name = idx['Name'] ? String(idx['Name']) : undefined;
+        const keys = Array.isArray(idx['Keys']) ? idx['Keys'].map(String).join(', ') : undefined;
+        const label = name ? `${type} ${name}` : keys ? `${type} (${keys})` : type;
+        const ig = idx['Initial Granules'];
+        const sg = idx['Selected Granules'];
+        return {
+            label,
+            initialGranules: ig != null ? Number(ig) : undefined,
+            selectedGranules: sg != null ? Number(sg) : undefined,
+        };
+    });
+}
+
+/** Granules skipped by one index step, as a 0-100 percentage. */
+function granulesSkippedPct(step: IndexStep): number {
+    if (!step.initialGranules || step.selectedGranules == null || step.initialGranules <= 0) return 0;
+    return ((step.initialGranules - step.selectedGranules) / step.initialGranules) * 100;
+}
+
+/**
  * Custom Node for Explain Plan with color-coding
  */
 const ExplainNodeComponent = ({ data }: { data: { label: string; type: string; details: ExplainPlanNode; step: number } }) => {
@@ -135,13 +176,27 @@ const ExplainNodeComponent = ({ data }: { data: { label: string; type: string; d
 
     // Extract metrics from Indexes array if available
     const indexMetrics = extractIndexMetrics(data.details);
+    const indexBreakdown = extractIndexBreakdown(data.details);
+    const hasIndexBreakdown = indexBreakdown.length > 0;
 
     // Extract metrics with fallbacks for different ClickHouse field naming conventions
     const readRows = extractMetric(data.details, 'Read Rows', 'Rows', 'Selected Rows', 'rows');
     const readBytes = extractMetric(data.details, 'Read Bytes', 'Bytes', 'Selected Bytes', 'bytes');
-    const parts = extractMetric(data.details, 'Selected Parts', 'Parts', 'parts') ?? indexMetrics.parts;
+    // When there's a per-index breakdown, the granule/part story is told by the
+    // index-effectiveness section below — don't also show the (meaningless)
+    // sum-across-indexes figure here.
+    const parts = hasIndexBreakdown ? undefined : (extractMetric(data.details, 'Selected Parts', 'Parts', 'parts') ?? indexMetrics.parts);
     const marks = extractMetric(data.details, 'Selected Marks', 'Marks', 'marks');
-    const granules = extractMetric(data.details, 'Selected Granules', 'Granules', 'granules') ?? indexMetrics.granules;
+    const granules = hasIndexBreakdown ? undefined : (extractMetric(data.details, 'Selected Granules', 'Granules', 'granules') ?? indexMetrics.granules);
+
+    // Overall index effectiveness: first index's initial granules → the last
+    // index that reported a selection. < ~0% skipped means a full scan.
+    const overallInitial = indexBreakdown[0]?.initialGranules;
+    const overallSelected = [...indexBreakdown].reverse().find((s) => s.selectedGranules != null)?.selectedGranules;
+    const overallSkippedPct = (overallInitial != null && overallSelected != null && overallInitial > 0)
+        ? ((overallInitial - overallSelected) / overallInitial) * 100
+        : undefined;
+    const fullScan = overallSkippedPct !== undefined && overallSkippedPct < 0.05;
 
     // Check if we have any metrics to display
     const hasMetrics = readRows !== undefined || readBytes !== undefined || parts !== undefined || marks !== undefined || granules !== undefined;
@@ -222,6 +277,69 @@ const ExplainNodeComponent = ({ data }: { data: { label: string; type: string; d
                             Granules: <span className="font-medium text-cyan-400">{granules.toLocaleString()}</span>
                         </span>
                     )}
+                </div>
+            )}
+
+            {/* Index effectiveness — which index narrowed the read, and by how
+                much. The opinionated bit: a clear verdict (good filter vs full
+                scan) plus a per-index bar, instead of a raw granule count. */}
+            {hasIndexBreakdown && (
+                <div className="mt-2 border-t border-ink-500 pt-2">
+                    <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
+                        <KeyRound className="h-3 w-3" aria-hidden /> Index filtering
+                    </div>
+                    <div
+                        className={cn(
+                            "mb-2 flex items-start gap-1 text-[10px] font-medium leading-tight",
+                            overallSkippedPct === undefined ? "text-paper-muted" : fullScan ? "text-red-400" : "text-brand"
+                        )}
+                    >
+                        {overallSkippedPct === undefined ? (
+                            <span>Index stats unavailable</span>
+                        ) : fullScan ? (
+                            <>
+                                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                                <span>Full scan — no index narrowed the read</span>
+                            </>
+                        ) : (
+                            <>
+                                <Check className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                                <span>
+                                    Reads {overallSelected?.toLocaleString()} / {overallInitial?.toLocaleString()} granules
+                                    {" · "}
+                                    {overallSkippedPct >= 99.95 ? "~100" : overallSkippedPct.toFixed(1)}% skipped
+                                </span>
+                            </>
+                        )}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        {indexBreakdown.map((step, i) => {
+                            const pct = granulesSkippedPct(step);
+                            const did = pct >= 0.05;
+                            return (
+                                <div
+                                    key={i}
+                                    className={cn(
+                                        "flex items-center gap-2 font-mono text-[9px]",
+                                        did ? "text-paper-muted" : "text-paper-faint"
+                                    )}
+                                >
+                                    <span className="w-[92px] shrink-0 truncate" title={step.label}>{step.label}</span>
+                                    <div className="relative h-1 flex-1 overflow-hidden rounded-xs bg-ink-300">
+                                        {did && (
+                                            <div
+                                                className="absolute inset-y-0 left-0 rounded-xs bg-brand"
+                                                style={{ width: `${Math.min(100, pct)}%` }}
+                                            />
+                                        )}
+                                    </div>
+                                    <span className="w-[34px] shrink-0 text-right tabular-nums">
+                                        {did ? `−${pct >= 99.5 ? 99 : Math.round(pct)}%` : "—"}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
             <Handle type="source" position={Position.Bottom} className="!bg-ink-500" />

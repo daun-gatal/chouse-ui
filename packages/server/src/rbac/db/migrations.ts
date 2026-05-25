@@ -2224,6 +2224,411 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: '1.18.0',
+    name: 'fleet_snapshots_table',
+    description: 'M2 — fleet snapshot cache: backend poller writes per-cluster metric snapshots here on a schedule so the /fleet page reads from one fast endpoint instead of N browsers × M metrics hitting every cluster live',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS fleet_snapshots (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            connection_id TEXT    NOT NULL,
+            captured_at   INTEGER NOT NULL,
+            metric        TEXT    NOT NULL,
+            payload       TEXT    NOT NULL,
+            error         TEXT,
+            FOREIGN KEY (connection_id) REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE
+          )
+        `);
+        // Lookup index for "latest snapshot per (connection, metric)" reads
+        // and the prune timer's "delete WHERE captured_at < cutoff".
+        (db as SqliteDb).run(sql`
+          CREATE INDEX IF NOT EXISTS idx_fleet_snapshots_lookup
+            ON fleet_snapshots (connection_id, metric, captured_at DESC)
+        `);
+        (db as SqliteDb).run(sql`
+          CREATE INDEX IF NOT EXISTS idx_fleet_snapshots_prune
+            ON fleet_snapshots (captured_at)
+        `);
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.18.0] Created fleet_snapshots table (SQLite)');
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS fleet_snapshots (
+            id            BIGSERIAL PRIMARY KEY,
+            connection_id TEXT      NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+            captured_at   BIGINT    NOT NULL,
+            metric        TEXT      NOT NULL,
+            payload       TEXT      NOT NULL,
+            error         TEXT
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE INDEX IF NOT EXISTS idx_fleet_snapshots_lookup
+            ON fleet_snapshots (connection_id, metric, captured_at DESC)
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE INDEX IF NOT EXISTS idx_fleet_snapshots_prune
+            ON fleet_snapshots (captured_at)
+        `);
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.18.0] Created fleet_snapshots table (PostgreSQL)');
+      }
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS fleet_snapshots`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS fleet_snapshots`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.18.0] Dropped fleet_snapshots table');
+    },
+  },
+  {
+    version: '1.19.0',
+    name: 'fleet_poller_lease',
+    description: 'M2 HA — single-row advisory lease so only one backend instance polls when multiple replicas run against a shared (Postgres) DB. Prevents double-writes into fleet_snapshots.',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS fleet_poller_lease (
+            id          INTEGER PRIMARY KEY,
+            holder      TEXT    NOT NULL DEFAULT '',
+            acquired_at INTEGER NOT NULL DEFAULT 0,
+            expires_at  INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        // Seed the single lock row (id=1) so the poller's UPDATE-to-claim
+        // always has a row to contend over. Idempotent via INSERT OR IGNORE.
+        (db as SqliteDb).run(sql`
+          INSERT OR IGNORE INTO fleet_poller_lease (id, holder, acquired_at, expires_at)
+          VALUES (1, '', 0, 0)
+        `);
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.19.0] Created fleet_poller_lease (SQLite)');
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS fleet_poller_lease (
+            id          INTEGER PRIMARY KEY,
+            holder      TEXT    NOT NULL DEFAULT '',
+            acquired_at BIGINT  NOT NULL DEFAULT 0,
+            expires_at  BIGINT  NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          INSERT INTO fleet_poller_lease (id, holder, acquired_at, expires_at)
+          VALUES (1, '', 0, 0)
+          ON CONFLICT (id) DO NOTHING
+        `);
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.19.0] Created fleet_poller_lease (PostgreSQL)');
+      }
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS fleet_poller_lease`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS fleet_poller_lease`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.19.0] Dropped fleet_poller_lease');
+    },
+  },
+  {
+    version: '1.20.0',
+    name: 'doctor_reports_table',
+    description: 'ChouseD — persist each AI fleet health scan so reports get their own page and a browsable history. Stores the structured analysis, the per-node vitals snapshot used for the scan, the evidence trail, and list-preview columns (status/summary) for the history rail.',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS doctor_reports (
+            id          TEXT    PRIMARY KEY,
+            created_at  INTEGER NOT NULL,
+            created_by  TEXT,
+            model       TEXT,
+            status      TEXT,
+            summary     TEXT,
+            node_count  INTEGER NOT NULL DEFAULT 0,
+            duration_ms INTEGER NOT NULL DEFAULT 0,
+            analysis    TEXT,
+            vitals      TEXT,
+            raw         TEXT,
+            steps       TEXT
+          )
+        `);
+        // History list reads newest-first; the prune keeps the newest N by the
+        // same ordering — both ride this index.
+        (db as SqliteDb).run(sql`
+          CREATE INDEX IF NOT EXISTS idx_doctor_reports_created
+            ON doctor_reports (created_at DESC)
+        `);
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.20.0] Created doctor_reports table (SQLite)');
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS doctor_reports (
+            id          TEXT    PRIMARY KEY,
+            created_at  BIGINT  NOT NULL,
+            created_by  TEXT,
+            model       TEXT,
+            status      TEXT,
+            summary     TEXT,
+            node_count  INTEGER NOT NULL DEFAULT 0,
+            duration_ms INTEGER NOT NULL DEFAULT 0,
+            analysis    TEXT,
+            vitals      TEXT,
+            raw         TEXT,
+            steps       TEXT
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE INDEX IF NOT EXISTS idx_doctor_reports_created
+            ON doctor_reports (created_at DESC)
+        `);
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.20.0] Created doctor_reports table (PostgreSQL)');
+      }
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS doctor_reports`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS doctor_reports`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.20.0] Dropped doctor_reports table');
+    },
+  },
+  {
+    version: '1.21.0',
+    name: 'doctor_reports_trigger_source',
+    description: 'ChouseD autonomous mode — tag each report with how it was triggered ("manual" run vs "auto" RCA fired by an alert breach), so the history can distinguish operator checks from incident investigations. (Column is "trigger_source", not "trigger", which is reserved in Postgres.)',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        try {
+          (db as SqliteDb).run(sql.raw(`ALTER TABLE doctor_reports ADD COLUMN trigger_source TEXT`));
+          logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.21.0] Added trigger_source column (SQLite)');
+        } catch (error: unknown) {
+          if (isDuplicateColumnError(error)) {
+            logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.21.0] trigger_source already exists, skipping');
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        await (db as PostgresDb).execute(
+          sql.raw(`ALTER TABLE doctor_reports ADD COLUMN IF NOT EXISTS trigger_source TEXT`),
+        );
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.21.0] Added trigger_source column (PostgreSQL)');
+      }
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      if (getDatabaseType() === 'sqlite') {
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.21.0] SQLite DROP COLUMN skipped (manual intervention if needed)');
+      } else {
+        await (db as PostgresDb).execute(sql.raw(`ALTER TABLE doctor_reports DROP COLUMN IF EXISTS trigger_source`));
+      }
+    },
+  },
+  {
+    version: '1.22.0',
+    name: 'granular_view_permissions',
+    description: 'Per-tab/page view permissions (parts/schema_advisor/cluster/errors/fleet/doctor). Preserve access: grant the monitoring-tab perms to every role that already has metrics:view, and fleet/doctor to every role with connections:view.',
+    up: async (db) => {
+      const { seedPermissions } = await import('../services/seed');
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+      const dbType = getDatabaseType();
+
+      // Ensure the new permissions exist (reads the PERMISSIONS catalog) → name→id map.
+      const idMap = await seedPermissions();
+
+      const selectAll = async (stmt: ReturnType<typeof sql>): Promise<Record<string, unknown>[]> => {
+        if (dbType === 'sqlite') return (db as SqliteDb).all(stmt) as Record<string, unknown>[];
+        const rows = await (db as PostgresDb).execute(stmt);
+        const anyRows = rows as { rows?: unknown[] };
+        return (Array.isArray(rows) ? rows : anyRows.rows ?? []) as Record<string, unknown>[];
+      };
+      const run = async (stmt: ReturnType<typeof sql>): Promise<void> => {
+        if (dbType === 'sqlite') (db as SqliteDb).run(stmt);
+        else await (db as PostgresDb).execute(stmt);
+      };
+
+      // Grant `newPerms` to every role that already holds `parentPerm` (idempotent).
+      const grantLikeParent = async (parentPerm: string, newPerms: string[]) => {
+        const roleRows = await selectAll(sql`
+          SELECT DISTINCT rp.role_id AS role_id
+          FROM rbac_role_permissions rp
+          JOIN rbac_permissions p ON p.id = rp.permission_id
+          WHERE p.name = ${parentPerm}
+        `);
+        for (const row of roleRows) {
+          const roleId = String(row.role_id);
+          for (const permName of newPerms) {
+            const pid = idMap.get(permName);
+            if (!pid) continue;
+            const existing = await selectAll(
+              sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${pid} LIMIT 1`,
+            );
+            if (existing.length === 0) {
+              const id = randomUUID();
+              const ts = dbType === 'sqlite' ? Math.floor(Date.now() / 1000) : new Date().toISOString();
+              await run(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${pid}, ${ts})
+              `);
+            }
+          }
+        }
+      };
+
+      await grantLikeParent('metrics:view', ['parts:view', 'schema_advisor:view', 'cluster:view', 'errors:view']);
+      await grantLikeParent('connections:view', ['fleet:view', 'doctor:view']);
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.22.0] Granular view permissions seeded + granted (preserve)');
+    },
+    down: async () => {
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.22.0] Down: granular view permissions remain (idempotent seed)');
+    },
+  },
+  {
+    version: '1.23.0',
+    name: 'logs_view_permission',
+    description: 'Dedicated logs:view permission for the Query Logs tab (was sharing query:history:view). Preserve access: grant logs:view to every role that already has query:history:view or query:history:view:all.',
+    up: async (db) => {
+      const { seedPermissions } = await import('../services/seed');
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+      const dbType = getDatabaseType();
+
+      // Ensure logs:view exists (reads the PERMISSIONS catalog) → name→id map.
+      const idMap = await seedPermissions();
+
+      const selectAll = async (stmt: ReturnType<typeof sql>): Promise<Record<string, unknown>[]> => {
+        if (dbType === 'sqlite') return (db as SqliteDb).all(stmt) as Record<string, unknown>[];
+        const rows = await (db as PostgresDb).execute(stmt);
+        const anyRows = rows as { rows?: unknown[] };
+        return (Array.isArray(rows) ? rows : anyRows.rows ?? []) as Record<string, unknown>[];
+      };
+      const run = async (stmt: ReturnType<typeof sql>): Promise<void> => {
+        if (dbType === 'sqlite') (db as SqliteDb).run(stmt);
+        else await (db as PostgresDb).execute(stmt);
+      };
+
+      // Grant `newPerm` to every role that already holds any of `parentPerms` (idempotent).
+      const grantLikeParents = async (parentPerms: string[], newPerm: string) => {
+        const pid = idMap.get(newPerm);
+        if (!pid) return;
+        for (const parentPerm of parentPerms) {
+          const roleRows = await selectAll(sql`
+            SELECT DISTINCT rp.role_id AS role_id
+            FROM rbac_role_permissions rp
+            JOIN rbac_permissions p ON p.id = rp.permission_id
+            WHERE p.name = ${parentPerm}
+          `);
+          for (const row of roleRows) {
+            const roleId = String(row.role_id);
+            const existing = await selectAll(
+              sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${pid} LIMIT 1`,
+            );
+            if (existing.length === 0) {
+              const id = randomUUID();
+              const ts = dbType === 'sqlite' ? Math.floor(Date.now() / 1000) : new Date().toISOString();
+              await run(sql`
+                INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+                VALUES (${id}, ${roleId}, ${pid}, ${ts})
+              `);
+            }
+          }
+        }
+      };
+
+      await grantLikeParents(['query:history:view', 'query:history:view:all'], 'logs:view');
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.23.0] logs:view seeded + granted to query-history holders (preserve)');
+    },
+    down: async () => {
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.23.0] Down: logs:view remains (idempotent seed)');
+    },
+  },
+  {
+    version: '1.24.0',
+    name: 'doctor_run_permission',
+    description: 'Dedicated doctor:run permission for generating Chouse AI Doctor reports (manual scan + scheduled scans). Preserve access: grant doctor:run to every role that already has doctor:view.',
+    up: async (db) => {
+      const { seedPermissions } = await import('../services/seed');
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+      const dbType = getDatabaseType();
+
+      const idMap = await seedPermissions();
+
+      const selectAll = async (stmt: ReturnType<typeof sql>): Promise<Record<string, unknown>[]> => {
+        if (dbType === 'sqlite') return (db as SqliteDb).all(stmt) as Record<string, unknown>[];
+        const rows = await (db as PostgresDb).execute(stmt);
+        const anyRows = rows as { rows?: unknown[] };
+        return (Array.isArray(rows) ? rows : anyRows.rows ?? []) as Record<string, unknown>[];
+      };
+      const run = async (stmt: ReturnType<typeof sql>): Promise<void> => {
+        if (dbType === 'sqlite') (db as SqliteDb).run(stmt);
+        else await (db as PostgresDb).execute(stmt);
+      };
+
+      // Grant doctor:run to every role that already holds doctor:view (idempotent).
+      const pid = idMap.get('doctor:run');
+      if (pid) {
+        const roleRows = await selectAll(sql`
+          SELECT DISTINCT rp.role_id AS role_id
+          FROM rbac_role_permissions rp
+          JOIN rbac_permissions p ON p.id = rp.permission_id
+          WHERE p.name = ${'doctor:view'}
+        `);
+        for (const row of roleRows) {
+          const roleId = String(row.role_id);
+          const existing = await selectAll(
+            sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${pid} LIMIT 1`,
+          );
+          if (existing.length === 0) {
+            const id = randomUUID();
+            const ts = dbType === 'sqlite' ? Math.floor(Date.now() / 1000) : new Date().toISOString();
+            await run(sql`
+              INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+              VALUES (${id}, ${roleId}, ${pid}, ${ts})
+            `);
+          }
+        }
+      }
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.24.0] doctor:run seeded + granted to doctor:view holders (preserve)');
+    },
+    down: async () => {
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.24.0] Down: doctor:run remains (idempotent seed)');
+    },
+  },
 ];
 
 // ============================================

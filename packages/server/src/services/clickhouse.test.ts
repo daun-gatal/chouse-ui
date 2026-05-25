@@ -75,16 +75,18 @@ describe("ClickHouse Service", () => {
 
     describe("getSystemStats", () => {
         it("should fetch system stats", async () => {
-            // Setup multiple mock responses for Promise.all
-            // Order: version, uptime, dbCount, tableCount, size/rows, mem, cpu, conn, queries
+            // Mock responses in .json() CONSUMPTION order. The CPU-load query is
+            // issued on its own and resolves BEFORE the Promise.all batch, so its
+            // mock is consumed first. Order:
+            // cpu, version, uptime, dbCount, tableCount, size/rows, mem, conn, queries
             mockJsonFn
+                .mockResolvedValueOnce({ data: [{ cpu_load: 0.5 }] })
                 .mockResolvedValueOnce({ data: [{ "version()": "23.8" }] })
                 .mockResolvedValueOnce({ data: [{ "uptime()": 3600 }] })
                 .mockResolvedValueOnce({ data: [{ "count()": 5 }] })
                 .mockResolvedValueOnce({ data: [{ "count()": 20 }] })
                 .mockResolvedValueOnce({ data: [{ size: "1GB", rows: "1000" }] })
                 .mockResolvedValueOnce({ data: [{ mem: "100MB" }] })
-                .mockResolvedValueOnce({ data: [{ value: 0.5 }] })
                 .mockResolvedValueOnce({ data: [{ value: 10 }] })
                 .mockResolvedValueOnce({ data: [{ cnt: 2 }] });
 

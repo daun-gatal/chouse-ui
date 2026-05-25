@@ -398,13 +398,16 @@ async function validateSingleStatement(
     'query_log', 'query_thread_log', 'part_log', 'metric_log', 'trace_log',
     'text_log', 'asynchronous_metric_log', 'session_log', 'zookeeper_log',
     'system_log', 'crash_log', 'asynchronous_insert_log', 'backup_log',
+    'error_log',
+    // Error counters
+    'errors',
     // Metrics tables (current metrics, not logs)
     'metrics', 'asynchronous_metrics',
     // System information tables
     'processes', 'mutations', 'replicas', 'databases', 'tables', 'columns',
     'functions', 'dictionaries', 'formats', 'table_functions', 'table_engines',
     'settings', 'users', 'roles', 'quotas', 'row_policies', 'grants',
-    'clusters', 'macros', 'merges', 'parts', 'detached_parts', 'data_skipping_indices',
+    'clusters', 'macros', 'merges', 'parts', 'detached_parts', 'data_skipping_indices', 'projections',
     'distribution_queue', 'distributed_ddl_queue', 'replication_queue',
     'zookeeper', 'disks', 'storage_policies', 'merge_tree_settings',
     'build_options', 'licenses', 'server_settings', 'time_zones',

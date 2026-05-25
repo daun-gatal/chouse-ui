@@ -4,7 +4,7 @@
  * Manages ClickHouse server connections with encrypted password storage.
  */
 
-import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, like, or, sql, inArray, isNotNull } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
@@ -844,35 +844,61 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
 
-  // Collect connection IDs from multiple sources
+  // A user can reach a connection through two channels, and we union them:
+  //   1. Direct grant   — a row in userConnections (canUse=true), set via "Manage Access".
+  //   2. Data-access rule — an explicit ALLOW rule that names a *specific* connection
+  //      (assigned to the user directly, or to one of the user's roles). An admin who
+  //      writes "allow abdul to read db.* on localhost 1" clearly intends abdul to be
+  //      able to open localhost 1, so that rule grants the connection itself too.
+  //
+  // Rules with connectionId = NULL are global db/table scopes and do NOT grant any
+  // connection (they'd otherwise hand the user every connection at once). Once inside a
+  // connection, the data-access evaluator still scopes which databases/tables are visible.
   const connectionIdSet = new Set<string>();
 
-  // IMPORTANT: Connection access is ONLY controlled by the userConnections table.
-  // Data access rules control which databases/tables a user can access WITHIN a connection,
-  // but they do NOT grant access to the connection itself.
-  // 
-  // This separation ensures that:
-  // 1. Admins explicitly grant connection access via the "Manage Access" feature
-  // 2. Data access rules only apply to databases/tables within already-granted connections
-
-  // Get user's direct connection access (userConnections table)
+  // 1) Direct connection grants (userConnections table).
   const userConns = await db.select()
     .from(schema.userConnections)
     .where(and(
       eq(schema.userConnections.userId, userId),
       eq(schema.userConnections.canUse, true)
     ));
-
-  logger.debug({ module: 'Connections', userId, count: userConns.length }, 'getUserConnections');
-
-  if (userConns.length === 0) {
-    logger.debug({ module: 'Connections', userId }, 'User has no connection access');
-    return [];
-  }
-
   userConns.forEach((uc: { connectionId: string }) => {
     connectionIdSet.add(uc.connectionId);
   });
+
+  // 2) Connections named by an explicit ALLOW data-access rule — user-level or via roles.
+  const roleRows = await db.select({ roleId: schema.userRoles.roleId })
+    .from(schema.userRoles)
+    .where(eq(schema.userRoles.userId, userId));
+  const roleIds = roleRows
+    .map((r: { roleId: string | null }) => r.roleId)
+    .filter((rid: string | null): rid is string => Boolean(rid));
+
+  const subjectMatch = roleIds.length > 0
+    ? or(eq(schema.dataAccessRules.userId, userId), inArray(schema.dataAccessRules.roleId, roleIds))
+    : eq(schema.dataAccessRules.userId, userId);
+
+  const allowRules = await db.select({ connectionId: schema.dataAccessRules.connectionId })
+    .from(schema.dataAccessRules)
+    .where(and(
+      eq(schema.dataAccessRules.isAllowed, true),
+      isNotNull(schema.dataAccessRules.connectionId),
+      subjectMatch,
+    ));
+  allowRules.forEach((r: { connectionId: string | null }) => {
+    if (r.connectionId) connectionIdSet.add(r.connectionId);
+  });
+
+  logger.debug(
+    { module: 'Connections', userId, direct: userConns.length, viaRules: allowRules.length, total: connectionIdSet.size },
+    'getUserConnections',
+  );
+
+  if (connectionIdSet.size === 0) {
+    logger.debug({ module: 'Connections', userId }, 'User has no connection access');
+    return [];
+  }
 
   // Get the filtered connections
   const connectionIds = Array.from(connectionIdSet);

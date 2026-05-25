@@ -86,6 +86,12 @@ export const PERMISSIONS = {
   // Metrics & Monitoring
   METRICS_VIEW: 'metrics:view',
   METRICS_VIEW_ADVANCED: 'metrics:view:advanced',
+  // Per-tab monitoring views (granular)
+  LOGS_VIEW: 'logs:view',
+  PARTS_VIEW: 'parts:view',
+  SCHEMA_ADVISOR_VIEW: 'schema_advisor:view',
+  CLUSTER_VIEW: 'cluster:view',
+  ERRORS_VIEW: 'errors:view',
 
   // Settings
   SETTINGS_VIEW: 'settings:view',
@@ -105,6 +111,11 @@ export const PERMISSIONS = {
   CONNECTIONS_VIEW: 'connections:view',
   CONNECTIONS_EDIT: 'connections:edit',
   CONNECTIONS_DELETE: 'connections:delete',
+
+  // Fleet & Chouse AI (Fleet Doctor)
+  FLEET_VIEW: 'fleet:view',
+  DOCTOR_VIEW: 'doctor:view',
+  DOCTOR_RUN: 'doctor:run',
 
   // AI Features
   AI_OPTIMIZE: 'ai:optimize',
@@ -257,6 +268,27 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AUDIT_VIEW,
   ],
 };
+
+// The granular per-tab/page view permissions mirror their "parent" so a FRESH
+// install preserves each role's existing access: the monitoring-tab perms follow
+// metrics:view, and fleet/doctor follow connections:view. (Existing installs are
+// handled by the 1.22.0 migration.)
+for (const role of Object.keys(DEFAULT_ROLE_PERMISSIONS) as SystemRole[]) {
+  const perms = DEFAULT_ROLE_PERMISSIONS[role];
+  const add = (...ps: Permission[]) => {
+    for (const p of ps) if (!perms.includes(p)) perms.push(p);
+  };
+  if (perms.includes(PERMISSIONS.METRICS_VIEW)) {
+    add(PERMISSIONS.PARTS_VIEW, PERMISSIONS.SCHEMA_ADVISOR_VIEW, PERMISSIONS.CLUSTER_VIEW, PERMISSIONS.ERRORS_VIEW);
+  }
+  // The Query Logs tab was previously gated by query-history; preserve that access.
+  if (perms.includes(PERMISSIONS.QUERY_HISTORY_VIEW) || perms.includes(PERMISSIONS.QUERY_HISTORY_VIEW_ALL)) {
+    add(PERMISSIONS.LOGS_VIEW);
+  }
+  if (perms.includes(PERMISSIONS.CONNECTIONS_VIEW)) {
+    add(PERMISSIONS.FLEET_VIEW, PERMISSIONS.DOCTOR_VIEW, PERMISSIONS.DOCTOR_RUN);
+  }
+}
 
 // ============================================
 // Resource Types for Scoped Permissions

@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { Loader2 } from "lucide-react";
+import NoPermission from "@/components/common/NoPermission";
 
 interface AdminRouteProps {
   children: React.ReactNode;
@@ -15,9 +16,8 @@ interface AdminRouteProps {
 /**
  * Route that requires admin privileges or specific permissions.
  */
-export const AdminRoute = ({ 
-  children, 
-  redirectTo = "/",
+export const AdminRoute = ({
+  children,
   requiredPermission,
 }: AdminRouteProps) => {
   const location = useLocation();
@@ -52,12 +52,12 @@ export const AdminRoute = ({
       : [requiredPermission];
     
     if (!hasAnyPermission(permissions)) {
-      return <Navigate to={redirectTo} replace />;
+      return <NoPermission />;
     }
   } else {
     // Default: require admin role
     if (!isAdmin()) {
-      return <Navigate to={redirectTo} replace />;
+      return <NoPermission />;
     }
   }
 

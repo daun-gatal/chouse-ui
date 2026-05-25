@@ -14,11 +14,11 @@ const BOOT_LOG = [
   { kind: "ok", text: "✓ chouse-clickhouse  Started   0.4s" },
   { kind: "ok", text: "✓ chouse-ui          Started   0.6s" },
   { kind: "muted", text: "" },
-  { kind: "muted", text: "[RBAC] Initializing RBAC system…" },
-  { kind: "muted", text: "[RBAC] Database type: sqlite" },
-  { kind: "muted", text: "[RBAC] App version: 2.15.1" },
-  { kind: "muted", text: "[RBAC] Running migration: 1.17.1" },
-  { kind: "accent", text: "[RBAC] system ready" },
+  { kind: "muted", text: "[RBAC]  Initializing RBAC system…" },
+  { kind: "muted", text: "[RBAC]  App version: 2.16.0 · sqlite" },
+  { kind: "muted", text: "[RBAC]  Migrations up to date · 1.24.0" },
+  { kind: "muted", text: "[Fleet] Poller online · 3 connections · 30s" },
+  { kind: "accent", text: "[Chouse AI] Fleet Doctor ready · read-only" },
   { kind: "muted", text: "" },
   { kind: "link", text: "→ http://localhost:5521" },
 ] as const;
@@ -105,11 +105,12 @@ export default function Hero() {
               transition={{ duration: 0.6, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
               className="mt-8 max-w-xl text-lg leading-relaxed text-paper-muted"
             >
-              Open-source web interface for ClickHouse with{" "}
-              <span className="text-paper">first-class RBAC</span>, encrypted credentials,
-              audit logging, a SQL workspace, and{" "}
-              <span className="text-paper">ClickHouse-native monitoring</span> — that does
-              not pretend the database is a toy.
+              What started as a single-connection console grew into the{" "}
+              <span className="text-paper">combination</span> most ClickHouse tools only do a
+              piece of — <span className="text-paper">first-class RBAC</span>,{" "}
+              <span className="text-paper">multi-cluster fleet monitoring</span>, and an autonomous{" "}
+              <span className="text-paper">AI SRE</span> that finds the root cause and writes the
+              fix. Read-only. On-prem. Yours.
             </motion.p>
 
             {/* Actions */}

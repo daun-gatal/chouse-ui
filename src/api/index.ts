@@ -46,6 +46,22 @@ export type { SavedQuery, SaveQueryInput, UpdateQueryInput } from './saved-queri
 export * as configApi from './config';
 export type { AppConfig } from './config';
 
+// Fleet (multi-connection monitoring for /fleet page)
+export * as fleetApi from './fleet';
+export type {
+  FleetMetric,
+  FleetQueryResult,
+  FleetSummaryRow,
+  FleetLongestQueryRow,
+  FleetLastExceptionRow,
+  FleetConnectionSnapshot,
+  FleetSnapshotsResponse,
+  FleetHistoryEntry,
+  FleetHistoryResponse,
+  FleetBulkHistoryNode,
+  FleetBulkHistoryResponse,
+} from './fleet';
+
 // RBAC (Role-Based Access Control)
 export {
   rbacAuthApi,

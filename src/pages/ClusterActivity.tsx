@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, AlertTriangle, CheckCircle2, Network, Wrench, Activity, Layers, Database, Hourglass } from "lucide-react";
+import { Search, AlertTriangle, CheckCircle2, Network, Wrench, Activity, Layers, Database, Hourglass, Boxes, GitBranch, ServerCog } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { SkeletonRows } from "@/components/common/Skeletons";
@@ -9,8 +9,14 @@ import {
   useReplicationQueue,
   useReplicaStatus,
   useBlockedTaskSummary,
+  useClusterTopology,
+  useDistributionQueue,
+  useDistributedDDLQueue,
   type MutationRow,
   type ReplicationQueueRow,
+  type ClusterTopologyRow,
+  type DistributionQueueRow,
+  type DistributedDDLRow,
 } from "@/hooks/useMonitoringTimeline";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +27,19 @@ function formatLagSeconds(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`;
 }
 
-type ClusterView = "mutations" | "replication";
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+}
+
+type ClusterView = "mutations" | "replication" | "topology" | "distribution" | "ddl";
 
 interface ClusterActivityPageProps {
   embedded?: boolean;
@@ -43,6 +61,24 @@ const COPY: Record<ClusterView, { title: string; hint: string; rationale: string
     rationale:
       "Each Replicated*MergeTree replica drives a queue of fetches, merges, and mutations. Rising num_tries with a non-empty last_exception is the canonical replica-is-sick signal.",
   },
+  topology: {
+    title: "Topology",
+    hint: "Shards & replicas",
+    rationale:
+      "system.clusters lists every shard/replica in each named cluster. errors_count and slowdowns_count per host expose flaky nodes; a non-zero estimated_recovery_time means ClickHouse has temporarily benched that host from distributed queries.",
+  },
+  distribution: {
+    title: "Insert backlog",
+    hint: "Pending shard inserts",
+    rationale:
+      "Async inserts into Distributed tables are staged on disk before forwarding to shards. A growing data_files or non-zero error_count means inserts aren't draining — a stuck shard or a serialization problem.",
+  },
+  ddl: {
+    title: "DDL queue",
+    hint: "ON CLUSTER DDL",
+    rationale:
+      "ON CLUSTER DDL is applied node-by-node through ZooKeeper/Keeper. Entries that aren't 'Finished', or carry an exception, mean a schema change didn't propagate everywhere — a classic source of replica divergence.",
+  },
 };
 
 export default function ClusterActivityPage({
@@ -60,7 +96,19 @@ export default function ClusterActivityPage({
   const replication = useReplicationQueue({ enabled: view === "replication" });
   const blockedSummary = useBlockedTaskSummary();
   const replicaStatus = useReplicaStatus({ enabled: view === "replication" });
-  const active = view === "mutations" ? mutations : replication;
+  const topology = useClusterTopology({ enabled: view === "topology" });
+  const distribution = useDistributionQueue({ enabled: view === "distribution" });
+  const ddl = useDistributedDDLQueue({ enabled: view === "ddl" });
+  const active =
+    view === "mutations"
+      ? mutations
+      : view === "replication"
+        ? replication
+        : view === "topology"
+          ? topology
+          : view === "distribution"
+            ? distribution
+            : ddl;
   const { isLoading, isFetching, error, refetch } = active;
 
   useEffect(() => {
@@ -83,7 +131,13 @@ export default function ClusterActivityPage({
   }, [view, searchTerm]);
 
   const rows = useMemo(() => {
-    const data = (active.data ?? []) as Array<MutationRow | ReplicationQueueRow>;
+    const data = (active.data ?? []) as Array<
+      | MutationRow
+      | ReplicationQueueRow
+      | ClusterTopologyRow
+      | DistributionQueueRow
+      | DistributedDDLRow
+    >;
     const term = searchTerm.trim().toLowerCase();
     if (!term) return data;
     return data.filter((r) =>
@@ -108,6 +162,16 @@ export default function ClusterActivityPage({
   const failingTasks = view === "replication"
     ? (replication.data ?? []).filter((r) => r.num_tries >= 3 || r.last_exception).length
     : 0;
+  const flakyHosts = view === "topology"
+    ? (topology.data ?? []).filter((h) => h.errors_count > 0 || h.slowdowns_count > 0 || h.estimated_recovery_time > 0).length
+    : 0;
+  const stuckInserts = view === "distribution"
+    ? (distribution.data ?? []).filter((d) => d.error_count > 0 || d.broken_data_files > 0 || d.is_blocked === 1).length
+    : 0;
+  const failedDDL = view === "ddl"
+    ? (ddl.data ?? []).filter((d) => d.exception_code > 0 || (d.status && d.status !== "Finished")).length
+    : 0;
+  const isCoreView = view === "mutations" || view === "replication";
 
   return (
     <div className="h-full overflow-hidden">
@@ -147,17 +211,23 @@ export default function ClusterActivityPage({
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
             {view === "mutations" ? (
               <Wrench className="h-3.5 w-3.5" aria-hidden />
-            ) : (
+            ) : view === "replication" ? (
               <Network className="h-3.5 w-3.5" aria-hidden />
+            ) : view === "topology" ? (
+              <ServerCog className="h-3.5 w-3.5" aria-hidden />
+            ) : view === "distribution" ? (
+              <Boxes className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <GitBranch className="h-3.5 w-3.5" aria-hidden />
             )}
           </span>
           <p className="text-[12px] leading-[1.6] text-paper-muted">{COPY[view].rationale}</p>
         </div>
 
-        {/* Blocked-task indicator strip — visible on every sub-tab so an
-            operator scanning Mutations doesn't miss that the merge queue is
-            backed up or that a replica is way behind. */}
-        {blockedSummary.data && (
+        {/* Blocked-task indicator strip — only on the replicated-table views
+            (mutations / replication) where it's relevant; the distributed
+            sub-views have their own per-row health signals. */}
+        {isCoreView && blockedSummary.data && (
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
             <BlockedChip
               icon={Activity}
@@ -244,7 +314,13 @@ export default function ClusterActivityPage({
               placeholder={
                 view === "mutations"
                   ? "Search database, table, mutation, command…"
-                  : "Search database, table, replica, exception…"
+                  : view === "replication"
+                    ? "Search database, table, replica, exception…"
+                    : view === "topology"
+                      ? "Search cluster, host…"
+                      : view === "distribution"
+                        ? "Search database, table, exception…"
+                        : "Search cluster, host, query, exception…"
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -263,6 +339,24 @@ export default function ClusterActivityPage({
               <span className="inline-flex items-center gap-1.5 text-red-300">
                 <AlertTriangle className="h-3 w-3" aria-hidden />
                 {failingTasks.toLocaleString()} sick tasks
+              </span>
+            )}
+            {view === "topology" && flakyHosts > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-amber-300">
+                <AlertTriangle className="h-3 w-3" aria-hidden />
+                {flakyHosts.toLocaleString()} flaky
+              </span>
+            )}
+            {view === "distribution" && stuckInserts > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-red-300">
+                <AlertTriangle className="h-3 w-3" aria-hidden />
+                {stuckInserts.toLocaleString()} stuck
+              </span>
+            )}
+            {view === "ddl" && failedDDL > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-red-300">
+                <AlertTriangle className="h-3 w-3" aria-hidden />
+                {failedDDL.toLocaleString()} unfinished
               </span>
             )}
             <span>
@@ -286,8 +380,14 @@ export default function ClusterActivityPage({
               <EmptyState view={view} hasSearch={!!searchTerm} />
             ) : view === "mutations" ? (
               <MutationsTable rows={paginatedRows as MutationRow[]} />
-            ) : (
+            ) : view === "replication" ? (
               <ReplicationTable rows={paginatedRows as ReplicationQueueRow[]} />
+            ) : view === "topology" ? (
+              <TopologyTable rows={paginatedRows as ClusterTopologyRow[]} />
+            ) : view === "distribution" ? (
+              <DistributionTable rows={paginatedRows as DistributionQueueRow[]} />
+            ) : (
+              <DDLTable rows={paginatedRows as DistributedDDLRow[]} />
             )}
           </div>
 
@@ -298,7 +398,13 @@ export default function ClusterActivityPage({
               startIndex={startIndex}
               endIndex={endIndex}
               totalRows={totalRows}
-              rowLabel={view === "mutations" ? "mutations" : "tasks"}
+              rowLabel={
+                view === "mutations" ? "mutations"
+                : view === "replication" ? "tasks"
+                : view === "topology" ? "hosts"
+                : view === "distribution" ? "tables"
+                : "entries"
+              }
               onPrev={() => setCurrentPage((p) => Math.max(0, p - 1))}
               onNext={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
               onFirst={() => setCurrentPage(0)}
@@ -324,20 +430,29 @@ function ErrorState({ message }: { message: string }) {
 }
 
 function EmptyState({ view, hasSearch }: { view: ClusterView; hasSearch: boolean }) {
+  const TITLE: Record<ClusterView, string> = {
+    mutations: "No mutations to report",
+    replication: "Replication queue is clean",
+    topology: "No clusters",
+    distribution: "Backlog is clean",
+    ddl: "DDL queue is clean",
+  };
+  const BODY: Record<ClusterView, string> = {
+    mutations: "No in-flight ALTER UPDATE/DELETE and nothing finished in the last 7 days.",
+    replication: "Every replica is caught up.",
+    topology: "No clusters defined — this server isn't part of a distributed setup.",
+    distribution: "No Distributed-table insert backlog (or there are no Distributed tables).",
+    ddl: "No ON CLUSTER DDL in the last day (or no ZooKeeper/Keeper is configured).",
+  };
+  const Icon = view === "topology" ? ServerCog : CheckCircle2;
   return (
     <div className="flex h-64 flex-col items-center justify-center gap-2 px-4 text-center">
       <span className="grid h-12 w-12 place-items-center rounded-xs border border-emerald-500/30 bg-emerald-950/20 text-emerald-300">
-        <CheckCircle2 className="h-5 w-5" aria-hidden />
+        <Icon className="h-5 w-5" aria-hidden />
       </span>
-      <span className="text-[13px] text-paper">
-        {view === "mutations" ? "No mutations to report" : "Replication queue is clean"}
-      </span>
-      <span className="text-[12px] text-paper-muted">
-        {hasSearch
-          ? "Adjust the search filter."
-          : view === "mutations"
-            ? "No in-flight ALTER UPDATE/DELETE and nothing finished in the last 7 days."
-            : "Every replica is caught up."}
+      <span className="text-[13px] text-paper">{TITLE[view]}</span>
+      <span className="max-w-md text-[12px] text-paper-muted">
+        {hasSearch ? "Adjust the search filter." : BODY[view]}
       </span>
     </div>
   );
@@ -547,5 +662,118 @@ function StatusChip({ state }: { state: "active" | "done" | "failing" }) {
     >
       {c.label}
     </span>
+  );
+}
+
+function TopologyTable({ rows }: { rows: ClusterTopologyRow[] }) {
+  return (
+    <table className="w-full text-[12px]">
+      <thead className="sticky top-0 z-10 bg-ink-200/90 backdrop-blur">
+        <tr className="border-b border-ink-500">
+          {["Health", "Cluster", "Shard", "Replica", "Host", "Errors", "Slowdowns", "Recovery"].map((h, i) => (
+            <th
+              key={h}
+              className={cn(
+                "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint",
+                i >= 5 ? "text-right" : "text-left"
+              )}
+            >
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((h, i) => {
+          const flaky = h.errors_count > 0 || h.slowdowns_count > 0 || h.estimated_recovery_time > 0;
+          return (
+            <tr key={`${h.cluster}-${h.shard_num}-${h.replica_num}-${i}`} className="border-b border-ink-500/60 transition-colors hover:bg-ink-200/60">
+              <td className="px-3 py-1.5">
+                <span className={cn("rounded-xs border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]", flaky ? "border-amber-500/40 text-amber-300" : "border-emerald-500/40 text-emerald-300")}>
+                  {flaky ? "Flaky" : "OK"}
+                </span>
+              </td>
+              <td className="px-3 py-1.5 font-mono text-paper">{h.cluster}</td>
+              <td className="px-3 py-1.5 text-paper-muted tabular-nums">{h.shard_num}</td>
+              <td className="px-3 py-1.5 text-paper-muted tabular-nums">{h.replica_num}</td>
+              <td className="px-3 py-1.5 font-mono text-paper" title={`${h.host_address}:${h.port}`}>
+                {h.host_name}
+                {h.is_local === 1 && (
+                  <span className="ml-2 rounded-xs border border-brand/40 px-1 py-px font-mono text-[9px] uppercase tracking-[0.14em] text-brand">local</span>
+                )}
+              </td>
+              <td className={cn("px-3 py-1.5 text-right font-mono tabular-nums", h.errors_count > 0 ? "text-red-300" : "text-paper-muted")}>{h.errors_count.toLocaleString()}</td>
+              <td className={cn("px-3 py-1.5 text-right font-mono tabular-nums", h.slowdowns_count > 0 ? "text-amber-300" : "text-paper-muted")}>{h.slowdowns_count.toLocaleString()}</td>
+              <td className={cn("px-3 py-1.5 text-right font-mono tabular-nums", h.estimated_recovery_time > 0 ? "text-amber-300" : "text-paper-faint")}>{h.estimated_recovery_time > 0 ? `${h.estimated_recovery_time}s` : "—"}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function DistributionTable({ rows }: { rows: DistributionQueueRow[] }) {
+  return (
+    <table className="w-full text-[12px]">
+      <thead className="sticky top-0 z-10 bg-ink-200/90 backdrop-blur">
+        <tr className="border-b border-ink-500">
+          {["Status", "Database", "Table", "Files", "Size", "Broken", "Last exception"].map((h, i) => (
+            <th key={h} className={cn("px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint", i >= 3 && i <= 5 ? "text-right" : "text-left")}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((d, i) => {
+          const stuck = d.error_count > 0 || d.broken_data_files > 0 || d.is_blocked === 1;
+          return (
+            <tr key={`${d.database}.${d.table}-${i}`} className="border-b border-ink-500/60 transition-colors hover:bg-ink-200/60">
+              <td className="px-3 py-1.5">
+                <span className={cn("rounded-xs border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]", stuck ? "border-red-500/40 text-red-300" : "border-emerald-500/40 text-emerald-300")}>{stuck ? "Stuck" : "Draining"}</span>
+              </td>
+              <td className="px-3 py-1.5 font-mono text-paper-muted">{d.database}</td>
+              <td className="px-3 py-1.5 text-paper">{d.table}</td>
+              <td className="px-3 py-1.5 text-right font-mono tabular-nums text-paper">{d.data_files.toLocaleString()}</td>
+              <td className="px-3 py-1.5 text-right font-mono tabular-nums text-paper-muted">{formatBytes(d.data_compressed_bytes)}</td>
+              <td className={cn("px-3 py-1.5 text-right font-mono tabular-nums", d.broken_data_files > 0 ? "text-red-300" : "text-paper-faint")}>{d.broken_data_files.toLocaleString()}</td>
+              <td className="max-w-[300px] truncate px-3 py-1.5 font-mono text-red-300" title={d.last_exception}>{d.last_exception || "—"}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function DDLTable({ rows }: { rows: DistributedDDLRow[] }) {
+  return (
+    <table className="w-full text-[12px]">
+      <thead className="sticky top-0 z-10 bg-ink-200/90 backdrop-blur">
+        <tr className="border-b border-ink-500">
+          {["Status", "Cluster", "Host", "Query", "Started", "Duration", "Exception"].map((h, i) => (
+            <th key={h} className={cn("px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint", i === 5 ? "text-right" : "text-left")}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((d, i) => {
+          const failed = d.exception_code > 0;
+          const finished = d.status === "Finished";
+          return (
+            <tr key={`${d.entry}-${d.host_name}-${i}`} className="border-b border-ink-500/60 transition-colors hover:bg-ink-200/60">
+              <td className="px-3 py-1.5">
+                <span className={cn("rounded-xs border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]", failed ? "border-red-500/40 text-red-300" : finished ? "border-emerald-500/40 text-emerald-300" : "border-amber-500/40 text-amber-300")}>{failed ? "Failed" : d.status || "—"}</span>
+              </td>
+              <td className="px-3 py-1.5 font-mono text-paper-muted">{d.cluster}</td>
+              <td className="px-3 py-1.5 font-mono text-paper">{d.host_name}</td>
+              <td className="max-w-[360px] truncate px-3 py-1.5 font-mono text-paper" title={d.query_preview}>{d.query_preview}</td>
+              <td className="px-3 py-1.5 font-mono text-paper-muted whitespace-nowrap">{d.query_start_time || "—"}</td>
+              <td className="px-3 py-1.5 text-right font-mono tabular-nums text-paper-muted">{d.query_duration_ms ? `${d.query_duration_ms.toLocaleString()}ms` : "—"}</td>
+              <td className="max-w-[240px] truncate px-3 py-1.5 font-mono text-red-300" title={d.exception_text}>{d.exception_text || "—"}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
