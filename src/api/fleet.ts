@@ -182,6 +182,7 @@ export interface FleetAlertConfig {
   aiRcaModelId: string | null;
   rules: { memoryPercent: number; queryMemoryGb: number; longQueryMin: number };
   slack: { configured: boolean; enabled: boolean };
+  googleChat: { configured: boolean; enabled: boolean };
   email: { configured: boolean; enabled: boolean; user: string; to: string };
 }
 
@@ -195,6 +196,10 @@ export interface FleetAlertConfigUpdate {
   /** Per-channel on/off — independent of whether it's configured. */
   slackEnabled?: boolean;
   removeSlack?: boolean;
+  /** Blank/omitted = keep the existing webhook; use `removeGoogleChat` to clear. */
+  googleChatWebhookUrl?: string;
+  googleChatEnabled?: boolean;
+  removeGoogleChat?: boolean;
   /** Blank password = keep existing; use `removeEmail` to clear the channel. */
   email?: { user: string; to: string; password?: string };
   emailEnabled?: boolean;
@@ -211,8 +216,8 @@ export async function updateFleetAlertConfig(
   return api.put<{ ok: boolean }>("/fleet/alert-config", body);
 }
 
-export async function testFleetAlertConfig(): Promise<{ slack: boolean; email: boolean }> {
-  return api.post<{ slack: boolean; email: boolean }>("/fleet/alert-config/test");
+export async function testFleetAlertConfig(): Promise<{ slack: boolean; googleChat: boolean; email: boolean }> {
+  return api.post<{ slack: boolean; googleChat: boolean; email: boolean }>("/fleet/alert-config/test");
 }
 
 // ============================================

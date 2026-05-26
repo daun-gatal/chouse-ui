@@ -61,6 +61,7 @@ type RawAlertConfig = {
   enabled?: boolean;
   rules?: { memoryPercent?: number; queryMemoryGb?: number; longQueryMin?: number };
   slack?: { webhookUrl?: string; enabled?: boolean };
+  googleChat?: { webhookUrl?: string; enabled?: boolean };
   email?: { user?: string; password?: string; to?: string; enabled?: boolean; host?: string; port?: number; secure?: boolean };
   /** When true, a new breach also fires a Chouse AI RCA to the channels. */
   aiRcaOnBreach?: boolean;
@@ -474,6 +475,10 @@ fleet.get("/alert-config", async (c) => {
         configured: Boolean(cfg.slack?.webhookUrl),
         enabled: cfg.slack?.enabled !== false,
       },
+      googleChat: {
+        configured: Boolean(cfg.googleChat?.webhookUrl),
+        enabled: cfg.googleChat?.enabled !== false,
+      },
       email: {
         configured: Boolean(cfg.email?.user && cfg.email?.password),
         enabled: cfg.email?.enabled !== false,
@@ -497,6 +502,9 @@ const alertConfigSchema = z.object({
   slackWebhookUrl: z.string().optional(),
   slackEnabled: z.boolean().optional(),
   removeSlack: z.boolean().optional(),
+  googleChatWebhookUrl: z.string().optional(),
+  googleChatEnabled: z.boolean().optional(),
+  removeGoogleChat: z.boolean().optional(),
   email: z
     .object({ user: z.string(), to: z.string(), password: z.string().optional() })
     .optional(),
@@ -530,6 +538,18 @@ fleet.put("/alert-config", zValidator("json", alertConfigSchema), async (c) => {
       next.slack = {
         webhookUrl,
         enabled: body.slackEnabled ?? existing.slack?.enabled ?? true,
+      };
+    }
+  }
+
+  // Google Chat: same precedence as Slack — explicit remove > new URL > existing.
+  if (!body.removeGoogleChat) {
+    const webhookUrl =
+      (body.googleChatWebhookUrl && body.googleChatWebhookUrl.trim()) || existing.googleChat?.webhookUrl;
+    if (webhookUrl) {
+      next.googleChat = {
+        webhookUrl,
+        enabled: body.googleChatEnabled ?? existing.googleChat?.enabled ?? true,
       };
     }
   }
