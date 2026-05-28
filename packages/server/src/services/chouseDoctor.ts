@@ -1040,3 +1040,113 @@ export async function diagnoseParts(opts: {
     solutions: parsed.solutions,
   };
 }
+
+const SCHEMA_DIAGNOSE_PROMPT = `You are Chouse AI, an SRE for on-prem ClickHouse. Diagnose ONE column-level schema issue surfaced by the Schema Advisor and produce a concrete fix as an \`ALTER TABLE\` DDL.
+
+The user message gives you: database, table, column, current type, an \`issue category\` — one of \`nullable\`, \`oversized\`, \`compression\` — and the current on-disk vs uncompressed bytes for that column. Use the \`query_node\` tool (the connectionId is in the user message) for at most 1–2 cheap, read-only lookups to ground the recommendation, then answer. NEVER invent column names.
+
+Investigation rules per category:
+
+- \`nullable\`: check the actual null share — \`SELECT count() AS total, countIf(\\\`<col>\\\` IS NULL) AS nulls FROM <db>.<table>\`. If nulls = 0 or the share is small (< ~5%), drop the \`Nullable\` wrapper. Fix: \`ALTER TABLE <db>.<table> MODIFY COLUMN \\\`<col>\\\` <inner type>\` (pick a sensible default if a few nulls do exist — 0 for ints, '' for strings, etc.).
+
+- \`oversized\`: sample the actual range — \`SELECT min(\\\`<col>\\\`) AS lo, max(\\\`<col>\\\`) AS hi FROM <db>.<table> SAMPLE 0.01\`. Pick the narrowest fitting integer (Int8/Int16/Int32 or UInt8/UInt16/UInt32), signed only if lo < 0. Fix: \`ALTER TABLE <db>.<table> MODIFY COLUMN \\\`<col>\\\` <narrower type>\`.
+
+- \`compression\`: read \`system.parts_columns WHERE database='…' AND table='…' AND column='…'\` (compression_codec, data_compressed_bytes, data_uncompressed_bytes). Match the codec to the column shape: monotonic int / timestamp ⇒ \`Delta, ZSTD(3)\` or \`DoubleDelta, ZSTD(3)\`; floats / sensor data ⇒ \`Gorilla, ZSTD(3)\`; repetitive strings ⇒ \`LowCardinality(<inner>)\`; already-compressed (ratio ~1×) ⇒ a higher ZSTD level (e.g. \`ZSTD(6)\`–\`ZSTD(12)\`). Fix: \`ALTER TABLE <db>.<table> MODIFY COLUMN \\\`<col>\\\` <type> CODEC(<spec>)\`.
+
+Stay FAST — 1–2 lookups, then write the answer.
+
+Return JSON only: \`{ "summary": "<one short line>", "cause": "<grounded in the real numbers you found>", "impact": "<storage / merge cost / query speed>", "solutions": ["<concrete, ordered step that INCLUDES the ALTER TABLE DDL>", "..."] }\`.
+
+${SYSTEM_TABLE_REFERENCE}`;
+
+/**
+ * Diagnose ONE column-level schema issue surfaced by the Schema Advisor
+ * (Nullable wrapper / oversized integer / weak compression) and propose a
+ * concrete ALTER TABLE DDL. Same read-only investigator engine; returns the
+ * standard ErrorDiagnosis shape so AiDiagnoseButton can render it.
+ */
+export async function diagnoseSchemaIssue(opts: {
+  connectionId: string;
+  database: string;
+  table: string;
+  column: string;
+  columnType: string;
+  category: "nullable" | "oversized" | "compression";
+  metrics?: { totalRows?: number; compressedBytes?: number; uncompressedBytes?: number };
+  modelId?: string;
+}): Promise<ErrorDiagnosis> {
+  const config = await getConfiguration(opts.modelId);
+  const validation = validateConfiguration(config);
+  if (!validation.valid) {
+    throw AppError.badRequest(validation.error || "AI is not configured for Chouse AI");
+  }
+
+  const { connections } = await listConnections({ activeOnly: true });
+  const conn = connections.find((c) => c.id === opts.connectionId);
+  if (!conn) throw AppError.badRequest("Connection not found or inactive");
+  const node = { id: conn.id, name: conn.name };
+
+  const model = initializeAIModel(config!);
+  const agent = new ToolLoopAgent({
+    model,
+    instructions: `${SCHEMA_DIAGNOSE_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`,
+    tools: { query_node: queryNodeTool([node]) },
+    stopWhen: stepCountIs(8),
+    temperature: 0.1,
+    maxOutputTokens: 8000,
+  });
+
+  const m = opts.metrics ?? {};
+  const ratio =
+    m.compressedBytes && m.uncompressedBytes && m.compressedBytes > 0
+      ? (m.uncompressedBytes / m.compressedBytes).toFixed(2) + "x"
+      : "n/a";
+  const sizeLine =
+    m.totalRows != null || m.compressedBytes != null
+      ? `Current size: rows=${m.totalRows ?? "?"}, on-disk=${m.compressedBytes ?? "?"} bytes, uncompressed=${m.uncompressedBytes ?? "?"} bytes, ratio=${ratio}.`
+      : "";
+
+  const messages: ModelMessage[] = [
+    {
+      role: "user",
+      content: `Node id: "${node.id}" (name: ${node.name}). Database: ${opts.database}. Table: ${opts.table}. Column: \`${opts.column}\` (type: ${opts.columnType}). Issue category: ${opts.category}.\n${sizeLine}\nInvestigate with query_node (connectionId="${node.id}") and produce the structured diagnosis with a concrete ALTER TABLE fix.`,
+    },
+  ];
+
+  let parsed: z.infer<typeof ErrorDiagnosisSchema> | null = null;
+  const streamResult = await agent.stream({ messages });
+  const raw = await streamResult.text;
+  try {
+    parsed = extractJson(raw, ErrorDiagnosisSchema);
+  } catch {
+    try {
+      const { object } = await generateObject({
+        model,
+        schema: ErrorDiagnosisSchema,
+        maxOutputTokens: 8000,
+        messages: [
+          { role: "system", content: SCHEMA_DIAGNOSE_PROMPT },
+          {
+            role: "user",
+            content: `Schema issue — db: ${opts.database}, table: ${opts.table}, column: \`${opts.column}\` (${opts.columnType}), category: ${opts.category}. ${sizeLine}\n\nInvestigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the structured diagnosis now.`,
+          },
+        ],
+      });
+      parsed = object;
+    } catch (e) {
+      logger.warn(
+        { module: "ChouseDoctor", err: e instanceof Error ? e.message : String(e) },
+        "Schema diagnosis fallback failed",
+      );
+    }
+  }
+  if (!parsed) throw AppError.internal("Chouse AI could not diagnose this column — try again.");
+
+  return {
+    name: `${opts.database}.${opts.table}.${opts.column}`,
+    summary: parsed.summary,
+    cause: parsed.cause,
+    impact: parsed.impact,
+    solutions: parsed.solutions,
+  };
+}
