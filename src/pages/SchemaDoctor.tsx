@@ -32,7 +32,8 @@ type SortKey =
   | "total_rows"
   | "compressed_bytes"
   | "uncompressed_bytes"
-  | "ratio";
+  | "ratio"
+  | "headroom";
 type SortDir = "asc" | "desc";
 interface SortState {
   key: SortKey;
@@ -59,6 +60,43 @@ function formatBytes(bytes: number): string {
     i++;
   }
   return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+}
+
+// Heuristic compression "plafon" (target ratio) per inner column type — assumes a
+// CODEC SWAP only (not a LowCardinality refactor), so the estimate is a
+// conservative FLOOR on what's possible. The ✨ Fix button still sends the
+// column to Chouse AI for a grounded recommendation that may beat the floor.
+function targetRatioForType(type: string): number {
+  const inner = type.replace(/^Nullable\(([\s\S]+)\)$/, "$1").trim();
+  if (/^Date(Time)?(64)?(\(.*\))?$/.test(inner)) return 30; // Delta+ZSTD
+  if (/^U?Int(8|16)$/.test(inner)) return 30;
+  if (/^U?Int(32|64|128|256)$/.test(inner)) return 12;
+  if (/^Float(32|64)$/.test(inner)) return 6; // Gorilla+ZSTD
+  if (/^(LowCardinality\(.+\)|Enum\d+)/.test(inner)) return 0; // already optimised
+  if (/^(String|FixedString\(\d+\))$/.test(inner)) return 4; // ZSTD baseline (no LowCard assumption)
+  return 4;
+}
+
+interface HeadroomEstimate {
+  /** Estimated on-disk bytes saved if the codec hits the type's plafon. */
+  bytes: number;
+  /** Plafon ratio used in the estimate. */
+  targetRatio: number;
+  severity: "none" | "low" | "medium" | "high";
+}
+
+function estimateHeadroom(r: SchemaLintRow): HeadroomEstimate {
+  const cur = r.compressed_bytes > 0 ? r.uncompressed_bytes / r.compressed_bytes : 0;
+  const target = targetRatioForType(r.type);
+  if (target === 0 || cur === 0 || cur >= target) {
+    return { bytes: 0, targetRatio: target, severity: "none" };
+  }
+  const targetOnDisk = r.uncompressed_bytes / target;
+  const bytes = Math.max(0, r.compressed_bytes - targetOnDisk);
+  let severity: HeadroomEstimate["severity"] = "low";
+  if (bytes >= 10 * 1024 ** 3) severity = "high"; // ≥10 GB
+  else if (bytes >= 1024 ** 3) severity = "medium"; // ≥1 GB
+  return { bytes, targetRatio: target, severity };
 }
 
 const COPY: Record<LintView, { title: string; hint: string; rationale: string }> = {
@@ -117,6 +155,17 @@ export default function SchemaDoctorPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
 
+  // Reset to the "natural" default order when the operator switches tabs —
+  // Compression wants biggest opportunity first; Nullable/Oversized want
+  // biggest absolute on-disk first.
+  useEffect(() => {
+    setSort({
+      key: view === "compression" ? "headroom" : "compressed_bytes",
+      dir: "desc",
+    });
+    setCurrentPage(0);
+  }, [view]);
+
   const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return data;
@@ -135,6 +184,7 @@ export default function SchemaDoctorPage({
     const mul = sort.dir === "asc" ? 1 : -1;
     arr.sort((a, b) => {
       if (key === "ratio") return (ratioOf(a) - ratioOf(b)) * mul;
+      if (key === "headroom") return (estimateHeadroom(a).bytes - estimateHeadroom(b).bytes) * mul;
       if (TEXT_KEYS.includes(key)) {
         return String(a[key]).localeCompare(String(b[key])) * mul;
       }
@@ -455,6 +505,7 @@ function CompressionTable({
           <SortHeaderCell label="On-disk" sortKey="compressed_bytes" align="right" sort={sort} onSort={onSort} />
           <SortHeaderCell label="Raw" sortKey="uncompressed_bytes" align="right" sort={sort} onSort={onSort} />
           <SortHeaderCell label="Ratio" sortKey="ratio" align="right" sort={sort} onSort={onSort} />
+          <SortHeaderCell label="Headroom" sortKey="headroom" align="right" sort={sort} onSort={onSort} />
           <th className="px-3 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">Fix</th>
         </tr>
       </thead>
@@ -484,6 +535,32 @@ function CompressionTable({
               </td>
               <td className={cn("px-3 py-1.5 text-right font-mono tabular-nums", ratioTone)}>
                 {ratio === 0 ? "—" : ratio >= 100 ? `${Math.round(ratio)}×` : `${ratio.toFixed(1)}×`}
+              </td>
+              <td className="px-3 py-1.5 text-right">
+                {(() => {
+                  const h = estimateHeadroom(r);
+                  if (h.severity === "none" || h.bytes === 0) {
+                    return <span className="font-mono text-[10px] text-paper-faint">—</span>;
+                  }
+                  const tone =
+                    h.severity === "high"
+                      ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                      : h.severity === "medium"
+                        ? "border-brand/40 bg-brand/10 text-brand"
+                        : "border-ink-500 bg-ink-200 text-paper-muted";
+                  return (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-xs border px-1.5 py-0.5",
+                        tone,
+                      )}
+                      title={`Estimated savings if a codec swap hits the type's plafon (~${h.targetRatio}×). Conservative floor — Chouse AI may find a bigger win.`}
+                    >
+                      <span className="font-mono tabular-nums text-[11px]">{formatBytes(h.bytes)}</span>
+                      <span className="font-mono text-[9px] uppercase tracking-[0.14em] opacity-70">~{h.targetRatio}×</span>
+                    </span>
+                  );
+                })()}
               </td>
               <td className="px-3 py-1.5 text-right">
                 <AiDiagnoseButton
