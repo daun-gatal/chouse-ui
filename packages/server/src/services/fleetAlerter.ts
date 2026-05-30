@@ -17,6 +17,7 @@
  *   "enabled": true,
  *   "rules": { "memoryPercent": 85, "queryMemoryGb": 10, "longQueryMin": 5 },
  *   "slack": { "webhookUrl": "https://hooks.slack.com/services/..." },
+ *   "googleChat": { "webhookUrl": "https://chat.googleapis.com/v1/spaces/AAAA/messages?key=...&token=..." },
  *   "email": { "user": "you@gmail.com", "password": "app-password", "to": "ops@team.com" }
  * }
  */
@@ -44,6 +45,9 @@ interface AlertRules {
 interface SlackConfig {
   webhookUrl: string;
 }
+interface GoogleChatConfig {
+  webhookUrl: string;
+}
 interface EmailConfig {
   host: string;
   port: number;
@@ -56,6 +60,7 @@ interface EmailConfig {
 interface AlertConfig {
   rules: AlertRules;
   slack?: SlackConfig;
+  googleChat?: GoogleChatConfig;
   email?: EmailConfig;
   /** When true, a new breach also kicks off a Chouse AI RCA delivered to the channels. */
   aiRcaOnBreach: boolean;
@@ -121,6 +126,12 @@ function loadConfig(): AlertConfig | null {
       ? { webhookUrl: String(slackRaw.webhookUrl) }
       : undefined;
 
+  const gchatRaw = parsed.googleChat as { webhookUrl?: unknown; enabled?: unknown } | undefined;
+  const googleChat =
+    gchatRaw?.webhookUrl && gchatRaw.enabled !== false
+      ? { webhookUrl: String(gchatRaw.webhookUrl) }
+      : undefined;
+
   const e = parsed.email as Record<string, unknown> | undefined;
   const email =
     e?.user && e?.password && e?.to && e.enabled !== false
@@ -135,10 +146,11 @@ function loadConfig(): AlertConfig | null {
         }
       : undefined;
 
-  if (!slack && !email) return null; // nothing to deliver to
+  if (!slack && !googleChat && !email) return null; // nothing to deliver to
   return {
     rules,
     slack,
+    googleChat,
     email,
     aiRcaOnBreach: parsed.aiRcaOnBreach === true,
     aiRcaModelId: typeof parsed.aiRcaModelId === "string" && parsed.aiRcaModelId ? parsed.aiRcaModelId : undefined,
@@ -273,6 +285,41 @@ async function deliverSlack(b: Breach, slack: SlackConfig): Promise<void> {
   }
 }
 
+async function deliverGoogleChat(b: Breach, gchat: GoogleChatConfig): Promise<void> {
+  const widgets: unknown[] = [
+    { decoratedText: { topLabel: "Node", text: b.node } },
+    { decoratedText: { topLabel: "Issue", text: capitalize(b.metric) } },
+    { decoratedText: { topLabel: "Detail", text: b.summary } },
+  ];
+  if (b.user) widgets.push({ decoratedText: { topLabel: "User", text: b.user } });
+  widgets.push({
+    textParagraph: { text: `<font color="#9ca3af">chouse-fleet · ${new Date().toUTCString()}</font>` },
+  });
+
+  const payload = {
+    // Plain text drives the notification preview; the card carries the detail.
+    text: `🔴 ${b.node} — ${b.metric}: ${b.summary}`,
+    cardsV2: [
+      {
+        cardId: "fleet-alert",
+        card: {
+          header: { title: "🔴 ClickHouse fleet alert", subtitle: `${b.node} · ${capitalize(b.metric)}` },
+          sections: [{ widgets }],
+        },
+      },
+    ],
+  };
+
+  const res = await fetch(gchat.webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`Google Chat webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
 async function deliverEmail(b: Breach, email: EmailConfig): Promise<void> {
   // Lazy import — the server shouldn't hard-depend on nodemailer at startup
   // (email is optional; the package may not be installed yet).
@@ -321,6 +368,13 @@ async function deliver(b: Breach, config: AlertConfig): Promise<void> {
       ),
     );
   }
+  if (config.googleChat) {
+    tasks.push(
+      deliverGoogleChat(b, config.googleChat).catch((err) =>
+        logger.error({ module: "FleetAlerter", channel: "google_chat", err: String(err) }, "Google Chat delivery failed"),
+      ),
+    );
+  }
   if (config.email) {
     tasks.push(
       deliverEmail(b, config.email).catch((err) =>
@@ -341,13 +395,33 @@ const STATUS_COLOR: Record<string, string> = { healthy: "#16a34a", warning: "#d9
 const STATUS_RANK: Record<string, number> = { critical: 0, warning: 1, healthy: 2 };
 
 function rcaStatus(report: DoctorReport): string {
-  return report.analysis?.verdict.status ?? "warning";
+  if (report.analysis?.verdict.status) return report.analysis.verdict.status;
+  // Structured parse failed — recover the status from the raw JSON if present.
+  const m = (report.raw || "").match(/"status"\s*:\s*"(healthy|warning|critical)"/i);
+  return m?.[1]?.toLowerCase() ?? "warning";
+}
+
+/**
+ * Best-effort human verdict line. When the structured analysis is null (the
+ * model didn't return parseable JSON, or the report got truncated), recover the
+ * verdict summary from the raw text instead of dumping the raw fenced JSON blob
+ * into the alert — which renders especially badly in Google Chat.
+ */
+function rcaSummary(report: DoctorReport): string {
+  if (report.analysis?.verdict.summary) return report.analysis.verdict.summary;
+  const raw = report.raw || "";
+  const m = raw.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (m?.[1]) return m[1].replace(/\\"/g, '"').replace(/\\n/g, " ").trim().slice(0, 300);
+  return (
+    raw.replace(/```(?:json)?/gi, "").replace(/\s+/g, " ").trim().slice(0, 300) ||
+    "See the report in the platform."
+  );
 }
 
 async function deliverRcaSlack(report: DoctorReport, triggers: string[], slack: SlackConfig): Promise<void> {
   const status = rcaStatus(report);
   const emoji = STATUS_EMOJI[status] ?? "🟠";
-  const summary = report.analysis?.verdict.summary || report.raw.slice(0, 240) || "No structured verdict.";
+  const summary = rcaSummary(report);
   const recs = report.analysis?.recommendations?.slice(0, 3) ?? [];
   const nodes = [...(report.analysis?.nodes ?? [])]
     .filter((n) => n.status !== "healthy")
@@ -391,6 +465,57 @@ async function deliverRcaSlack(report: DoctorReport, triggers: string[], slack: 
   if (!res.ok) throw new Error(`Slack webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
+async function deliverRcaGoogleChat(report: DoctorReport, triggers: string[], gchat: GoogleChatConfig): Promise<void> {
+  const status = rcaStatus(report);
+  const emoji = STATUS_EMOJI[status] ?? "🟠";
+  const summary = rcaSummary(report);
+  const recs = report.analysis?.recommendations?.slice(0, 3) ?? [];
+  const nodes = [...(report.analysis?.nodes ?? [])]
+    .filter((n) => n.status !== "healthy")
+    .sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9))
+    .slice(0, 3);
+
+  const widgets: unknown[] = [
+    { decoratedText: { topLabel: "Triggered by", text: triggers.join(" · ").slice(0, 280) } },
+    { textParagraph: { text: `<b>Verdict:</b> ${summary}` } },
+  ];
+  for (const n of nodes) {
+    const ne = STATUS_EMOJI[n.status] ?? "🟠";
+    const detail = n.details.slice(0, 2).map((d) => `• ${d}`).join("<br>").slice(0, 600);
+    widgets.push({ textParagraph: { text: `${ne} <b>${n.name}</b><br>${detail}` } });
+  }
+  if (recs.length) {
+    widgets.push({
+      textParagraph: { text: `<b>Recommendations</b><br>${recs.map((r) => `• ${r}`).join("<br>")}`.slice(0, 1000) },
+    });
+  }
+  widgets.push({ textParagraph: { text: "🔎 <b>Please log in to the platform to check the details.</b>" } });
+  widgets.push({
+    textParagraph: {
+      text: `<font color="#9ca3af">chouse-fleet · Chouse AI · ${report.model} · ${new Date().toUTCString()}</font>`,
+    },
+  });
+
+  const payload = {
+    text: `${emoji} Chouse AI RCA — ${summary}`.slice(0, 200),
+    cardsV2: [
+      {
+        cardId: "fleet-rca",
+        card: {
+          header: { title: `${emoji} Chouse AI — root-cause analysis`, subtitle: status.toUpperCase() },
+          sections: [{ widgets }],
+        },
+      },
+    ],
+  };
+  const res = await fetch(gchat.webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Google Chat webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
 async function deliverRcaEmail(report: DoctorReport, triggers: string[], email: EmailConfig): Promise<void> {
   const nodemailer = (await import("nodemailer")).default;
   const transport = nodemailer.createTransport({
@@ -401,7 +526,7 @@ async function deliverRcaEmail(report: DoctorReport, triggers: string[], email: 
   });
   const status = rcaStatus(report);
   const color = STATUS_COLOR[status] ?? "#d97706";
-  const summary = report.analysis?.verdict.summary ?? "See the report in chouse-fleet.";
+  const summary = rcaSummary(report);
   const recs = report.analysis?.recommendations?.slice(0, 4) ?? [];
   const nodes = [...(report.analysis?.nodes ?? [])].filter((n) => n.status !== "healthy").slice(0, 4);
 
@@ -449,6 +574,12 @@ async function deliverRca(report: DoctorReport, triggers: string[], config: Aler
     tasks.push(
       deliverRcaSlack(report, triggers, config.slack).catch((err) =>
         logger.error({ module: "FleetAlerter", channel: "slack", err: String(err) }, "RCA Slack delivery failed"),
+      ),
+    );
+  if (config.googleChat)
+    tasks.push(
+      deliverRcaGoogleChat(report, triggers, config.googleChat).catch((err) =>
+        logger.error({ module: "FleetAlerter", channel: "google_chat", err: String(err) }, "RCA Google Chat delivery failed"),
       ),
     );
   if (config.email)
@@ -502,7 +633,7 @@ async function runAutoRca(config: AlertConfig, triggers: string[]): Promise<void
  * Send a sample alert through the configured channels — for verifying setup
  * (a "send test alert" action / one-off check). Throws if no config is loaded.
  */
-export async function sendTestAlert(): Promise<{ slack: boolean; email: boolean }> {
+export async function sendTestAlert(): Promise<{ slack: boolean; googleChat: boolean; email: boolean }> {
   const config = loadConfig();
   if (!config) {
     throw new Error(`No alert config at ${CONFIG_PATH} (missing, invalid, disabled, or no channel set)`);
@@ -517,7 +648,7 @@ export async function sendTestAlert(): Promise<{ slack: boolean; email: boolean 
     },
     config,
   );
-  return { slack: !!config.slack, email: !!config.email };
+  return { slack: !!config.slack, googleChat: !!config.googleChat, email: !!config.email };
 }
 
 /**

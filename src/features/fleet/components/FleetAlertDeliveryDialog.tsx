@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Mail, Send, Loader2, Trash2, Radio, Stethoscope, Info } from "lucide-react";
+import { MessageSquare, MessagesSquare, Mail, Send, Loader2, Trash2, Radio, Stethoscope, Info } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -62,6 +62,8 @@ export default function FleetAlertDeliveryDialog({
   const [emailTo, setEmailTo] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
   const [slackEnabled, setSlackEnabled] = useState(true);
+  const [googleChatUrl, setGoogleChatUrl] = useState("");
+  const [googleChatEnabled, setGoogleChatEnabled] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [aiRcaOnBreach, setAiRcaOnBreach] = useState(false);
   const [aiRcaModelId, setAiRcaModelId] = useState<string>();
@@ -76,10 +78,12 @@ export default function FleetAlertDeliveryDialog({
     setQueryMemoryGb(data.rules.queryMemoryGb);
     setLongQueryMin(data.rules.longQueryMin);
     setSlackUrl("");
+    setGoogleChatUrl("");
     setEmailUser(data.email.user);
     setEmailTo(data.email.to);
     setEmailPassword("");
     setSlackEnabled(data.slack.enabled);
+    setGoogleChatEnabled(data.googleChat?.enabled ?? true);
     setEmailEnabled(data.email.enabled);
   }, [data]);
 
@@ -94,6 +98,8 @@ export default function FleetAlertDeliveryDialog({
         rules: { memoryPercent, queryMemoryGb, longQueryMin },
         slackWebhookUrl: slackUrl.trim() || undefined,
         slackEnabled,
+        googleChatWebhookUrl: googleChatUrl.trim() || undefined,
+        googleChatEnabled,
         email:
           emailUser.trim() && emailTo.trim()
             ? { user: emailUser.trim(), to: emailTo.trim(), password: emailPassword || undefined }
@@ -111,17 +117,18 @@ export default function FleetAlertDeliveryDialog({
     mutationFn: testFleetAlertConfig,
     onSuccess: (r) =>
       toast.success(
-        `Test alert sent${r.slack ? " · Slack" : ""}${r.email ? " · email" : ""}`,
+        `Test alert sent${r.slack ? " · Slack" : ""}${r.googleChat ? " · Google Chat" : ""}${r.email ? " · email" : ""}`,
       ),
     onError: (e) => toast.error(e instanceof Error ? e.message : "Test failed — save a channel first"),
   });
 
   const remove = useMutation({
-    mutationFn: (which: "slack" | "email") =>
+    mutationFn: (which: "slack" | "googleChat" | "email") =>
       updateFleetAlertConfig({
         enabled,
         rules: { memoryPercent, queryMemoryGb, longQueryMin },
         ...(which === "slack" ? { removeSlack: true } : {}),
+        ...(which === "googleChat" ? { removeGoogleChat: true } : {}),
         ...(which === "email" ? { removeEmail: true } : {}),
       }),
     onSuccess: () => {
@@ -132,7 +139,7 @@ export default function FleetAlertDeliveryDialog({
   });
 
   const busy = save.isPending || remove.isPending;
-  const canTest = Boolean(data?.slack.configured || data?.email.configured);
+  const canTest = Boolean(data?.slack.configured || data?.googleChat?.configured || data?.email.configured);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -145,7 +152,7 @@ export default function FleetAlertDeliveryDialog({
             <span className="flex flex-col gap-0.5 text-left">
               <span className="text-[16px] font-semibold tracking-tight">Alert delivery</span>
               <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                Slack &amp; email · always-on
+                Slack · Google Chat · email
               </span>
             </span>
           </DialogTitle>
@@ -221,6 +228,36 @@ export default function FleetAlertDeliveryDialog({
                 <button
                   type="button"
                   onClick={() => remove.mutate("slack")}
+                  className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint hover:text-red-600 dark:hover:text-red-400"
+                >
+                  <Trash2 className="h-3 w-3" aria-hidden /> Remove webhook
+                </button>
+              )}
+            </div>
+
+            {/* Google Chat */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-[13px] font-medium text-paper">
+                  <MessagesSquare className="h-3.5 w-3.5 text-paper-muted" aria-hidden /> Google Chat
+                  {data?.googleChat?.configured && (
+                    <span className="rounded-xs border border-emerald-300 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-emerald-600 dark:border-emerald-500/50 dark:text-emerald-400">
+                      Configured
+                    </span>
+                  )}
+                </span>
+                <Switch checked={googleChatEnabled} onChange={setGoogleChatEnabled} label="Enable Google Chat delivery" />
+              </div>
+              <Input
+                value={googleChatUrl}
+                onChange={(e) => setGoogleChatUrl(e.target.value)}
+                placeholder={data?.googleChat?.configured ? "•••• keep current webhook (paste to replace)" : "https://chat.googleapis.com/v1/spaces/…"}
+                className={cn(inputCls, !googleChatEnabled && "opacity-50")}
+              />
+              {data?.googleChat?.configured && (
+                <button
+                  type="button"
+                  onClick={() => remove.mutate("googleChat")}
                   className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint hover:text-red-600 dark:hover:text-red-400"
                 >
                   <Trash2 className="h-3 w-3" aria-hidden /> Remove webhook

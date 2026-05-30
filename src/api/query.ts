@@ -417,3 +417,25 @@ export async function diagnoseTableParts(
 ): Promise<ErrorDiagnosis> {
   return api.post<ErrorDiagnosis>('/query/diagnose-parts', { database, table, modelId }, { signal });
 }
+
+/**
+ * Ask Chouse AI to diagnose a column-level schema issue surfaced by the Schema
+ * Advisor (Nullable / oversized integer / weak compression) and propose a
+ * concrete ALTER TABLE DDL — investigated read-only on the connected node.
+ */
+export async function diagnoseSchemaIssue(
+  database: string,
+  table: string,
+  column: string,
+  columnType: string,
+  category: "nullable" | "oversized" | "compression",
+  metrics?: { totalRows?: number; compressedBytes?: number; uncompressedBytes?: number },
+  modelId?: string,
+  signal?: AbortSignal,
+): Promise<ErrorDiagnosis> {
+  return api.post<ErrorDiagnosis>(
+    '/query/diagnose-schema',
+    { database, table, column, columnType, category, metrics, modelId },
+    { signal },
+  );
+}

@@ -1320,6 +1320,86 @@ query.post(
   },
 );
 
+/**
+ * POST /query/diagnose-schema
+ * Chouse AI diagnoses ONE column-level schema issue surfaced by the Schema
+ * Advisor (Nullable / oversized integer / weak compression) and proposes a
+ * concrete ALTER TABLE DDL. Gated by ai:optimize; uses the active session
+ * connection.
+ */
+query.post(
+  "/diagnose-schema",
+  zValidator(
+    "json",
+    z.object({
+      database: z.string().min(1),
+      table: z.string().min(1),
+      column: z.string().min(1),
+      columnType: z.string().min(1),
+      category: z.enum(["nullable", "oversized", "compression"]),
+      metrics: z
+        .object({
+          totalRows: z.number().optional(),
+          compressedBytes: z.number().optional(),
+          uncompressedBytes: z.number().optional(),
+        })
+        .optional(),
+      modelId: z.string().optional(),
+    }),
+  ),
+  async (c) => {
+    const { database, table, column, columnType, category, metrics, modelId } = c.req.valid("json");
+    const rbacUserId = c.get("rbacUserId");
+    const isRbacAdmin = c.get("isRbacAdmin");
+    const rbacPermissions = c.get("rbacPermissions");
+    const session = c.get("session");
+    const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
+
+    try {
+      await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
+
+      if (!connectionId) {
+        return c.json(
+          { success: false, error: { code: "NO_CONNECTION", message: "No active ClickHouse connection." } },
+          400 as any,
+        );
+      }
+
+      const { diagnoseSchemaIssue } = await import("../services/chouseDoctor");
+      const result = await diagnoseSchemaIssue({
+        connectionId,
+        database,
+        table,
+        column,
+        columnType,
+        category,
+        metrics,
+        modelId,
+      });
+
+      if (rbacUserId) {
+        try {
+          await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
+            details: { action: "ai_diagnose_schema", database, table, column, category, connectionId },
+            status: "success",
+          });
+        } catch {
+          /* audit is best-effort */
+        }
+      }
+
+      return c.json({ success: true, data: result });
+    } catch (error) {
+      const err = error as { statusCode?: number; message?: string };
+      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+      return c.json(
+        { success: false, error: { code: "DIAGNOSE_FAILED", message: err?.message || "Failed to diagnose schema column." } },
+        status as any,
+      );
+    }
+  },
+);
+
 query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
   const { query: sql, database, additionalPrompt, modelId } = c.req.valid("json");
   const service = c.get("service");

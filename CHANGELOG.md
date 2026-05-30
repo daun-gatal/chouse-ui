@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.17.0] - 2026-05-28
+
+### Added
+
+- **Chouse AI in the Schema Advisor tabs** — the in-tab AI pattern reaches the third diagnostic surface. Every row in the Schema Advisor (Nullable / Oversized integers / Compression) gets a ✨ Fix button → modal → Chouse AI investigates that one column read-only on the connected node and returns a structured diagnosis (cause / impact / ordered solutions) ending in a concrete `ALTER TABLE` DDL: drop the Nullable wrapper if the null share allows, narrow the integer type from `min/max` sampling, or swap the codec (Delta / DoubleDelta / Gorilla / LowCardinality / a higher ZSTD level) for the compression case. Backend `diagnoseSchemaIssue()` on the Doctor agent + `POST /query/diagnose-schema` gated by `ai:optimize`. Read-only / advisory like the other surfaces.
+- **Headroom column on the Compression tab** — a client-side heuristic estimates the bytes recoverable per row if a codec swap hit the type's plafon (Delta+ZSTD for dates / small ints, Gorilla for floats, ZSTD baseline for strings, n/a for already-optimised `LowCardinality` / `Enum`). A severity tag (`high ≥10 GB` / `medium ≥1 GB` / `low` / `—`) drives a calm amber → brand → muted chip, and the column is sortable. The Compression tab now defaults to headroom DESC so the biggest opportunities surface first. The estimate is a conservative floor (codec-only, not `LowCardinality`) — clicking ✨ Fix can find a bigger win when cardinality permits.
+- **Google Chat delivery channel** — alerts and the autonomous Chouse AI root-cause analysis now post to a Google Workspace incoming webhook as a `cardsV2` message, alongside the existing Slack and email channels. Configured per-install in the Fleet → Alert delivery dialog (webhook URL, enable toggle, remove). Each channel delivers independently (`Promise.allSettled`) — a Google Chat failure never blocks Slack/email. No new dependency, no migration; existing `alert-config.json` files without `googleChat` keep working untouched.
+
+### Fixed
+
+- **RCA verdict recovery when the structured parse fails** — when the Doctor's `analysis` came back null (e.g. the model truncated its JSON output mid-report), every channel previously fell back to `report.raw`, dumping the raw fenced JSON blob into the alert message — which renders especially poorly in Google Chat and defaulted the status to "warning". Now `rcaSummary()` recovers the `verdict.summary` from the raw JSON (regex) and `rcaStatus()` recovers the actual `critical` / `warning` / `healthy` status before falling back to stripped raw text. Applied to all three RCA channels (Slack, Google Chat, email).
+
+
 ## [v2.16.0] - 2026-05-25
 
 The big one: chouse-ui grows from a single-cluster console into a **multi-cluster fleet monitor with an AI SRE**. A `/fleet` page watches every connection at once, a backend poller caches snapshots, threshold alerts fire to Slack/email, and **Chouse AI** — an autonomous read-only diagnostic agent — runs root-cause analysis and writes optimized queries with before→after `EXPLAIN` proof. The closed loop is: detect → diagnose (AI) → fix (optimized SQL) → act (Open in Explorer). All read-only / advisory — the AI never mutates your cluster.
