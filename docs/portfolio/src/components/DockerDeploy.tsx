@@ -29,11 +29,7 @@ rbac:
 jwt:
   secret: "change-me-in-production"
   access_expiry: 4h
-  refresh_expiry: 7d
-
-ai:
-  optimizer_enabled: false
-  provider: openai`;
+  refresh_expiry: 7d`;
 
 const DOCKER_PROD = `version: '3.8'
 
