@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v2.17.3] - 2026-06-08
+
+### Changed
+
+- **Fleet inventory counts all databases** — `schema_totals` query no longer excludes `system`, `INFORMATION_SCHEMA`, and `information_schema` databases; counts now align with what ClickHouse reports on the home page and metrics views
+
 ## [v2.17.2] - 2026-06-08
 
 UI consistency fixes across Fleet Doctor, Preferences, and Admin Roles.

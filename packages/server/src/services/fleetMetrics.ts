@@ -88,12 +88,13 @@ export const FLEET_METRICS = {
   `,
 
   /**
-   * One-row schema census for the node: how many user databases, tables,
-   * views, and rows it holds. Views = engine containing "View" (View +
-   * MaterializedView); everything else counts as a table. Single full
-   * aggregate over system.tables (metadata only — total_rows is a cached
-   * column, no data scan). The fleet page sums these across nodes for an
-   * at-a-glance "what's in my fleet" strip.
+   * One-row schema census for the node: how many databases, tables,
+   * views, and rows it holds (all databases, including system ones).
+   * Views = engine containing "View" (View + MaterializedView); everything
+   * else counts as a table. Single full aggregate over system.tables
+   * (metadata only — total_rows is a cached column, no data scan).
+   * The fleet page sums these across nodes for an at-a-glance
+   * "what's in my fleet" strip.
    */
   schema_totals: `
     SELECT
@@ -103,7 +104,6 @@ export const FLEET_METRICS = {
       coalesce(sum(total_rows), 0) AS rows,
       coalesce(sum(total_bytes), 0) AS bytes
     FROM system.tables
-    WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')
   `,
 
   /**
