@@ -192,17 +192,24 @@ You can set all configuration options via a hierarchical YAML file. To use this,
 CHOUSE_CONFIG_PATH=./config.yaml bun run packages/server/src/index.ts
 ```
 
-The YAML keys map directly to the environment variables by converting the nested paths to uppercase and joining with underscores. For example:
+Example (mirrors `.config.example.yaml`):
 ```yaml
 port: 5521
 node_env: production
 rbac:
-  db_type: sqlite
+  db_type: sqlite           # or postgres
   sqlite_path: ./data/rbac.db
   encryption:
-    key: your-secret-key
-ai:
-  provider: openai
+    key: ""                 # openssl rand -hex 32  (required)
+    salt: ""                # openssl rand -hex 32  (required)
+  admin:
+    email: admin@localhost
+    username: admin
+    password: admin123!
+jwt:
+  secret: ""                # openssl rand -base64 32  (required)
+  access_expiry: 4h
+  refresh_expiry: 7d
 ```
 
 ### Environment Variables
