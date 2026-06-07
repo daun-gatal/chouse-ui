@@ -16,6 +16,12 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useFleetConnections } from "@/hooks/useFleetMetrics";
 import {
@@ -73,7 +79,14 @@ function InvestigatingPanel({ model }: { model?: string }) {
   );
 }
 
-/** Investigation window (lookback) selector. */
+const WINDOW_OPTIONS = [
+  { label: "1h", hours: 1 },
+  { label: "6h", hours: 6 },
+  { label: "24h", hours: 24 },
+  { label: "3d", hours: 72 },
+];
+
+/** Investigation window (lookback) selector — segmented button group. */
 function WindowSelect({
   hours,
   onChange,
@@ -84,18 +97,37 @@ function WindowSelect({
   disabled?: boolean;
 }) {
   return (
-    <select
-      value={hours}
-      onChange={(e) => onChange(Number(e.target.value))}
-      disabled={disabled}
-      title="Investigation window (how far back to look)"
-      className="h-9 rounded-xs border border-ink-500 bg-ink-200 px-2 text-[11px] text-paper focus:border-brand focus:outline-none disabled:opacity-50"
+    <div
+      className="inline-flex overflow-hidden rounded-xs border border-ink-500"
+      role="radiogroup"
+      aria-label="Investigation window"
+      title="How far back to look"
     >
-      <option value={1}>Last 1h</option>
-      <option value={6}>Last 6h</option>
-      <option value={24}>Last 24h</option>
-      <option value={72}>Last 3d</option>
-    </select>
+      {WINDOW_OPTIONS.map((opt, idx) => {
+        const selected = hours === opt.hours;
+        return (
+          <button
+            key={opt.hours}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            disabled={disabled}
+            onClick={() => onChange(opt.hours)}
+            className={cn(
+              "h-9 px-3 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset",
+              "disabled:opacity-50",
+              idx > 0 && "border-l border-ink-500",
+              selected
+                ? "bg-brand text-ink-50"
+                : "bg-ink-100 text-paper-muted hover:bg-ink-200 hover:text-paper",
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -393,20 +425,60 @@ export default function Doctor() {
                 <CalendarClock className="h-4 w-4" aria-hidden />
               </button>
               {showPicker && (
-                <select
-                  value={resolvedModelId ?? ""}
-                  onChange={(e) => setSelectedModelId(e.target.value)}
-                  disabled={scan.isPending}
-                  className="h-9 max-w-[200px] rounded-xs border border-ink-500 bg-ink-200 px-2 text-[11px] text-paper focus:border-brand focus:outline-none disabled:opacity-50"
-                  title="Model for the next scan"
-                >
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label} · {m.model}
-                      {m.isDefault ? " (default)" : ""}
-                    </option>
-                  ))}
-                </select>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={scan.isPending}
+                      className="inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper transition-colors hover:border-ink-700 hover:bg-ink-300 max-w-[180px] disabled:opacity-50"
+                    >
+                      <span className="truncate">
+                        {models.find((m) => m.id === resolvedModelId)?.label ?? "Select model"}
+                      </span>
+                      <ChevronDown className="h-3 w-3 shrink-0 text-paper-dim" aria-hidden />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[240px] rounded-md border-ink-500 bg-ink-100 p-0">
+                    <div className="border-b border-ink-500 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                      AI Models
+                    </div>
+                    <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto p-1">
+                      {models.map((m) => {
+                        const isCurrent = resolvedModelId === m.id;
+                        return (
+                          <DropdownMenuItem
+                            key={m.id}
+                            onClick={() => setSelectedModelId(m.id)}
+                            className={cn(
+                              "flex cursor-pointer items-start gap-2.5 rounded-xs px-3 py-2 transition-colors hover:bg-ink-200",
+                              isCurrent && "bg-ink-200",
+                            )}
+                          >
+                            <div className="mt-0.5 flex-shrink-0">
+                              <div className={cn(
+                                "grid h-3.5 w-3.5 place-items-center rounded-full border",
+                                isCurrent ? "border-brand" : "border-ink-700",
+                              )}>
+                                {isCurrent && <div className="h-1.5 w-1.5 rounded-full bg-brand" />}
+                              </div>
+                            </div>
+                            <div className="flex min-w-0 flex-col gap-0.5">
+                              <span className={cn(
+                                "truncate text-[13px] font-medium",
+                                isCurrent ? "text-paper" : "text-paper-muted",
+                              )}>
+                                {m.label}
+                              </span>
+                              <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                                {m.provider || m.model}
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               <Button
                 onClick={startScan}

@@ -146,52 +146,52 @@ const AppearanceCard: React.FC = () => {
       description="How the interface looks for you"
       icon={Palette}
       delay={0.25}
-      className="md:col-span-1"
+      className="md:col-span-3"
     >
-      <div className="flex flex-col gap-2">
-        {THEME_OPTIONS.map((opt) => {
-          const active = theme === opt.id;
-          const Icon = opt.icon;
-          return (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setTheme(opt.id)}
-              aria-pressed={active}
-              className={cn(
-                "group flex w-full items-center justify-between gap-3 rounded-xs border bg-ink-200 px-3 py-2.5 text-left transition-colors",
-                active
-                  ? "border-brand"
-                  : "border-ink-500 hover:border-ink-700 hover:bg-ink-300"
-              )}
-            >
-              <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {THEME_OPTIONS.map((opt) => {
+            const active = theme === opt.id;
+            const Icon = opt.icon;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setTheme(opt.id)}
+                aria-pressed={active}
+                className={cn(
+                  "group flex flex-col items-center gap-3 rounded-xs border bg-ink-200 px-4 py-5 text-center transition-colors",
+                  active
+                    ? "border-brand"
+                    : "border-ink-500 hover:border-ink-700 hover:bg-ink-300"
+                )}
+              >
                 <span
                   className={cn(
-                    "grid h-7 w-7 place-items-center rounded-xs border transition-colors",
+                    "grid h-10 w-10 place-items-center rounded-xs border transition-colors",
                     active
                       ? "border-brand bg-ink-100 text-brand"
                       : "border-ink-500 bg-ink-100 text-paper-muted"
                   )}
                 >
-                  <Icon className="h-3.5 w-3.5" aria-hidden />
+                  <Icon className="h-5 w-5" aria-hidden />
                 </span>
-                <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col gap-1">
                   <span className="text-[13px] font-medium text-paper">{opt.label}</span>
-                  <span className={MONO_FAINT}>{opt.hint}</span>
+                  <span className={cn(MONO_FAINT, "text-[10px]")}>{opt.hint}</span>
                 </div>
-              </div>
-              {active && (
-                <span
-                  className="rounded-xs border border-brand/40 bg-brand/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-brand"
-                  aria-hidden
-                >
-                  Active
-                </span>
-              )}
-            </button>
-          );
-        })}
+                {active && (
+                  <span
+                    className="rounded-xs border border-brand/40 bg-brand/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-brand"
+                    aria-hidden
+                  >
+                    Active
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <StatusFooter
           label="Now rendering"
           meta={resolvedTheme === "dark" ? "Dark" : "Light"}

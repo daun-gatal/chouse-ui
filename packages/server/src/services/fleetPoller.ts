@@ -246,14 +246,17 @@ class FleetPoller {
   }
 
   /**
-   * Start the worker. No-op if the FLEET_POLLER_ENABLED env is not set, so
-   * importers can call this unconditionally from index.ts.
+   * Start the worker. Runs by default; set FLEET_POLLER_ENABLED=false to
+   * explicitly disable (e.g. in test environments or single-node setups that
+   * don't want background polling).
    */
   start(): void {
-    if (!envBool("FLEET_POLLER_ENABLED")) {
+    const raw = (process.env.FLEET_POLLER_ENABLED ?? "").toLowerCase();
+    const disabled = raw === "0" || raw === "false" || raw === "no" || raw === "off";
+    if (disabled) {
       logger.info(
         { module: "FleetPoller" },
-        "Fleet poller is disabled (set FLEET_POLLER_ENABLED=true to enable)",
+        "Fleet poller is disabled (FLEET_POLLER_ENABLED=false)",
       );
       return;
     }

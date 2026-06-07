@@ -6,8 +6,8 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatBytes(bytes: number) {
-  if (!bytes) return "";
   if (bytes === 0) return "0 Bytes";
+  if (!bytes) return "";
   const k = 1024;
   const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -24,6 +24,7 @@ export function formatDate(date: Date, format: string) {
 }
 
 export function formatNumber(number: number) {
+  if (number === 0) return "0.00";
   if (!number) return "";
   return number.toLocaleString("en-US", {
     minimumFractionDigits: 2,

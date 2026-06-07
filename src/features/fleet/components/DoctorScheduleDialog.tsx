@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Loader2, Check } from "lucide-react";
+import { CalendarClock, Loader2, Check, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -17,6 +17,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useFleetConnections } from "@/hooks/useFleetMetrics";
 import {
@@ -312,20 +318,66 @@ export default function DoctorScheduleDialog({
                   </div>
                 </div>
                 {models.length > 1 && (
-                  <label className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1">
                     <span className={labelCls}>Model</span>
-                    <select
-                      value={resolvedModelId ?? ""}
-                      onChange={(e) => setModelId(e.target.value)}
-                      className={selectCls}
-                    >
-                      {models.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label} · {m.model}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1 font-mono text-[11px] text-paper transition-colors hover:border-ink-700 hover:bg-ink-300 max-w-[180px]"
+                        >
+                          <span className="truncate">
+                            {models.find((m) => m.id === resolvedModelId)?.label ?? "Select model"}
+                          </span>
+                          <ChevronDown className="h-3 w-3 shrink-0 text-paper-dim" aria-hidden />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-[240px] rounded-md border-ink-500 bg-ink-100 p-0">
+                        <div className="border-b border-ink-500 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                          AI Models
+                        </div>
+                        <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto p-1">
+                          {models.map((m) => {
+                            const isCurrent = resolvedModelId === m.id;
+                            return (
+                              <DropdownMenuItem
+                                key={m.id}
+                                onClick={() => setModelId(m.id)}
+                                className={cn(
+                                  "flex cursor-pointer items-start gap-2.5 rounded-xs px-3 py-2 transition-colors hover:bg-ink-200",
+                                  isCurrent && "bg-ink-200",
+                                )}
+                              >
+                                <div className="mt-0.5 flex-shrink-0">
+                                  <div
+                                    className={cn(
+                                      "grid h-3.5 w-3.5 place-items-center rounded-full border",
+                                      isCurrent ? "border-brand" : "border-ink-700",
+                                    )}
+                                  >
+                                    {isCurrent && <div className="h-1.5 w-1.5 rounded-full bg-brand" />}
+                                  </div>
+                                </div>
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                                  <span
+                                    className={cn(
+                                      "truncate text-[13px] font-medium",
+                                      isCurrent ? "text-paper" : "text-paper-muted",
+                                    )}
+                                  >
+                                    {m.label}
+                                  </span>
+                                  <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                                    {m.provider || m.model}
+                                  </span>
+                                </div>
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 )}
               </div>
 

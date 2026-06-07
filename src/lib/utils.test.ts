@@ -34,8 +34,11 @@ describe('lib/utils', () => {
       expect(formatBytes(1536)).toBe('1.5 KB');
     });
 
-    it('should handle falsy values', () => {
-      expect(formatBytes(0)).toBe('');
+    it('should handle zero bytes', () => {
+      expect(formatBytes(0)).toBe('0 Bytes');
+    });
+
+    it('should handle falsy non-zero values', () => {
       expect(formatBytes(null as any)).toBe('');
     });
   });
@@ -61,8 +64,11 @@ describe('lib/utils', () => {
       expect(formatNumber(1000)).toBe('1,000.00');
     });
 
-    it('should handle falsy values', () => {
-      expect(formatNumber(0)).toBe('');
+    it('should handle zero', () => {
+      expect(formatNumber(0)).toBe('0.00');
+    });
+
+    it('should handle falsy non-zero values', () => {
       expect(formatNumber(null as any)).toBe('');
     });
   });

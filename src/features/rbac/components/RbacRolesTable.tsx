@@ -95,6 +95,13 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'query': 'Query',
   'saved_queries': 'Saved Queries',
   'metrics': 'Metrics',
+  'logs': 'Monitoring',
+  'parts': 'Monitoring',
+  'schema_advisor': 'Monitoring',
+  'cluster': 'Monitoring',
+  'errors': 'Monitoring',
+  'fleet': 'Fleet Management',
+  'doctor': 'Fleet Doctor',
   'settings': 'Settings',
   'audit': 'Audit',
   'live_queries': 'Live Queries',
@@ -381,7 +388,7 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
                                       key={perm}
                                       className="inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-2 py-0.5 font-mono text-[11px] text-paper-muted transition-colors hover:border-ink-700 hover:text-paper"
                                     >
-                                      {perm.split(':').slice(1).join(':')}
+                                      {perm}
                                     </span>
                                   ))}
                                 </div>
