@@ -6,12 +6,14 @@
  */
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { ArrowUpRight, Eye, EyeOff, Loader2, Lock, ShieldCheck, User } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useRbacStore } from "@/stores";
+import { ssoApi } from "@/api/rbac";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +44,13 @@ export default function Login() {
 
   const { login, isLoading, error, isAuthenticated, clearError } = useRbacStore();
   const [showPassword, setShowPassword] = useState(false);
+
+  const { data: ssoProviders = [] } = useQuery({
+    queryKey: ["sso-providers"],
+    queryFn: ssoApi.getProviders,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -114,6 +123,30 @@ export default function Login() {
 
             {/* Form */}
             <div className="px-7 py-7">
+              {ssoProviders.length > 0 && (
+                <div className="mb-5 flex flex-col gap-2.5">
+                  {ssoProviders.map((provider) => (
+                    <Button
+                      key={provider.id}
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        window.location.href = ssoApi.startUrl(provider.id, redirectTo);
+                      }}
+                      className="h-11 w-full rounded-xs border-ink-500 bg-ink-200 font-semibold tracking-tight text-paper hover:bg-ink-300"
+                    >
+                      Continue with {provider.displayName}
+                    </Button>
+                  ))}
+                  <div className="my-2 flex items-center gap-3" aria-hidden>
+                    <span className="h-px flex-1 bg-ink-500" />
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                      or sign in with password
+                    </span>
+                    <span className="h-px flex-1 bg-ink-500" />
+                  </div>
+                </div>
+              )}
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
                   <FormField

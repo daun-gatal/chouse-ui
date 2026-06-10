@@ -82,6 +82,7 @@ export type {
   UserFavorite,
   UserRecentItem,
   UserPreferences,
+  SsoProviderInfo,
   SsoCallbackResponse,
   CreateUserInput as RbacCreateUserInput,
   UpdateUserInput as RbacUpdateUserInput,

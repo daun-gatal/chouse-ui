@@ -71,6 +71,7 @@ describe('stores/rbac', () => {
           accessToken: 'sso-access-token',
           refreshToken: 'sso-refresh-token',
           expiresIn: 900,
+          tokenType: 'Bearer' as const,
         },
         redirect: '/fleet',
       });
