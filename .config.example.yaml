@@ -53,7 +53,7 @@ rbac:
   # ============================================
   # These are only used when creating the initial admin user during first run
   admin:
-    email: admin@jetbrains.com
+    email: admin@example.com
     username: admin
     password: Password1!
 
