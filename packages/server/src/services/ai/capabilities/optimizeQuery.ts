@@ -11,8 +11,10 @@ import { PERMISSIONS } from "../../../rbac/schema/base";
 import { validateQueryAccess } from "../../../middleware/dataAccess";
 import { coreTools } from "../toolsets";
 import type { StructuredCapability } from "../types";
+import { explainEstimate } from "./fleetShared";
 import {
-  OptimizationOutputSchema,
+  QueryOptimizationOutputSchema,
+  type QueryOptimization,
   OPTIMIZER_INSTRUCTIONS,
   buildOptimizationPrompt,
   loadSkillTool,
@@ -26,28 +28,19 @@ export interface OptimizeQueryInput {
   database?: string;
 }
 
-export interface OptimizationResult {
-  optimizedQuery: string;
-  originalQuery: string;
-  explanation: string;
-  summary: string;
-  tips: string[];
-  warnings?: string[];
-}
-
 interface Prepared {
   query: string;
   additionalPrompt?: string;
   warnings?: string[];
 }
 
-type Parsed = z.infer<typeof OptimizationOutputSchema>;
+type Parsed = z.infer<typeof QueryOptimizationOutputSchema>;
 
 export const optimizeQueryCapability: StructuredCapability<
   OptimizeQueryInput,
   Prepared,
   Parsed,
-  OptimizationResult
+  QueryOptimization
 > = {
   id: "optimize-query",
   delivery: "structured",
@@ -57,7 +50,7 @@ export const optimizeQueryCapability: StructuredCapability<
     additionalPrompt: z.string().optional(),
     database: z.string().optional(),
   }),
-  outputSchema: OptimizationOutputSchema,
+  outputSchema: QueryOptimizationOutputSchema,
   tuning: { stopAtSteps: 10, temperature: 0 },
 
   async prepare(input, ctx) {
@@ -93,13 +86,30 @@ export const optimizeQueryCapability: StructuredCapability<
     return [{ role: "user", content: buildOptimizationPrompt(prepared.query, prepared.additionalPrompt) }];
   },
 
-  finalize(parsed, prepared) {
+  async finalize(parsed, prepared, ctx) {
+    const optimizedQuery = stripFormatClause(unfence(parsed.optimizedQuery));
+
+    // before → after EXPLAIN ESTIMATE proof, against the session's connection.
+    // Best-effort: omitted if EXPLAIN fails (e.g. unqualified tables that don't
+    // resolve under the connection's default DB) — same behavior as optimize-log.
+    let estimate: QueryOptimization["estimate"];
+    if (ctx.connectionId) {
+      const [before, after] = await Promise.all([
+        explainEstimate(ctx.connectionId, prepared.query),
+        optimizedQuery ? explainEstimate(ctx.connectionId, optimizedQuery) : Promise.resolve(null),
+      ]);
+      if (before || after) estimate = { before: before ?? undefined, after: after ?? undefined };
+    }
+
     return {
       originalQuery: prepared.query,
-      optimizedQuery: stripFormatClause(unfence(parsed.optimizedQuery)),
-      explanation: parsed.explanation,
+      optimizedQuery,
       summary: parsed.summary,
-      tips: parsed.tips,
+      explanation: parsed.explanation,
+      cause: parsed.cause,
+      tables: parsed.tables,
+      suggestions: parsed.suggestions,
+      estimate,
       warnings: prepared.warnings,
     };
   },

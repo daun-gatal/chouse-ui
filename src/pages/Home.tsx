@@ -515,7 +515,7 @@ export default function HomePage() {
           ) : stats ? (
             <div className="grid grid-cols-2 border-l border-t border-ink-500 sm:grid-cols-3 lg:grid-cols-6">
               <MetricCell icon={Database} label="Databases" value={stats.databaseCount} />
-              <MetricCell icon={Table2} label="Tables" value={stats.tableCount} />
+              <MetricCell icon={Table2} label="Tables & Views" value={stats.tableCount} />
               <MetricCell
                 icon={Layers}
                 label="Total rows"

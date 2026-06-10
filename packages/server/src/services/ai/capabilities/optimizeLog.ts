@@ -13,13 +13,13 @@ import { CLICKHOUSE_PLAYBOOK } from "../../clickhousePlaybook";
 import {
   SYSTEM_TABLE_REFERENCE,
   type FleetNode,
-  type EstimateFigures,
   queryNodeTool,
   resolveNode,
   fetchQueryById,
   cleanQueryForOptimize,
   explainEstimate,
 } from "./fleetShared";
+import { QueryOptimizationOutputSchema, type QueryOptimization } from "./optimizerShared";
 import type { StructuredCapability } from "../types";
 
 export interface OptimizeLogInput {
@@ -27,33 +27,7 @@ export interface OptimizeLogInput {
   query?: string;
 }
 
-export interface SingleQueryOptimization {
-  node: string;
-  query: string;
-  optimizedQuery?: string;
-  peakMemory?: string;
-  user?: string;
-  cause: string;
-  tables: { name: string; engine?: string; rows?: string; note: string }[];
-  suggestions: string[];
-  estimate?: { before?: EstimateFigures; after?: EstimateFigures };
-}
-
-const SingleOptimizeSchema = z.object({
-  cause: z.string(),
-  tables: z.array(
-    z.object({
-      name: z.string(),
-      engine: z.string().optional(),
-      rows: z.string().optional(),
-      note: z.string(),
-    }),
-  ),
-  suggestions: z.array(z.string()),
-  optimizedQuery: z.string(),
-});
-
-type Parsed = z.infer<typeof SingleOptimizeSchema>;
+type Parsed = z.infer<typeof QueryOptimizationOutputSchema>;
 
 const SINGLE_OPTIMIZE_PROMPT = `You optimize ONE heavy ClickHouse query. You are given the query text and its observed peak memory.
 
@@ -67,7 +41,9 @@ HARD REQUIREMENTS — the optimized query MUST:
   • target < 1 minute runtime and < 1 GB peak memory;
   • be COMPLETE and VALID — reproduce every CTE / SELECT / JOIN / WHERE / GROUP BY / ORDER BY / window in full so it parses and EXPLAINs cleanly (NO "…" / "-- omitted" placeholders, never abbreviate static lists).
 
-Return JSON only: { "cause": "...", "tables": [{ "name": "db.table", "engine": "MergeTree", "rows": "2.3B", "note": "the issue" }], "suggestions": ["concrete, data-grounded", "..."], "optimizedQuery": "<the full optimized SQL>" }. Do NOT include any EXPLAIN/estimate — the system computes the before→after proof itself.
+Return JSON only: { "optimizedQuery": "<the full optimized SQL>", "summary": "<one-line headline of the main improvement>", "explanation": "<short markdown explanation of why it was heavy and how the rewrite fixes it>", "cause": "...", "tables": [{ "name": "db.table", "engine": "MergeTree", "rows": "2.3B", "note": "the issue" }], "suggestions": ["concrete, data-grounded", "..."] }. Do NOT include any EXPLAIN/estimate — the system computes the before→after proof itself.
+
+FORMAT \`optimizedQuery\` prettily and runnable: multi-line, 2-space indentation, one major clause per line. SQL keywords UPPERCASE, but PRESERVE the EXACT original case of every identifier, table, column, alias and function name — ClickHouse is case-sensitive (e.g. \`toStartOfInterval\`, \`argMax\`, \`LowCardinality\`). No markdown fences, no trailing FORMAT clause.
 
 ${SYSTEM_TABLE_REFERENCE}`;
 
@@ -83,7 +59,7 @@ export const optimizeLogCapability: StructuredCapability<
   OptimizeLogInput,
   Prepared,
   Parsed,
-  SingleQueryOptimization
+  QueryOptimization
 > = {
   id: "optimize-log",
   delivery: "structured",
@@ -91,7 +67,7 @@ export const optimizeLogCapability: StructuredCapability<
   inputSchema: z
     .object({ queryId: z.string().optional(), query: z.string().optional() })
     .refine((v) => v.queryId || v.query, { message: "queryId or query is required" }),
-  outputSchema: SingleOptimizeSchema,
+  outputSchema: QueryOptimizationOutputSchema,
   tuning: { stopAtSteps: 8, temperature: 0.1, maxOutputTokens: 16000 },
 
   async prepare(input, ctx) {
@@ -151,15 +127,17 @@ export const optimizeLogCapability: StructuredCapability<
         : Promise.resolve(null),
     ]);
     return {
-      node: prepared.node.name,
-      query: prepared.cleaned,
+      originalQuery: prepared.cleaned,
       optimizedQuery: parsed.optimizedQuery,
-      peakMemory: prepared.peakMemory,
-      user: prepared.user,
+      summary: parsed.summary,
+      explanation: parsed.explanation,
       cause: parsed.cause,
       tables: parsed.tables,
       suggestions: parsed.suggestions,
       estimate: before || after ? { before: before ?? undefined, after: after ?? undefined } : undefined,
+      node: prepared.node.name,
+      peakMemory: prepared.peakMemory,
+      user: prepared.user,
     };
   },
 };

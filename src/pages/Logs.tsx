@@ -72,8 +72,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { rbacUsersApi, rbacRolesApi } from "@/api/rbac";
-import { optimizeQueryFromLog, fetchOptimizeModels } from "@/api/query";
-import { HeavyQueryCard } from "@/features/fleet/components/DoctorReportView";
+import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
 import { SkeletonRows } from "@/components/common/Skeletons";
 import { QueryTimelineChart } from "@/components/monitoring/QueryTimelineChart";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
@@ -2233,11 +2232,11 @@ function LogRow({
 }
 
 /**
- * "Optimize Query With Chouse AI" — runs the same heavy-query engine as Fleet
- * Doctor on this one query (by its query_id, so the backend works from the FULL
- * query, never the truncated preview) and shows the result in a dialog using the
- * same HeavyQueryCard the Doctor report uses: cause, tables, suggestions, the
- * complete optimized query, and a before -> after EXPLAIN estimate.
+ * "Optimize Query With Chouse AI" — opens the shared OptimizeQueryDialog (the
+ * same window the SQL editor's Optimize button uses) in log mode: it passes the
+ * query_id so the backend works from the FULL query (never the truncated
+ * preview) and the dialog renders the richer cause / tables / suggestions /
+ * before → after EXPLAIN analysis. Accept opens the result in a new Explorer tab.
  */
 function OptimizeWithChouseAI({
   queryId,
@@ -2267,42 +2266,17 @@ function OptimizeWithChouseAI({
       .trim(),
   );
   const [open, setOpen] = useState(false);
-  const [modelId, setModelId] = useState<string | undefined>(undefined);
-  const abortRef = useRef<AbortController | null>(null);
-  const modelsQuery = useQuery({
-    queryKey: ["optimize-models"],
-    queryFn: fetchOptimizeModels,
-    enabled: open && canOptimize,
-    staleTime: 5 * 60_000,
-  });
-  const mutation = useMutation({
-    mutationFn: (mid?: string) => {
-      abortRef.current = new AbortController();
-      return optimizeQueryFromLog(queryId, mid, abortRef.current.signal);
-    },
-  });
-
-  const handleOpenChange = (value: boolean) => {
-    if (!value) {
-      abortRef.current?.abort();
-      mutation.reset();
-    }
-    setOpen(value);
-  };
 
   if (!canOptimize || !isReadOnly) return null;
 
-  const models = modelsQuery.data ?? [];
-
   const start = (e?: React.MouseEvent) => {
     e?.stopPropagation(); // don't toggle the row's expand when launching
-    setOpen(true); // open only — do NOT auto-run, so the user can pick a model first
+    setOpen(true);
   };
 
   // Drop the optimized query into a fresh SQL tab in the Explorer workspace and
   // jump there so the operator can run it immediately.
-  const openInExplorer = () => {
-    const sql = mutation.data?.optimizedQuery;
+  const openInExplorer = (sql: string) => {
     if (!sql) return;
     addTab({ id: genTabId(), title: "Optimized · Chouse AI", type: "sql", content: sql, isSaved: false });
     setOpen(false);
@@ -2344,101 +2318,16 @@ function OptimizeWithChouseAI({
     <>
       {trigger}
 
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="flex h-[88vh] max-w-4xl flex-col overflow-hidden rounded-xs border-ink-500 bg-ink-100 p-0">
-          <DialogHeader className="flex-shrink-0 border-b border-ink-500 px-6 pb-4 pt-6">
-            <DialogTitle asChild>
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-brand" aria-hidden />
-                <span className="text-[15px] font-semibold text-paper">Optimize Query With Chouse AI</span>
-              </div>
-            </DialogTitle>
-            <DialogDescription className="mt-1 text-[12px] text-paper-muted">
-              Same engine as Fleet Doctor — works from the full query, proposes an optimized version with the
-              identical result, and proves it with a before → after EXPLAIN estimate. Review before running.
-            </DialogDescription>
-            {models.length > 1 && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Model</span>
-                <select
-                  value={modelId ?? ""}
-                  onChange={(e) => setModelId(e.target.value || undefined)}
-                  disabled={mutation.isPending}
-                  className="h-8 max-w-[280px] rounded-xs border border-ink-500 bg-ink-200 px-2 text-[11px] text-paper focus:border-brand focus:outline-none disabled:opacity-50"
-                  title="Model used for the optimization"
-                >
-                  <option value="">Default model</option>
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label} · {m.model}
-                      {m.isDefault ? " (default)" : ""}
-                    </option>
-                  ))}
-                </select>
-                {mutation.data && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => mutation.mutate(modelId)}
-                    disabled={mutation.isPending}
-                    className="h-8 gap-1.5 rounded-xs border-ink-500 px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
-                  >
-                    <Sparkles className="h-3 w-3" /> Re-run
-                  </Button>
-                )}
-              </div>
-            )}
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
-            {mutation.isPending ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <Loader2 className="h-7 w-7 animate-spin text-brand" aria-hidden />
-                <p className="text-[13px] text-paper-muted">Chouse AI is investigating the query &amp; its tables…</p>
-                <p className="text-[11px] text-paper-faint">A heavy query can take ~30–60s.</p>
-              </div>
-            ) : mutation.isError ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <AlertTriangle className="h-7 w-7 text-red-400" aria-hidden />
-                <p className="max-w-md text-[13px] text-paper-muted">
-                  {mutation.error instanceof Error ? mutation.error.message : "Optimization failed."}
-                </p>
-                <Button variant="outline" size="sm" onClick={() => mutation.mutate(modelId)} className="rounded-xs">
-                  Try again
-                </Button>
-              </div>
-            ) : mutation.data ? (
-              <HeavyQueryCard hq={mutation.data} />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <Sparkles className="h-8 w-8 text-brand/70" aria-hidden />
-                <p className="max-w-md text-[13px] text-paper-muted">
-                  Pick a model above (or keep the default), then optimize. Chouse AI works from the full query
-                  and proves the result with a before → after EXPLAIN.
-                </p>
-                <Button
-                  onClick={() => mutation.mutate(modelId)}
-                  className="h-9 gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
-                >
-                  <Sparkles className="h-3.5 w-3.5" /> Optimize query
-                </Button>
-              </div>
-            )}
-          </div>
-          {mutation.data?.optimizedQuery && (
-            <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-ink-500 px-6 py-3">
-              <span className="mr-auto font-mono text-[10px] text-paper-faint">
-                Review before running — opens in a new Explorer tab.
-              </span>
-              <Button
-                onClick={openInExplorer}
-                className="h-8 gap-1.5 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
-              >
-                <Sparkles className="h-3.5 w-3.5" /> Open in Explorer
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {open && (
+        <OptimizeQueryDialog
+          isOpen={open}
+          onClose={() => setOpen(false)}
+          query={query}
+          queryId={queryId}
+          acceptLabel="Open in Explorer"
+          onAccept={openInExplorer}
+        />
+      )}
     </>
   );
 }

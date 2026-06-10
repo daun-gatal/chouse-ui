@@ -1082,7 +1082,7 @@ export default function Metrics({
                 isLoading={isLoading}
               />
               <StatCard
-                title="Tables"
+                title="Tables & Views"
                 value={String(stats?.tablesCount || 0)}
                 icon={Layers}
                 color="text-green-400"

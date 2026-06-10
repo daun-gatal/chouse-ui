@@ -12,7 +12,6 @@ import ReactMarkdown from "react-markdown";
 import { ChevronRight, ArrowRight, Cpu, Database, Clock, Server, Zap, Copy, Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { formatClickHouseSQL } from "@/lib/formatSql";
 import type {
   FleetDoctorReport,
   FleetDoctorNodeVitals,
@@ -333,9 +332,66 @@ function EstimateBlock({ estimate }: { estimate: NonNullable<FleetDoctorHeavyQue
   );
 }
 
+/**
+ * The analysis sections of a heavy-query optimization — cause, per-table
+ * findings, suggestions, and the before→after EXPLAIN estimate. Shared by
+ * HeavyQueryCard (fleet doctor report) and OptimizeQueryDialog (Query Logs),
+ * so both render identical analysis. The query/optimized code blocks are NOT
+ * included here — callers render those themselves (the dialog uses a diff).
+ */
+export interface OptimizationAnalysisData {
+  cause?: string;
+  tables?: { name: string; engine?: string; rows?: string; note: string }[];
+  suggestions?: string[];
+  estimate?: FleetDoctorHeavyQuery["estimate"];
+}
+
+export function OptimizationAnalysis({ cause, tables, suggestions, estimate }: OptimizationAnalysisData) {
+  return (
+    <>
+      {cause && (
+        <p className="mb-2 text-[12px] leading-relaxed text-paper-muted">
+          <span className="font-medium text-paper">Why: </span>
+          {cause}
+        </p>
+      )}
+
+      {tables && tables.length > 0 && (
+        <ul className="mb-2 space-y-1">
+          {tables.map((t, j) => (
+            <li key={j} className="flex flex-wrap items-baseline gap-1.5 text-[11px] leading-relaxed">
+              <span className="font-mono font-medium text-paper">{t.name}</span>
+              {t.engine && <span className="font-mono text-[10px] text-paper-faint">{t.engine}</span>}
+              {t.rows && <span className="font-mono text-[10px] text-paper-faint">· {t.rows} rows</span>}
+              <span className="text-paper-muted">— {t.note}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {suggestions && suggestions.length > 0 && (
+        <ul className="space-y-1">
+          {suggestions.map((s, j) => (
+            <li key={j} className="flex gap-2 text-[12px] leading-relaxed text-paper-muted">
+              <ArrowRight className="mt-0.5 h-3 w-3 shrink-0 text-brand" aria-hidden />
+              <span>{s}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {estimate && (estimate.before || estimate.after) && <EstimateBlock estimate={estimate} />}
+    </>
+  );
+}
+
 export function HeavyQueryCard({ hq }: { hq: FleetDoctorHeavyQuery }) {
-  const formattedOriginal = formatClickHouseSQL(hq.query);
-  const formattedOptimized = hq.optimizedQuery ? formatClickHouseSQL(hq.optimizedQuery) : "";
+  // Render queries as-is. The original is the real query that ran; the optimized
+  // one is AI output that's already pretty + valid. Do NOT client-reformat: the
+  // sql-formatter uppercases case-sensitive ClickHouse function/identifier names
+  // and can break the (runnable) optimized query.
+  const formattedOriginal = hq.query;
+  const formattedOptimized = hq.optimizedQuery ?? "";
   return (
     <div className="rounded-xs border border-ink-500 bg-ink-200/40 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -350,38 +406,12 @@ export function HeavyQueryCard({ hq }: { hq: FleetDoctorHeavyQuery }) {
         {formattedOriginal}
       </code>
 
-      <p className="mb-2 text-[12px] leading-relaxed text-paper-muted">
-        <span className="font-medium text-paper">Why: </span>
-        {hq.cause}
-      </p>
-
-      {hq.tables.length > 0 && (
-        <ul className="mb-2 space-y-1">
-          {hq.tables.map((t, j) => (
-            <li key={j} className="flex flex-wrap items-baseline gap-1.5 text-[11px] leading-relaxed">
-              <span className="font-mono font-medium text-paper">{t.name}</span>
-              {t.engine && <span className="font-mono text-[10px] text-paper-faint">{t.engine}</span>}
-              {t.rows && <span className="font-mono text-[10px] text-paper-faint">· {t.rows} rows</span>}
-              <span className="text-paper-muted">— {t.note}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {hq.suggestions.length > 0 && (
-        <ul className="space-y-1">
-          {hq.suggestions.map((s, j) => (
-            <li key={j} className="flex gap-2 text-[12px] leading-relaxed text-paper-muted">
-              <ArrowRight className="mt-0.5 h-3 w-3 shrink-0 text-brand" aria-hidden />
-              <span>{s}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {hq.estimate && (hq.estimate.before || hq.estimate.after) && (
-        <EstimateBlock estimate={hq.estimate} />
-      )}
+      <OptimizationAnalysis
+        cause={hq.cause}
+        tables={hq.tables}
+        suggestions={hq.suggestions}
+        estimate={hq.estimate}
+      />
 
       {formattedOptimized && (
         <div className="mt-2.5">

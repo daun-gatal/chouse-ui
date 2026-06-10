@@ -7,6 +7,7 @@
 import { describe, it, expect } from "bun:test";
 import { CAPABILITIES, CAPABILITY_IDS, getCapability } from "./index";
 import { optimizeQueryCapability } from "./optimizeQuery";
+import { optimizeLogCapability } from "./optimizeLog";
 import { debugQueryCapability } from "./debugQuery";
 import { checkOptimizeCapability } from "./checkOptimize";
 import { diagnoseErrorCapability, diagnosePartsCapability } from "./diagnose";
@@ -15,6 +16,7 @@ import {
   buildOptimizationPrompt,
   buildDebugPrompt,
   stripFormatClause,
+  QueryOptimizationOutputSchema,
 } from "./optimizerShared";
 import { AppError } from "../../../types";
 
@@ -64,19 +66,35 @@ describe("input validation", () => {
   });
 });
 
-describe("optimize-query finalize", () => {
-  it("strips fences + trailing FORMAT and carries original query + warnings", () => {
+describe("optimize-query finalize (unified shape)", () => {
+  it("strips fences + trailing FORMAT and carries the unified analysis fields", async () => {
     const prepared = { query: "SELECT 1", additionalPrompt: undefined, warnings: ["w"] };
     const parsed = {
       optimizedQuery: "```sql\nSELECT 1 FORMAT JSON\n```",
-      explanation: "e",
       summary: "s",
-      tips: ["t"],
+      explanation: "e",
+      cause: "c",
+      tables: [{ name: "db.t", note: "scans all parts" }],
+      suggestions: ["add a date filter"],
     };
-    const out = optimizeQueryCapability.finalize(parsed, prepared, {}, META);
+    // ctx has no connectionId → EXPLAIN estimate is skipped (no network).
+    const out = await optimizeQueryCapability.finalize(parsed, prepared, {}, META);
     expect(out.optimizedQuery).toBe("SELECT 1");
     expect(out.originalQuery).toBe("SELECT 1");
+    expect(out.summary).toBe("s");
+    expect(out.explanation).toBe("e");
+    expect(out.cause).toBe("c");
+    expect(out.tables).toEqual([{ name: "db.t", note: "scans all parts" }]);
+    expect(out.suggestions).toEqual(["add a date filter"]);
     expect(out.warnings).toEqual(["w"]);
+    expect(out.estimate).toBeUndefined();
+  });
+});
+
+describe("unified optimizer schema", () => {
+  it("optimize-query and optimize-log share the same output schema", () => {
+    expect(optimizeQueryCapability.outputSchema).toBe(QueryOptimizationOutputSchema);
+    expect(optimizeLogCapability.outputSchema).toBe(QueryOptimizationOutputSchema);
   });
 });
 

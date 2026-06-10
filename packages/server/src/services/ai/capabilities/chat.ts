@@ -14,15 +14,28 @@ import {
   createLoadSkillTool,
   type SkillMetadata,
 } from "../../agentSkills";
+import {
+  discoverReferences,
+  createLoadReferenceTool,
+  type ReferenceMetadata,
+} from "../../agentReferences";
 import { coreTools, chartTools, requireToolContext } from "../toolsets";
 import { runStructuredCapability } from "../engine";
 import { optimizeQueryCapability } from "./optimizeQuery";
 import type { AgentRunContext, StreamCapability } from "../types";
 
 const CHAT_SKILL_DIR = "../skills/ai-chat";
+const REFERENCES_DIR = "../references";
 
-function buildSystemPrompt(skills: SkillMetadata[]): string {
+function buildSystemPrompt(skills: SkillMetadata[], references: ReferenceMetadata[]): string {
   const skillsList = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+  const referencesList = references.map((r) => `- ${r.name}: ${r.description}`).join("\n");
+  // Decision framework is generated from each skill's `when_to_use` (falling back
+  // to its description), so adding a skill dir automatically extends routing.
+  const decisionFramework = skills
+    .map((s) => `- ${s.when_to_use ?? s.description} → call \`load_skill\` with "${s.name}"`)
+    .join("\n");
+
   return `
 You are an expert ClickHouse assistant embedded inside CHouse UI.
 You operate in STRICT TOOL-FIRST MODE.
@@ -33,6 +46,13 @@ You MUST use the \`load_skill\` tool to retrieve these instructions BEFORE perfo
 
 Available skills:
 ${skillsList}
+
+## REFERENCES
+Reference docs hold exact ClickHouse facts (system.* column names, the optimization playbook, the type/codec guide).
+Use the \`load_reference\` tool to pull one into context BEFORE writing raw \`system.*\` SQL or grounding an optimization/schema recommendation.
+
+Available references:
+${referencesList}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CORE OPERATING RULES
@@ -46,16 +66,14 @@ CORE OPERATING RULES
 7. When the user wants to export, download, or get data as CSV/JSON → use \`export_query_result\`.
 
 ## DECISION FRAMEWORK: WHEN TO LOAD SKILLS
-You MUST call \`load_skill\` depending on the user's intent BEFORE taking action:
-- Intent: User wants to know what databases/tables exist, or wants to explore the schema → call \`load_skill\` with "data-exploration"
-- Intent: User wants you to write or execute a SQL query → call \`load_skill\` with "sql-generation"
-- Intent: User wants a chart, plot, graph, or visual distribution → call \`load_skill\` with "data-visualization"
-- Intent: User asks about query performance, EXPLAIN, or wants to optimize a query → call \`load_skill\` with "query-optimization"
-- Intent: User wants to know about server health, running queries, slow/heavy queries (historical or current), or system issues → call \`load_skill\` with "system-troubleshooting" (use \`get_slow_queries\` for historical slow queries, \`get_running_queries\` for currently running).
+Identify the user's intent, then call \`load_skill\` for the matching skill BEFORE taking action:
+${decisionFramework}
 
-Other tools (use when appropriate without requiring a skill): For database-level overview (table count, total size), use \`get_database_info\`. For syntax-only validation use \`validate_sql\`; for export use \`export_query_result\`.
+Disambiguation: for historical slow/heavy queries use \`get_slow_queries\`; for queries running right now use \`get_running_queries\`. For a database-level overview (table count, total size) use \`get_database_info\` directly. For syntax-only validation use \`validate_sql\`; for export use \`export_query_result\`. These don't require a skill.
 
-ONLY produce the final text answer after all required tool calls (and skill loads) are complete.
+When a skill's instructions tell you to load a reference, call \`load_reference\` before running the relevant \`system.*\` SQL or proposing the fix.
+
+ONLY produce the final text answer after all required tool calls (and skill/reference loads) are complete.
 Base your final answer strictly on tool results.
 If access is denied, explain clearly.
 If a tool fails, surface the error clearly.
@@ -96,9 +114,10 @@ function createChatSpecificTools(ctx: AgentRunContext): ToolSet {
           const result = await runStructuredCapability(optimizeQueryCapability, { query: sql }, ctx);
           return {
             optimizedQuery: result.optimizedQuery,
-            explanation: result.explanation,
             summary: result.summary,
-            tips: result.tips,
+            explanation: result.explanation,
+            cause: result.cause,
+            suggestions: result.suggestions,
           };
         } catch (error: unknown) {
           return { error: error instanceof Error ? error.message : "Failed to optimize query" };
@@ -123,9 +142,13 @@ export const chatCapability: StreamCapability<ChatInput> = {
   async tools(ctx): Promise<ToolSet> {
     // Validate a live session exists (chat needs core/chart tools).
     requireToolContext(ctx);
-    const skills = await discoverSkills([CHAT_SKILL_DIR]);
+    const [skills, references] = await Promise.all([
+      discoverSkills([CHAT_SKILL_DIR]),
+      discoverReferences([REFERENCES_DIR]),
+    ]);
     return {
       load_skill: createLoadSkillTool(skills),
+      load_reference: createLoadReferenceTool(references),
       ...coreTools(ctx),
       ...chartTools(ctx),
       ...createChatSpecificTools(ctx),
@@ -133,7 +156,10 @@ export const chatCapability: StreamCapability<ChatInput> = {
   },
 
   async instructions(): Promise<string> {
-    const skills = await discoverSkills([CHAT_SKILL_DIR]);
-    return buildSystemPrompt(skills);
+    const [skills, references] = await Promise.all([
+      discoverSkills([CHAT_SKILL_DIR]),
+      discoverReferences([REFERENCES_DIR]),
+    ]);
+    return buildSystemPrompt(skills, references);
   },
 };

@@ -189,7 +189,7 @@ HIGH-MEMORY QUERY DEEP-DIVE — do this whenever a query eats memory beyond the 
  b. For each table pull the facts (cheap metadata, instant): system.tables (engine, total_rows, total_bytes, partition_key, sorting_key) → how big + how it's keyed; system.columns (type + data_compressed_bytes) → heaviest / mistyped columns; system.parts grouped by partition → is it scanning every partition? too many parts?
  c. Pin the CAUSE on that data.
  d. Record it in \`heavyQueries\`: the query, its real peak memory, the user, the cause, per-table findings, concrete optimization suggestions grounded in the data, AND \`optimizedQuery\` — the OPTIMIZED version with those fixes applied as concrete, runnable ClickHouse SQL using the REAL table + column names.
-    HARD REQUIREMENTS — the optimized query MUST: return the EXACT SAME result as the original; keep the business logic 100% UNCHANGED; aim to run in UNDER 1 MINUTE and peak UNDER 1 GB. Write it COMPLETE and VALID (no "…" / "-- omitted" placeholders).
+    HARD REQUIREMENTS — the optimized query MUST: return the EXACT SAME result as the original; keep the business logic 100% UNCHANGED; aim to run in UNDER 1 MINUTE and peak UNDER 1 GB. Write it COMPLETE and VALID (no "…" / "-- omitted" placeholders). FORMAT it prettily + runnable: multi-line, 2-space indent, one major clause per line; keywords UPPERCASE but PRESERVE the exact case of identifiers/columns/function names (ClickHouse is case-sensitive — e.g. argMax, toStartOfInterval); no markdown fences.
 
 3. Then output ONLY a JSON object (no prose, no markdown, no code fences) matching EXACTLY this schema:
 {

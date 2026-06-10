@@ -37,6 +37,7 @@ import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
 import { useWorkspaceStore, useRbacStore, RBAC_PERMISSIONS, usePreferencesStore } from "@/stores";
 import { useDatabases, useConfig } from "@/hooks";
 import { queryApi } from "@/api";
+import type { QueryOptimization } from "@/api/ai";
 
 // ── Platform-aware keyboard hint helpers ────────────────────────────────────
 const isMac =
@@ -161,13 +162,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   // Optimizer state
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(false);
   const [optimizerAutoStart, setOptimizerAutoStart] = useState(false);
-  const [optimizationResult, setOptimizationResult] = useState<{
-    optimizedQuery: string;
-    explanation: string;
-    summary: string;
-    tips: string[];
-    originalQuery: string;
-  } | null>(null);
+  const [optimizationResult, setOptimizationResult] = useState<QueryOptimization | null>(null);
   const [optimizationReason, setOptimizationReason] = useState<string>("");
 
   // Feature Flags & Permissions

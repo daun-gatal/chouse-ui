@@ -5,6 +5,8 @@ import { z } from "zod";
 export interface SkillMetadata {
     name: string;
     description: string;
+    /** Optional one-line intent trigger surfaced in the chat decision framework. */
+    when_to_use?: string;
     path: string;
 }
 
@@ -29,6 +31,7 @@ export async function discoverSkills(directories: string[]): Promise<SkillMetada
                     skills.push({
                         name: frontmatter.name,
                         description: frontmatter.description,
+                        when_to_use: frontmatter.when_to_use,
                         path: skillDir,
                     });
                 } catch (e) {
@@ -43,19 +46,24 @@ export async function discoverSkills(directories: string[]): Promise<SkillMetada
     return skills;
 }
 
-function parseFrontmatter(content: string): { name: string; description: string } {
+function parseFrontmatter(content: string): { name: string; description: string; when_to_use?: string } {
     const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!match?.[1]) throw new Error("No frontmatter found");
 
     const yamlContent = match[1];
     const nameMatch = yamlContent.match(/name:\s*(.+)/);
     const descMatch = yamlContent.match(/description:\s*(.+)/);
+    const whenMatch = yamlContent.match(/when_to_use:\s*(.+)/);
 
     if (!nameMatch || !descMatch) {
         throw new Error("Missing name or description in SKILL.md");
     }
 
-    return { name: nameMatch[1].trim(), description: descMatch[1].trim() };
+    return {
+        name: nameMatch[1].trim(),
+        description: descMatch[1].trim(),
+        when_to_use: whenMatch?.[1]?.trim(),
+    };
 }
 
 export function stripFrontmatter(content: string): string {

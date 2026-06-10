@@ -3,8 +3,8 @@
  */
 
 import { api, getSessionId, getRbacAccessToken } from './client';
-import { invokeAI, fetchAiModels } from './ai';
-import type { FleetDoctorHeavyQuery, FleetDoctorModel } from './fleet';
+import { invokeAI, fetchAiModels, type QueryOptimization } from './ai';
+import type { FleetDoctorModel } from './fleet';
 
 // ============================================
 // Types
@@ -302,14 +302,8 @@ export async function optimizeQuery(
   additionalPrompt?: string,
   modelId?: string,
   signal?: AbortSignal
-): Promise<{
-  originalQuery: string;
-  optimizedQuery: string;
-  explanation: string;
-  summary: string;
-  tips: string[];
-}> {
-  return invokeAI("optimize-query", { query, database, additionalPrompt }, { modelId, signal });
+): Promise<QueryOptimization> {
+  return invokeAI<QueryOptimization>("optimize-query", { query, database, additionalPrompt }, { modelId, signal });
 }
 
 /**
@@ -351,14 +345,15 @@ export async function checkQueryOptimization(
  * Chouse AI's heavy-query engine. The backend pulls the FULL query text from
  * system.query_log (so it's never truncated like the preview), proposes an
  * optimized version under the hard requirements, and computes a before -> after
- * EXPLAIN estimate. Returns a heavy-query-shaped result for HeavyQueryCard.
+ * EXPLAIN estimate. Returns the same unified `QueryOptimization` shape as the
+ * SQL editor's optimize-query, so both open the same dialog.
  */
 export async function optimizeQueryFromLog(
   queryId: string,
   modelId?: string,
   signal?: AbortSignal
-): Promise<FleetDoctorHeavyQuery> {
-  return invokeAI<FleetDoctorHeavyQuery>("optimize-log", { queryId }, { modelId, signal });
+): Promise<QueryOptimization> {
+  return invokeAI<QueryOptimization>("optimize-log", { queryId }, { modelId, signal });
 }
 
 /** Active AI models available to the "Optimize with Chouse AI" picker. */
