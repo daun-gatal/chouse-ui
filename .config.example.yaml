@@ -64,9 +64,40 @@ jwt:
   # JWT signing secret (REQUIRED in production)
   # Generate with: openssl rand -base64 32
   secret: your-super-secret-key-change-in-production-min-32-chars!
-  
+
   # Token expiration times (m: minutes, h: hours, d: days)
   access_expiry: 4h
   refresh_expiry: 7d
 
+# ============================================
+# SSO (OIDC / OAuth2) — optional
+# ============================================
+# auth:
+#   sso:
+#     enabled: true
+#     base_url: https://chouse.example.com      # public URL of this app (builds the redirect_uri)
+#     default_role: viewer                      # role for JIT-provisioned users
+#     auto_link_by_email: true                  # link to existing users when IdP asserts email_verified
+#     providers:
+#       okta:                                   # provider id (login URL slug)
+#         type: oidc                            # 'oidc' = discovery via issuer/.well-known
+#         display_name: "Okta"
+#         issuer: https://corp.okta.com
+#         client_id: "..."
+#         client_secret: "..."
+#         scopes: "openid profile email"
+#         # Optional: sync roles from an IdP claim on every login.
+#         # Note: users holding super_admin are never demoted by role sync.
+#         # role_mapping_claim: groups
+#         # role_mapping: "idp-group-a:admin,idp-group-b:developer"
+#       github:
+#         type: oauth2                          # plain OAuth2: explicit endpoints + userinfo
+#         display_name: "GitHub"
+#         authorization_endpoint: https://github.com/login/oauth/authorize
+#         token_endpoint: https://github.com/login/oauth/access_token
+#         userinfo_endpoint: https://api.github.com/user
+#         client_id: "..."
+#         client_secret: "..."
+#         scopes: "read:user user:email"
+#         claim_mapping: "subject:id,email:email,username:login"
 
