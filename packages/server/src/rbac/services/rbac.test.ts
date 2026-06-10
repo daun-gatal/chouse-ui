@@ -1,7 +1,7 @@
 
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 
-import { createUser, getUserById, createRole, listRoles, createAuditLog } from "./rbac";
+import { createUser, getUserById, createRole, listRoles, createAuditLog, authenticateUser } from "./rbac";
 
 // Mock data
 const mockUser = {
@@ -45,6 +45,14 @@ const mockSchema = {
     auditLogs: { _: "audit_logs_table" },
 };
 
+// Mutable state for per-test SSO and role control
+let mockHasSsoIdentity = false;
+let mockRoleNamesForUser: string[] = ["developer"];
+
+mock.module("../sso/identity", () => ({
+    userHasSsoIdentity: mock(async () => mockHasSsoIdentity),
+}));
+
 // Generic mock builder generator
 const createBuilder = (resolveData: any) => {
     const builder: any = {};
@@ -73,10 +81,16 @@ const routerBuilder: any = {};
     routerBuilder[m] = mock(() => routerBuilder);
 });
 
+// Dynamic role builder — returns full role objects but with dynamic names so tests can control
+// getUserRoles(). All other mockRole fields (id, displayName, etc.) are preserved so existing
+// tests that need them (e.g. createRole → expandRoleResponse) keep working.
+const dynamicRoleBuilder = () =>
+    createBuilder(mockRoleNamesForUser.map(name => ({ ...mockRole, name })));
+
 // The .from() method switches to specific builders
 routerBuilder.from = mock((table: any) => {
     if (table === mockSchema.users) return userBuilder;
-    if (table === mockSchema.roles) return roleBuilder;
+    if (table === mockSchema.roles) return dynamicRoleBuilder();
     if (table === mockSchema.permissions) return permissionBuilder;
     if (table === mockSchema.userRoles) {
         // userRoles often returned as simple objects or counts
@@ -160,7 +174,9 @@ describe("RBAC Service", () => {
         mockDb.insert.mockClear();
         routerBuilder.from.mockClear();
 
-        // Reset specialized builders if needed (e.g. if we modified them in a test)
+        // Reset per-test SSO / role state
+        mockHasSsoIdentity = false;
+        mockRoleNamesForUser = ["developer"];
     });
 
     describe("createUser", () => {
@@ -236,6 +252,28 @@ describe("RBAC Service", () => {
             const result = await listRoles();
             expect(result).toHaveLength(1);
             expect(result[0].name).toBe("developer");
+        });
+    });
+
+    describe("authenticateUser — SSO enforcement", () => {
+        it("rejects password login for SSO-linked non-admin with explicit error", async () => {
+            // arrange: user exists + active, password valid (verifyPassword mock returns true),
+            // userHasSsoIdentity -> true, roles -> ['viewer']
+            mockHasSsoIdentity = true;
+            mockRoleNamesForUser = ["viewer"];
+
+            await expect(
+                authenticateUser("sso-user@example.com", "Valid#Pass1")
+            ).rejects.toThrow(/SSO sign-in/);
+        });
+
+        it("allows password login for SSO-linked admin", async () => {
+            // arrange: same but roles -> ['admin'] — admin retains break-glass password login
+            mockHasSsoIdentity = true;
+            mockRoleNamesForUser = ["admin"];
+
+            const result = await authenticateUser("admin@example.com", "Valid#Pass1");
+            expect(result).not.toBeNull();
         });
     });
 

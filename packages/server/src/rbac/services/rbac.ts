@@ -728,6 +728,17 @@ export async function authenticateUser(
     return null;
   }
 
+  // SSO-linked accounts must use SSO — except admins (break-glass access).
+  const { userHasSsoIdentity } = await import('../sso/identity');
+  if (await userHasSsoIdentity(user.id)) {
+    const roles = await getUserRoles(user.id);
+    const isAdminUser = roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || roles.includes(SYSTEM_ROLES.ADMIN);
+    if (!isAdminUser) {
+      const { AppError } = await import('../../types');
+      throw AppError.unauthorized('This account uses SSO sign-in. Please use your identity provider to log in.');
+    }
+  }
+
   // Check if password needs rehashing
   if (needsRehash(user.passwordHash)) {
     const newHash = await hashPassword(password);
