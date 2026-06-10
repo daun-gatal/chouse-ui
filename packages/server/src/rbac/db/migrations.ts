@@ -44,7 +44,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.17.1';
+export const APP_VERSION = '1.25.0';
 
 // ============================================
 // Error Helpers
@@ -2627,6 +2627,58 @@ const MIGRATIONS: Migration[] = [
     },
     down: async () => {
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.24.0] Down: doctor:run remains (idempotent seed)');
+    },
+  },
+  {
+    version: '1.25.0',
+    name: 'user_identities',
+    description: 'Add rbac_user_identities table linking users to SSO providers (OIDC/OAuth2)',
+    up: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_identities (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            provider TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            email TEXT,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            last_login_at INTEGER
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_identities_provider_subject_idx ON rbac_user_identities(provider, subject)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS user_identities_user_idx ON rbac_user_identities(user_id)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_user_identities (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            provider TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            email TEXT,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            last_login_at TIMESTAMP WITH TIME ZONE
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_identities_provider_subject_idx ON rbac_user_identities(provider, subject)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS user_identities_user_idx ON rbac_user_identities(user_id)`);
+      }
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.25.0] Added rbac_user_identities table');
+    },
+    down: async (db) => {
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      if (getDatabaseType() === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_user_identities`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_user_identities`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.25.0] Dropped rbac_user_identities table');
     },
   },
 ];

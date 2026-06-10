@@ -142,6 +142,23 @@ export const sessions = pgTable('rbac_sessions', {
 }));
 
 // ============================================
+// User Identities (SSO links)
+// ============================================
+
+export const userIdentities = pgTable('rbac_user_identities', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull(),
+  email: varchar('email', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+}, (table) => ({
+  providerSubjectIdx: uniqueIndex('user_identities_provider_subject_idx').on(table.provider, table.subject),
+  userIdx: index('user_identities_user_idx').on(table.userId),
+}));
+
+// ============================================
 // Audit Logs Table (with partitioning support)
 // ============================================
 
@@ -521,3 +538,5 @@ export type AiModel = typeof aiModels.$inferSelect;
 export type NewAiModel = typeof aiModels.$inferInsert;
 export type AiConfig = typeof aiConfigs.$inferSelect;
 export type NewAiConfig = typeof aiConfigs.$inferInsert;
+export type UserIdentity = typeof userIdentities.$inferSelect;
+export type NewUserIdentity = typeof userIdentities.$inferInsert;

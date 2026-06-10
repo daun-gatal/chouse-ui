@@ -142,6 +142,23 @@ export const sessions = sqliteTable('rbac_sessions', {
 }));
 
 // ============================================
+// User Identities (SSO links)
+// ============================================
+
+export const userIdentities = sqliteTable('rbac_user_identities', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull(),
+  email: text('email'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  lastLoginAt: integer('last_login_at', { mode: 'timestamp' }),
+}, (table) => ({
+  providerSubjectIdx: uniqueIndex('user_identities_provider_subject_idx').on(table.provider, table.subject),
+  userIdx: index('user_identities_user_idx').on(table.userId),
+}));
+
+// ============================================
 // Audit Logs Table
 // ============================================
 
@@ -521,3 +538,5 @@ export type AiModel = typeof aiModels.$inferSelect;
 export type NewAiModel = typeof aiModels.$inferInsert;
 export type AiConfig = typeof aiConfigs.$inferSelect;
 export type NewAiConfig = typeof aiConfigs.$inferInsert;
+export type UserIdentity = typeof userIdentities.$inferSelect;
+export type NewUserIdentity = typeof userIdentities.$inferInsert;
