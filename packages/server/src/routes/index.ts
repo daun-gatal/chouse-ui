@@ -30,11 +30,15 @@ const apiProtectionMiddleware = async (c: Context, next: Next) => {
   // - Health checks (needed for load balancers)
   // - Config endpoint (needed before app loads)
   // - RBAC auth endpoints (for RBAC login)
+  // - SSO endpoints (the /start route is reached via top-level browser
+  //   navigation, so it can never carry X-Requested-With; the callback is
+  //   CSRF-protected by the signed one-time state cookie instead)
   const publicPaths = [
     "/api/health",
     "/api/config",
     "/api/rbac/auth/login",
     "/api/rbac/auth/refresh",
+    "/api/rbac/auth/sso",
     "/api/rbac/health",
   ];
   if (publicPaths.some(p => path === p || path.startsWith(p + "/"))) {

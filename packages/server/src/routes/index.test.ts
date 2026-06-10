@@ -58,6 +58,16 @@ describe("Server Index (API Protection)", () => {
         expect(res.status).not.toBe(403);
     });
 
+    it("should allow SSO start path without header (top-level navigation)", async () => {
+        const mainApp = new Hono();
+        mainApp.route("/api", api);
+
+        const res = await mainApp.request("/api/rbac/auth/sso/okta/start");
+        // Mocked rbac router has no handler (404 expected) — the point is
+        // that the protection middleware does not 403 it.
+        expect(res.status).not.toBe(403);
+    });
+
     it("should block direct access to protected routes", async () => {
         const mainApp = new Hono();
         mainApp.route("/api", api);
