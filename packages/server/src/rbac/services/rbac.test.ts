@@ -275,6 +275,15 @@ describe("RBAC Service", () => {
             const result = await authenticateUser("admin@example.com", "Valid#Pass1");
             expect(result).not.toBeNull();
         });
+
+        it("allows password login for SSO-linked super_admin", async () => {
+            // arrange: same but roles -> ['super_admin'] — super_admin also retains break-glass access
+            mockHasSsoIdentity = true;
+            mockRoleNamesForUser = ["super_admin"];
+
+            const result = await authenticateUser("superadmin@example.com", "Valid#Pass1");
+            expect(result).not.toBeNull();
+        });
     });
 
 });

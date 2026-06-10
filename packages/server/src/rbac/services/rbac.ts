@@ -19,6 +19,7 @@ import {
   type AuditAction,
 } from '../schema/base';
 import { logger } from '../../utils/logger';
+import { AppError } from '../../types';
 import type {
   User,
   Role,
@@ -709,7 +710,11 @@ export async function createSessionAndTokens(
 }
 
 /**
- * Authenticate user and generate tokens
+ * Authenticate user and generate tokens.
+ *
+ * @returns Token pair + user on success, or `null` when credentials are invalid.
+ * @throws {AppError} AppError.unauthorized when an SSO-linked non-admin attempts
+ *   password login (account exists and password is correct, but SSO is required).
  */
 export async function authenticateUser(
   identifier: string,
@@ -734,7 +739,6 @@ export async function authenticateUser(
     const roles = await getUserRoles(user.id);
     const isAdminUser = roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || roles.includes(SYSTEM_ROLES.ADMIN);
     if (!isAdminUser) {
-      const { AppError } = await import('../../types');
       throw AppError.unauthorized('This account uses SSO sign-in. Please use your identity provider to log in.');
     }
   }

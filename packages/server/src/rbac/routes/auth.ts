@@ -64,7 +64,21 @@ authRoutes.post('/login', zValidator('json', LoginSchema), async (c) => {
   const ipAddress = getClientIp(c);
   const userAgent = c.req.header('User-Agent');
 
-  const result = await authenticateUser(identifier, password, ipAddress, userAgent);
+  let result;
+  try {
+    result = await authenticateUser(identifier, password, ipAddress, userAgent);
+  } catch (error) {
+    // SSO-enforcement throws AppError for accounts that must use SSO.
+    // These attempts carry a valid password — a security-relevant signal — so
+    // we must audit them before rethrowing.
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.LOGIN_FAILED, undefined, {
+      details: { identifier },
+      ipAddress,
+      status: 'failure',
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 
   if (!result) {
     // Log failed login

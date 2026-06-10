@@ -3,6 +3,7 @@ import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
 import { Hono } from "hono";
 import authRoutes from "./auth";
 import { errorHandler } from "../../middleware/error";
+import { AppError } from "../../types";
 
 // Mock Services
 const mockAuthenticateUser = mock();
@@ -12,6 +13,7 @@ const mockLogoutAllSessions = mock();
 const mockUpdateUserPassword = mock();
 const mockGetUserById = mock();
 const mockCreateAuditLog = mock(async () => { });
+const mockCreateAuditLogWithContext = mock(async () => { });
 const mockValidatePasswordStrength = mock(() => ({ valid: true, errors: [] }));
 const mockDestroyUserSessions = mock();
 
@@ -24,6 +26,8 @@ mock.module("../services/rbac", () => ({
     updateUserPassword: mockUpdateUserPassword,
     getUserById: mockGetUserById,
     createAuditLog: mockCreateAuditLog,
+    createAuditLogWithContext: mockCreateAuditLogWithContext,
+    listRoles: mock(async () => []),
 }));
 
 // Mock Password Service
@@ -84,6 +88,7 @@ describe("RBAC Auth Routes", () => {
         mockUpdateUserPassword.mockClear();
         mockGetUserById.mockClear();
         mockCreateAuditLog.mockClear();
+        mockCreateAuditLogWithContext.mockClear();
         mockValidatePasswordStrength.mockClear();
         mockDestroyUserSessions.mockClear();
     });
@@ -109,7 +114,7 @@ describe("RBAC Auth Routes", () => {
             const body = await res.json();
             expect(body.success).toBe(true);
             expect(body.data.user.id).toBe("user-1");
-            expect(mockCreateAuditLog).toHaveBeenCalled();
+            expect(mockCreateAuditLogWithContext).toHaveBeenCalled();
         });
 
         it("should fail with invalid credentials", async () => {
@@ -122,7 +127,31 @@ describe("RBAC Auth Routes", () => {
             });
 
             expect(res.status).toBe(401);
-            expect(mockCreateAuditLog).toHaveBeenCalled();
+            expect(mockCreateAuditLogWithContext).toHaveBeenCalled();
+        });
+
+        it("should write LOGIN_FAILED audit entry when authenticateUser throws (SSO enforcement)", async () => {
+            // arrange: authenticateUser rejects — simulates SSO-linked non-admin attempting password login
+            mockAuthenticateUser.mockRejectedValue(
+                AppError.unauthorized("This account uses SSO sign-in. Please use your identity provider to log in.")
+            );
+
+            const res = await app.request("/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ identifier: "sso-user@example.com", password: "ValidPass1!" })
+            });
+
+            expect(res.status).toBe(401);
+            expect(mockCreateAuditLogWithContext).toHaveBeenCalledWith(
+                expect.anything(),
+                "auth.login_failed",
+                undefined,
+                expect.objectContaining({
+                    details: { identifier: "sso-user@example.com" },
+                    status: "failure",
+                })
+            );
         });
     });
 
