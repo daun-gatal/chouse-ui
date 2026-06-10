@@ -4,17 +4,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import VisualExplain from './VisualExplain';
-import QueryAnalysisView from './QueryAnalysisView';
 import ASTView from './ASTView';
 import SyntaxView from './SyntaxView';
 import PipelineView from './PipelineView';
 import ExplainInfoHeader from './ExplainInfoHeader';
-import { ExplainResult, ExplainEstimate, ExplainType, EXPLAIN_TYPES, QueryComplexity, PerformanceRecommendation } from '@/types/explain';
-import { queryApi } from '@/api';
-import { useConfig } from '@/hooks';
-
-// Extended type to include analysis
-type ViewType = ExplainType | 'analysis';
+import { ExplainResult, ExplainEstimate, ExplainType, EXPLAIN_TYPES } from '@/types/explain';
 
 interface ExplainTabProps {
   plan: ExplainResult | null;
@@ -22,8 +16,8 @@ interface ExplainTabProps {
   isLoading?: boolean;
   onTypeChange?: (type: ExplainType) => void;
   currentType?: ExplainType;
-  query?: string; // The original query for analysis
-  refreshKey?: number; // Incremented when explain is clicked to force refresh
+  query?: string;
+  refreshKey?: number;
 }
 
 /**
@@ -118,115 +112,29 @@ const ExplainTab: React.FC<ExplainTabProps> = ({
   isLoading,
   onTypeChange,
   currentType = 'plan',
-  query,
   refreshKey = 0
 }) => {
-  const [activeView, setActiveView] = useState<ViewType>(currentType);
-
-  // Analysis state
-  const [analysisData, setAnalysisData] = useState<{ complexity: QueryComplexity; recommendations: PerformanceRecommendation[] } | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-
-  // Track the last refresh key to detect when a new explain is requested
-  const [lastRefreshKey, setLastRefreshKey] = useState<number>(refreshKey);
-
-  const { data: config } = useConfig();
-  const showAnalysisTab = !config?.features?.aiOptimizer;
+  const [activeView, setActiveView] = useState<ExplainType>(currentType);
 
   // Sync activeView with currentType when it changes from parent
   useEffect(() => {
     setActiveView(currentType);
   }, [currentType]);
 
-  // Reset analysis data when refreshKey changes (new explain requested)
-  useEffect(() => {
-    if (refreshKey !== lastRefreshKey) {
-      setLastRefreshKey(refreshKey);
-      setAnalysisData(null);
-      setAnalysisError(null);
-      setAnalysisLoading(false);
-    }
-  }, [refreshKey, lastRefreshKey]);
-
-  // Fetch analysis when the analysis tab is selected
-  useEffect(() => {
-    if (activeView === 'analysis' && query && !analysisData && !analysisLoading) {
-      setAnalysisLoading(true);
-      setAnalysisError(null);
-
-      queryApi.analyzeQuery(query)
-        .then((result) => {
-          setAnalysisData(result);
-        })
-        .catch((err) => {
-          setAnalysisError(err.message || 'Failed to analyze query');
-        })
-        .finally(() => {
-          setAnalysisLoading(false);
-        });
-    }
-  }, [activeView, query, analysisData, analysisLoading]);
-
   const handleViewChange = useCallback((view: string) => {
-    const viewType = view as ViewType;
+    const viewType = view as ExplainType;
     setActiveView(viewType);
-
-    // Only call onTypeChange for explain types, not analysis
-    if (viewType !== 'analysis') {
-      onTypeChange?.(viewType as ExplainType);
-    }
+    onTypeChange?.(viewType);
   }, [onTypeChange]);
 
   // Render content based on current view
   const renderContent = () => {
-    // Handle analysis view
-    if (activeView === 'analysis') {
-      if (analysisLoading) {
-        return (
-          <div className="flex h-full flex-col items-center justify-center gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
-            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Analyzing query…</span>
-          </div>
-        );
-      }
-
-      if (analysisError) {
-        return (
-          <div className="p-4">
-            <Alert variant="destructive" className="rounded-xs border-red-900/60 bg-red-950/40 text-red-200">
-              <AlertTitle className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Error</AlertTitle>
-              <AlertDescription>{analysisError}</AlertDescription>
-            </Alert>
-          </div>
-        );
-      }
-
-      if (!analysisData) {
-        return (
-          <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
-            No analysis data available.
-          </div>
-        );
-      }
-
-      return (
-        <div className="flex h-full flex-col">
-          <ExplainInfoHeader type="analysis" />
-          <div className="flex-1 overflow-hidden">
-            <QueryAnalysisView complexity={analysisData.complexity} recommendations={analysisData.recommendations} />
-          </div>
-        </div>
-      );
-    }
-
-    // Handle explain views
     if (isLoading) {
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3">
           <Loader2 className="h-5 w-5 animate-spin text-paper-dim" />
           <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
-            Generating {EXPLAIN_TYPES[activeView as ExplainType]?.label.toLowerCase() || ''} explain…
+            Generating {EXPLAIN_TYPES[activeView]?.label.toLowerCase() || ''} explain…
           </span>
         </div>
       );
@@ -270,7 +178,6 @@ const ExplainTab: React.FC<ExplainTabProps> = ({
       case 'estimate':
         return <EstimateView data={plan.estimate} />;
       default:
-        // Fallback for legacy plan format (without type field)
         return (
           <div className="w-full h-full">
             <VisualExplain plan={plan} />
@@ -279,16 +186,11 @@ const ExplainTab: React.FC<ExplainTabProps> = ({
     }
   };
 
-  // All view types including analysis
-  // All view types including analysis
-  const viewTypes: { key: ViewType; label: string; description: string }[] = [
-    ...Object.entries(EXPLAIN_TYPES).map(([key, value]) => ({
-      key: key as ExplainType,
-      label: value.label,
-      description: value.description
-    })),
-    ...(showAnalysisTab ? [{ key: 'analysis' as ViewType, label: 'Analysis', description: 'Query complexity and performance recommendations' }] : [])
-  ];
+  const viewTypes = Object.entries(EXPLAIN_TYPES).map(([key, value]) => ({
+    key: key as ExplainType,
+    label: value.label,
+    description: value.description,
+  }));
 
   return (
     <div className="flex h-full flex-col">

@@ -21,9 +21,10 @@ import {
   Moon,
   Clock,
   MonitorSmartphone,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuthStore, useRbacStore } from "@/stores";
+import { useAuthStore, useRbacStore, usePreferencesStore } from "@/stores";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
@@ -120,7 +121,7 @@ const StatusFooter: React.FC<{
 };
 
 // ============================================
-// Appearance Card — theme selector
+// Appearance Card — theme + query settings
 // ============================================
 
 type ThemeMode = "auto" | "system" | "light" | "dark";
@@ -137,66 +138,115 @@ const THEME_OPTIONS: Array<{
   { id: "dark", label: "Dark", hint: "Always ink", icon: Moon },
 ];
 
+const ROW_PRESETS: Array<{ value: number; label: string; hint: string }> = [
+  { value: 100,    label: "100",    hint: "Minimal preview" },
+  { value: 1_000,  label: "1,000",  hint: "Quick sample" },
+  { value: 5_000,  label: "5,000",  hint: "Standard" },
+  { value: 10_000, label: "10,000", hint: "Maximum · Default" },
+];
+
 const AppearanceCard: React.FC = () => {
   const { theme, resolvedTheme, setTheme } = useTheme();
+  const { maxResultRows, setMaxResultRows, resetPreferences } = usePreferencesStore();
 
   return (
     <SettingCard
       title="Appearance"
-      description="How the interface looks for you"
+      description="Interface look and query behaviour"
       icon={Palette}
       delay={0.25}
       className="md:col-span-3"
     >
-      <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {THEME_OPTIONS.map((opt) => {
-            const active = theme === opt.id;
-            const Icon = opt.icon;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setTheme(opt.id)}
-                aria-pressed={active}
-                className={cn(
-                  "group flex flex-col items-center gap-3 rounded-xs border bg-ink-200 px-4 py-5 text-center transition-colors",
-                  active
-                    ? "border-brand"
-                    : "border-ink-500 hover:border-ink-700 hover:bg-ink-300"
-                )}
-              >
-                <span
+      <div className="flex flex-col gap-4">
+        {/* Theme selector */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-0.5">
+            <p className={MONO_LABEL}>Theme</p>
+            <p className={cn(MONO_FAINT, "leading-relaxed")}>How the interface looks for you</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {THEME_OPTIONS.map((opt) => {
+              const active = theme === opt.id;
+              const Icon = opt.icon;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setTheme(opt.id)}
+                  aria-pressed={active}
+                  title={opt.hint}
                   className={cn(
-                    "grid h-10 w-10 place-items-center rounded-xs border transition-colors",
+                    "flex items-center gap-1.5 rounded-xs border px-3 py-1.5 font-mono text-[12px] transition-colors",
                     active
-                      ? "border-brand bg-ink-100 text-brand"
-                      : "border-ink-500 bg-ink-100 text-paper-muted"
+                      ? "border-brand bg-brand/[0.08] text-brand"
+                      : "border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:text-paper"
                   )}
                 >
-                  <Icon className="h-5 w-5" aria-hidden />
-                </span>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[13px] font-medium text-paper">{opt.label}</span>
-                  <span className={cn(MONO_FAINT, "text-[10px]")}>{opt.hint}</span>
-                </div>
-                {active && (
-                  <span
-                    className="rounded-xs border border-brand/40 bg-brand/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-brand"
-                    aria-hidden
-                  >
-                    Active
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                  <Icon className="h-3.5 w-3.5" aria-hidden />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <StatusFooter
-          label="Now rendering"
-          meta={resolvedTheme === "dark" ? "Dark" : "Light"}
-          tone="brand"
-        />
+
+        <div className="h-px bg-ink-500" />
+
+        {/* Max result rows — compact inline selector */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-0.5">
+            <p className={MONO_LABEL}>Max result rows</p>
+            <p className={cn(MONO_FAINT, "leading-relaxed")}>
+              SQL editor cap — add a{" "}
+              <code className="rounded-xs border border-ink-500 bg-ink-200 px-1 font-mono">LIMIT</code>{" "}
+              for fewer rows
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {ROW_PRESETS.map((opt) => {
+              const active = maxResultRows === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setMaxResultRows(opt.value)}
+                  aria-pressed={active}
+                  title={opt.hint}
+                  className={cn(
+                    "rounded-xs border px-3 py-1.5 font-mono text-[12px] tabular-nums transition-colors",
+                    active
+                      ? "border-brand bg-brand/[0.08] text-brand"
+                      : "border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:text-paper"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={resetPreferences}
+              title="Reset to default"
+              aria-label="Reset to default"
+              className="rounded-xs border border-ink-500 bg-ink-100 p-1.5 text-paper-dim transition-colors hover:border-ink-700 hover:text-paper"
+            >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </div>
+        </div>
+
+        {/* Status footers */}
+        <div className="grid grid-cols-2 gap-3">
+          <StatusFooter
+            label="Now rendering"
+            meta={resolvedTheme === "dark" ? "Dark" : "Light"}
+            tone="brand"
+          />
+          <StatusFooter
+            label="Result cap"
+            meta={`${maxResultRows.toLocaleString()} rows`}
+          />
+        </div>
       </div>
     </SettingCard>
   );
@@ -726,10 +776,13 @@ export default function Preferences() {
 
           {/* Preferences Grid */}
           <div className="grid items-start gap-6 md:grid-cols-3">
+            {/* Row 1: Identity + Connection */}
             <IdentityCard />
             <ConnectionDetailsCard url={url} version={version} />
+            {/* Row 2: Data access + Permissions */}
             <DataAccessCard rules={allRules} connections={connections} isAdmin={isAdmin()} />
             <EffectivePermissionsCard permissions={user?.permissions || []} />
+            {/* Row 3: Appearance + query settings — full row */}
             <AppearanceCard />
           </div>
         </div>

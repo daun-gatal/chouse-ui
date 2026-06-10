@@ -2,8 +2,9 @@
  * Query API
  */
 
-import { api } from './client';
-import type { FleetDoctorHeavyQuery, FleetDoctorModel } from './fleet';
+import { api, getSessionId, getRbacAccessToken } from './client';
+import { invokeAI, fetchAiModels, type QueryOptimization } from './ai';
+import type { FleetDoctorModel } from './fleet';
 
 // ============================================
 // Types
@@ -126,11 +127,17 @@ export function detectQueryType(sql: string): 'select' | 'insert' | 'update' | '
 export async function executeQuery<T = Record<string, unknown>>(
   query: string,
   format: 'JSON' | 'JSONEachRow' | 'CSV' | 'TabSeparated' = 'JSON',
-  queryId?: string
+  queryId?: string,
+  signal?: AbortSignal,
+  maxResultRows?: number
 ): Promise<QueryResult<T>> {
   // Use the generic execution endpoint for all queries
   // The backend determines the query type and validates permissions
-  return api.post<QueryResult<T>>('/query/execute', { query, format, queryId });
+  return api.post<QueryResult<T>>(
+    '/query/execute',
+    { query, format, queryId, maxResultRows },
+    { signal }
+  );
 }
 
 /**
@@ -283,15 +290,6 @@ export async function explainQuery(
   return api.post<import('@/types/explain').ExplainResult>('/query/explain', { query, type });
 }
 
-/**
- * Analyze query complexity and get performance recommendations
- * @param query - The SQL query to analyze
- */
-export async function analyzeQuery(
-  query: string
-): Promise<{ complexity: import('@/types/explain').QueryComplexity; recommendations: import('@/types/explain').PerformanceRecommendation[] }> {
-  return api.post<{ complexity: import('@/types/explain').QueryComplexity; recommendations: import('@/types/explain').PerformanceRecommendation[] }>('/query/analyze', { query });
-}
 
 /**
  * Optimize a SQL query using AI
@@ -304,20 +302,8 @@ export async function optimizeQuery(
   additionalPrompt?: string,
   modelId?: string,
   signal?: AbortSignal
-): Promise<{
-  originalQuery: string;
-  optimizedQuery: string;
-  explanation: string;
-  summary: string;
-  tips: string[];
-}> {
-  return api.post<{
-    originalQuery: string;
-    optimizedQuery: string;
-    explanation: string;
-    summary: string;
-    tips: string[];
-  }>('/query/optimize', { query, database, additionalPrompt, modelId }, { signal });
+): Promise<QueryOptimization> {
+  return invokeAI<QueryOptimization>("optimize-query", { query, database, additionalPrompt }, { modelId, signal });
 }
 
 /**
@@ -340,13 +326,7 @@ export async function debugQuery(
   explanation: string;
   summary: string;
 }> {
-  return api.post<{
-    fixedQuery: string;
-    originalQuery: string;
-    errorAnalysis: string;
-    explanation: string;
-    summary: string;
-  }>('/query/debug', { query, error, database, additionalPrompt, modelId }, { signal });
+  return invokeAI("debug-query", { query, error, database, additionalPrompt }, { modelId, signal });
 }
 
 /**
@@ -357,7 +337,7 @@ export async function checkQueryOptimization(
   query: string,
   modelId?: string
 ): Promise<{ canOptimize: boolean; reason: string }> {
-  return api.post<{ canOptimize: boolean; reason: string }>('/query/check-optimization', { query, modelId });
+  return invokeAI("check-optimize", { query }, { modelId });
 }
 
 /**
@@ -365,19 +345,201 @@ export async function checkQueryOptimization(
  * Chouse AI's heavy-query engine. The backend pulls the FULL query text from
  * system.query_log (so it's never truncated like the preview), proposes an
  * optimized version under the hard requirements, and computes a before -> after
- * EXPLAIN estimate. Returns a heavy-query-shaped result for HeavyQueryCard.
+ * EXPLAIN estimate. Returns the same unified `QueryOptimization` shape as the
+ * SQL editor's optimize-query, so both open the same dialog.
  */
 export async function optimizeQueryFromLog(
   queryId: string,
   modelId?: string,
   signal?: AbortSignal
-): Promise<FleetDoctorHeavyQuery> {
-  return api.post<FleetDoctorHeavyQuery>('/query/optimize-log', { queryId, modelId }, { signal });
+): Promise<QueryOptimization> {
+  return invokeAI<QueryOptimization>("optimize-log", { queryId }, { modelId, signal });
 }
 
 /** Active AI models available to the "Optimize with Chouse AI" picker. */
 export async function fetchOptimizeModels(): Promise<FleetDoctorModel[]> {
-  return api.get<FleetDoctorModel[]>('/query/optimize-models');
+  return fetchAiModels();
+}
+
+// ============================================
+// Streaming query execution
+// ============================================
+
+/**
+ * Callbacks for the NDJSON stream from /query/execute-stream.
+ * All callbacks are called on the main thread as lines arrive.
+ */
+export interface QueryStreamCallbacks {
+  /** Fired once when column names and types are known (very early). */
+  onMeta: (meta: QueryMeta[], queryId: string) => void;
+  /**
+   * Fired for each batch of rows.  Batches are emitted roughly every 500 rows
+   * or when the network chunk boundary falls — whichever comes first.
+   */
+  onRows: (rows: Record<string, unknown>[]) => void;
+  /** Fired once when the stream ends normally. */
+  onEnd: (stats: QueryStatistics, totalRows: number) => void;
+  /** Fired if a server-side or network error interrupts the stream. */
+  onError: (message: string) => void;
+}
+
+/**
+ * Stream a SQL query from /query/execute-stream, calling the provided
+ * callbacks as data arrives.  Rows are delivered in compact array form from
+ * the server and reconstituted as `Record<string, unknown>` here using the
+ * column names received in the meta line.
+ *
+ * Bypasses `ApiClient.request()` because the response is NDJSON, not the
+ * standard `{success, data}` envelope.  Auth headers are added manually.
+ */
+export async function executeQueryStream(
+  query: string,
+  queryId: string | undefined,
+  signal: AbortSignal | undefined,
+  maxResultRows: number | undefined,
+  callbacks: QueryStreamCallbacks
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+  };
+
+  const sessionId = getSessionId();
+  if (sessionId) headers["X-Session-ID"] = sessionId;
+
+  const token = getRbacAccessToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const API_BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
+
+  const response = await fetch(`${API_BASE_URL}/query/execute-stream`, {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: JSON.stringify({ query, queryId, maxResultRows }),
+    signal,
+  });
+
+  if (!response.ok) {
+    // Non-streaming error (auth failure, 403, etc.)
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = await response.json() as { error?: { message?: string } };
+      if (body?.error?.message) message = body.error.message;
+    } catch { /* ignore */ }
+    callbacks.onError(message);
+    return;
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let names: string[] = [];
+
+  // Row batch accumulator — flush to onRows every BATCH_SIZE rows
+  const BATCH_SIZE = 500;
+  const rowBatch: Record<string, unknown>[] = [];
+  let totalRowsReceived = 0;
+
+  const flushBatch = (): void => {
+    if (rowBatch.length > 0) {
+      callbacks.onRows(rowBatch.splice(0));
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Split on newlines and process complete lines
+      let nl = buffer.indexOf("\n");
+      while (nl !== -1) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+
+        if (!line) {
+          nl = buffer.indexOf("\n");
+          continue;
+        }
+
+        // Parse the line
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          nl = buffer.indexOf("\n");
+          continue;
+        }
+
+        if (Array.isArray(parsed)) {
+          // Compact data row: reconstruct as Record using column names.
+          // Client-side cap: discard rows beyond maxResultRows even if the
+          // server sends them (belt-and-suspenders — server should cap first).
+          if (maxResultRows !== undefined && totalRowsReceived >= maxResultRows) {
+            nl = buffer.indexOf("\n");
+            continue;
+          }
+          const row: Record<string, unknown> = {};
+          for (let i = 0; i < names.length; i++) {
+            row[names[i]] = parsed[i] ?? null;
+          }
+          rowBatch.push(row);
+          totalRowsReceived++;
+          if (rowBatch.length >= BATCH_SIZE) flushBatch();
+        } else if (parsed !== null && typeof parsed === "object") {
+          const msg = parsed as Record<string, unknown>;
+          if (msg.t === "m") {
+            // Meta line
+            names = msg.names as string[];
+            const types = msg.types as string[];
+            const meta: QueryMeta[] = names.map((name, i) => ({
+              name,
+              type: (types[i] ?? "String") as string,
+            }));
+            callbacks.onMeta(meta, (msg.qid as string) ?? queryId ?? "");
+          } else if (msg.t === "e") {
+            // End line — flush remaining rows first
+            flushBatch();
+            callbacks.onEnd(
+              msg.stats as QueryStatistics ?? { elapsed: 0, rows_read: 0, bytes_read: 0 },
+              (msg.rows as number) ?? 0
+            );
+          } else if (msg.t === "err") {
+            flushBatch();
+            callbacks.onError((msg.message as string) ?? "Unknown streaming error");
+            return;
+          }
+        }
+
+        nl = buffer.indexOf("\n");
+      }
+    }
+
+    // Flush any partial last line (shouldn't normally happen)
+    if (buffer.trim()) {
+      try {
+        const parsed = JSON.parse(buffer.trim()) as Record<string, unknown>;
+        if (parsed.t === "e") {
+          flushBatch();
+          callbacks.onEnd(
+            parsed.stats as QueryStatistics ?? { elapsed: 0, rows_read: 0, bytes_read: 0 },
+            (parsed.rows as number) ?? 0
+          );
+        }
+      } catch { /* ignore partial line */ }
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      // Propagate abort so the caller can handle it silently
+      throw error;
+    }
+    callbacks.onError(error instanceof Error ? error.message : String(error));
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 /** Chouse AI's diagnosis of a system.errors entry — cause + concrete fix steps. */
@@ -402,7 +564,7 @@ export async function diagnoseServerError(
   modelId?: string,
   signal?: AbortSignal
 ): Promise<ErrorDiagnosis> {
-  return api.post<ErrorDiagnosis>('/query/diagnose-error', { name, code, message, modelId }, { signal });
+  return invokeAI<ErrorDiagnosis>("diagnose-error", { name, code, message }, { modelId, signal });
 }
 
 /**
@@ -415,7 +577,7 @@ export async function diagnoseTableParts(
   modelId?: string,
   signal?: AbortSignal
 ): Promise<ErrorDiagnosis> {
-  return api.post<ErrorDiagnosis>('/query/diagnose-parts', { database, table, modelId }, { signal });
+  return invokeAI<ErrorDiagnosis>("diagnose-parts", { database, table }, { modelId, signal });
 }
 
 /**
@@ -433,9 +595,9 @@ export async function diagnoseSchemaIssue(
   modelId?: string,
   signal?: AbortSignal,
 ): Promise<ErrorDiagnosis> {
-  return api.post<ErrorDiagnosis>(
-    '/query/diagnose-schema',
-    { database, table, column, columnType, category, metrics, modelId },
-    { signal },
+  return invokeAI<ErrorDiagnosis>(
+    "diagnose-schema",
+    { database, table, column, columnType, category, metrics },
+    { modelId, signal },
   );
 }

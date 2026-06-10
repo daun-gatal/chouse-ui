@@ -108,7 +108,8 @@ export class ClickHouseService {
   async executeQuery<T = Record<string, unknown>>(
     query: string,
     format: string = "JSON",
-    queryId?: string
+    queryId?: string,
+    maxResultRows?: number
   ): Promise<QueryResult<T>> {
     try {
       const trimmedQuery = query.trim();
@@ -138,8 +139,24 @@ export class ClickHouseService {
         };
       }
 
-      // Build query settings
+      // Build query settings.
+      // Only override result-set limits when the caller explicitly supplies
+      // maxResultRows (i.e. a user-initiated workspace query).  All internal
+      // callers (agentTools, live-queries, metrics, clickhouseUsers, EXPLAIN,
+      // etc.) leave maxResultRows undefined and therefore inherit the
+      // client-level defaults set in ClientManager (max_result_rows: 10 000,
+      // max_result_bytes: 10 MB) — keeping their existing safety cap intact.
       const clickhouse_settings: Record<string, string | number> = {};
+
+      if (maxResultRows !== undefined) {
+        // User-configured cap from Preferences (always ≥ RESULT_ROWS_MIN, never 0).
+        // Remove the byte cap so the row count is the only bound — a byte limit
+        // would silently return fewer rows than the user asked for.
+        clickhouse_settings.max_result_rows = maxResultRows;
+        clickhouse_settings.max_result_bytes = 0;
+        // "break" truncates cleanly; the UI shows a banner when the cap is hit.
+        clickhouse_settings.result_overflow_mode = "break";
+      }
 
       // Inject RBAC User ID into log_comment if present
       if (this.rbacUserId) {
@@ -173,6 +190,101 @@ export class ClickHouseService {
     } catch (error) {
       throw this.handleError(error, "Query execution failed");
     }
+  }
+
+  /**
+   * Stream a SELECT query as NDJSON lines to avoid server-side buffering.
+   *
+   * Uses ClickHouse's `JSONCompactEachRowWithNamesAndTypes` format so column
+   * names and types arrive in the first two lines; subsequent lines are compact
+   * row arrays.  The generator yields ready-to-write JSON strings:
+   *
+   *   {"t":"m","names":[...],"types":[...],"qid":"..."}  ← meta (line 0)
+   *   [value, value, ...]                                 ← data row (lines 1‥N)
+   *   {"t":"e","stats":{elapsed,rows_read,bytes_read},"rows":N}  ← end
+   *
+   * On error the generator throws after yielding an error line:
+   *   {"t":"err","message":"..."}
+   *
+   * All other callers (agentTools, metrics, etc.) continue using executeQuery
+   * and are entirely unaffected.
+   */
+  async *streamQueryRows(
+    query: string,
+    queryId?: string,
+    maxResultRows?: number
+  ): AsyncGenerator<string> {
+    const clickhouse_settings: Record<string, string | number> = {};
+
+    if (maxResultRows !== undefined) {
+      clickhouse_settings.max_result_rows = maxResultRows;
+      clickhouse_settings.max_result_bytes = 0;
+      clickhouse_settings.result_overflow_mode = "break";
+    }
+
+    if (this.rbacUserId) {
+      clickhouse_settings.log_comment = JSON.stringify({ rbac_user_id: this.rbacUserId });
+    }
+
+    const startMs = performance.now();
+
+    // JSONCompactEachRowWithNamesAndTypes: line 0 = names[], line 1 = types[],
+    // lines 2+ = compact value arrays.  The ClickHouse client exposes these as
+    // regular rows in the stream — we track lineIndex to distinguish them.
+    const result = await this.client.query({
+      query: query.trim(),
+      format: "JSONCompactEachRowWithNamesAndTypes" as any,
+      clickhouse_settings,
+      query_id: queryId,
+    });
+
+    const rowStream = result.stream<unknown[]>();
+    let lineIndex = 0;
+    let names: string[] = [];
+    let rowCount = 0;
+    let capReached = false;
+
+    try {
+      outer: for await (const rowBatch of rowStream) {
+        for (const row of rowBatch) {
+          const values = row.json<unknown[]>();
+
+          if (lineIndex === 0) {
+            // First header line: column names
+            names = values as string[];
+          } else if (lineIndex === 1) {
+            // Second header line: column types → emit meta now that we have both
+            yield JSON.stringify({ t: "m", names, types: values as string[], qid: result.query_id });
+          } else {
+            // Data row — compact array, matches `names` by index
+            yield JSON.stringify(values);
+            rowCount++;
+
+            // Hard cap: stop as soon as we hit maxResultRows regardless of what
+            // ClickHouse's result_overflow_mode does.  Both guards are needed:
+            // the CH setting limits server-side work; this stops the download.
+            if (maxResultRows !== undefined && rowCount >= maxResultRows) {
+              capReached = true;
+              break outer;
+            }
+          }
+
+          lineIndex++;
+        }
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      yield JSON.stringify({ t: "err", message: msg });
+      throw error;
+    }
+
+    const elapsed = (performance.now() - startMs) / 1000;
+    yield JSON.stringify({
+      t: "e",
+      stats: { elapsed, rows_read: rowCount, bytes_read: 0 },
+      rows: rowCount,
+      capped: capReached,
+    });
   }
 
   /**

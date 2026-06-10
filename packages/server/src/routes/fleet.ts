@@ -41,7 +41,9 @@ import { AppError } from "../types";
 import { logger } from "../utils/logger";
 import { readFileSync, writeFileSync } from "node:fs";
 import { sendTestAlert } from "../services/fleetAlerter";
-import { runFleetScan, isDoctorEnabled } from "../services/chouseDoctor";
+import { runStructuredCapability } from "../services/ai/engine";
+import { fleetScanCapability } from "../services/ai/capabilities/fleetScan";
+import { isAIEnabled } from "../services/aiConfig";
 import { loadSchedule, saveSchedule, type DoctorSchedule } from "../services/doctorScheduler";
 import {
   saveDoctorReport,
@@ -610,7 +612,7 @@ fleet.post("/alert-config/test", async (c) => {
 // ============================================
 
 fleet.get("/doctor/enabled", async (c) => {
-  return c.json({ success: true, data: { enabled: await isDoctorEnabled() } });
+  return c.json({ success: true, data: { enabled: await isAIEnabled() } });
 });
 
 // Available AI models for the Doctor picker (no secrets).
@@ -642,7 +644,11 @@ fleet.post("/doctor/scan", requirePermission(PERMISSIONS.DOCTOR_RUN), zValidator
   const { modelId, connectionIds, hours } = c.req.valid("json");
   const createdBy = getRbacUser(c).sub;
   try {
-    const report = await runFleetScan({ modelId, connectionIds, hours });
+    const report = await runStructuredCapability(
+      fleetScanCapability,
+      { connectionIds, hours },
+      { userId: createdBy, modelId },
+    );
     // Persist (+ prune to retention) so the report gets its own page and lands
     // in the history rail. Best-effort — never fails the scan response.
     await saveDoctorReport(report, createdBy, "manual");

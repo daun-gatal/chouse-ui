@@ -17,7 +17,8 @@ import { ClickHouseService } from "../services/clickhouse";
 import { userHasPermission } from "../rbac/services/rbac";
 import { PERMISSIONS } from "../rbac/schema/base";
 import { isAIEnabled } from "../services/aiConfig";
-import { streamChat, type ChatContext } from "../services/aiChat";
+import { streamCapabilityAgent } from "../services/ai/engine";
+import { chatCapability } from "../services/ai/capabilities/chat";
 import {
     createThread,
     listThreads,
@@ -346,18 +347,24 @@ aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema
         }));
     }
 
-    // Build chat context
-    const chatContext: ChatContext = {
+    // Build the agent run context for the chat capability.
+    const runContext = {
         userId: rbacUserId,
         isAdmin: isRbacAdmin,
         permissions: rbacPermissions,
         connectionId,
         clickhouseService: service,
         defaultDatabase: session?.connectionConfig?.database,
+        modelId,
     };
 
     try {
-        const result = await streamChat(coreMessages, chatContext, modelId);
+        const result = await streamCapabilityAgent(
+            chatCapability,
+            { threadId },
+            runContext,
+            coreMessages,
+        );
 
         // Set up SSE response
         c.header('Content-Type', 'text/event-stream');

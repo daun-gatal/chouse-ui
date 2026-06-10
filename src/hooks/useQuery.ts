@@ -939,7 +939,6 @@ export function useQueryLogs(
       }
     },
     staleTime: 10000,
-    refetchInterval: 30000,
     ...options,
   });
 }

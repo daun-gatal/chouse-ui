@@ -3,7 +3,7 @@ import { Info, ChevronDown, ChevronUp, Lightbulb, HelpCircle } from 'lucide-reac
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
-export type ExplainViewType = 'plan' | 'ast' | 'syntax' | 'pipeline' | 'estimate' | 'analysis';
+export type ExplainViewType = 'plan' | 'ast' | 'syntax' | 'pipeline' | 'estimate';
 
 interface ExplainInfo {
   title: string;
@@ -86,21 +86,6 @@ const EXPLAIN_INFO: Record<ExplainViewType, ExplainInfo> = {
       'High row counts may indicate inefficient filtering',
       'Many parts suggest fragmented data (consider OPTIMIZE)',
       'Compare estimates with actual statistics after execution',
-    ],
-  },
-  analysis: {
-    title: 'Query Analysis',
-    description: 'Analyzes your query structure and provides performance recommendations based on best practices.',
-    howToRead: [
-      'Complexity score rates query from 0-100 (lower is simpler)',
-      'Metrics show query characteristics (joins, aggregations, etc.)',
-      'Recommendations are sorted by severity (critical → warning → info)',
-      'Suggestions provide actionable improvements',
-    ],
-    keyInsights: [
-      'Fix critical issues first for best performance gains',
-      'SELECT * and missing LIMIT are common issues',
-      'PREWHERE can significantly speed up filtered queries',
     ],
   },
 };

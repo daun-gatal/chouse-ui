@@ -7,7 +7,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { queryApi, savedQueriesApi } from '@/api';
-import type { QueryResult } from '@/api';
+import { usePreferencesStore } from './preferences';
+import type { QueryResult, QueryMeta, QueryStatistics } from '@/api';
 import { toast } from 'sonner';
 import { useRbacStore } from './rbac';
 import { useAuthStore } from './auth';
@@ -25,6 +26,8 @@ export interface Tab {
   content: string | { database?: string; table?: string };
   error?: string | null;
   isLoading?: boolean;
+  /** True while a streaming query is still receiving rows (isLoading is false). */
+  isStreaming?: boolean;
   queryId?: string | null;
   isSaved?: boolean;
   result?: QueryResult | null;
@@ -51,6 +54,7 @@ export interface WorkspaceState {
 
   // Query actions
   runQuery: (query: string, tabId?: string) => Promise<QueryResult>;
+  abortQuery: (tabId: string) => void;
 
   // Saved queries actions
   saveQuery: (tabId: string, name: string, query: string, isPublic?: boolean) => Promise<void>;
@@ -141,6 +145,10 @@ const createUserSpecificStorage = (): any => {
     },
   };
 };
+
+// Per-tab AbortControllers — kept outside the store so they are never
+// serialized/persisted. Keyed by tabId; cleared when a query settles.
+const tabAbortControllers = new Map<string, AbortController>();
 
 // Track current user ID to detect user changes
 let workspaceCurrentUserId: string | null = null;
@@ -307,62 +315,227 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       /**
-       * Run a SQL query
+       * Run a SQL query using NDJSON streaming so rows appear as they arrive.
+       *
+       * Timeline:
+       *   1. isLoading = true  — "Running query…"
+       *   2. onMeta fires      — column definitions stored, still loading
+       *   3. First onRows      — isLoading = false, isStreaming = true, grid shows first rows
+       *   4. Subsequent onRows — rows appended live (up to maxResultRows cap)
+       *   5. onEnd             — isStreaming = false, final statistics applied
        */
       runQuery: async (query: string, tabId?: string) => {
         const executionQueryId = `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
+        // Per-tab AbortController so the Stop button cancels the stream download.
+        const controller = new AbortController();
+        if (tabId) tabAbortControllers.set(tabId, controller);
+
         if (tabId) {
           set({
             tabs: get().tabs.map((tab) =>
-              tab.id === tabId ? { ...tab, isLoading: true, queryId: executionQueryId, error: null } : tab
+              tab.id === tabId
+                ? { ...tab, isLoading: true, isStreaming: false, queryId: executionQueryId, error: null }
+                : tab
             ),
           });
         }
 
-        try {
-          const result = await queryApi.executeQuery(query, "JSON", executionQueryId);
+        // These are filled in by stream callbacks and used to build the final result.
+        let streamedMeta: QueryMeta[] = [];
+        let streamedRows: Record<string, unknown>[] = [];
+        let finalStats: QueryStatistics = { elapsed: 0, rows_read: 0, bytes_read: 0 };
+        let finalRowCount = 0;
+        let resolveStream!: (result: QueryResult) => void;
+        let rejectStream!: (error: unknown) => void;
 
-          if (tabId) {
-            get().updateTab(tabId, {
-              result,
-              isLoading: false,
-              queryId: null,
+        const streamPromise = new Promise<QueryResult>((res, rej) => {
+          resolveStream = res;
+          rejectStream = rej;
+        });
+
+        const { maxResultRows } = usePreferencesStore.getState();
+
+        queryApi.executeQueryStream(
+          query,
+          executionQueryId,
+          controller.signal,
+          maxResultRows,
+          {
+            onMeta(meta, qid) {
+              streamedMeta = meta;
+              // Give the result a skeleton so SqlTab can render column headers
+              // before any rows arrive.
+              if (tabId) {
+                get().updateTab(tabId, {
+                  result: {
+                    meta,
+                    data: [],
+                    statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
+                    rows: 0,
+                    queryId: qid,
+                    error: null,
+                  },
+                });
+              }
+            },
+
+            onRows(rows) {
+              streamedRows = streamedRows.concat(rows);
+
+              if (tabId) {
+                const tab = get().tabs.find((t) => t.id === tabId);
+                const wasLoading = tab?.isLoading ?? false;
+
+                set({
+                  tabs: get().tabs.map((t) => {
+                    if (t.id !== tabId) return t;
+                    return {
+                      ...t,
+                      // Clear spinner on first batch — user sees the grid immediately
+                      isLoading: false,
+                      isStreaming: true,
+                      queryId: wasLoading ? executionQueryId : t.queryId,
+                      result: {
+                        meta: streamedMeta,
+                        data: streamedRows,
+                        statistics: { elapsed: 0, rows_read: streamedRows.length, bytes_read: 0 },
+                        rows: streamedRows.length,
+                        queryId: executionQueryId,
+                        error: null,
+                      },
+                    };
+                  }),
+                });
+              }
+            },
+
+            onEnd(stats, totalRows) {
+              finalStats = stats;
+              finalRowCount = totalRows;
+
+              const finalResult: QueryResult = {
+                meta: streamedMeta,
+                data: streamedRows,
+                statistics: finalStats,
+                rows: finalRowCount,
+                queryId: executionQueryId,
+                error: null,
+              };
+
+              if (tabId) {
+                get().updateTab(tabId, {
+                  result: finalResult,
+                  isLoading: false,
+                  isStreaming: false,
+                  queryId: null,
+                  error: null,
+                });
+              }
+
+              if (tabId) tabAbortControllers.delete(tabId);
+              resolveStream(finalResult);
+            },
+
+            onError(message) {
+              const errorResult: QueryResult = {
+                meta: streamedMeta,
+                data: streamedRows,
+                statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
+                rows: 0,
+                queryId: executionQueryId,
+                error: message,
+              };
+
+              if (tabId) {
+                get().updateTab(tabId, {
+                  result: errorResult,
+                  isLoading: false,
+                  isStreaming: false,
+                  queryId: null,
+                  error: message,
+                });
+                tabAbortControllers.delete(tabId);
+              }
+
+              resolveStream(errorResult);
+            },
+          }
+        ).catch((error: unknown) => {
+          // AbortError = user pressed Stop — silent cancellation
+          if (error instanceof DOMException && error.name === "AbortError") {
+            if (tabId) {
+              get().updateTab(tabId, {
+                isLoading: false,
+                isStreaming: false,
+                queryId: null,
+                error: null,
+              });
+              tabAbortControllers.delete(tabId);
+            }
+            resolveStream({
+              meta: streamedMeta,
+              data: streamedRows,
+              statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
+              rows: streamedRows.length,
+              queryId: executionQueryId,
               error: null,
             });
+            return;
           }
 
-          return result;
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Query failed';
-          const errorResult: QueryResult = {
-            meta: [],
-            data: [],
+          // Unexpected fetch/network error
+          const message = error instanceof Error ? error.message : "Query failed";
+          if (tabId) {
+            get().updateTab(tabId, {
+              result: {
+                meta: streamedMeta,
+                data: streamedRows,
+                statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
+                rows: 0,
+                queryId: executionQueryId,
+                error: message,
+              },
+              isLoading: false,
+              isStreaming: false,
+              queryId: null,
+              error: message,
+            });
+            tabAbortControllers.delete(tabId);
+          }
+          resolveStream({
+            meta: streamedMeta,
+            data: streamedRows,
             statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
             rows: 0,
             queryId: executionQueryId,
-            error: errorMessage,
-          };
+            error: message,
+          });
+        });
 
-          if (tabId) {
-            get().updateTab(tabId, {
-              result: errorResult,
-              isLoading: false,
-              queryId: null,
-              error: errorMessage,
-            });
-          }
+        return streamPromise;
+      },
 
-          return errorResult;
-        } finally {
-          if (tabId) {
-            set({
-              tabs: get().tabs.map((tab) =>
-                tab.id === tabId ? { ...tab, isLoading: false, queryId: null } : tab
-              ),
-            });
-          }
+      /**
+       * Abort the in-flight HTTP request for a tab's running query.
+       * This immediately cancels the response-body download and clears the
+       * loading state — the CH-side query may have already finished or will
+       * be killed separately via KILL QUERY.
+       */
+      abortQuery: (tabId: string) => {
+        const controller = tabAbortControllers.get(tabId);
+        if (controller) {
+          controller.abort();
+          tabAbortControllers.delete(tabId);
         }
+        // Always clear both loading and streaming state in case the controller was already GC'd
+        set({
+          tabs: get().tabs.map((tab) =>
+            tab.id === tabId
+              ? { ...tab, isLoading: false, isStreaming: false, queryId: null }
+              : tab
+          ),
+        });
       },
 
       /**

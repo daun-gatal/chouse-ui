@@ -288,7 +288,7 @@ export default function PartsPage({
                 <tbody>
                   {paginatedRows.map((r, i) => (
                     <tr
-                      key={`${r.part_name}-${r.event_time}-${i}`}
+                      key={`${r.part_name}-${r.event_time}`}
                       className="border-b border-ink-500/60 transition-colors hover:bg-ink-200/60"
                     >
                       <td className="px-3 py-1.5 font-mono text-paper-muted whitespace-nowrap">
@@ -329,7 +329,7 @@ export default function PartsPage({
                           title="Diagnose parts with Chouse AI"
                           badge={`${r.database}.${r.table}`}
                           subtitle="Chouse AI inspects this table's parts/partitions read-only and proposes a fix (merge pressure, too many parts, partition key). Review before acting."
-                          runDiagnosis={(modelId) => diagnoseTableParts(r.database, r.table, modelId)}
+                          runDiagnosis={(modelId, signal) => diagnoseTableParts(r.database, r.table, modelId, signal)}
                         />
                       </td>
                     </tr>

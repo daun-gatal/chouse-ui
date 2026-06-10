@@ -1,6 +1,7 @@
 ---
 name: query-evaluator
 description: Lightweight rules for determining if a ClickHouse SQL query has obvious inefficiencies or if it is already optimal and should be skipped for optimization.
+when_to_use: Rapid yes/no pre-screen of whether a query is worth optimizing, before running the full optimizer.
 ---
 
 You are an expert ClickHouse SQL optimizer performing a rapid pre-screening check.

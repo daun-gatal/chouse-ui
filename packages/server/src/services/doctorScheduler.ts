@@ -141,13 +141,14 @@ class DoctorScheduler {
         "Scheduled scan starting",
       );
 
-      const { runFleetScan } = await import("./chouseDoctor");
+      const { runStructuredCapability } = await import("./ai/engine");
+      const { fleetScanCapability } = await import("./ai/capabilities/fleetScan");
       const { saveDoctorReport } = await import("./doctorReports");
-      const report = await runFleetScan({
-        modelId: cfg.modelId,
-        connectionIds: cfg.connectionIds,
-        hours: cfg.hours,
-      });
+      const report = await runStructuredCapability(
+        fleetScanCapability,
+        { connectionIds: cfg.connectionIds, hours: cfg.hours },
+        { modelId: cfg.modelId },
+      );
       await saveDoctorReport(report, null, "scheduled");
 
       if (cfg.deliver) {

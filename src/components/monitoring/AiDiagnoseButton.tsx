@@ -6,7 +6,7 @@
  * an optional model picker. Gated by ai:optimize.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Sparkles, Loader2, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,7 @@ interface AiDiagnoseButtonProps {
   /** Dialog description line. */
   subtitle?: string;
   /** Runs the diagnosis; the surface decides what to diagnose. */
-  runDiagnosis: (modelId?: string) => Promise<ErrorDiagnosis>;
+  runDiagnosis: (modelId?: string, signal?: AbortSignal) => Promise<ErrorDiagnosis>;
   /** Icon-only trigger for dense table rows. */
   compact?: boolean;
   /** Label for the primary "run" button in the idle state. */
@@ -88,17 +88,33 @@ export function AiDiagnoseButton({
   const canUse = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const [open, setOpen] = useState(false);
   const [modelId, setModelId] = useState<string | undefined>(undefined);
+  const abortRef = useRef<AbortController | null>(null);
   const modelsQuery = useQuery({
     queryKey: ["optimize-models"],
     queryFn: fetchOptimizeModels,
     enabled: open && canUse,
     staleTime: 5 * 60_000,
   });
-  const mutation = useMutation({ mutationFn: (mid?: string) => runDiagnosis(mid) });
+  const mutation = useMutation({
+    mutationFn: (mid?: string) => {
+      abortRef.current = new AbortController();
+      return runDiagnosis(mid, abortRef.current.signal);
+    },
+  });
 
   if (!canUse) return null;
 
   const models = modelsQuery.data ?? [];
+
+  const handleOpenChange = (value: boolean) => {
+    // Abort any in-flight request when the dialog is closed.
+    if (!value) {
+      abortRef.current?.abort();
+      mutation.reset();
+    }
+    setOpen(value);
+  };
+
   // Just open — do NOT auto-run, so the user can pick a model first.
   const start = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -119,7 +135,7 @@ export function AiDiagnoseButton({
         <Sparkles className="h-3 w-3" aria-hidden /> {label}
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="flex h-[88vh] max-w-3xl flex-col overflow-hidden rounded-xs border-ink-500 bg-ink-100 p-0">
           <DialogHeader className="flex-shrink-0 border-b border-ink-500 px-6 pb-4 pt-6">
             <DialogTitle asChild>

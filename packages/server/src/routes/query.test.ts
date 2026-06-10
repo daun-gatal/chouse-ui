@@ -1,4 +1,3 @@
-
 import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
 import { Hono } from "hono";
 
@@ -129,7 +128,7 @@ describe("Query Routes", () => {
             });
 
             expect(res.status).toBe(200);
-            expect(mockExecuteQuery).toHaveBeenCalledWith("SELECT * FROM t1 WHERE id = 1", "JSON", undefined);
+            expect(mockExecuteQuery).toHaveBeenCalledWith("SELECT * FROM t1 WHERE id = 1", "JSON", undefined, undefined);
             expect(mockCreateAuditLog).toHaveBeenCalled();
         });
 
@@ -183,6 +182,7 @@ describe("Query Routes", () => {
             expect(res.status).toBe(400);
         });
     });
+
     describe("POST /query/execute", () => {
         it("should execute standard SELECT query", async () => {
             mockExecuteQuery.mockResolvedValue({ data: [] });
@@ -194,7 +194,7 @@ describe("Query Routes", () => {
             });
 
             expect(res.status).toBe(200);
-            expect(mockExecuteQuery).toHaveBeenCalledWith("SELECT * FROM t1", "JSON", undefined);
+            expect(mockExecuteQuery).toHaveBeenCalledWith("SELECT * FROM t1", "JSON", undefined, undefined);
         });
 
         it("should execute MISC query if allowed", async () => {
@@ -210,7 +210,7 @@ describe("Query Routes", () => {
             });
 
             expect(res.status).toBe(200);
-            expect(mockExecuteQuery).toHaveBeenCalledWith("SHOW TABLES", "JSON", undefined);
+            expect(mockExecuteQuery).toHaveBeenCalledWith("SHOW TABLES", "JSON", undefined, undefined);
         });
 
         it("should fail if validation denies", async () => {

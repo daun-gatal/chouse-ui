@@ -18,7 +18,7 @@ import {
   type PostgresDb,
 } from "../rbac/db";
 import { logger } from "../utils/logger";
-import type { DoctorAnalysis, DoctorReport, NodeVitals } from "./chouseDoctor";
+import type { DoctorAnalysis, DoctorReport, NodeVitals } from "./ai/capabilities/fleetScan";
 
 /** How many reports to retain (oldest beyond this are pruned after each insert). */
 export const DOCTOR_REPORT_RETENTION = 100;

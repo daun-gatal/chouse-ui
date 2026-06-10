@@ -28,3 +28,12 @@ export type { WorkspaceState, Tab } from './workspace';
 export { useExplorerStore } from './explorer';
 export type { ExplorerState } from './explorer';
 
+// Preferences store
+export {
+  usePreferencesStore,
+  RESULT_ROWS_MIN,
+  RESULT_ROWS_MAX,
+  RESULT_ROWS_DEFAULT,
+} from './preferences';
+export type { PreferencesState } from './preferences';
+

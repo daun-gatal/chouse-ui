@@ -25,7 +25,7 @@
 import { readFileSync } from "node:fs";
 
 import { logger } from "../utils/logger";
-import type { DoctorReport } from "./chouseDoctor";
+import type { DoctorReport } from "./ai/capabilities/fleetScan";
 
 const CONFIG_PATH = process.env.ALERT_CONFIG_FILE || "/app/data/alert-config.json";
 /** Node-memory re-arms only once it drops this far below threshold (anti-flap). */
@@ -608,13 +608,18 @@ export async function deliverDoctorReport(report: DoctorReport, context: string)
  */
 async function runAutoRca(config: AlertConfig, triggers: string[]): Promise<void> {
   try {
-    const { runFleetScan } = await import("./chouseDoctor");
+    const { runStructuredCapability } = await import("./ai/engine");
+    const { fleetScanCapability } = await import("./ai/capabilities/fleetScan");
     const { saveDoctorReport } = await import("./doctorReports");
     logger.info(
       { module: "FleetAlerter", triggers: triggers.length, model: config.aiRcaModelId ?? "default" },
       "Auto-RCA: Chouse AI scanning fleet",
     );
-    const report = await runFleetScan({ modelId: config.aiRcaModelId });
+    const report = await runStructuredCapability(
+      fleetScanCapability,
+      {},
+      { modelId: config.aiRcaModelId },
+    );
     await saveDoctorReport(report, null, "auto");
     await deliverRca(report, triggers, config);
     logger.info(

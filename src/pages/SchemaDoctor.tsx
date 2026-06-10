@@ -436,7 +436,7 @@ function SchemaTable({ rows, totalCompressed, sort, onSort, view }: SchemaTableP
                       ? "Chouse AI inspects this column read-only and proposes an ALTER TABLE fix to drop the Nullable wrapper (if the actual null share allows). Review before running."
                       : "Chouse AI samples the actual value range and proposes a narrower integer type via ALTER TABLE. Review before running."
                   }
-                  runDiagnosis={(modelId) =>
+                  runDiagnosis={(modelId, signal) =>
                     diagnoseSchemaIssue(
                       r.database,
                       r.table,
@@ -449,6 +449,7 @@ function SchemaTable({ rows, totalCompressed, sort, onSort, view }: SchemaTableP
                         uncompressedBytes: r.uncompressed_bytes,
                       },
                       modelId,
+                      signal,
                     )
                   }
                   compact
@@ -568,7 +569,7 @@ function CompressionTable({
                   title="Fix with Chouse AI"
                   badge={`${r.database}.${r.table}.${r.column}`}
                   subtitle="Chouse AI inspects this column read-only and proposes a codec / type fix (Delta, Gorilla, LowCardinality, ZSTD level…) via ALTER TABLE. Review before running."
-                  runDiagnosis={(modelId) =>
+                  runDiagnosis={(modelId, signal) =>
                     diagnoseSchemaIssue(
                       r.database,
                       r.table,
@@ -581,6 +582,7 @@ function CompressionTable({
                         uncompressedBytes: r.uncompressed_bytes,
                       },
                       modelId,
+                      signal,
                     )
                   }
                   compact

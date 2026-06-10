@@ -209,6 +209,13 @@ app.use('/api/query/*', rateLimiter({
   keyGenerator: (c: Context) => c.get('rbacUserId') || 'unknown',
 }));
 
+// AI capabilities are expensive (LLM + tool loops): 60 invocations per minute per user
+app.use('/api/ai/*', rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 60,
+  keyGenerator: (c: Context) => c.get('rbacUserId') || 'unknown',
+}));
+
 // General API endpoints: 1000 requests per minute per user/IP
 app.use('/api/*', rateLimiter({
   windowMs: 60 * 1000, // 1 minute

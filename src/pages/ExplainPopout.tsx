@@ -7,15 +7,10 @@ import VisualExplain from "@/features/workspace/components/VisualExplain";
 import ASTView from "@/features/workspace/components/ASTView";
 import SyntaxView from "@/features/workspace/components/SyntaxView";
 import PipelineView from "@/features/workspace/components/PipelineView";
-import QueryAnalysisView from "@/features/workspace/components/QueryAnalysisView";
 import ExplainInfoHeader from "@/features/workspace/components/ExplainInfoHeader";
-import { ExplainResult, ExplainType, EXPLAIN_TYPES, QueryComplexity, PerformanceRecommendation } from '@/types/explain';
+import { ExplainResult, ExplainType, EXPLAIN_TYPES } from '@/types/explain';
 import { queryApi } from '@/api';
-import { useConfig } from '@/hooks';
 import { log } from '@/lib/log';
-
-// Extended type to include analysis
-type ViewType = ExplainType | 'analysis';
 
 // Cache for explain results by type
 interface ExplainCache {
@@ -38,7 +33,6 @@ const EstimateView: React.FC<{ data: any[] | null | undefined }> = ({ data }) =>
         );
     }
 
-    // Calculate totals
     const totals = data.reduce(
         (acc, row) => ({
             rows: acc.rows + (Number(row.rows) || 0),
@@ -115,21 +109,12 @@ const EstimateView: React.FC<{ data: any[] | null | undefined }> = ({ data }) =>
 const ExplainPopout = () => {
     const [query, setQuery] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
-    const [activeView, setActiveView] = useState<ViewType>('plan');
-    const [initialType, setInitialType] = useState<ExplainType>('plan');
+    const [activeView, setActiveView] = useState<ExplainType>('plan');
 
     // Cache for explain results
     const [explainCache, setExplainCache] = useState<ExplainCache>({});
     const [isLoading, setIsLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
-
-    // Analysis state
-    const [analysisData, setAnalysisData] = useState<{ complexity: QueryComplexity; recommendations: PerformanceRecommendation[] } | null>(null);
-    const [analysisLoading, setAnalysisLoading] = useState(false);
-    const [analysisError, setAnalysisError] = useState<string | null>(null);
-
-    const { data: config, isLoading: configLoading } = useConfig();
-    const showAnalysisTab = !config?.features?.aiOptimizer;
 
     // Load initial data from localStorage
     useEffect(() => {
@@ -143,26 +128,16 @@ const ExplainPopout = () => {
                     const result = parsed.explainResult as ExplainResult;
                     const type = result.type || 'plan';
                     setQuery(parsed.query || result.query || '');
-                    setInitialType(type);
                     setActiveView(type);
-                    // Cache the initial result
                     setExplainCache({ [type]: result });
                 } else if (parsed.type) {
-                    // ExplainResult directly
                     const type = parsed.type || 'plan';
                     setQuery(parsed.query || '');
-                    setInitialType(type);
                     setActiveView(type);
                     setExplainCache({ [type]: parsed });
                 } else {
-                    setInitialType('plan');
                     setActiveView('plan');
                     setExplainCache({ plan: { type: 'plan', query: '', plan: parsed } });
-                }
-
-                // If currently set to analysis but it's disabled, switch to plan
-                if (activeView === 'analysis' && !showAnalysisTab && !configLoading) {
-                    setActiveView('plan');
                 }
 
                 document.title = "Query Explain - ClickHouse";
@@ -178,11 +153,8 @@ const ExplainPopout = () => {
     // Fetch explain data when switching to a new type
     useEffect(() => {
         const fetchExplainData = async () => {
-            // Skip if it's analysis view (handled separately)
-            if (activeView === 'analysis') return;
-
             // Skip if we already have data for this type
-            if (explainCache[activeView as ExplainType]) return;
+            if (explainCache[activeView]) return;
 
             // Skip if no query available
             if (!query) return;
@@ -191,7 +163,7 @@ const ExplainPopout = () => {
             setLoadError(null);
 
             try {
-                const result = await queryApi.explainQuery(query, activeView as ExplainType);
+                const result = await queryApi.explainQuery(query, activeView);
                 setExplainCache(prev => ({
                     ...prev,
                     [activeView]: result
@@ -207,93 +179,24 @@ const ExplainPopout = () => {
         fetchExplainData();
     }, [activeView, query, explainCache]);
 
-    // Fetch analysis when the analysis tab is selected
-    useEffect(() => {
-        if (activeView === 'analysis' && query && !analysisData && !analysisLoading) {
-            setAnalysisLoading(true);
-            setAnalysisError(null);
-
-            queryApi.analyzeQuery(query)
-                .then((result) => {
-                    setAnalysisData(result);
-                })
-                .catch((err) => {
-                    setAnalysisError(err.message || 'Failed to analyze query');
-                })
-                .finally(() => {
-                    setAnalysisLoading(false);
-                });
-        }
-    }, [activeView, query, analysisData, analysisLoading]);
-
     const handleViewChange = useCallback((view: string) => {
-        setActiveView(view as ViewType);
+        setActiveView(view as ExplainType);
         setLoadError(null);
     }, []);
 
     // Render content based on current view
     const renderContent = () => {
-        // Handle analysis view
-        if (activeView === 'analysis') {
-            if (!query) {
-                return (
-                    <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
-                        No query available for analysis.
-                    </div>
-                );
-            }
-
-            if (analysisLoading) {
-                return (
-                    <div className="flex h-full flex-col items-center justify-center gap-3">
-                        <Loader2 className="h-5 w-5 motion-safe:animate-spin text-paper-dim" />
-                        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">Analyzing query…</span>
-                    </div>
-                );
-            }
-
-            if (analysisError) {
-                return (
-                    <div className="p-4">
-                        <Alert variant="destructive" className="rounded-xs border-red-900/60 bg-red-950/40 text-red-200">
-                            <AlertTitle className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Error</AlertTitle>
-                            <AlertDescription>{analysisError}</AlertDescription>
-                        </Alert>
-                    </div>
-                );
-            }
-
-            if (!analysisData) {
-                return (
-                    <div className="flex h-full items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
-                        No analysis data available.
-                    </div>
-                );
-            }
-
-            return (
-                <div className="flex h-full flex-col">
-                    <ExplainInfoHeader type="analysis" />
-                    <div className="flex-1 overflow-hidden">
-                        <QueryAnalysisView complexity={analysisData.complexity} recommendations={analysisData.recommendations} />
-                    </div>
-                </div>
-            );
-        }
-
-        // Show loading state
         if (isLoading) {
             return (
                 <div className="flex h-full flex-col items-center justify-center gap-3">
                     <Loader2 className="h-5 w-5 motion-safe:animate-spin text-paper-dim" />
                     <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
-                        Loading {EXPLAIN_TYPES[activeView as ExplainType]?.label.toLowerCase() || ''} explain…
+                        Loading {EXPLAIN_TYPES[activeView]?.label.toLowerCase() || ''} explain…
                     </span>
                 </div>
             );
         }
 
-        // Show error state
         if (loadError) {
             return (
                 <div className="p-4">
@@ -305,8 +208,7 @@ const ExplainPopout = () => {
             );
         }
 
-        // Get cached result for current view
-        const currentResult = explainCache[activeView as ExplainType];
+        const currentResult = explainCache[activeView];
 
         if (!currentResult) {
             return (
@@ -316,7 +218,6 @@ const ExplainPopout = () => {
             );
         }
 
-        // Render based on view type
         switch (activeView) {
             case 'plan':
                 return (
@@ -341,15 +242,11 @@ const ExplainPopout = () => {
         }
     };
 
-    // All view types including analysis
-    const viewTypes: { key: ViewType; label: string; description: string }[] = [
-        ...Object.entries(EXPLAIN_TYPES).map(([key, value]) => ({
-            key: key as ExplainType,
-            label: value.label,
-            description: value.description
-        })),
-        ...(showAnalysisTab ? [{ key: 'analysis' as ViewType, label: 'Analysis', description: 'Query complexity and performance recommendations' }] : [])
-    ];
+    const viewTypes = Object.entries(EXPLAIN_TYPES).map(([key, value]) => ({
+        key: key as ExplainType,
+        label: value.label,
+        description: value.description,
+    }));
 
     if (error) {
         return (
@@ -362,7 +259,6 @@ const ExplainPopout = () => {
         );
     }
 
-    // Show loading if we don't have any cached data yet
     if (Object.keys(explainCache).length === 0) {
         return (
             <div className="flex h-screen w-screen items-center justify-center bg-ink-50">

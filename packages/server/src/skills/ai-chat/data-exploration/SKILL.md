@@ -1,15 +1,26 @@
 ---
 name: data-exploration
 description: Rules and strategies for exploring databases, tables, schemas, and searching metadata.
+when_to_use: User asks what data exists, wants to browse databases/tables/columns or schema details, or doesn't know which table a field lives in.
 ---
 
-When the user asks what data exists or wants to see schema details, use exploration tools to investigate before answering. Do not guess table or column names.
+## WHEN TO USE
+The user wants to discover or understand the data model: which databases/tables
+exist, what columns a table has, where a particular field lives, how big a table
+is, or what the data looks like. Not for live server health (use
+system-troubleshooting) or running a query the user already described (use
+sql-generation).
 
-## Core Directives
-- **list_databases**: Use this to find available databases.
-- **list_tables**: Use this after finding a database, to find tables inside it.
-- **get_database_info**: Use this when the user asks for database overview, table count, or total size of a database.
-- **get_table_schema** and **get_table_ddl**: Use these to understand the columns of a specific table before writing queries for it.
-- **search_columns**: Use this when a user asks for a specific field but doesn't know which table it is in. Example: "Where is the revenue data?" -> search for '%revenue%'.
-- **get_table_size**: Use this to find the row count and storage size.
-- **get_table_sample**: Use this to preview raw data in a table to verify its contents.
+## TOOLS TO RUN (in order)
+1. `list_databases` — find available databases.
+2. `list_tables` — tables inside a chosen database.
+3. `get_table_schema` / `get_table_ddl` — columns + types (DDL also shows engine, keys, indexes) before reasoning about a table.
+4. `search_columns` — when the user wants a field but doesn't know the table (e.g. "where is revenue?" → search `%revenue%`).
+5. `get_table_size` — row count + on-disk size.
+6. `get_table_sample` — preview the first rows to verify contents.
+7. `get_database_info` — a database overview (table count + total size).
+
+## RULES
+- Never guess database, table, or column names — confirm via tools.
+- Prefer the cheapest tool that answers the question (schema before a full sample).
+- Summarize findings; don't dump huge raw outputs.

@@ -10,12 +10,9 @@ import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { userHasPermission } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
-import { analyzeQuery } from "../services/queryAnalyzer";
-import { debugQuery, checkQueryOptimization } from "../services/aiOptimizer";
-import type { AgentToolContext } from "../services/agentTools";
 import { requestLogger } from "../utils/logger";
 
-type Variables = {
+export type Variables = {
   sessionId?: string;
   service: ClickHouseService;
   session?: Session;
@@ -39,7 +36,7 @@ function getCookie(c: Context, name: string): string | undefined {
  * Hybrid auth middleware for query routes
  * Supports both ClickHouse session auth and RBAC auth
  */
-async function queryAuthMiddleware(c: Context<{ Variables: Variables }>, next: Next) {
+export async function queryAuthMiddleware(c: Context<{ Variables: Variables }>, next: Next) {
   // First try ClickHouse session auth (but still require RBAC)
   const sessionId = c.req.header("X-Session-ID") || getCookie(c, "ch_session");
 
@@ -340,7 +337,8 @@ async function executeQueryWithValidation(
   sql: string,
   format: 'JSON' | 'JSONEachRow' | 'CSV' | 'TabSeparated',
   operationType: string,
-  queryId?: string
+  queryId?: string,
+  maxResultRows?: number
 ) {
   const service = c.get("service");
   const session = c.get("session");
@@ -375,7 +373,7 @@ async function executeQueryWithValidation(
     }, 403);
   }
 
-  const result = await service.executeQuery(sql, format, queryId);
+  const result = await service.executeQuery(sql, format, queryId, maxResultRows);
 
   // Create audit log for query execution
   if (rbacUserId) {
@@ -422,6 +420,11 @@ const QueryRequestSchemaWithType = z.object({
   query: z.string().min(1, "Query is required"),
   format: z.enum(["JSON", "JSONEachRow", "CSV", "TabSeparated"]).optional().default("JSON"),
   queryId: z.string().optional(),
+  /**
+   * User-configured row cap.  0 = unlimited.  Absent = use server default.
+   * Validated server-side: must be 0 (unlimited) or in [100, 500_000].
+   */
+  maxResultRows: z.number().int().min(0).max(10_000).optional(),
 });
 
 const ExplainRequestSchema = z.object({
@@ -435,7 +438,7 @@ const ExplainRequestSchema = z.object({
  * Validates access based on command type (SELECT, INSERT, CREATE, etc.)
  */
 query.post("/execute", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format, queryId } = c.req.valid("json");
+  const { query: sql, format, queryId, maxResultRows } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
 
   // Basic validation that we got a query
@@ -447,7 +450,104 @@ query.post("/execute", zValidator("json", QueryRequestSchemaWithType), async (c)
   // Note: Detailed validation happens in executeQueryWithValidation -> validateQueryAccess
   const queryType = sql.trim().split(/\s+/)[0].toUpperCase();
 
-  return executeQueryWithValidation(c, sql, format, queryType, queryId);
+  return executeQueryWithValidation(c, sql, format, queryType, queryId, maxResultRows);
+});
+
+/**
+ * POST /query/execute-stream
+ * Same as /execute but streams results as NDJSON so the browser can start
+ * rendering rows before the full result set is transferred.
+ *
+ * Response format: application/x-ndjson, one JSON line per event:
+ *   {"t":"m","names":[...],"types":[...],"qid":"..."}  ← meta (first)
+ *   [value, value, ...]                                 ← compact row arrays
+ *   {"t":"e","stats":{elapsed,rows_read,bytes_read},"rows":N}  ← end
+ *   {"t":"err","message":"..."}                         ← error (last, if any)
+ */
+query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), async (c) => {
+  const { query: sql, queryId, maxResultRows } = c.req.valid("json");
+
+  if (!sql || !sql.trim()) {
+    throw AppError.badRequest("Query is required");
+  }
+
+  const service = c.get("service");
+  const session = c.get("session");
+  const rbacUserId = c.get("rbacUserId");
+  const isRbacAdmin = c.get("isRbacAdmin");
+  const rbacPermissions = c.get("rbacPermissions");
+  const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
+  const defaultDatabase = session?.connectionConfig?.database;
+
+  // RBAC access check — same as /execute
+  const accessCheck = await validateQueryAccess(
+    rbacUserId,
+    isRbacAdmin,
+    rbacPermissions,
+    sql,
+    defaultDatabase,
+    connectionId
+  );
+
+  if (!accessCheck.allowed) {
+    return c.json({
+      success: false,
+      error: {
+        code: "FORBIDDEN",
+        message: accessCheck.reason || "Access denied to one or more tables in query",
+      },
+    }, 403);
+  }
+
+  // Audit log (best-effort, mirrors /execute)
+  const logQueryId = queryId || `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  if (rbacUserId) {
+    createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
+      resourceType: "query",
+      resourceId: logQueryId,
+      details: {
+        operationType: sql.trim().split(/\s+/)[0].toUpperCase(),
+        query: sql.substring(0, 500),
+        queryLength: sql.length,
+        format: "stream",
+        connectionId,
+        timestamp: Date.now(),
+      },
+      ipAddress: getClientIp(c),
+      status: "success",
+    }).catch((err: unknown) => {
+      requestLogger(c.get("requestId")).error(
+        { module: "Query", err: err instanceof Error ? err.message : String(err) },
+        "Failed to create audit log for stream"
+      );
+    });
+  }
+
+  // Stream NDJSON directly to the browser
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const line of service.streamQueryRows(sql, logQueryId, maxResultRows)) {
+          controller.enqueue(encoder.encode(line + "\n"));
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        controller.enqueue(encoder.encode(JSON.stringify({ t: "err", message: msg }) + "\n"));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no", // disable nginx/proxy buffering
+    },
+  });
 });
 
 /**
@@ -488,133 +588,6 @@ query.post("/explain", zValidator("json", ExplainRequestSchema), async (c) => {
   return c.json({
     success: true,
     data: plan,
-  });
-});
-
-/**
- * POST /query/analyze
- * Analyze query complexity and get performance recommendations
- */
-const AnalyzeRequestSchema = z.object({
-  query: z.string().min(1, "Query is required"),
-});
-
-query.post("/analyze", zValidator("json", AnalyzeRequestSchema), async (c) => {
-  const { query: sql } = c.req.valid("json");
-
-  // Validate it's a SELECT or compatible query
-  if (!validateSqlType(sql, ['SELECT', 'WITH'])) {
-    throw AppError.badRequest('Query analysis is only available for SELECT or WITH queries.');
-  }
-
-  const analysis = analyzeQuery(sql);
-
-  return c.json({
-    success: true,
-    data: analysis,
-  });
-});
-
-/**
- * POST /query/debug
- * Debug a failed query using AI
- */
-const DebugRequestSchema = z.object({
-  query: z.string().min(1, "Query is required"),
-  error: z.string().min(1, "Error message is required"),
-  modelId: z.string().optional(),
-});
-
-query.post("/debug", zValidator("json", DebugRequestSchema), async (c) => {
-  const { query: sql, error, modelId } = c.req.valid("json");
-  const rbacUserId = c.get("rbacUserId");
-  const rbacPermissions = c.get("rbacPermissions");
-  const isRbacAdmin = c.get("isRbacAdmin");
-  const service = c.get("service");
-  const session = c.get("session");
-  const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
-
-  // Check if AI Optimizer is enabled globally
-  if (process.env.AI_OPTIMIZER_ENABLED !== 'true') {
-    throw AppError.badRequest("AI Optimizer is not enabled on this server.");
-  }
-
-  // Check if user has permission to use AI features
-  await checkQueryPermission(
-    rbacUserId,
-    rbacPermissions,
-    isRbacAdmin,
-    PERMISSIONS.AI_OPTIMIZE
-  );
-
-  // Build agent context so the debugger can autonomously fetch schema via tools
-  const agentContext: AgentToolContext = {
-    userId: rbacUserId ?? "",
-    isAdmin: isRbacAdmin ?? false,
-    permissions: rbacPermissions ?? [],
-    connectionId,
-    clickhouseService: service,
-    defaultDatabase: session?.connectionConfig?.database,
-  };
-
-  const result = await debugQuery(sql, error, agentContext, undefined, modelId);
-
-  return c.json({
-    success: true,
-    data: result,
-  });
-});
-
-/**
- * POST /query/check-optimization
- * Lightweight background check to see if optimization is worth pursuing
- */
-const CheckOptimizationRequestSchema = z.object({
-  query: z.string().min(1, "Query is required"),
-  modelId: z.string().optional(),
-});
-
-query.post("/check-optimization", zValidator("json", CheckOptimizationRequestSchema), async (c) => {
-  const { query: sql, modelId } = c.req.valid("json");
-  const rbacUserId = c.get("rbacUserId");
-  const rbacPermissions = c.get("rbacPermissions");
-  const isRbacAdmin = c.get("isRbacAdmin");
-  const service = c.get("service");
-  const session = c.get("session");
-  const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
-
-  // Check if AI Optimizer is enabled globally
-  if (process.env.AI_OPTIMIZER_ENABLED !== 'true') {
-    // Return success but with false result to handle gracefully
-    return c.json({
-      success: true,
-      data: { canOptimize: false, reason: "AI Optimizer disabled" }
-    });
-  }
-
-  // Check if user has permission
-  await checkQueryPermission(
-    rbacUserId,
-    rbacPermissions,
-    isRbacAdmin,
-    PERMISSIONS.AI_OPTIMIZE
-  );
-
-  // Build agent context so the evaluator can call analyze_query / get_table_ddl
-  const agentContext: AgentToolContext = {
-    userId: rbacUserId ?? "",
-    isAdmin: isRbacAdmin ?? false,
-    permissions: rbacPermissions ?? [],
-    connectionId,
-    clickhouseService: service,
-    defaultDatabase: session?.connectionConfig?.database,
-  };
-
-  const result = await checkQueryOptimization(sql, modelId, agentContext);
-
-  return c.json({
-    success: true,
-    data: result,
   });
 });
 
@@ -1096,471 +1069,6 @@ query.post("/system", zValidator("json", QueryRequestSchemaWithType), async (c) 
   );
 
   return executeQueryWithValidation(c, sql, format, 'SYSTEM');
-});
-
-// ============================================
-// AI Query Optimizer
-// ============================================
-
-const OptimizeQuerySchema = z.object({
-  query: z.string().min(1, "Query is required"),
-  database: z.string().optional(),
-  additionalPrompt: z.string().optional(),
-  modelId: z.string().optional(),
-});
-
-/**
- * POST /query/optimize-log
- * Optimize a query the operator points at from the Query Logs view (by its
- * query_id). Reuses Chouse AI's heavy-query engine: pulls the FULL query from
- * system.query_log, proposes an optimized version under the hard requirements,
- * and returns a before -> after EXPLAIN estimate. Gated by ai:optimize.
- */
-query.post(
-  "/optimize-log",
-  zValidator("json", z.object({ queryId: z.string().min(1), modelId: z.string().optional() })),
-  async (c) => {
-    const { queryId, modelId } = c.req.valid("json");
-    const rbacUserId = c.get("rbacUserId");
-    const isRbacAdmin = c.get("isRbacAdmin");
-    const rbacPermissions = c.get("rbacPermissions");
-    const session = c.get("session");
-    const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
-
-    try {
-      await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
-
-      if (!connectionId) {
-        return c.json(
-          { success: false, error: { code: "NO_CONNECTION", message: "No active ClickHouse connection." } },
-          400 as any,
-        );
-      }
-
-      const { optimizeSingleQuery } = await import("../services/chouseDoctor");
-      const result = await optimizeSingleQuery({ connectionId, queryId, modelId });
-
-      if (rbacUserId) {
-        try {
-          await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
-            details: { action: "ai_optimize_log", queryId, connectionId },
-            status: "success",
-          });
-        } catch {
-          /* audit is best-effort */
-        }
-      }
-
-      return c.json({ success: true, data: result });
-    } catch (error) {
-      const err = error as { statusCode?: number; message?: string };
-      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-      return c.json(
-        { success: false, error: { code: "OPTIMIZE_FAILED", message: err?.message || "Failed to optimize query." } },
-        status as any,
-      );
-    }
-  },
-);
-
-/**
- * GET /query/optimize-models
- * Active AI models for the "Optimize with Chouse AI" picker (no secrets).
- * Gated by ai:optimize so it's reachable wherever the optimize button shows.
- */
-query.get("/optimize-models", async (c) => {
-  const rbacUserId = c.get("rbacUserId");
-  const isRbacAdmin = c.get("isRbacAdmin");
-  const rbacPermissions = c.get("rbacPermissions");
-  try {
-    await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
-  } catch (error) {
-    const err = error as { statusCode?: number; message?: string };
-    return c.json(
-      { success: false, error: { code: "FORBIDDEN", message: err?.message || "Forbidden" } },
-      (err?.statusCode as any) || 403,
-    );
-  }
-  try {
-    const { listAiConfigs } = await import("../rbac/services/aiModels");
-    const { configs } = await listAiConfigs({ activeOnly: true });
-    return c.json({
-      success: true,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      data: configs.map((cfg: any) => ({
-        id: cfg.id,
-        label: cfg.name,
-        model: cfg.model?.modelId ?? cfg.model?.name ?? "",
-        provider: cfg.provider?.name ?? cfg.provider?.providerType ?? "",
-        isDefault: Boolean(cfg.isDefault),
-      })),
-    });
-  } catch {
-    return c.json({ success: true, data: [] });
-  }
-});
-
-/**
- * POST /query/diagnose-error
- * Chouse AI diagnoses a system.errors entry and proposes a SOLUTION (not an
- * optimized query). Gated by ai:optimize; uses the active session connection so
- * the AI can investigate that node's system.* tables read-only.
- */
-query.post(
-  "/diagnose-error",
-  zValidator(
-    "json",
-    z.object({
-      name: z.string().min(1),
-      code: z.number().int().optional(),
-      message: z.string().optional(),
-      modelId: z.string().optional(),
-    }),
-  ),
-  async (c) => {
-    const { name, code, message, modelId } = c.req.valid("json");
-    const rbacUserId = c.get("rbacUserId");
-    const isRbacAdmin = c.get("isRbacAdmin");
-    const rbacPermissions = c.get("rbacPermissions");
-    const session = c.get("session");
-    const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
-
-    try {
-      await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
-
-      if (!connectionId) {
-        return c.json(
-          { success: false, error: { code: "NO_CONNECTION", message: "No active ClickHouse connection." } },
-          400 as any,
-        );
-      }
-
-      const { diagnoseError } = await import("../services/chouseDoctor");
-      const result = await diagnoseError({ connectionId, code, name, message, modelId });
-
-      if (rbacUserId) {
-        try {
-          await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
-            details: { action: "ai_diagnose_error", errorName: name, code, connectionId },
-            status: "success",
-          });
-        } catch {
-          /* audit is best-effort */
-        }
-      }
-
-      return c.json({ success: true, data: result });
-    } catch (error) {
-      const err = error as { statusCode?: number; message?: string };
-      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-      return c.json(
-        { success: false, error: { code: "DIAGNOSE_FAILED", message: err?.message || "Failed to diagnose error." } },
-        status as any,
-      );
-    }
-  },
-);
-
-/**
- * POST /query/diagnose-parts
- * Chouse AI diagnoses the part/partition health of one table (Parts tab) and
- * proposes a SOLUTION. Gated by ai:optimize; uses the active session connection.
- */
-query.post(
-  "/diagnose-parts",
-  zValidator(
-    "json",
-    z.object({
-      database: z.string().min(1),
-      table: z.string().min(1),
-      modelId: z.string().optional(),
-    }),
-  ),
-  async (c) => {
-    const { database, table, modelId } = c.req.valid("json");
-    const rbacUserId = c.get("rbacUserId");
-    const isRbacAdmin = c.get("isRbacAdmin");
-    const rbacPermissions = c.get("rbacPermissions");
-    const session = c.get("session");
-    const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
-
-    try {
-      await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
-
-      if (!connectionId) {
-        return c.json(
-          { success: false, error: { code: "NO_CONNECTION", message: "No active ClickHouse connection." } },
-          400 as any,
-        );
-      }
-
-      const { diagnoseParts } = await import("../services/chouseDoctor");
-      const result = await diagnoseParts({ connectionId, database, table, modelId });
-
-      if (rbacUserId) {
-        try {
-          await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
-            details: { action: "ai_diagnose_parts", database, table, connectionId },
-            status: "success",
-          });
-        } catch {
-          /* audit is best-effort */
-        }
-      }
-
-      return c.json({ success: true, data: result });
-    } catch (error) {
-      const err = error as { statusCode?: number; message?: string };
-      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-      return c.json(
-        { success: false, error: { code: "DIAGNOSE_FAILED", message: err?.message || "Failed to diagnose parts." } },
-        status as any,
-      );
-    }
-  },
-);
-
-/**
- * POST /query/diagnose-schema
- * Chouse AI diagnoses ONE column-level schema issue surfaced by the Schema
- * Advisor (Nullable / oversized integer / weak compression) and proposes a
- * concrete ALTER TABLE DDL. Gated by ai:optimize; uses the active session
- * connection.
- */
-query.post(
-  "/diagnose-schema",
-  zValidator(
-    "json",
-    z.object({
-      database: z.string().min(1),
-      table: z.string().min(1),
-      column: z.string().min(1),
-      columnType: z.string().min(1),
-      category: z.enum(["nullable", "oversized", "compression"]),
-      metrics: z
-        .object({
-          totalRows: z.number().optional(),
-          compressedBytes: z.number().optional(),
-          uncompressedBytes: z.number().optional(),
-        })
-        .optional(),
-      modelId: z.string().optional(),
-    }),
-  ),
-  async (c) => {
-    const { database, table, column, columnType, category, metrics, modelId } = c.req.valid("json");
-    const rbacUserId = c.get("rbacUserId");
-    const isRbacAdmin = c.get("isRbacAdmin");
-    const rbacPermissions = c.get("rbacPermissions");
-    const session = c.get("session");
-    const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
-
-    try {
-      await checkQueryPermission(rbacUserId, rbacPermissions, isRbacAdmin, PERMISSIONS.AI_OPTIMIZE);
-
-      if (!connectionId) {
-        return c.json(
-          { success: false, error: { code: "NO_CONNECTION", message: "No active ClickHouse connection." } },
-          400 as any,
-        );
-      }
-
-      const { diagnoseSchemaIssue } = await import("../services/chouseDoctor");
-      const result = await diagnoseSchemaIssue({
-        connectionId,
-        database,
-        table,
-        column,
-        columnType,
-        category,
-        metrics,
-        modelId,
-      });
-
-      if (rbacUserId) {
-        try {
-          await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, rbacUserId, {
-            details: { action: "ai_diagnose_schema", database, table, column, category, connectionId },
-            status: "success",
-          });
-        } catch {
-          /* audit is best-effort */
-        }
-      }
-
-      return c.json({ success: true, data: result });
-    } catch (error) {
-      const err = error as { statusCode?: number; message?: string };
-      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-      return c.json(
-        { success: false, error: { code: "DIAGNOSE_FAILED", message: err?.message || "Failed to diagnose schema column." } },
-        status as any,
-      );
-    }
-  },
-);
-
-query.post("/optimize", zValidator("json", OptimizeQuerySchema), async (c) => {
-  const { query: sql, database, additionalPrompt, modelId } = c.req.valid("json");
-  const service = c.get("service");
-  const session = c.get("session");
-  const rbacUserId = c.get("rbacUserId");
-  const isRbacAdmin = c.get("isRbacAdmin");
-  const rbacPermissions = c.get("rbacPermissions");
-  const connectionId = session?.rbacConnectionId || c.get("rbacConnectionId");
-  const defaultDatabase = database || session?.connectionConfig?.database;
-
-  try {
-    const { optimizeQuery, isOptimizerEnabled } = await import("../services/aiOptimizer");
-
-    // Check if optimizer is enabled
-    if (!(await isOptimizerEnabled())) {
-      return c.json({
-        success: false,
-        error: {
-          code: "FEATURE_DISABLED",
-          message: "AI optimizer is not enabled. Please contact your administrator.",
-        },
-      }, 503 as any);
-    }
-
-    // Check AI optimizer permission
-    await checkQueryPermission(
-      rbacUserId,
-      rbacPermissions,
-      isRbacAdmin,
-      PERMISSIONS.AI_OPTIMIZE
-    );
-
-    // Validate query type - only allow SELECT and WITH queries
-    const trimmedQuery = sql.trim().toUpperCase();
-    if (!trimmedQuery.startsWith("SELECT") && !trimmedQuery.startsWith("WITH")) {
-      return c.json({
-        success: false,
-        error: {
-          code: "INVALID_QUERY_TYPE",
-          message: "AI optimizer only supports SELECT and WITH queries (read-only operations)",
-        },
-      }, 400 as any);
-    }
-
-    // Validate table access before handing off to the agent
-    const accessCheck = await validateQueryAccess(
-      rbacUserId,
-      isRbacAdmin,
-      rbacPermissions,
-      sql,
-      defaultDatabase,
-      connectionId
-    );
-
-    if (!accessCheck.allowed) {
-      return c.json({
-        success: false,
-        error: {
-          code: "FORBIDDEN",
-          message: accessCheck.reason || "Access denied to one or more tables in query",
-        },
-      }, 403 as any);
-    }
-
-    // Build agent context — the optimizer agent fetches DDL/EXPLAIN via tools autonomously
-    const agentContext: AgentToolContext = {
-      userId: rbacUserId ?? "",
-      isAdmin: isRbacAdmin ?? false,
-      permissions: rbacPermissions ?? [],
-      connectionId,
-      clickhouseService: service,
-      defaultDatabase,
-    };
-
-    // Call AI optimizer (agent loop handles schema gathering internally)
-    const result = await optimizeQuery(sql, agentContext, additionalPrompt, modelId);
-
-    // Create audit log
-    if (rbacUserId) {
-      try {
-        await createAuditLogWithContext(c, 
-          AUDIT_ACTIONS.CH_QUERY_EXECUTE,
-          rbacUserId,
-          {
-            details: {
-              action: 'ai_optimize',
-              query: sql.substring(0, 1000),
-              database: defaultDatabase,
-              connectionId,
-            },
-            status: 'success',
-          }
-        );
-      } catch (auditError) {
-        requestLogger(c.get("requestId")).error(
-          { module: "Query", err: auditError instanceof Error ? auditError.message : String(auditError) },
-          "Failed to create audit log"
-        );
-      }
-    }
-
-    return c.json({
-      success: true,
-      data: {
-        originalQuery: result.originalQuery,
-        optimizedQuery: result.optimizedQuery,
-        explanation: result.explanation,
-        summary: result.summary,
-        tips: result.tips,
-        warnings: accessCheck.warnings,
-      },
-    });
-  } catch (error) {
-    requestLogger(c.get("requestId")).error(
-      { module: "Query", err: error instanceof Error ? error.message : String(error) },
-      "Optimization failed"
-    );
-
-    // Create audit log for failure
-    if (rbacUserId) {
-      try {
-        await createAuditLogWithContext(c, 
-          AUDIT_ACTIONS.CH_QUERY_EXECUTE,
-          rbacUserId,
-          {
-            details: {
-              action: 'ai_optimize',
-              query: sql.substring(0, 1000),
-              database: defaultDatabase,
-              connectionId,
-            },
-            status: 'failure',
-            errorMessage: error instanceof Error ? error.message : String(error),
-          }
-        );
-      } catch (auditError) {
-        requestLogger(c.get("requestId")).error(
-          { module: "Query", err: auditError instanceof Error ? auditError.message : String(auditError) },
-          "Failed to create audit log"
-        );
-      }
-    }
-
-    if (error instanceof AppError) {
-      return c.json({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      }, error.statusCode as any);
-    }
-
-    return c.json({
-      success: false,
-      error: {
-        code: "OPTIMIZATION_FAILED",
-        message: error instanceof Error ? error.message : "Failed to optimize query. Please try again or contact your administrator.",
-      },
-    }, 500 as 500);
-  }
 });
 
 // ============================================

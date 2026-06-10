@@ -6,7 +6,6 @@ import { Sparkles, Loader2, Check, Copy, AlertCircle, RefreshCw, FileText, Arrow
 import { debugQuery } from '@/api/query';
 import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
-import { formatClickHouseSQL } from '@/lib/formatSql';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -102,7 +101,10 @@ export function DebugQueryDialog({
         try {
             const response = await debugQuery(query, queryError, database, additionalPrompt, selectedModelId || undefined, controller.signal);
             setResult({
-                fixedQuery: formatClickHouseSQL(response.fixedQuery),
+                // Use the AI's SQL as-is — it returns pretty, valid ClickHouse SQL.
+                // Do NOT reformat client-side: sql-formatter's keywordCase:"upper"
+                // uppercases case-sensitive CH function/identifier names and breaks the query.
+                fixedQuery: response.fixedQuery,
                 explanation: response.explanation,
                 summary: response.summary,
                 errorAnalysis: response.errorAnalysis,

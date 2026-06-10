@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { Loader2, FileX2, Download, ExternalLink, Lightbulb,
-         CirclePlay, CircleStop, Wand2, Code2, Search, Network, Sparkles, Keyboard, Save, Copy } from "lucide-react";
+         CirclePlay, CircleStop, Wand2, Code2, Search, Network, Sparkles, Keyboard, Save, Copy,
+         TriangleAlert } from "lucide-react";
 import DOMPurify from "dompurify";
 import { format as formatDate } from "date-fns";
 import { DataTable } from "@/components/ui/data-table";
@@ -33,9 +34,10 @@ import { DebugQueryDialog } from "@/components/common/DebugQueryDialog";
 import { OptimizeQueryDialog } from "@/components/common/OptimizeQueryDialog";
 
 // Store and Hooks
-import { useWorkspaceStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { useWorkspaceStore, useRbacStore, RBAC_PERMISSIONS, usePreferencesStore } from "@/stores";
 import { useDatabases, useConfig } from "@/hooks";
 import { queryApi } from "@/api";
+import type { QueryOptimization } from "@/api/ai";
 
 // ── Platform-aware keyboard hint helpers ────────────────────────────────────
 const isMac =
@@ -125,7 +127,8 @@ const formatCellValue = (value: unknown): { html: string; className?: string; ty
  * Metadata tab removed as requested.
  */
 const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
-  const { getTabById, runQuery, updateTab } = useWorkspaceStore();
+  const { getTabById, runQuery, updateTab, abortQuery } = useWorkspaceStore();
+  const { maxResultRows } = usePreferencesStore();
   // Using refetch to handle side effects
   const { refetch: refetchDatabases } = useDatabases();
   const tab = getTabById(tabId);
@@ -159,13 +162,7 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   // Optimizer state
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(false);
   const [optimizerAutoStart, setOptimizerAutoStart] = useState(false);
-  const [optimizationResult, setOptimizationResult] = useState<{
-    optimizedQuery: string;
-    explanation: string;
-    summary: string;
-    tips: string[];
-    originalQuery: string;
-  } | null>(null);
+  const [optimizationResult, setOptimizationResult] = useState<QueryOptimization | null>(null);
   const [optimizationReason, setOptimizationReason] = useState<string>("");
 
   // Feature Flags & Permissions
@@ -452,16 +449,48 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
       ) : null;
     }
 
+    // Detect likely truncation: the server used result_overflow_mode:"break" so
+    // if data.length equals the configured cap the result was almost certainly cut.
+    // Suppress the banner while still streaming — the count isn't final yet.
+    const isTruncated = !tab?.isStreaming && rowData.length >= maxResultRows;
+
     return (
       <div className="h-full w-full flex flex-col overflow-hidden bg-transparent">
-        {/* Toolbar mostly removed as AgGrid auto-size is handled internally or css. Download now in tabs. */}
+        {/* Streaming progress — rows are still arriving */}
+        {tab?.isStreaming && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-ink-500 bg-ink-100 px-4 py-1.5">
+            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-brand" aria-hidden />
+            <span className="font-mono text-[11px] text-paper-dim">
+              Streaming… {rowData.length.toLocaleString()} rows received
+            </span>
+          </div>
+        )}
+        {/* Truncation warning — shown when result hits the configured row cap */}
+        {isTruncated && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-amber-900/40 bg-amber-950/30 px-4 py-2">
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-400" aria-hidden />
+            <span className="font-mono text-[11px] text-amber-300">
+              Results capped at{" "}
+              <strong>{maxResultRows.toLocaleString()}</strong> rows — add a{" "}
+              <code className="rounded-xs bg-amber-900/40 px-1">LIMIT</code> clause or raise the
+              limit in{" "}
+              <a
+                href="/preferences"
+                className="underline decoration-amber-500/60 underline-offset-2 hover:text-amber-200"
+              >
+                Preferences
+              </a>
+              .
+            </span>
+          </div>
+        )}
         <div className="flex-1 w-full overflow-hidden relative">
           <DataTable
             columns={columns}
             data={rowData}
             stickyHeader={true}
             stickyFirstColumn={false}
-            className="border-0 rounded-none shadow-none bg-transparent h-full" // Clean integration
+            className="border-0 rounded-none shadow-none bg-transparent h-full"
           />
         </div>
       </div>
@@ -679,7 +708,15 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               {tab?.isLoading ? (
                 <button
                   type="button"
-                  onClick={() => { if (canKillQuery) editorRef.current?.stop(); }}
+                  onClick={() => {
+                    // Abort the in-flight HTTP download immediately so the
+                    // editor exits loading state without waiting for the full
+                    // response body (e.g. a no-LIMIT query with millions of rows).
+                    abortQuery(tabId);
+                    // Also open the kill dialog to cancel the CH-side query if
+                    // it is still executing (requires KILL QUERY permission).
+                    if (canKillQuery) editorRef.current?.stop();
+                  }}
                   disabled={!canKillQuery}
                   className={cn(
                     "flex shrink-0 items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",

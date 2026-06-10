@@ -277,7 +277,7 @@ function ErrorsTable({ rows }: { rows: ServerErrorRow[] }) {
       <tbody>
         {rows.map((e, i) => (
           <tr
-            key={`${e.code}-${i}`}
+            key={e.code}
             className="border-b border-ink-500/60 transition-colors hover:bg-ink-200/60"
           >
             <td className="px-3 py-1.5 font-mono text-paper-muted tabular-nums">
@@ -312,8 +312,8 @@ function ErrorsTable({ rows }: { rows: ServerErrorRow[] }) {
                 title="Diagnose with Chouse AI"
                 badge={`${e.code} · ${e.name}`}
                 runLabel="Diagnose & fix"
-                runDiagnosis={(modelId) =>
-                  diagnoseServerError(e.name, e.code, e.last_error_message, modelId)
+                runDiagnosis={(modelId, signal) =>
+                  diagnoseServerError(e.name, e.code, e.last_error_message, modelId, signal)
                 }
               />
             </td>

@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ResponsiveDraggableDialog } from '@/components/common/ResponsiveDraggableDialog';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Loader2, Check, Copy, AlertCircle, RefreshCw, Lightbulb, FileText } from 'lucide-react';
-import { optimizeQuery } from '@/api/query';
-import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
+import { Sparkles, Loader2, Check, Copy, AlertCircle, RefreshCw, FileText } from 'lucide-react';
+import { optimizeQuery, optimizeQueryFromLog } from '@/api/query';
+import { fetchAiModels, type AiModelOption, type QueryOptimization } from '@/api/ai';
+import { OptimizationAnalysis } from '@/features/fleet/components/DoctorReportView';
 import { toast } from 'sonner';
-import { formatClickHouseSQL } from '@/lib/formatSql';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -29,15 +29,18 @@ interface OptimizeQueryDialogProps {
     query: string;
     database?: string;
     onAccept: (optimizedQuery: string) => void;
-    initialResult?: {
-        optimizedQuery: string;
-        explanation: string;
-        summary: string;
-        tips: string[];
-        originalQuery: string;
-    } | null;
+    initialResult?: QueryOptimization | null;
     autoStart?: boolean;
     initialPrompt?: string;
+    /**
+     * When set, the dialog runs in "log mode": it optimizes the full query
+     * resolved from system.query_log by this id (capability optimize-log) and
+     * renders the richer cause/tables/EXPLAIN analysis instead of the
+     * explanation/tips view. Used by Query Logs.
+     */
+    queryId?: string;
+    /** Label for the accept button (e.g. "Open in Explorer" from Query Logs). */
+    acceptLabel?: string;
 }
 
 const DEFAULT_OPTIMIZATION_PROMPT = "Explain your changes deeply using markdown, summarize the improvements in one line, and provide a list of performance tips. Focus on index usage, partition pruning, and efficient data retrieval.";
@@ -51,18 +54,15 @@ export function OptimizeQueryDialog({
     initialResult,
     autoStart = false,
     initialPrompt,
+    queryId,
+    acceptLabel = 'Apply Changes',
 }: OptimizeQueryDialogProps) {
+    const isLogMode = Boolean(queryId);
     const [isOptimizing, setIsOptimizing] = useState(false);
-    const [result, setResult] = useState<{
-        optimizedQuery: string;
-        explanation: string;
-        summary: string;
-        tips: string[];
-        originalQuery: string;
-    } | null>(null);
+    const [result, setResult] = useState<QueryOptimization | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [additionalPrompt, setAdditionalPrompt] = useState(initialPrompt || DEFAULT_OPTIMIZATION_PROMPT);
-    const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
+    const [aiModels, setAiModels] = useState<AiModelOption[]>([]);
     const [selectedModelId, setSelectedModelId] = useState<string>('');
     const abortControllerRef = useRef<AbortController | null>(null);
     const { breakpoint } = useWindowSize();
@@ -71,7 +71,7 @@ export function OptimizeQueryDialog({
     // Fetch AI Models
     useEffect(() => {
         if (isOpen) {
-            getAiModels().then(models => {
+            fetchAiModels().then(models => {
                 setAiModels(models);
                 const defaultModel = models.find(m => m.isDefault);
                 if (defaultModel) {
@@ -135,14 +135,14 @@ export function OptimizeQueryDialog({
         setError(null);
 
         try {
-            const response = await optimizeQuery(query, database, additionalPrompt, selectedModelId || undefined, controller.signal);
-            setResult({
-                optimizedQuery: formatClickHouseSQL(response.optimizedQuery),
-                explanation: response.explanation,
-                summary: response.summary,
-                tips: response.tips,
-                originalQuery: response.originalQuery,
-            });
+            // Both capabilities return the same unified QueryOptimization shape; use
+            // the AI's SQL as-is (already pretty + valid) — never client-reformat, as
+            // sql-formatter's keywordCase:"upper" breaks case-sensitive CH identifiers.
+            const response = (isLogMode && queryId)
+                // Query Logs path — backend pulls the full query by id (optimize-log).
+                ? await optimizeQueryFromLog(queryId, selectedModelId || undefined, controller.signal)
+                : await optimizeQuery(query, database, additionalPrompt, selectedModelId || undefined, controller.signal);
+            setResult(response);
         } catch (error: any) {
             if (error.name === 'CanceledError' || error.name === 'AbortError') return;
             setError(error.message || 'Optimization failed');
@@ -199,7 +199,7 @@ export function OptimizeQueryDialog({
             {!isOptimizing && result && (
                 <div className="hidden sm:flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-1.5 shrink-0">
                     <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Model</span>
-                    <span className="text-[11px] font-medium text-paper truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
+                    <span className="text-[11px] font-medium text-paper truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.label || 'AI Model'}</span>
                 </div>
             )}
         </div>
@@ -243,7 +243,7 @@ export function OptimizeQueryDialog({
                                 className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                             >
                                 <Check className="w-3.5 h-3.5" />
-                                Apply Changes
+                                {acceptLabel}
                             </Button>
                         </div>
                     )}
@@ -258,7 +258,7 @@ export function OptimizeQueryDialog({
                             <div className="flex-1 relative min-h-0 min-w-0">
                                 {result ? (
                                     <DiffEditor
-                                        original={query}
+                                        original={result.originalQuery || query}
                                         modified={result.optimizedQuery}
                                         language="sql"
                                         className="absolute inset-0"
@@ -336,7 +336,7 @@ export function OptimizeQueryDialog({
                                                     aiModels.map(m => (
                                                         <SelectItem key={m.id} value={m.id} className="focus:bg-ink-200 focus:text-paper cursor-pointer py-2 rounded-xs mx-1 my-0.5">
                                                             <div className="flex flex-col gap-0.5 text-left">
-                                                                <span className="font-medium text-[12px] text-paper">{m.name}</span>
+                                                                <span className="font-medium text-[12px] text-paper">{m.label}</span>
                                                                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim leading-none">{m.provider || 'AI Provider'}</span>
                                                             </div>
                                                         </SelectItem>
@@ -346,18 +346,20 @@ export function OptimizeQueryDialog({
                                         </Select>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label htmlFor="prompt" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
-                                            Optimization Goal
-                                        </Label>
-                                        <Textarea
-                                            id="prompt"
-                                            value={additionalPrompt}
-                                            onChange={(e) => setAdditionalPrompt(e.target.value)}
-                                            placeholder="Specific instructions (e.g., 'Use PREWHERE', 'Avoid JOINs')..."
-                                            className="rounded-xs border-ink-500 bg-ink-200 text-[12px] text-paper placeholder:text-paper-faint min-h-[80px] focus-visible:border-brand focus-visible:ring-0 transition-colors"
-                                        />
-                                    </div>
+                                    {!isLogMode && (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="prompt" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                                                Optimization Goal
+                                            </Label>
+                                            <Textarea
+                                                id="prompt"
+                                                value={additionalPrompt}
+                                                onChange={(e) => setAdditionalPrompt(e.target.value)}
+                                                placeholder="Specific instructions (e.g., 'Use PREWHERE', 'Avoid JOINs')..."
+                                                className="rounded-xs border-ink-500 bg-ink-200 text-[12px] text-paper placeholder:text-paper-faint min-h-[80px] focus-visible:border-brand focus-visible:ring-0 transition-colors"
+                                            />
+                                        </div>
+                                    )}
 
                                     <Button
                                         onClick={handleOptimize}
@@ -387,7 +389,30 @@ export function OptimizeQueryDialog({
                                 {result && (
                                     <div className="space-y-6">
 
+                                        {/* Log-mode context chip (peak memory / user) */}
+                                        {(result.peakMemory || result.user) && (
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {result.peakMemory && (
+                                                    <span className="rounded-xs border border-red-500/40 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-red-700 dark:text-red-400">
+                                                        {result.peakMemory}
+                                                    </span>
+                                                )}
+                                                {result.user && <span className="font-mono text-[10px] text-paper-faint">{result.user}</span>}
+                                            </div>
+                                        )}
+
+                                        {/* Richer analysis (cause / tables / suggestions / EXPLAIN estimate) — log mode */}
+                                        {(result.cause || result.tables?.length || result.suggestions?.length || result.estimate) && (
+                                            <OptimizationAnalysis
+                                                cause={result.cause}
+                                                tables={result.tables}
+                                                suggestions={result.suggestions}
+                                                estimate={result.estimate}
+                                            />
+                                        )}
+
                                         {/* Summary Card */}
+                                        {result.summary && (
                                         <div className="rounded-xs border border-brand/40 bg-brand/5 p-4 space-y-2">
                                             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                                                 <Sparkles className="w-3.5 h-3.5" />
@@ -397,8 +422,10 @@ export function OptimizeQueryDialog({
                                                 {result.summary}
                                             </p>
                                         </div>
+                                        )}
 
                                         {/* Detailed Explanation */}
+                                        {result.explanation && (
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
                                                 <FileText className="w-3.5 h-3.5" />
@@ -431,23 +458,6 @@ export function OptimizeQueryDialog({
                                                 </ReactMarkdown>
                                             </div>
                                         </div>
-
-                                        {/* Performance Tips */}
-                                        {result.tips?.length > 0 && (
-                                            <div className="space-y-3">
-                                                <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
-                                                    <Lightbulb className="w-3.5 h-3.5" />
-                                                    Performance Tips
-                                                </div>
-                                                <ul className="space-y-2">
-                                                    {result.tips?.map((tip, idx) => (
-                                                        <li key={idx} className="flex gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3 text-[12px] text-paper-muted">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
-                                                            <span>{tip}</span>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
                                         )}
                                     </div>
                                 )}
