@@ -11,7 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- SSO login via configurable OIDC and OAuth2 providers (`auth.sso.*` config): authorization code + PKCE flow, JIT user provisioning with default role, auto-link by verified email, optional IdP claim→role mapping (never demotes super_admin), and SSO-enforced sign-in for linked non-admin accounts.
 - **AI reference docs + smarter intent routing** — the agent now loads ClickHouse *reference* docs on demand (a new `load_reference` tool), separate from skills. Three references live as markdown under `packages/server/src/references/` (the single source of truth): the optimization playbook, the exact `system.*` column reference, and a new type/codec/compression guide. The previous inline `CLICKHOUSE_PLAYBOOK` / `SYSTEM_TABLE_REFERENCE` constants are now file-backed reads of those docs (no prompt change for the diagnose/optimize-log/fleet-scan capabilities). Skill frontmatter gained a `when_to_use` trigger, and the chat assistant's "decision framework" is now generated from it, so new skills auto-surface in routing. Three new chat skills let the conversational assistant diagnose errors, part/partition health, and column-schema issues (intents previously reachable only via the dedicated buttons), using the read-only core tools + references.
 
 ### Changed
