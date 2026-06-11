@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { isAIEnabled } from "../services/aiConfig";
 
 const config = new Hono();
 
@@ -7,7 +8,7 @@ const config = new Hono();
  * Returns public configuration for the frontend
  * This allows Docker environment variables to be accessed by the frontend
  */
-config.get("/", (c) => {
+config.get("/", async (c) => {
   // Parse preset URLs from comma-separated string
   const presetUrlsRaw = process.env.CLICKHOUSE_PRESET_URLS || "";
   const presetUrls = presetUrlsRaw
@@ -33,9 +34,9 @@ config.get("/", (c) => {
         name: "CHouse UI",
         version: process.env.VERSION || "dev",
       },
-      // Feature flags
+      // Feature flags — aiOptimizer is enabled whenever an active AI model is configured
       features: {
-        aiOptimizer: process.env.AI_OPTIMIZER_ENABLED === 'true',
+        aiOptimizer: await isAIEnabled().catch(() => false),
       },
     },
   });

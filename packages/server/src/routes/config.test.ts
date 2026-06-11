@@ -1,6 +1,14 @@
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { Hono } from "hono";
+
+// Control whether isAIEnabled() returns true or false per test
+let _mockAiEnabled = false;
+
+mock.module("../services/aiConfig", () => ({
+  isAIEnabled: async () => _mockAiEnabled,
+}));
+
 import configRoute from "./config";
 
 describe("Config Route", () => {
@@ -9,6 +17,7 @@ describe("Config Route", () => {
 
     beforeEach(() => {
         originalEnv = { ...process.env };
+        _mockAiEnabled = false;
         app = new Hono();
         app.route("/config", configRoute);
     });
@@ -31,7 +40,6 @@ describe("Config Route", () => {
         expect(body.data.clickhouse.presetUrls).toEqual([]);
         expect(body.data.clickhouse.defaultUrl).toBe("");
         expect(body.data.clickhouse.defaultUser).toBe("default");
-        expect(body.data.clickhouse.defaultUser).toBe("default");
         expect(body.data.app.version).toBe("dev");
         expect(body.data.features.aiOptimizer).toBe(false);
     });
@@ -41,7 +49,7 @@ describe("Config Route", () => {
         process.env.CLICKHOUSE_DEFAULT_URL = "http://localhost:8123";
         process.env.CLICKHOUSE_DEFAULT_USER = "admin";
         process.env.VERSION = "1.0.0";
-        process.env.AI_OPTIMIZER_ENABLED = "true";
+        _mockAiEnabled = true;
 
         const res = await app.request("/config");
         expect(res.status).toBe(200);

@@ -16,6 +16,7 @@ import { AppError } from "../types";
 import { queryAuthMiddleware, type Variables } from "./query";
 import { getCapability, CAPABILITIES, CAPABILITY_IDS } from "../services/ai/capabilities";
 import { runStructuredCapability, isStructured } from "../services/ai/engine";
+import { isAIEnabled } from "../services/aiConfig";
 import type { AgentRunContext } from "../services/ai/types";
 import { createAuditLogWithContext, userHasPermission } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS } from "../rbac/schema/base";
@@ -75,17 +76,13 @@ ai.post("/invoke", async (c) => {
     throw AppError.badRequest(`Capability '${capId}' is streaming; use its dedicated endpoint.`);
   }
 
-  // Preserve the legacy AI_OPTIMIZER_ENABLED gate for the optimizer-family
-  // capabilities (config.ts exposes this flag to the frontend, which hides the
-  // Optimize/Debug UI when off). check-optimize degrades softly, debug throws —
-  // matching the previous /query/debug + /query/check-optimization behavior.
-  if (process.env.AI_OPTIMIZER_ENABLED !== "true") {
+  // Gate optimizer-family capabilities on whether an active AI model is configured.
+  // check-optimize degrades softly; debug-query throws — matching prior behavior.
+  if ((capId === "check-optimize" || capId === "debug-query") && !(await isAIEnabled().catch(() => false))) {
     if (capId === "check-optimize") {
-      return c.json({ success: true, data: { canOptimize: false, reason: "AI Optimizer disabled" } });
+      return c.json({ success: true, data: { canOptimize: false, reason: "No AI model configured" } });
     }
-    if (capId === "debug-query") {
-      throw AppError.badRequest("AI Optimizer is not enabled on this server.");
-    }
+    throw AppError.badRequest("AI Optimizer is not available — no AI model configured.");
   }
 
   await requireCapabilityPermission(c, cap.permission);

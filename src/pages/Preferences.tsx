@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthStore, useRbacStore, usePreferencesStore } from "@/stores";
+import { RESULT_ROWS_MIN, RESULT_ROWS_MAX, RESULT_ROWS_DEFAULT } from "@/stores/preferences";
+import { useAppPreferences } from "@/hooks/useAppPreferences";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
@@ -139,15 +141,43 @@ const THEME_OPTIONS: Array<{
 ];
 
 const ROW_PRESETS: Array<{ value: number; label: string; hint: string }> = [
-  { value: 100,    label: "100",    hint: "Minimal preview" },
-  { value: 1_000,  label: "1,000",  hint: "Quick sample" },
-  { value: 5_000,  label: "5,000",  hint: "Standard" },
-  { value: 10_000, label: "10,000", hint: "Maximum · Default" },
+  { value: 100,     label: "100",     hint: "Minimal preview" },
+  { value: 1_000,   label: "1k",      hint: "Quick sample" },
+  { value: 5_000,   label: "5k",      hint: "Standard" },
+  { value: 10_000,  label: "10k",     hint: "Default" },
+  { value: 25_000,  label: "25k",     hint: "Large" },
+  { value: 50_000,  label: "50k",     hint: "Very large" },
+  { value: 100_000, label: "100k",    hint: "Maximum" },
 ];
 
 const AppearanceCard: React.FC = () => {
   const { theme, resolvedTheme, setTheme } = useTheme();
-  const { maxResultRows, setMaxResultRows, resetPreferences } = usePreferencesStore();
+  const { maxResultRows } = usePreferencesStore();
+  const { updateAppPreferences } = useAppPreferences();
+  const [customRowInput, setCustomRowInput] = useState("");
+
+  const handleThemeChange = (newTheme: ThemeMode): void => {
+    updateAppPreferences({ theme: newTheme }).catch(() => { /* best-effort */ });
+  };
+
+  const handleRowsChange = (value: number): void => {
+    setCustomRowInput("");
+    updateAppPreferences({ maxResultRows: value }).catch(() => { /* best-effort */ });
+  };
+
+  const handleCustomRowInput = (): void => {
+    const parsed = parseInt(customRowInput, 10);
+    if (!isNaN(parsed)) {
+      const clamped = Math.min(RESULT_ROWS_MAX, Math.max(RESULT_ROWS_MIN, parsed));
+      handleRowsChange(clamped);
+    }
+    setCustomRowInput("");
+  };
+
+  const handleReset = (): void => {
+    setCustomRowInput("");
+    updateAppPreferences({ maxResultRows: RESULT_ROWS_DEFAULT }).catch(() => { /* best-effort */ });
+  };
 
   return (
     <SettingCard
@@ -172,7 +202,7 @@ const AppearanceCard: React.FC = () => {
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => setTheme(opt.id)}
+                  onClick={() => handleThemeChange(opt.id)}
                   aria-pressed={active}
                   title={opt.hint}
                   className={cn(
@@ -192,46 +222,61 @@ const AppearanceCard: React.FC = () => {
 
         <div className="h-px bg-ink-500" />
 
-        {/* Max result rows — compact inline selector */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-0.5">
-            <p className={MONO_LABEL}>Max result rows</p>
-            <p className={cn(MONO_FAINT, "leading-relaxed")}>
-              SQL editor cap — add a{" "}
-              <code className="rounded-xs border border-ink-500 bg-ink-200 px-1 font-mono">LIMIT</code>{" "}
-              for fewer rows
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {ROW_PRESETS.map((opt) => {
-              const active = maxResultRows === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setMaxResultRows(opt.value)}
-                  aria-pressed={active}
-                  title={opt.hint}
-                  className={cn(
-                    "rounded-xs border px-3 py-1.5 font-mono text-[12px] tabular-nums transition-colors",
-                    active
-                      ? "border-brand bg-brand/[0.08] text-brand"
-                      : "border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:text-paper"
-                  )}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={resetPreferences}
-              title="Reset to default"
-              aria-label="Reset to default"
-              className="rounded-xs border border-ink-500 bg-ink-100 p-1.5 text-paper-dim transition-colors hover:border-ink-700 hover:text-paper"
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-            </button>
+        {/* Max result rows — preset buttons + custom input */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-0.5">
+              <p className={MONO_LABEL}>Max result rows</p>
+              <p className={cn(MONO_FAINT, "leading-relaxed")}>
+                SQL editor cap — add a{" "}
+                <code className="rounded-xs border border-ink-500 bg-ink-200 px-1 font-mono">LIMIT</code>{" "}
+                for fewer rows
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {ROW_PRESETS.map((opt) => {
+                const active = maxResultRows === opt.value && customRowInput === "";
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => handleRowsChange(opt.value)}
+                    aria-pressed={active}
+                    title={opt.hint}
+                    className={cn(
+                      "rounded-xs border px-3 py-1.5 font-mono text-[12px] tabular-nums transition-colors",
+                      active
+                        ? "border-brand bg-brand/[0.08] text-brand"
+                        : "border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:text-paper"
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+              {/* Custom number input */}
+              <input
+                type="number"
+                min={RESULT_ROWS_MIN}
+                max={RESULT_ROWS_MAX}
+                value={customRowInput}
+                onChange={(e) => setCustomRowInput(e.target.value)}
+                onBlur={handleCustomRowInput}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCustomRowInput(); }}
+                placeholder="custom"
+                aria-label="Custom row limit"
+                className="w-20 rounded-xs border border-ink-500 bg-ink-200 px-2 py-1.5 font-mono text-[12px] tabular-nums text-paper-muted placeholder-paper-faint transition-colors focus:border-brand focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleReset}
+                title="Reset to default"
+                aria-label="Reset to default"
+                className="rounded-xs border border-ink-500 bg-ink-100 p-1.5 text-paper-dim transition-colors hover:border-ink-700 hover:text-paper"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </div>
           </div>
         </div>
 

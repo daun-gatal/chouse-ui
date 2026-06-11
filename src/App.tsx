@@ -27,12 +27,16 @@ import { api, rbacConnectionsApi } from "@/api";
 import { useAuthStore } from "@/stores/auth";
 import { toast } from "sonner";
 import { log } from "@/lib/log";
+import { useAppPreferences } from "@/hooks/useAppPreferences";
 
 // Storage key for dock mode (to sync with FloatingDock).
 const DOCK_MODE_KEY = "chouseui-dock-mode";
 
 // Layout for the main application (authenticated routes) - Floating Dock Design
 const MainLayout = () => {
+  // Sync server-backed preferences (theme, maxResultRows) on every authenticated mount
+  useAppPreferences();
+
   const [isSidebarMode, setIsSidebarMode] = useState(() => {
     try {
       return localStorage.getItem(DOCK_MODE_KEY) === "sidebar";

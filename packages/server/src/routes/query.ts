@@ -422,9 +422,9 @@ const QueryRequestSchemaWithType = z.object({
   queryId: z.string().optional(),
   /**
    * User-configured row cap.  0 = unlimited.  Absent = use server default.
-   * Validated server-side: must be 0 (unlimited) or in [100, 500_000].
+   * Validated server-side: must be 0 (unlimited) or in [100, 100_000].
    */
-  maxResultRows: z.number().int().min(0).max(10_000).optional(),
+  maxResultRows: z.number().int().min(0).max(100_000).optional(),
 });
 
 const ExplainRequestSchema = z.object({

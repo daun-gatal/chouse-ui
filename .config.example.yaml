@@ -13,6 +13,8 @@
 # Core Server Settings
 # ============================================
 port: 5521
+# version is set automatically by the build; override only for custom builds
+# version: "dev"
 node_env: development
 static_path: ./dist
 cors_origin: "*"
@@ -58,6 +60,15 @@ rbac:
     password: Password1!
 
 # ============================================
+# ClickHouse Connection Defaults
+# ============================================
+# Pre-fill the connection form in the UI for faster setup.
+clickhouse:
+  default_url: ""
+  default_user: default
+  preset_urls: ""   # comma-separated list of preset URLs
+
+# ============================================
 # JWT Authentication
 # ============================================
 jwt:
@@ -68,6 +79,25 @@ jwt:
   # Token expiration times (m: minutes, h: hours, d: days)
   access_expiry: 4h
   refresh_expiry: 7d
+
+  # Optional: override issuer/audience claims
+  # issuer: chouseui
+  # audience: chouseui-client
+
+# ============================================
+# Fleet Monitoring — optional
+# ============================================
+fleet:
+  poller_enabled: false
+  poll_interval_seconds: 30
+  alert_config_file: /app/data/alert-config.json
+
+# ============================================
+# AI SRE / Doctor — optional
+# ============================================
+doctor:
+  schedule_file: /app/data/doctor-schedule.json
+  auto_rca_cooldown_minutes: 60
 
 # ============================================
 # SSO (OIDC / OAuth2) — optional
@@ -80,8 +110,8 @@ auth:
     default_role: viewer # role for JIT-provisioned users
     auto_link_by_email: true # link to existing users when IdP asserts email_verified
     providers:
-      #       okta:                                   # provider id (login URL slug)
-      #         type: oidc                            # 'oidc' = discovery via issuer/.well-known
+      #       okta:                                   # provider id used in login URL slug
+      #         type: oidc                            # 'oidc' = auto-discovers endpoints from issuer
       #         display_name: "Okta"
       #         issuer: https://corp.okta.com
       #         client_id: "..."
@@ -92,16 +122,14 @@ auth:
       #         # role_mapping_claim: groups
       #         # role_mapping: "idp-group-a:admin,idp-group-b:developer"
       google:
-        type: oauth2 # plain OAuth2: explicit endpoints + userinfo
-        # Caveat: GitHub's /user endpoint returns `email: null` for accounts
-        # with a private email, even with the user:email scope, so JIT
-        # provisioning may fail. Make an email public on GitHub, or use a
-        # provider that exposes email in its userinfo response.
-        display_name: "GitHub"
-        authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
-        token_endpoint: https://oauth2.googleapis.com/token
-        userinfo_endpoint: https://openidconnect.googleapis.com/v1/userinfo
-        client_id: "1***v.apps.googleusercontent.com "
-        client_secret: "G****G"
-        scopes: "read:user user:email"
-        claim_mapping: "subject:id,email:email,username:login"
+        type: oidc                                      # OIDC: auto-discovers endpoints from issuer
+        display_name: "Google"
+        issuer: https://accounts.google.com
+        client_id: "${GOOGLE_CLIENT_ID}"               # set GOOGLE_CLIENT_ID in env or replace here
+        client_secret: "${GOOGLE_CLIENT_SECRET}"       # set GOOGLE_CLIENT_SECRET in env or replace here
+        scopes: "openid profile email"
+        # Optional: override auto-discovered endpoints
+        # authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
+        # token_endpoint: https://oauth2.googleapis.com/token
+        # userinfo_endpoint: https://openidconnect.googleapis.com/v1/userinfo
+        # claim_mapping: "subject:sub,email:email,username:name"

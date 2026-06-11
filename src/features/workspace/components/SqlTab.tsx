@@ -226,7 +226,8 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
 
   // Handle manual optimization trigger
   const handleOptimize = useCallback((query: string) => {
-    setOptimizerAutoStart(false); // Manual trigger usually implies fresh start or we can set true
+    setDebugQueryString(query);
+    setOptimizerAutoStart(false);
     setIsOptimizerOpen(true);
   }, []);
 

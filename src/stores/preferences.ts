@@ -16,9 +16,8 @@ import { useRbacStore } from "./rbac";
 /** Minimum rows the user can configure — prevents accidentally clearing the cap. */
 export const RESULT_ROWS_MIN = 100;
 
-/** Upper bound exposed in the UI input — keeps the browser from receiving
- *  runaway result sets even if the user sets the max very high. */
-export const RESULT_ROWS_MAX = 10_000;
+/** Upper bound exposed in the UI input — matches the server-side cap. */
+export const RESULT_ROWS_MAX = 100_000;
 
 /** Sensible out-of-the-box default. */
 export const RESULT_ROWS_DEFAULT = 10_000;
