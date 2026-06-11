@@ -99,6 +99,7 @@ jobs:
           fi
 
       - name: Commit and push changelog
+        if: steps.code_check.outputs.has_changes == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -110,6 +111,13 @@ jobs:
             changelogs/unreleased/
           git commit -m "chore: release v${{ steps.release.outputs.version }}"
           git push origin main
+
+      - name: Skip — no code changes
+        if: steps.code_check.outputs.has_changes == 'false'
+        run: |
+          echo "No changes in src/ or packages/server/src/ since last release."
+          echo "Skipping commit, push, Docker build, and publish."
+          echo "Fragments remain in changelogs/unreleased/ for the next real release."
 
   # ── Step 2: build and push Docker (gate for everything downstream) ─────────
   docker:
