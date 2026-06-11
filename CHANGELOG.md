@@ -7,33 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- SSO login via configurable OIDC and OAuth2 providers (`auth.sso.*` config): authorization code + PKCE flow, JIT user provisioning with default role, auto-link by verified email, optional IdP claim→role mapping (never demotes super_admin), and SSO-enforced sign-in for linked non-admin accounts.
-
 ## [v2.18.0] - 2026-06-11
 
 ### Added
 
 - SSO login via configurable OIDC and OAuth2 providers (`auth.sso.*` config): authorization code + PKCE flow, JIT user provisioning with default role, auto-link by verified email, optional IdP claim→role mapping (never demotes super_admin), and SSO-enforced sign-in for linked non-admin accounts.
-
-## [v2.18.0] - 2026-06-11
-
-### Added
-
-- **AI reference docs + smarter intent routing** — the agent now loads ClickHouse *reference* docs on demand (a new `load_reference` tool), separate from skills. Three references live as markdown under `packages/server/src/references/` (the single source of truth): the optimization playbook, the exact `system.*` column reference, and a new type/codec/compression guide. The previous inline `CLICKHOUSE_PLAYBOOK` / `SYSTEM_TABLE_REFERENCE` constants are now file-backed reads of those docs (no prompt change for the diagnose/optimize-log/fleet-scan capabilities). Skill frontmatter gained a `when_to_use` trigger, and the chat assistant's "decision framework" is now generated from it, so new skills auto-surface in routing. Three new chat skills let the conversational assistant diagnose errors, part/partition health, and column-schema issues (intents previously reachable only via the dedicated buttons), using the read-only core tools + references.
-
-### Changed
-
-- **optimize-query and optimize-log now share one result schema** — the SQL-editor "Optimize" and Query Logs "Optimize with Chouse AI" do the same job but used to return different shapes, so the shared dialog rendered them inconsistently. Both now return one unified `QueryOptimization` (originalQuery, optimizedQuery, summary, markdown explanation, root-cause, per-table findings, suggestions, and a backend-computed before→after EXPLAIN ESTIMATE). optimize-query gained root-cause + per-table findings + the EXPLAIN estimate; optimize-log gained the one-line summary + markdown explanation; the old `tips[]` consolidated into a single `suggestions[]`. Nothing is truncated — both entry points render the full analysis in the same window.
-- **Unified query optimizer window** — the "Optimize with Chouse AI" action in Query Logs now opens the *same* dialog as the SQL editor's Optimize button (`OptimizeQueryDialog`) instead of a separate one. The dialog renders a union of analysis sections: the diff + explanation + tips for editor queries, and the richer root-cause / per-table / before→after EXPLAIN estimate for log queries (the analysis card was extracted into a shared `OptimizationAnalysis` component reused by the Fleet Doctor report). The model picker is unified to `/ai/models`.
-- **"Tables" stat relabeled to "Tables & Views"** — the Home and Metrics cluster cards count `system.tables`, which already includes views; the label now reflects that. No data/query change.
-- **Unified AI backend behind a single capability engine** — every AI feature (SQL editor optimize/debug/check, Query Logs optimize, Errors/Parts/Schema diagnose, fleet doctor scan, chat) is now described by a declarative capability in a single registry (`packages/server/src/services/ai/capabilities`) and executed by one shared engine that owns model resolution, the tool-loop agent, structured-output extraction, step collection, and error handling. This removes ~8 hand-rolled copies of the same agent loop and the duplicated JSON-extraction logic. The seven query-scoped structured capabilities are reached through a single endpoint, `POST /ai/invoke` (`{ capability, input, modelId }`); the model picker is unified to `GET /ai/models` and capability availability to `GET /ai/capabilities`. Streaming chat (`/ai-chat/stream`) and the fleet doctor scan (`/fleet/doctor/scan`) keep their dedicated routes (different auth surfaces) but now run through the same engine. The old per-feature `/query/optimize`, `/query/debug`, `/query/check-optimization`, `/query/optimize-log`, `/query/diagnose-*`, and `/query/optimize-models` routes and the `aiOptimizer`/`chouseDoctor`/`aiChat` services were removed. No user-visible behavior change; the frontend AI API functions keep the same signatures.
-
-## [v2.18.0] - 2026-06-11
-
-### Added
-
 - **AI reference docs + smarter intent routing** — the agent now loads ClickHouse *reference* docs on demand (a new `load_reference` tool), separate from skills. Three references live as markdown under `packages/server/src/references/` (the single source of truth): the optimization playbook, the exact `system.*` column reference, and a new type/codec/compression guide. The previous inline `CLICKHOUSE_PLAYBOOK` / `SYSTEM_TABLE_REFERENCE` constants are now file-backed reads of those docs (no prompt change for the diagnose/optimize-log/fleet-scan capabilities). Skill frontmatter gained a `when_to_use` trigger, and the chat assistant's "decision framework" is now generated from it, so new skills auto-surface in routing. Three new chat skills let the conversational assistant diagnose errors, part/partition health, and column-schema issues (intents previously reachable only via the dedicated buttons), using the read-only core tools + references.
 
 ### Changed
