@@ -475,6 +475,16 @@ export const rbacAuthApi = {
 // Users API
 // ============================================
 
+/** A user's linked SSO identity, as returned by the users API (no secrets). */
+export interface SsoIdentityInfo {
+  id: string;
+  provider: string;
+  displayName: string;
+  email: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
 export const rbacUsersApi = {
   /**
    * List users
@@ -554,6 +564,21 @@ export const rbacUsersApi = {
       body: JSON.stringify({ roleIds }),
     });
     return result.user;
+  },
+
+  /**
+   * List a user's linked SSO identities
+   */
+  async getIdentities(id: string): Promise<SsoIdentityInfo[]> {
+    const result = await rbacFetch<{ identities: SsoIdentityInfo[] }>(`/users/${id}/identities`);
+    return result.identities;
+  },
+
+  /**
+   * Unlink an SSO identity from a user
+   */
+  async unlinkIdentity(id: string, identityId: string): Promise<void> {
+    await rbacFetch(`/users/${id}/identities/${identityId}`, { method: 'DELETE' });
   },
 };
 

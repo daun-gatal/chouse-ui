@@ -81,3 +81,23 @@ export async function userHasSsoIdentity(userId: string): Promise<boolean> {
     .limit(1);
   return rows.length > 0;
 }
+
+export async function listUserIdentities(
+  userId: string
+): Promise<UserIdentity[]> {
+  const db = getDatabase() as AnyDb;
+  const schema = getSchema();
+  const rows = await db
+    .select()
+    .from(schema.userIdentities)
+    .where(eq(schema.userIdentities.userId, userId));
+  return rows as UserIdentity[];
+}
+
+export async function deleteUserIdentity(id: string): Promise<void> {
+  const db = getDatabase() as AnyDb;
+  const schema = getSchema();
+  await db
+    .delete(schema.userIdentities)
+    .where(eq(schema.userIdentities.id, id));
+}

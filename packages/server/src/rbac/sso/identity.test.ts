@@ -95,10 +95,22 @@ function makeUpdateBuilder(): Record<string, unknown> {
   return builder;
 }
 
+function makeDeleteBuilder(): Record<string, unknown> {
+  const builder: Record<string, unknown> = {
+    where: mock((cond: unknown) => {
+      capturedWhereArg = cond;
+      return builder;
+    }),
+    then: mock((resolve: (v: unknown) => void) => resolve(undefined)),
+  };
+  return builder;
+}
+
 const mockDb = {
   select: mock((_projection?: unknown) => makeSelectBuilder()),
   insert: mock((_table: unknown) => makeInsertBuilder()),
   update: mock((_table: unknown) => makeUpdateBuilder()),
+  delete: mock((_table: unknown) => makeDeleteBuilder()),
 };
 
 // ------------------------------------------------------------------
@@ -120,6 +132,8 @@ import {
   getUserIdentity,
   userHasSsoIdentity,
   touchUserIdentity,
+  listUserIdentities,
+  deleteUserIdentity,
 } from "./identity";
 
 // ------------------------------------------------------------------
@@ -152,6 +166,7 @@ describe("SSO Identity Store", () => {
     mockDb.select.mockClear();
     mockDb.insert.mockClear();
     mockDb.update.mockClear();
+    mockDb.delete.mockClear();
   });
 
   // ----------------------------------------------------------------
@@ -340,6 +355,49 @@ describe("SSO Identity Store", () => {
       const row2 = insertedRows.find((r) => r.subject === "s2");
       expect(row2).toBeDefined();
       expect(row2!.userId).toBe("u2");
+    });
+  });
+
+  // ----------------------------------------------------------------
+  describe("listUserIdentities", () => {
+    it("returns every identity seeded for the user", async () => {
+      await createUserIdentity({ userId: "u1", provider: "okta", subject: "s1", email: "a@b.co" });
+      await createUserIdentity({ userId: "u1", provider: "github", subject: "s2" });
+
+      seedSelectByUserId("u1");
+      const rows = await listUserIdentities("u1");
+
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => r.provider).sort()).toEqual(["github", "okta"]);
+    });
+
+    it("returns an empty array when the user has no identities", async () => {
+      seededSelectRows = [];
+      const rows = await listUserIdentities("u-none");
+      expect(rows).toEqual([]);
+    });
+
+    it("passes the correct where-condition (userId column)", async () => {
+      seededSelectRows = [];
+      await listUserIdentities("u-sentinel");
+
+      const expectedCond = eq(mockSchema.userIdentities.userId as never, "u-sentinel");
+      expect(capturedWhereArg).toEqual(expectedCond);
+    });
+  });
+
+  // ----------------------------------------------------------------
+  describe("deleteUserIdentity", () => {
+    it("calls db.delete", async () => {
+      await deleteUserIdentity("identity-1");
+      expect(mockDb.delete).toHaveBeenCalled();
+    });
+
+    it("passes the correct where-condition (id column)", async () => {
+      await deleteUserIdentity("identity-42");
+
+      const expectedCond = eq(mockSchema.userIdentities.id as never, "identity-42");
+      expect(capturedWhereArg).toEqual(expectedCond);
     });
   });
 });
