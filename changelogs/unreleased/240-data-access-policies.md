@@ -3,6 +3,7 @@ type: major
 ### Added
 - **Data Access Policies** — database/table access is now defined as named, reusable policies (one or more pattern rules, scoped to one or more connections or all connections) managed under a new **Admin → Data Access** tab. Policies are attached to roles many-to-many via a new `/rbac/data-access-policies` API and the new `data_access:view/create/update/delete/assign` permissions.
 - **Roles carry data access** — the role form now requires at least one data access policy for custom (non-system) roles, making roles the primary access-control mechanism.
+- **Table picker for policies** — when building a policy you can browse a connection's real databases and tables (lazy-loaded per database) and add exact-match rules with a click, alongside the existing wildcard/regex pattern inputs.
 
 ### Changed
 - **One role per user** — each user now has exactly one role (enforced in the API and by a `UNIQUE(user_id)` index on `rbac_user_roles`). A user's effective data access is the union of the rules in the policies attached to their role; deny rules still take precedence by priority.

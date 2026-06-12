@@ -300,6 +300,60 @@ export async function getConnectionWithPassword(id: string): Promise<ConnectionW
 }
 
 /**
+ * List the databases on a stored connection (admin schema browsing for policies).
+ * Uses the connection's own credentials — results are NOT filtered by data access.
+ */
+export async function listConnectionDatabases(connectionId: string): Promise<string[]> {
+  const conn = await getConnectionWithPassword(connectionId);
+  if (!conn) throw new Error('Connection not found');
+
+  const protocol = conn.sslEnabled ? 'https' : 'http';
+  const client = createClient({
+    url: `${protocol}://${conn.host}:${conn.port || 8123}`,
+    username: conn.username,
+    password: conn.password || '',
+    database: conn.database || 'default',
+    request_timeout: 15000,
+  });
+  try {
+    const result = await client.query({ query: 'SHOW DATABASES', format: 'JSONEachRow' });
+    const rows = (await result.json()) as Array<{ name: string }>;
+    return rows.map((r) => r.name);
+  } finally {
+    await client.close();
+  }
+}
+
+/**
+ * List the tables in a database on a stored connection (lazy, per-database).
+ */
+export async function listConnectionTables(connectionId: string, database: string): Promise<string[]> {
+  const conn = await getConnectionWithPassword(connectionId);
+  if (!conn) throw new Error('Connection not found');
+
+  const protocol = conn.sslEnabled ? 'https' : 'http';
+  const client = createClient({
+    url: `${protocol}://${conn.host}:${conn.port || 8123}`,
+    username: conn.username,
+    password: conn.password || '',
+    database: conn.database || 'default',
+    request_timeout: 15000,
+  });
+  try {
+    // database is bound as a query parameter to avoid injection.
+    const result = await client.query({
+      query: 'SHOW TABLES FROM {db:Identifier}',
+      query_params: { db: database },
+      format: 'JSONEachRow',
+    });
+    const rows = (await result.json()) as Array<{ name: string }>;
+    return rows.map((r) => r.name);
+  } finally {
+    await client.close();
+  }
+}
+
+/**
  * List all connections
  */
 export async function listConnections(options?: {

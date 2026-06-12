@@ -1604,6 +1604,16 @@ export const rbacDataAccessPoliciesApi = {
   async getRolesForPolicy(id: string): Promise<string[]> {
     return rbacFetch(`/data-access-policies/${id}/roles`);
   },
+
+  /** Browse databases on a connection (for building policies) */
+  async listDatabases(connectionId: string): Promise<string[]> {
+    return rbacFetch(`/data-access-policies/schema/${connectionId}/databases`);
+  },
+
+  /** Browse tables in a database on a connection (lazy, per-database) */
+  async listTables(connectionId: string, database: string): Promise<string[]> {
+    return rbacFetch(`/data-access-policies/schema/${connectionId}/tables?database=${encodeURIComponent(database)}`);
+  },
 };
 
 // ============================================

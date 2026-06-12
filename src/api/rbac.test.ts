@@ -254,4 +254,26 @@ describe('rbacDataAccessPoliciesApi', () => {
     await rbacDataAccessPoliciesApi.setForRole('role-1', ['p1']);
     expect(captured).toEqual({ policyIds: ['p1'] });
   });
+
+  it('browses databases for a connection', async () => {
+    server.use(
+      http.get('/api/rbac/data-access-policies/schema/conn-1/databases', () =>
+        HttpResponse.json({ success: true, data: ['default', 'analytics'] })
+      )
+    );
+    expect(await rbacDataAccessPoliciesApi.listDatabases('conn-1')).toEqual(['default', 'analytics']);
+  });
+
+  it('browses tables for a database (lazy, url-encoded)', async () => {
+    let capturedUrl = '';
+    server.use(
+      http.get('/api/rbac/data-access-policies/schema/conn-1/tables', ({ request }) => {
+        capturedUrl = new URL(request.url).search;
+        return HttpResponse.json({ success: true, data: ['events', 'users'] });
+      })
+    );
+    const tables = await rbacDataAccessPoliciesApi.listTables('conn-1', 'my db');
+    expect(tables).toEqual(['events', 'users']);
+    expect(capturedUrl).toContain('database=my%20db');
+  });
 });

@@ -18,6 +18,7 @@ import {
   getRolesForPolicy,
   setPoliciesForRole,
 } from '../services/dataAccessPolicies';
+import { listConnectionDatabases, listConnectionTables } from '../services/connections';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
@@ -64,6 +65,31 @@ const setRolePoliciesSchema = z.object({
 // ============================================
 // Routes
 // ============================================
+
+// Browse databases on a connection (for building policies)
+policyRoutes.get('/schema/:connectionId/databases', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACCESS_VIEW), async (c) => {
+  try {
+    const databases = await listConnectionDatabases(c.req.param('connectionId'));
+    return c.json({ success: true, data: databases });
+  } catch (error) {
+    requestLogger(c.get('requestId')).error({ module: 'DataAccessPolicies', err: error instanceof Error ? error.message : String(error) }, 'List databases error');
+    return c.json({ success: false, error: { code: 'SCHEMA_FAILED', message: error instanceof Error ? error.message : 'Failed to list databases' } }, 500);
+  }
+});
+
+// Browse tables in a database on a connection (lazy, per-database)
+policyRoutes.get('/schema/:connectionId/tables', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACCESS_VIEW), async (c) => {
+  try {
+    const database = c.req.query('database');
+    if (!database) throw AppError.badRequest('database query parameter is required');
+    const tables = await listConnectionTables(c.req.param('connectionId'), database);
+    return c.json({ success: true, data: tables });
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    requestLogger(c.get('requestId')).error({ module: 'DataAccessPolicies', err: error instanceof Error ? error.message : String(error) }, 'List tables error');
+    return c.json({ success: false, error: { code: 'SCHEMA_FAILED', message: error instanceof Error ? error.message : 'Failed to list tables' } }, 500);
+  }
+});
 
 // List all policies
 policyRoutes.get('/', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACCESS_VIEW), async (c) => {
