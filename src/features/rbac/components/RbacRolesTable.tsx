@@ -5,7 +5,7 @@
  * Beautiful, interactive UI with smooth animations.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield,
@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Sparkles,
   CheckCircle2,
+  Database,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -49,7 +50,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import ConfirmationDialog from '@/components/common/ConfirmationDialog';
 
-import { rbacRolesApi, type RbacRole } from '@/api/rbac';
+import { rbacRolesApi, rbacDataAccessPoliciesApi, type RbacRole } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
 import { cn } from '@/lib/utils';
 import { RoleFormDialog } from './RoleFormDialog';
@@ -107,6 +108,7 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'live_queries': 'Live Queries',
   'ai': 'AI Assistant',
   'ai_models': 'AI Models',
+  'data_access': 'Data Access',
 };
 
 const getPermissionCategory = (permission: string): string => {
@@ -145,6 +147,20 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
     queryKey: ['rbac-roles'],
     queryFn: () => rbacRolesApi.list(),
   });
+
+  // Data access policies — to resolve the names of policies attached to a role.
+  // Gated on permission so users who can see roles but not policies don't 403.
+  const { data: policies = [] } = useQuery({
+    queryKey: ['rbac-data-access-policies'],
+    queryFn: () => rbacDataAccessPoliciesApi.list(),
+    enabled: hasPermission(RBAC_PERMISSIONS.DATA_ACCESS_VIEW),
+  });
+
+  const policyNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    policies.forEach((policy) => map.set(policy.id, policy.name));
+    return map;
+  }, [policies]);
 
   // Mutation
   const deleteMutation = useMutation({
@@ -255,6 +271,10 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
               const style = getRoleStyle(role.name);
               const isExpanded = expandedRoles.has(role.id);
               const groupedPermissions = groupPermissions(role.permissions);
+              const policyCount = role.dataAccessPolicyIds.length;
+              const rolePolicies = role.dataAccessPolicyIds
+                .map((id) => policyNameById.get(id))
+                .filter((name): name is string => !!name);
 
               return (
                 <motion.div
@@ -315,6 +335,13 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
                             <span className="text-paper">{role.permissions.length}</span>
                             <span className="uppercase tracking-[0.14em] text-paper-faint">perms</span>
                           </span>
+                          {policyCount > 0 && (
+                            <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[11px]">
+                              <Database className="h-3 w-3 text-paper-dim" />
+                              <span className="text-paper">{policyCount}</span>
+                              <span className="uppercase tracking-[0.14em] text-paper-faint">access</span>
+                            </span>
+                          )}
                         </div>
 
                         {/* Actions */}
@@ -363,7 +390,7 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.3 }}
-                        className="px-5 pb-5 pt-0"
+                        className="space-y-4 px-5 pb-5 pt-0"
                       >
                         <div className="p-5 rounded-xs bg-ink-200 border border-ink-500 space-y-4">
                           <div className="flex items-center gap-2">
@@ -396,6 +423,33 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
                             ))}
                           </div>
                         </div>
+
+                        {/* Data access — policies attached to this role */}
+                        {policyCount > 0 && (
+                          <div className="p-5 rounded-xs bg-ink-200 border border-ink-500 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Database className="h-4 w-4 text-brand" />
+                              <h4 className="text-sm font-semibold text-paper">Data access</h4>
+                            </div>
+                            {rolePolicies.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {rolePolicies.map((name) => (
+                                  <span
+                                    key={name}
+                                    className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-100 px-2 py-0.5 font-mono text-[11px] text-paper-muted transition-colors hover:border-ink-700 hover:text-paper"
+                                  >
+                                    <Database className="h-3 w-3 text-paper-faint" />
+                                    {name}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                                {policyCount} polic{policyCount === 1 ? 'y' : 'ies'} attached
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </motion.div>
                     </CollapsibleContent>
                   </Collapsible>

@@ -1,10 +1,3 @@
-/**
- * Role Form Dialog Component
- * 
- * Dialog for creating and editing RBAC roles with permission selection.
- * Beautiful, interactive UI with smooth animations.
- */
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -22,7 +15,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Collapsible,
@@ -39,6 +31,11 @@ import {
   ChevronsDown,
   ChevronsUp,
   Users,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Loader2,
+  Database,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -50,7 +47,6 @@ import {
   type CreateRoleInput,
   type UpdateRoleInput,
 } from '@/api/rbac';
-import { Database } from 'lucide-react';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
 import { cn } from '@/lib/utils';
 
@@ -61,7 +57,7 @@ import { cn } from '@/lib/utils';
 interface RoleFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  role?: RbacRole | null; // null = create mode, RbacRole = edit mode
+  role?: RbacRole | null;
   onSuccess?: () => void;
 }
 
@@ -78,11 +74,13 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   const queryClient = useQueryClient();
   const { hasPermission, isSuperAdmin } = useRbacStore();
 
-  // Permissions
   const canCreate = hasPermission(RBAC_PERMISSIONS.ROLES_CREATE);
   const canUpdate = hasPermission(RBAC_PERMISSIONS.ROLES_UPDATE);
 
-  // State
+  // Step state (1 = Details, 2 = Permissions, 3 = Data Access & Review)
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+
+  // Form state
   const [name, setName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [description, setDescription] = useState('');
@@ -92,24 +90,20 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch permissions
   const { data: permissionsByCategory, isLoading: loadingPermissions } = useQuery({
     queryKey: ['rbac-permissions-by-category'],
     queryFn: () => rbacRolesApi.getPermissionsByCategory(),
     enabled: isOpen,
   });
 
-  // Fetch data access policies
   const { data: policies } = useQuery({
     queryKey: ['rbac-data-access-policies'],
     queryFn: () => rbacDataAccessPoliciesApi.list(),
     enabled: isOpen,
   });
 
-  // Create a mapping from permission names to IDs
   const permissionNameToIdMap = useMemo(() => {
     if (!permissionsByCategory) return new Map<string, string>();
-
     const map = new Map<string, string>();
     Object.values(permissionsByCategory).forEach((permissions) => {
       permissions.forEach((perm) => {
@@ -119,26 +113,20 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     return map;
   }, [permissionsByCategory]);
 
-  // Initialize form when role changes
   useEffect(() => {
     if (isOpen) {
+      setStep(1);
       if (role) {
-        // Edit mode
         setName(role.name);
         setDisplayName(role.displayName);
         setDescription(role.description || '');
-
-        // Map permission names to IDs
-        // role.permissions contains permission names, but we need IDs
         const permissionIds = role.permissions
           .map((permName) => permissionNameToIdMap.get(permName))
           .filter((id): id is string => id !== undefined);
-
         setSelectedPermissionIds(new Set(permissionIds));
         setSelectedPolicyIds(new Set(role.dataAccessPolicyIds || []));
         setIsDefault(role.isDefault);
       } else {
-        // Create mode
         setName('');
         setDisplayName('');
         setDescription('');
@@ -147,14 +135,12 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
         setIsDefault(false);
       }
       setSearchQuery('');
-      // Expand all categories by default
       if (permissionsByCategory) {
         setExpandedCategories(new Set(Object.keys(permissionsByCategory)));
       }
     }
   }, [isOpen, role, permissionsByCategory, permissionNameToIdMap]);
 
-  // Mutations
   const createMutation = useMutation({
     mutationFn: (input: CreateRoleInput) => rbacRolesApi.create(input),
     onSuccess: () => {
@@ -186,30 +172,25 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     },
   });
 
-  // Validation
   const isEditing = !!role;
   const isSystemRole = role?.isSystem || false;
   const canEditSystemRole = isSuperAdmin();
   const canModify = isEditing ? (isSystemRole ? canEditSystemRole : canUpdate) : canCreate;
-
-  // Custom (non-system) roles are the primary way to grant data access and must
-  // attach at least one policy. System roles are exempt (admin/super_admin bypass access).
   const requiresPolicy = !isSystemRole;
-  const isValid =
-    (isEditing ? true : name.trim().length >= 2) &&
-    displayName.trim().length >= 2 &&
-    selectedPermissionIds.size > 0 &&
-    (!requiresPolicy || selectedPolicyIds.size > 0);
 
-  // Filter permissions by search query
+  // Per-step validation
+  const step1Valid = isEditing
+    ? displayName.trim().length >= 2
+    : name.trim().length >= 2 && displayName.trim().length >= 2;
+  const step2Valid = selectedPermissionIds.size > 0;
+  const step3Valid = !requiresPolicy || selectedPolicyIds.size > 0;
+
   const filteredCategories = React.useMemo(() => {
     if (!permissionsByCategory || !searchQuery.trim()) {
       return permissionsByCategory || {};
     }
-
     const query = searchQuery.toLowerCase();
     const filtered: Record<string, RbacPermission[]> = {};
-
     Object.entries(permissionsByCategory).forEach(([category, permissions]) => {
       const matching = permissions.filter(
         (p) =>
@@ -217,23 +198,16 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
           p.name.toLowerCase().includes(query) ||
           (p.description && p.description.toLowerCase().includes(query))
       );
-      if (matching.length > 0) {
-        filtered[category] = matching;
-      }
+      if (matching.length > 0) filtered[category] = matching;
     });
-
     return filtered;
   }, [permissionsByCategory, searchQuery]);
 
-  // Handlers
   const toggleCategory = (category: string) => {
     setExpandedCategories((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(category)) {
-        newSet.delete(category);
-      } else {
-        newSet.add(category);
-      }
+      if (newSet.has(category)) newSet.delete(category);
+      else newSet.add(category);
       return newSet;
     });
   };
@@ -242,11 +216,8 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     if (!canModify) return;
     setSelectedPermissionIds((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(permissionId)) {
-        newSet.delete(permissionId);
-      } else {
-        newSet.add(permissionId);
-      }
+      if (newSet.has(permissionId)) newSet.delete(permissionId);
+      else newSet.add(permissionId);
       return newSet;
     });
   };
@@ -265,14 +236,10 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     if (!canModify || !filteredCategories) return;
     const categoryPermissions = filteredCategories[category] || [];
     const allSelected = categoryPermissions.every((p) => selectedPermissionIds.has(p.id));
-
     setSelectedPermissionIds((prev) => {
       const newSet = new Set(prev);
-      if (allSelected) {
-        categoryPermissions.forEach((p) => newSet.delete(p.id));
-      } else {
-        categoryPermissions.forEach((p) => newSet.add(p.id));
-      }
+      if (allSelected) categoryPermissions.forEach((p) => newSet.delete(p.id));
+      else categoryPermissions.forEach((p) => newSet.add(p.id));
       return newSet;
     });
   };
@@ -281,14 +248,10 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     if (!canModify || !filteredCategories) return;
     const allPermissions = Object.values(filteredCategories).flat();
     const allSelected = allPermissions.every((p) => selectedPermissionIds.has(p.id));
-
     setSelectedPermissionIds((prev) => {
       const newSet = new Set(prev);
-      if (allSelected) {
-        allPermissions.forEach((p) => newSet.delete(p.id));
-      } else {
-        allPermissions.forEach((p) => newSet.add(p.id));
-      }
+      if (allSelected) allPermissions.forEach((p) => newSet.delete(p.id));
+      else allPermissions.forEach((p) => newSet.add(p.id));
       return newSet;
     });
   };
@@ -297,25 +260,16 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     if (!filteredCategories) return;
     const categoryKeys = Object.keys(filteredCategories);
     const allExpanded = categoryKeys.every((key) => expandedCategories.has(key));
-
-    if (allExpanded) {
-      // Collapse all
-      setExpandedCategories(new Set());
-    } else {
-      // Expand all
-      setExpandedCategories(new Set(categoryKeys));
-    }
+    setExpandedCategories(allExpanded ? new Set() : new Set(categoryKeys));
   };
 
   const handleSubmit = () => {
-    if (!isValid || !canModify) return;
+    if (!step3Valid || !canModify) return;
 
     const permissionIds = Array.from(selectedPermissionIds);
     const dataAccessPolicyIds = Array.from(selectedPolicyIds);
 
     if (isEditing && role) {
-      // Update role — always persist the selected policies (system roles can carry
-      // policies too; the >=1 requirement is only enforced for non-system roles).
       const input: UpdateRoleInput = {
         displayName: displayName.trim(),
         description: description.trim() || null,
@@ -325,7 +279,6 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
       };
       updateMutation.mutate({ id: role.id, input });
     } else {
-      // Create role
       const input: CreateRoleInput = {
         name: name.trim(),
         displayName: displayName.trim(),
@@ -342,14 +295,26 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   const totalPermissions = Object.values(filteredCategories || {}).flat().length;
   const selectedCount = selectedPermissionIds.size;
   const allSelected = totalPermissions > 0 && selectedCount === totalPermissions;
-
-  // Determine if all categories are expanded
   const categoryKeys = filteredCategories ? Object.keys(filteredCategories) : [];
   const allExpanded = categoryKeys.length > 0 && categoryKeys.every((key) => expandedCategories.has(key));
 
+  // Summary for step 3 review
+  const permissionSummaryByCategory = useMemo(() => {
+    if (!permissionsByCategory) return [];
+    return Object.entries(permissionsByCategory)
+      .map(([category, perms]) => ({
+        category,
+        selected: perms.filter((p) => selectedPermissionIds.has(p.id)).length,
+        total: perms.length,
+      }))
+      .filter((c) => c.selected > 0);
+  }, [permissionsByCategory, selectedPermissionIds]);
+
+  const STEPS = ['Details', 'Permissions', 'Data Access'];
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 rounded-xs border-ink-500 bg-ink-100 overflow-hidden">
+      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden rounded-xs border-ink-500 bg-ink-100 p-0">
         <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-ink-500">
           <DialogTitle asChild>
             <div className="flex items-center gap-3">
@@ -372,22 +337,51 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
               )}
             </div>
           </DialogTitle>
-          <DialogDescription className="mt-2 text-[12px] text-paper-muted">
-            {isEditing
-              ? 'Update role details and permissions. System roles can only be modified by super admins.'
-              : 'Create a new custom role with specific permissions.'}
+          <DialogDescription className="mt-1 text-[12px] text-paper-muted">
+            {step === 1 && 'Step 1 of 3 — set the role name and basic details.'}
+            {step === 2 && 'Step 2 of 3 — choose which permissions this role grants.'}
+            {step === 3 && 'Step 3 of 3 — assign data access policies and review.'}
           </DialogDescription>
+
+          {/* Stepper */}
+          <div className="mt-3 flex items-center gap-2 px-1">
+            {STEPS.map((label, i) => {
+              const n = (i + 1) as 1 | 2 | 3;
+              return (
+                <div key={label} className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      'grid h-5 w-5 place-items-center rounded-full font-mono text-[10px]',
+                      step === n
+                        ? 'bg-brand text-ink-50'
+                        : step > n
+                          ? 'bg-emerald-600 text-ink-50'
+                          : 'bg-ink-300 text-paper-faint'
+                    )}
+                  >
+                    {step > n ? <Check className="h-3 w-3" /> : n}
+                  </span>
+                  <span
+                    className={cn(
+                      'font-mono text-[10px] uppercase tracking-[0.14em]',
+                      step === n ? 'text-paper' : 'text-paper-faint'
+                    )}
+                  >
+                    {label}
+                  </span>
+                  {n < 3 && <span className="mx-1 h-px w-4 bg-ink-500" />}
+                </div>
+              );
+            })}
+          </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 px-6">
-          <div className="py-4">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="space-y-6"
-            >
-              {/* System Role Warning */}
+        {/* Step content */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+
+          {/* ── Step 1: Details ── */}
+          {step === 1 && (
+            <div className="space-y-4">
               <AnimatePresence>
                 {isEditing && isSystemRole && !canEditSystemRole && (
                   <motion.div
@@ -404,342 +398,326 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                 )}
               </AnimatePresence>
 
-              {/* Basic Information */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="space-y-4 rounded-xs border border-ink-500 bg-ink-100 p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
-                    <span className="h-px w-6 bg-ink-700" aria-hidden />
-                    <span>Basic information</span>
+              {isEditing && role && (
+                <div className="flex items-center justify-end">
+                  <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
+                    <Users className="h-3 w-3 text-paper-dim" aria-hidden />
+                    <span>{role.userCount || 0} users assigned</span>
                   </span>
-                  {isEditing && role && (
-                    <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
-                      <Users className="h-3 w-3 text-paper-dim" aria-hidden />
-                      <span>{role.userCount || 0} users assigned</span>
-                    </span>
-                  )}
                 </div>
+              )}
 
-                {/* Name (only for create) */}
-                {!isEditing && (
-                  <div className="space-y-2">
-                    <Label htmlFor="name" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
-                      Role name <span className="text-red-400">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g., custom_role"
-                      disabled={!canModify}
-                      className="rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
-                    />
-                    <p className="text-[11px] text-paper-faint">
-                      Must start with a letter and contain only letters, numbers, underscores, and hyphens.
-                      This cannot be changed after creation.
-                    </p>
-                  </div>
-                )}
-
-                {/* Display Name */}
+              {!isEditing && (
                 <div className="space-y-2">
-                  <Label htmlFor="displayName" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
-                    Display name <span className="text-red-400">*</span>
+                  <Label htmlFor="name" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                    Role name <span className="text-red-400">*</span>
                   </Label>
                   <Input
-                    id="displayName"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="e.g., Custom Role"
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., custom_role"
                     disabled={!canModify}
                     className="rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
                   />
+                  <p className="text-[11px] text-paper-faint">
+                    Must start with a letter and contain only letters, numbers, underscores, and hyphens.
+                    Cannot be changed after creation.
+                  </p>
                 </div>
+              )}
 
-                {/* Description */}
+              <div className="space-y-2">
+                <Label htmlFor="displayName" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                  Display name <span className="text-red-400">*</span>
+                </Label>
+                <Input
+                  id="displayName"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="e.g., Custom Role"
+                  disabled={!canModify}
+                  className="rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                  Description
+                </Label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe the role's purpose and responsibilities..."
+                  disabled={!canModify}
+                  rows={3}
+                  className="resize-none rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
+                <Checkbox
+                  id="isDefault"
+                  checked={isDefault}
+                  onCheckedChange={(checked) => setIsDefault(checked === true)}
+                  disabled={!canModify}
+                  className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
+                />
+                <Label htmlFor="isDefault" className="cursor-pointer text-[12px] text-paper">
+                  Set as default role for new users
+                </Label>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 2: Permissions ── */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                  <span className="h-px w-6 bg-ink-700" aria-hidden />
+                  <span>Permissions</span>
+                  <span className="text-red-400">*</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  {selectedCount > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
+                      {selectedCount} selected
+                    </span>
+                  )}
+                  {categoryKeys.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleToggleExpandAll}
+                      className="h-7 gap-1.5 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
+                    >
+                      {allExpanded ? (
+                        <><ChevronsUp className="h-3.5 w-3.5" /> Collapse all</>
+                      ) : (
+                        <><ChevronsDown className="h-3.5 w-3.5" /> Expand all</>
+                      )}
+                    </Button>
+                  )}
+                  {canModify && totalPermissions > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleSelectAll}
+                      className="h-7 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
+                    >
+                      {allSelected ? 'Deselect all' : 'Select all'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {!loadingPermissions && totalPermissions > 5 && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-faint" aria-hidden />
+                  <Input
+                    placeholder="Search permissions"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-9 rounded-xs border-ink-500 bg-ink-200 pl-9 pr-9 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-paper-faint transition-colors hover:text-paper"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {loadingPermissions ? (
                 <div className="space-y-2">
-                  <Label htmlFor="description" className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
-                    Description
-                  </Label>
-                  <Textarea
-                    id="description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Describe the role's purpose and responsibilities..."
-                    disabled={!canModify}
-                    rows={3}
-                    className="resize-none rounded-xs border-ink-500 bg-ink-200 text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
-                  />
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-20 w-full rounded-xs bg-ink-200" />
+                  ))}
                 </div>
+              ) : !filteredCategories || Object.keys(filteredCategories).length === 0 ? (
+                <Alert className="rounded-xs border-ink-500 bg-ink-100">
+                  <AlertDescription className="text-[12px] text-paper-muted">
+                    {searchQuery ? 'No permissions found matching your search.' : 'No permissions available.'}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="space-y-2">
+                  <AnimatePresence mode="popLayout">
+                    {Object.entries(filteredCategories).map(([category, permissions], index) => {
+                      const isExpanded = expandedCategories.has(category);
+                      const categorySelected = permissions.filter((p) =>
+                        selectedPermissionIds.has(p.id)
+                      );
+                      const catAllSelected = categorySelected.length === permissions.length;
+                      const someSelected = categorySelected.length > 0 && !catAllSelected;
 
-                {/* Is Default */}
-                <div className="flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
-                  <Checkbox
-                    id="isDefault"
-                    checked={isDefault}
-                    onCheckedChange={(checked) => setIsDefault(checked === true)}
-                    disabled={!canModify}
-                    className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
-                  />
-                  <Label htmlFor="isDefault" className="cursor-pointer text-[12px] text-paper">
-                    Set as default role for new users
-                  </Label>
+                      return (
+                        <motion.div
+                          key={category}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ delay: index * 0.03 }}
+                        >
+                          <Collapsible
+                            open={isExpanded}
+                            onOpenChange={() => toggleCategory(category)}
+                          >
+                            <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100 transition-colors hover:border-ink-700">
+                              <div className="flex items-center justify-between transition-colors hover:bg-ink-200">
+                                <CollapsibleTrigger className="group flex flex-1 items-center gap-3 p-4 text-left">
+                                  <motion.div
+                                    animate={{ rotate: isExpanded ? 90 : 0 }}
+                                    transition={{ duration: 0.2 }}
+                                  >
+                                    <ChevronRight className="h-4 w-4 text-paper-dim transition-colors group-hover:text-paper" />
+                                  </motion.div>
+                                  <span className="text-[13px] font-semibold text-paper">{category}</span>
+                                  <span
+                                    className={cn(
+                                      'inline-flex items-center rounded-xs border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors',
+                                      catAllSelected
+                                        ? 'border-brand/40 text-brand'
+                                        : someSelected
+                                          ? 'border-brand/30 text-brand/80'
+                                          : 'border-ink-500 bg-ink-200 text-paper-muted'
+                                    )}
+                                  >
+                                    {categorySelected.length}/{permissions.length}
+                                  </span>
+                                </CollapsibleTrigger>
+                                {canModify && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleSelectAllInCategory(category)}
+                                    className="mr-2 h-7 shrink-0 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-300 hover:text-paper"
+                                  >
+                                    {catAllSelected ? 'Deselect all' : 'Select all'}
+                                  </Button>
+                                )}
+                              </div>
+                              <CollapsibleContent>
+                                <div className="px-4 pb-4 pt-2 space-y-2">
+                                  {permissions.map((permission) => {
+                                    const isSelected = selectedPermissionIds.has(permission.id);
+                                    return (
+                                      <div
+                                        key={permission.id}
+                                        role="checkbox"
+                                        aria-checked={isSelected}
+                                        aria-label={permission.displayName}
+                                        aria-disabled={canModify ? undefined : true}
+                                        tabIndex={canModify ? 0 : -1}
+                                        onClick={() => togglePermission(permission.id)}
+                                        onKeyDown={(e) => {
+                                          if (!canModify) return;
+                                          if (e.key === ' ' || e.key === 'Enter') {
+                                            e.preventDefault();
+                                            togglePermission(permission.id);
+                                          }
+                                        }}
+                                        className={cn(
+                                          'flex items-start gap-3 rounded-xs border p-3 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand',
+                                          canModify ? 'cursor-pointer' : 'cursor-default opacity-70',
+                                          isSelected
+                                            ? 'border-brand/40 bg-ink-200'
+                                            : 'border-ink-500 bg-ink-100',
+                                          !isSelected && canModify && 'hover:border-ink-700 hover:bg-ink-200'
+                                        )}
+                                      >
+                                        <Checkbox
+                                          checked={isSelected}
+                                          disabled={!canModify}
+                                          tabIndex={-1}
+                                          aria-hidden
+                                          className="pointer-events-none mt-0.5 border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
+                                        />
+                                        <div className="min-w-0 flex-1">
+                                          <span
+                                            className={cn(
+                                              'block text-[12px]',
+                                              isSelected ? 'font-medium text-paper' : 'text-paper-muted'
+                                            )}
+                                          >
+                                            {permission.displayName}
+                                          </span>
+                                          {permission.description && (
+                                            <p className="mt-1 text-[11px] text-paper-faint">
+                                              {permission.description}
+                                            </p>
+                                          )}
+                                        </div>
+                                        {isSelected && (
+                                          <span className="text-brand" aria-hidden>
+                                            <CheckCircle2 className="h-4 w-4" />
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </CollapsibleContent>
+                            </div>
+                          </Collapsible>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
                 </div>
-              </motion.div>
+              )}
 
-              {/* Permissions */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="space-y-4"
-              >
-                <div className="flex items-center justify-between">
+              {selectedPermissionIds.size === 0 && (
+                <Alert variant="destructive" className="rounded-xs border-red-500/40 bg-red-500/10">
+                  <AlertDescription className="font-mono text-[11px] uppercase tracking-[0.14em] text-red-300">
+                    At least one permission is required for the role.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 3: Data Access & Review ── */}
+          {step === 3 && (
+            <div className="space-y-4">
+              {/* Permissions summary */}
+              {permissionSummaryByCategory.length > 0 && (
+                <div className="space-y-2">
                   <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
                     <span className="h-px w-6 bg-ink-700" aria-hidden />
-                    <span>Permissions</span>
-                    <span className="text-red-400">*</span>
+                    <span>Permissions summary</span>
+                    <span className="rounded-xs border border-brand/40 px-1.5 py-0.5 text-brand">
+                      {selectedPermissionIds.size} selected
+                    </span>
                   </span>
-                  <div className="flex items-center gap-2">
-                    {selectedCount > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
-                        {selectedCount} selected
-                      </span>
-                    )}
-                    {categoryKeys.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleToggleExpandAll}
-                        className="h-7 gap-1.5 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
-                        title={allExpanded ? "Collapse all categories" : "Expand all categories"}
-                      >
-                        {allExpanded ? (
-                          <>
-                            <ChevronsUp className="h-3.5 w-3.5" />
-                            Collapse all
-                          </>
-                        ) : (
-                          <>
-                            <ChevronsDown className="h-3.5 w-3.5" />
-                            Expand all
-                          </>
-                        )}
-                      </Button>
-                    )}
-                    {canModify && totalPermissions > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleSelectAll}
-                        className="h-7 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper"
-                      >
-                        {allSelected ? 'Deselect all' : 'Select all'}
-                      </Button>
-                    )}
+                  <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {permissionSummaryByCategory.map(({ category, selected, total }) => (
+                        <span
+                          key={category}
+                          className="inline-flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-100 px-2 py-0.5 font-mono text-[10px] text-paper-muted"
+                        >
+                          <span className="text-brand">{selected}</span>
+                          <span className="text-paper-faint">/{total}</span>
+                          <span className="ml-1 text-paper-dim">{category}</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-
-                {/* Search */}
-                {!loadingPermissions && totalPermissions > 5 && (
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-faint" aria-hidden />
-                    <Input
-                      placeholder="Search permissions"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="h-9 rounded-xs border-ink-500 bg-ink-200 pl-9 pr-9 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
-                    />
-                    {searchQuery && (
-                      <button
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-paper-faint transition-colors hover:text-paper"
-                        aria-label="Clear search"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {loadingPermissions ? (
-                  <div className="space-y-2">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-20 w-full rounded-xs bg-ink-200" />
-                    ))}
-                  </div>
-                ) : !filteredCategories || Object.keys(filteredCategories).length === 0 ? (
-                  <Alert className="rounded-xs border-ink-500 bg-ink-100">
-                    <AlertDescription className="text-[12px] text-paper-muted">
-                      {searchQuery ? 'No permissions found matching your search.' : 'No permissions available.'}
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <div className="space-y-2">
-                    <AnimatePresence mode="popLayout">
-                      {Object.entries(filteredCategories).map(([category, permissions], index) => {
-                        const isExpanded = expandedCategories.has(category);
-                        const categorySelected = permissions.filter((p) =>
-                          selectedPermissionIds.has(p.id)
-                        );
-                        const allSelected = categorySelected.length === permissions.length;
-                        const someSelected = categorySelected.length > 0 && !allSelected;
-
-                        return (
-                          <motion.div
-                            key={category}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ delay: index * 0.05 }}
-                          >
-                            <Collapsible
-                              open={isExpanded}
-                              onOpenChange={() => toggleCategory(category)}
-                            >
-                              <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100 transition-colors hover:border-ink-700">
-                                {/* Trigger and the per-category Select-all are SIBLINGS — a button
-                                    must never nest inside another button (invalid DOM + a11y). */}
-                                <div className="flex items-center justify-between transition-colors hover:bg-ink-200">
-                                  <CollapsibleTrigger className="group flex flex-1 items-center gap-3 p-4 text-left">
-                                    <motion.div
-                                      animate={{ rotate: isExpanded ? 90 : 0 }}
-                                      transition={{ duration: 0.2 }}
-                                    >
-                                      <ChevronRight className="h-4 w-4 text-paper-dim transition-colors group-hover:text-paper" />
-                                    </motion.div>
-                                    <span className="text-[13px] font-semibold text-paper">{category}</span>
-                                    <span
-                                      className={cn(
-                                        'inline-flex items-center rounded-xs border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors',
-                                        allSelected
-                                          ? 'border-brand/40 text-brand'
-                                          : someSelected
-                                            ? 'border-brand/30 text-brand/80'
-                                            : 'border-ink-500 bg-ink-200 text-paper-muted'
-                                      )}
-                                    >
-                                      {categorySelected.length}/{permissions.length}
-                                    </span>
-                                  </CollapsibleTrigger>
-                                  {canModify && (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleSelectAllInCategory(category)}
-                                      className="mr-2 h-7 shrink-0 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-300 hover:text-paper"
-                                    >
-                                      {allSelected ? 'Deselect all' : 'Select all'}
-                                    </Button>
-                                  )}
-                                </div>
-                                <CollapsibleContent>
-                                  <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    transition={{ duration: 0.2 }}
-                                    className="px-4 pb-4 pt-2 space-y-2"
-                                  >
-                                    {permissions.map((permission) => {
-                                      const isSelected = selectedPermissionIds.has(permission.id);
-                                      // The whole row IS the accessible checkbox: a single click toggles
-                                      // once (no row-onClick + control-onChange double-fire), and it's
-                                      // keyboard-operable. The inner Checkbox is purely presentational.
-                                      return (
-                                        <motion.div
-                                          key={permission.id}
-                                          role="checkbox"
-                                          aria-checked={isSelected}
-                                          aria-label={permission.displayName}
-                                          aria-disabled={canModify ? undefined : true}
-                                          tabIndex={canModify ? 0 : -1}
-                                          onClick={() => togglePermission(permission.id)}
-                                          onKeyDown={(e) => {
-                                            if (!canModify) return;
-                                            if (e.key === ' ' || e.key === 'Enter') {
-                                              e.preventDefault();
-                                              togglePermission(permission.id);
-                                            }
-                                          }}
-                                          className={cn(
-                                            'flex items-start gap-3 rounded-xs border p-3 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand',
-                                            canModify ? 'cursor-pointer' : 'cursor-default opacity-70',
-                                            isSelected
-                                              ? 'border-brand/40 bg-ink-200'
-                                              : 'border-ink-500 bg-ink-100',
-                                            !isSelected && canModify && 'hover:border-ink-700 hover:bg-ink-200'
-                                          )}
-                                        >
-                                          <Checkbox
-                                            checked={isSelected}
-                                            disabled={!canModify}
-                                            tabIndex={-1}
-                                            aria-hidden
-                                            className="pointer-events-none mt-0.5 border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
-                                          />
-                                          <div className="min-w-0 flex-1">
-                                            <span
-                                              className={cn(
-                                                'block text-[12px]',
-                                                isSelected ? 'font-medium text-paper' : 'text-paper-muted'
-                                              )}
-                                            >
-                                              {permission.displayName}
-                                            </span>
-                                            {permission.description && (
-                                              <p className="mt-1 text-[11px] text-paper-faint">
-                                                {permission.description}
-                                              </p>
-                                            )}
-                                          </div>
-                                          {isSelected && (
-                                            <span className="text-brand" aria-hidden>
-                                              <CheckCircle2 className="h-4 w-4" />
-                                            </span>
-                                          )}
-                                        </motion.div>
-                                      );
-                                    })}
-                                  </motion.div>
-                                </CollapsibleContent>
-                              </div>
-                            </Collapsible>
-                          </motion.div>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {selectedPermissionIds.size === 0 && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                  >
-                    <Alert variant="destructive" className="rounded-xs border-red-500/40 bg-red-500/10">
-                      <AlertDescription className="font-mono text-[11px] uppercase tracking-[0.14em] text-red-300">
-                        At least one permission is required for the role.
-                      </AlertDescription>
-                    </Alert>
-                  </motion.div>
-                )}
-              </motion.div>
+              )}
 
               {/* Data Access Policies */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25 }}
-                className="space-y-4"
-              >
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
                     <span className="h-px w-6 bg-ink-700" aria-hidden />
@@ -828,41 +806,42 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                     </AlertDescription>
                   </Alert>
                 )}
-              </motion.div>
-            </motion.div>
-          </div>
-        </ScrollArea>
+              </div>
+            </div>
+          )}
+        </div>
 
-        <DialogFooter className="flex-shrink-0 border-t border-ink-500 px-6 py-4">
+        <DialogFooter className="flex flex-shrink-0 items-center justify-between gap-2 border-t border-ink-500 px-6 py-4">
           <Button
-            variant="outline"
-            onClick={onClose}
+            variant="ghost"
+            onClick={() => (step === 1 ? onClose() : setStep((step - 1) as 1 | 2 | 3))}
             disabled={isLoading}
-            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+            className="h-9 gap-1 rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
           >
-            Cancel
+            {step === 1 ? 'Cancel' : <><ArrowLeft className="h-3.5 w-3.5" /> Back</>}
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!isValid || !canModify || isLoading}
-            className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isLoading ? (
-              <>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                  className="h-3.5 w-3.5 rounded-full border-2 border-ink-50 border-t-transparent"
-                />
-                {isEditing ? 'Updating' : 'Creating'}
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                {isEditing ? 'Update role' : 'Create role'}
-              </>
-            )}
-          </Button>
+
+          {step < 3 ? (
+            <Button
+              onClick={() => setStep((step + 1) as 2 | 3)}
+              disabled={step === 1 ? !step1Valid : !step2Valid}
+              className="h-9 gap-1 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSubmit}
+              disabled={!step3Valid || !canModify || isLoading}
+              className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoading ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {isEditing ? 'Updating' : 'Creating'}</>
+              ) : (
+                <><CheckCircle2 className="h-3.5 w-3.5" /> {isEditing ? 'Update role' : 'Create role'}</>
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

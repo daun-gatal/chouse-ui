@@ -216,7 +216,7 @@ export default function Monitoring() {
       {/* ─── Header — compact: title + tabs + controls share one row ─── */}
       <header className="flex-none border-b border-ink-500 px-6 pt-4">
         <div className="flex flex-wrap items-end justify-between gap-4 pb-0">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 pb-2">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
               <Activity className="h-3.5 w-3.5" aria-hidden />
             </span>
@@ -245,7 +245,7 @@ export default function Monitoring() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pb-2">
             <DataControls
               lastUpdated={lastUpdated}
               isRefreshing={isRefreshing}
