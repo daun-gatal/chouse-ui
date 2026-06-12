@@ -142,6 +142,20 @@ export function loadSsoConfig(env: Record<string, string | undefined> = process.
     providers.set(id, { ...parsed.data, id });
   }
 
+  // Startup summary so operators can confirm which providers loaded.
+  // Only non-secret fields (id/type/display name) are logged.
+  logger.info(
+    {
+      module: 'SSO',
+      providers: [...providers.values()].map((p) => ({
+        id: p.id,
+        type: p.type,
+        displayName: p.displayName,
+      })),
+    },
+    `SSO enabled — ${providers.size} provider(s) loaded`
+  );
+
   return {
     enabled: true,
     baseUrl,

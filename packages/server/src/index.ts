@@ -301,6 +301,21 @@ initializeRbac().then(async () => {
   // is enabled in the UI; cheap to run (checks a config file every 60s).
   const { DoctorScheduler } = await import("./services/doctorScheduler");
   DoctorScheduler.getInstance().start();
+  // Warm the SSO config so the provider summary (or a config error) is logged
+  // at boot rather than lazily on the first login request. Isolated so an SSO
+  // misconfiguration can't take down the rest of startup.
+  try {
+    const { getSsoConfig } = await import("./rbac/sso/config");
+    const ssoConfig = getSsoConfig();
+    if (!ssoConfig.enabled) {
+      logger.info({ module: "SSO" }, "SSO disabled");
+    }
+  } catch (error) {
+    logger.error(
+      { module: "SSO", err: error instanceof Error ? error.message : String(error) },
+      "SSO configuration is invalid"
+    );
+  }
 }).catch((error) => {
   logger.error({ phase: "startup", err: error instanceof Error ? error.message : String(error) }, "Failed to initialize RBAC");
   // Continue without RBAC - it's optional for backward compatibility

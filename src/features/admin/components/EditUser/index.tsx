@@ -25,6 +25,8 @@ import {
   UserX,
   UserCheck,
   Database,
+  Link2,
+  Unlink,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -54,7 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { rbacUsersApi, rbacRolesApi, type RbacUser, type RbacRole, type UpdateUserInput } from "@/api/rbac";
+import { rbacUsersApi, rbacRolesApi, type RbacUser, type RbacRole, type UpdateUserInput, type SsoIdentityInfo } from "@/api/rbac";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -129,6 +131,11 @@ const EditUser: React.FC = () => {
   // Delete state
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // SSO identity state
+  const [identities, setIdentities] = useState<SsoIdentityInfo[]>([]);
+  const [identityToUnlink, setIdentityToUnlink] = useState<SsoIdentityInfo | null>(null);
+  const [isUnlinking, setIsUnlinking] = useState(false);
+
   const isCurrentUser = user?.id === currentUser?.id;
 
   // Fetch user and roles
@@ -142,8 +149,9 @@ const EditUser: React.FC = () => {
     Promise.all([
       rbacUsersApi.get(userId),
       rbacRolesApi.list(),
+      rbacUsersApi.getIdentities(userId),
     ])
-      .then(([userData, rolesData]) => {
+      .then(([userData, rolesData, userIdentities]) => {
         // Check if basic admin is trying to edit super admin
         const userIsSuperAdmin = userData.roles.includes('super_admin');
         if (!isSuperAdmin() && userIsSuperAdmin) {
@@ -157,6 +165,7 @@ const EditUser: React.FC = () => {
         setUsername(userData.username);
         setDisplayName(userData.displayName || "");
         setIsActive(userData.isActive);
+        setIdentities(userIdentities);
 
         // Filter out super_admin if current user is not super_admin
         const filteredRoles = isSuperAdmin()
@@ -311,6 +320,24 @@ const EditUser: React.FC = () => {
       toast.error(`Failed to delete user: ${(err as Error).message}`);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleUnlinkIdentity = async () => {
+    if (!identityToUnlink || !userId) return;
+
+    setIsUnlinking(true);
+
+    try {
+      await rbacUsersApi.unlinkIdentity(userId, identityToUnlink.id);
+      setIdentities((prev) => prev.filter((i) => i.id !== identityToUnlink.id));
+      toast.success(`Unlinked ${identityToUnlink.displayName} sign-in`);
+      setIdentityToUnlink(null);
+    } catch (err) {
+      log.error("Failed to unlink SSO identity:", err);
+      toast.error(`Failed to unlink identity: ${(err as Error).message}`);
+    } finally {
+      setIsUnlinking(false);
     }
   };
 
@@ -726,6 +753,55 @@ const EditUser: React.FC = () => {
                 </div>
               </div>
 
+              {/* SSO Identity */}
+              <div className="rounded-xs border border-ink-500 bg-ink-200 p-4">
+                <h4 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">SSO identity</h4>
+                {identities.length === 0 ? (
+                  <p className="text-[12px] italic text-paper-faint">
+                    No SSO identity linked. This user signs in with a password.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {identities.map((identity) => (
+                      <div
+                        key={identity.id}
+                        className="flex items-center justify-between gap-3 rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xs border border-emerald-800 bg-emerald-950/30">
+                            <Link2 className="h-3.5 w-3.5 text-emerald-300" aria-hidden />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px] font-semibold text-paper">{identity.displayName}</span>
+                              <span className="inline-flex items-center rounded-xs border border-emerald-800 bg-emerald-950/30 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-emerald-300">
+                                Linked
+                              </span>
+                            </div>
+                            <p className="mt-0.5 truncate text-[11px] text-paper-muted">
+                              {identity.email || "no email"} · last sign-in{" "}
+                              {identity.lastLoginAt
+                                ? formatDistanceToNow(new Date(identity.lastLoginAt), { addSuffix: true })
+                                : "never"}
+                            </p>
+                          </div>
+                        </div>
+                        {canUpdateUsers && (
+                          <Button
+                            variant="outline"
+                            onClick={() => setIdentityToUnlink(identity)}
+                            className="h-8 shrink-0 gap-1.5 rounded-xs border-ink-500 bg-ink-100 px-2.5 text-[12px] text-paper hover:border-red-900/60 hover:bg-red-950/30 hover:text-red-200"
+                          >
+                            <Unlink className="h-3.5 w-3.5" />
+                            Unlink
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Permissions Summary */}
               <div className="rounded-xs border border-ink-500 bg-ink-200 p-4">
                 <h4 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Effective permissions</h4>
@@ -933,6 +1009,56 @@ const EditUser: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Unlink SSO identity confirmation */}
+      <AlertDialog
+        open={!!identityToUnlink}
+        onOpenChange={(open) => {
+          if (!open) setIdentityToUnlink(null);
+        }}
+      >
+        <AlertDialogContent className="rounded-xs border-ink-500 bg-ink-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-paper">
+              <AlertTriangle className="h-4 w-4 text-red-300" />
+              Unlink SSO identity
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-paper-muted">
+              Remove the <strong className="text-paper">{identityToUnlink?.displayName}</strong> sign-in link from{" "}
+              <strong className="text-paper">{user?.username}</strong>? If this is their only sign-in method, they will be
+              locked out until you reset their password.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isUnlinking}
+              className="h-9 rounded-xs border-ink-500 bg-ink-200 text-paper hover:border-ink-700 hover:bg-ink-300"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleUnlinkIdentity();
+              }}
+              disabled={isUnlinking}
+              className="h-9 gap-2 rounded-xs border border-red-900/60 bg-red-950/40 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-red-200 hover:bg-red-950/60"
+            >
+              {isUnlinking ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Unlinking…
+                </>
+              ) : (
+                <>
+                  <Unlink className="h-3.5 w-3.5" />
+                  Unlink
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 };

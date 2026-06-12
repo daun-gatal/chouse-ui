@@ -9,6 +9,7 @@ import { z } from "zod";
 import { getSsoConfig } from "./config";
 import { buildAuthorizationRedirect, exchangeCodeForIdentity } from "./client";
 import { provisionSsoUser } from "./service";
+import { describeSsoError } from "./errors";
 import {
   signStatePayload,
   verifyStatePayload,
@@ -80,11 +81,7 @@ ssoRoutes.get("/:provider/start", async (c) => {
   } catch (error) {
     // Discovery/metadata failure: degrade gracefully, never crash the server.
     requestLogger(c.get("requestId")).error(
-      {
-        module: "SSO",
-        provider: provider.id,
-        err: error instanceof Error ? error.message : String(error),
-      },
+      { module: "SSO", provider: provider.id, ...describeSsoError(error) },
       "SSO provider discovery failed"
     );
     return c.redirect(
@@ -201,12 +198,14 @@ ssoRoutes.post("/callback", zValidator("json", CallbackSchema), async (c) => {
       },
     });
   } catch (error) {
+    // Flatten the provider's own diagnostics once; reuse for audit + log.
+    const detail = describeSsoError(error);
     await createAuditLogWithContext(
       c,
       AUDIT_ACTIONS.SSO_LOGIN_FAILED,
       undefined,
       {
-        details: { provider: payload?.provider ?? "unknown" },
+        details: { provider: payload?.provider ?? "unknown", ...detail },
         ipAddress,
         status: "failure",
         errorMessage:
@@ -215,11 +214,7 @@ ssoRoutes.post("/callback", zValidator("json", CallbackSchema), async (c) => {
     );
     // Warn with provider context for ALL failures, AppError or not.
     requestLogger(c.get("requestId")).warn(
-      {
-        module: "SSO",
-        provider: payload?.provider ?? "unknown",
-        err: error instanceof Error ? error.message : String(error),
-      },
+      { module: "SSO", provider: payload?.provider ?? "unknown", ...detail },
       "SSO callback failed"
     );
     if (error instanceof AppError) throw error;
