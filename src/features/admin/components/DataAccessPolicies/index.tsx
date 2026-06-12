@@ -3,12 +3,13 @@
  *
  * Admin UI for creating and managing named, reusable data access policies.
  * A policy is a set of rules; each rule is scoped to a specific connection or to
- * all connections (global). Roles attach policies to grant their users access.
+ * all connections (global, connectionId = null). Roles attach policies to grant
+ * their users access.
  *
- * The create/edit flow is a 3-step wizard: Connections -> Access -> Details & Review.
+ * Create/edit is a 3-step wizard: Connections -> Access -> Details & Review.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -32,6 +33,7 @@ import {
   rbacConnectionsApi,
   type DataAccessPolicy,
   type DataAccessPolicyRule,
+  type ClickHouseConnection,
 } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
 import { cn } from '@/lib/utils';
@@ -45,8 +47,6 @@ interface RuleDraft {
   priority: number;
   description: string;
 }
-
-const GLOBAL = '__global__'; // sentinel for the "all connections" context
 
 function policyToRules(policy: DataAccessPolicy): RuleDraft[] {
   return policy.rules.map((r) => ({
@@ -73,8 +73,8 @@ export const DataAccessPolicies: React.FC = () => {
   // Wizard fields
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [scopeAll, setScopeAll] = useState(true);          // global context enabled
-  const [scopeConns, setScopeConns] = useState<string[]>([]); // specific connection contexts
+  const [allMode, setAllMode] = useState(true);           // exclusive "all connections" mode
+  const [scopeConns, setScopeConns] = useState<string[]>([]); // specific connections (when !allMode)
   const [rules, setRules] = useState<RuleDraft[]>([]);
 
   // Schema browse state (keyed by connectionId, and `${connId}:${db}` for tables)
@@ -131,16 +131,15 @@ export const DataAccessPolicies: React.FC = () => {
     onError: (error: Error) => toast.error(error.message || 'Failed to delete policy'),
   });
 
-  const resetWizard = () => {
-    setStep(1);
+  const resetBrowse = () => {
     setDbsByConn({}); setLoadingDbs({}); setExpandedDb({}); setTablesByKey({}); setLoadingTables({});
   };
 
   const openCreate = () => {
     setEditingId(null);
     setName(''); setDescription('');
-    setScopeAll(true); setScopeConns([]); setRules([]);
-    resetWizard();
+    setAllMode(true); setScopeConns([]); setRules([]);
+    setStep(1); resetBrowse();
     setShowDialog(true);
   };
 
@@ -151,24 +150,48 @@ export const DataAccessPolicies: React.FC = () => {
     setRules(drafts);
     const conns = Array.from(new Set(drafts.map((r) => r.connectionId).filter((c): c is string => c !== null)));
     setScopeConns(conns);
-    setScopeAll(drafts.some((r) => r.connectionId === null) || drafts.length === 0);
-    resetWizard();
+    // All-mode when there are global rules (or it's empty); specific when rules name connections.
+    setAllMode(conns.length === 0);
+    setStep(1); resetBrowse();
     setShowDialog(true);
   };
 
+  // The connections whose schema we browse in Step 2.
+  const browseConns: ClickHouseConnection[] = useMemo(() => {
+    const all = connections ?? [];
+    return allMode ? all : all.filter((c) => scopeConns.includes(c.id));
+  }, [connections, allMode, scopeConns]);
+
+  // The rule connectionId a pick under a given browse-connection should use.
+  const ruleConnFor = (browseConnId: string): string | null => (allMode ? null : browseConnId);
+
+  // The rule "groups" rendered in Step 2 / review: all-mode => one global group; else one per connection.
+  const ruleGroups: Array<string | null> = allMode ? [null] : scopeConns;
+
   // ---- Schema browsing ----
   const loadDatabases = async (connId: string) => {
-    if (dbsByConn[connId] || loadingDbs[connId]) return;
     setLoadingDbs((l) => ({ ...l, [connId]: true }));
     try {
       const dbs = await rbacDataAccessPoliciesApi.listDatabases(connId);
       setDbsByConn((d) => ({ ...d, [connId]: dbs }));
     } catch (error) {
-      toast.error(`Failed to load databases: ${(error as Error).message}`);
+      toast.error(`Failed to load databases for ${connectionName(connId)}: ${(error as Error).message}`);
+      setDbsByConn((d) => ({ ...d, [connId]: [] }));
     } finally {
       setLoadingDbs((l) => ({ ...l, [connId]: false }));
     }
   };
+
+  // Auto-list databases for every in-scope connection when entering Step 2.
+  useEffect(() => {
+    if (step !== 2) return;
+    for (const conn of browseConns) {
+      if (dbsByConn[conn.id] === undefined && !loadingDbs[conn.id]) {
+        void loadDatabases(conn.id);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, browseConns]);
 
   const toggleDb = async (connId: string, db: string) => {
     const key = `${connId}:${db}`;
@@ -188,8 +211,8 @@ export const DataAccessPolicies: React.FC = () => {
   };
 
   // ---- Rule helpers ----
-  const ruleIndex = (connId: string | null, db: string, table: string) =>
-    rules.findIndex((r) => r.connectionId === connId && r.databasePattern === db && r.tablePattern === table);
+  const hasRule = (connId: string | null, db: string, table: string) =>
+    rules.some((r) => r.connectionId === connId && r.databasePattern === db && r.tablePattern === table);
 
   const toggleAllowRule = (connId: string | null, db: string, table: string) => {
     setRules((rs) => {
@@ -199,34 +222,104 @@ export const DataAccessPolicies: React.FC = () => {
     });
   };
 
-  const addManualRule = (connId: string | null) => {
+  const addPatternRule = (connId: string | null) => {
     setRules((rs) => [...rs, { connectionId: connId, databasePattern: '*', tablePattern: '*', isAllowed: true, priority: 0, description: '' }]);
   };
 
-  const updateRuleAt = (globalIndex: number, patch: Partial<RuleDraft>) => {
+  const updateRuleAt = (globalIndex: number, patch: Partial<RuleDraft>) =>
     setRules((rs) => rs.map((r, i) => (i === globalIndex ? { ...r, ...patch } : r)));
-  };
+  const removeRuleAt = (globalIndex: number) => setRules((rs) => rs.filter((_, i) => i !== globalIndex));
 
-  const removeRuleAt = (globalIndex: number) => {
-    setRules((rs) => rs.filter((_, i) => i !== globalIndex));
-  };
-
-  // The connection contexts being configured, in order: global first, then specific.
-  const contexts: Array<{ id: string; connId: string | null; label: string }> = useMemo(() => {
-    const list: Array<{ id: string; connId: string | null; label: string }> = [];
-    if (scopeAll) list.push({ id: GLOBAL, connId: null, label: 'All connections' });
-    for (const c of scopeConns) list.push({ id: c, connId: c, label: connectionName(c) });
-    return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeAll, scopeConns, connections]);
-
-  const step1Valid = scopeAll || scopeConns.length > 0;
+  const step1Valid = allMode || scopeConns.length > 0;
   const step2Valid = rules.length > 0;
   const step3Valid = name.trim().length >= 2;
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-paper-dim" /></div>;
   }
+
+  // Render a database/table tree for one connection. Picks toggle a rule scoped to `ruleConn`.
+  const renderTree = (conn: ClickHouseConnection, ruleConn: string | null) => {
+    const dbs = dbsByConn[conn.id];
+    return (
+      <div className="rounded-xs border border-ink-500 bg-ink-100 p-2">
+        <div className="mb-1 flex items-center gap-2">
+          <Server className="h-3.5 w-3.5 text-paper-faint" />
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">{conn.name}</span>
+        </div>
+        {loadingDbs[conn.id] && <div className="flex items-center gap-2 py-1 text-[11px] text-paper-faint"><Loader2 className="h-3 w-3 animate-spin" /> Loading databases…</div>}
+        {dbs && dbs.length === 0 && !loadingDbs[conn.id] && <p className="py-1 text-[11px] text-paper-faint">No databases.</p>}
+        {dbs && dbs.length > 0 && (
+          <div className="max-h-56 space-y-0.5 overflow-y-auto">
+            {dbs.map((db) => {
+              const key = `${conn.id}:${db}`;
+              const open = !!expandedDb[key];
+              return (
+                <div key={db}>
+                  <div className="flex items-center gap-1.5 py-0.5">
+                    <button type="button" onClick={() => toggleDb(conn.id, db)} className="text-paper-faint hover:text-paper">
+                      {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                    </button>
+                    <Checkbox checked={hasRule(ruleConn, db, '*')} onCheckedChange={() => toggleAllowRule(ruleConn, db, '*')}
+                      className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50" />
+                    <Database className="h-3.5 w-3.5 text-paper-faint" />
+                    <button type="button" onClick={() => toggleDb(conn.id, db)} className="font-mono text-[12px] text-paper hover:text-brand">{db}</button>
+                    <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">(all tables)</span>
+                  </div>
+                  {open && (
+                    <div className="ml-7 space-y-0.5 border-l border-ink-500 pl-2">
+                      {loadingTables[key] ? (
+                        <div className="flex items-center gap-2 py-1 text-[11px] text-paper-faint"><Loader2 className="h-3 w-3 animate-spin" /> Loading tables…</div>
+                      ) : (tablesByKey[key] ?? []).length === 0 ? (
+                        <p className="py-1 text-[11px] text-paper-faint">No tables.</p>
+                      ) : (tablesByKey[key] ?? []).map((tbl) => (
+                        <label key={tbl} className="flex cursor-pointer items-center gap-1.5 rounded-xs px-1 py-0.5 hover:bg-ink-200">
+                          <Checkbox checked={hasRule(ruleConn, db, tbl)} onCheckedChange={() => toggleAllowRule(ruleConn, db, tbl)}
+                            className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50" />
+                          <Table2 className="h-3 w-3 text-paper-faint" />
+                          <span className="font-mono text-[12px] text-paper-muted">{tbl}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Render the editable rule list for one group (connectionId) with a wildcard add row.
+  const renderRuleGroup = (groupConn: string | null) => {
+    const groupRules = rules.map((r, i) => ({ r, i })).filter(({ r }) => r.connectionId === groupConn);
+    return (
+      <div className="space-y-1">
+        {groupRules.map(({ r, i }) => (
+          <div key={i} className="flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1.5">
+            <Input value={r.databasePattern} onChange={(e) => updateRuleAt(i, { databasePattern: e.target.value })}
+              placeholder="db / * / /regex/" className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper" />
+            <span className="text-paper-faint">.</span>
+            <Input value={r.tablePattern} onChange={(e) => updateRuleAt(i, { tablePattern: e.target.value })}
+              placeholder="table / *" className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper" />
+            <button type="button" onClick={() => updateRuleAt(i, { isAllowed: !r.isAllowed })}
+              className={cn('rounded-xs border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]',
+                r.isAllowed ? 'border-emerald-700 text-emerald-300' : 'border-red-700 text-red-300')}>
+              {r.isAllowed ? 'Allow' : 'Deny'}
+            </button>
+            <Button size="icon" variant="ghost" className="h-6 w-6 rounded-xs text-red-400 hover:bg-red-950/40" onClick={() => removeRuleAt(i)}>
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        ))}
+        <Button size="sm" variant="ghost" onClick={() => addPatternRule(groupConn)}
+          className="h-7 gap-1 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-100 hover:text-paper">
+          <Plus className="h-3 w-3" /> Add wildcard / pattern rule
+        </Button>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4 p-4">
@@ -316,7 +409,7 @@ export const DataAccessPolicies: React.FC = () => {
             </DialogTitle>
             <DialogDescription className="text-paper-muted">
               {step === 1 && 'Step 1 of 3 — choose which connections this policy covers.'}
-              {step === 2 && 'Step 2 of 3 — pick the databases/tables to grant for each connection.'}
+              {step === 2 && 'Step 2 of 3 — pick the databases/tables to grant.'}
               {step === 3 && 'Step 3 of 3 — name the policy and review.'}
             </DialogDescription>
           </DialogHeader>
@@ -342,20 +435,22 @@ export const DataAccessPolicies: React.FC = () => {
             {/* STEP 1 — Connections */}
             {step === 1 && (
               <>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
-                  <Checkbox checked={scopeAll} onCheckedChange={(v) => setScopeAll(v === true)}
-                    className="mt-0.5 border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50" />
-                  <Globe className="mt-0.5 h-4 w-4 text-paper-faint" />
-                  <div>
-                    <p className="text-[12px] font-medium text-paper">All connections (global rules)</p>
-                    <p className="text-[11px] text-paper-faint">Rules here apply to every connection, including ones added later.</p>
+                <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
+                  <div className="flex items-start gap-3">
+                    <Globe className="mt-0.5 h-4 w-4 text-paper-faint" />
+                    <div>
+                      <p className="text-[12px] font-medium text-paper">Apply to all connections</p>
+                      <p className="text-[11px] text-paper-faint">Rules apply to every connection, including ones added later.</p>
+                    </div>
                   </div>
+                  <Switch checked={allMode} onCheckedChange={setAllMode} />
                 </label>
-                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Or configure specific connections</p>
-                <div className="space-y-1">
+
+                <div className={cn('space-y-1', allMode && 'pointer-events-none opacity-40')}>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Or configure specific connections</p>
                   {(connections ?? []).map((conn) => (
                     <label key={conn.id} className="flex cursor-pointer items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-3 py-2 hover:bg-ink-200">
-                      <Checkbox checked={scopeConns.includes(conn.id)}
+                      <Checkbox disabled={allMode} checked={scopeConns.includes(conn.id)}
                         onCheckedChange={() => setScopeConns((s) => s.includes(conn.id) ? s.filter((x) => x !== conn.id) : [...s, conn.id])}
                         className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50" />
                       <Server className="h-3.5 w-3.5 text-paper-faint" />
@@ -367,100 +462,36 @@ export const DataAccessPolicies: React.FC = () => {
               </>
             )}
 
-            {/* STEP 2 — Access per context */}
+            {/* STEP 2 — Access */}
             {step === 2 && (
               <div className="space-y-3">
-                {contexts.map((ctx) => {
-                  const ctxRules = rules.map((r, i) => ({ r, i })).filter(({ r }) => r.connectionId === ctx.connId);
-                  return (
-                    <div key={ctx.id} className="space-y-2 rounded-xs border border-ink-500 bg-ink-200 p-3">
+                {browseConns.length === 0 && (
+                  <p className="flex items-center gap-1.5 text-[11px] text-paper-faint"><Info className="h-3 w-3" /> No connections to browse. You can still add wildcard/pattern rules below.</p>
+                )}
+
+                {/* Browse trees for discovery + ticking */}
+                {browseConns.map((conn) => (
+                  <div key={conn.id}>{renderTree(conn, ruleConnFor(conn.id))}</div>
+                ))}
+
+                {/* Editable rules, grouped by connection */}
+                <div className="space-y-2">
+                  {ruleGroups.map((g) => (
+                    <div key={g ?? '__all__'} className="space-y-1 rounded-xs border border-ink-500 bg-ink-200 p-3">
                       <div className="flex items-center gap-2">
-                        {ctx.connId === null ? <Globe className="h-3.5 w-3.5 text-paper-faint" /> : <Server className="h-3.5 w-3.5 text-paper-faint" />}
-                        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">{ctx.label}</span>
-                        <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{ctxRules.length} rule(s)</span>
+                        {g === null ? <Globe className="h-3.5 w-3.5 text-paper-faint" /> : <Server className="h-3.5 w-3.5 text-paper-faint" />}
+                        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">{connectionName(g)}</span>
+                        <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
+                          {rules.filter((r) => r.connectionId === g).length} rule(s)
+                        </span>
                       </div>
-
-                      {/* Browse (specific connections only) */}
-                      {ctx.connId !== null && (
-                        <div className="rounded-xs border border-ink-500 bg-ink-100 p-2">
-                          {!dbsByConn[ctx.connId] && !loadingDbs[ctx.connId] && (
-                            <Button size="sm" variant="ghost" onClick={() => loadDatabases(ctx.connId!)}
-                              className="h-7 gap-1 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-200 hover:text-paper">
-                              <Database className="h-3 w-3" /> Browse databases &amp; tables
-                            </Button>
-                          )}
-                          {loadingDbs[ctx.connId] && <div className="flex items-center gap-2 py-1 text-[11px] text-paper-faint"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</div>}
-                          {dbsByConn[ctx.connId] && (
-                            <div className="max-h-56 space-y-0.5 overflow-y-auto">
-                              {dbsByConn[ctx.connId].map((db) => {
-                                const key = `${ctx.connId}:${db}`;
-                                const open = !!expandedDb[key];
-                                const wholeDb = ruleIndex(ctx.connId, db, '*') >= 0;
-                                return (
-                                  <div key={db}>
-                                    <div className="flex items-center gap-1.5 py-0.5">
-                                      <button type="button" onClick={() => toggleDb(ctx.connId!, db)} className="text-paper-faint hover:text-paper">
-                                        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                                      </button>
-                                      <Checkbox checked={wholeDb} onCheckedChange={() => toggleAllowRule(ctx.connId, db, '*')}
-                                        className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50" />
-                                      <Database className="h-3.5 w-3.5 text-paper-faint" />
-                                      <button type="button" onClick={() => toggleDb(ctx.connId!, db)} className="font-mono text-[12px] text-paper hover:text-brand">{db}</button>
-                                      <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">(all tables)</span>
-                                    </div>
-                                    {open && (
-                                      <div className="ml-7 space-y-0.5 border-l border-ink-500 pl-2">
-                                        {loadingTables[key] ? (
-                                          <div className="flex items-center gap-2 py-1 text-[11px] text-paper-faint"><Loader2 className="h-3 w-3 animate-spin" /> Loading tables…</div>
-                                        ) : (tablesByKey[key] ?? []).length === 0 ? (
-                                          <p className="py-1 text-[11px] text-paper-faint">No tables.</p>
-                                        ) : (tablesByKey[key] ?? []).map((tbl) => (
-                                          <label key={tbl} className="flex cursor-pointer items-center gap-1.5 rounded-xs px-1 py-0.5 hover:bg-ink-200">
-                                            <Checkbox checked={ruleIndex(ctx.connId, db, tbl) >= 0} onCheckedChange={() => toggleAllowRule(ctx.connId, db, tbl)}
-                                              className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50" />
-                                            <Table2 className="h-3 w-3 text-paper-faint" />
-                                            <span className="font-mono text-[12px] text-paper-muted">{tbl}</span>
-                                          </label>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Manual / current rules for this context */}
-                      <div className="space-y-1">
-                        {ctxRules.map(({ r, i }) => (
-                          <div key={i} className="flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1.5">
-                            <Input value={r.databasePattern} onChange={(e) => updateRuleAt(i, { databasePattern: e.target.value })}
-                              placeholder="db / * / /regex/" className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper" />
-                            <span className="text-paper-faint">.</span>
-                            <Input value={r.tablePattern} onChange={(e) => updateRuleAt(i, { tablePattern: e.target.value })}
-                              placeholder="table / *" className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper" />
-                            <button type="button" onClick={() => updateRuleAt(i, { isAllowed: !r.isAllowed })}
-                              className={cn('rounded-xs border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]',
-                                r.isAllowed ? 'border-emerald-700 text-emerald-300' : 'border-red-700 text-red-300')}>
-                              {r.isAllowed ? 'Allow' : 'Deny'}
-                            </button>
-                            <Button size="icon" variant="ghost" className="h-6 w-6 rounded-xs text-red-400 hover:bg-red-950/40" onClick={() => removeRuleAt(i)}>
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ))}
-                        <Button size="sm" variant="ghost" onClick={() => addManualRule(ctx.connId)}
-                          className="h-7 gap-1 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-100 hover:text-paper">
-                          <Plus className="h-3 w-3" /> Add pattern rule
-                        </Button>
-                      </div>
+                      {renderRuleGroup(g)}
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+
                 {!step2Valid && (
-                  <p className="flex items-center gap-1.5 text-[11px] text-amber-300"><Info className="h-3 w-3" /> Add at least one rule to continue.</p>
+                  <p className="flex items-center gap-1.5 text-[11px] text-amber-300"><Info className="h-3 w-3" /> Tick at least one table/database or add a pattern rule to continue.</p>
                 )}
               </div>
             )}
@@ -480,13 +511,13 @@ export const DataAccessPolicies: React.FC = () => {
                 <div className="space-y-2">
                   <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Review ({rules.length} rule(s))</Label>
                   <div className="space-y-2">
-                    {contexts.map((ctx) => {
-                      const ctxRules = rules.filter((r) => r.connectionId === ctx.connId);
-                      if (ctxRules.length === 0) return null;
+                    {ruleGroups.map((g) => {
+                      const groupRules = rules.filter((r) => r.connectionId === g);
+                      if (groupRules.length === 0) return null;
                       return (
-                        <div key={ctx.id} className="rounded-xs border border-ink-500 bg-ink-200 p-2">
-                          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{ctx.label}</p>
-                          {ctxRules.map((r, i) => (
+                        <div key={g ?? '__all__'} className="rounded-xs border border-ink-500 bg-ink-200 p-2">
+                          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{connectionName(g)}</p>
+                          {groupRules.map((r, i) => (
                             <div key={i} className="flex items-center justify-between py-0.5 text-[12px]">
                               <span className="font-mono text-paper-muted">{r.databasePattern}.{r.tablePattern}</span>
                               <span className={cn('font-mono text-[10px] uppercase', r.isAllowed ? 'text-emerald-300' : 'text-red-300')}>{r.isAllowed ? 'allow' : 'deny'} · p{r.priority}</span>
