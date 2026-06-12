@@ -298,6 +298,69 @@ export const dataAccessRules = sqliteTable('rbac_data_access_rules', {
 }));
 
 // ============================================
+// Data Access Policies (named, reusable bundles)
+// A policy groups one or more pattern rules and is attached to roles (M:N).
+// Connection scope is policy-level: allConnections=true applies everywhere,
+// otherwise the policy applies only to its linked connections.
+// ============================================
+
+export const dataAccessPolicies = sqliteTable('rbac_data_access_policies', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  // When true, the policy applies to all connections and connection links are ignored.
+  // Explicit flag (not "zero links = all") so deleting a connection fails closed.
+  allConnections: integer('all_connections', { mode: 'boolean' }).notNull().default(false),
+  // System policies (e.g. guest system-tables) cannot be deleted.
+  isSystem: integer('is_system', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+}, (table) => ({
+  nameIdx: uniqueIndex('data_access_policies_name_idx').on(table.name),
+}));
+
+// Pattern entries inside a policy (database/table patterns + allow/deny + priority)
+export const dataAccessPolicyRules = sqliteTable('rbac_data_access_policy_rules', {
+  id: text('id').primaryKey(),
+  policyId: text('policy_id').notNull().references(() => dataAccessPolicies.id, { onDelete: 'cascade' }),
+  databasePattern: text('database_pattern').notNull().default('*'),
+  tablePattern: text('table_pattern').notNull().default('*'),
+  isAllowed: integer('is_allowed', { mode: 'boolean' }).notNull().default(true),
+  priority: integer('priority').notNull().default(0),
+  description: text('description'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  policyIdx: index('data_access_policy_rules_policy_idx').on(table.policyId),
+  patternIdx: index('data_access_policy_rules_pattern_idx').on(table.databasePattern, table.tablePattern),
+}));
+
+// M:N link policy <-> connection (only consulted when allConnections=false)
+export const dataAccessPolicyConnections = sqliteTable('rbac_data_access_policy_connections', {
+  id: text('id').primaryKey(),
+  policyId: text('policy_id').notNull().references(() => dataAccessPolicies.id, { onDelete: 'cascade' }),
+  connectionId: text('connection_id').notNull().references(() => clickhouseConnections.id, { onDelete: 'cascade' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  policyConnIdx: uniqueIndex('data_access_policy_conn_idx').on(table.policyId, table.connectionId),
+  policyIdx: index('data_access_policy_conn_policy_idx').on(table.policyId),
+  connIdx: index('data_access_policy_conn_conn_idx').on(table.connectionId),
+}));
+
+// M:N link role <-> policy
+export const roleDataAccessPolicies = sqliteTable('rbac_role_data_access_policies', {
+  id: text('id').primaryKey(),
+  roleId: text('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  policyId: text('policy_id').notNull().references(() => dataAccessPolicies.id, { onDelete: 'cascade' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  rolePolicyIdx: uniqueIndex('role_data_access_role_policy_idx').on(table.roleId, table.policyId),
+  roleIdx: index('role_data_access_role_idx').on(table.roleId),
+  policyIdx: index('role_data_access_policy_idx').on(table.policyId),
+}));
+
+// ============================================
 // ClickHouse Users Metadata Table
 // Stores configuration for ClickHouse users managed through the UI
 // ============================================
@@ -524,6 +587,14 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type ClickHouseConnection = typeof clickhouseConnections.$inferSelect;
 export type DataAccessRule = typeof dataAccessRules.$inferSelect;
 export type NewDataAccessRule = typeof dataAccessRules.$inferInsert;
+export type DataAccessPolicy = typeof dataAccessPolicies.$inferSelect;
+export type NewDataAccessPolicy = typeof dataAccessPolicies.$inferInsert;
+export type DataAccessPolicyRule = typeof dataAccessPolicyRules.$inferSelect;
+export type NewDataAccessPolicyRule = typeof dataAccessPolicyRules.$inferInsert;
+export type DataAccessPolicyConnection = typeof dataAccessPolicyConnections.$inferSelect;
+export type NewDataAccessPolicyConnection = typeof dataAccessPolicyConnections.$inferInsert;
+export type RoleDataAccessPolicy = typeof roleDataAccessPolicies.$inferSelect;
+export type NewRoleDataAccessPolicy = typeof roleDataAccessPolicies.$inferInsert;
 export type ClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferSelect;
 export type NewClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferInsert;
 export type SavedQuery = typeof savedQueries.$inferSelect;

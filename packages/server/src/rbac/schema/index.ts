@@ -73,6 +73,7 @@ export interface RoleResponse {
   isDefault: boolean;
   priority: number;
   permissions: string[];
+  dataAccessPolicyIds: string[];
   userCount?: number;
 }
 
@@ -107,6 +108,7 @@ export interface CreateRoleInput {
   displayName: string;
   description?: string;
   permissionIds: string[];
+  dataAccessPolicyIds?: string[];
   isDefault?: boolean;
 }
 
@@ -114,5 +116,6 @@ export interface UpdateRoleInput {
   displayName?: string;
   description?: string | null;
   permissionIds?: string[];
+  dataAccessPolicyIds?: string[];
   isDefault?: boolean;
 }

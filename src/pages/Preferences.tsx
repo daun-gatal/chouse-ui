@@ -422,23 +422,17 @@ const DataAccessCard: React.FC<{
   const isDatabaseExpanded = (connId: string, db: string) =>
     expandedDatabases[`${connId}:${db}`] !== false;
 
-  const groupedByConnection = useMemo(() => {
-    const connMap: Record<string, Record<string, typeof allRules>> = {};
+  const groupedByPolicy = useMemo(() => {
+    const policyMap: Record<string, Record<string, typeof allRules>> = {};
     allRules.forEach((rule) => {
-      const connId = rule.connectionId || "all";
-      if (!connMap[connId]) connMap[connId] = {};
+      const policy = rule.policyName || "Policy";
+      if (!policyMap[policy]) policyMap[policy] = {};
       const dbPattern = rule.databasePattern || "*";
-      if (!connMap[connId][dbPattern]) connMap[connId][dbPattern] = [];
-      connMap[connId][dbPattern].push(rule);
+      if (!policyMap[policy][dbPattern]) policyMap[policy][dbPattern] = [];
+      policyMap[policy][dbPattern].push(rule);
     });
-    return connMap;
+    return policyMap;
   }, [allRules]);
-
-  const getConnectionName = (id: string) => {
-    if (id === "all") return "All connections";
-    const conn = connections.find((c) => c.id === id);
-    return conn?.name || `Conn: ${id.substring(0, 8)}`;
-  };
 
   return (
     <SettingCard
@@ -468,19 +462,19 @@ const DataAccessCard: React.FC<{
             </div>
           ) : (
             <div className="custom-scrollbar h-full space-y-5 overflow-y-auto pr-1">
-              {Object.entries(groupedByConnection).map(([connId, dbGroups]) => (
+              {Object.entries(groupedByPolicy).map(([connId, dbGroups]) => (
                 <div key={connId} className="space-y-3">
-                  {/* Connection Header */}
+                  {/* Policy Header */}
                   <button
                     type="button"
                     className="group/conn flex w-full items-center gap-3 text-left"
                     onClick={() => toggleConnection(connId)}
                   >
                     <span className="grid h-7 w-7 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted transition-colors group-hover/conn:border-ink-700 group-hover/conn:text-paper">
-                      <Server className="h-3.5 w-3.5" aria-hidden />
+                      <Shield className="h-3.5 w-3.5" aria-hidden />
                     </span>
                     <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper group-hover/conn:text-paper">
-                      {getConnectionName(connId)}
+                      {connId}
                     </span>
                     <div className="h-px flex-1 bg-ink-500" />
                     {isConnectionExpanded(connId) ? (
@@ -543,11 +537,6 @@ const DataAccessCard: React.FC<{
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-1.5">
-                                        {rule.accessType !== "read" && (
-                                          <span className="rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
-                                            {rule.accessType}
-                                          </span>
-                                        )}
                                         <span
                                           className={cn(
                                             "inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]",

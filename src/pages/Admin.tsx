@@ -6,6 +6,7 @@ import InfoDialog from "@/components/common/InfoDialog";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { RbacRolesTable, RbacAuditLogs } from "@/features/rbac/components";
 import ConnectionManagement from "@/features/admin/components/ConnectionManagement";
+import { DataAccessPolicies } from "@/features/admin/components/DataAccessPolicies";
 import ClickHouseUsersManagement from "@/features/admin/components/ClickHouseUsers";
 import AiModelsManagement from "@/features/admin/components/AiModels";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
@@ -16,6 +17,7 @@ import {
   ShieldCheck,
   Users,
   Shield,
+  Database,
   FileText,
   Server,
   UserCog,
@@ -31,6 +33,7 @@ interface AdminTabConfig {
 type AdminTabKey =
   | "users"
   | "roles"
+  | "data-access"
   | "connections"
   | "clickhouse-users"
   | "audit"
@@ -46,6 +49,11 @@ const ADMIN_TAB_CONFIG: Record<AdminTabKey, AdminTabConfig> = {
     icon: Shield,
     label: "Roles",
     description: "System roles & permissions",
+  },
+  "data-access": {
+    icon: Database,
+    label: "Data access",
+    description: "Database & table policies",
   },
   connections: {
     icon: Server,
@@ -135,6 +143,7 @@ export default function Admin() {
 
   const canViewUsers = hasPermission(RBAC_PERMISSIONS.USERS_VIEW);
   const canViewRoles = hasPermission(RBAC_PERMISSIONS.ROLES_VIEW);
+  const canViewDataAccess = hasPermission(RBAC_PERMISSIONS.DATA_ACCESS_VIEW);
   const canViewAudit = hasPermission(RBAC_PERMISSIONS.AUDIT_VIEW);
   const canViewConnections = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canViewClickHouseUsers = hasPermission(RBAC_PERMISSIONS.CH_USERS_VIEW);
@@ -146,6 +155,7 @@ export default function Admin() {
   const availableTabs: AdminTabKey[] = [
     ...(canViewUsers ? (["users"] as AdminTabKey[]) : []),
     ...(canViewRoles ? (["roles"] as AdminTabKey[]) : []),
+    ...(canViewDataAccess ? (["data-access"] as AdminTabKey[]) : []),
     ...(canViewConnections ? (["connections"] as AdminTabKey[]) : []),
     ...(canViewClickHouseUsers ? (["clickhouse-users"] as AdminTabKey[]) : []),
     ...(canViewAiModels ? (["ai-models"] as AdminTabKey[]) : []),
@@ -232,6 +242,14 @@ export default function Admin() {
             <TabsContent value="roles" className="mt-0 h-full outline-none">
               <div className="rounded-md border border-ink-500 bg-ink-100">
                 <RbacRolesTable onCreateRole={() => {}} onEditRole={() => {}} />
+              </div>
+            </TabsContent>
+          )}
+
+          {activeTab === "data-access" && canViewDataAccess && (
+            <TabsContent value="data-access" className="mt-0 h-full outline-none">
+              <div className="rounded-md border border-ink-500 bg-ink-100">
+                <DataAccessPolicies />
               </div>
             </TabsContent>
           )}

@@ -25,6 +25,7 @@ bun run lint                   # ESLint
 bun run typecheck              # TypeScript check (tsc --noEmit)
 bunx vitest run                # Frontend tests
 ./scripts/test-isolated-server.sh  # Server tests
+./scripts/test-migrations.sh   # RBAC migration tests (SQLite + PostgreSQL via Docker)
 ```
 
 ### Default Login
@@ -95,6 +96,35 @@ bunx vitest run                # Frontend tests
 - Zustand store tests must use dynamic imports to avoid persist initialization issues
 - Coverage goal: 80%+ on utilities and API modules
 
+### Database Migrations — testing is MANDATORY
+Any change to `packages/server/src/rbac/db/migrations.ts` (adding a migration, or
+editing an existing one) **MUST** be accompanied by tests, and they must pass on
+**both SQLite and PostgreSQL**:
+
+- Tests live in `packages/server/src/rbac/db/migrations.test.ts` and run on both
+  dialects via the harness in `migrationTestHarness.ts`. PostgreSQL is exercised in
+  a throwaway Docker container the harness creates and destroys — **Docker is
+  required** (`./scripts/test-migrations.sh`).
+- **Every migration version must have an entry in `VERSION_CHECKS`** asserting its
+  effect (table/column/index/permission/grant/data). A guard test fails if a
+  migration is added without one — so a new migration cannot merge untested.
+- **Upgrade paths are covered, not just fresh install.** `migrations.test.ts` runs
+  three install/upgrade shapes on both dialects — fresh install (all at once),
+  *stepwise* upgrade (one release at a time, the common real-world path), and a
+  *skip-version* upgrade (old install jumping straight to HEAD) — and asserts they
+  all land in the same final state. A new migration is exercised by all three
+  automatically once it has a `VERSION_CHECKS` entry; make sure it applies cleanly
+  on top of an existing DB (idempotent, `IF NOT EXISTS`/guarded), not only on a
+  freshly-created schema.
+- For **data migrations** (anything that moves/transforms rows, not just schema),
+  also add a dedicated test that seeds representative pre-migration data with
+  `runMigrations({ through: '<prev-version>' })`, runs the new migration, and
+  asserts the transformation **and idempotency** (re-running is a no-op). Cover the
+  edge cases (empty data, conflicting rows, dedup, fail-closed behaviour).
+- Migrations are forward-only and not transaction-wrapped: keep every step
+  idempotent, and split destructive steps (e.g. `DROP TABLE`) into their own later
+  migration so a failed transform never reaches the drop.
+
 ### Code Organization
 - Feature-based structure (not file-type-based)
 - Named exports for utilities/components; default exports only for page components
@@ -153,3 +183,4 @@ Manual override (emergency use only): `bun run release 2.20.0`
 | After finishing a task — scan files you touched | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — remove unused imports, symbols, exports left behind |
 | Proactively scanning the codebase for cleanup | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — full scan process including dependency and barrel-export checks |
 | A change is user-visible (new feature, bug fix, removal) | Drop a fragment in `changelogs/unreleased/<pr-number>-<slug>.md` — never edit `CHANGELOG.md` directly |
+| Touching `rbac/db/migrations.ts` (add or edit a migration) | **MANDATORY** — add/update `migrations.test.ts` (per-version `VERSION_CHECKS` + data-migration cases) and run `./scripts/test-migrations.sh` (SQLite + PostgreSQL/Docker). See [Database Migrations](#database-migrations--testing-is-mandatory). |

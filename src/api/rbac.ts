@@ -42,7 +42,7 @@ export interface RbacUser {
 export interface ProfileResponse {
   user: RbacUser;
   connections: any[]; // ClickHouseConnection[] - already defined but kept simple for now
-  dataAccessRules: any[]; // DataAccessRule[]
+  dataAccessRules: DataAccessRule[];
 }
 
 export interface RbacRole {
@@ -54,6 +54,7 @@ export interface RbacRole {
   isDefault: boolean;
   priority: number;
   permissions: string[];
+  dataAccessPolicyIds: string[];
   userCount?: number;
 }
 
@@ -273,6 +274,7 @@ export interface CreateRoleInput {
   displayName: string;
   description?: string;
   permissionIds: string[];
+  dataAccessPolicyIds: string[];
   isDefault?: boolean;
 }
 
@@ -280,6 +282,7 @@ export interface UpdateRoleInput {
   displayName?: string;
   description?: string | null;
   permissionIds?: string[];
+  dataAccessPolicyIds?: string[];
   isDefault?: boolean;
 }
 
@@ -1142,46 +1145,66 @@ export const rbacClickHouseUsersApi = {
 
 export type AccessType = 'read' | 'write' | 'admin';
 
+/**
+ * A resolved effective rule (as returned by the profile endpoint). Access type and
+ * per-rule connection no longer exist — connection scope lives on the owning policy.
+ */
 export interface DataAccessRule {
-  id: string;
-  roleId: string | null;
-  userId: string | null;
-  connectionId: string | null;
   databasePattern: string;
   tablePattern: string;
-  accessType: AccessType;
   isAllowed: boolean;
   priority: number;
-  description: string | null;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string | null;
-}
-
-export interface CreateDataAccessRuleInput {
-  roleId?: string | null;
-  userId?: string | null;
-  connectionId?: string | null;
-  databasePattern: string;
-  tablePattern: string;
-  isAllowed?: boolean;
-  priority?: number;
-  description?: string;
-}
-
-export interface UpdateDataAccessRuleInput {
-  connectionId?: string | null;
-  databasePattern?: string;
-  tablePattern?: string;
-  isAllowed?: boolean;
-  priority?: number;
-  description?: string;
+  policyId: string;
+  policyName: string;
 }
 
 export interface AccessCheckResult {
   allowed: boolean;
   rule?: DataAccessRule;
   reason?: string;
+}
+
+// ============================================
+// Data Access Policy Types
+// ============================================
+
+export interface DataAccessPolicyRule {
+  id?: string;
+  databasePattern: string;
+  tablePattern: string;
+  isAllowed: boolean;
+  priority: number;
+  description?: string | null;
+}
+
+export interface DataAccessPolicy {
+  id: string;
+  name: string;
+  description: string | null;
+  allConnections: boolean;
+  isSystem: boolean;
+  connectionIds: string[];
+  rules: DataAccessPolicyRule[];
+  roleIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+}
+
+export interface CreateDataAccessPolicyInput {
+  name: string;
+  description?: string | null;
+  allConnections?: boolean;
+  connectionIds?: string[];
+  rules: Omit<DataAccessPolicyRule, 'id'>[];
+}
+
+export interface UpdateDataAccessPolicyInput {
+  name?: string;
+  description?: string | null;
+  allConnections?: boolean;
+  connectionIds?: string[];
+  rules?: Omit<DataAccessPolicyRule, 'id'>[];
 }
 
 // ============================================
@@ -1486,106 +1509,6 @@ export const rbacUserPreferencesApi = {
 
 export const rbacDataAccessApi = {
   /**
-   * List all data access rules
-   */
-  async list(options?: {
-    roleId?: string;
-    userId?: string;
-    connectionId?: string;
-    limit?: number;
-    offset?: number;
-  }): Promise<{ rules: DataAccessRule[]; total: number }> {
-    const params = new URLSearchParams();
-    if (options?.roleId) params.set('roleId', options.roleId);
-    if (options?.userId) params.set('userId', options.userId);
-    if (options?.connectionId) params.set('connectionId', options.connectionId);
-    if (options?.limit) params.set('limit', String(options.limit));
-    if (options?.offset) params.set('offset', String(options.offset));
-
-    const query = params.toString();
-    return rbacFetch(`/data-access${query ? `?${query}` : ''}`);
-  },
-
-  /**
-   * Get rules for a specific role
-   */
-  async getRulesForRole(roleId: string, connectionId?: string): Promise<DataAccessRule[]> {
-    const params = connectionId ? `?connectionId=${connectionId}` : '';
-    return rbacFetch(`/data-access/role/${roleId}${params}`);
-  },
-
-  /**
-   * Get rules for a specific user (user-level rules only)
-   */
-  async getRulesForUser(userId: string): Promise<DataAccessRule[]> {
-    return rbacFetch(`/data-access/user/${userId}`);
-  },
-
-  /**
-   * Get rule by ID
-   */
-  async getById(id: string): Promise<DataAccessRule> {
-    return rbacFetch(`/data-access/${id}`);
-  },
-
-  /**
-   * Create a new rule
-   */
-  async create(input: CreateDataAccessRuleInput): Promise<DataAccessRule> {
-    return rbacFetch('/data-access', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-  },
-
-  /**
-   * Update a rule
-   */
-  async update(id: string, input: UpdateDataAccessRuleInput): Promise<DataAccessRule> {
-    return rbacFetch(`/data-access/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(input),
-    });
-  },
-
-  /**
-   * Delete a rule
-   */
-  async delete(id: string): Promise<void> {
-    await rbacFetch(`/data-access/${id}`, {
-      method: 'DELETE',
-    });
-  },
-
-  /**
-   * Bulk set rules for a role (replaces existing)
-   */
-  async bulkSetForRole(
-    roleId: string,
-    rules: Omit<CreateDataAccessRuleInput, 'roleId' | 'userId'>[]
-  ): Promise<DataAccessRule[]> {
-    return rbacFetch('/data-access/bulk', {
-      method: 'POST',
-      body: JSON.stringify({ roleId, rules }),
-    });
-  },
-
-  /**
-   * Bulk set rules for a user (replaces existing user-level rules)
-   */
-  async bulkSetForUser(
-    userId: string,
-    rules: Omit<CreateDataAccessRuleInput, 'roleId' | 'userId'>[]
-  ): Promise<DataAccessRule[]> {
-    return rbacFetch('/data-access/bulk', {
-      method: 'POST',
-      body: JSON.stringify({ userId, rules }),
-    });
-  },
-
-
-
-  /**
    * Check if current user has access to a database/table
    */
   async checkAccess(
@@ -1625,6 +1548,61 @@ export const rbacDataAccessApi = {
       method: 'POST',
       body: JSON.stringify({ database, tables, connectionId }),
     });
+  },
+};
+
+// ============================================
+// Data Access Policies API
+// ============================================
+
+export const rbacDataAccessPoliciesApi = {
+  /** List all data access policies */
+  async list(): Promise<DataAccessPolicy[]> {
+    return rbacFetch('/data-access-policies');
+  },
+
+  /** Get a policy by id */
+  async get(id: string): Promise<DataAccessPolicy> {
+    return rbacFetch(`/data-access-policies/${id}`);
+  },
+
+  /** Create a policy */
+  async create(input: CreateDataAccessPolicyInput): Promise<DataAccessPolicy> {
+    return rbacFetch('/data-access-policies', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  /** Update a policy */
+  async update(id: string, input: UpdateDataAccessPolicyInput): Promise<DataAccessPolicy> {
+    return rbacFetch(`/data-access-policies/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+
+  /** Delete a policy */
+  async delete(id: string): Promise<void> {
+    await rbacFetch(`/data-access-policies/${id}`, { method: 'DELETE' });
+  },
+
+  /** Policies attached to a role */
+  async getForRole(roleId: string): Promise<DataAccessPolicy[]> {
+    return rbacFetch(`/data-access-policies/role/${roleId}`);
+  },
+
+  /** Replace the set of policies attached to a role */
+  async setForRole(roleId: string, policyIds: string[]): Promise<DataAccessPolicy[]> {
+    return rbacFetch(`/data-access-policies/role/${roleId}`, {
+      method: 'POST',
+      body: JSON.stringify({ policyIds }),
+    });
+  },
+
+  /** Role ids that use a policy */
+  async getRolesForPolicy(id: string): Promise<string[]> {
+    return rbacFetch(`/data-access-policies/${id}/roles`);
   },
 };
 

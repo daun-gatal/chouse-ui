@@ -44,7 +44,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.25.0';
+export const APP_VERSION = '1.27.0';
 
 // ============================================
 // Error Helpers
@@ -75,7 +75,7 @@ function isUniqueConstraintError(error: unknown): boolean {
 // Migration Registry
 // ============================================
 
-const MIGRATIONS: Migration[] = [
+export const MIGRATIONS: Migration[] = [
   {
     version: '1.0.0',
     name: 'init',
@@ -287,40 +287,53 @@ const MIGRATIONS: Migration[] = [
       logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Ensured Guest role exists with permissions');
 
       // Create data access rule for GUEST role to allow read access to system tables
-      // This ensures guest users can query system tables for metrics and logs
+      // This ensures guest users can query system tables for metrics and logs.
+      // NOTE: written with raw SQL against rbac_data_access_rules (the table created
+      // in 1.1.0) rather than the data-access service, so this historical migration
+      // keeps replaying correctly even after the service moves to data access policies.
       const guestRoleId = roleIdMap.get(SYSTEM_ROLES.GUEST);
       if (guestRoleId) {
-        const { createDataAccessRule } = await import('../services/dataAccess');
-
+        const dbType = getDatabaseType();
         try {
-          // Check if rule already exists (idempotent)
-          const { getRulesForRole } = await import('../services/dataAccess');
-          const existingRules = await getRulesForRole(guestRoleId);
-          const hasSystemRule = existingRules.some(
-            rule => rule.databasePattern === 'system' &&
-              rule.tablePattern === '*' &&
-              rule.accessType === 'read' &&
-              rule.isAllowed === true
-          );
-
-          if (!hasSystemRule) {
-            await createDataAccessRule({
-              roleId: guestRoleId,
-              connectionId: null, // Applies to all connections
-              databasePattern: 'system',
-              tablePattern: '*',
-              accessType: 'read',
-              isAllowed: true,
-              priority: 100, // High priority
-              description: 'Allow GUEST role to read system tables for metrics and logs',
-            });
-            logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Created data access rule for system tables');
+          if (dbType === 'sqlite') {
+            const existing = (db as SqliteDb).all(sql`
+              SELECT id FROM rbac_data_access_rules
+              WHERE role_id = ${guestRoleId} AND database_pattern = 'system'
+                AND table_pattern = '*' AND is_allowed = 1
+              LIMIT 1
+            `) as Array<{ id: string }>;
+            if (existing.length === 0) {
+              (db as SqliteDb).run(sql`
+                INSERT INTO rbac_data_access_rules
+                  (id, role_id, connection_id, database_pattern, table_pattern, access_type, is_allowed, priority, created_at, updated_at, description)
+                VALUES
+                  (${randomUUID()}, ${guestRoleId}, NULL, 'system', '*', 'read', 1, 100, unixepoch(), unixepoch(), 'Allow GUEST role to read system tables for metrics and logs')
+              `);
+              logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Created data access rule for system tables');
+            } else {
+              logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] System table access rule already exists');
+            }
           } else {
-            logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] System table access rule already exists');
+            const res = await (db as PostgresDb).execute(sql`
+              SELECT id FROM rbac_data_access_rules
+              WHERE role_id = ${guestRoleId} AND database_pattern = 'system'
+                AND table_pattern = '*' AND is_allowed = true
+              LIMIT 1
+            `);
+            const rows = Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows ?? [];
+            if (rows.length === 0) {
+              await (db as PostgresDb).execute(sql`
+                INSERT INTO rbac_data_access_rules
+                  (id, role_id, connection_id, database_pattern, table_pattern, access_type, is_allowed, priority, created_at, updated_at, description)
+                VALUES
+                  (${randomUUID()}, ${guestRoleId}, NULL, 'system', '*', 'read', true, 100, NOW(), NOW(), 'Allow GUEST role to read system tables for metrics and logs')
+              `);
+              logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] Created data access rule for system tables');
+            } else {
+              logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] System table access rule already exists');
+            }
           }
         } catch (error: unknown) {
-          // Rule might already exist (unique constraint), which is fine
-          // (Drizzle wraps the underlying error in error.cause, so check both)
           if (isUniqueConstraintError(error)) {
             logger.info({ module: 'RBAC', phase: 'migration' },'[Migration 1.2.2] System table access rule already exists');
           } else {
@@ -2681,6 +2694,322 @@ const MIGRATIONS: Migration[] = [
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.25.0] Dropped rbac_user_identities table');
     },
   },
+  {
+    version: '1.26.0',
+    name: 'data_access_policies',
+    description: 'Add data access policies (named, role-attached, connection-scoped); migrate legacy role/user rules into policies and collapse users to a single role',
+    up: async (db) => {
+      const { createHash } = await import('crypto');
+      const { seedPermissions } = await import('../services/seed');
+      const { PERMISSIONS } = await import('../schema/base');
+      const isLite = getDatabaseType() === 'sqlite';
+
+      const all = async (q: ReturnType<typeof sql>): Promise<Array<Record<string, unknown>>> => {
+        if (isLite) return (db as SqliteDb).all(q) as Array<Record<string, unknown>>;
+        const res = await (db as PostgresDb).execute(q);
+        return (Array.isArray(res) ? res : ((res as { rows?: unknown[] }).rows ?? [])) as Array<Record<string, unknown>>;
+      };
+      const run = async (q: ReturnType<typeof sql>): Promise<void> => {
+        if (isLite) { (db as SqliteDb).run(q); } else { await (db as PostgresDb).execute(q); }
+      };
+      const b = (v: boolean): boolean | number => (isLite ? (v ? 1 : 0) : v);
+      const now = () => (isLite ? sql`unixepoch()` : sql`NOW()`);
+
+      // ---- 1) Create the new tables + indexes ----
+      if (isLite) {
+        (db as SqliteDb).run(sql`CREATE TABLE IF NOT EXISTS rbac_data_access_policies (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL UNIQUE,
+          description TEXT,
+          all_connections INTEGER NOT NULL DEFAULT 0,
+          is_system INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL
+        )`);
+        (db as SqliteDb).run(sql`CREATE TABLE IF NOT EXISTS rbac_data_access_policy_rules (
+          id TEXT PRIMARY KEY NOT NULL,
+          policy_id TEXT NOT NULL REFERENCES rbac_data_access_policies(id) ON DELETE CASCADE,
+          database_pattern TEXT NOT NULL DEFAULT '*',
+          table_pattern TEXT NOT NULL DEFAULT '*',
+          is_allowed INTEGER NOT NULL DEFAULT 1,
+          priority INTEGER NOT NULL DEFAULT 0,
+          description TEXT,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+        )`);
+        (db as SqliteDb).run(sql`CREATE TABLE IF NOT EXISTS rbac_data_access_policy_connections (
+          id TEXT PRIMARY KEY NOT NULL,
+          policy_id TEXT NOT NULL REFERENCES rbac_data_access_policies(id) ON DELETE CASCADE,
+          connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        )`);
+        (db as SqliteDb).run(sql`CREATE TABLE IF NOT EXISTS rbac_role_data_access_policies (
+          id TEXT PRIMARY KEY NOT NULL,
+          role_id TEXT NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+          policy_id TEXT NOT NULL REFERENCES rbac_data_access_policies(id) ON DELETE CASCADE,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        )`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS data_access_policy_rules_policy_idx ON rbac_data_access_policy_rules(policy_id)`);
+        (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS data_access_policy_conn_idx ON rbac_data_access_policy_connections(policy_id, connection_id)`);
+        (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS role_data_access_role_policy_idx ON rbac_role_data_access_policies(role_id, policy_id)`);
+      } else {
+        await (db as PostgresDb).execute(sql`CREATE TABLE IF NOT EXISTS rbac_data_access_policies (
+          id TEXT PRIMARY KEY NOT NULL,
+          name VARCHAR(255) NOT NULL UNIQUE,
+          description TEXT,
+          all_connections BOOLEAN NOT NULL DEFAULT false,
+          is_system BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          created_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL
+        )`);
+        await (db as PostgresDb).execute(sql`CREATE TABLE IF NOT EXISTS rbac_data_access_policy_rules (
+          id TEXT PRIMARY KEY NOT NULL,
+          policy_id TEXT NOT NULL REFERENCES rbac_data_access_policies(id) ON DELETE CASCADE,
+          database_pattern VARCHAR(255) NOT NULL DEFAULT '*',
+          table_pattern VARCHAR(255) NOT NULL DEFAULT '*',
+          is_allowed BOOLEAN NOT NULL DEFAULT true,
+          priority INTEGER NOT NULL DEFAULT 0,
+          description TEXT,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        )`);
+        await (db as PostgresDb).execute(sql`CREATE TABLE IF NOT EXISTS rbac_data_access_policy_connections (
+          id TEXT PRIMARY KEY NOT NULL,
+          policy_id TEXT NOT NULL REFERENCES rbac_data_access_policies(id) ON DELETE CASCADE,
+          connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        )`);
+        await (db as PostgresDb).execute(sql`CREATE TABLE IF NOT EXISTS rbac_role_data_access_policies (
+          id TEXT PRIMARY KEY NOT NULL,
+          role_id TEXT NOT NULL REFERENCES rbac_roles(id) ON DELETE CASCADE,
+          policy_id TEXT NOT NULL REFERENCES rbac_data_access_policies(id) ON DELETE CASCADE,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        )`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_access_policy_rules_policy_idx ON rbac_data_access_policy_rules(policy_id)`);
+        await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS data_access_policy_conn_idx ON rbac_data_access_policy_connections(policy_id, connection_id)`);
+        await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS role_data_access_role_policy_idx ON rbac_role_data_access_policies(role_id, policy_id)`);
+      }
+
+      // ---- 2) Seed the new permissions and grant them to existing roles ----
+      // seedPermissions() inserts the new permission rows idempotently; seedRoles only
+      // grants to brand-new roles, so we explicitly grant the new perms to existing ones.
+      const permMap = await seedPermissions();
+      const grantPermToRole = async (roleId: string, permId: string): Promise<void> => {
+        const existing = await all(sql`SELECT 1 AS ok FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1`);
+        if (existing.length === 0) {
+          await run(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${randomUUID()}, ${roleId}, ${permId}, ${now()})`);
+        }
+      };
+      const roleIdByName = async (name: string): Promise<string | null> => {
+        const rows = await all(sql`SELECT id FROM rbac_roles WHERE name = ${name} LIMIT 1`);
+        return rows.length > 0 ? String(rows[0].id) : null;
+      };
+
+      const newPerms = [
+        PERMISSIONS.DATA_ACCESS_VIEW,
+        PERMISSIONS.DATA_ACCESS_CREATE,
+        PERMISSIONS.DATA_ACCESS_UPDATE,
+        PERMISSIONS.DATA_ACCESS_DELETE,
+        PERMISSIONS.DATA_ACCESS_ASSIGN,
+      ];
+      for (const roleName of [SYSTEM_ROLES.SUPER_ADMIN, SYSTEM_ROLES.ADMIN]) {
+        const rid = await roleIdByName(roleName);
+        if (!rid) continue;
+        for (const perm of newPerms) {
+          const pid = permMap.get(perm);
+          if (pid) await grantPermToRole(rid, pid);
+        }
+      }
+      // Anyone who can view roles can view data access policies.
+      const viewPermId = permMap.get(PERMISSIONS.DATA_ACCESS_VIEW);
+      const rolesViewPermRows = await all(sql`SELECT id FROM rbac_permissions WHERE name = ${PERMISSIONS.ROLES_VIEW} LIMIT 1`);
+      if (viewPermId && rolesViewPermRows.length > 0) {
+        const rolesViewPermId = String(rolesViewPermRows[0].id);
+        const rolesWithView = await all(sql`SELECT role_id FROM rbac_role_permissions WHERE permission_id = ${rolesViewPermId}`);
+        for (const row of rolesWithView) {
+          await grantPermToRole(String(row.role_id), viewPermId);
+        }
+      }
+
+      // ---- 3) Migrate legacy rules into policies (idempotent guard) ----
+      const alreadyMigrated = await all(sql`SELECT id FROM rbac_data_access_policies LIMIT 1`);
+      if (alreadyMigrated.length > 0) {
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.26.0] Policies already present; skipping data copy');
+        return;
+      }
+
+      let legacyRules: Array<Record<string, unknown>> = [];
+      try {
+        legacyRules = await all(sql`SELECT id, role_id, user_id, connection_id, database_pattern, table_pattern, is_allowed, priority, description FROM rbac_data_access_rules`);
+      } catch {
+        // Old table absent (shouldn't happen after 1.1.0) — nothing to migrate.
+        legacyRules = [];
+      }
+
+      const byRole = new Map<string, Array<Record<string, unknown>>>();
+      const byUser = new Map<string, Array<Record<string, unknown>>>();
+      for (const r of legacyRules) {
+        if (r.role_id) {
+          const k = String(r.role_id);
+          (byRole.get(k) ?? byRole.set(k, []).get(k)!).push(r);
+        } else if (r.user_id) {
+          const k = String(r.user_id);
+          (byUser.get(k) ?? byUser.set(k, []).get(k)!).push(r);
+        }
+      }
+
+      // Create one policy from a set of legacy rules; returns the new policy id.
+      const createPolicyFromRules = async (
+        name: string,
+        rules: Array<Record<string, unknown>>,
+        isSystem: boolean
+      ): Promise<string> => {
+        const connIds = new Set<string>();
+        let hasNullConn = false;
+        for (const r of rules) {
+          if (r.connection_id) connIds.add(String(r.connection_id));
+          else hasNullConn = true;
+        }
+        // A null connection meant "all connections" in the legacy model.
+        const allConnections = hasNullConn || connIds.size === 0;
+
+        const policyId = randomUUID();
+        await run(sql`INSERT INTO rbac_data_access_policies (id, name, description, all_connections, is_system, created_at, updated_at, created_by)
+          VALUES (${policyId}, ${name}, ${'Migrated from legacy data access rules'}, ${b(allConnections)}, ${b(isSystem)}, ${now()}, ${now()}, NULL)`);
+
+        for (const r of rules) {
+          await run(sql`INSERT INTO rbac_data_access_policy_rules (id, policy_id, database_pattern, table_pattern, is_allowed, priority, description, created_at, updated_at)
+            VALUES (${randomUUID()}, ${policyId}, ${String(r.database_pattern ?? '*')}, ${String(r.table_pattern ?? '*')}, ${b(Boolean(r.is_allowed))}, ${Number(r.priority ?? 0)}, ${r.description != null ? String(r.description) : null}, ${now()}, ${now()})`);
+        }
+        if (!allConnections) {
+          for (const cid of connIds) {
+            await run(sql`INSERT INTO rbac_data_access_policy_connections (id, policy_id, connection_id, created_at) VALUES (${randomUUID()}, ${policyId}, ${cid}, ${now()})`);
+          }
+        }
+        return policyId;
+      };
+
+      // 3a. Role-level rules -> policies attached to the role.
+      const migratedRolePolicy = new Map<string, string>();
+      for (const [roleId, rules] of byRole) {
+        const roleRows = await all(sql`SELECT name, display_name FROM rbac_roles WHERE id = ${roleId} LIMIT 1`);
+        if (roleRows.length === 0) continue;
+        const roleName = String(roleRows[0].name);
+        const displayName = String(roleRows[0].display_name ?? roleName);
+        const isGuest = roleName === SYSTEM_ROLES.GUEST;
+        const policyName = isGuest ? 'System Tables (Guest)' : `Migrated role: ${roleName}`;
+        const policyId = await createPolicyFromRules(policyName, rules, isGuest);
+        await run(sql`INSERT INTO rbac_role_data_access_policies (id, role_id, policy_id, created_at) VALUES (${randomUUID()}, ${roleId}, ${policyId}, ${now()})`);
+        migratedRolePolicy.set(roleId, policyId);
+      }
+
+      // 3b. User-level rules -> a per-user policy (attached to the user's collapsed role below).
+      const migratedUserPolicy = new Map<string, string>();
+      for (const [userId, rules] of byUser) {
+        const userRows = await all(sql`SELECT username FROM rbac_users WHERE id = ${userId} LIMIT 1`);
+        const username = userRows.length > 0 ? String(userRows[0].username) : userId;
+        const policyId = await createPolicyFromRules(`Migrated user: ${username}`, rules, false);
+        migratedUserPolicy.set(userId, policyId);
+      }
+
+      // ---- 3c) Collapse every user to a single role ----
+      const mergedRoleByHash = new Map<string, string>();
+      let mergedCounter = 0;
+      const users = await all(sql`SELECT id FROM rbac_users`);
+
+      for (const u of users) {
+        const userId = String(u.id);
+        const roleRows = await all(sql`SELECT role_id FROM rbac_user_roles WHERE user_id = ${userId}`);
+        const roleIds = roleRows.map((r) => String(r.role_id));
+        const userPolicyId = migratedUserPolicy.get(userId);
+
+        // Resolve which (if any) of the user's roles are the privileged system roles,
+        // whose access bypass keys off the role *name* — never dissolve those.
+        let privileged: string | null = null;
+        for (const rid of roleIds) {
+          const nameRows = await all(sql`SELECT name FROM rbac_roles WHERE id = ${rid} LIMIT 1`);
+          const rn = nameRows.length > 0 ? String(nameRows[0].name) : '';
+          if (rn === SYSTEM_ROLES.SUPER_ADMIN) { privileged = rid; break; }
+          if (rn === SYSTEM_ROLES.ADMIN && !privileged) { privileged = rid; }
+        }
+
+        if (privileged) {
+          // Keep only the privileged role (preserves the admin/super_admin bypass).
+          if (roleIds.length !== 1 || roleIds[0] !== privileged) {
+            await run(sql`DELETE FROM rbac_user_roles WHERE user_id = ${userId}`);
+            await run(sql`INSERT INTO rbac_user_roles (id, user_id, role_id, assigned_at) VALUES (${randomUUID()}, ${userId}, ${privileged}, ${now()})`);
+          }
+          continue;
+        }
+
+        const needsMerge = roleIds.length > 1 || (roleIds.length >= 1 && Boolean(userPolicyId));
+        if (!needsMerge) {
+          // 0 roles, or exactly 1 role with no user-level rules -> nothing to collapse.
+          continue;
+        }
+
+        // Union of permissions across the user's roles.
+        const permSet = new Set<string>();
+        for (const rid of roleIds) {
+          const perms = await all(sql`SELECT permission_id FROM rbac_role_permissions WHERE role_id = ${rid}`);
+          perms.forEach((p) => permSet.add(String(p.permission_id)));
+        }
+        // Policies: each role's migrated policy (if any) + the user's own policy.
+        const policySet = new Set<string>();
+        for (const rid of roleIds) {
+          const pid = migratedRolePolicy.get(rid);
+          if (pid) policySet.add(pid);
+        }
+        if (userPolicyId) policySet.add(userPolicyId);
+
+        const permList = Array.from(permSet).sort();
+        const policyList = Array.from(policySet).sort();
+        const hashKey = createHash('sha256').update(`${permList.join(',')}|${policyList.join(',')}`).digest('hex');
+
+        let mergedRoleId = mergedRoleByHash.get(hashKey);
+        if (!mergedRoleId) {
+          mergedCounter += 1;
+          mergedRoleId = randomUUID();
+          const roleName = `merged_role_${mergedCounter}`;
+          await run(sql`INSERT INTO rbac_roles (id, name, display_name, description, is_system, is_default, priority, created_at, updated_at)
+            VALUES (${mergedRoleId}, ${roleName}, ${`Merged Role ${mergedCounter}`}, ${'Auto-generated during the one-role-per-user migration'}, ${b(false)}, ${b(false)}, ${50}, ${now()}, ${now()})`);
+          for (const pid of permList) {
+            await run(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${randomUUID()}, ${mergedRoleId}, ${pid}, ${now()})`);
+          }
+          for (const pid of policyList) {
+            await run(sql`INSERT INTO rbac_role_data_access_policies (id, role_id, policy_id, created_at) VALUES (${randomUUID()}, ${mergedRoleId}, ${pid}, ${now()})`);
+          }
+          mergedRoleByHash.set(hashKey, mergedRoleId);
+        }
+
+        await run(sql`DELETE FROM rbac_user_roles WHERE user_id = ${userId}`);
+        await run(sql`INSERT INTO rbac_user_roles (id, user_id, role_id, assigned_at) VALUES (${randomUUID()}, ${userId}, ${mergedRoleId}, ${now()})`);
+      }
+
+      // ---- 4) Enforce one role per user at the DB level ----
+      await run(sql`CREATE UNIQUE INDEX IF NOT EXISTS user_roles_user_unique_idx ON rbac_user_roles(user_id)`);
+
+      logger.info(
+        { module: 'RBAC', phase: 'migration', rolePolicies: migratedRolePolicy.size, userPolicies: migratedUserPolicy.size, mergedRoles: mergedCounter },
+        '[Migration 1.26.0] Migrated data access rules into policies and collapsed users to a single role'
+      );
+    },
+  },
+  {
+    version: '1.27.0',
+    name: 'drop_legacy_data_access_rules',
+    description: 'Drop the legacy rbac_data_access_rules table now that data lives in data access policies',
+    up: async (db) => {
+      if (getDatabaseType() === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_data_access_rules`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_data_access_rules`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.27.0] Dropped legacy rbac_data_access_rules table');
+    },
+  },
 ];
 
 // ============================================
@@ -3429,7 +3758,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
 // Migration Runner
 // ============================================
 
-export async function runMigrations(options: { skipSeed?: boolean } = {}): Promise<MigrationResult> {
+export async function runMigrations(options: { skipSeed?: boolean; through?: string } = {}): Promise<MigrationResult> {
   const db = getDatabase();
 
   await ensureVersionTable(db);
@@ -3443,8 +3772,19 @@ export async function runMigrations(options: { skipSeed?: boolean } = {}): Promi
   const isFirstRunFlag = appliedMigrations.length === 0;
   const migrationsApplied: string[] = [];
 
+  // Optional cutoff: only apply migrations up to and including `through` (by index
+  // in the ordered MIGRATIONS array). Used by tests to run partial chains; throws
+  // if the version is unknown so a typo can't silently apply everything.
+  let cutoffIndex = MIGRATIONS.length - 1;
+  if (options.through) {
+    cutoffIndex = MIGRATIONS.findIndex(m => m.version === options.through);
+    if (cutoffIndex === -1) {
+      throw new Error(`[Migration] Unknown target version '${options.through}'`);
+    }
+  }
+
   logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Current version: ${previousVersion || 'none (first run)'}`);
-  logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Target version: ${APP_VERSION}`);
+  logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Target version: ${options.through || APP_VERSION}`);
 
   // For first run, create initial schema
   if (isFirstRunFlag) {
@@ -3453,7 +3793,9 @@ export async function runMigrations(options: { skipSeed?: boolean } = {}): Promi
   }
 
   // Run pending migrations
-  for (const migration of MIGRATIONS) {
+  for (let i = 0; i < MIGRATIONS.length; i++) {
+    if (i > cutoffIndex) break;
+    const migration = MIGRATIONS[i];
     if (appliedVersions.has(migration.version)) {
       logger.info({ module: 'RBAC', phase: 'migration' },`[Migration] Skipping ${migration.version} (already applied)`);
       continue;

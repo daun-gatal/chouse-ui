@@ -157,6 +157,11 @@ mock.module("../db", () => ({
     isSqlite: () => true,
 }));
 
+mock.module("./dataAccessPolicies", () => ({
+    setPoliciesForRole: mock(async () => { }),
+    getPolicyIdsForRole: mock(async () => []),
+}));
+
 mock.module("./password", () => ({
     hashPassword: mock(async () => "hashed_password"),
     verifyPassword: mock(async () => true),

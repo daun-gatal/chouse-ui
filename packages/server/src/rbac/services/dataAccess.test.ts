@@ -1,154 +1,103 @@
-
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import {
-    createDataAccessRule,
-    checkUserAccess,
-    filterDatabasesForUser,
-    type DataAccessRuleResponse
-} from "./dataAccess";
 
-// Mock Data
-const mockRules: any[] = [];
-const mockUserRoles = [{ userId: "user-1", roleId: "role-1" }];
+// Resolved policy rules returned by the (mocked) policy resolver.
+let mockResolvedRules: Array<{
+  databasePattern: string;
+  tablePattern: string;
+  isAllowed: boolean;
+  priority: number;
+  policyId: string;
+  policyName: string;
+}> = [];
 
-// Mock Drizzle
+// The user's role assignments returned by the (mocked) DB.
+let mockUserRoles: Array<{ roleId: string }> = [{ roleId: "role-1" }];
+
+mock.module("./dataAccessPolicies", () => ({
+  getPolicyRulesForRoleIds: async () => mockResolvedRules,
+}));
+
 const queryBuilder = {
-    insert: mock(() => queryBuilder),
-    values: mock((v: any) => {
-        mockRules.push({ ...v, id: "new-rule-id" });
-        return queryBuilder;
-    }),
-    select: mock(() => queryBuilder),
-    from: mock(() => queryBuilder),
-    where: mock(() => queryBuilder),
-    orderBy: mock(() => queryBuilder),
-    limit: mock(() => queryBuilder),
-    delete: mock(() => queryBuilder),
-    update: mock(() => queryBuilder),
-    set: mock(() => queryBuilder),
-    then: mock((resolve: any) => resolve(mockRules)),
+  select: mock(() => queryBuilder),
+  from: mock(() => queryBuilder),
+  where: mock(() => queryBuilder),
+  then: mock((resolve: (v: unknown) => unknown) => resolve(mockUserRoles)),
 };
 
 const mockDb = {
-    insert: mock(() => queryBuilder),
-    select: mock(() => queryBuilder),
-    delete: mock(() => queryBuilder),
-    update: mock(() => queryBuilder),
-};
-
-const mockSchema = {
-    dataAccessRules: {
-        id: "id", roleId: "roleId", userId: "userId",
-        databasePattern: "databasePattern", tablePattern: "tablePattern",
-        priority: "priority", isAllowed: "isAllowed", createdAt: "createdAt"
-    },
-    userRoles: { userId: "userId", roleId: "roleId" }
+  select: mock(() => queryBuilder),
 };
 
 mock.module("../db", () => ({
-    getDatabase: () => mockDb,
-    getSchema: () => mockSchema,
+  getDatabase: () => mockDb,
+  getSchema: () => ({ userRoles: { userId: "userId", roleId: "roleId" } }),
 }));
 
+const { checkUserAccess, filterDatabasesForUser } = await import("./dataAccess");
+
+function rule(partial: Partial<(typeof mockResolvedRules)[number]>): (typeof mockResolvedRules)[number] {
+  return {
+    databasePattern: "*",
+    tablePattern: "*",
+    isAllowed: true,
+    priority: 0,
+    policyId: "p1",
+    policyName: "Policy",
+    ...partial,
+  };
+}
+
 describe("DataAccess Service (RBAC)", () => {
-    beforeEach(() => {
-        // Reset mocks and data
-        mockRules.length = 0;
-        mockDb.select.mockClear();
-        queryBuilder.then.mockImplementation((resolve: any) => resolve(mockRules));
+  beforeEach(() => {
+    mockResolvedRules = [];
+    mockUserRoles = [{ roleId: "role-1" }];
+    queryBuilder.then.mockImplementation((resolve: (v: unknown) => unknown) => resolve(mockUserRoles));
+  });
+
+  describe("Pattern Matching & Priority", () => {
+    it("allows when a matching allow rule exists", async () => {
+      mockResolvedRules = [rule({ databasePattern: "db1", priority: 10 })];
+      const result = await checkUserAccess("user-1", "db1", "t1", "read");
+      expect(result.allowed).toBe(true);
     });
 
-    describe("Pattern Matching & Priority", () => {
-        it("should allow if matching allow rule exists", async () => {
-            // Setup rules: Allow 'db1.*'
-            mockRules.push({
-                id: "r1", userId: "user-1",
-                databasePattern: "db1", tablePattern: "*",
-                accessType: "read", isAllowed: true, priority: 10
-            });
-
-            // Mock getting rules
-            queryBuilder.then.mockImplementation((resolve: any) => resolve([...mockRules]));
-
-            const result = await checkUserAccess("user-1", "db1", "t1", "read");
-            expect(result.allowed).toBe(true);
-        });
-
-        it("should deny if no matching rule", async () => {
-            // Add a rule that doesn't match so we bypass "no rules defined" check
-            mockRules.push({
-                id: "r1", userId: "user-1",
-                databasePattern: "other_db", tablePattern: "*",
-                accessType: "read", isAllowed: true, priority: 10
-            });
-            queryBuilder.then.mockImplementation((resolve: any) => resolve([...mockRules]));
-
-            const result = await checkUserAccess("user-1", "db1", "t1", "read");
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("No matching access rule");
-        });
-
-        it("should deny if deny rule matches (higher priority)", async () => {
-            // Rule 1: Allow *.* (priority 0)
-            // Rule 2: Deny db1.* (priority 10)
-            mockRules.push({
-                id: "r1", userId: "user-1", databasePattern: "*", tablePattern: "*",
-                accessType: "read", isAllowed: true, priority: 0
-            });
-            mockRules.push({
-                id: "r2", userId: "user-1", databasePattern: "db1", tablePattern: "*",
-                accessType: "read", isAllowed: false, priority: 10
-            });
-
-            queryBuilder.then.mockImplementation((resolve: any) => resolve([...mockRules]));
-
-            const result = await checkUserAccess("user-1", "db1", "t1", "read");
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain("Denied by rule");
-        });
-
-        it("should allow if partial match (wildcard)", async () => {
-            mockRules.push({
-                id: "r1", userId: "user-1", databasePattern: "prod_*", tablePattern: "*",
-                accessType: "read", isAllowed: true, priority: 10
-            });
-            queryBuilder.then.mockImplementation((resolve: any) => resolve([...mockRules]));
-
-            const result = await checkUserAccess("user-1", "prod_analytics", "events", "read");
-            expect(result.allowed).toBe(true);
-        });
+    it("denies when no rule matches", async () => {
+      mockResolvedRules = [rule({ databasePattern: "other_db", priority: 10 })];
+      const result = await checkUserAccess("user-1", "db1", "t1", "read");
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain("No matching access rule");
     });
 
-    describe("filterDatabasesForUser", () => {
-        it("should filter list based on rules", async () => {
-            mockRules.push({
-                id: "r1", userId: "user-1", databasePattern: "visible", tablePattern: "*",
-                accessType: "read", isAllowed: true, priority: 10
-            });
-            queryBuilder.then.mockImplementation((resolve: any) => resolve([...mockRules]));
-
-            const inputs = ["visible", "hidden", "system"];
-            const result = await filterDatabasesForUser("user-1", inputs);
-
-            expect(result).toContain("visible");
-            expect(result).not.toContain("hidden");
-            expect(result).not.toContain("system");
-        });
+    it("denies when a higher-priority deny rule matches", async () => {
+      mockResolvedRules = [
+        rule({ databasePattern: "*", priority: 0, isAllowed: true }),
+        rule({ databasePattern: "db1", priority: 10, isAllowed: false }),
+      ];
+      const result = await checkUserAccess("user-1", "db1", "t1", "read");
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain("Denied by rule");
     });
 
-    describe("createDataAccessRule", () => {
-        it("should insert rule", async () => {
-            queryBuilder.then.mockImplementation((resolve: any) => resolve([{ id: "new-rule-id" }]));
-
-            const result = await createDataAccessRule({
-                userId: "user-1",
-                databasePattern: "db1",
-                tablePattern: "*",
-                accessType: "read"
-            });
-
-            expect(mockDb.insert).toHaveBeenCalled();
-            expect(result).not.toBeNull();
-        });
+    it("supports wildcard patterns", async () => {
+      mockResolvedRules = [rule({ databasePattern: "prod_*", priority: 10 })];
+      const result = await checkUserAccess("user-1", "prod_analytics", "events", "read");
+      expect(result.allowed).toBe(true);
     });
+
+    it("allows system databases by default", async () => {
+      mockResolvedRules = [];
+      const result = await checkUserAccess("user-1", "system", "tables", "read");
+      expect(result.allowed).toBe(true);
+    });
+  });
+
+  describe("filterDatabasesForUser", () => {
+    it("filters the list based on the resolved rules", async () => {
+      mockResolvedRules = [rule({ databasePattern: "visible", priority: 10 })];
+      const result = await filterDatabasesForUser("user-1", ["visible", "hidden", "system"]);
+      expect(result).toContain("visible");
+      expect(result).not.toContain("hidden");
+      expect(result).not.toContain("system");
+    });
+  });
 });

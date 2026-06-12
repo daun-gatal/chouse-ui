@@ -47,6 +47,13 @@ export const PERMISSIONS = {
   ROLES_DELETE: 'roles:delete',
   ROLES_ASSIGN: 'roles:assign',
 
+  // Data Access Policy Management
+  DATA_ACCESS_VIEW: 'data_access:view',
+  DATA_ACCESS_CREATE: 'data_access:create',
+  DATA_ACCESS_UPDATE: 'data_access:update',
+  DATA_ACCESS_DELETE: 'data_access:delete',
+  DATA_ACCESS_ASSIGN: 'data_access:assign',
+
   // ClickHouse User Management
   CH_USERS_VIEW: 'clickhouse:users:view',
   CH_USERS_CREATE: 'clickhouse:users:create',
@@ -144,6 +151,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.USERS_DELETE,
     PERMISSIONS.ROLES_VIEW,
     PERMISSIONS.ROLES_ASSIGN,
+    PERMISSIONS.DATA_ACCESS_VIEW,
+    PERMISSIONS.DATA_ACCESS_CREATE,
+    PERMISSIONS.DATA_ACCESS_UPDATE,
+    PERMISSIONS.DATA_ACCESS_DELETE,
+    PERMISSIONS.DATA_ACCESS_ASSIGN,
     PERMISSIONS.CH_USERS_VIEW,
     PERMISSIONS.CH_USERS_CREATE,
     PERMISSIONS.CH_USERS_UPDATE,
@@ -288,6 +300,10 @@ for (const role of Object.keys(DEFAULT_ROLE_PERMISSIONS) as SystemRole[]) {
   if (perms.includes(PERMISSIONS.CONNECTIONS_VIEW)) {
     add(PERMISSIONS.FLEET_VIEW, PERMISSIONS.DOCTOR_VIEW, PERMISSIONS.DOCTOR_RUN);
   }
+  // Anyone who can view roles can view the data access policies attached to them.
+  if (perms.includes(PERMISSIONS.ROLES_VIEW)) {
+    add(PERMISSIONS.DATA_ACCESS_VIEW);
+  }
 }
 
 // ============================================
@@ -372,11 +388,12 @@ export const AUDIT_ACTIONS = {
   CONNECTION_GRANT_ACCESS: 'connection.grant_access',
   CONNECTION_REVOKE_ACCESS: 'connection.revoke_access',
 
-  // Data Access Rules
+  // Data Access Rules / Policies
   DATA_ACCESS_CREATE: 'data_access.create',
   DATA_ACCESS_UPDATE: 'data_access.update',
   DATA_ACCESS_DELETE: 'data_access.delete',
   DATA_ACCESS_BULK_SET: 'data_access.bulk_set',
+  DATA_ACCESS_ASSIGN: 'data_access.assign',
 
   // Saved Queries
   SAVED_QUERY_CREATE: 'saved_query.create',

@@ -106,7 +106,7 @@ describe("RBAC Roles Routes", () => {
             const res = await app.request("/roles", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
-                body: JSON.stringify({ name: "MyRole", displayName: "My Role", permissionIds: ["p1"] })
+                body: JSON.stringify({ name: "MyRole", displayName: "My Role", permissionIds: ["p1"], dataAccessPolicyIds: ["123e4567-e89b-12d3-a456-426614174000"] })
             });
 
             expect(res.status).toBe(201);

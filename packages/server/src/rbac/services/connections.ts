@@ -4,7 +4,7 @@
  * Manages ClickHouse server connections with encrypted password storage.
  */
 
-import { eq, and, desc, asc, like, or, sql, inArray, isNotNull } from 'drizzle-orm';
+import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from 'crypto';
 import { getDatabase, getSchema } from '../db';
@@ -15,7 +15,7 @@ import { ClientManager } from '../../services/clientManager';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = any;
 
-import type { User, ClickHouseConnection, DataAccessRule, UserRole } from '../schema';
+import type { User, ClickHouseConnection, UserRole } from '../schema';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -733,24 +733,24 @@ export async function getConnectionUsers(connectionId: string): Promise<Array<{
       .where(inArray(schema.users.id as any, Array.from(directAccessUserIds)))
     : [];
 
-  // Get users who have access via data access rules (user-specific or role-based)
-  const dataAccessRules = await db.select()
-    .from(schema.dataAccessRules)
-    .where(eq(schema.dataAccessRules.connectionId, connectionId));
+  // Get roles that grant access to this connection via a data access policy
+  // scoped to it (policy -> connection link, then role -> policy link).
+  const policyLinks = await db.select({ policyId: schema.dataAccessPolicyConnections.policyId })
+    .from(schema.dataAccessPolicyConnections)
+    .where(eq(schema.dataAccessPolicyConnections.connectionId, connectionId));
 
-  const userIdsFromRules = new Set<string>();
+  const scopedPolicyIds = Array.from(new Set(policyLinks.map((l: { policyId: string }) => l.policyId)));
+
   const roleIdsFromRules = new Set<string>();
+  if (scopedPolicyIds.length > 0) {
+    const roleLinks = await db.select({ roleId: schema.roleDataAccessPolicies.roleId })
+      .from(schema.roleDataAccessPolicies)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .where(inArray(schema.roleDataAccessPolicies.policyId as any, scopedPolicyIds));
+    roleLinks.forEach((l: { roleId: string }) => roleIdsFromRules.add(l.roleId));
+  }
 
-  dataAccessRules.forEach((rule: DataAccessRule) => {
-    if (rule.userId) {
-      userIdsFromRules.add(rule.userId);
-    }
-    if (rule.roleId) {
-      roleIdsFromRules.add(rule.roleId);
-    }
-  });
-
-  // Get users from role-based rules
+  // Get users from role-based policies
   const usersFromRoles: User[] = [];
   if (roleIdsFromRules.size > 0) {
     const userRoles = await db.select()
@@ -769,21 +769,11 @@ export async function getConnectionUsers(connectionId: string): Promise<Array<{
     }
   }
 
-  // Get users from user-specific rules
-  const usersFromRules: User[] = [];
-  if (userIdsFromRules.size > 0) {
-    const users = await db.select()
-      .from(schema.users)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .where(inArray(schema.users.id as any, Array.from(userIdsFromRules)));
-    usersFromRules.push(...users);
-  }
-
   // Combine all users and deduplicate
   const allUserIds = new Set<string>();
   const userMap = new Map<string, User>();
 
-  [...directAccessUsers, ...usersFromRules, ...usersFromRoles].forEach((user: User) => {
+  [...directAccessUsers, ...usersFromRoles].forEach((user: User) => {
     if (!allUserIds.has(user.id)) {
       allUserIds.add(user.id);
       userMap.set(user.id, user);
@@ -846,12 +836,12 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
 
   // A user can reach a connection through two channels, and we union them:
   //   1. Direct grant   — a row in userConnections (canUse=true), set via "Manage Access".
-  //   2. Data-access rule — an explicit ALLOW rule that names a *specific* connection
-  //      (assigned to the user directly, or to one of the user's roles). An admin who
-  //      writes "allow abdul to read db.* on localhost 1" clearly intends abdul to be
-  //      able to open localhost 1, so that rule grants the connection itself too.
+  //   2. Data-access policy — a policy attached to one of the user's roles that is
+  //      scoped to a *specific* connection (policy -> connection link). An admin who
+  //      scopes "Analytics Read-Only" to localhost 1 clearly intends those users to be
+  //      able to open localhost 1, so that policy grants the connection itself too.
   //
-  // Rules with connectionId = NULL are global db/table scopes and do NOT grant any
+  // Policies with allConnections = true are global db/table scopes and do NOT grant any
   // connection (they'd otherwise hand the user every connection at once). Once inside a
   // connection, the data-access evaluator still scopes which databases/tables are visible.
   const connectionIdSet = new Set<string>();
@@ -867,7 +857,7 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
     connectionIdSet.add(uc.connectionId);
   });
 
-  // 2) Connections named by an explicit ALLOW data-access rule — user-level or via roles.
+  // 2) Connections named by a connection-scoped data-access policy on the user's role(s).
   const roleRows = await db.select({ roleId: schema.userRoles.roleId })
     .from(schema.userRoles)
     .where(eq(schema.userRoles.userId, userId));
@@ -875,23 +865,25 @@ export async function getUserConnections(userId: string): Promise<ConnectionResp
     .map((r: { roleId: string | null }) => r.roleId)
     .filter((rid: string | null): rid is string => Boolean(rid));
 
-  const subjectMatch = roleIds.length > 0
-    ? or(eq(schema.dataAccessRules.userId, userId), inArray(schema.dataAccessRules.roleId, roleIds))
-    : eq(schema.dataAccessRules.userId, userId);
+  let viaPolicyCount = 0;
+  if (roleIds.length > 0) {
+    const policyLinks = await db.select({ policyId: schema.roleDataAccessPolicies.policyId })
+      .from(schema.roleDataAccessPolicies)
+      .where(inArray(schema.roleDataAccessPolicies.roleId, roleIds));
+    const policyIds = Array.from(new Set(policyLinks.map((l: { policyId: string }) => l.policyId)));
 
-  const allowRules = await db.select({ connectionId: schema.dataAccessRules.connectionId })
-    .from(schema.dataAccessRules)
-    .where(and(
-      eq(schema.dataAccessRules.isAllowed, true),
-      isNotNull(schema.dataAccessRules.connectionId),
-      subjectMatch,
-    ));
-  allowRules.forEach((r: { connectionId: string | null }) => {
-    if (r.connectionId) connectionIdSet.add(r.connectionId);
-  });
+    if (policyIds.length > 0) {
+      const connLinks = await db.select({ connectionId: schema.dataAccessPolicyConnections.connectionId })
+        .from(schema.dataAccessPolicyConnections)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .where(inArray(schema.dataAccessPolicyConnections.policyId as any, policyIds));
+      viaPolicyCount = connLinks.length;
+      connLinks.forEach((r: { connectionId: string }) => connectionIdSet.add(r.connectionId));
+    }
+  }
 
   logger.debug(
-    { module: 'Connections', userId, direct: userConns.length, viaRules: allowRules.length, total: connectionIdSet.size },
+    { module: 'Connections', userId, direct: userConns.length, viaPolicies: viaPolicyCount, total: connectionIdSet.size },
     'getUserConnections',
   );
 

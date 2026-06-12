@@ -54,15 +54,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { rbacUsersApi, rbacRolesApi, rbacDataAccessApi, type RbacUser, type RbacRole, type UpdateUserInput } from "@/api/rbac";
+import { rbacUsersApi, rbacRolesApi, type RbacUser, type RbacRole, type UpdateUserInput } from "@/api/rbac";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { formatDistanceToNow, format } from "date-fns";
-import { UserDataAccess } from "../UserDataAccess";
-
-// Admin roles that don't require data access rules
-const ADMIN_ROLES = ['super_admin', 'admin'];
-// Roles that have pre-defined role-level data access rules (don't require user-level rules)
-const ROLES_WITH_PREDEFINED_RULES = ['guest'];
 
 // Editorial: uniform hairline chrome for every role; identity is conveyed by
 // a 2-letter monospace code rather than per-role color theming.
@@ -135,25 +129,7 @@ const EditUser: React.FC = () => {
   // Delete state
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Data access state
-  const [dataAccessRulesCount, setDataAccessRulesCount] = useState(0);
-
   const isCurrentUser = user?.id === currentUser?.id;
-
-  // Check if selected roles require data access rules
-  // Note: GUEST role has pre-defined role-level data access rules, so it doesn't require user-level rules
-  const selectedRoleNames = selectedRoles.map(roleId => roles.find(r => r.id === roleId)?.name || '');
-  const hasAdminRole = selectedRoleNames.some(name => ADMIN_ROLES.includes(name));
-  const hasPredefinedRules = selectedRoleNames.some(name => ROLES_WITH_PREDEFINED_RULES.includes(name));
-  const requiresDataAccess = !hasAdminRole && !hasPredefinedRules && selectedRoles.length > 0;
-  const dataAccessValid = !requiresDataAccess || dataAccessRulesCount > 0;
-  const ROLES_WITHOUT_DATA_ACCESS_UI = [...ADMIN_ROLES, ...ROLES_WITH_PREDEFINED_RULES]; // Roles that don't need data access UI
-
-  // Hide Data Access tab if:
-  // 1. Selected roles include admin roles or roles with predefined rules, OR
-  // 2. The user being edited has super_admin role (even if basic admin is editing)
-  const userHasSuperAdminRole = user?.roles.includes('super_admin');
-  const showDataAccessUI = !selectedRoleNames.some(name => ROLES_WITHOUT_DATA_ACCESS_UI.includes(name)) && !userHasSuperAdminRole;
 
   // Fetch user and roles
   useEffect(() => {
@@ -166,9 +142,8 @@ const EditUser: React.FC = () => {
     Promise.all([
       rbacUsersApi.get(userId),
       rbacRolesApi.list(),
-      rbacDataAccessApi.getRulesForUser(userId)
     ])
-      .then(([userData, rolesData, userRules]) => {
+      .then(([userData, rolesData]) => {
         // Check if basic admin is trying to edit super admin
         const userIsSuperAdmin = userData.roles.includes('super_admin');
         if (!isSuperAdmin() && userIsSuperAdmin) {
@@ -182,7 +157,6 @@ const EditUser: React.FC = () => {
         setUsername(userData.username);
         setDisplayName(userData.displayName || "");
         setIsActive(userData.isActive);
-        setDataAccessRulesCount(userRules.length);
 
         // Filter out super_admin if current user is not super_admin
         const filteredRoles = isSuperAdmin()
@@ -541,21 +515,6 @@ const EditUser: React.FC = () => {
             <Shield className="mr-2 h-3.5 w-3.5" />
             Roles
           </TabsTrigger>
-          {showDataAccessUI && (
-            <TabsTrigger
-              value="data-access"
-              className={cn(
-                "rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
-                requiresDataAccess && !dataAccessValid && "text-red-300 data-[state=active]:text-red-200"
-              )}
-            >
-              <Database className="mr-2 h-3.5 w-3.5" />
-              Data access
-              {requiresDataAccess && !dataAccessValid && (
-                <span className="ml-1 text-red-300">*</span>
-              )}
-            </TabsTrigger>
-          )}
           <TabsTrigger
             value="security"
             className="rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-200 data-[state=active]:text-paper"
@@ -733,73 +692,6 @@ const EditUser: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* Data Access Tab */}
-        {showDataAccessUI && (
-          <TabsContent value="data-access">
-            <div
-              className={cn(
-                "rounded-xs border bg-ink-100",
-                requiresDataAccess && !dataAccessValid ? "border-red-900/60" : "border-ink-500"
-              )}
-            >
-              <div className="flex items-center justify-between gap-2 border-b border-ink-500 px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <Database
-                    className={cn(
-                      "h-3.5 w-3.5",
-                      requiresDataAccess && !dataAccessValid ? "text-red-300" : "text-paper-dim"
-                    )}
-                    aria-hidden
-                  />
-                  <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Database &amp; table access</h3>
-                  {requiresDataAccess && (
-                    <span className="text-[11px] text-red-300">*</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  {dataAccessRulesCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
-                      {dataAccessRulesCount} rule{dataAccessRulesCount !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                  {requiresDataAccess && !dataAccessValid && (
-                    <span className="inline-flex items-center gap-1 rounded-xs border border-red-300 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
-                      Required
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="p-4">
-                {requiresDataAccess && !dataAccessValid ? (
-                  <div className="mb-4 flex items-start gap-2 rounded-xs border border-red-900/60 bg-red-950/40 p-3">
-                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-300" aria-hidden />
-                    <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Data access rules required</p>
-                      <p className="mt-1 text-[12px] text-red-200">
-                        Non-admin roles (Developer, Analyst, Viewer) must have at least one data access rule to specify which databases/tables they can access. Guest role has pre-defined rules and doesn't require additional rules.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mb-4 rounded-xs border border-ink-500 bg-ink-200 p-3">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">About data access</p>
-                    <p className="mt-1 text-[12px] text-paper-muted">
-                      These rules define which databases and tables this user can access.
-                      User-specific rules supplement the permissions from assigned roles.
-                    </p>
-                  </div>
-                )}
-                <UserDataAccess
-                  userId={userId!}
-                  userName={user.displayName || user.username}
-                  canEdit={canUpdateUsers}
-                  onRulesChange={(count) => setDataAccessRulesCount(count)}
-                />
-              </div>
-            </div>
-          </TabsContent>
-        )}
-
         {/* Security Tab */}
         <TabsContent value="security">
           <div className="rounded-xs border border-ink-500 bg-ink-100">
@@ -867,12 +759,6 @@ const EditUser: React.FC = () => {
                 You have unsaved changes
               </span>
             )}
-            {requiresDataAccess && !dataAccessValid && (
-              <span className="flex items-center gap-2 text-[12px] text-red-300">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Data access rules required for non-admin roles
-              </span>
-            )}
           </div>
           <div className="flex gap-2">
             <Button
@@ -884,7 +770,7 @@ const EditUser: React.FC = () => {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!hasChanges || isSaving || selectedRoles.length === 0 || !dataAccessValid}
+              disabled={!hasChanges || isSaving || selectedRoles.length === 0}
               className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
             >
               {isSaving ? (

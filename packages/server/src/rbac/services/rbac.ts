@@ -7,6 +7,7 @@
 import { eq, and, inArray, sql, desc, asc, like, or, gte, lte } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema, isSqlite, type RbacDb } from '../db';
+import { setPoliciesForRole, getPolicyIdsForRole } from './dataAccessPolicies';
 import { hashPassword, verifyPassword, needsRehash } from './password';
 import { generateTokenPair, getRefreshTokenExpiryMs, type TokenPair } from './jwt';
 import {
@@ -416,6 +417,11 @@ export async function createRole(input: CreateRoleInput): Promise<RoleResponse> 
     );
   }
 
+  // Attach data access policies
+  if (input.dataAccessPolicyIds !== undefined) {
+    await setPoliciesForRole(id, input.dataAccessPolicyIds);
+  }
+
   return getRoleById(id) as Promise<RoleResponse>;
 }
 
@@ -508,6 +514,11 @@ export async function updateRole(
         }))
       );
     }
+  }
+
+  // Update attached data access policies if provided
+  if (input.dataAccessPolicyIds !== undefined) {
+    await setPoliciesForRole(id, input.dataAccessPolicyIds);
   }
 
   return getRoleById(id);
@@ -1210,6 +1221,9 @@ async function expandRoleResponse(role: Role): Promise<RoleResponse> {
     .from(schema.userRoles)
     .where(eq(schema.userRoles.roleId, role.id));
 
+  // Get attached data access policy ids
+  const dataAccessPolicyIds = await getPolicyIdsForRole(role.id);
+
   return {
     id: role.id,
     name: role.name,
@@ -1219,6 +1233,7 @@ async function expandRoleResponse(role: Role): Promise<RoleResponse> {
     isDefault: role.isDefault,
     priority: role.priority,
     permissions,
+    dataAccessPolicyIds,
     userCount: Number(userCountResult[0]?.count || 0),
   };
 }

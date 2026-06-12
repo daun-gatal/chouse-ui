@@ -2,8 +2,8 @@
  * Tests for RBAC API — ssoApi
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
-import { ssoApi } from './rbac';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { ssoApi, rbacDataAccessPoliciesApi } from './rbac';
 import { RBAC_ACCESS_TOKEN_KEY, RBAC_REFRESH_TOKEN_KEY } from './client';
 import { server } from '../test/mocks/server';
 import { http, HttpResponse } from 'msw';
@@ -190,5 +190,68 @@ describe('ssoApi.completeCallback', () => {
     await ssoApi.completeCallback('code=c&state=s');
 
     expect(capturedHeaders!.get('x-requested-with')).toBe('XMLHttpRequest');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rbacDataAccessPoliciesApi
+// ---------------------------------------------------------------------------
+
+describe('rbacDataAccessPoliciesApi', () => {
+  const POLICY = {
+    id: 'p1',
+    name: 'Analytics RO',
+    description: null,
+    allConnections: true,
+    isSystem: false,
+    connectionIds: [],
+    rules: [{ id: 'r1', policyId: 'p1', databasePattern: 'analytics', tablePattern: '*', isAllowed: true, priority: 0, description: null }],
+    roleIds: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    createdBy: null,
+  };
+
+  beforeEach(() => {
+    localStorage.setItem(RBAC_ACCESS_TOKEN_KEY, 'access-token');
+  });
+
+  it('lists policies (unwraps data)', async () => {
+    server.use(
+      http.get('/api/rbac/data-access-policies', () =>
+        HttpResponse.json({ success: true, data: [POLICY] })
+      )
+    );
+    const policies = await rbacDataAccessPoliciesApi.list();
+    expect(policies).toHaveLength(1);
+    expect(policies[0].name).toBe('Analytics RO');
+  });
+
+  it('creates a policy with the given body', async () => {
+    let captured: unknown = null;
+    server.use(
+      http.post('/api/rbac/data-access-policies', async ({ request }) => {
+        captured = await request.json();
+        return HttpResponse.json({ success: true, data: POLICY }, { status: 201 });
+      })
+    );
+    await rbacDataAccessPoliciesApi.create({
+      name: 'Analytics RO',
+      allConnections: true,
+      rules: [{ databasePattern: 'analytics', tablePattern: '*', isAllowed: true, priority: 0 }],
+    });
+    expect(captured).toMatchObject({ name: 'Analytics RO', allConnections: true });
+  });
+
+  it('replaces the policies attached to a role', async () => {
+    let captured: unknown = null;
+    server.use(
+      http.post('/api/rbac/data-access-policies/role/role-1', async ({ request }) => {
+        captured = await request.json();
+        return HttpResponse.json({ success: true, data: [POLICY] });
+      })
+    );
+    await rbacDataAccessPoliciesApi.setForRole('role-1', ['p1']);
+    expect(captured).toEqual({ policyIds: ['p1'] });
   });
 });

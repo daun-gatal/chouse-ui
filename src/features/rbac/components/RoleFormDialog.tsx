@@ -44,11 +44,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 import {
   rbacRolesApi,
+  rbacDataAccessPoliciesApi,
   type RbacRole,
   type RbacPermission,
   type CreateRoleInput,
   type UpdateRoleInput,
 } from '@/api/rbac';
+import { Database } from 'lucide-react';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
 import { cn } from '@/lib/utils';
 
@@ -85,6 +87,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   const [displayName, setDisplayName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
+  const [selectedPolicyIds, setSelectedPolicyIds] = useState<Set<string>>(new Set());
   const [isDefault, setIsDefault] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,6 +96,13 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   const { data: permissionsByCategory, isLoading: loadingPermissions } = useQuery({
     queryKey: ['rbac-permissions-by-category'],
     queryFn: () => rbacRolesApi.getPermissionsByCategory(),
+    enabled: isOpen,
+  });
+
+  // Fetch data access policies
+  const { data: policies } = useQuery({
+    queryKey: ['rbac-data-access-policies'],
+    queryFn: () => rbacDataAccessPoliciesApi.list(),
     enabled: isOpen,
   });
 
@@ -125,6 +135,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
           .filter((id): id is string => id !== undefined);
 
         setSelectedPermissionIds(new Set(permissionIds));
+        setSelectedPolicyIds(new Set(role.dataAccessPolicyIds || []));
         setIsDefault(role.isDefault);
       } else {
         // Create mode
@@ -132,6 +143,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
         setDisplayName('');
         setDescription('');
         setSelectedPermissionIds(new Set());
+        setSelectedPolicyIds(new Set());
         setIsDefault(false);
       }
       setSearchQuery('');
@@ -180,10 +192,14 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
   const canEditSystemRole = isSuperAdmin();
   const canModify = isEditing ? (isSystemRole ? canEditSystemRole : canUpdate) : canCreate;
 
+  // Custom (non-system) roles are the primary way to grant data access and must
+  // attach at least one policy. System roles are exempt (admin/super_admin bypass access).
+  const requiresPolicy = !isSystemRole;
   const isValid =
     (isEditing ? true : name.trim().length >= 2) &&
     displayName.trim().length >= 2 &&
-    selectedPermissionIds.size > 0;
+    selectedPermissionIds.size > 0 &&
+    (!requiresPolicy || selectedPolicyIds.size > 0);
 
   // Filter permissions by search query
   const filteredCategories = React.useMemo(() => {
@@ -231,6 +247,16 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
       } else {
         newSet.add(permissionId);
       }
+      return newSet;
+    });
+  };
+
+  const togglePolicy = (policyId: string) => {
+    if (!canModify) return;
+    setSelectedPolicyIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(policyId)) newSet.delete(policyId);
+      else newSet.add(policyId);
       return newSet;
     });
   };
@@ -285,14 +311,16 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     if (!isValid || !canModify) return;
 
     const permissionIds = Array.from(selectedPermissionIds);
+    const dataAccessPolicyIds = Array.from(selectedPolicyIds);
 
     if (isEditing && role) {
-      // Update role
+      // Update role — only send policies for non-system roles (system roles are exempt).
       const input: UpdateRoleInput = {
         displayName: displayName.trim(),
         description: description.trim() || null,
         permissionIds,
         isDefault,
+        ...(requiresPolicy ? { dataAccessPolicyIds } : {}),
       };
       updateMutation.mutate({ id: role.id, input });
     } else {
@@ -302,6 +330,7 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
         displayName: displayName.trim(),
         description: description.trim() || undefined,
         permissionIds,
+        dataAccessPolicyIds,
         isDefault,
       };
       createMutation.mutate(input);
@@ -700,6 +729,101 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                       </AlertDescription>
                     </Alert>
                   </motion.div>
+                )}
+              </motion.div>
+
+              {/* Data Access Policies */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+                className="space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                    <span className="h-px w-6 bg-ink-700" aria-hidden />
+                    <span>Data access policies</span>
+                    {requiresPolicy && <span className="text-red-400">*</span>}
+                  </span>
+                  {selectedPolicyIds.size > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
+                      {selectedPolicyIds.size} selected
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] text-paper-muted">
+                  Which databases and tables this role can access, on which connections. Manage policies in the Data Access tab.
+                </p>
+
+                {!policies || policies.length === 0 ? (
+                  <Alert className="rounded-xs border-ink-500 bg-ink-100">
+                    <AlertDescription className="text-[12px] text-paper-muted">
+                      No data access policies exist yet. Create one in the Data Access tab first.
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="space-y-2">
+                    {policies.map((policy) => {
+                      const isSelected = selectedPolicyIds.has(policy.id);
+                      return (
+                        <div
+                          key={policy.id}
+                          role="checkbox"
+                          aria-checked={isSelected}
+                          aria-label={policy.name}
+                          tabIndex={canModify ? 0 : -1}
+                          onClick={() => togglePolicy(policy.id)}
+                          onKeyDown={(e) => {
+                            if (!canModify) return;
+                            if (e.key === ' ' || e.key === 'Enter') {
+                              e.preventDefault();
+                              togglePolicy(policy.id);
+                            }
+                          }}
+                          className={cn(
+                            'flex items-start gap-3 rounded-xs border p-3 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand',
+                            canModify ? 'cursor-pointer' : 'cursor-default opacity-70',
+                            isSelected ? 'border-brand/40 bg-ink-200' : 'border-ink-500 bg-ink-100',
+                            !isSelected && canModify && 'hover:border-ink-700 hover:bg-ink-200'
+                          )}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            disabled={!canModify}
+                            tabIndex={-1}
+                            aria-hidden
+                            className="pointer-events-none mt-0.5 border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50"
+                          />
+                          <Database className="mt-0.5 h-3.5 w-3.5 shrink-0 text-paper-faint" aria-hidden />
+                          <div className="min-w-0 flex-1">
+                            <span className={cn('block text-[12px]', isSelected ? 'font-medium text-paper' : 'text-paper-muted')}>
+                              {policy.name}
+                            </span>
+                            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                              {policy.allConnections ? 'All connections' : `${policy.connectionIds.length} connection(s)`}
+                              {' · '}{policy.rules.length} rule(s)
+                            </p>
+                            {policy.description && (
+                              <p className="mt-1 text-[11px] text-paper-faint">{policy.description}</p>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <span className="text-brand" aria-hidden>
+                              <CheckCircle2 className="h-4 w-4" />
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {requiresPolicy && selectedPolicyIds.size === 0 && (
+                  <Alert variant="destructive" className="rounded-xs border-red-500/40 bg-red-500/10">
+                    <AlertDescription className="font-mono text-[11px] uppercase tracking-[0.14em] text-red-300">
+                      At least one data access policy is required for this role.
+                    </AlertDescription>
+                  </Alert>
                 )}
               </motion.div>
             </motion.div>

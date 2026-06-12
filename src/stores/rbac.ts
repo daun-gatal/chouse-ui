@@ -376,6 +376,13 @@ export const RBAC_PERMISSIONS = {
   ROLES_DELETE: 'roles:delete',
   ROLES_ASSIGN: 'roles:assign',
 
+  // Data Access Policy Management
+  DATA_ACCESS_VIEW: 'data_access:view',
+  DATA_ACCESS_CREATE: 'data_access:create',
+  DATA_ACCESS_UPDATE: 'data_access:update',
+  DATA_ACCESS_DELETE: 'data_access:delete',
+  DATA_ACCESS_ASSIGN: 'data_access:assign',
+
   // ClickHouse User Management
   CH_USERS_VIEW: 'clickhouse:users:view',
   CH_USERS_CREATE: 'clickhouse:users:create',
