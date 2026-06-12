@@ -9,7 +9,7 @@ on:
         default: ""
 
 jobs:
-  # ── Step 1: assemble changelog + bump versions ────────────────────────────
+  # ── Step 1: assemble changelog + bump versions (no push to main yet) ──────
   assemble:
     name: Assemble Changelog
     runs-on: ubuntu-latest
@@ -18,6 +18,7 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
       has_code_changes: ${{ steps.code_check.outputs.has_changes }}
+      release_branch: ${{ steps.branch.outputs.name }}
 
     steps:
       - name: Checkout
@@ -98,39 +99,47 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Commit and push changelog
+      - name: Commit to release branch (not main)
+        id: branch
         if: steps.code_check.outputs.has_changes == 'true'
         run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          BRANCH="release/v$VERSION"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add \
             CHANGELOG.md \
             package.json \
             packages/server/package.json \
             docs/portfolio/package.json \
             changelogs/unreleased/
-          git commit -m "chore: release v${{ steps.release.outputs.version }}"
-          git push origin main
+          git commit -m "chore: release v$VERSION"
+          git push origin "$BRANCH"
+          echo "name=$BRANCH" >> $GITHUB_OUTPUT
+          echo "Pushed assembled changes to $BRANCH — awaiting approval before merging to main."
 
       - name: Skip — no code changes
         if: steps.code_check.outputs.has_changes == 'false'
         run: |
           echo "No changes in src/ or packages/server/src/ since last release."
-          echo "Skipping commit, push, Docker build, and publish."
+          echo "Skipping push, Docker build, and publish."
           echo "Fragments remain in changelogs/unreleased/ for the next real release."
 
       - name: Write release summary
         if: steps.code_check.outputs.has_changes == 'true'
         run: |
           VERSION="v${{ steps.release.outputs.version }}"
+          BRANCH="${{ steps.branch.outputs.name }}"
           {
             echo "## Release Preview: $VERSION"
             echo ""
-            echo "> Review the version and release notes below, then **Approve** the \`docker-publish\` deployment to build and push Docker, or **Reject** to abort."
+            echo "> Changelog and version bump are staged on \`$BRANCH\`."
+            echo "> **Approve** the \`docker-publish\` deployment below to push to \`main\` and build Docker, or **Reject** to abort (then delete the branch manually)."
             echo ""
             echo "---"
             echo ""
-            # Extract notes for this version from CHANGELOG.md
+            # Extract notes for this version from the assembled CHANGELOG.md
             awk -v tag="[$VERSION]" '
               /^## \[v/ {
                 if (found) exit
@@ -140,11 +149,41 @@ jobs:
             ' CHANGELOG.md
           } >> $GITHUB_STEP_SUMMARY
 
-  # ── Step 2: build and push Docker (gate for everything downstream) ─────────
-  docker:
-    name: Build & Push Docker
+  # ── Step 2: approval gate — push assembled changes to main ────────────────
+  push-to-main:
+    name: Push to Main
     needs: assemble
     if: needs.assemble.outputs.has_code_changes == 'true'
+    runs-on: ubuntu-latest
+    environment: release-approval
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_SECRET }}
+
+      - name: Fast-forward main to release branch
+        run: |
+          BRANCH="${{ needs.assemble.outputs.release_branch }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$BRANCH"
+          git checkout "$BRANCH"
+          git push origin "HEAD:main"
+          echo "main updated to v${{ needs.assemble.outputs.version }}"
+
+      - name: Delete release branch
+        run: |
+          git push origin --delete "${{ needs.assemble.outputs.release_branch }}" || true
+
+  # ── Step 3: build and push Docker (after main is updated) ─────────────────
+  docker:
+    name: Build & Push Docker
+    needs: [push-to-main, assemble]
     runs-on: ubuntu-latest
     environment: docker-publish
     permissions:
@@ -193,7 +232,7 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-  # ── Step 3 (parallel, after Docker succeeds): publish tag + GitHub Release ─
+  # ── Step 4 (parallel, after Docker succeeds): publish tag + GitHub Release ─
   publish:
     name: Publish Tag & Release
     needs: [docker, assemble]
@@ -211,10 +250,9 @@ jobs:
 
       - name: Create and push tag
         env:
-          VERSION: v${{ needs.docker.outputs.version || needs.assemble.outputs.version }}
+          VERSION: v${{ needs.assemble.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="v${{ needs.assemble.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git ls-remote --tags origin "$VERSION" | grep -q "refs/tags/$VERSION"; then
@@ -297,7 +335,7 @@ jobs:
             --field query="mutation(\$body: String!) { createDiscussion(input: { repositoryId: \"$REPO_ID\", categoryId: \"$CATEGORY_ID\", title: \"CHouse UI $VERSION Released!\", body: \$body }) { discussion { id url } } }" \
             --field body=@-
 
-  # ── Step 3 (parallel, after Docker succeeds): deploy docs ─────────────────
+  # ── Step 4 (parallel, after Docker succeeds): deploy docs ─────────────────
   deploy-docs:
     name: Deploy Docs
     needs: [docker, assemble]
