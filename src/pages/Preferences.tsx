@@ -43,6 +43,13 @@ const EYEBROW = "inline-flex items-center gap-2 font-mono text-[10px] uppercase 
 const MONO_LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";
 const MONO_FAINT = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint";
 
+// Resolve a role's human-readable display name from the user's role metadata,
+// falling back to the raw role name when metadata is unavailable.
+const roleDisplayName = (
+  roleName: string,
+  meta?: Array<{ name: string; displayName: string }>,
+): string => meta?.find((m) => m.name === roleName)?.displayName ?? roleName;
+
 // ============================================
 // Types & Components
 // ============================================
@@ -89,10 +96,16 @@ interface InfoRowProps {
   label: string;
   value: string | React.ReactNode;
   icon?: React.ElementType;
+  className?: string;
 }
 
-const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon: Icon }) => (
-  <div className="flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5">
+const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon: Icon, className }) => (
+  <div
+    className={cn(
+      "flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5",
+      className,
+    )}
+  >
     <div className="flex items-center gap-2">
       {Icon && <Icon className="h-3.5 w-3.5 text-paper-dim" aria-hidden />}
       <span className={MONO_LABEL}>{label}</span>
@@ -109,10 +122,16 @@ const StatusFooter: React.FC<{
   label: string;
   meta: string;
   tone?: "brand" | "emerald";
-}> = ({ label, meta, tone = "brand" }) => {
+  className?: string;
+}> = ({ label, meta, tone = "brand", className }) => {
   const dot = tone === "emerald" ? "bg-emerald-400" : "bg-brand";
   return (
-    <div className="flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 px-3 py-2">
+    <div
+      className={cn(
+        "flex items-center justify-between rounded-xs border border-ink-500 bg-ink-200 px-3 py-2",
+        className,
+      )}
+    >
       <div className="flex items-center gap-2">
         <span className={cn("h-1.5 w-1.5 rounded-full", dot)} aria-hidden />
         <span className={MONO_LABEL}>{label}</span>
@@ -312,7 +331,7 @@ const IdentityCard: React.FC = () => {
       delay={0.1}
       className="md:col-span-1"
     >
-      <div className="space-y-2">
+      <div className="flex h-full flex-col gap-2">
         <InfoRow label="Username" icon={User} value={user?.username || "N/A"} />
         <InfoRow
           label="RBAC ID"
@@ -323,7 +342,27 @@ const IdentityCard: React.FC = () => {
             </span>
           }
         />
-        <StatusFooter label="Session active" meta="Secure" tone="emerald" />
+        {user?.roles && user.roles.length > 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <Shield className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+              <span className={MONO_LABEL}>Roles</span>
+            </div>
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {user.roles.map((role) => (
+                <span
+                  key={role}
+                  className="inline-flex items-center rounded-xs border border-brand/40 bg-brand/5 px-1.5 py-0.5 font-mono text-[10px] tracking-[0.14em] text-brand"
+                >
+                  {role}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mt-auto">
+          <StatusFooter label="Session active" meta="Secure" tone="emerald" />
+        </div>
       </div>
     </SettingCard>
   );
@@ -354,8 +393,9 @@ const ConnectionDetailsCard: React.FC<{ url: string | null; version: string | nu
       delay={0.2}
       className="md:col-span-2"
     >
-      <div className="space-y-2">
+      <div className="flex h-full flex-col gap-2">
         <InfoRow
+          className="flex-1"
           label="Endpoint"
           icon={Server}
           value={
@@ -382,8 +422,8 @@ const ConnectionDetailsCard: React.FC<{ url: string | null; version: string | nu
             )
           }
         />
-        <InfoRow label="Version" icon={Cpu} value={version || "N/A"} />
-        <StatusFooter label="Node operational" meta="Online" tone="emerald" />
+        <InfoRow className="flex-1" label="Version" icon={Cpu} value={version || "N/A"} />
+        <StatusFooter className="flex-1" label="Node operational" meta="Online" tone="emerald" />
       </div>
     </SettingCard>
   );
@@ -647,16 +687,6 @@ export default function Preferences() {
   const user = profile?.user || storeUser;
   const connections = profile?.connections || [];
   const allRules = profile?.dataAccessRules || [];
-  const rolesMetadata = user?.rolesMetadata || [];
-
-  const getRoleDisplayName = (roleName: string) => {
-    const meta = rolesMetadata.find((m) => m.name === roleName);
-    if (meta?.displayName) return meta.displayName;
-    return roleName
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  };
 
   // Initials chip from displayName/username
   const initials = useMemo(() => {
@@ -796,10 +826,10 @@ export default function Preferences() {
                     {user.roles.map((role) => (
                       <span
                         key={role}
-                        className="inline-flex items-center gap-1.5 rounded-xs border border-brand/40 bg-brand/5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand"
+                        className="inline-flex items-center gap-1.5 rounded-xs border border-brand/40 bg-brand/5 px-2 py-1 font-mono text-[10px] tracking-[0.14em] text-brand"
                       >
                         <Shield className="h-3 w-3" aria-hidden />
-                        {getRoleDisplayName(role)}
+                        {roleDisplayName(role, user?.rolesMetadata)}
                       </span>
                     ))}
                   </div>
@@ -809,7 +839,7 @@ export default function Preferences() {
           </motion.div>
 
           {/* Preferences Grid */}
-          <div className="grid items-start gap-6 md:grid-cols-3">
+          <div className="grid items-stretch gap-6 md:grid-cols-3">
             {/* Row 1: Identity + Connection */}
             <IdentityCard />
             <ConnectionDetailsCard url={url} version={version} />

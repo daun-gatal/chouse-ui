@@ -77,62 +77,89 @@ const ADMIN_TAB_CONFIG: Record<AdminTabKey, AdminTabConfig> = {
   },
 };
 
-interface TabCardProps {
-  tabKey: AdminTabKey;
-  isActive: boolean;
-  onClick: () => void;
-  disabled?: boolean;
+// Two-tier navigation. Sections are clustered into labelled groups; the group
+// row is the top level, and the active group's sections appear below as a
+// sub-tab strip (mirroring Monitoring's top-pill → in-page sub-tab pattern).
+// The top row stays at a handful of groups no matter how many sections exist —
+// a new feature slots into an existing group (or a new one) instead of crowding
+// a flat row.
+interface AdminTabGroup {
+  label: string;
+  icon: LucideIcon;
+  tabs: AdminTabKey[];
 }
 
-function TabCard({ tabKey, isActive, onClick, disabled }: TabCardProps) {
-  const config = ADMIN_TAB_CONFIG[tabKey];
-  const Icon = config.icon;
+const ADMIN_TAB_GROUPS: AdminTabGroup[] = [
+  { label: "Access control", icon: Shield, tabs: ["users", "roles", "data-access"] },
+  { label: "Data sources", icon: Server, tabs: ["connections", "clickhouse-users"] },
+  { label: "Intelligence", icon: Bot, tabs: ["ai-models"] },
+  { label: "Security", icon: FileText, tabs: ["audit"] },
+];
+
+// Top-level group selector — segmented chip (icon + label), active one filled.
+interface GroupChipProps {
+  group: AdminTabGroup;
+  isActive: boolean;
+  onClick: () => void;
+}
+
+function GroupChip({ group, isActive, onClick }: GroupChipProps) {
+  const Icon = group.icon;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
       aria-current={isActive ? "page" : undefined}
       className={cn(
-        "group @container relative flex flex-1 min-w-[160px] items-center gap-3 border border-ink-500 px-4 py-3 text-left transition-colors",
-        "rounded-xs",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50",
+        "inline-flex h-8 shrink-0 items-center gap-2 rounded-xs border px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
         isActive
-          ? "border-ink-700 bg-ink-200 text-paper"
-          : "bg-ink-100 text-paper-muted hover:border-ink-700 hover:bg-ink-200 hover:text-paper",
-        disabled && "cursor-not-allowed opacity-50"
+          ? "border-ink-500 bg-ink-200 text-paper"
+          : "border-transparent text-paper-muted hover:bg-ink-100 hover:text-paper"
       )}
     >
-      <span
-        className={cn(
-          "grid h-8 w-8 shrink-0 place-items-center rounded-xs border transition-colors",
-          isActive
-            ? "border-brand bg-ink-100 text-brand"
-            : "border-ink-500 bg-ink-200 text-paper-muted group-hover:border-ink-700"
-        )}
-      >
-        <Icon className="h-4 w-4" aria-hidden />
-      </span>
+      <Icon
+        className={cn("h-3.5 w-3.5", isActive ? "text-brand" : "text-paper-dim")}
+        aria-hidden
+      />
+      <span>{group.label}</span>
+    </button>
+  );
+}
 
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+// Second-level section selector — Monitoring's in-page sub-tab style: label +
+// hint, brand underline on the active one.
+interface SectionTabProps {
+  tabKey: AdminTabKey;
+  isActive: boolean;
+  onClick: () => void;
+}
+
+function SectionTab({ tabKey, isActive, onClick }: SectionTabProps) {
+  const config = ADMIN_TAB_CONFIG[tabKey];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={isActive ? "page" : undefined}
+      className={cn(
+        "group relative flex shrink-0 items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
+        isActive ? "text-paper" : "text-paper-muted hover:text-paper"
+      )}
+    >
+      <span>{config.label}</span>
+      <span className="hidden font-mono text-[9px] tracking-[0.14em] text-paper-faint sm:inline">
+        · {config.description}
+      </span>
+      {isActive && (
         <span
-          className={cn(
-            "truncate text-[13px] font-semibold",
-            isActive ? "text-paper" : "text-paper-muted group-hover:text-paper"
-          )}
-        >
-          {config.label}
-        </span>
-        {/* Description appears only when the card itself is wide enough
-            to render it without truncation — driven by container queries
-            on the button so each card decides for itself, regardless of
-            viewport. 240px is roughly the point where mono-uppercase
-            10px at tracking-0.14em stops needing ellipsis. */}
-        <span className="hidden truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint @[240px]:block">
-          {config.description}
-        </span>
-      </div>
+          className="absolute -bottom-px left-0 right-0 h-px bg-brand"
+          aria-hidden
+        />
+      )}
     </button>
   );
 }
@@ -171,6 +198,17 @@ export default function Admin() {
 
   const activeTab = getInitialTab();
 
+  // Resolve groups against the user's permissions: drop sections they can't see,
+  // then drop any group left empty. The active group is derived from the active
+  // section so the URL stays section-based (/admin/<section>).
+  const visibleGroups = ADMIN_TAB_GROUPS.map((group) => ({
+    ...group,
+    tabs: group.tabs.filter((tabKey) => availableTabs.includes(tabKey)),
+  })).filter((group) => group.tabs.length > 0);
+
+  const activeGroup =
+    visibleGroups.find((group) => group.tabs.includes(activeTab)) ?? visibleGroups[0];
+
   useEffect(() => {
     if (!tab || !availableTabs.includes(tab as AdminTabKey)) {
       if (availableTabs.length > 0) {
@@ -181,23 +219,42 @@ export default function Admin() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50">
-      {/* ─── Header ─── */}
-      <header className="flex-none border-b border-ink-500 px-6 pb-4 pt-6">
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
-              <ShieldCheck className="h-4 w-4" aria-hidden />
+      {/* ─── Header — two tiers: group selector on top, section sub-tabs below ─── */}
+      <header className="flex-none border-b border-ink-500 px-6 pt-4">
+        {/* Tier 1 — title + group selector + controls */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
             </span>
-            <div className="flex flex-col gap-1">
-              <span className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-                <span className="h-px w-6 bg-ink-700" aria-hidden />
-                <span>Administration</span>
+            <div className="flex flex-col gap-0">
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-paper-faint">
+                Administration
               </span>
-              <h1 className="text-2xl font-semibold tracking-tight text-paper">
+              <h1 className="text-[18px] font-semibold leading-tight tracking-tight text-paper">
                 Who can do what, where.
               </h1>
             </div>
           </div>
+
+          {/* Group selector — segmented chips */}
+          <nav
+            aria-label="Admin groups"
+            className="scrollbar-hide flex items-center gap-1 overflow-x-auto"
+          >
+            {visibleGroups.map((group) => (
+              <GroupChip
+                key={group.label}
+                group={group}
+                isActive={group === activeGroup}
+                onClick={() => {
+                  if (group !== activeGroup) {
+                    navigate(`/admin/${group.tabs[0]}`);
+                  }
+                }}
+              />
+            ))}
+          </nav>
 
           <Button
             variant="ghost"
@@ -210,17 +267,22 @@ export default function Admin() {
           </Button>
         </div>
 
-        {/* Tab cards */}
-        <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-0.5">
-          {availableTabs.map((tabKey) => (
-            <TabCard
-              key={tabKey}
-              tabKey={tabKey}
-              isActive={activeTab === tabKey}
-              onClick={() => navigate(`/admin/${tabKey}`)}
-            />
-          ))}
-        </div>
+        {/* Tier 2 — sections of the active group, flush to the header's bottom border */}
+        {activeGroup && (
+          <nav
+            aria-label={`${activeGroup.label} sections`}
+            className="scrollbar-hide -mb-px flex items-center gap-1 overflow-x-auto"
+          >
+            {activeGroup.tabs.map((tabKey) => (
+              <SectionTab
+                key={tabKey}
+                tabKey={tabKey}
+                isActive={activeTab === tabKey}
+                onClick={() => navigate(`/admin/${tabKey}`)}
+              />
+            ))}
+          </nav>
+        )}
       </header>
 
       {/* ─── Content ─── */}

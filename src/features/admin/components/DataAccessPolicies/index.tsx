@@ -340,12 +340,16 @@ export const DataAccessPolicies: React.FC = () => {
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
-        <div className="flex flex-col gap-1">
-          <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
-            <span className="h-px w-6 bg-ink-700" />
-            <span>Data access policies</span>
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
+            <Database className="h-4 w-4" aria-hidden />
           </span>
-          <p className="text-[12px] text-paper-muted">Reusable database/table access rules attached to roles.</p>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-semibold tracking-tight text-paper">Data access policies</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+              {policies?.length ?? 0} polic{(policies?.length ?? 0) === 1 ? 'y' : 'ies'} defined
+            </p>
+          </div>
         </div>
         {canCreate && (
           <Button size="sm" onClick={openCreate} className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft">

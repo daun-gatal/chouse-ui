@@ -268,11 +268,17 @@ const UserManagement: React.FC = () => {
 
   const hasActiveFilters = searchQuery.trim() !== "" || roleFilter !== "all" || statusFilter !== "all";
 
-  // Get role display info
+  // Get role display info. Always resolves to a display-name-style label: the
+  // role's real displayName when known, otherwise the raw name humanised
+  // (snake_case → Title Case) so a card never falls back to the raw role key.
   const getRoleDisplay = (roleName: string) => {
     const role = roles.find((r) => r.name === roleName);
+    const humanised = roleName
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
     return {
-      displayName: role?.displayName || roleName,
+      displayName: role?.displayName || humanised,
       code: ROLE_CODES[roleName] || roleName.slice(0, 2).toUpperCase(),
     };
   };
