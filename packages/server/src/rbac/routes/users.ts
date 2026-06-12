@@ -17,6 +17,8 @@ import {
   createAuditLogWithContext,
 } from '../services/rbac';
 import { validatePasswordStrength, generateSecurePassword } from '../services/password';
+import { listUserIdentities, deleteUserIdentity } from '../sso/identity';
+import { getSsoConfig } from '../sso/config';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
 import {
   rbacAuthMiddleware,
@@ -386,6 +388,81 @@ userRoutes.post('/:id/assign-roles', requirePermission(PERMISSIONS.ROLES_ASSIGN)
   return c.json({
     success: true,
     data: { user },
+  });
+});
+
+/**
+ * GET /rbac/users/:id/identities
+ * List a user's linked SSO identities (provider, link/last-login metadata).
+ * Secrets are never returned. displayName is resolved from the live SSO
+ * config and falls back to the raw provider id if that provider was removed.
+ */
+userRoutes.get('/:id/identities', requirePermission(PERMISSIONS.USERS_VIEW), async (c) => {
+  const id = c.req.param('id');
+
+  const existingUser = await getUserById(id);
+  if (!existingUser) {
+    throw AppError.notFound('User not found');
+  }
+
+  const config = getSsoConfig();
+  const identities = await listUserIdentities(id);
+
+  return c.json({
+    success: true,
+    data: {
+      identities: identities.map((identity) => ({
+        id: identity.id,
+        provider: identity.provider,
+        displayName: config.providers.get(identity.provider)?.displayName ?? identity.provider,
+        email: identity.email,
+        createdAt: identity.createdAt,
+        lastLoginAt: identity.lastLoginAt,
+      })),
+    },
+  });
+});
+
+/**
+ * DELETE /rbac/users/:id/identities/:identityId
+ * Unlink an SSO identity from a user. After unlinking, an SSO-only user has
+ * no usable password and must have their password reset to sign in again.
+ */
+userRoutes.delete('/:id/identities/:identityId', requirePermission(PERMISSIONS.USERS_UPDATE), async (c) => {
+  const id = c.req.param('id');
+  const identityId = c.req.param('identityId');
+  const currentUser = getRbacUser(c);
+  const ipAddress = getClientIp(c);
+
+  const existingUser = await getUserById(id);
+  if (!existingUser) {
+    throw AppError.notFound('User not found');
+  }
+
+  // Prevent modifying super admin unless you're also super admin.
+  if (existingUser.roles.includes('super_admin') && !isSuperAdmin(c)) {
+    throw AppError.forbidden('Cannot modify super administrator');
+  }
+
+  // Ensure the identity belongs to this user before deleting it.
+  const identities = await listUserIdentities(id);
+  const target = identities.find((identity) => identity.id === identityId);
+  if (!target) {
+    throw AppError.notFound('SSO identity not found for this user');
+  }
+
+  await deleteUserIdentity(identityId);
+
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.SSO_IDENTITY_UNLINK, currentUser.sub, {
+    resourceType: 'user',
+    resourceId: id,
+    details: { provider: target.provider, identityId },
+    ipAddress,
+  });
+
+  return c.json({
+    success: true,
+    data: { message: 'SSO identity unlinked successfully' },
   });
 });
 

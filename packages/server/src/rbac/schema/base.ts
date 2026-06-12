@@ -338,6 +338,7 @@ export const AUDIT_ACTIONS = {
   USER_DELETE: 'user.delete',
   USER_ROLE_ASSIGN: 'user.role_assign',
   USER_ROLE_REVOKE: 'user.role_revoke',
+  SSO_IDENTITY_UNLINK: 'user.sso_identity_unlink',
 
   // Role Management
   ROLE_CREATE: 'role.create',

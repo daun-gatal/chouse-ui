@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { ssoApi, rbacDataAccessPoliciesApi } from './rbac';
+import { ssoApi, rbacDataAccessPoliciesApi, rbacUsersApi } from './rbac';
 import { RBAC_ACCESS_TOKEN_KEY, RBAC_REFRESH_TOKEN_KEY } from './client';
 import { server } from '../test/mocks/server';
 import { http, HttpResponse } from 'msw';
@@ -273,5 +273,78 @@ describe('rbacDataAccessPoliciesApi', () => {
     const tables = await rbacDataAccessPoliciesApi.listTables('conn-1', 'my db');
     expect(tables).toEqual(['events', 'users']);
     expect(capturedUrl).toContain('database=my%20db');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rbacUsersApi.getIdentities
+// ---------------------------------------------------------------------------
+
+describe('rbacUsersApi.getIdentities', () => {
+  it('returns the identity list unwrapped from the data envelope', async () => {
+    const identity = {
+      id: 'idn-1',
+      provider: 'google',
+      displayName: 'Google',
+      email: 'user@example.com',
+      createdAt: '2026-06-10T00:00:00.000Z',
+      lastLoginAt: '2026-06-12T00:00:00.000Z',
+    };
+
+    server.use(
+      http.get('/api/rbac/users/user-1/identities', () => {
+        return HttpResponse.json({ success: true, data: { identities: [identity] } });
+      })
+    );
+
+    const identities = await rbacUsersApi.getIdentities('user-1');
+    expect(identities).toEqual([identity]);
+  });
+
+  it('returns an empty array when the user has no linked identities', async () => {
+    server.use(
+      http.get('/api/rbac/users/user-2/identities', () => {
+        return HttpResponse.json({ success: true, data: { identities: [] } });
+      })
+    );
+
+    expect(await rbacUsersApi.getIdentities('user-2')).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rbacUsersApi.unlinkIdentity
+// ---------------------------------------------------------------------------
+
+describe('rbacUsersApi.unlinkIdentity', () => {
+  it('issues a DELETE to the identity endpoint', async () => {
+    let capturedMethod: string | null = null;
+
+    server.use(
+      http.delete('/api/rbac/users/user-1/identities/idn-1', ({ request }) => {
+        capturedMethod = request.method;
+        return HttpResponse.json({ success: true, data: { message: 'SSO identity unlinked successfully' } });
+      })
+    );
+
+    await rbacUsersApi.unlinkIdentity('user-1', 'idn-1');
+    expect(capturedMethod).toBe('DELETE');
+  });
+
+  it('throws ApiError with the server message when the identity is not found', async () => {
+    server.use(
+      http.delete('/api/rbac/users/user-1/identities/missing', () => {
+        return HttpResponse.json(
+          { success: false, error: { message: 'SSO identity not found for this user', code: 'NOT_FOUND' } },
+          { status: 404 }
+        );
+      })
+    );
+
+    await expect(rbacUsersApi.unlinkIdentity('user-1', 'missing')).rejects.toMatchObject({
+      name: 'ApiError',
+      message: 'SSO identity not found for this user',
+      statusCode: 404,
+    });
   });
 });
