@@ -141,6 +141,7 @@ const CommandShortcut = ({
 CommandShortcut.displayName = "CommandShortcut";
 
 export {
+  Command,
   CommandDialog,
   CommandInput,
   CommandList,

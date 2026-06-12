@@ -31,6 +31,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Lock,
+  ChevronsUpDown,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
@@ -45,6 +47,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -66,6 +81,7 @@ import {
 import {
   rbacSsoAdminApi,
   rbacRolesApi,
+  type RbacRole,
   type SsoAdminProvider,
   type SsoTestResult,
 } from "@/api/rbac";
@@ -81,6 +97,189 @@ const SLUG_RE = /^[a-z0-9_-]+$/;
 const SECRET_PLACEHOLDER = "•••• set";
 
 type ProviderType = "oidc" | "oauth2";
+
+/** True only for a syntactically valid absolute http(s) URL. */
+function isValidUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  try {
+    const u = new URL(trimmed);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** True when a field has content but is not a valid URL (for inline errors). */
+function urlInvalid(value: string): boolean {
+  return value.trim().length > 0 && !isValidUrl(value);
+}
+
+// ---- Role mapping (claim value → role) ----
+interface RoleMappingRow {
+  value: string; // the IdP group / claim value
+  role: string; // local role name
+}
+
+/** Parse the compact "value:role,value2:role2" string into editor rows. */
+function parseRoleMapping(s: string | null | undefined): RoleMappingRow[] {
+  if (!s) return [];
+  const rows: RoleMappingRow[] = [];
+  for (const pair of s.split(",")) {
+    const t = pair.trim();
+    const idx = t.indexOf(":");
+    if (idx <= 0 || idx === t.length - 1) continue;
+    rows.push({ value: t.slice(0, idx).trim(), role: t.slice(idx + 1).trim() });
+  }
+  return rows;
+}
+
+/** Serialize editor rows back to the compact "value:role,..." string. */
+function serializeRoleMapping(rows: RoleMappingRow[]): string {
+  return rows
+    .filter((r) => r.value.trim() && r.role.trim())
+    .map((r) => `${r.value.trim()}:${r.role.trim()}`)
+    .join(",");
+}
+
+// ============================================
+// Searchable role picker (Popover + Command combobox)
+// ============================================
+
+function RoleCombobox({
+  value,
+  roles,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  roles: RbacRole[];
+  onChange: (roleName: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = roles.find((r) => r.name === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          disabled={disabled}
+          className={cn(INPUT_CLASS, "w-40 shrink-0 justify-between px-2 font-normal")}
+        >
+          <span className={cn("truncate", !selected && !value && "text-paper-faint")}>
+            {selected ? selected.displayName || selected.name : value || "Select role"}
+          </span>
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-paper-faint" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 rounded-xs border-ink-500 bg-ink-100 p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search roles…" className="text-[12px]" />
+          <CommandList>
+            <CommandEmpty className="py-3 text-center text-[12px] text-paper-faint">No role found.</CommandEmpty>
+            <CommandGroup>
+              {roles.map((r) => (
+                <CommandItem
+                  key={r.id}
+                  value={r.name}
+                  onSelect={() => {
+                    onChange(r.name);
+                    setOpen(false);
+                  }}
+                  className="text-[12px]"
+                >
+                  <Check className={cn("mr-2 h-3.5 w-3.5", value === r.name ? "opacity-100" : "opacity-0")} />
+                  {r.displayName || r.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ============================================
+// Role-mapping rows editor (data-access-rules style)
+// ============================================
+
+function RoleMappingEditor({
+  rows,
+  roles,
+  onChange,
+  disabled,
+}: {
+  rows: RoleMappingRow[];
+  roles: RbacRole[];
+  onChange: (rows: RoleMappingRow[]) => void;
+  disabled?: boolean;
+}) {
+  const updateAt = (i: number, patch: Partial<RoleMappingRow>) =>
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const removeAt = (i: number) => onChange(rows.filter((_, idx) => idx !== i));
+  const add = () => onChange([...rows, { value: "", role: roles[0]?.name ?? "" }]);
+
+  return (
+    <div className="space-y-2">
+      {rows.length === 0 ? (
+        <p className={HELP_CLASS}>No mappings — users get the default role on first sign-in.</p>
+      ) : (
+        <>
+          <div className="flex items-center gap-1.5 px-0.5">
+            <span className={cn(LABEL_CLASS, "w-40 shrink-0")}>Role</span>
+            <span className="w-3" />
+            <span className={cn(LABEL_CLASS, "flex-1")}>When claim value is</span>
+            <span className="w-7" />
+          </div>
+          {rows.map((row, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <RoleCombobox
+                value={row.role}
+                roles={roles}
+                onChange={(role) => updateAt(i, { role })}
+                disabled={disabled}
+              />
+              <span className="w-3 text-center text-paper-faint">←</span>
+              <Input
+                value={row.value}
+                onChange={(e) => updateAt(i, { value: e.target.value })}
+                placeholder="okta group / claim value"
+                className={cn(INPUT_CLASS, "flex-1")}
+                disabled={disabled}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => removeAt(i)}
+                disabled={disabled}
+                className="h-7 w-7 shrink-0 rounded-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                aria-label="Remove mapping"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+        </>
+      )}
+      {!disabled && (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={add}
+          className="h-7 gap-1 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:bg-ink-100 hover:text-paper"
+        >
+          <Plus className="h-3 w-3" /> Add role mapping
+        </Button>
+      )}
+    </div>
+  );
+}
 
 // ============================================
 // Settings panel
@@ -276,7 +475,7 @@ interface ProviderDraft {
   claimMapping: string;
   scopes: string;
   roleMappingClaim: string;
-  roleMapping: string;
+  roleMappingRows: RoleMappingRow[];
 }
 
 function emptyDraft(): ProviderDraft {
@@ -293,7 +492,7 @@ function emptyDraft(): ProviderDraft {
     claimMapping: "",
     scopes: "openid profile email",
     roleMappingClaim: "",
-    roleMapping: "",
+    roleMappingRows: [],
   };
 }
 
@@ -311,7 +510,7 @@ function draftFromProvider(p: SsoAdminProvider): ProviderDraft {
     claimMapping: p.claimMapping ?? "",
     scopes: p.scopes ?? "openid profile email",
     roleMappingClaim: p.roleMappingClaim ?? "",
-    roleMapping: p.roleMapping ?? "",
+    roleMappingRows: parseRoleMapping(p.roleMapping),
   };
 }
 
@@ -326,6 +525,10 @@ const STEP_LABELS = ["Identity", "Endpoints", "Test & save"];
 function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
   const queryClient = useQueryClient();
   const isEditing = !!editing;
+  const { data: roles } = useQuery({
+    queryKey: ["rbac-roles"],
+    queryFn: () => rbacRolesApi.list(),
+  });
 
   const [step, setStep] = useState(1);
   const [draft, setDraft] = useState<ProviderDraft>(emptyDraft());
@@ -362,10 +565,10 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
   const step2Valid =
     draft.scopes.trim().length > 0 &&
     (draft.type === "oidc"
-      ? draft.issuer.trim().length > 0
-      : draft.authorizationEndpoint.trim().length > 0 &&
-        draft.tokenEndpoint.trim().length > 0 &&
-        draft.userinfoEndpoint.trim().length > 0);
+      ? isValidUrl(draft.issuer)
+      : isValidUrl(draft.authorizationEndpoint) &&
+        isValidUrl(draft.tokenEndpoint) &&
+        isValidUrl(draft.userinfoEndpoint));
 
   // Build the payload sent to create/update. Secret only included when typed.
   const buildPayload = (): Record<string, unknown> => {
@@ -386,7 +589,8 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
       if (draft.claimMapping.trim()) payload.claimMapping = draft.claimMapping.trim();
     }
     if (draft.roleMappingClaim.trim()) payload.roleMappingClaim = draft.roleMappingClaim.trim();
-    if (draft.roleMapping.trim()) payload.roleMapping = draft.roleMapping.trim();
+    const roleMapping = serializeRoleMapping(draft.roleMappingRows);
+    if (roleMapping) payload.roleMapping = roleMapping;
     return payload;
   };
 
@@ -574,49 +778,68 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
 
           {/* STEP 2 — Endpoints & mapping */}
           {step === 2 && (
-            <div className="space-y-4">
-              {draft.type === "oidc" ? (
+            <div className="space-y-5">
+              {/* --- Endpoints --- */}
+              <section className="space-y-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                  {draft.type === "oidc" ? "Issuer" : "Endpoints"}
+                </p>
+                {draft.type === "oidc" ? (
+                  <div className="space-y-1.5">
+                    <Label className={LABEL_CLASS}>Issuer URL</Label>
+                    <Input
+                      value={draft.issuer}
+                      onChange={(e) => update({ issuer: e.target.value })}
+                      placeholder="https://example.okta.com"
+                      className={cn(INPUT_CLASS, urlInvalid(draft.issuer) && "border-red-500/60")}
+                    />
+                    {urlInvalid(draft.issuer) ? (
+                      <p className="text-[11px] text-red-300">Enter a valid URL (https://…).</p>
+                    ) : (
+                      <p className={HELP_CLASS}>The OIDC discovery document is fetched from this issuer.</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {(
+                      [
+                        ["Authorization endpoint", "authorizationEndpoint", "https://provider/oauth/authorize"],
+                        ["Token endpoint", "tokenEndpoint", "https://provider/oauth/token"],
+                        ["Userinfo endpoint", "userinfoEndpoint", "https://provider/oauth/userinfo"],
+                      ] as const
+                    ).map(([label, key, placeholder]) => (
+                      <div key={key} className="space-y-1.5">
+                        <Label className={LABEL_CLASS}>{label}</Label>
+                        <Input
+                          value={draft[key]}
+                          onChange={(e) => update({ [key]: e.target.value })}
+                          placeholder={placeholder}
+                          className={cn(INPUT_CLASS, urlInvalid(draft[key]) && "border-red-500/60")}
+                        />
+                        {urlInvalid(draft[key]) && (
+                          <p className="text-[11px] text-red-300">Enter a valid URL (https://…).</p>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </section>
+
+              {/* --- Scopes & attribute mapping --- */}
+              <section className="space-y-3 border-t border-ink-500 pt-4">
                 <div className="space-y-1.5">
-                  <Label className={LABEL_CLASS}>Issuer</Label>
+                  <Label className={LABEL_CLASS}>Scopes</Label>
                   <Input
-                    value={draft.issuer}
-                    onChange={(e) => update({ issuer: e.target.value })}
-                    placeholder="https://example.okta.com"
+                    value={draft.scopes}
+                    onChange={(e) => update({ scopes: e.target.value })}
+                    placeholder="openid profile email"
                     className={INPUT_CLASS}
                   />
-                  <p className={HELP_CLASS}>The OIDC discovery document is fetched from this issuer.</p>
+                  <p className={HELP_CLASS}>Space-separated scopes requested from the provider.</p>
                 </div>
-              ) : (
-                <>
+                {draft.type === "oauth2" && (
                   <div className="space-y-1.5">
-                    <Label className={LABEL_CLASS}>Authorization endpoint</Label>
-                    <Input
-                      value={draft.authorizationEndpoint}
-                      onChange={(e) => update({ authorizationEndpoint: e.target.value })}
-                      placeholder="https://provider/oauth/authorize"
-                      className={INPUT_CLASS}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className={LABEL_CLASS}>Token endpoint</Label>
-                    <Input
-                      value={draft.tokenEndpoint}
-                      onChange={(e) => update({ tokenEndpoint: e.target.value })}
-                      placeholder="https://provider/oauth/token"
-                      className={INPUT_CLASS}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className={LABEL_CLASS}>Userinfo endpoint</Label>
-                    <Input
-                      value={draft.userinfoEndpoint}
-                      onChange={(e) => update({ userinfoEndpoint: e.target.value })}
-                      placeholder="https://provider/oauth/userinfo"
-                      className={INPUT_CLASS}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className={LABEL_CLASS}>Claim mapping (optional)</Label>
+                    <Label className={LABEL_CLASS}>Attribute mapping (optional)</Label>
                     <Input
                       value={draft.claimMapping}
                       onChange={(e) => update({ claimMapping: e.target.value })}
@@ -625,39 +848,34 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
                     />
                     <p className={HELP_CLASS}>Map provider claims to user fields (key=value pairs).</p>
                   </div>
-                </>
-              )}
+                )}
+              </section>
 
-              <div className="space-y-1.5">
-                <Label className={LABEL_CLASS}>Scopes</Label>
-                <Input
-                  value={draft.scopes}
-                  onChange={(e) => update({ scopes: e.target.value })}
-                  placeholder="openid profile email"
-                  className={INPUT_CLASS}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              {/* --- Role mapping (optional, bounded block) --- */}
+              <section className="space-y-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
+                <div className="flex flex-col gap-0.5">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                    Role mapping (optional)
+                  </p>
+                  <p className={HELP_CLASS}>
+                    Assign local roles from a provider claim on every sign-in. Leave empty to use the default role.
+                  </p>
+                </div>
                 <div className="space-y-1.5">
-                  <Label className={LABEL_CLASS}>Role mapping claim (optional)</Label>
+                  <Label className={LABEL_CLASS}>Claim to read</Label>
                   <Input
                     value={draft.roleMappingClaim}
                     onChange={(e) => update({ roleMappingClaim: e.target.value })}
                     placeholder="groups"
-                    className={INPUT_CLASS}
+                    className={cn(INPUT_CLASS, "max-w-xs")}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className={LABEL_CLASS}>Role mapping (optional)</Label>
-                  <Input
-                    value={draft.roleMapping}
-                    onChange={(e) => update({ roleMapping: e.target.value })}
-                    placeholder="admins=admin,users=viewer"
-                    className={INPUT_CLASS}
-                  />
-                </div>
-              </div>
+                <RoleMappingEditor
+                  rows={draft.roleMappingRows}
+                  roles={roles ?? []}
+                  onChange={(rows) => update({ roleMappingRows: rows })}
+                />
+              </section>
             </div>
           )}
 
