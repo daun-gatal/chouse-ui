@@ -20,7 +20,6 @@ import { log } from '@/lib/log';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -73,8 +72,7 @@ export const DataAccessPolicies: React.FC = () => {
   // Wizard fields
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [allMode, setAllMode] = useState(true);           // exclusive "all connections" mode
-  const [scopeConns, setScopeConns] = useState<string[]>([]); // specific connections (when !allMode)
+  const [scopeConns, setScopeConns] = useState<string[]>([]); // connections this policy configures
   const [rules, setRules] = useState<RuleDraft[]>([]);
 
   // Schema browse state (keyed by connectionId, and `${connId}:${db}` for tables)
@@ -138,7 +136,7 @@ export const DataAccessPolicies: React.FC = () => {
   const openCreate = () => {
     setEditingId(null);
     setName(''); setDescription('');
-    setAllMode(true); setScopeConns([]); setRules([]);
+    setScopeConns([]); setRules([]);
     setStep(1); resetBrowse();
     setShowDialog(true);
   };
@@ -148,25 +146,43 @@ export const DataAccessPolicies: React.FC = () => {
     setName(policy.name); setDescription(policy.description ?? '');
     const drafts = policyToRules(policy);
     setRules(drafts);
-    const conns = Array.from(new Set(drafts.map((r) => r.connectionId).filter((c): c is string => c !== null)));
-    setScopeConns(conns);
-    // All-mode when there are global rules (or it's empty); specific when rules name connections.
-    setAllMode(conns.length === 0);
+    // Scope = the connections named by the policy's rules. Any global (null) rules
+    // an existing/system policy carries are preserved on save but not edited here.
+    setScopeConns(Array.from(new Set(drafts.map((r) => r.connectionId).filter((c): c is string => c !== null))));
     setStep(1); resetBrowse();
     setShowDialog(true);
   };
 
-  // The connections whose schema we browse in Step 2.
-  const browseConns: ClickHouseConnection[] = useMemo(() => {
-    const all = connections ?? [];
-    return allMode ? all : all.filter((c) => scopeConns.includes(c.id));
-  }, [connections, allMode, scopeConns]);
+  // Toggle a connection in scope; removing one prunes its rules.
+  const toggleScopeConn = (connId: string) => {
+    setScopeConns((s) => {
+      if (s.includes(connId)) {
+        setRules((rs) => rs.filter((r) => r.connectionId !== connId));
+        return s.filter((x) => x !== connId);
+      }
+      return [...s, connId];
+    });
+  };
 
-  // The rule connectionId a pick under a given browse-connection should use.
-  const ruleConnFor = (browseConnId: string): string | null => (allMode ? null : browseConnId);
+  const allConnIds = (connections ?? []).map((c) => c.id);
+  const allSelected = allConnIds.length > 0 && allConnIds.every((id) => scopeConns.includes(id));
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setScopeConns([]);
+      setRules((rs) => rs.filter((r) => r.connectionId === null));
+    } else {
+      setScopeConns(allConnIds);
+    }
+  };
 
-  // The rule "groups" rendered in Step 2 / review: all-mode => one global group; else one per connection.
-  const ruleGroups: Array<string | null> = allMode ? [null] : scopeConns;
+  // The connections whose schema we browse / configure in Step 2.
+  const browseConns: ClickHouseConnection[] = useMemo(
+    () => (connections ?? []).filter((c) => scopeConns.includes(c.id)),
+    [connections, scopeConns],
+  );
+
+  // Each connection is configured independently; rules are always per-connection.
+  const ruleGroups: string[] = scopeConns;
 
   // ---- Schema browsing ----
   const loadDatabases = async (connId: string) => {
@@ -230,7 +246,7 @@ export const DataAccessPolicies: React.FC = () => {
     setRules((rs) => rs.map((r, i) => (i === globalIndex ? { ...r, ...patch } : r)));
   const removeRuleAt = (globalIndex: number) => setRules((rs) => rs.filter((_, i) => i !== globalIndex));
 
-  const step1Valid = allMode || scopeConns.length > 0;
+  const step1Valid = scopeConns.length > 0;
   const step2Valid = rules.length > 0;
   const step3Valid = name.trim().length >= 2;
 
@@ -435,60 +451,45 @@ export const DataAccessPolicies: React.FC = () => {
             {/* STEP 1 — Connections */}
             {step === 1 && (
               <>
-                <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
-                  <div className="flex items-start gap-3">
-                    <Globe className="mt-0.5 h-4 w-4 text-paper-faint" />
-                    <div>
-                      <p className="text-[12px] font-medium text-paper">Apply to all connections</p>
-                      <p className="text-[11px] text-paper-faint">Rules apply to every connection, including ones added later.</p>
-                    </div>
-                  </div>
-                  <Switch checked={allMode} onCheckedChange={setAllMode} />
-                </label>
-
-                <div className={cn('space-y-1', allMode && 'pointer-events-none opacity-40')}>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Or configure specific connections</p>
+                <p className="text-[12px] text-paper-muted">Select the connections this policy configures. Each is set up independently in the next step.</p>
+                {(connections ?? []).length > 0 && (
+                  <label className="flex cursor-pointer items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2">
+                    <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll}
+                      className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50" />
+                    <Globe className="h-3.5 w-3.5 text-paper-faint" />
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper">Select all connections</span>
+                  </label>
+                )}
+                <div className="space-y-1">
                   {(connections ?? []).map((conn) => (
                     <label key={conn.id} className="flex cursor-pointer items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 px-3 py-2 hover:bg-ink-200">
-                      <Checkbox disabled={allMode} checked={scopeConns.includes(conn.id)}
-                        onCheckedChange={() => setScopeConns((s) => s.includes(conn.id) ? s.filter((x) => x !== conn.id) : [...s, conn.id])}
+                      <Checkbox checked={scopeConns.includes(conn.id)} onCheckedChange={() => toggleScopeConn(conn.id)}
                         className="border-ink-500 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-ink-50" />
                       <Server className="h-3.5 w-3.5 text-paper-faint" />
                       <span className="text-[12px] text-paper">{conn.name}</span>
                     </label>
                   ))}
-                  {(connections ?? []).length === 0 && <p className="text-[11px] text-paper-faint">No connections available.</p>}
+                  {(connections ?? []).length === 0 && <p className="text-[11px] text-paper-faint">No connections available. Add one under Admin → Connections first.</p>}
                 </div>
               </>
             )}
 
             {/* STEP 2 — Access */}
             {step === 2 && (
-              <div className="space-y-3">
-                {browseConns.length === 0 && (
-                  <p className="flex items-center gap-1.5 text-[11px] text-paper-faint"><Info className="h-3 w-3" /> No connections to browse. You can still add wildcard/pattern rules below.</p>
-                )}
-
-                {/* Browse trees for discovery + ticking */}
+              <div className="space-y-4">
+                {/* Each connection is configured independently. */}
                 {browseConns.map((conn) => (
-                  <div key={conn.id}>{renderTree(conn, ruleConnFor(conn.id))}</div>
-                ))}
-
-                {/* Editable rules, grouped by connection */}
-                <div className="space-y-2">
-                  {ruleGroups.map((g) => (
-                    <div key={g ?? '__all__'} className="space-y-1 rounded-xs border border-ink-500 bg-ink-200 p-3">
-                      <div className="flex items-center gap-2">
-                        {g === null ? <Globe className="h-3.5 w-3.5 text-paper-faint" /> : <Server className="h-3.5 w-3.5 text-paper-faint" />}
-                        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">{connectionName(g)}</span>
-                        <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
-                          {rules.filter((r) => r.connectionId === g).length} rule(s)
-                        </span>
-                      </div>
-                      {renderRuleGroup(g)}
+                  <div key={conn.id} className="space-y-2 rounded-xs border border-ink-500 bg-ink-200 p-3">
+                    {renderTree(conn, conn.id)}
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Rules for {conn.name}</span>
+                      <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
+                        {rules.filter((r) => r.connectionId === conn.id).length} rule(s)
+                      </span>
                     </div>
-                  ))}
-                </div>
+                    {renderRuleGroup(conn.id)}
+                  </div>
+                ))}
 
                 {!step2Valid && (
                   <p className="flex items-center gap-1.5 text-[11px] text-amber-300"><Info className="h-3 w-3" /> Tick at least one table/database or add a pattern rule to continue.</p>
