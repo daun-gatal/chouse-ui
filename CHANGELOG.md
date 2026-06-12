@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.0.0] - 2026-06-12
+
+### Added
+- **Server-backed preferences** — theme and max result row limit now persist to the server (`workspacePreferences.app`) so they survive re-login and roam across devices
+- **Custom row limit input** — type any value up to 100,000 directly in Preferences in addition to the quick-pick preset buttons
+- **Extended row limit presets** — new options: 25k, 50k, 100k (server-side validation raised to match)
+- **Data Access Policies** — database/table access is now defined as named, reusable policies managed under a new **Admin → Data Access** tab. A policy is a set of rules; each rule is scoped to a specific connection and grants/denies database/table patterns there. Policies are attached to roles many-to-many via a new `/rbac/data-access-policies` API and the new `data_access:view/create/update/delete/assign` permissions.
+- **Roles carry data access** — the role form now requires at least one data access policy for custom (non-system) roles, making roles the primary access-control mechanism.
+- **Policy wizard with table picker** — a 3-step wizard (Connections → Access → Details & Review): pick one or more connections (or "select all"), then for each connection independently browse its real databases and tables (auto-listed; tables lazy-loaded on expand) and tick the ones to grant — with whole-database (`*`) selection, wildcard/regex pattern rules, and allow/deny per connection — then name and review.
+
+### Changed
+- **AI Optimizer auto-enable** — removed the manual `AI_OPTIMIZER_ENABLED` env var; the optimizer now enables automatically whenever an active AI model is configured, matching the AI Chat behaviour
+- **One role per user** — each user now has exactly one role (enforced in the API and by a `UNIQUE(user_id)` index on `rbac_user_roles`). A user's effective data access is the union of the rules in the policies attached to their role; deny rules still take precedence by priority.
+- **Connection access comes from data access policies** — whether a user can open a connection is derived from their role's policies: a rule scoped to a connection grants access to that connection. (Super admins still see all connections.)
+- **Migration** — on upgrade, each user's *effective* legacy access is snapshotted into the new model: their connection grants and connection-scoped rules determine which connections they can reach, and global (all-connection) rules are expanded onto exactly those connections — so no access is lost and none is over-granted. Users with multiple roles or per-user rules are collapsed onto a single (de-duplicated) generated role; `super_admin`/`admin` users keep their privileged role.
+
+### Fixed
+- **AI Optimizer empty query** — clicking "AI Optimize" from the hint strip no longer opens the dialog with an empty query
+
+### Removed
+- **User-level data access rules** — per-user database/table rules and their UI (the data access section in user create/edit) have been removed. Data access is granted through the role's policies only. The `/rbac/data-access/user/*` endpoints, the `bulkSetForUser` client method, and the per-rule `accessType` field are gone (access type is determined by role permissions).
+- **Per-user connection access** — the "Manage Access" UI on connections and the `rbac_user_connections` table are removed; connection access is now derived from data access policies (see above).
+
 ## [v2.19.2] - 2026-06-11
 
 ### Fixed
