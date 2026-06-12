@@ -62,7 +62,8 @@ describe("RBAC Schema Definitions", () => {
             const expectedTables = [
                 'users', 'roles', 'permissions', 'userRoles', 'rolePermissions',
                 'resourcePermissions', 'sessions', 'auditLogs', 'apiKeys',
-                'clickhouseConnections', 'userConnections', 'dataAccessRules',
+                'clickhouseConnections',
+                'dataAccessPolicies', 'dataAccessPolicyRules', 'roleDataAccessPolicies',
                 'clickhouseUsersMetadata', 'userFavorites', 'userRecentItems',
                 'savedQueries', 'userPreferences'
             ];

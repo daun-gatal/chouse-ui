@@ -242,48 +242,6 @@ export const clickhouseConnections = sqliteTable('rbac_clickhouse_connections', 
 }));
 
 // ============================================
-// Data Access Rules Table
-// Defines which databases/tables a role OR user can access
-// Either roleId OR userId must be set (not both)
-// ============================================
-
-export const dataAccessRules = sqliteTable('rbac_data_access_rules', {
-  id: text('id').primaryKey(),
-  // Either roleId or userId should be set, not both
-  roleId: text('role_id').references(() => roles.id, { onDelete: 'cascade' }),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  connectionId: text('connection_id').references(() => clickhouseConnections.id, { onDelete: 'cascade' }),
-  // null connectionId means rule applies to all connections
-
-  // Database pattern: exact name, wildcard (*), or regex pattern
-  databasePattern: text('database_pattern').notNull().default('*'),
-
-  // Table pattern: exact name, wildcard (*), or regex pattern
-  tablePattern: text('table_pattern').notNull().default('*'),
-
-  // Access type: 'read' (SELECT), 'write' (INSERT/UPDATE), 'admin' (DDL)
-  accessType: text('access_type').notNull().default('read'),
-
-  // If false, this is a deny rule (takes precedence over allow rules)
-  isAllowed: integer('is_allowed', { mode: 'boolean' }).notNull().default(true),
-
-  // Priority: higher priority rules are evaluated first
-  priority: integer('priority').notNull().default(0),
-
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
-  description: text('description'),
-}, (table) => ({
-  roleIdx: index('data_access_role_idx').on(table.roleId),
-  userIdx: index('data_access_user_idx').on(table.userId),
-  connIdx: index('data_access_conn_idx').on(table.connectionId),
-  patternIdx: index('data_access_pattern_idx').on(table.databasePattern, table.tablePattern),
-  roleConnIdx: index('data_access_role_conn_idx').on(table.roleId, table.connectionId),
-  userConnIdx: index('data_access_user_conn_idx').on(table.userId, table.connectionId),
-}));
-
-// ============================================
 // Data Access Policies (named, reusable bundles)
 // A policy groups one or more pattern rules and is attached to roles (M:N).
 // Connection scope is PER-RULE: each rule may target a specific connection, or
@@ -559,8 +517,6 @@ export type Session = typeof sessions.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type ClickHouseConnection = typeof clickhouseConnections.$inferSelect;
-export type DataAccessRule = typeof dataAccessRules.$inferSelect;
-export type NewDataAccessRule = typeof dataAccessRules.$inferInsert;
 export type DataAccessPolicy = typeof dataAccessPolicies.$inferSelect;
 export type NewDataAccessPolicy = typeof dataAccessPolicies.$inferInsert;
 export type DataAccessPolicyRule = typeof dataAccessPolicyRules.$inferSelect;
