@@ -461,6 +461,10 @@ export const RBAC_PERMISSIONS = {
   AI_MODELS_CREATE: 'ai_models:create',
   AI_MODELS_UPDATE: 'ai_models:update',
   AI_MODELS_DELETE: 'ai_models:delete',
+
+  // SSO Management
+  SSO_VIEW: 'sso:view',
+  SSO_MANAGE: 'sso:manage',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

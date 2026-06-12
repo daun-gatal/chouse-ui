@@ -133,6 +133,10 @@ export const PERMISSIONS = {
   AI_MODELS_CREATE: 'ai_models:create',
   AI_MODELS_UPDATE: 'ai_models:update',
   AI_MODELS_DELETE: 'ai_models:delete',
+
+  // SSO Management
+  SSO_VIEW: 'sso:view',
+  SSO_MANAGE: 'sso:manage',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -196,6 +200,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_MODELS_CREATE,
     PERMISSIONS.AI_MODELS_UPDATE,
     PERMISSIONS.AI_MODELS_DELETE,
+    PERMISSIONS.SSO_VIEW,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -339,6 +344,13 @@ export const AUDIT_ACTIONS = {
   USER_ROLE_ASSIGN: 'user.role_assign',
   USER_ROLE_REVOKE: 'user.role_revoke',
   SSO_IDENTITY_UNLINK: 'user.sso_identity_unlink',
+
+  // SSO Management
+  SSO_SETTINGS_UPDATE: 'sso.settings_update',
+  SSO_PROVIDER_CREATE: 'sso.provider_create',
+  SSO_PROVIDER_UPDATE: 'sso.provider_update',
+  SSO_PROVIDER_DELETE: 'sso.provider_delete',
+  SSO_PROVIDER_TEST: 'sso.provider_test',
 
   // Role Management
   ROLE_CREATE: 'role.create',
