@@ -135,7 +135,7 @@ jobs:
             echo "## Release Preview: $VERSION"
             echo ""
             echo "> Changelog and version bump are staged on \`$BRANCH\`."
-            echo "> **Approve** the \`docker-publish\` deployment below to push to \`main\` and build Docker, or **Reject** to abort (then delete the branch manually)."
+            echo "> **Approve** the \`docker-publish\` deployment below to push to \`main\` and build Docker, or **Reject** to abort (the release branch will be deleted automatically)."
             echo ""
             echo "---"
             echo ""
@@ -179,6 +179,27 @@ jobs:
       - name: Delete release branch
         run: |
           git push origin --delete "${{ needs.assemble.outputs.release_branch }}" || true
+
+  # ── Step 2b: cleanup on rejection — delete the release branch ───────────────
+  cleanup-on-rejection:
+    name: Cleanup Release Branch
+    needs: [assemble, push-to-main]
+    if: failure() && needs.assemble.outputs.release_branch != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_SECRET }}
+
+      - name: Delete release branch
+        run: |
+          BRANCH="${{ needs.assemble.outputs.release_branch }}"
+          git push origin --delete "$BRANCH" || echo "Branch $BRANCH already deleted or not found."
+          echo "Release branch $BRANCH deleted after rejection."
 
   # ── Step 3: build and push Docker (after main is updated) ─────────────────
   docker:
