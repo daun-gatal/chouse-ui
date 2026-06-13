@@ -26,6 +26,7 @@
     "@clickhouse/client": "^1.16.0",
     "@hono/zod-validator": "^0.7.6",
     "@node-saml/node-saml": "^5.1.0",
+    "@xmldom/xmldom": "^0.9.10",
     "ai": "^6.0.86",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.11.4",
@@ -37,6 +38,7 @@
     "pino": "^10.3.1",
     "postgres": "^3.4.5",
     "sql-formatter": "^15.7.1",
+    "xpath": "^0.0.34",
     "yaml": "^2.8.2",
     "zod": "^3.23.0"
   },
