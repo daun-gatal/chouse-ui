@@ -203,6 +203,22 @@ async function syncMappedRoles(
       ? [raw]
       : [];
 
+  // Inspection aid: shows whether the configured claim arrived (and under which
+  // key) and what raw value it carried. Enable with LOG_LEVEL=debug. Logs claim
+  // KEYS + the mapped claim's value only — not the full token (avoids PII/leaks).
+  logger.debug(
+    {
+      module: 'SSO',
+      provider: provider.id,
+      claimName,
+      availableClaimKeys: Object.keys(claims),
+      rawClaim: raw,
+      extractedValues: values,
+      mappingKeys: Object.keys(mapping),
+    },
+    'Role mapping — inspecting IdP claim'
+  );
+
   const targetRoleNames = [...new Set(values.map((v) => mapping[v]).filter(Boolean))];
   const targetRoles = (
     await Promise.all(targetRoleNames.map((n) => getRoleByName(n)))
@@ -210,7 +226,15 @@ async function syncMappedRoles(
 
   if (targetRoles.length === 0) {
     logger.warn(
-      { module: 'SSO', provider: provider.id, userId, claimValues: values },
+      {
+        module: 'SSO',
+        provider: provider.id,
+        userId,
+        claimName,
+        claimValues: values,
+        availableClaimKeys: Object.keys(claims),
+        mappingKeys: Object.keys(mapping),
+      },
       'Role mapping produced no known roles; keeping existing roles'
     );
     return;
