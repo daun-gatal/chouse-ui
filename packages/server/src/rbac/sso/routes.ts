@@ -343,6 +343,18 @@ export const samlAcsHandler = async (c: Context): Promise<Response> => {
     // resolved provider's certificate below; a forged Issuer routes to a cert
     // that won't verify.
     const decoded = Buffer.from(SAMLResponse, "base64").toString("utf8");
+
+    // Troubleshooting aid (mirrors the OIDC full-claims debug log): the COMPLETE
+    // decoded SAMLResponse the IdP returned — Issuer, Destination, Conditions/
+    // Audience, NotBefore/NotOnOrAfter, InResponseTo, NameID, attributes — so a
+    // validation failure (audience/destination/InResponseTo mismatch) is
+    // diagnosable. Off unless LOG_LEVEL=debug. WARNING: contains PII; never raise
+    // above debug. The signature it includes is public material, not a secret.
+    requestLogger(c.get("requestId")).debug(
+      { module: "SSO", binding: "saml", relayStatePresent: Boolean(RelayState), samlResponseXml: decoded },
+      "SAML response received (full, debug only)"
+    );
+
     const issuer = extractSamlIssuer(decoded);
     if (!issuer) throw AppError.badRequest("SAMLResponse has no Issuer.");
     const provider = resolveSamlProviderByIssuer(config.providers.values(), issuer);
