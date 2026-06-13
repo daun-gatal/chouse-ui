@@ -57,6 +57,12 @@ const CommonProviderSchema = z.object({
 const OidcProviderSchema = CommonProviderSchema.extend({
   type: z.literal('oidc'),
   issuer: z.string().url(),
+  // Optional overrides: endpoints normally come from OIDC discovery, claims from
+  // the ID token's standard names. Provide these only to override either.
+  authorizationEndpoint: z.string().url().optional(),
+  tokenEndpoint: z.string().url().optional(),
+  userinfoEndpoint: z.string().url().optional(),
+  claimMapping: z.record(z.string()).optional(),
 });
 
 const Oauth2ProviderSchema = CommonProviderSchema.extend({

@@ -84,6 +84,24 @@ describe('loadSsoConfig', () => {
     if (okta!.type === 'oidc') expect(okta!.issuer).toBe('https://corp.okta.com');
   });
 
+  it('keeps OIDC endpoint overrides and claim mapping (not stripped)', () => {
+    const env = {
+      ...baseEnv(),
+      AUTH_SSO_PROVIDERS_OKTA_AUTHORIZATION_ENDPOINT: 'https://corp.okta.com/oauth2/v1/authorize',
+      AUTH_SSO_PROVIDERS_OKTA_TOKEN_ENDPOINT: 'https://corp.okta.com/oauth2/v1/token',
+      AUTH_SSO_PROVIDERS_OKTA_USERINFO_ENDPOINT: 'https://corp.okta.com/oauth2/v1/userinfo',
+      AUTH_SSO_PROVIDERS_OKTA_CLAIM_MAPPING: 'username:upn,email:mail',
+    };
+    const okta = loadSsoConfig(env).providers.get('okta')!;
+    expect(okta.type).toBe('oidc');
+    if (okta.type === 'oidc') {
+      expect(okta.authorizationEndpoint).toBe('https://corp.okta.com/oauth2/v1/authorize');
+      expect(okta.tokenEndpoint).toBe('https://corp.okta.com/oauth2/v1/token');
+      expect(okta.userinfoEndpoint).toBe('https://corp.okta.com/oauth2/v1/userinfo');
+      expect(okta.claimMapping).toEqual({ username: 'upn', email: 'mail' });
+    }
+  });
+
   it('parses an oauth2 provider with claim mapping', () => {
     const env = {
       ...baseEnv(),
