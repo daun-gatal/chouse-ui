@@ -389,6 +389,13 @@ export const RBAC_PERMISSIONS = {
   CH_USERS_UPDATE: 'clickhouse:users:update',
   CH_USERS_DELETE: 'clickhouse:users:delete',
 
+  // ClickHouse Role Management (native ClickHouse roles)
+  CH_ROLES_VIEW: 'clickhouse:roles:view',
+  CH_ROLES_CREATE: 'clickhouse:roles:create',
+  CH_ROLES_UPDATE: 'clickhouse:roles:update',
+  CH_ROLES_DELETE: 'clickhouse:roles:delete',
+  CH_ROLES_ASSIGN: 'clickhouse:roles:assign',
+
   // Database Operations
   DB_VIEW: 'database:view',
   DB_CREATE: 'database:create',

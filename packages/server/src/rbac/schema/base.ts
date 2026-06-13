@@ -60,6 +60,13 @@ export const PERMISSIONS = {
   CH_USERS_UPDATE: 'clickhouse:users:update',
   CH_USERS_DELETE: 'clickhouse:users:delete',
 
+  // ClickHouse Role Management (native ClickHouse roles)
+  CH_ROLES_VIEW: 'clickhouse:roles:view',
+  CH_ROLES_CREATE: 'clickhouse:roles:create',
+  CH_ROLES_UPDATE: 'clickhouse:roles:update',
+  CH_ROLES_DELETE: 'clickhouse:roles:delete',
+  CH_ROLES_ASSIGN: 'clickhouse:roles:assign',
+
   // Database Operations
   DB_VIEW: 'database:view',
   DB_CREATE: 'database:create',
@@ -160,6 +167,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.CH_USERS_CREATE,
     PERMISSIONS.CH_USERS_UPDATE,
     PERMISSIONS.CH_USERS_DELETE,
+    PERMISSIONS.CH_ROLES_VIEW,
+    PERMISSIONS.CH_ROLES_CREATE,
+    PERMISSIONS.CH_ROLES_UPDATE,
+    PERMISSIONS.CH_ROLES_DELETE,
+    PERMISSIONS.CH_ROLES_ASSIGN,
     PERMISSIONS.DB_VIEW,
     PERMISSIONS.DB_CREATE,
     PERMISSIONS.DB_DROP,
@@ -261,6 +273,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.ROLES_VIEW,
     // ClickHouse User Management - View only
     PERMISSIONS.CH_USERS_VIEW,
+    // ClickHouse Role Management - View only
+    PERMISSIONS.CH_ROLES_VIEW,
     // Database Operations - View only
     PERMISSIONS.DB_VIEW,
     // Table Operations - View and Select only
@@ -349,7 +363,12 @@ export const AUDIT_ACTIONS = {
   CH_USER_CREATE: 'clickhouse.user_create',
   CH_USER_UPDATE: 'clickhouse.user_update',
   CH_USER_DELETE: 'clickhouse.user_delete',
-  CH_USER_SYNC: 'clickhouse.user_sync',
+  CH_USER_EXTRACT_ROLE: 'clickhouse.user_extract_role',
+  CH_ROLE_CREATE: 'clickhouse.role_create',
+  CH_ROLE_UPDATE: 'clickhouse.role_update',
+  CH_ROLE_DELETE: 'clickhouse.role_delete',
+  CH_ROLE_DISABLE: 'clickhouse.role_disable',
+  CH_ROLE_ENABLE: 'clickhouse.role_enable',
   CH_QUERY_EXECUTE: 'clickhouse.query_execute',
   CH_QUERY_EXPLAIN: 'clickhouse.query_explain',
   CH_DATABASE_CREATE: 'clickhouse.database_create',

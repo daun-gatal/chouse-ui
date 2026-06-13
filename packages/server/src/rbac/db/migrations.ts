@@ -44,7 +44,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.28.0';
+export const APP_VERSION = '1.31.0';
 
 // ============================================
 // Error Helpers
@@ -3002,6 +3002,116 @@ export const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_user_connections`);
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.28.0] Dropped rbac_user_connections table');
+    },
+  },
+  {
+    version: '1.29.0',
+    name: 'clickhouse_roles_permissions',
+    description: 'Seed clickhouse:roles:* permissions (native ClickHouse role management) and grant them to roles that already manage ClickHouse users.',
+    up: async (db) => {
+      const { seedPermissions } = await import('../services/seed');
+      const { getDatabaseType } = await import('./index');
+      const { sql } = await import('drizzle-orm');
+      const { randomUUID } = await import('crypto');
+      const dbType = getDatabaseType();
+
+      // Ensure the new permissions exist (reads the PERMISSIONS catalog) → name→id map.
+      const idMap = await seedPermissions();
+
+      const selectAll = async (stmt: ReturnType<typeof sql>): Promise<Record<string, unknown>[]> => {
+        if (dbType === 'sqlite') return (db as SqliteDb).all(stmt) as Record<string, unknown>[];
+        const rows = await (db as PostgresDb).execute(stmt);
+        const anyRows = rows as { rows?: unknown[] };
+        return (Array.isArray(rows) ? rows : anyRows.rows ?? []) as Record<string, unknown>[];
+      };
+      const run = async (stmt: ReturnType<typeof sql>): Promise<void> => {
+        if (dbType === 'sqlite') (db as SqliteDb).run(stmt);
+        else await (db as PostgresDb).execute(stmt);
+      };
+
+      // Grant `newPerm` to every role that already holds `parentPerm` (idempotent).
+      const grantLikeParent = async (parentPerm: string, newPerm: string) => {
+        const pid = idMap.get(newPerm);
+        if (!pid) return;
+        const roleRows = await selectAll(sql`
+          SELECT DISTINCT rp.role_id AS role_id
+          FROM rbac_role_permissions rp
+          JOIN rbac_permissions p ON p.id = rp.permission_id
+          WHERE p.name = ${parentPerm}
+        `);
+        for (const row of roleRows) {
+          const roleId = String(row.role_id);
+          const existing = await selectAll(
+            sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${pid} LIMIT 1`,
+          );
+          if (existing.length === 0) {
+            const id = randomUUID();
+            const ts = dbType === 'sqlite' ? Math.floor(Date.now() / 1000) : new Date().toISOString();
+            await run(sql`
+              INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at)
+              VALUES (${id}, ${roleId}, ${pid}, ${ts})
+            `);
+          }
+        }
+      };
+
+      // Preserve access: each clickhouse:roles:* mirrors its clickhouse:users:* parent.
+      await grantLikeParent('clickhouse:users:view', 'clickhouse:roles:view');
+      await grantLikeParent('clickhouse:users:create', 'clickhouse:roles:create');
+      await grantLikeParent('clickhouse:users:update', 'clickhouse:roles:update');
+      await grantLikeParent('clickhouse:users:delete', 'clickhouse:roles:delete');
+      await grantLikeParent('clickhouse:users:create', 'clickhouse:roles:assign');
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.29.0] clickhouse:roles:* seeded + granted to ClickHouse-user managers');
+    },
+    down: async () => {
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.29.0] Down: clickhouse:roles:* remain (idempotent seed)');
+    },
+  },
+  {
+    version: '1.30.0',
+    name: 'drop_clickhouse_users_metadata',
+    description: 'Drop rbac_clickhouse_users_metadata — ClickHouse users/roles/grants now read directly from system tables (ClickHouse is the source of truth).',
+    up: async (db) => {
+      if (getDatabaseType() === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_clickhouse_users_metadata`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_clickhouse_users_metadata`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.30.0] Dropped rbac_clickhouse_users_metadata table');
+    },
+  },
+  {
+    version: '1.31.0',
+    name: 'clickhouse_role_state',
+    description: 'Add rbac_clickhouse_role_state for reversible enable/disable of native ClickHouse roles (stores the disabled-state + grant snapshot per connection).',
+    up: async (db) => {
+      if (getDatabaseType() === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_clickhouse_role_state (
+            id TEXT PRIMARY KEY NOT NULL,
+            connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+            role_name TEXT NOT NULL,
+            saved_grants TEXT NOT NULL DEFAULT '[]',
+            disabled_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            disabled_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS ch_role_state_conn_role_idx ON rbac_clickhouse_role_state(connection_id, role_name)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_clickhouse_role_state (
+            id TEXT PRIMARY KEY NOT NULL,
+            connection_id TEXT NOT NULL REFERENCES rbac_clickhouse_connections(id) ON DELETE CASCADE,
+            role_name VARCHAR(255) NOT NULL,
+            saved_grants JSONB NOT NULL DEFAULT '[]'::jsonb,
+            disabled_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            disabled_by TEXT REFERENCES rbac_users(id) ON DELETE SET NULL
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS ch_role_state_conn_role_idx ON rbac_clickhouse_role_state(connection_id, role_name)`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.31.0] Created rbac_clickhouse_role_state table');
     },
   },
 ];

@@ -8,6 +8,7 @@ import { RbacRolesTable, RbacAuditLogs } from "@/features/rbac/components";
 import ConnectionManagement from "@/features/admin/components/ConnectionManagement";
 import { DataAccessPolicies } from "@/features/admin/components/DataAccessPolicies";
 import ClickHouseUsersManagement from "@/features/admin/components/ClickHouseUsers";
+import ClickHouseRolesManagement from "@/features/admin/components/ClickHouseRoles";
 import AiModelsManagement from "@/features/admin/components/AiModels";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ type AdminTabKey =
   | "data-access"
   | "connections"
   | "clickhouse-users"
+  | "clickhouse-roles"
   | "audit"
   | "ai-models";
 
@@ -65,6 +67,11 @@ const ADMIN_TAB_CONFIG: Record<AdminTabKey, AdminTabConfig> = {
     label: "ClickHouse users",
     description: "Database-level accounts",
   },
+  "clickhouse-roles": {
+    icon: Shield,
+    label: "ClickHouse roles",
+    description: "Native role privileges",
+  },
   audit: {
     icon: FileText,
     label: "Audit logs",
@@ -91,7 +98,7 @@ interface AdminTabGroup {
 
 const ADMIN_TAB_GROUPS: AdminTabGroup[] = [
   { label: "Access control", icon: Shield, tabs: ["users", "roles", "data-access"] },
-  { label: "Data sources", icon: Server, tabs: ["connections", "clickhouse-users"] },
+  { label: "CH Management", icon: Server, tabs: ["connections", "clickhouse-users", "clickhouse-roles"] },
   { label: "Intelligence", icon: Bot, tabs: ["ai-models"] },
   { label: "Security", icon: FileText, tabs: ["audit"] },
 ];
@@ -174,6 +181,7 @@ export default function Admin() {
   const canViewAudit = hasPermission(RBAC_PERMISSIONS.AUDIT_VIEW);
   const canViewConnections = hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW);
   const canViewClickHouseUsers = hasPermission(RBAC_PERMISSIONS.CH_USERS_VIEW);
+  const canViewClickHouseRoles = hasPermission(RBAC_PERMISSIONS.CH_ROLES_VIEW);
   const canViewAiModels = hasPermission(RBAC_PERMISSIONS.AI_MODELS_VIEW);
 
   const { tab } = useParams<{ tab: string }>();
@@ -185,6 +193,7 @@ export default function Admin() {
     ...(canViewDataAccess ? (["data-access"] as AdminTabKey[]) : []),
     ...(canViewConnections ? (["connections"] as AdminTabKey[]) : []),
     ...(canViewClickHouseUsers ? (["clickhouse-users"] as AdminTabKey[]) : []),
+    ...(canViewClickHouseRoles ? (["clickhouse-roles"] as AdminTabKey[]) : []),
     ...(canViewAiModels ? (["ai-models"] as AdminTabKey[]) : []),
     ...(canViewAudit ? (["audit"] as AdminTabKey[]) : []),
   ];
@@ -332,6 +341,14 @@ export default function Admin() {
             </TabsContent>
           )}
 
+          {activeTab === "clickhouse-roles" && canViewClickHouseRoles && (
+            <TabsContent value="clickhouse-roles" className="mt-0 h-full outline-none">
+              <div className="rounded-md border border-ink-500 bg-ink-100">
+                <ClickHouseRolesManagement />
+              </div>
+            </TabsContent>
+          )}
+
           {activeTab === "ai-models" && canViewAiModels && (
             <TabsContent value="ai-models" className="mt-0 h-full outline-none">
               <div className="rounded-md border border-ink-500 bg-ink-100">
@@ -377,7 +394,11 @@ export default function Admin() {
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-paper-dim" aria-hidden />
-              <span><strong className="text-paper">ClickHouse users</strong> — create and manage database-level users</span>
+              <span><strong className="text-paper">ClickHouse users</strong> — create native database users and assign them roles</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-paper-dim" aria-hidden />
+              <span><strong className="text-paper">ClickHouse roles</strong> — define native role privileges from the live server hierarchy</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-paper-dim" aria-hidden />

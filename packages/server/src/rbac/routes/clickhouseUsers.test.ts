@@ -1,67 +1,64 @@
-
 import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
 import { Hono } from "hono";
 
-// Mock Services
+// Mock service layer
 const mockListClickHouseUsers = mock();
 const mockGetClickHouseUser = mock();
-const mockGetUserGrants = mock();
-const mockCreateClickHouseUser = mock();
-const mockUpdateClickHouseUser = mock();
-const mockDeleteClickHouseUser = mock();
-const mockGenerateUserDDL = mock();
-const mockGenerateUpdateUserDDL = mock();
-const mockSyncUnregisteredUsers = mock();
-const mockCreateAuditLog = mock(async () => { });
-const mockValidatePasswordStrength = mock();
+const mockGetCurrentUserState = mock(async () => ({ roles: [], defaultRoles: [], directGrants: [], authType: 'sha256_password' }));
+const mockCreateClickHouseUser = mock(async () => {});
+const mockUpdateClickHouseUser = mock(async () => {});
+const mockDeleteClickHouseUser = mock(async () => {});
+const mockExtractRoleFromUser = mock(async () => {});
+const mockGenerateUserDDL = mock(() => ({ createUser: "", grantStatements: [], fullDDL: "" }));
+const mockGenerateUpdateUserDDL = mock(() => ({ createUser: "", grantStatements: [], fullDDL: "" }));
+const mockCreateAuditLogWithContext = mock(async () => {});
+const mockValidatePasswordStrength = mock(() => ({ valid: true }));
 
 mock.module("../services/clickhouseUsers", () => ({
     listClickHouseUsers: mockListClickHouseUsers,
     getClickHouseUser: mockGetClickHouseUser,
-    getUserGrants: mockGetUserGrants,
+    getCurrentUserState: mockGetCurrentUserState,
     createClickHouseUser: mockCreateClickHouseUser,
     updateClickHouseUser: mockUpdateClickHouseUser,
     deleteClickHouseUser: mockDeleteClickHouseUser,
+    extractRoleFromUser: mockExtractRoleFromUser,
     generateUserDDL: mockGenerateUserDDL,
     generateUpdateUserDDL: mockGenerateUpdateUserDDL,
-    syncUnregisteredUsers: mockSyncUnregisteredUsers
 }));
 
 mock.module("../services/rbac", () => ({
-    createAuditLog: mockCreateAuditLog
+    createAuditLogWithContext: mockCreateAuditLogWithContext,
 }));
 
 mock.module("../services/password", () => ({
-    validatePasswordStrength: mockValidatePasswordStrength
+    validatePasswordStrength: mockValidatePasswordStrength,
 }));
 
-// Mock ClickHouse Service for Session
-const mockCHService = {
-    executeQuery: mock()
-};
-
+const mockCHService = { executeQuery: mock(async () => ({ data: [] })) };
 const mockGetSession = mock();
 
 mock.module("../../services/clickhouse", () => ({
-    getSession: mockGetSession
+    getSession: mockGetSession,
 }));
 
-// Mock JWT Service
 let mockTokenPayload = {
     sub: 'admin-id',
     roles: ['admin'],
-    permissions: ['clickhouse:users:view', 'clickhouse:users:create', 'clickhouse:users:update', 'clickhouse:users:delete'],
-    sessionId: 'sess-1'
+    permissions: ['clickhouse:users:view', 'clickhouse:users:create', 'clickhouse:users:update', 'clickhouse:users:delete', 'clickhouse:roles:create'],
+    sessionId: 'sess-1',
 };
 
 mock.module("../services/jwt", () => ({
     verifyAccessToken: mock(async () => mockTokenPayload),
     extractTokenFromHeader: mock((h) => h ? "valid_token" : null),
-    verifyRefreshToken: mock(async () => mockTokenPayload)
+    verifyRefreshToken: mock(async () => mockTokenPayload),
 }));
 
 import clickhouseUsersRoutes from "./clickhouseUsers";
 import { errorHandler } from "../../middleware/error";
+
+const authHeaders = { "Authorization": "Bearer token", "X-Session-ID": "s1" };
+const jsonHeaders = { ...authHeaders, "Content-Type": "application/json" };
 
 describe("RBAC ClickHouse Users Routes", () => {
     let app: Hono;
@@ -71,110 +68,102 @@ describe("RBAC ClickHouse Users Routes", () => {
         app.onError(errorHandler);
         app.route("/ch-users", clickhouseUsersRoutes);
 
-        mockListClickHouseUsers.mockClear();
-        mockGetClickHouseUser.mockClear();
-        mockCreateClickHouseUser.mockClear();
-        mockUpdateClickHouseUser.mockClear();
-        mockDeleteClickHouseUser.mockClear();
-        mockCreateAuditLog.mockClear();
-        mockGetSession.mockClear();
-        mockCHService.executeQuery.mockClear();
-        mockValidatePasswordStrength.mockClear();
+        for (const m of [mockListClickHouseUsers, mockGetClickHouseUser, mockGetCurrentUserState, mockCreateClickHouseUser, mockUpdateClickHouseUser, mockDeleteClickHouseUser, mockExtractRoleFromUser, mockCreateAuditLogWithContext, mockGetSession, mockCHService.executeQuery, mockValidatePasswordStrength]) {
+            m.mockClear();
+        }
 
-        // Default: Admin
         mockTokenPayload = {
             sub: 'admin-id',
             roles: ['admin'],
-            permissions: ['clickhouse:users:view', 'clickhouse:users:create', 'clickhouse:users:update', 'clickhouse:users:delete'],
-            sessionId: 'sess-1'
+            permissions: ['clickhouse:users:view', 'clickhouse:users:create', 'clickhouse:users:update', 'clickhouse:users:delete', 'clickhouse:roles:create'],
+            sessionId: 'sess-1',
         };
-
-        // Mock valid session
-        mockGetSession.mockReturnValue({
-            service: mockCHService,
-            session: { rbacConnectionId: "conn1" }
-        });
+        mockGetSession.mockReturnValue({ service: mockCHService, session: { rbacConnectionId: "conn1" } });
+        mockValidatePasswordStrength.mockReturnValue({ valid: true });
     });
 
-    afterAll(() => {
-        mock.restore();
+    afterAll(() => mock.restore());
+
+    it("lists users", async () => {
+        mockListClickHouseUsers.mockResolvedValue([]);
+        const res = await app.request("/ch-users", { headers: authHeaders });
+        expect(res.status).toBe(200);
+        expect(mockListClickHouseUsers).toHaveBeenCalled();
     });
 
-    describe("GET /ch-users/clusters", () => {
-        it("should return clusters", async () => {
-            mockCHService.executeQuery.mockResolvedValue({ data: [{ cluster: "c1" }] });
-
-            const res = await app.request("/ch-users/clusters", {
-                headers: { "Authorization": "Bearer token", "X-Session-ID": "s1" }
-            });
-
-            expect(res.status).toBe(200);
-            const body = await res.json();
-            expect(body.data).toEqual(["c1"]);
-        });
+    it("fails without session", async () => {
+        mockGetSession.mockReturnValue(null);
+        const res = await app.request("/ch-users", { headers: authHeaders });
+        expect(res.status).toBe(400);
     });
 
-    describe("GET /ch-users", () => {
-        it("should list users", async () => {
-            mockListClickHouseUsers.mockResolvedValue([]);
-
-            const res = await app.request("/ch-users", {
-                headers: { "Authorization": "Bearer token", "X-Session-ID": "s1" }
-            });
-
-            expect(res.status).toBe(200);
-            expect(mockListClickHouseUsers).toHaveBeenCalled();
+    it("creates a user with roles", async () => {
+        const res = await app.request("/ch-users", {
+            method: "POST",
+            headers: jsonHeaders,
+            body: JSON.stringify({ username: "new_user", password: "StrongPassword123!", roles: ["readonly"], defaultRoles: "ALL" }),
         });
-
-        it("should fail without session", async () => {
-            mockGetSession.mockReturnValue(null);
-
-            const res = await app.request("/ch-users", {
-                headers: { "Authorization": "Bearer token", "X-Session-ID": "s1" }
-            });
-
-            expect(res.status).toBe(400); // Handled error
-        });
+        expect(res.status).toBe(201);
+        expect(mockCreateClickHouseUser).toHaveBeenCalled();
+        expect(mockCreateAuditLogWithContext).toHaveBeenCalled();
     });
 
-    describe("POST /ch-users", () => {
-        it("should create user", async () => {
-            mockValidatePasswordStrength.mockReturnValue({ valid: true });
-
-            const res = await app.request("/ch-users", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": "Bearer token", "X-Session-ID": "s1" },
-                body: JSON.stringify({
-                    username: "new_user",
-                    password: "StrongPassword123!",
-                    role: "developer",
-                    authType: "sha256_password"
-                })
-            });
-
-            expect(res.status).toBe(201);
-            expect(mockCreateClickHouseUser).toHaveBeenCalled();
+    it("rejects invalid username", async () => {
+        const res = await app.request("/ch-users", {
+            method: "POST",
+            headers: jsonHeaders,
+            body: JSON.stringify({ username: "1bad name", password: "StrongPassword123!" }),
         });
+        expect(res.status).toBe(400);
+        expect(mockCreateClickHouseUser).not.toHaveBeenCalled();
     });
 
-    describe("POST /ch-users/generate-ddl", () => {
-        it("should generate DDL", async () => {
-            mockGenerateUserDDL.mockReturnValue("CREATE USER ...");
-
-            const res = await app.request("/ch-users/generate-ddl", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
-                body: JSON.stringify({
-                    username: "new_user",
-                    password: "StrongPassword123!",
-                    role: "developer",
-                    authType: "sha256_password"
-                })
-            });
-
-            expect(res.status).toBe(200);
-            const body = await res.json();
-            expect(body.data).toBe("CREATE USER ...");
+    it("rejects weak passwords", async () => {
+        mockValidatePasswordStrength.mockReturnValue({ valid: false, errors: ["too weak"] });
+        const res = await app.request("/ch-users", {
+            method: "POST",
+            headers: jsonHeaders,
+            body: JSON.stringify({ username: "u", password: "weakpassword", roles: ["readonly"] }),
         });
+        expect(res.status).toBe(400);
+        expect(mockCreateClickHouseUser).not.toHaveBeenCalled();
+    });
+
+    it("requires at least one role on create", async () => {
+        const res = await app.request("/ch-users", {
+            method: "POST",
+            headers: jsonHeaders,
+            body: JSON.stringify({ username: "u", password: "StrongPassword123!" }),
+        });
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.error.code).toBe("ROLE_REQUIRED");
+        expect(mockCreateClickHouseUser).not.toHaveBeenCalled();
+    });
+
+    it("updates a user", async () => {
+        const res = await app.request("/ch-users/alice", {
+            method: "PATCH",
+            headers: jsonHeaders,
+            body: JSON.stringify({ roles: ["analytics"] }),
+        });
+        expect(res.status).toBe(200);
+        expect(mockUpdateClickHouseUser).toHaveBeenCalled();
+    });
+
+    it("extracts a role from a user", async () => {
+        const res = await app.request("/ch-users/alice/extract-role", {
+            method: "POST",
+            headers: jsonHeaders,
+            body: JSON.stringify({ roleName: "extracted_alice" }),
+        });
+        expect(res.status).toBe(200);
+        expect(mockExtractRoleFromUser).toHaveBeenCalledWith(mockCHService, "alice", "extracted_alice", undefined);
+    });
+
+    it("deletes a user", async () => {
+        const res = await app.request("/ch-users/alice", { method: "DELETE", headers: authHeaders });
+        expect(res.status).toBe(200);
+        expect(mockDeleteClickHouseUser).toHaveBeenCalled();
     });
 });

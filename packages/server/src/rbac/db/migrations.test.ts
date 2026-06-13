@@ -32,8 +32,9 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     // Created here, dropped by 1.27.0 — so it must be absent in the final state.
     expect(await h.tableExists("rbac_data_access_rules")).toBe(false);
   },
-  "1.2.0": async () => expect(await h.tableExists("rbac_clickhouse_users_metadata")).toBe(true),
-  "1.2.1": async () => expect(await h.columnExists("rbac_clickhouse_users_metadata", "auth_type")).toBe(true),
+  // Created here, dropped by 1.30.0 — so it must be absent in the final state.
+  "1.2.0": async () => expect(await h.tableExists("rbac_clickhouse_users_metadata")).toBe(false),
+  "1.2.1": async () => expect(await h.columnExists("rbac_clickhouse_users_metadata", "auth_type")).toBe(false),
   "1.2.2": async () => expect(await h.roleExists("guest")).toBe(true),
   "1.3.0": async () => {
     expect(await h.tableExists("rbac_user_preferences")).toBe(true);
@@ -99,6 +100,21 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
   "1.28.0": async () => {
     // Per-user connection access is gone; access is derived from role policies.
     expect(await h.tableExists("rbac_user_connections")).toBe(false);
+  },
+  "1.29.0": async () => {
+    for (const p of ["clickhouse:roles:view", "clickhouse:roles:create", "clickhouse:roles:update", "clickhouse:roles:delete", "clickhouse:roles:assign"]) {
+      expect(await h.permissionExists(p)).toBe(true);
+    }
+    expect(await h.roleHasPermission("super_admin", "clickhouse:roles:create")).toBe(true);
+    expect(await h.roleHasPermission("admin", "clickhouse:roles:assign")).toBe(true);
+  },
+  "1.30.0": async () => {
+    // ClickHouse is now the source of truth; the local metadata cache is gone.
+    expect(await h.tableExists("rbac_clickhouse_users_metadata")).toBe(false);
+  },
+  "1.31.0": async () => {
+    expect(await h.tableExists("rbac_clickhouse_role_state")).toBe(true);
+    expect(await h.indexExists("ch_role_state_conn_role_idx")).toBe(true);
   },
 };
 

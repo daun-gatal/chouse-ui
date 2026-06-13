@@ -64,7 +64,7 @@ describe("RBAC Schema Definitions", () => {
                 'resourcePermissions', 'sessions', 'auditLogs', 'apiKeys',
                 'clickhouseConnections',
                 'dataAccessPolicies', 'dataAccessPolicyRules', 'roleDataAccessPolicies',
-                'clickhouseUsersMetadata', 'userFavorites', 'userRecentItems',
+                'clickhouseRoleState', 'userFavorites', 'userRecentItems',
                 'savedQueries', 'userPreferences'
             ];
 

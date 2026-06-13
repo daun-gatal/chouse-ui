@@ -1007,7 +1007,26 @@ export const rbacConnectionsApi = {
 // ClickHouse Users Types
 // ============================================
 
-export type ClickHouseUserRole = 'developer' | 'analyst' | 'viewer';
+/** Default-role selection: an explicit list of role names, or all granted roles. */
+export type DefaultRoles = string[] | 'ALL';
+
+/** A structured native ClickHouse grant (mirrors CHGrant on the server). */
+export interface CHGrant {
+  privileges: string[];
+  database: string | null;
+  table: string | null;
+  columns?: string[];
+  grantOption: boolean;
+}
+
+export interface CHPrivilegeCatalogEntry {
+  name: string;
+  group: string;
+  supportsColumns: boolean;
+  description?: string;
+  /** Immediate parent in the ClickHouse privilege hierarchy; null = top-level under ALL. */
+  parent?: string | null;
+}
 
 export interface ClickHouseUser {
   name: string;
@@ -1015,34 +1034,41 @@ export interface ClickHouseUser {
   host_names?: string;
   default_roles_all?: number;
   default_roles_list?: string;
-  default_roles_except?: string;
   auth_type?: string;
-  // Grants information (populated when fetching a single user)
-  role?: ClickHouseUserRole;
-  allowedDatabases?: string[];
-  allowedTables?: Array<{ database: string; table: string }>;
+  /** Granted role names (populated on list + single fetch). */
+  roles?: string[];
+  /** Access storage (e.g. 'local directory', 'users.xml'). */
+  storage?: string;
+  /** True when config-managed (e.g. users.xml) — cannot be modified via SQL. */
+  readonly?: boolean;
+}
+
+export interface ClickHouseUserDetail extends ClickHouseUser {
+  roles: string[];
+  defaultRoles: DefaultRoles;
+  directGrants: CHGrant[];
 }
 
 export interface CreateClickHouseUserInput {
   username: string;
-  password?: string; // Optional when authType is 'no_password'
-  role: ClickHouseUserRole;
-  allowedDatabases?: string[];
-  allowedTables?: Array<{ database: string; table: string }>;
+  authType?: string; // default sha256_password; 'no_password' allowed
+  password?: string; // required unless authType === 'no_password'
   hostIp?: string;
   hostNames?: string;
   cluster?: string;
-  authType?: string; // e.g., 'sha256_password', 'double_sha1_password', 'plaintext_password', 'no_password'
+  roles?: string[];
+  defaultRoles?: DefaultRoles;
+  directGrants?: CHGrant[];
 }
 
 export interface UpdateClickHouseUserInput {
   password?: string;
-  role?: ClickHouseUserRole;
-  allowedDatabases?: string[];
-  allowedTables?: Array<{ database: string; table: string }>;
   hostIp?: string;
   hostNames?: string;
   cluster?: string;
+  roles?: string[];
+  defaultRoles?: DefaultRoles;
+  directGrants?: CHGrant[];
 }
 
 export interface ClickHouseUserDDL {
@@ -1051,84 +1077,125 @@ export interface ClickHouseUserDDL {
   fullDDL: string;
 }
 
+export interface ClickHouseRole {
+  name: string;
+  id?: string;
+  storage?: string;
+  grantCount?: number;
+  /** Number of grantees (users + roles) this role is assigned to. */
+  assignedCount?: number;
+  /** True when config-managed — cannot be modified via SQL. */
+  readonly?: boolean;
+  /** True when the role is currently disabled (grants stashed, reversible). */
+  disabled?: boolean;
+}
+
+export interface ClickHouseRoleDetail {
+  name: string;
+  grants: CHGrant[];
+}
+
+export interface CreateClickHouseRoleInput {
+  name: string;
+  cluster?: string;
+  grants: CHGrant[];
+}
+
+export interface UpdateClickHouseRoleInput {
+  cluster?: string;
+  grants: CHGrant[];
+}
+
+export interface ClickHouseRoleDDL {
+  statements: string[];
+  fullDDL: string;
+}
+
 export const rbacClickHouseUsersApi = {
-  /**
-   * List all ClickHouse users
-   */
   async list(): Promise<ClickHouseUser[]> {
     return rbacFetch('/clickhouse-users');
   },
 
-  /**
-   * Get available clusters
-   */
   async getClusters(): Promise<string[]> {
     return rbacFetch('/clickhouse-users/clusters');
   },
 
-  /**
-   * Get ClickHouse user by username
-   */
-  async get(username: string): Promise<ClickHouseUser> {
+  async get(username: string): Promise<ClickHouseUserDetail> {
     return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}`);
   },
 
-  /**
-   * Generate DDL for creating a user (preview)
-   */
   async generateDDL(input: CreateClickHouseUserInput): Promise<ClickHouseUserDDL> {
-    return rbacFetch('/clickhouse-users/generate-ddl', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
+    return rbacFetch('/clickhouse-users/generate-ddl', { method: 'POST', body: JSON.stringify(input) });
   },
 
-  /**
-   * Create a ClickHouse user
-   */
   async create(input: CreateClickHouseUserInput): Promise<{ username: string }> {
-    return rbacFetch('/clickhouse-users', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
+    return rbacFetch('/clickhouse-users', { method: 'POST', body: JSON.stringify(input) });
   },
 
-  /**
-   * Generate DDL for updating a user (preview)
-   */
   async generateUpdateDDL(username: string, input: UpdateClickHouseUserInput): Promise<ClickHouseUserDDL> {
-    return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}/generate-ddl`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
+    return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}/generate-ddl`, { method: 'POST', body: JSON.stringify(input) });
   },
 
-  /**
-   * Update a ClickHouse user
-   */
   async update(username: string, input: UpdateClickHouseUserInput): Promise<{ username: string }> {
-    return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(input),
-    });
+    return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}`, { method: 'PATCH', body: JSON.stringify(input) });
   },
 
-  /**
-   * Delete a ClickHouse user
-   */
-  async delete(username: string): Promise<void> {
-    await rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}`, {
-      method: 'DELETE',
-    });
+  async delete(username: string, cluster?: string): Promise<void> {
+    const qs = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
+    await rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}${qs}`, { method: 'DELETE' });
   },
 
-  /**
-   * Sync unregistered ClickHouse users to metadata
-   */
-  async sync(): Promise<{ synced: number; errors: Array<{ username: string; error: string }> }> {
-    return rbacFetch('/clickhouse-users/sync', {
+  /** Turn a user's direct grants into a reusable native role. */
+  async extractRole(username: string, roleName: string, cluster?: string): Promise<{ roleName: string }> {
+    return rbacFetch(`/clickhouse-users/${encodeURIComponent(username)}/extract-role`, {
       method: 'POST',
+      body: JSON.stringify({ roleName, cluster }),
     });
+  },
+};
+
+export const rbacClickHouseRolesApi = {
+  async list(): Promise<ClickHouseRole[]> {
+    return rbacFetch('/clickhouse-roles');
+  },
+
+  async getPrivileges(): Promise<CHPrivilegeCatalogEntry[]> {
+    return rbacFetch('/clickhouse-roles/privileges');
+  },
+
+  async get(name: string): Promise<ClickHouseRoleDetail> {
+    return rbacFetch(`/clickhouse-roles/${encodeURIComponent(name)}`);
+  },
+
+  async generateDDL(input: CreateClickHouseRoleInput): Promise<ClickHouseRoleDDL> {
+    return rbacFetch('/clickhouse-roles/generate-ddl', { method: 'POST', body: JSON.stringify(input) });
+  },
+
+  async create(input: CreateClickHouseRoleInput): Promise<{ name: string }> {
+    return rbacFetch('/clickhouse-roles', { method: 'POST', body: JSON.stringify(input) });
+  },
+
+  async generateUpdateDDL(name: string, input: UpdateClickHouseRoleInput): Promise<ClickHouseRoleDDL> {
+    return rbacFetch(`/clickhouse-roles/${encodeURIComponent(name)}/generate-ddl`, { method: 'POST', body: JSON.stringify(input) });
+  },
+
+  async update(name: string, input: UpdateClickHouseRoleInput): Promise<{ name: string }> {
+    return rbacFetch(`/clickhouse-roles/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify(input) });
+  },
+
+  async delete(name: string, cluster?: string): Promise<void> {
+    const qs = cluster ? `?cluster=${encodeURIComponent(cluster)}` : '';
+    await rbacFetch(`/clickhouse-roles/${encodeURIComponent(name)}${qs}`, { method: 'DELETE' });
+  },
+
+  /** Disable a role (reversible): stashes its grants and revokes them. */
+  async disable(name: string): Promise<void> {
+    await rbacFetch(`/clickhouse-roles/${encodeURIComponent(name)}/disable`, { method: 'POST' });
+  },
+
+  /** Re-enable a previously disabled role, restoring its grants. */
+  async enable(name: string): Promise<void> {
+    await rbacFetch(`/clickhouse-roles/${encodeURIComponent(name)}/enable`, { method: 'POST' });
   },
 };
 

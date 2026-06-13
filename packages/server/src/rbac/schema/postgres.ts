@@ -293,37 +293,20 @@ export const roleDataAccessPolicies = pgTable('rbac_role_data_access_policies', 
 }));
 
 // ============================================
-// ClickHouse Users Metadata Table
-// Stores configuration for ClickHouse users managed through the UI
+// ClickHouse Role State Table
+// Reversible enable/disable for native ClickHouse roles. A row means the role
+// is currently DISABLED; savedGrants holds the snapshot to restore on enable.
 // ============================================
 
-export const clickhouseUsersMetadata = pgTable('rbac_clickhouse_users_metadata', {
+export const clickhouseRoleState = pgTable('rbac_clickhouse_role_state', {
   id: text('id').primaryKey(),
-  // The ClickHouse username (as it appears in system.users)
-  username: varchar('username', { length: 255 }).notNull(),
-  // Which ClickHouse connection this user belongs to
   connectionId: text('connection_id').notNull().references(() => clickhouseConnections.id, { onDelete: 'cascade' }),
-  // Role: developer, analyst, or viewer
-  role: varchar('role', { length: 20 }).notNull(), // 'developer' | 'analyst' | 'viewer'
-  // Cluster name (optional, for ON CLUSTER operations)
-  cluster: varchar('cluster', { length: 255 }),
-  // Host restrictions (optional)
-  hostIp: varchar('host_ip', { length: 255 }),
-  hostNames: varchar('host_names', { length: 255 }),
-  // Authentication type (optional, defaults to sha256_password)
-  authType: varchar('auth_type', { length: 50 }),
-  // Allowed databases (JSON array of database names)
-  allowedDatabases: jsonb('allowed_databases').$type<string[]>().notNull().default([]),
-  // Allowed tables (JSON array of {database: string, table: string})
-  allowedTables: jsonb('allowed_tables').$type<Array<{ database: string; table: string }>>().notNull().default([]),
-  // Metadata
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  roleName: varchar('role_name', { length: 255 }).notNull(),
+  savedGrants: jsonb('saved_grants').$type<unknown[]>().notNull().default([]),
+  disabledAt: timestamp('disabled_at', { withTimezone: true }).notNull().defaultNow(),
+  disabledBy: text('disabled_by').references(() => users.id, { onDelete: 'set null' }),
 }, (table) => ({
-  usernameConnIdx: uniqueIndex('ch_users_meta_username_conn_idx').on(table.username, table.connectionId),
-  usernameIdx: index('ch_users_meta_username_idx').on(table.username),
-  connectionIdx: index('ch_users_meta_connection_idx').on(table.connectionId),
+  connRoleIdx: uniqueIndex('ch_role_state_conn_role_idx').on(table.connectionId, table.roleName),
 }));
 
 // ============================================
@@ -523,8 +506,8 @@ export type DataAccessPolicyRule = typeof dataAccessPolicyRules.$inferSelect;
 export type NewDataAccessPolicyRule = typeof dataAccessPolicyRules.$inferInsert;
 export type RoleDataAccessPolicy = typeof roleDataAccessPolicies.$inferSelect;
 export type NewRoleDataAccessPolicy = typeof roleDataAccessPolicies.$inferInsert;
-export type ClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferSelect;
-export type NewClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferInsert;
+export type ClickHouseRoleState = typeof clickhouseRoleState.$inferSelect;
+export type NewClickHouseRoleState = typeof clickhouseRoleState.$inferInsert;
 export type SavedQuery = typeof savedQueries.$inferSelect;
 export type NewSavedQuery = typeof savedQueries.$inferInsert;
 export type AiChatThread = typeof aiChatThreads.$inferSelect;

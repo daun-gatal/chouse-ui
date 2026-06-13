@@ -293,37 +293,22 @@ export const roleDataAccessPolicies = sqliteTable('rbac_role_data_access_policie
 }));
 
 // ============================================
-// ClickHouse Users Metadata Table
-// Stores configuration for ClickHouse users managed through the UI
+// ClickHouse Role State Table
+// Reversible enable/disable for native ClickHouse roles. A row means the role
+// is currently DISABLED; savedGrants holds the snapshot of its grants so they
+// can be restored on enable. ClickHouse stays the source of truth for active
+// roles — this only records transient disabled state.
 // ============================================
 
-export const clickhouseUsersMetadata = sqliteTable('rbac_clickhouse_users_metadata', {
+export const clickhouseRoleState = sqliteTable('rbac_clickhouse_role_state', {
   id: text('id').primaryKey(),
-  // The ClickHouse username (as it appears in system.users)
-  username: text('username').notNull(),
-  // Which ClickHouse connection this user belongs to
   connectionId: text('connection_id').notNull().references(() => clickhouseConnections.id, { onDelete: 'cascade' }),
-  // Role: developer, analyst, or viewer
-  role: text('role').notNull(), // 'developer' | 'analyst' | 'viewer'
-  // Cluster name (optional, for ON CLUSTER operations)
-  cluster: text('cluster'),
-  // Host restrictions (optional)
-  hostIp: text('host_ip'),
-  hostNames: text('host_names'),
-  // Authentication type (optional, defaults to sha256_password)
-  authType: text('auth_type'),
-  // Allowed databases (JSON array of database names)
-  allowedDatabases: text('allowed_databases', { mode: 'json' }).$type<string[]>().notNull().default([]),
-  // Allowed tables (JSON array of {database: string, table: string})
-  allowedTables: text('allowed_tables', { mode: 'json' }).$type<Array<{ database: string; table: string }>>().notNull().default([]),
-  // Metadata
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  roleName: text('role_name').notNull(),
+  savedGrants: text('saved_grants', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
+  disabledAt: integer('disabled_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  disabledBy: text('disabled_by').references(() => users.id, { onDelete: 'set null' }),
 }, (table) => ({
-  usernameConnIdx: uniqueIndex('ch_users_meta_username_conn_idx').on(table.username, table.connectionId),
-  usernameIdx: index('ch_users_meta_username_idx').on(table.username),
-  connectionIdx: index('ch_users_meta_connection_idx').on(table.connectionId),
+  connRoleIdx: uniqueIndex('ch_role_state_conn_role_idx').on(table.connectionId, table.roleName),
 }));
 
 // ============================================
@@ -523,8 +508,8 @@ export type DataAccessPolicyRule = typeof dataAccessPolicyRules.$inferSelect;
 export type NewDataAccessPolicyRule = typeof dataAccessPolicyRules.$inferInsert;
 export type RoleDataAccessPolicy = typeof roleDataAccessPolicies.$inferSelect;
 export type NewRoleDataAccessPolicy = typeof roleDataAccessPolicies.$inferInsert;
-export type ClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferSelect;
-export type NewClickHouseUserMetadata = typeof clickhouseUsersMetadata.$inferInsert;
+export type ClickHouseRoleState = typeof clickhouseRoleState.$inferSelect;
+export type NewClickHouseRoleState = typeof clickhouseRoleState.$inferInsert;
 export type SavedQuery = typeof savedQueries.$inferSelect;
 export type NewSavedQuery = typeof savedQueries.$inferInsert;
 export type AiChatThread = typeof aiChatThreads.$inferSelect;

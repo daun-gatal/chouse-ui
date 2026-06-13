@@ -10,7 +10,7 @@ export * from './base';
 // Database-specific schemas are imported dynamically based on DB_TYPE
 // This file serves as the main entry point for schema types
 
-import type { User, Role, Permission, Session, AuditLog, ApiKey, ClickHouseConnection, ClickHouseUserMetadata, UserRole, AiProvider, AiModel, AiConfig } from './sqlite';
+import type { User, Role, Permission, Session, AuditLog, ApiKey, ClickHouseConnection, ClickHouseRoleState, UserRole, AiProvider, AiModel, AiConfig } from './sqlite';
 
 // Re-export common types (shape is same for both SQLite and PostgreSQL)
 export type {
@@ -21,7 +21,7 @@ export type {
   AuditLog,
   ApiKey,
   ClickHouseConnection,
-  ClickHouseUserMetadata,
+  ClickHouseRoleState,
   UserRole,
   AiProvider,
   AiModel,
