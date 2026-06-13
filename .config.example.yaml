@@ -128,8 +128,25 @@ auth:
         client_id: "${GOOGLE_CLIENT_ID}"               # set GOOGLE_CLIENT_ID in env or replace here
         client_secret: "${GOOGLE_CLIENT_SECRET}"       # set GOOGLE_CLIENT_SECRET in env or replace here
         scopes: "openid profile email"
-        # Optional: override auto-discovered endpoints
+        # Optional (OIDC): override individual auto-discovered endpoints if the
+        # discovery document is wrong or unreachable. Leave unset to use discovery.
         # authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
         # token_endpoint: https://oauth2.googleapis.com/token
         # userinfo_endpoint: https://openidconnect.googleapis.com/v1/userinfo
+        # Optional: remap non-standard ID-token claims to subject/email/username.
         # claim_mapping: "subject:sub,email:email,username:name"
+        # Optional: extra authorization-request params sent to the IdP. Reserved
+        # keys (state, nonce, code_challenge, redirect_uri, scope, ...) are ignored.
+        # auth_params: "hd:example.com,prompt:select_account"
+      #       acme-oauth2:                              # plain OAuth2 (no OIDC discovery)
+      #         type: oauth2
+      #         display_name: "Acme"
+      #         authorization_endpoint: https://acme.example.com/oauth/authorize
+      #         token_endpoint: https://acme.example.com/oauth/token
+      #         userinfo_endpoint: https://acme.example.com/oauth/userinfo
+      #         client_id: "..."
+      #         client_secret: "..."
+      #         scopes: "profile email"
+      #         # Required for OAuth2: map userinfo fields -> subject/email/username.
+      #         claim_mapping: "subject:id,email:email,username:login"
+      #         # auth_params: "audience:https://api.acme.example.com"
