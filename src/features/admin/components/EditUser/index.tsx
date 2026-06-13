@@ -132,7 +132,10 @@ const EditUser: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // SSO identity state
-  const [identities, setIdentities] = useState<SsoIdentityInfo[]>([]);
+  // null = still loading; [] = loaded, no SSO; [...] = loaded, has SSO.
+  // Avoids a flash where the reset-password button appears briefly before we
+  // know the user has SSO identities.
+  const [identities, setIdentities] = useState<SsoIdentityInfo[] | null>(null);
   const [identityToUnlink, setIdentityToUnlink] = useState<SsoIdentityInfo | null>(null);
   const [isUnlinking, setIsUnlinking] = useState(false);
 
@@ -330,7 +333,7 @@ const EditUser: React.FC = () => {
 
     try {
       await rbacUsersApi.unlinkIdentity(userId, identityToUnlink.id);
-      setIdentities((prev) => prev.filter((i) => i.id !== identityToUnlink.id));
+      setIdentities((prev) => (prev ?? []).filter((i) => i.id !== identityToUnlink.id));
       toast.success(`Unlinked ${identityToUnlink.displayName} sign-in`);
       setIdentityToUnlink(null);
     } catch (err) {
@@ -727,14 +730,30 @@ const EditUser: React.FC = () => {
               <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Security</h3>
             </div>
             <div className="space-y-4 p-4">
-              {/* Password Reset */}
+              {/* Password Reset — only for password-based users. SSO accounts
+                  have no usable local password. */}
               <div className="rounded-xs border border-ink-500 bg-ink-200 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h4 className="text-[13px] font-semibold text-paper">Password</h4>
-                    <p className="mt-1 text-[12px] text-paper-muted">Reset the user's password.</p>
+                    <p className="mt-1 text-[12px] text-paper-muted">
+                      {identities === null
+                        ? "Loading…"
+                        : identities.length === 0
+                        ? "Reset the user's password."
+                        : (() => {
+                            const providers = identities.map((i) =>
+                              i.provider.charAt(0).toUpperCase() + i.provider.slice(1)
+                            );
+                            const providerList =
+                              providers.length === 1
+                                ? providers[0]
+                                : `${providers.slice(0, -1).join(", ")} and ${providers.at(-1)}`;
+                            return `This user authenticates via ${providerList}. Manage credentials through the identity provider.`;
+                          })()}
+                    </p>
                   </div>
-                  {canUpdateUsers && (
+                  {canUpdateUsers && identities !== null && identities.length === 0 && (
                     <Button
                       variant="outline"
                       onClick={() => {
@@ -756,7 +775,9 @@ const EditUser: React.FC = () => {
               {/* SSO Identity */}
               <div className="rounded-xs border border-ink-500 bg-ink-200 p-4">
                 <h4 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">SSO identity</h4>
-                {identities.length === 0 ? (
+                {identities === null ? (
+                  <p className="text-[12px] italic text-paper-faint">Loading…</p>
+                ) : identities.length === 0 ? (
                   <p className="text-[12px] italic text-paper-faint">
                     No SSO identity linked. This user signs in with a password.
                   </p>

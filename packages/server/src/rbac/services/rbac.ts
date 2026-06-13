@@ -735,13 +735,20 @@ export async function authenticateUser(
 ): Promise<{ user: UserResponse; tokens: TokenPair } | null> {
   const user = await getUserByEmailOrUsername(identifier);
 
-  if (!user || !user.isActive) {
+  if (!user) {
     return null;
   }
 
+  // Verify the password before revealing anything about account state — an
+  // inactive-account message must only reach someone who supplied the correct
+  // credentials, to avoid leaking which accounts exist (user enumeration).
   const isValid = await verifyPassword(password, user.passwordHash);
   if (!isValid) {
     return null;
+  }
+
+  if (!user.isActive) {
+    throw AppError.unauthorized('This account is inactive. Contact an administrator to reactivate it.');
   }
 
   // SSO-linked accounts must use SSO — except admins (break-glass access).
@@ -1176,9 +1183,11 @@ export async function getAuditMetadata(): Promise<{
  * Expand user to UserResponse format
  */
 async function expandUserResponse(user: User): Promise<UserResponse> {
-  const [roles, permissions] = await Promise.all([
+  const { userHasSsoIdentity } = await import('../sso/identity');
+  const [roles, permissions, hasSsoIdentity] = await Promise.all([
     getUserRoles(user.id),
     getUserPermissions(user.id),
+    userHasSsoIdentity(user.id),
   ]);
 
   return {
@@ -1188,6 +1197,7 @@ async function expandUserResponse(user: User): Promise<UserResponse> {
     displayName: user.displayName,
     avatarUrl: user.avatarUrl,
     isActive: user.isActive,
+    hasSsoIdentity,
     roles,
     permissions,
     lastLoginAt: user.lastLoginAt,

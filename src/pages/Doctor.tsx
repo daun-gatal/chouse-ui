@@ -38,14 +38,29 @@ import DoctorHistoryList from "@/features/fleet/components/DoctorHistoryList";
 import DoctorScheduleDialog from "@/features/fleet/components/DoctorScheduleDialog";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
-const INVESTIGATION_STEPS = [
-  "Reading the fleet overview",
-  "Drilling into nodes (read-only)",
-  "Checking the last 6h of heavy queries",
-  "Writing the root-cause report",
+const WINDOW_OPTIONS = [
+  { label: "1h", hours: 1 },
+  { label: "6h", hours: 6 },
+  { label: "24h", hours: 24 },
+  { label: "3d", hours: 72 },
 ];
 
-function InvestigatingPanel({ model }: { model?: string }) {
+/** Human label for a lookback window — reuses the picker labels, else `${n}h`. */
+function formatWindowLabel(hours: number): string {
+  return WINDOW_OPTIONS.find((opt) => opt.hours === hours)?.label ?? `${hours}h`;
+}
+
+function buildInvestigationSteps(hours: number): string[] {
+  return [
+    "Reading the fleet overview",
+    "Drilling into nodes (read-only)",
+    `Checking the last ${formatWindowLabel(hours)} of heavy queries`,
+    "Writing the root-cause report",
+  ];
+}
+
+function InvestigatingPanel({ model, hours }: { model?: string; hours: number }) {
+  const steps = buildInvestigationSteps(hours);
   return (
     <div className="flex flex-col items-center gap-5 py-16 text-center">
       <span className="relative grid h-16 w-16 place-items-center">
@@ -64,7 +79,7 @@ function InvestigatingPanel({ model }: { model?: string }) {
         </p>
       </div>
       <ul className="flex flex-col gap-1.5">
-        {INVESTIGATION_STEPS.map((step, i) => (
+        {steps.map((step, i) => (
           <li
             key={i}
             className="flex items-center gap-2 font-mono text-[11px] text-paper-muted"
@@ -78,13 +93,6 @@ function InvestigatingPanel({ model }: { model?: string }) {
     </div>
   );
 }
-
-const WINDOW_OPTIONS = [
-  { label: "1h", hours: 1 },
-  { label: "6h", hours: 6 },
-  { label: "24h", hours: 24 },
-  { label: "3d", hours: 72 },
-];
 
 /** Investigation window (lookback) selector — segmented button group. */
 function WindowSelect({
@@ -600,7 +608,7 @@ export default function Doctor() {
                 OpenAI-compatible — including a local model) to use Chouse AI.
               </p>
             ) : scan.isPending && viewingRunning ? (
-              <InvestigatingPanel model={models.find((m) => m.id === resolvedModelId)?.model} />
+              <InvestigatingPanel model={models.find((m) => m.id === resolvedModelId)?.model} hours={hours} />
             ) : reportId && reportQuery.data ? (
               <DoctorReportView report={reportQuery.data} />
             ) : reportId && reportQuery.isLoading ? (

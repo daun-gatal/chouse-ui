@@ -289,6 +289,19 @@ describe("RBAC Service", () => {
             const result = await authenticateUser("superadmin@example.com", "Valid#Pass1");
             expect(result).not.toBeNull();
         });
+
+        it("throws an explicit inactive-account error when a valid password is given for an inactive user", async () => {
+            // arrange: correct password (verifyPassword mock -> true) but account is inactive.
+            // The inactive message must only surface AFTER password verification.
+            mockUser.isActive = false;
+            try {
+                await expect(
+                    authenticateUser("test@example.com", "Valid#Pass1")
+                ).rejects.toThrow(/inactive/i);
+            } finally {
+                mockUser.isActive = true;
+            }
+        });
     });
 
 });

@@ -78,6 +78,17 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Assembled version: $VERSION"
 
+      - name: Trim CHANGELOG to latest 10 releases
+        run: |
+          COUNT_BEFORE=$(grep -c '^## \[v' CHANGELOG.md || true)
+          awk '
+            /^## \[v/ { count++ }
+            count > 10 { next }
+            { print }
+          ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+          COUNT_AFTER=$(grep -c '^## \[v' CHANGELOG.md || true)
+          echo "CHANGELOG entries: $COUNT_BEFORE before → $COUNT_AFTER after (kept latest 10)"
+
       - name: Check for code changes since last tag
         id: code_check
         run: |
@@ -131,6 +142,7 @@ jobs:
         run: |
           VERSION="v${{ steps.release.outputs.version }}"
           BRANCH="${{ steps.branch.outputs.name }}"
+          ENTRY_COUNT=$(grep -c '^## \[v' CHANGELOG.md || true)
           {
             echo "## Release Preview: $VERSION"
             echo ""
@@ -147,6 +159,18 @@ jobs:
               }
               found { print }
             ' CHANGELOG.md
+            echo ""
+            echo "---"
+            echo ""
+            echo "<details>"
+            echo "<summary>Full retained CHANGELOG ($ENTRY_COUNT entries — click to expand)</summary>"
+            echo ""
+            echo '```markdown'
+            # Print all versioned sections (skip the preamble header lines)
+            awk '/^## \[v/{found=1} found{print}' CHANGELOG.md
+            echo '```'
+            echo ""
+            echo "</details>"
           } >> $GITHUB_STEP_SUMMARY
 
   # ── Step 2: approval gate — push assembled changes to main ────────────────

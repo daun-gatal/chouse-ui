@@ -28,6 +28,8 @@ export interface RbacUser {
   displayName: string | null;
   avatarUrl: string | null;
   isActive: boolean;
+  /** True when the user has at least one linked SSO identity (no usable local password). */
+  hasSsoIdentity: boolean;
   roles: string[];
   rolesMetadata?: Array<{
     name: string;

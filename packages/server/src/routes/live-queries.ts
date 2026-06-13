@@ -14,7 +14,7 @@ import { optionalRbacMiddleware } from "../middleware/dataAccess";
 import { getSession } from "../services/clickhouse";
 import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
 import { ClickHouseService } from "../services/clickhouse";
-import { createAuditLog, userHasPermission, getUserById } from "../rbac/services/rbac";
+import { createAuditLogWithContext, userHasPermission, getUserById } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { requestLogger } from "../utils/logger";
@@ -397,7 +397,8 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
 
         // Create audit log
         try {
-            await createAuditLog(
+            await createAuditLogWithContext(
+                c,
                 AUDIT_ACTIONS.LIVE_QUERY_KILL,
                 rbacUserId!,
                 {
@@ -413,7 +414,6 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
                         requestUsername: currentUsername
                     },
                     ipAddress: getClientIp(c),
-                    userAgent: c.req.header('User-Agent'),
                     status: 'success',
                 }
             );
@@ -435,7 +435,8 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
 
         // Create failed audit log
         try {
-            await createAuditLog(
+            await createAuditLogWithContext(
+                c,
                 AUDIT_ACTIONS.LIVE_QUERY_KILL,
                 rbacUserId!,
                 {
@@ -447,7 +448,6 @@ liveQueries.post("/kill", zValidator("json", killQuerySchema), async (c) => {
                         error: error instanceof Error ? error.message : String(error),
                     },
                     ipAddress: getClientIp(c),
-                    userAgent: c.req.header('User-Agent'),
                     status: 'failure',
                 }
             );

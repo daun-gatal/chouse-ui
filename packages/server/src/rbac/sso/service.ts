@@ -54,7 +54,7 @@ export async function provisionSsoUser(
     user = rows[0] || null;
     // Fix 5 (path 1): check isActive before any side effects
     if (user && !user.isActive) {
-      throw AppError.unauthorized('This account is inactive.');
+      throw AppError.unauthorized('This account is inactive. Contact an administrator to reactivate it.');
     }
     if (user) await touchUserIdentity(existing.id);
   }
@@ -65,7 +65,7 @@ export async function provisionSsoUser(
     if (byEmail) {
       // Fix 5 (path 2): check isActive before createUserIdentity side effect
       if (!byEmail.isActive) {
-        throw AppError.unauthorized('This account is inactive.');
+        throw AppError.unauthorized('This account is inactive. Contact an administrator to reactivate it.');
       }
       await createUserIdentity({
         userId: byEmail.id,
@@ -146,7 +146,7 @@ export async function provisionSsoUser(
 
   // backstop — final guard before session creation
   if (!user || !user.isActive) {
-    throw AppError.unauthorized('This account is inactive.');
+    throw AppError.unauthorized('This account is inactive. Contact an administrator to reactivate it.');
   }
 
   // Optional role sync

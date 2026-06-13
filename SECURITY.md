@@ -6,8 +6,8 @@ We provide security updates for the following versions:
 
 | Version | Supported |
 | ------- | :-------: |
-| 2.x.x   | ✅        |
-| < 2.0   | ❌        |
+| 3.x.x   | ✅        |
+| < 3.0   | ❌        |
 
 ## Reporting a Vulnerability
 

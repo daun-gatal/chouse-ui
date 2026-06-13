@@ -13,7 +13,6 @@ import {
   Users,
   RefreshCw,
   Plus,
-  Trash2,
   Edit,
   Shield,
   Search,
@@ -145,16 +144,15 @@ const UserManagement: React.FC = () => {
 
   // User management state
   const [selectedUser, setSelectedUser] = useState<RbacUser | null>(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showToggleActiveDialog, setShowToggleActiveDialog] = useState(false);
   const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isTogglingActive, setIsTogglingActive] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
 
   // Permission checks
   const canCreateUsers = hasPermission(RBAC_PERMISSIONS.USERS_CREATE);
   const canUpdateUsers = hasPermission(RBAC_PERMISSIONS.USERS_UPDATE);
-  const canDeleteUsers = hasPermission(RBAC_PERMISSIONS.USERS_DELETE);
 
   // Fetch roles on mount
   useEffect(() => {
@@ -205,20 +203,21 @@ const UserManagement: React.FC = () => {
     setCurrentPage(newPage);
   };
 
-  const handleDeleteUser = async () => {
+  const handleToggleActive = async () => {
     if (!selectedUser) return;
-    setIsDeleting(true);
+    setIsTogglingActive(true);
+    const nextActive = !selectedUser.isActive;
 
     try {
-      await rbacUsersApi.delete(selectedUser.id);
-      toast.success(`User "${selectedUser.username}" deleted successfully`);
-      setShowDeleteDialog(false);
+      await rbacUsersApi.update(selectedUser.id, { isActive: nextActive });
+      toast.success(`User "${selectedUser.username}" ${nextActive ? "activated" : "deactivated"}`);
+      setShowToggleActiveDialog(false);
       setSelectedUser(null);
       fetchUsers();
     } catch (err) {
-      toast.error(`Failed to delete user: ${(err as Error).message}`);
+      toast.error(`Failed to update user: ${(err as Error).message}`);
     } finally {
-      setIsDeleting(false);
+      setIsTogglingActive(false);
     }
   };
 
@@ -249,9 +248,9 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const openDeleteDialog = (user: RbacUser) => {
+  const openToggleActiveDialog = (user: RbacUser) => {
     setSelectedUser(user);
-    setShowDeleteDialog(true);
+    setShowToggleActiveDialog(true);
   };
 
   const openResetPasswordDialog = (user: RbacUser) => {
@@ -464,8 +463,12 @@ const UserManagement: React.FC = () => {
               const userIsSuperAdmin = user.roles.includes('super_admin');
               // Basic admins cannot edit super admins
               const canEditThisUser = canUpdateUsers && (isSuperAdmin() || !userIsSuperAdmin);
-              const canDeleteThisUser = canDeleteUsers && !isCurrentUser && (isSuperAdmin() || !userIsSuperAdmin);
-              const hasActions = canEditThisUser || canDeleteThisUser;
+              // Reset password is only meaningful for password-based users — SSO
+              // accounts have no usable local password.
+              const canResetPassword = canEditThisUser && !user.hasSsoIdentity;
+              // Deactivation replaces deletion; you can't deactivate yourself.
+              const canToggleActive = canEditThisUser && !isCurrentUser;
+              const hasActions = canResetPassword || canToggleActive;
 
               return (
                 <div
@@ -547,21 +550,31 @@ const UserManagement: React.FC = () => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="rounded-xs border-ink-500 bg-ink-100 text-paper">
-                          {canEditThisUser && (
+                          {canResetPassword && (
                             <DropdownMenuItem onClick={() => openResetPasswordDialog(user)} className="cursor-pointer focus:bg-ink-200">
                               <Key className="mr-2 h-3.5 w-3.5" />
                               Reset password
                             </DropdownMenuItem>
                           )}
-                          {canEditThisUser && canDeleteThisUser && <DropdownMenuSeparator className="bg-ink-500" />}
-                          {canDeleteThisUser && (
-                            <DropdownMenuItem
-                              className="cursor-pointer text-red-400 hover:bg-red-950/40 focus:bg-red-950/40 focus:text-red-300"
-                              onClick={() => openDeleteDialog(user)}
-                            >
-                              <Trash2 className="mr-2 h-3.5 w-3.5" />
-                              Delete user
-                            </DropdownMenuItem>
+                          {canResetPassword && canToggleActive && <DropdownMenuSeparator className="bg-ink-500" />}
+                          {canToggleActive && (
+                            user.isActive ? (
+                              <DropdownMenuItem
+                                className="cursor-pointer text-amber-400 hover:bg-amber-950/40 focus:bg-amber-950/40 focus:text-amber-300"
+                                onClick={() => openToggleActiveDialog(user)}
+                              >
+                                <UserX className="mr-2 h-3.5 w-3.5" />
+                                Deactivate user
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                className="cursor-pointer text-emerald-400 hover:bg-emerald-950/40 focus:bg-emerald-950/40 focus:text-emerald-300"
+                                onClick={() => openToggleActiveDialog(user)}
+                              >
+                                <UserCheck className="mr-2 h-3.5 w-3.5" />
+                                Activate user
+                              </DropdownMenuItem>
+                            )
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -712,33 +725,51 @@ const UserManagement: React.FC = () => {
         </>
       )}
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      {/* Activate / Deactivate Confirmation Dialog */}
+      <AlertDialog open={showToggleActiveDialog} onOpenChange={setShowToggleActiveDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
-              Delete User
+              {selectedUser?.isActive ? (
+                <>
+                  <UserX className="h-5 w-5 text-amber-500" />
+                  Deactivate user
+                </>
+              ) : (
+                <>
+                  <UserCheck className="h-5 w-5 text-emerald-500" />
+                  Activate user
+                </>
+              )}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete user <strong>{selectedUser?.username}</strong>?
-              This action cannot be undone. The user will lose all access to the system.
+              {selectedUser?.isActive ? (
+                <>
+                  Deactivate user <strong>{selectedUser?.username}</strong>? They will be unable to
+                  sign in until an administrator reactivates the account. No data is deleted.
+                </>
+              ) : (
+                <>
+                  Reactivate user <strong>{selectedUser?.username}</strong>? They will be able to
+                  sign in again.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isTogglingActive}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteUser}
-              className="bg-red-600 hover:bg-red-700"
-              disabled={isDeleting}
+              onClick={handleToggleActive}
+              className={selectedUser?.isActive ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"}
+              disabled={isTogglingActive}
             >
-              {isDeleting ? (
+              {isTogglingActive ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting...
+                  {selectedUser?.isActive ? "Deactivating..." : "Activating..."}
                 </>
               ) : (
-                "Delete User"
+                selectedUser?.isActive ? "Deactivate" : "Activate"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

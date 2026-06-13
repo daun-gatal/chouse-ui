@@ -351,6 +351,7 @@ export const AUDIT_ACTIONS = {
   CH_USER_DELETE: 'clickhouse.user_delete',
   CH_USER_SYNC: 'clickhouse.user_sync',
   CH_QUERY_EXECUTE: 'clickhouse.query_execute',
+  CH_QUERY_EXPLAIN: 'clickhouse.query_explain',
   CH_DATABASE_CREATE: 'clickhouse.database_create',
   CH_DATABASE_DROP: 'clickhouse.database_drop',
   CH_TABLE_CREATE: 'clickhouse.table_create',
@@ -400,6 +401,12 @@ export const AUDIT_ACTIONS = {
   SAVED_QUERY_CREATE: 'saved_query.create',
   SAVED_QUERY_UPDATE: 'saved_query.update',
   SAVED_QUERY_DELETE: 'saved_query.delete',
+
+  // Fleet & Doctor (AI SRE)
+  FLEET_ALERT_CONFIG_UPDATE: 'fleet.alert_config_update',
+  DOCTOR_SCAN_RUN: 'doctor.scan_run',
+  DOCTOR_SCHEDULE_UPDATE: 'doctor.schedule_update',
+  DOCTOR_REPORT_DELETE: 'doctor.report_delete',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

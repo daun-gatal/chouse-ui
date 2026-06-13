@@ -21,7 +21,8 @@ import {
   requireAnyPermission,
   getRbacUser,
 } from "../rbac/middleware/rbacAuth";
-import { PERMISSIONS } from "../rbac/schema/base";
+import { PERMISSIONS, AUDIT_ACTIONS } from "../rbac/schema/base";
+import { createAuditLogWithContext } from "../rbac/services/rbac";
 import {
   getUserConnections,
   listConnections,
@@ -587,6 +588,20 @@ fleet.put("/alert-config", zValidator("json", alertConfigSchema), async (c) => {
     return c.json({ success: false, error: "Failed to save config" }, 500);
   }
   logger.info({ module: "FleetAlerter", by: getRbacUser(c).sub }, "Alert delivery config updated");
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.FLEET_ALERT_CONFIG_UPDATE, getRbacUser(c).sub, {
+    resourceType: "fleet_alert_config",
+    details: {
+      enabled: next.enabled,
+      aiRcaOnBreach: next.aiRcaOnBreach,
+      rules: next.rules,
+      channels: {
+        slack: next.slack?.enabled ?? false,
+        googleChat: next.googleChat?.enabled ?? false,
+        email: next.email?.enabled ?? false,
+      },
+    },
+    status: "success",
+  });
   return c.json({ success: true, data: { ok: true } });
 });
 
@@ -652,6 +667,12 @@ fleet.post("/doctor/scan", requirePermission(PERMISSIONS.DOCTOR_RUN), zValidator
     // Persist (+ prune to retention) so the report gets its own page and lands
     // in the history rail. Best-effort — never fails the scan response.
     await saveDoctorReport(report, createdBy, "manual");
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.DOCTOR_SCAN_RUN, createdBy, {
+      resourceType: "doctor_report",
+      resourceId: report.id,
+      details: { hours, modelId, connectionIds: connectionIds ?? null, trigger: "manual" },
+      status: "success",
+    });
     return c.json({ success: true, data: { ...report, createdBy, trigger: "manual" } });
   } catch (e) {
     if (e instanceof AppError) throw e;
@@ -707,6 +728,13 @@ fleet.post("/doctor/reports/delete", zValidator("json", doctorDeleteSchema), asy
   } else if (ids && ids.length > 0) {
     await deleteDoctorReports(ids);
   }
+  if (all || (ids && ids.length > 0)) {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.DOCTOR_REPORT_DELETE, getRbacUser(c).sub, {
+      resourceType: "doctor_report",
+      details: all ? { all: true } : { ids },
+      status: "success",
+    });
+  }
   return c.json({ success: true, data: { ok: true } });
 });
 
@@ -732,6 +760,18 @@ fleet.put("/doctor/schedule", requirePermission(PERMISSIONS.DOCTOR_RUN), zValida
   // Stamp lastRunAt = now so enabling/editing fires at the NEXT occurrence,
   // not a backfill of a slot that already passed today.
   saveSchedule({ ...body, lastRunAt: Date.now() } as DoctorSchedule);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DOCTOR_SCHEDULE_UPDATE, getRbacUser(c).sub, {
+    resourceType: "doctor_schedule",
+    details: {
+      enabled: body.enabled,
+      frequency: body.frequency,
+      hour: body.hour,
+      deliver: body.deliver,
+      hours: body.hours,
+      modelId: body.modelId ?? null,
+    },
+    status: "success",
+  });
   return c.json({ success: true, data: { ok: true } });
 });
 

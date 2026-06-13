@@ -57,6 +57,8 @@ export interface UserResponse {
   displayName: string | null;
   avatarUrl: string | null;
   isActive: boolean;
+  /** True when the user has at least one linked SSO identity (no usable local password). */
+  hasSsoIdentity: boolean;
   roles: string[];
   permissions: string[];
   lastLoginAt: Date | null;

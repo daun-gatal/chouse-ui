@@ -585,6 +585,27 @@ query.post("/explain", zValidator("json", ExplainRequestSchema), async (c) => {
   const service = c.get("service");
   const plan = await service.getExplainPlan(sql, explainType);
 
+  // Audit log (best-effort, mirrors /execute)
+  if (rbacUserId) {
+    createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXPLAIN, rbacUserId, {
+      resourceType: "query",
+      details: {
+        explainType,
+        query: sql.substring(0, 500),
+        queryLength: sql.length,
+        connectionId: c.get("rbacConnectionId"),
+        timestamp: Date.now(),
+      },
+      ipAddress: getClientIp(c),
+      status: "success",
+    }).catch((err: unknown) => {
+      requestLogger(c.get("requestId")).error(
+        { module: "Query", err: err instanceof Error ? err.message : String(err) },
+        "Failed to create audit log for explain"
+      );
+    });
+  }
+
   return c.json({
     success: true,
     data: plan,
