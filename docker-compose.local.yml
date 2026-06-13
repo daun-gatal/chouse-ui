@@ -29,6 +29,10 @@ services:
       # JWT_SECRET must be a real env var: the server captures it at module
       # scope BEFORE the YAML loader runs (Bun evaluation-order quirk).
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-min-32-characters-long}
+      # Log level (default info). Set LOG_LEVEL=debug to see verbose diagnostics
+      # such as the full decoded SSO token claims. Real env var for the same
+      # module-scope reason as JWT_SECRET — not read from the YAML config.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - chouse-ui-local-data:/app/data
       - ./.config.yaml:/app/config.yaml:ro
