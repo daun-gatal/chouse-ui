@@ -101,7 +101,7 @@ export async function exchangeCodeForIdentity(
     if (!claims) {
       throw new Error(`[SSO] Provider ${p.id} returned no ID token claims`);
     }
-    return normalizeOidcClaims(p.id, claims as Record<string, unknown>);
+    return normalizeOidcClaims(p.id, claims as Record<string, unknown>, p.claimMapping);
   }
 
   // skipSubjectCheck is required: plain OAuth2 userinfo has no ID-token sub to
@@ -121,28 +121,29 @@ export async function exchangeCodeForIdentity(
 
 export function normalizeOidcClaims(
   providerId: string,
-  claims: Record<string, unknown>
+  claims: Record<string, unknown>,
+  // Optional override: which claim to read for each field. Defaults to the OIDC
+  // standard names (sub / email / preferred_username / name).
+  mapping?: Record<string, string>
 ): SsoIdentity {
-  const subject = claims.sub;
-  if (typeof subject !== "string" || subject.length === 0) {
+  const str = (claim: string): string | null =>
+    typeof claims[claim] === "string" ? (claims[claim] as string) : null;
+
+  const subject = str(mapping?.subject ?? "sub");
+  if (!subject) {
     throw new Error(
-      `[SSO] Provider ${providerId} ID token has no sub claim`
+      `[SSO] Provider ${providerId} ID token has no ${mapping?.subject ?? "sub"} claim`
     );
   }
-  const email =
-    typeof claims.email === "string" ? claims.email.toLowerCase() : null;
-  const username =
-    typeof claims.preferred_username === "string"
-      ? claims.preferred_username.toLowerCase()
-      : null;
+  const email = str(mapping?.email ?? "email");
+  const username = str(mapping?.username ?? "preferred_username");
   return {
     provider: providerId,
     subject,
-    email,
+    email: email ? email.toLowerCase() : null,
     emailVerified: claims.email_verified === true,
-    username,
-    displayName:
-      typeof claims.name === "string" ? claims.name : null,
+    username: username ? username.toLowerCase() : null,
+    displayName: str(mapping?.displayName ?? "name"),
     claims,
   };
 }

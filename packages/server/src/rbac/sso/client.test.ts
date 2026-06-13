@@ -26,6 +26,18 @@ describe("normalizeOidcClaims", () => {
       normalizeOidcClaims("okta", { email: "x@y.z" } as never)
     ).toThrow();
   });
+
+  it("honors a claim_mapping override, falling back to standard names", () => {
+    const id = normalizeOidcClaims(
+      "okta",
+      { sub: "s1", mail: "A@B.co", upn: "Alice", name: "Alice A", email_verified: true },
+      { email: "mail", username: "upn" }
+    );
+    expect(id.subject).toBe("s1"); // sub still standard (not overridden)
+    expect(id.email).toBe("a@b.co"); // read from "mail"
+    expect(id.username).toBe("alice"); // read from "upn"
+    expect(id.emailVerified).toBe(true);
+  });
 });
 
 describe("applyClaimMapping", () => {
