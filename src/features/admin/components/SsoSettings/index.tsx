@@ -318,7 +318,9 @@ function SettingsPanel({ canManage }: { canManage: boolean }) {
     queryFn: () => rbacSsoAdminApi.getProviders(),
   });
   const hasProviders = (providers?.length ?? 0) > 0;
-  const canEdit = canManage && hasProviders;
+  // Settings defined by env/YAML config are read-only (mirrors config providers).
+  const isConfigSourced = settings?.source === "config";
+  const canEdit = canManage && hasProviders && !isConfigSourced;
 
   const [form, setForm] = useState<SettingsForm>({
     enabled: false,
@@ -375,13 +377,33 @@ function SettingsPanel({ canManage }: { canManage: boolean }) {
         <KeyRound className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
         <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Global settings</h3>
         {settings && (
-          <span className="ml-auto inline-flex items-center rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-faint">
-            source: {settings.source}
+          <span
+            className={cn(
+              "ml-auto inline-flex items-center gap-1 rounded-xs border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em]",
+              isConfigSourced
+                ? "border-ink-500 bg-ink-100 text-paper-faint"
+                : "border-ink-500 bg-ink-200 text-paper-faint",
+            )}
+          >
+            {isConfigSourced && <Lock className="h-2.5 w-2.5" />}
+            {isConfigSourced ? "from config · read-only" : `source: ${settings.source}`}
           </span>
         )}
       </div>
 
       <div className="space-y-4 p-4">
+        {/* Config-sourced settings are read-only — explain why edits are disabled. */}
+        {isConfigSourced && (
+          <div className="flex items-start gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5">
+            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-paper-dim" />
+            <p className="text-[12px] text-paper-muted">
+              These settings come from environment/YAML configuration and are read-only. Edit them in your
+              config (<code className="font-mono text-paper-muted">AUTH_SSO_*</code>), or remove that config to
+              manage SSO settings here.
+            </p>
+          </div>
+        )}
+
         {/* Enabled */}
         <div className="flex items-center justify-between gap-3 rounded-xs border border-ink-500 bg-ink-200 px-3 py-2.5">
           <div className="flex flex-col gap-0.5">

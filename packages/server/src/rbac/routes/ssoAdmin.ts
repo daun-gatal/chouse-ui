@@ -14,12 +14,27 @@ import { PERMISSIONS, AUDIT_ACTIONS } from "../schema/base";
 import { requirePermission, getRbacUser, getClientIp } from "../middleware/rbacAuth";
 import { createAuditLogWithContext } from "../services/rbac";
 import { AppError } from "../../types";
-import { getSsoConfig, refreshSsoConfig } from "../sso/config";
+import { getSsoConfig, refreshSsoConfig, loadSsoConfig } from "../sso/config";
 import * as store from "../sso/store";
 import { testProviderConfig } from "../sso/test";
 
 const ssoAdminRoutes = new Hono();
 const SLUG = /^[a-z0-9_-]+$/;
+
+/**
+ * True when the environment/YAML defines SSO settings. That layer is read-only:
+ * global settings are then authoritative from config and cannot be edited here
+ * (mirrors how env-defined providers are read-only). loadSsoConfig() only reports
+ * enabled when AUTH_SSO_ENABLED=true with a base_url; if it throws because the
+ * operator enabled SSO but misconfigured it, they're still driving SSO via env.
+ */
+function envProvidesSsoSettings(): boolean {
+  try {
+    return loadSsoConfig().enabled;
+  } catch {
+    return true;
+  }
+}
 
 const ProviderBody = z.object({
   id: z.string().regex(SLUG),
@@ -67,6 +82,10 @@ function maskProvider(p: store.DbSsoProvider) {
 ssoAdminRoutes.get("/settings", requirePermission(PERMISSIONS.SSO_VIEW), async (c) => {
   const cfg = getSsoConfig();
   const db = await store.getDbSettings();
+  // "config"  → env/YAML provides settings (read-only)
+  // "database" → editable DB-backed settings row exists
+  // "default" → nothing configured yet; editable so the first row can be created
+  const source = db ? "database" : envProvidesSsoSettings() ? "config" : "default";
   return c.json({
     success: true,
     data: {
@@ -74,7 +93,7 @@ ssoAdminRoutes.get("/settings", requirePermission(PERMISSIONS.SSO_VIEW), async (
       baseUrl: cfg.baseUrl,
       defaultRole: cfg.defaultRole,
       autoLinkByEmail: cfg.autoLinkByEmail,
-      source: db ? "database" : "config",
+      source,
     },
   });
 });
@@ -86,6 +105,14 @@ ssoAdminRoutes.put(
   async (c) => {
     const input = c.req.valid("json");
     const user = getRbacUser(c);
+    // Env/YAML-provided settings are read-only: refuse to create a DB override
+    // while config drives SSO (defense in depth — the UI also hides the form).
+    const existing = await store.getDbSettings();
+    if (!existing && envProvidesSsoSettings()) {
+      throw AppError.badRequest(
+        "Global SSO settings are defined by environment/YAML config and are read-only here."
+      );
+    }
     await store.upsertDbSettings(input, user.sub);
     await refreshSsoConfig();
     await createAuditLogWithContext(c, AUDIT_ACTIONS.SSO_SETTINGS_UPDATE, user.sub, {

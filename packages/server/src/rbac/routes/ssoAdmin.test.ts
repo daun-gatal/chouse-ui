@@ -38,10 +38,13 @@ let mockSsoConfig = {
   ]),
 };
 const mockRefreshSsoConfig = mock(async () => {});
+// Controls whether env/YAML "provides" SSO settings (the read-only layer).
+let mockEnvSsoEnabled = false;
 
 mock.module("../sso/config", () => ({
   getSsoConfig: mock(() => mockSsoConfig),
   refreshSsoConfig: mockRefreshSsoConfig,
+  loadSsoConfig: mock(() => ({ enabled: mockEnvSsoEnabled })),
 }));
 
 // ---- SSO test service mock ----
@@ -118,6 +121,7 @@ describe("RBAC SSO Admin Routes", () => {
     mockCountIdentitiesByProvider.mockReset().mockResolvedValue(0);
     mockDeleteIdentitiesByProvider.mockReset().mockResolvedValue([]);
     mockRefreshSsoConfig.mockClear();
+    mockEnvSsoEnabled = false;
     mockTestProviderConfig.mockReset().mockResolvedValue({ ok: true });
     mockCreateAuditLogWithContext.mockClear();
     mockUserHasPermission.mockReset().mockResolvedValue(false);
@@ -145,13 +149,20 @@ describe("RBAC SSO Admin Routes", () => {
   });
 
   describe("GET /settings", () => {
-    it("returns effective settings with source 'config' when no DB row", async () => {
+    it("returns source 'config' (read-only) when env provides settings and no DB row", async () => {
+      mockEnvSsoEnabled = true;
       const res = await app.request("/sso-admin/settings", { headers: AUTH });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.source).toBe("config");
-      expect(body.data.enabled).toBe(false);
       expect(body.data.defaultRole).toBe("viewer");
+    });
+
+    it("returns source 'default' (editable) when nothing is configured yet", async () => {
+      mockEnvSsoEnabled = false;
+      const res = await app.request("/sso-admin/settings", { headers: AUTH });
+      const body = await res.json();
+      expect(body.data.source).toBe("default");
     });
 
     it("returns source 'database' when a DB row exists", async () => {
@@ -183,6 +194,39 @@ describe("RBAC SSO Admin Routes", () => {
         "admin-id",
         expect.objectContaining({ resourceType: "sso", resourceId: "settings" })
       );
+    });
+
+    it("rejects writes when env/YAML config provides settings (read-only)", async () => {
+      mockEnvSsoEnabled = true; // env drives SSO, no DB row → read-only
+      const res = await app.request("/sso-admin/settings", {
+        method: "PUT",
+        headers: JSON_AUTH,
+        body: JSON.stringify({
+          enabled: true,
+          baseUrl: "https://app.example.com",
+          defaultRole: "viewer",
+          autoLinkByEmail: true,
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(mockUpsertDbSettings).not.toHaveBeenCalled();
+    });
+
+    it("allows editing an existing DB settings row even if env also provides config", async () => {
+      mockEnvSsoEnabled = true;
+      mockGetDbSettings.mockResolvedValue({ id: "default" });
+      const res = await app.request("/sso-admin/settings", {
+        method: "PUT",
+        headers: JSON_AUTH,
+        body: JSON.stringify({
+          enabled: true,
+          baseUrl: "https://app.example.com",
+          defaultRole: "viewer",
+          autoLinkByEmail: true,
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(mockUpsertDbSettings).toHaveBeenCalled();
     });
 
     it("rejects without sso:manage", async () => {

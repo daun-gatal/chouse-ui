@@ -1628,7 +1628,9 @@ export interface SsoAdminSettings {
   baseUrl: string | null;
   defaultRole: string;
   autoLinkByEmail: boolean;
-  source: 'config' | 'database';
+  // 'config' → env/YAML-defined, read-only; 'database' → editable DB row;
+  // 'default' → nothing configured yet (editable, creates the first row).
+  source: 'config' | 'database' | 'default';
 }
 
 export interface SsoAdminProvider {
