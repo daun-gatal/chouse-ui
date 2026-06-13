@@ -2,7 +2,7 @@
  * SSO Routes — /rbac/auth/sso/*
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -35,6 +35,16 @@ const ssoRoutes = new Hono();
  */
 const SAML_RELAY_COOKIE = "chouse_saml_relay";
 const SAML_RELAY_TTL_SECONDS = 600;
+
+/**
+ * Public path of the SAML ACS endpoint, relative to the app's base URL. The IdP
+ * POSTs the SAMLResponse here (a cross-site browser POST). The handler is also
+ * mounted at this clean top-level path in index.ts (POST-only, so it doesn't
+ * shadow the OIDC GET callback SPA page). This is the URL the admin registers at
+ * the IdP and what node-saml validates Destination against, so it MUST stay in
+ * sync with the index.ts mount + the wizard's displayed ACS URL + the CORS bypass.
+ */
+export const SAML_ACS_PATH = "/auth/sso/saml/acs";
 
 const CallbackSchema = z.object({
   // Raw query string from the IdP redirect (code, state, iss, ...).
@@ -93,7 +103,7 @@ ssoRoutes.get("/:provider/start", async (c) => {
 
   if (provider.type === "saml") {
     const redirect = safeRedirect(c.req.query("redirect"));
-    const acsUrl = `${config.baseUrl}/auth/sso/saml/acs`;
+    const acsUrl = `${config.baseUrl}${SAML_ACS_PATH}`;
     // RelayState carries our signed state (provider id + redirect) for SP-initiated correlation.
     const relayState = await signStatePayload({
       provider: provider.id,
@@ -305,8 +315,11 @@ ssoRoutes.post("/callback", zValidator("json", CallbackSchema), async (c) => {
  *  4. Replay check uses the VALIDATED assertion id and fails closed if absent.
  *
  * Tokens never appear in the redirect URL — only a one-time handoff code.
+ *
+ * Exported so index.ts can also mount it at the clean top-level `/auth/sso/saml/acs`
+ * (the IdP-registered URL), in addition to the /api/rbac mount.
  */
-ssoRoutes.post("/saml/acs", async (c) => {
+export const samlAcsHandler = async (c: Context): Promise<Response> => {
   const config = getSsoConfig();
   const ipAddress = getClientIp(c);
   const form = await c.req.parseBody();
@@ -335,7 +348,7 @@ ssoRoutes.post("/saml/acs", async (c) => {
     }
     providerId = provider.id;
 
-    const acsUrl = `${config.baseUrl}/auth/sso/saml/acs`;
+    const acsUrl = `${config.baseUrl}${SAML_ACS_PATH}`;
     // Signature + InResponseTo-against-cache enforced inside node-saml here.
     const { identity, inResponseTo, assertionId, notOnOrAfter } =
       await validateSamlResponse(provider, { SAMLResponse, RelayState }, acsUrl);
@@ -413,7 +426,9 @@ ssoRoutes.post("/saml/acs", async (c) => {
         : "SSO sign-in failed. Please try again.";
     return c.redirect("/login?ssoError=" + encodeURIComponent(msg), 302);
   }
-});
+};
+
+ssoRoutes.post("/saml/acs", samlAcsHandler);
 
 /**
  * POST /rbac/auth/sso/saml/exchange — trade a one-time ACS handoff code for the

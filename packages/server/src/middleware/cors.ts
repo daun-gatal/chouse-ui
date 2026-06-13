@@ -22,7 +22,11 @@ const defaultOptions: CorsOptions = {
   credentials: true,
   maxAge: 86400,
   strictMode: process.env.NODE_ENV === "production",
-  bypassPaths: ["/api/health", "/api/rbac/health", "/api/rbac/status"],
+  // The SAML ACS receives a cross-site browser POST from the IdP (HTTP-POST
+  // binding), which carries `Origin: null` — CORS is the wrong control here and
+  // would block the assertion. Its real protections are XML-DSig verification +
+  // the browser-bound RelayState cookie + replay/audience checks, not origin.
+  bypassPaths: ["/api/health", "/api/rbac/health", "/api/rbac/status", "/auth/sso/saml/acs"],
 };
 
 /**
