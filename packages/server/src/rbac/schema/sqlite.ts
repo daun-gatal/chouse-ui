@@ -186,6 +186,7 @@ export const ssoProviders = sqliteTable('rbac_sso_providers', {
   claimMapping: text('claim_mapping'),
   roleMappingClaim: text('role_mapping_claim'),
   roleMapping: text('role_mapping'),
+  authParams: text('auth_params'),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),

@@ -186,6 +186,7 @@ export const ssoProviders = pgTable('rbac_sso_providers', {
   claimMapping: text('claim_mapping'),
   roleMappingClaim: text('role_mapping_claim'),
   roleMapping: text('role_mapping'),
+  authParams: text('auth_params'),
   enabled: boolean('enabled').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -44,7 +44,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.29.0';
+export const APP_VERSION = '1.30.0';
 
 // ============================================
 // Error Helpers
@@ -3133,6 +3133,38 @@ export const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_sso_settings`);
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.29.0] Dropped SSO admin tables');
+    },
+  },
+  {
+    version: '1.30.0',
+    name: 'sso_auth_params',
+    description: 'Add auth_params column to rbac_sso_providers (extra authorization params)',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        // SQLite has no ADD COLUMN IF NOT EXISTS — add, tolerate "already exists".
+        try {
+          (db as SqliteDb).run(sql`ALTER TABLE rbac_sso_providers ADD COLUMN auth_params TEXT`);
+        } catch (error: unknown) {
+          if (!isDuplicateColumnError(error)) throw error;
+        }
+      } else {
+        await (db as PostgresDb).execute(
+          sql`ALTER TABLE rbac_sso_providers ADD COLUMN IF NOT EXISTS auth_params TEXT`
+        );
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.30.0] Added auth_params column');
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        // SQLite DROP COLUMN is unreliable across versions — leave the column.
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.30.0] SQLite DROP COLUMN skipped');
+      } else {
+        await (db as PostgresDb).execute(
+          sql`ALTER TABLE rbac_sso_providers DROP COLUMN IF EXISTS auth_params`
+        );
+      }
     },
   },
 ];

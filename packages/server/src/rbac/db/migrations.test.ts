@@ -111,6 +111,9 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.roleHasPermission("super_admin", "sso:delete")).toBe(true);
     expect(await h.roleHasPermission("admin", "sso:view")).toBe(true);
   },
+  "1.30.0": async () => {
+    expect(await h.columnExists("rbac_sso_providers", "auth_params")).toBe(true);
+  },
 };
 
 // ---------------------------------------------------------------------------
