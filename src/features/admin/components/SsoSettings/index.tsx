@@ -33,6 +33,7 @@ import {
   Lock,
   ChevronsUpDown,
   X,
+  MoreVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
@@ -78,6 +79,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   rbacSsoAdminApi,
   rbacRolesApi,
@@ -1217,26 +1225,35 @@ function ProvidersPanel({ canManage }: { canManage: boolean }) {
                     )}
 
                     {canManage && !isConfig && (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => openEdit(provider)}
-                          className="h-8 w-8 rounded-xs text-paper-dim hover:bg-ink-300 hover:text-paper"
-                          aria-label="Edit provider"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setToDelete(provider)}
-                          className="h-8 w-8 rounded-xs text-red-500 hover:bg-red-950/40 hover:text-red-300"
-                          aria-label="Delete provider"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 rounded-xs text-paper-dim hover:bg-ink-300 hover:text-paper"
+                            aria-label="Provider actions"
+                          >
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="rounded-xs border-ink-500 bg-ink-100 text-paper">
+                          <DropdownMenuItem
+                            onClick={() => openEdit(provider)}
+                            className="cursor-pointer focus:bg-ink-200"
+                          >
+                            <Pencil className="mr-2 h-3.5 w-3.5" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-ink-500" />
+                          <DropdownMenuItem
+                            onClick={() => setToDelete(provider)}
+                            className="cursor-pointer text-red-400 hover:bg-red-950/40 focus:bg-red-950/40 focus:text-red-300"
+                          >
+                            <Trash2 className="mr-2 h-3.5 w-3.5" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </div>
                 </div>
