@@ -989,11 +989,13 @@ describe("SAML routes", () => {
     const location = res.headers.get("Location") ?? "";
     expect(location.startsWith("https://idp.test/sso")).toBe(true);
     expect(location).toContain("SAMLRequest=");
-    // Browser-binding cookie is set, HttpOnly + Lax.
+    // Browser-binding cookie is set HttpOnly + SameSite=None/Secure so it survives
+    // the IdP's cross-site POST back to the ACS (SAML POST binding).
     const setCookie = res.headers.get("Set-Cookie") ?? "";
     expect(setCookie).toContain(`${SAML_RELAY_COOKIE}=`);
     expect(setCookie).toContain("HttpOnly");
-    expect(setCookie).toContain("SameSite=Lax");
+    expect(setCookie).toContain("SameSite=None");
+    expect(setCookie).toContain("Secure");
   });
 
   // ── POST /saml/acs ─────────────────────────────────────────────────────────

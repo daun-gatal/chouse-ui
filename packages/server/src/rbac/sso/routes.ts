@@ -117,10 +117,15 @@ ssoRoutes.get("/:provider/start", async (c) => {
       // Bind this browser to the flow: the ACS requires the POSTed RelayState to
       // equal this cookie, so an attacker-supplied (validly-signed) assertion +
       // RelayState injected into a victim's browser can't be consumed.
+      //
+      // SameSite=None is REQUIRED: the IdP returns the assertion via a cross-site
+      // POST (SAML HTTP-POST binding), and browsers drop SameSite=Lax cookies on
+      // cross-site POSTs. SameSite=None mandates Secure — so always Secure here
+      // (honored on localhost too, which browsers treat as a secure context).
       setCookie(c, SAML_RELAY_COOKIE, relayState, {
         httpOnly: true,
-        secure: isProduction(),
-        sameSite: "Lax",
+        secure: true,
+        sameSite: "None",
         path: "/",
         maxAge: SAML_RELAY_TTL_SECONDS,
       });
