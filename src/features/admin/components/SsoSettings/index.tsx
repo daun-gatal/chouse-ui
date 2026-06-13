@@ -32,6 +32,7 @@ import {
   ArrowRight,
   Lock,
   ChevronsUpDown,
+  ChevronDown,
   X,
   MoreVertical,
   Power,
@@ -63,6 +64,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -588,14 +594,22 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
   const [testResult, setTestResult] = useState<SsoTestResult | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [saveAnyway, setSaveAnyway] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Reset state whenever the dialog opens or the target provider changes.
   useEffect(() => {
     if (!open) return;
-    setDraft(editing ? draftFromProvider(editing) : emptyDraft());
+    const next = editing ? draftFromProvider(editing) : emptyDraft();
+    setDraft(next);
     setStep(1);
     setTestResult(null);
     setSaveAnyway(false);
+    // Auto-expand Advanced when the provider already has overrides set.
+    setAdvancedOpen(
+      Boolean(
+        next.authorizationEndpoint || next.tokenEndpoint || next.userinfoEndpoint || next.claimMapping
+      )
+    );
   }, [open, editing]);
 
   const update = (patch: Partial<ProviderDraft>) => {
@@ -615,10 +629,15 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
     draft.clientId.trim().length > 0 &&
     secretOk;
 
+  // An optional URL field is valid when empty or a well-formed URL.
+  const optUrlOk = (v: string): boolean => v.trim() === "" || isValidUrl(v);
   const step2Valid =
     draft.scopes.trim().length > 0 &&
     (draft.type === "oidc"
-      ? isValidUrl(draft.issuer)
+      ? isValidUrl(draft.issuer) &&
+        optUrlOk(draft.authorizationEndpoint) &&
+        optUrlOk(draft.tokenEndpoint) &&
+        optUrlOk(draft.userinfoEndpoint)
       : isValidUrl(draft.authorizationEndpoint) &&
         isValidUrl(draft.tokenEndpoint) &&
         isValidUrl(draft.userinfoEndpoint));
@@ -636,6 +655,11 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
     if (secretChanged) payload.clientSecret = draft.clientSecret;
     if (draft.type === "oidc") {
       payload.issuer = draft.issuer.trim();
+      // Optional OIDC overrides (advanced) — only sent when provided.
+      if (draft.authorizationEndpoint.trim()) payload.authorizationEndpoint = draft.authorizationEndpoint.trim();
+      if (draft.tokenEndpoint.trim()) payload.tokenEndpoint = draft.tokenEndpoint.trim();
+      if (draft.userinfoEndpoint.trim()) payload.userinfoEndpoint = draft.userinfoEndpoint.trim();
+      if (draft.claimMapping.trim()) payload.claimMapping = draft.claimMapping.trim();
     } else {
       payload.authorizationEndpoint = draft.authorizationEndpoint.trim();
       payload.tokenEndpoint = draft.tokenEndpoint.trim();
@@ -861,20 +885,72 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
                   {draft.type === "oidc" ? "Issuer" : "Endpoints"}
                 </p>
                 {draft.type === "oidc" ? (
-                  <div className="space-y-1.5">
-                    <Label className={LABEL_CLASS}>Issuer URL</Label>
-                    <Input
-                      value={draft.issuer}
-                      onChange={(e) => update({ issuer: e.target.value })}
-                      placeholder="https://example.okta.com"
-                      className={cn(INPUT_CLASS, urlInvalid(draft.issuer) && "border-red-500/60")}
-                    />
-                    {urlInvalid(draft.issuer) ? (
-                      <p className="text-[11px] text-red-300">Enter a valid URL (https://…).</p>
-                    ) : (
-                      <p className={HELP_CLASS}>The OIDC discovery document is fetched from this issuer.</p>
-                    )}
-                  </div>
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className={LABEL_CLASS}>Issuer URL</Label>
+                      <Input
+                        value={draft.issuer}
+                        onChange={(e) => update({ issuer: e.target.value })}
+                        placeholder="https://example.okta.com"
+                        className={cn(INPUT_CLASS, urlInvalid(draft.issuer) && "border-red-500/60")}
+                      />
+                      {urlInvalid(draft.issuer) ? (
+                        <p className="text-[11px] text-red-300">Enter a valid URL (https://…).</p>
+                      ) : (
+                        <p className={HELP_CLASS}>The OIDC discovery document is fetched from this issuer.</p>
+                      )}
+                    </div>
+
+                    {/* Advanced (optional) — override discovered endpoints / claims. */}
+                    <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                      <CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-xs py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim hover:text-paper">
+                        <ChevronDown
+                          className={cn("h-3 w-3 transition-transform", advancedOpen && "rotate-180")}
+                        />
+                        Advanced (optional)
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="space-y-3 pt-2">
+                          <p className={HELP_CLASS}>
+                            Leave blank to use OIDC discovery. Set these only to override a wrong or
+                            unreachable discovered value.
+                          </p>
+                          {(
+                            [
+                              ["Authorization endpoint", "authorizationEndpoint", "https://provider/oauth2/authorize"],
+                              ["Token endpoint", "tokenEndpoint", "https://provider/oauth2/token"],
+                              ["Userinfo endpoint", "userinfoEndpoint", "https://provider/oauth2/userinfo"],
+                            ] as const
+                          ).map(([label, key, placeholder]) => (
+                            <div key={key} className="space-y-1.5">
+                              <Label className={LABEL_CLASS}>{label}</Label>
+                              <Input
+                                value={draft[key]}
+                                onChange={(e) => update({ [key]: e.target.value })}
+                                placeholder={placeholder}
+                                className={cn(INPUT_CLASS, urlInvalid(draft[key]) && "border-red-500/60")}
+                              />
+                              {urlInvalid(draft[key]) && (
+                                <p className="text-[11px] text-red-300">Enter a valid URL (https://…).</p>
+                              )}
+                            </div>
+                          ))}
+                          <div className="space-y-1.5">
+                            <Label className={LABEL_CLASS}>Claim mapping</Label>
+                            <Input
+                              value={draft.claimMapping}
+                              onChange={(e) => update({ claimMapping: e.target.value })}
+                              placeholder="username:preferred_username,email:email"
+                              className={INPUT_CLASS}
+                            />
+                            <p className={HELP_CLASS}>
+                              Remap non-standard ID-token claims to subject / email / username.
+                            </p>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </>
                 ) : (
                   <>
                     {(
