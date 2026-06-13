@@ -1768,4 +1768,31 @@ export const ssoApi = {
     setRbacTokens(data.data.tokens);
     return data.data;
   },
+
+  /**
+   * Complete a SAML login via the browser-POST handoff. The SAML ACS redirects
+   * the browser to /login/sso-complete?code=<one-time-code>; this exchanges that
+   * single-use code for the session (user + tokens) and the post-login redirect.
+   * The code is short-lived and server-bound — never log it or put tokens in the URL.
+   */
+  async samlExchange(code: string): Promise<SsoCallbackResponse> {
+    const response = await fetch('/api/rbac/auth/sso/saml/exchange', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({ code }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new ApiError(
+        data.error?.message || 'SSO sign-in failed',
+        response.status,
+        data.error?.code
+      );
+    }
+    setRbacTokens(data.data.tokens);
+    return data.data;
+  },
 };
