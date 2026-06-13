@@ -1198,9 +1198,9 @@ function ProvidersPanel({ canManage }: { canManage: boolean }) {
                           {provider.type}
                         </span>
                         {isConfig && (
-                          <span className="inline-flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-faint">
+                          <span className="inline-flex items-center gap-1 rounded-xs border border-amber-900/60 bg-amber-950/30 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-amber-200">
                             <Lock className="h-2.5 w-2.5" />
-                            from config
+                            from config · read-only
                           </span>
                         )}
                       </div>
