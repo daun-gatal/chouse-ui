@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.4.0] - 2026-06-14
+
+### Added
+- **Disable password login** — A new `auth.password_login.enabled` setting (env `AUTH_PASSWORD_LOGIN_ENABLED`) lets operators turn off username/password sign-in to require SSO. Enabled by default. Fail-safe: it is ignored unless at least one usable SSO provider is configured, so a misconfiguration can never lock everyone out. The login page hides the password form and `POST /rbac/auth/login` returns `403` when disabled.
+- **SSO setup guide** — New on-page SSO section on the docs site plus a full [`docs/sso.md`](docs/sso.md) reference covering OIDC / OAuth2 / SAML setup, config vs. UI precedence, role mapping, and security notes.
+- **User management card & list views** — The user directory can now switch between a card grid and a dense, scannable table (status, auth method, roles, last login) for quick analysis. The chosen layout is remembered per user.
+
+### Changed
+- **PII hidden from view-only users** — Users who can view but not manage the directory no longer see email or last-login activity in either layout.
+
+### Fixed
+- **Admin page hidden despite having access** — The Admin page, its nav entry, and the default-landing redirect were gated on an incomplete permission list (only users/roles/audit), so a user holding only another admin permission (SSO, connections, ClickHouse users/roles, data access, or AI models) was bounced from `/admin` even though they had a tab to see. All access checks now derive from a single source of truth, so any one admin-tab permission reveals the page and that tab.
+
 ## [v3.3.1] - 2026-06-14
 
 ### Fixed
@@ -132,10 +145,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Query Logs auto-refresh ignores toggle** — `useQueryLogs` had a hardcoded `refetchInterval: 30_000` that bypassed the UI toggle; removed so the toggle is respected.
 - **AI Diagnose / Optimize dialogs — no cancel mechanism** — closing any AI analysis dialog (via Escape, backdrop click, or ✕) now aborts the in-flight HTTP request via `AbortController`, stopping the analysis immediately rather than letting it run in the background.
 - **Workspace Explain tab — Analysis sub-tab removed** — the Analysis sub-tab and all associated dead code (`QueryAnalysisView`, `analyzeQuery` API function, server-side `/query/analyze` route, complexity/recommendation types) have been permanently deleted.
-
-## [v2.17.3] - 2026-06-08
-
-### Changed
-
-- **Fleet inventory counts all databases** — `schema_totals` query no longer excludes `system`, `INFORMATION_SCHEMA`, and `information_schema` databases; counts now align with what ClickHouse reports on the home page and metrics views
 
