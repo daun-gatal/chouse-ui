@@ -64,8 +64,8 @@ export function StepUpload({
                 <div
                     {...getRootProps()}
                     className={cn(
-                        'relative flex flex-col items-center justify-center min-h-[220px] w-full rounded-xs border-2 border-dashed cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50',
-                        'border-ink-500 hover:border-emerald-500/40 hover:bg-ink-200'
+                        'relative flex flex-col items-center justify-center min-h-[220px] w-full rounded-xs border-2 border-dashed cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/50',
+                        'border-ink-500 hover:border-brand/40 hover:bg-ink-200'
                     )}
                     role="button"
                     tabIndex={0}
@@ -73,7 +73,7 @@ export function StepUpload({
                 >
                     <input {...getInputProps()} aria-hidden />
                     <div className="flex flex-col items-center gap-3 text-center px-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xs bg-brand/10 text-brand-dim dark:text-brand">
                             <Upload className="h-6 w-6" />
                         </div>
                         <div>
@@ -86,7 +86,7 @@ export function StepUpload({
                 <div className="flex flex-col gap-4">
                     <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 shrink-0">
                         <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xs bg-brand/10 text-brand-dim dark:text-brand">
                                 <FileUp className="h-5 w-5" />
                             </div>
                             <div className="min-w-0 flex-1">
@@ -115,7 +115,7 @@ export function StepUpload({
                                     id="hasHeader"
                                     checked={hasHeader}
                                     onCheckedChange={(c) => onHasHeaderChange(c === true)}
-                                    className="border-ink-500 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                                    className="border-ink-500 data-[state=checked]:bg-brand data-[state=checked]:border-brand data-[state=checked]:text-ink-50"
                                 />
                                 <Label htmlFor="hasHeader" className="text-sm text-paper-muted cursor-pointer">
                                     First row is header
@@ -127,7 +127,7 @@ export function StepUpload({
                         <Button
                             onClick={onContinue}
                             disabled={isAnalyzing}
-                            className="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                            className="w-full h-11 bg-brand hover:bg-brand-soft text-ink-50 font-medium"
                             aria-label="Continue to preview"
                         >
                             Review schema

@@ -18,6 +18,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   KeyRound,
+  SlidersHorizontal,
+  Boxes,
   Plus,
   Pencil,
   Trash2,
@@ -103,6 +105,7 @@ import {
   type SsoTestResult,
 } from "@/api/rbac";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { SsoProviderIcon } from "@/features/auth/SsoProviderIcon";
 
 // Shared editorial chrome classes (match ConnectionManagement / DataAccessPolicies).
 const LABEL_CLASS = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";
@@ -571,7 +574,7 @@ function SettingsPanel({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="rounded-xs border border-ink-500 bg-ink-100">
       <div className="flex items-center gap-2 border-b border-ink-500 px-4 py-3">
-        <KeyRound className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+        <SlidersHorizontal className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
         <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Global settings</h3>
         {settings && (
           <span
@@ -1048,7 +1051,10 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
       <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden rounded-xs border-ink-500 bg-ink-100">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-paper">
-            <KeyRound className="h-4 w-4 text-paper-dim" />
+            <SsoProviderIcon
+              provider={{ id: draft.id, displayName: draft.displayName, type: draft.type }}
+              className="h-4 w-4"
+            />
             {isEditing ? `Edit provider — ${editing?.displayName}` : "Add SSO provider"}
           </DialogTitle>
           <DialogDescription className="text-paper-muted">
@@ -1797,7 +1803,7 @@ function ProvidersPanel({ canEdit, canDelete }: { canEdit: boolean; canDelete: b
   return (
     <div className="rounded-xs border border-ink-500 bg-ink-100">
       <div className="flex items-center gap-2 border-b border-ink-500 px-4 py-3">
-        <KeyRound className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+        <Boxes className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
         <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Providers</h3>
         {canEdit && (
           <Button
@@ -1818,7 +1824,7 @@ function ProvidersPanel({ canEdit, canDelete }: { canEdit: boolean; canDelete: b
           </div>
         ) : !providers || providers.length === 0 ? (
           <div className="px-6 py-10 text-center">
-            <KeyRound className="mx-auto mb-3 h-7 w-7 text-paper-faint" aria-hidden />
+            <Boxes className="mx-auto mb-3 h-7 w-7 text-paper-faint" aria-hidden />
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">No SSO providers</p>
             <p className="mt-2 text-[12px] text-paper-muted">
               Add an OIDC, OAuth2, or SAML provider, or configure one via environment variables.
@@ -1835,7 +1841,7 @@ function ProvidersPanel({ canEdit, canDelete }: { canEdit: boolean; canDelete: b
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
-                      <KeyRound className="h-3.5 w-3.5" aria-hidden />
+                      <SsoProviderIcon provider={provider} className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -2046,14 +2052,16 @@ const SsoSettings: React.FC = () => {
 
   return (
     <div className="space-y-4 p-4">
-      <div className="flex flex-col gap-1">
-        <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
-          <span className="h-px w-6 bg-ink-700" />
-          <span>Single sign-on</span>
+      <div className="flex items-center gap-3">
+        <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+          <KeyRound className="h-4 w-4" aria-hidden />
         </span>
-        <p className="text-[12px] text-paper-muted">
-          Global SSO settings and OIDC / OAuth2 / SAML providers. Providers from environment config are read-only.
-        </p>
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-[18px] font-semibold tracking-tight text-paper">Single sign-on</h2>
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+            Global SSO settings & OIDC / OAuth2 / SAML providers
+          </p>
+        </div>
       </div>
 
       <SettingsPanel canEdit={canEdit} />

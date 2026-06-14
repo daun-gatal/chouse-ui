@@ -366,6 +366,9 @@ export const AUDIT_ACTIONS = {
   SSO_PROVIDER_UPDATE: 'sso.provider_update',
   SSO_PROVIDER_DELETE: 'sso.provider_delete',
   SSO_PROVIDER_TEST: 'sso.provider_test',
+  // SSO sign-in provisioning outcomes (recorded alongside SSO_LOGIN)
+  SSO_USER_PROVISION: 'sso.user_provision',
+  SSO_IDENTITY_LINK: 'sso.identity_link',
 
   // Role Management
   ROLE_CREATE: 'role.create',

@@ -25,7 +25,6 @@ import {
   UserX,
   UserCheck,
   Database,
-  Link2,
   Unlink,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -58,6 +57,7 @@ import {
 } from "@/components/ui/dialog";
 import { rbacUsersApi, rbacRolesApi, type RbacUser, type RbacRole, type UpdateUserInput, type SsoIdentityInfo } from "@/api/rbac";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { SsoProviderIcon } from "@/features/auth/SsoProviderIcon";
 import { formatDistanceToNow, format } from "date-fns";
 
 // Editorial: uniform hairline chrome for every role; identity is conveyed by
@@ -789,8 +789,11 @@ const EditUser: React.FC = () => {
                         className="flex items-center justify-between gap-3 rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5"
                       >
                         <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xs border border-emerald-800 bg-emerald-950/30">
-                            <Link2 className="h-3.5 w-3.5 text-emerald-300" aria-hidden />
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xs border border-ink-500 bg-ink-200">
+                            <SsoProviderIcon
+                              provider={{ id: identity.provider, displayName: identity.displayName }}
+                              className="h-4 w-4"
+                            />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">

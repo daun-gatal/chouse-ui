@@ -253,7 +253,7 @@ describe("provisionSsoUser", () => {
     expect(mockFns.createUser).not.toHaveBeenCalled();
     expect(mockFns.createUserIdentity).not.toHaveBeenCalled();
     expect(mockFns.createSessionAndTokens).toHaveBeenCalled();
-    expect(result).toEqual(mockCreateSessionResult);
+    expect(result).toEqual({ ...mockCreateSessionResult, outcome: "authenticated" });
   });
 
   // ----------------------------------------------------------------
@@ -264,7 +264,7 @@ describe("provisionSsoUser", () => {
     mockGetUserByEmailResult = existingUserRow;
 
     const identity = makeIdentity({ emailVerified: true });
-    await provisionSsoUser(makeProvider(), identity);
+    const result = await provisionSsoUser(makeProvider(), identity);
 
     expect(mockFns.createUserIdentity).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -276,6 +276,8 @@ describe("provisionSsoUser", () => {
     );
     expect(mockFns.createUser).not.toHaveBeenCalled();
     expect(mockFns.createSessionAndTokens).toHaveBeenCalled();
+    // Auto-link by email is a distinct, auditable outcome.
+    expect(result.outcome).toBe("linked");
   });
 
   // ----------------------------------------------------------------
@@ -292,7 +294,7 @@ describe("provisionSsoUser", () => {
     mockDbUserRow = newUser;
 
     const identity = makeIdentity({ emailVerified: false });
-    await provisionSsoUser(makeProvider(), identity);
+    const result = await provisionSsoUser(makeProvider(), identity);
 
     // Should NOT link to existing user by email
     // Should call createUser instead (JIT)
@@ -301,6 +303,8 @@ describe("provisionSsoUser", () => {
     expect(mockFns.createUserIdentity).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "new-jit-id" })
     );
+    // A JIT-provisioned account is a distinct, auditable outcome.
+    expect(result.outcome).toBe("created");
   });
 
   // ----------------------------------------------------------------
@@ -519,7 +523,7 @@ describe("provisionSsoUser", () => {
 
     // Session should be created — using the winner's row
     expect(mockFns.createSessionAndTokens).toHaveBeenCalled();
-    expect(result).toEqual(mockCreateSessionResult);
+    expect(result).toEqual({ ...mockCreateSessionResult, outcome: "authenticated" });
     // getUserIdentity was called twice: once initial, once to re-resolve
     expect(getUserIdentityCallCount).toBe(2);
   });
@@ -556,7 +560,7 @@ describe("provisionSsoUser", () => {
     const result = await provisionSsoUser(makeProvider(), makeIdentity());
 
     expect(mockFns.createSessionAndTokens).toHaveBeenCalled();
-    expect(result).toEqual(mockCreateSessionResult);
+    expect(result).toEqual({ ...mockCreateSessionResult, outcome: "authenticated" });
     expect(getUserIdentityCallCount).toBe(2);
   });
 

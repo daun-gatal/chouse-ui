@@ -31,12 +31,19 @@ import type { TokenPair } from '../services/jwt';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = any;
 
+/**
+ * How an SSO sign-in resolved to a local user. Surfaced so the route layer can
+ * record the security-relevant outcomes (JIT provisioning, identity linking) in
+ * the audit log, not just the generic SSO_LOGIN.
+ */
+export type SsoProvisionOutcome = 'authenticated' | 'linked' | 'created';
+
 export async function provisionSsoUser(
   provider: SsoProviderConfig,
   identity: SsoIdentity,
   ipAddress?: string,
   userAgent?: string
-): Promise<{ user: UserResponse; tokens: TokenPair }> {
+): Promise<{ user: UserResponse; tokens: TokenPair; outcome: SsoProvisionOutcome }> {
   const config = getSsoConfig();
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
@@ -52,6 +59,7 @@ export async function provisionSsoUser(
   );
 
   let user: User | null = null;
+  let outcome: SsoProvisionOutcome = 'authenticated';
 
   // 1. Existing identity link
   const existing = await getUserIdentity(provider.id, identity.subject);
@@ -84,6 +92,7 @@ export async function provisionSsoUser(
         email: identity.email,
       });
       user = byEmail;
+      outcome = 'linked';
       logger.info(
         { module: 'SSO', provider: provider.id, userId: byEmail.id },
         'Linked SSO identity to existing user by email'
@@ -125,6 +134,7 @@ export async function provisionSsoUser(
         .where(eq(schema.users.id, created.id))
         .limit(1);
       user = rows[0] || null;
+      outcome = 'created';
       logger.info(
         { module: 'SSO', provider: provider.id, userId: created.id },
         'JIT-provisioned user from SSO login'
@@ -168,7 +178,8 @@ export async function provisionSsoUser(
     );
   }
 
-  return createSessionAndTokens(user, ipAddress, userAgent);
+  const session = await createSessionAndTokens(user, ipAddress, userAgent);
+  return { ...session, outcome };
 }
 
 /** Lowercase, strip disallowed chars, suffix 2,3,... on collision; cap at 50, then UUID fallback. */

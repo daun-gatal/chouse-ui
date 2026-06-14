@@ -10,10 +10,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowUpRight, Eye, EyeOff, Loader2, Lock, ShieldCheck, User } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Eye, EyeOff, Loader2, Lock, ShieldCheck, User } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useRbacStore } from "@/stores";
 import { ssoApi } from "@/api/rbac";
+import { SsoProviderIcon } from "@/features/auth/SsoProviderIcon";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { withBasePath } from "@/lib/basePath";
+import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
 
 const loginSchema = z.object({
@@ -45,6 +47,11 @@ export default function Login() {
 
   const { login, isLoading, error, isAuthenticated, clearError } = useRbacStore();
   const [showPassword, setShowPassword] = useState(false);
+  const [ssoExpanded, setSsoExpanded] = useState(false);
+
+  // Show a few providers up front; collapse the rest behind a toggle so a long
+  // provider list doesn't push the password form off the card.
+  const SSO_COLLAPSED_COUNT = 3;
 
   const { data: ssoProviders = [] } = useQuery({
     queryKey: ["sso-providers"],
@@ -55,6 +62,10 @@ export default function Login() {
     refetchOnWindowFocus: true,
     retry: false,
   });
+
+  const ssoHasMore = ssoProviders.length > SSO_COLLAPSED_COUNT;
+  const visibleSsoProviders =
+    ssoExpanded || !ssoHasMore ? ssoProviders : ssoProviders.slice(0, SSO_COLLAPSED_COUNT);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -128,21 +139,42 @@ export default function Login() {
             {/* Form */}
             <div className="px-7 py-7">
               {ssoProviders.length > 0 && (
-                <div className="mb-5 flex flex-col gap-2.5">
-                  {ssoProviders.map((provider) => (
-                    <Button
-                      key={provider.id}
+                <div className="mb-5 flex flex-col gap-2">
+                  <div className="flex flex-col gap-2">
+                    {visibleSsoProviders.map((provider) => (
+                      <button
+                        key={provider.id}
+                        type="button"
+                        onClick={() => {
+                          window.location.href = ssoApi.startUrl(provider.id, redirectTo);
+                        }}
+                        aria-label={`Continue with ${provider.displayName}`}
+                        className="group relative flex h-10 w-full items-center rounded-xs border border-ink-500 bg-ink-200 px-3 text-[13px] font-medium tracking-tight text-paper-muted transition-colors hover:border-ink-700 hover:bg-ink-300 hover:text-paper focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-ink-100"
+                      >
+                        <SsoProviderIcon provider={provider} className="absolute left-3 h-[18px] w-[18px]" />
+                        <span className="w-full text-center">Continue with {provider.displayName}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {ssoHasMore && (
+                    <button
                       type="button"
-                      variant="outline"
-                      onClick={() => {
-                        window.location.href = ssoApi.startUrl(provider.id, redirectTo);
-                      }}
-                      className="h-11 w-full rounded-xs border-ink-500 bg-ink-200 font-semibold tracking-tight text-paper hover:bg-ink-300 hover:text-paper"
+                      onClick={() => setSsoExpanded((v) => !v)}
+                      aria-expanded={ssoExpanded}
+                      className="flex items-center justify-center gap-1.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-faint transition-colors hover:text-paper-muted focus:outline-none focus-visible:text-paper"
                     >
-                      Continue with {provider.displayName}
-                    </Button>
-                  ))}
-                  <div className="my-2 flex items-center gap-3" aria-hidden>
+                      {ssoExpanded
+                        ? "Show fewer options"
+                        : `Show ${ssoProviders.length - SSO_COLLAPSED_COUNT} more`}
+                      <ChevronDown
+                        className={cn("h-3 w-3 transition-transform", ssoExpanded && "rotate-180")}
+                        aria-hidden
+                      />
+                    </button>
+                  )}
+
+                  <div className="my-1 flex items-center gap-3" aria-hidden>
                     <span className="h-px flex-1 bg-ink-500" />
                     <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
                       or sign in with password

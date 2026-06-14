@@ -33,7 +33,7 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                 <div className="relative">
                     {(status === 'uploading' || status === 'creating_table') && (
                         <motion.div
-                            className="absolute -inset-3 rounded-full border-2 border-emerald-500/20 border-t-emerald-400"
+                            className="absolute -inset-3 rounded-full border-2 border-brand/20 border-t-brand"
                             animate={{ rotate: 360 }}
                             transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
                         />
@@ -41,9 +41,9 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                     <div
                         className={cn(
                             'flex h-16 w-16 items-center justify-center rounded-xs',
-                            status === 'creating_table' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-                            status === 'uploading' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-                            status === 'success' && 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+                            status === 'creating_table' && 'bg-brand/10 text-brand-dim dark:text-brand',
+                            status === 'uploading' && 'bg-brand/10 text-brand-dim dark:text-brand',
+                            status === 'success' && 'bg-brand/15 text-brand-dim dark:text-brand',
                             status === 'error' && 'bg-red-500/10 text-red-600 dark:text-red-400'
                         )}
                     >
@@ -74,7 +74,7 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                 {(status === 'uploading' || status === 'creating_table') && (
                     <div className="w-full h-1 rounded-full bg-ink-300 overflow-hidden">
                         <motion.div
-                            className="h-full bg-emerald-500"
+                            className="h-full bg-brand"
                             initial={{ x: '-100%' }}
                             animate={{ x: '100%' }}
                             transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
@@ -94,7 +94,7 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                         {canViewTable && (
                             <Button
                                 onClick={() => onViewTable(database, tableName)}
-                                className="flex-1 h-11 bg-emerald-600 hover:bg-emerald-500 text-white gap-2"
+                                className="flex-1 h-11 bg-brand hover:bg-brand-soft text-ink-50 gap-2"
                             >
                                 <Table2 className="h-4 w-4" />
                                 View table
@@ -138,7 +138,7 @@ export function StepProgress({ status, error, database, tableName, onClose, onVi
                                 Copy
                             </Button>
                             {onTryAgain && (
-                                <Button onClick={onTryAgain} size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white h-9">
+                                <Button onClick={onTryAgain} size="sm" className="bg-brand hover:bg-brand-soft text-ink-50 h-9">
                                     Try again
                                 </Button>
                             )}

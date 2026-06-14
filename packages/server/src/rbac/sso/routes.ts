@@ -10,7 +10,7 @@ import { getSsoConfig } from "./config";
 import { buildAuthorizationRedirect, exchangeCodeForIdentity } from "./client";
 import { buildSamlAuthnRequest, validateSamlResponse, resolveSamlProviderByIssuer, extractSamlIssuer, summarizeSamlResponse } from "./saml/client";
 import { stashTokens, claimTokens, markAssertionSeen } from "./saml/handoff";
-import { provisionSsoUser } from "./service";
+import { provisionSsoUser, type SsoProvisionOutcome } from "./service";
 import { describeSsoError } from "./errors";
 import {
   signStatePayload,
@@ -64,6 +64,39 @@ function safeRedirect(target: string | undefined): string {
 
 const isProduction = (): boolean =>
   (process.env.NODE_ENV || "development") === "production";
+
+/**
+ * Record the security-relevant outcome of an SSO sign-in (a JIT-provisioned
+ * account, or an identity auto-linked to an existing user) in the audit log,
+ * alongside the SSO_LOGIN entry. A plain successful login on an existing link
+ * adds nothing here. Audit failures must never block sign-in.
+ */
+async function auditProvisionOutcome(
+  c: Context,
+  outcome: SsoProvisionOutcome,
+  userId: string,
+  details: Record<string, unknown>,
+  ipAddress?: string,
+): Promise<void> {
+  let action: typeof AUDIT_ACTIONS.SSO_USER_PROVISION | typeof AUDIT_ACTIONS.SSO_IDENTITY_LINK;
+  if (outcome === "created") action = AUDIT_ACTIONS.SSO_USER_PROVISION;
+  else if (outcome === "linked") action = AUDIT_ACTIONS.SSO_IDENTITY_LINK;
+  else return;
+  try {
+    await createAuditLogWithContext(c, action, userId, {
+      resourceType: "user",
+      resourceId: userId,
+      details,
+      ipAddress,
+      status: "success",
+    });
+  } catch (error) {
+    requestLogger(c.get("requestId")).warn(
+      { module: "SSO", action, userId, err: error instanceof Error ? error.message : String(error) },
+      "Failed to write SSO provisioning audit entry",
+    );
+  }
+}
 
 /**
  * GET /rbac/auth/sso/providers — public list for the login page.
@@ -264,6 +297,7 @@ ssoRoutes.post("/callback", zValidator("json", CallbackSchema), async (c) => {
       ipAddress,
       status: "success",
     });
+    await auditProvisionOutcome(c, result.outcome, result.user.id, { provider: providerId }, ipAddress);
 
     return c.json({
       success: true,
@@ -416,6 +450,13 @@ export const samlAcsHandler = async (c: Context): Promise<Response> => {
       ipAddress,
       status: "success",
     });
+    await auditProvisionOutcome(
+      c,
+      result.outcome,
+      result.user.id,
+      { provider: providerId, binding: "saml" },
+      ipAddress,
+    );
 
     const code = stashTokens(
       { user: result.user, tokens: result.tokens, redirect },

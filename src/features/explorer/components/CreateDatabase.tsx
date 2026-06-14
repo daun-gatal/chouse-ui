@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { log } from "@/lib/log";
-import { Loader2, Server } from "lucide-react";
+import { Loader2, Server, Database, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,8 +72,18 @@ const CreateDatabase: React.FC = () => {
   };
 
   const dialogTitle = (
-    <DialogHeader className="pb-0 border-0">
-      <DialogTitle>Create Database</DialogTitle>
+    <DialogHeader className="pb-0 border-0 flex-none">
+      <DialogTitle className="flex items-center gap-3 text-paper">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+          <Database className="h-4 w-4" aria-hidden />
+        </span>
+        <span className="flex flex-col gap-0.5 text-left">
+          <span className="text-[16px] font-semibold tracking-tight">Create new database</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+            Name it and choose an optional cluster
+          </span>
+        </span>
+      </DialogTitle>
     </DialogHeader>
   );
 
@@ -83,46 +93,68 @@ const CreateDatabase: React.FC = () => {
       onOpenChange={(open) => { if (!open) handleClose(); }}
       dialogId="createDatabase"
       title={dialogTitle}
-      windowClassName="rounded-xl shadow-xl bg-card border border-border"
-      headerClassName="border-b"
-      footerClassName="border-t"
+      windowClassName="rounded-xs border border-ink-500 bg-ink-100 text-paper shadow-lg"
+      headerClassName="px-6 pb-4 border-b border-ink-500"
+      footerClassName="pt-4 border-t border-ink-500 px-6"
+      closeButtonClassName="rounded-xs text-paper-dim hover:bg-ink-200 hover:text-paper"
+      contentClassName="bg-ink-100 text-paper"
       footer={
-        <DialogFooter className="px-0">
-          <Button type="button" variant="outline" onClick={handleClose}>
+        <DialogFooter className="pt-4 border-t border-ink-500 px-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleClose}
+            className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:border-ink-700 hover:bg-ink-200"
+          >
             Cancel
           </Button>
-          <Button type="submit" form="create-database-form" disabled={createDatabase.isPending}>
+          <Button
+            type="submit"
+            form="create-database-form"
+            disabled={createDatabase.isPending}
+            className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50"
+          >
             {createDatabase.isPending ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Creating...
               </>
             ) : (
-              "Create Database"
+              <>
+                <Sparkles className="h-3.5 w-3.5" />
+                Create Database
+              </>
             )}
           </Button>
         </DialogFooter>
       }
     >
       <form id="create-database-form" onSubmit={handleSubmit}>
-        <div className="space-y-4 py-4">
+        <div className="space-y-6 px-6 py-4">
           <div className="space-y-2">
-            <Label htmlFor="database-name">Database Name</Label>
+            <Label
+              htmlFor="database-name"
+              className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim"
+            >
+              <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+              Database Name
+            </Label>
             <Input
               id="database-name"
               value={databaseName}
               onChange={(e) => setDatabaseName(e.target.value)}
               placeholder="my_database"
+              className="rounded-xs border-ink-500 bg-ink-200 text-paper"
               autoFocus
             />
           </div>
 
           {clusters.length > 0 && (
-            <div className="p-4 rounded-xs bg-ink-200 border border-ink-500 space-y-3">
+            <div className="rounded-xs border border-ink-500 bg-ink-200 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Server className="h-4 w-4 text-amber-600 dark:text-orange-400" />
-                  <Label className="text-paper-muted">Create on Cluster</Label>
+                  <Server className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                  <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Create on Cluster</Label>
                 </div>
                 <Switch checked={useCluster} onCheckedChange={setUseCluster} />
               </div>
@@ -134,7 +166,7 @@ const CreateDatabase: React.FC = () => {
                     exit={{ opacity: 0, height: 0 }}
                   >
                     <Select value={selectedCluster} onValueChange={setSelectedCluster}>
-                      <SelectTrigger className="bg-ink-100 border-ink-500 text-paper">
+                      <SelectTrigger className="rounded-xs border-ink-500 bg-ink-100 text-paper">
                         <SelectValue placeholder="Select cluster" />
                       </SelectTrigger>
                       <SelectContent>

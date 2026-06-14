@@ -564,6 +564,7 @@ describe("SSO Routes", () => {
       mockProvisionSsoUser.mockResolvedValue({
         user: { id: "user-happy", username: "happyuser" },
         tokens: { accessToken: "access-tok", refreshToken: "refresh-tok" },
+        outcome: "authenticated",
       });
 
       const res = await app.request(`/sso/callback`, {
@@ -587,6 +588,84 @@ describe("SSO Routes", () => {
         expect.anything(),
         "auth.sso_login",
         "user-happy",
+        expect.objectContaining({ status: "success" })
+      );
+      // A plain sign-in on an existing link records only SSO_LOGIN.
+      const actions = mockCreateAuditLogWithContext.mock.calls.map((args) => args[1]);
+      expect(actions).not.toContain("sso.user_provision");
+      expect(actions).not.toContain("sso.identity_link");
+    });
+
+    it("records sso.user_provision alongside SSO_LOGIN when a user is JIT-provisioned", async () => {
+      mockGetSsoConfig.mockReturnValue(makeEnabledConfig());
+
+      const stateCookieValue = await buildStateCookie({ state: "state-jit" });
+      mockExchangeCodeForIdentity.mockResolvedValue({
+        provider: PROVIDER_ID,
+        subject: "sub-jit",
+        email: "jit@example.com",
+        emailVerified: true,
+        username: "jituser",
+        displayName: "JIT User",
+        claims: {},
+      });
+      mockProvisionSsoUser.mockResolvedValue({
+        user: { id: "user-jit", username: "jituser" },
+        tokens: { accessToken: "at-jit", refreshToken: "rt-jit" },
+        outcome: "created",
+      });
+
+      const res = await app.request(`/sso/callback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${SSO_STATE_COOKIE}=${stateCookieValue}`,
+        },
+        body: JSON.stringify({ params: "code=code-jit&state=state-jit" }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockCreateAuditLogWithContext).toHaveBeenCalledWith(
+        expect.anything(),
+        "sso.user_provision",
+        "user-jit",
+        expect.objectContaining({ status: "success", details: expect.objectContaining({ provider: PROVIDER_ID }) })
+      );
+    });
+
+    it("records sso.identity_link alongside SSO_LOGIN when an identity is auto-linked by email", async () => {
+      mockGetSsoConfig.mockReturnValue(makeEnabledConfig());
+
+      const stateCookieValue = await buildStateCookie({ state: "state-link" });
+      mockExchangeCodeForIdentity.mockResolvedValue({
+        provider: PROVIDER_ID,
+        subject: "sub-link",
+        email: "link@example.com",
+        emailVerified: true,
+        username: "linkuser",
+        displayName: "Link User",
+        claims: {},
+      });
+      mockProvisionSsoUser.mockResolvedValue({
+        user: { id: "user-link", username: "linkuser" },
+        tokens: { accessToken: "at-link", refreshToken: "rt-link" },
+        outcome: "linked",
+      });
+
+      const res = await app.request(`/sso/callback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${SSO_STATE_COOKIE}=${stateCookieValue}`,
+        },
+        body: JSON.stringify({ params: "code=code-link&state=state-link" }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockCreateAuditLogWithContext).toHaveBeenCalledWith(
+        expect.anything(),
+        "sso.identity_link",
+        "user-link",
         expect.objectContaining({ status: "success" })
       );
     });
