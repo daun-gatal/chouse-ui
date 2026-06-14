@@ -1380,11 +1380,12 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
                       <Input
                         value={draft.claimMapping}
                         onChange={(e) => update({ claimMapping: e.target.value })}
-                        placeholder="email=email,name=displayName"
+                        placeholder="email=mail,username=uid"
                         className={INPUT_CLASS}
                       />
                       <p className={HELP_CLASS}>
-                        Map SAML attribute names to user fields (subject / email / username).
+                        Map user fields to SAML attributes (field=attribute pairs, e.g.
+                        subject / email / username).
                       </p>
                     </div>
                   </section>
@@ -1458,10 +1459,13 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
                     <Input
                       value={draft.claimMapping}
                       onChange={(e) => update({ claimMapping: e.target.value })}
-                      placeholder="email=email,name=displayName"
+                      placeholder="subject=id,email=email,username=login"
                       className={INPUT_CLASS}
                     />
-                    <p className={HELP_CLASS}>Map provider claims to user fields (key=value pairs).</p>
+                    <p className={HELP_CLASS}>
+                      Map user fields to provider claims (field=claim pairs). Required for OAuth2 —
+                      e.g. GitHub: <code>subject=id,email=email,username=login</code>.
+                    </p>
                   </div>
                 )}
               </section>
@@ -1508,7 +1512,7 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
                             <Input
                               value={draft.claimMapping}
                               onChange={(e) => update({ claimMapping: e.target.value })}
-                              placeholder="username:preferred_username,email:email"
+                              placeholder="username=preferred_username,email=email"
                               className={INPUT_CLASS}
                             />
                             <p className={HELP_CLASS}>

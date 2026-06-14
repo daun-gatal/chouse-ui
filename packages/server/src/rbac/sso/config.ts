@@ -40,13 +40,20 @@ const FIELD_SUFFIXES = [
   'TYPE',
 ] as const;
 
-/** Parse "a:b,c:d" into { a: 'b', c: 'd' }. Whitespace-tolerant. */
+/**
+ * Parse "a:b,c:d" into { a: 'b', c: 'd' }. Whitespace-tolerant. Accepts either
+ * ':' or '=' as the key/value separator (whichever appears first in the pair,
+ * so a value may itself contain the other character).
+ */
 function parsePairs(value: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const pair of value.split(',')) {
     const trimmed = pair.trim();
     if (!trimmed) continue;
-    const idx = trimmed.indexOf(':');
+    const colon = trimmed.indexOf(':');
+    const equals = trimmed.indexOf('=');
+    const idx =
+      colon === -1 ? equals : equals === -1 ? colon : Math.min(colon, equals);
     if (idx <= 0 || idx === trimmed.length - 1) continue;
     out[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
   }

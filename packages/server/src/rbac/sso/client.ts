@@ -155,19 +155,93 @@ export async function exchangeCodeForIdentity(
     return normalizeOidcClaims(p.id, claims as Record<string, unknown>, p.claimMapping);
   }
 
-  // skipSubjectCheck is required: plain OAuth2 userinfo has no ID-token sub to
-  // compare against. The mapped-subject throw in applyClaimMapping is the
-  // compensating control.
-  const userinfo = await oidc.fetchUserInfo(
-    cfg,
-    tokens.access_token,
-    oidc.skipSubjectCheck
-  );
-  return applyClaimMapping(
+  // Fetch the userinfo endpoint directly rather than via oidc.fetchUserInfo:
+  // openid-client enforces OIDC userinfo semantics and rejects any response
+  // whose `sub` is not a string. Non-OIDC providers (e.g. GitHub, whose /user
+  // returns a numeric `id` and no `sub`) fail that check before claim_mapping
+  // can run. The mapped-subject throw in applyClaimMapping is the compensating
+  // control for the skipped sub check.
+  const userinfo = await fetchOauth2UserInfo(
     p.id,
-    p.claimMapping,
-    userinfo as Record<string, unknown>
+    p.userinfoEndpoint,
+    tokens.access_token
   );
+  return applyClaimMapping(p.id, p.claimMapping, userinfo);
+}
+
+/**
+ * Fetch a plain-OAuth2 provider's userinfo endpoint and return the raw JSON
+ * object. Sends a User-Agent because some providers (notably GitHub's API)
+ * reject requests without one.
+ */
+async function fetchOauth2UserInfo(
+  providerId: string,
+  userinfoEndpoint: string,
+  accessToken: string
+): Promise<Record<string, unknown>> {
+  const res = await fetch(userinfoEndpoint, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+      "User-Agent": "chouse-ui-sso",
+    },
+  });
+  if (!res.ok) {
+    throw new Error(
+      `[SSO] Provider ${providerId} userinfo request failed (${res.status} ${res.statusText})`
+    );
+  }
+  const body: unknown = await res.json();
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new Error(`[SSO] Provider ${providerId} userinfo response was not a JSON object`);
+  }
+  const userinfo = body as Record<string, unknown>;
+
+  // GitHub keeps a user's email private by default, so /user returns
+  // email:null. Fall back to /user/emails (granted by the user:email scope)
+  // and use the primary verified address so JIT provisioning still has an email.
+  const url = new URL(userinfoEndpoint);
+  if (url.hostname === "api.github.com" && userinfo.email == null) {
+    const email = await fetchGithubPrimaryEmail(url.origin, accessToken);
+    if (email) userinfo.email = email;
+  }
+  return userinfo;
+}
+
+interface GithubEmail {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+}
+
+/** Resolve a GitHub account's primary verified email via /user/emails. */
+async function fetchGithubPrimaryEmail(
+  apiOrigin: string,
+  accessToken: string
+): Promise<string | null> {
+  const res = await fetch(new URL("/user/emails", apiOrigin), {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+      "User-Agent": "chouse-ui-sso",
+    },
+  });
+  if (!res.ok) {
+    logger.warn(
+      { module: "SSO", status: res.status },
+      "GitHub /user/emails request failed; proceeding without email"
+    );
+    return null;
+  }
+  const body: unknown = await res.json();
+  if (!Array.isArray(body)) return null;
+  const emails = body.filter(
+    (e): e is GithubEmail =>
+      typeof e === "object" && e !== null && typeof (e as GithubEmail).email === "string"
+  );
+  const chosen =
+    emails.find((e) => e.primary && e.verified) ?? emails.find((e) => e.verified);
+  return chosen ? chosen.email : null;
 }
 
 export function normalizeOidcClaims(

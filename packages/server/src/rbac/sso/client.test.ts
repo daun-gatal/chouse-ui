@@ -232,19 +232,15 @@ describe("buildAuthorizationRedirect (oidc, mocked discovery)", () => {
 describe("exchangeCodeForIdentity checks wiring", () => {
   // Captured call args so individual tests can assert on them.
   let capturedGrantArgs: unknown[] = [];
-  let capturedFetchUserInfoArgs: unknown[] = [];
 
   // Switchable mock results, set per test.
   let mockTokenClaims: Record<string, unknown> | null = null;
   let mockAccessToken = "at-mock";
-  let mockUserinfo: Record<string, unknown> = {};
 
   beforeEach(() => {
     capturedGrantArgs = [];
-    capturedFetchUserInfoArgs = [];
     mockTokenClaims = null;
     mockAccessToken = "at-mock";
-    mockUserinfo = {};
     resetProviderConfigurationCache();
   });
 
@@ -277,14 +273,6 @@ describe("exchangeCodeForIdentity checks wiring", () => {
             access_token: mockAccessToken,
             claims: () => mockTokenClaims,
           };
-        },
-        fetchUserInfo: async (
-          _cfg: unknown,
-          accessToken: unknown,
-          subjectCheck: unknown
-        ) => {
-          capturedFetchUserInfoArgs = [_cfg, accessToken, subjectCheck];
-          return mockUserinfo;
         },
       };
     });
@@ -339,60 +327,128 @@ describe("exchangeCodeForIdentity checks wiring", () => {
     expect(identity.provider).toBe("okta");
   });
 
-  it("oauth2: checks have pkceCodeVerifier+expectedState but NOT expectedNonce/idTokenExpected; fetchUserInfo called with access_token+skipSubjectCheck; claimMapping applied", async () => {
+  it("oauth2: checks have pkceCodeVerifier+expectedState but NOT expectedNonce/idTokenExpected; userinfo fetched directly with bearer token; claimMapping applied", async () => {
     mockAccessToken = "gh-access-token";
-    mockUserinfo = {
-      id: 9001,
-      email: "Dev@GitHub.com",
-      login: "DevUser",
-      name: "Dev User",
-    };
 
     setupMock();
-    const { exchangeCodeForIdentity, resetProviderConfigurationCache: reset } =
-      await import("./client");
-    reset();
 
-    const oauth2Provider = {
-      id: "github",
-      type: "oauth2" as const,
-      displayName: "GitHub",
-      clientId: "client-id",
-      clientSecret: "client-secret",
-      scopes: "read:user user:email",
-      authorizationEndpoint: "https://github.com/login/oauth/authorize",
-      tokenEndpoint: "https://github.com/login/oauth/access_token",
-      userinfoEndpoint: "https://api.github.com/user",
-      claimMapping: { subject: "id", email: "email", username: "login" },
-    };
+    // oauth2 fetches the userinfo endpoint directly (not via oidc.fetchUserInfo,
+    // which would reject GitHub's numeric `id`/missing `sub`). Mock global fetch.
+    const realFetch = globalThis.fetch;
+    const fetchCalls: Array<{ url: string; auth: string | null }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      const headers = new Headers(init?.headers);
+      fetchCalls.push({ url, auth: headers.get("Authorization") });
+      return new Response(
+        JSON.stringify({ id: 9001, email: "Dev@GitHub.com", login: "DevUser", name: "Dev User" }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
 
-    const callbackUrl = new URL(
-      "https://app.example.com/callback?code=c&state=st"
-    );
-    const identity = await exchangeCodeForIdentity(oauth2Provider, callbackUrl, {
-      codeVerifier: "cv",
-      state: "st",
-      nonce: "",
-    });
+    try {
+      const { exchangeCodeForIdentity, resetProviderConfigurationCache: reset } =
+        await import("./client");
+      reset();
 
-    // Verify checks: PKCE and state present, no nonce/idToken fields
-    const checks = capturedGrantArgs[2] as Record<string, unknown>;
-    expect(checks.pkceCodeVerifier).toBe("cv");
-    expect(checks.expectedState).toBe("st");
-    expect("expectedNonce" in checks).toBe(false);
-    expect("idTokenExpected" in checks).toBe(false);
+      const oauth2Provider = {
+        id: "github",
+        type: "oauth2" as const,
+        displayName: "GitHub",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        scopes: "read:user user:email",
+        authorizationEndpoint: "https://github.com/login/oauth/authorize",
+        tokenEndpoint: "https://github.com/login/oauth/access_token",
+        userinfoEndpoint: "https://api.github.com/user",
+        claimMapping: { subject: "id", email: "email", username: "login" },
+      };
 
-    // fetchUserInfo called with the access_token (skipSubjectCheck is a symbol)
-    expect(capturedFetchUserInfoArgs[1]).toBe("gh-access-token");
-    // third argument is oidc.skipSubjectCheck (a symbol/unique value)
-    expect(capturedFetchUserInfoArgs[2]).toBeDefined();
+      const callbackUrl = new URL(
+        "https://app.example.com/callback?code=c&state=st"
+      );
+      const identity = await exchangeCodeForIdentity(oauth2Provider, callbackUrl, {
+        codeVerifier: "cv",
+        state: "st",
+        nonce: "",
+      });
 
-    // claimMapping applied correctly
-    expect(identity.subject).toBe("9001");
-    expect(identity.email).toBe("dev@github.com");
-    expect(identity.username).toBe("devuser");
-    expect(identity.emailVerified).toBe(false);
-    expect(identity.displayName).toBe("Dev User");
-    expect(identity.provider).toBe("github");
+      // Verify checks: PKCE and state present, no nonce/idToken fields
+      const checks = capturedGrantArgs[2] as Record<string, unknown>;
+      expect(checks.pkceCodeVerifier).toBe("cv");
+      expect(checks.expectedState).toBe("st");
+      expect("expectedNonce" in checks).toBe(false);
+      expect("idTokenExpected" in checks).toBe(false);
+
+      // userinfo endpoint fetched directly with the access token as a bearer
+      expect(fetchCalls[0].url).toBe("https://api.github.com/user");
+      expect(fetchCalls[0].auth).toBe("Bearer gh-access-token");
+
+      // claimMapping applied correctly
+      expect(identity.subject).toBe("9001");
+      expect(identity.email).toBe("dev@github.com");
+      expect(identity.username).toBe("devuser");
+      expect(identity.emailVerified).toBe(false);
+      expect(identity.displayName).toBe("Dev User");
+      expect(identity.provider).toBe("github");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("oauth2 (github): falls back to /user/emails when /user returns a null email", async () => {
+    mockAccessToken = "gh-access-token";
+
+    setupMock();
+
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      if (url === "https://api.github.com/user") {
+        return new Response(
+          JSON.stringify({ id: 42, email: null, login: "PrivUser", name: "Priv User" }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (url === "https://api.github.com/user/emails") {
+        return new Response(
+          JSON.stringify([
+            { email: "old@github.com", primary: false, verified: true },
+            { email: "primary@github.com", primary: true, verified: true },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const { exchangeCodeForIdentity, resetProviderConfigurationCache: reset } =
+        await import("./client");
+      reset();
+
+      const identity = await exchangeCodeForIdentity(
+        {
+          id: "github",
+          type: "oauth2" as const,
+          displayName: "GitHub",
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          scopes: "read:user user:email",
+          authorizationEndpoint: "https://github.com/login/oauth/authorize",
+          tokenEndpoint: "https://github.com/login/oauth/access_token",
+          userinfoEndpoint: "https://api.github.com/user",
+          claimMapping: { subject: "id", email: "email", username: "login" },
+        },
+        new URL("https://app.example.com/callback?code=c&state=st"),
+        { codeVerifier: "cv", state: "st", nonce: "" }
+      );
+
+      expect(identity.subject).toBe("42");
+      expect(identity.email).toBe("primary@github.com");
+      expect(identity.username).toBe("privuser");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });
