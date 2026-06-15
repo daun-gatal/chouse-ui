@@ -777,7 +777,11 @@ export interface MutationRow {
   command: string;
   create_time: string;
   parts_to_do: number;
+  /** Table's current active-part count — progress denominator (0 if unknown). */
+  total_parts: number;
   is_done: number;
+  /** 1 once the mutation has been KILLed. */
+  is_killed: number;
   latest_failed_part: string;
   latest_fail_reason: string;
   latest_fail_time: string;
@@ -801,21 +805,32 @@ export function useMutations(
       // DateTime columns used in WHERE / ORDER BY. ClickHouse 24.11 fails
       // with NO_COMMON_TYPE (String vs DateTime) when an alias collides
       // with the column it was derived from in the same SELECT.
+      // total_parts joins the table's current active-part count so the UI can
+      // render approximate progress (1 − parts_to_do / total_parts).
       const sql = `
+        WITH active_parts AS (
+          SELECT database, table, count() AS total_parts
+          FROM system.parts
+          WHERE active
+          GROUP BY database, table
+        )
         SELECT
-          database,
-          table,
-          mutation_id,
-          command,
-          formatDateTime(create_time, '%Y-%m-%d %H:%i:%S') AS create_time_str,
-          parts_to_do,
-          is_done,
-          latest_failed_part,
-          latest_fail_reason,
-          formatDateTime(latest_fail_time, '%Y-%m-%d %H:%i:%S') AS latest_fail_time_str
-        FROM system.mutations
-        WHERE is_done = 0 OR create_time >= now() - INTERVAL 7 DAY
-        ORDER BY is_done ASC, create_time DESC
+          m.database AS database,
+          m.table AS table,
+          m.mutation_id AS mutation_id,
+          m.command AS command,
+          formatDateTime(m.create_time, '%Y-%m-%d %H:%i:%S') AS create_time_str,
+          m.parts_to_do AS parts_to_do,
+          coalesce(a.total_parts, 0) AS total_parts,
+          m.is_done AS is_done,
+          m.is_killed AS is_killed,
+          m.latest_failed_part AS latest_failed_part,
+          m.latest_fail_reason AS latest_fail_reason,
+          formatDateTime(m.latest_fail_time, '%Y-%m-%d %H:%i:%S') AS latest_fail_time_str
+        FROM system.mutations m
+        LEFT JOIN active_parts a ON m.database = a.database AND m.table = a.table
+        WHERE m.is_done = 0 OR m.create_time >= now() - INTERVAL 7 DAY
+        ORDER BY m.is_done ASC, m.create_time DESC
         LIMIT 500
       `;
       const result = await queryApi.executeQuery(sql);
@@ -826,7 +841,9 @@ export function useMutations(
         command: String(row.command ?? ""),
         create_time: String(row.create_time_str ?? ""),
         parts_to_do: num(row.parts_to_do),
+        total_parts: num(row.total_parts),
         is_done: num(row.is_done),
+        is_killed: num(row.is_killed),
         latest_failed_part: String(row.latest_failed_part ?? ""),
         latest_fail_reason: String(row.latest_fail_reason ?? ""),
         latest_fail_time: String(row.latest_fail_time_str ?? ""),

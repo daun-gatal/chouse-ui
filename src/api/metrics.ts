@@ -127,6 +127,35 @@ export interface TopTableBySize {
   parts_count: number;
 }
 
+export interface PartsPressureRow {
+  database: string;
+  table: string;
+  active_parts: number;
+  max_parts_in_partition: number;
+  rows: number;
+  bytes: number;
+  merges_running: number;
+  insert_parts_per_min: number;
+  merge_parts_per_min: number;
+  parts_threshold: number;
+  net_parts_per_min: number;
+  eta_minutes: number;
+}
+
+export interface DdlImpactEstimate {
+  database: string;
+  table: string;
+  kind: 'update' | 'delete';
+  where: string;
+  affected_rows: number;
+  total_rows: number;
+  parts_to_rewrite: number;
+  bytes_to_rewrite: number;
+  est_duration_seconds: number;
+  disk_free_bytes: number;
+  disk_sufficient: boolean;
+}
+
 export interface NetworkMetrics {
   tcp_connections: number;
   http_connections: number;
@@ -360,6 +389,24 @@ export async function getTopTables(limit: number = 10): Promise<TopTableBySize[]
   return api.get<TopTableBySize[]>('/metrics/top-tables', {
     params: { limit },
   });
+}
+
+/**
+ * Get per-table parts pressure (insert-vs-merge race + projected "too many parts" eta)
+ * @param interval - Rate window in minutes (default: 10)
+ */
+export async function getPartsPressure(interval: number = 10): Promise<PartsPressureRow[]> {
+  return api.get<PartsPressureRow[]>('/metrics/parts-pressure', {
+    params: { interval },
+  });
+}
+
+/**
+ * Read-only impact estimate for an ALTER … UPDATE/DELETE mutation. The server
+ * parses and estimates only — it never executes the statement.
+ */
+export async function simulateDdl(statement: string): Promise<DdlImpactEstimate> {
+  return api.post<DdlImpactEstimate>('/metrics/ddl/simulate', { statement });
 }
 
 /**

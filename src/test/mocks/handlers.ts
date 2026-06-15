@@ -150,6 +150,69 @@ export const handlers = [
     return HttpResponse.json({ success: true, data });
   }),
 
+  http.get(`${API_BASE}/metrics/parts-pressure`, () => {
+    return HttpResponse.json({
+      success: true,
+      data: [
+        {
+          database: 'default',
+          table: 'events',
+          active_parts: 250,
+          max_parts_in_partition: 240,
+          rows: 1_000_000,
+          bytes: 5_000_000,
+          merges_running: 1,
+          insert_parts_per_min: 12,
+          merge_parts_per_min: 4,
+          parts_threshold: 300,
+          net_parts_per_min: 8,
+          eta_minutes: 7.5,
+        },
+        {
+          database: 'default',
+          table: 'calm',
+          active_parts: 10,
+          max_parts_in_partition: 5,
+          rows: 100,
+          bytes: 200,
+          merges_running: 0,
+          insert_parts_per_min: 1,
+          merge_parts_per_min: 3,
+          parts_threshold: 300,
+          net_parts_per_min: -2,
+          eta_minutes: -1,
+        },
+      ],
+    });
+  }),
+
+  http.post(`${API_BASE}/metrics/ddl/simulate`, async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { statement?: string };
+    const statement = body?.statement ?? '';
+    if (!/^\s*ALTER\s+TABLE/i.test(statement)) {
+      return HttpResponse.json(
+        { success: false, error: 'Only ALTER TABLE … UPDATE/DELETE statements can be simulated.' },
+        { status: 400 },
+      );
+    }
+    return HttpResponse.json({
+      success: true,
+      data: {
+        database: 'demo',
+        table: 'events',
+        kind: 'update',
+        where: 'id < 5',
+        affected_rows: 159,
+        total_rows: 1000,
+        parts_to_rewrite: 300,
+        bytes_to_rewrite: 5_000_000,
+        est_duration_seconds: 1,
+        disk_free_bytes: 9_000_000_000,
+        disk_sufficient: true,
+      },
+    });
+  }),
+
   // Live Queries
   http.get(`${API_BASE}/live-queries`, () => {
     return HttpResponse.json({

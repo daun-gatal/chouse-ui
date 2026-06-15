@@ -9,8 +9,10 @@ export function formatBytes(bytes: number) {
   if (bytes === 0) return "0 Bytes";
   if (!bytes) return "";
   const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB"];
+  // Clamp the unit index so an out-of-range value (e.g. a ~2^63 sentinel that
+  // slips through) can't index past `sizes` and render "8 undefined".
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 

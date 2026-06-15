@@ -40,8 +40,12 @@ import {
 } from "../services/fleetMetrics";
 import { AppError } from "../types";
 import { logger } from "../utils/logger";
-import { readFileSync, writeFileSync } from "node:fs";
 import { sendTestAlert } from "../services/fleetAlerter";
+import {
+  loadRawAlertConfig,
+  saveRawAlertConfig,
+  type RawAlertConfig,
+} from "../services/fleetAlertConfig";
 import { runStructuredCapability } from "../services/ai/engine";
 import { fleetScanCapability } from "../services/ai/capabilities/fleetScan";
 import { isAIEnabled } from "../services/aiConfig";
@@ -56,29 +60,6 @@ import {
 import { listAiConfigs } from "../rbac/services/aiModels";
 
 const fleet = new Hono();
-
-const ALERT_CONFIG_PATH =
-  process.env.ALERT_CONFIG_FILE || "/app/data/alert-config.json";
-
-type RawAlertConfig = {
-  enabled?: boolean;
-  rules?: { memoryPercent?: number; queryMemoryGb?: number; longQueryMin?: number };
-  slack?: { webhookUrl?: string; enabled?: boolean };
-  googleChat?: { webhookUrl?: string; enabled?: boolean };
-  email?: { user?: string; password?: string; to?: string; enabled?: boolean; host?: string; port?: number; secure?: boolean };
-  /** When true, a new breach also fires a Chouse AI RCA to the channels. */
-  aiRcaOnBreach?: boolean;
-  /** AI config id for the auto-RCA scan (blank = default model). */
-  aiRcaModelId?: string;
-};
-
-function loadRawAlertConfig(): RawAlertConfig {
-  try {
-    return JSON.parse(readFileSync(ALERT_CONFIG_PATH, "utf8")) as RawAlertConfig;
-  } catch {
-    return {};
-  }
-}
 
 // Apply RBAC + per-surface permissions to every route in this module.
 //   - Coarse gate: you need at least one fleet/doctor capability to touch the router.
@@ -462,7 +443,7 @@ fleet.get("/alert-config", async (c) => {
   if (!requireSuperAdmin(c)) {
     return c.json({ success: false, error: "Super admin required" }, 403);
   }
-  const cfg = loadRawAlertConfig();
+  const cfg = await loadRawAlertConfig();
   return c.json({
     success: true,
     data: {
@@ -473,6 +454,7 @@ fleet.get("/alert-config", async (c) => {
         memoryPercent: Number(cfg.rules?.memoryPercent ?? 85),
         queryMemoryGb: Number(cfg.rules?.queryMemoryGb ?? 0),
         longQueryMin: Number(cfg.rules?.longQueryMin ?? 0),
+        partsEtaMin: Number(cfg.rules?.partsEtaMin ?? 0),
       },
       slack: {
         configured: Boolean(cfg.slack?.webhookUrl),
@@ -500,6 +482,7 @@ const alertConfigSchema = z.object({
     memoryPercent: z.number().min(0).max(100),
     queryMemoryGb: z.number().min(0),
     longQueryMin: z.number().min(0),
+    partsEtaMin: z.number().min(0).max(1440).optional().default(0),
   }),
   // Blank/omitted secret = keep existing; `remove*` clears the channel.
   slackWebhookUrl: z.string().optional(),
@@ -520,7 +503,7 @@ fleet.put("/alert-config", zValidator("json", alertConfigSchema), async (c) => {
     return c.json({ success: false, error: "Super admin required" }, 403);
   }
   const body = c.req.valid("json");
-  const existing = loadRawAlertConfig();
+  const existing = await loadRawAlertConfig();
 
   const next: RawAlertConfig = {
     enabled: body.enabled,
@@ -530,6 +513,7 @@ fleet.put("/alert-config", zValidator("json", alertConfigSchema), async (c) => {
       memoryPercent: body.rules.memoryPercent,
       queryMemoryGb: body.rules.queryMemoryGb,
       longQueryMin: body.rules.longQueryMin,
+      partsEtaMin: body.rules.partsEtaMin,
     },
   };
 
@@ -579,7 +563,7 @@ fleet.put("/alert-config", zValidator("json", alertConfigSchema), async (c) => {
   }
 
   try {
-    writeFileSync(ALERT_CONFIG_PATH, JSON.stringify(next, null, 2));
+    await saveRawAlertConfig(next);
   } catch (e) {
     logger.error(
       { module: "FleetAlerter", err: e instanceof Error ? e.message : String(e) },
@@ -740,7 +724,7 @@ fleet.post("/doctor/reports/delete", zValidator("json", doctorDeleteSchema), asy
 
 // Scheduled scans (daily / weekly / monthly).
 fleet.get("/doctor/schedule", async (c) => {
-  return c.json({ success: true, data: loadSchedule() });
+  return c.json({ success: true, data: await loadSchedule() });
 });
 
 const doctorScheduleSchema = z.object({
@@ -759,7 +743,7 @@ fleet.put("/doctor/schedule", requirePermission(PERMISSIONS.DOCTOR_RUN), zValida
   const body = c.req.valid("json");
   // Stamp lastRunAt = now so enabling/editing fires at the NEXT occurrence,
   // not a backfill of a slot that already passed today.
-  saveSchedule({ ...body, lastRunAt: Date.now() } as DoctorSchedule);
+  await saveSchedule({ ...body, lastRunAt: Date.now() } as DoctorSchedule);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DOCTOR_SCHEDULE_UPDATE, getRbacUser(c).sub, {
     resourceType: "doctor_schedule",
     details: {

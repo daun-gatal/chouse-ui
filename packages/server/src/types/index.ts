@@ -181,6 +181,48 @@ export interface MergeMetrics {
   pending_mutations: number;
 }
 
+/**
+ * Per-table parts-pressure row — the insert-vs-merge race behind the "too many
+ * parts" failure mode. `max_parts_in_partition` is the value ClickHouse compares
+ * against `parts_threshold` (parts_to_throw_insert). `eta_minutes` projects when
+ * the worst partition crosses the threshold; -1 means converging (not at risk).
+ */
+export interface PartsPressureRow {
+  database: string;
+  table: string;
+  active_parts: number;
+  max_parts_in_partition: number;
+  rows: number;
+  bytes: number;
+  merges_running: number;
+  insert_parts_per_min: number;
+  merge_parts_per_min: number;
+  parts_threshold: number;
+  net_parts_per_min: number;
+  eta_minutes: number;
+}
+
+/**
+ * Read-only estimate of what an ALTER … UPDATE/DELETE mutation would cost,
+ * computed without running it. `affected_rows` is the rows matching the
+ * predicate; `parts_to_rewrite`/`bytes_to_rewrite` is the (worst-case) set of
+ * active parts a mutation rewrites. `est_duration_seconds` is projected from
+ * historical mutation/merge throughput (-1 = unknown, no history).
+ */
+export interface DdlImpactEstimate {
+  database: string;
+  table: string;
+  kind: "update" | "delete";
+  where: string;
+  affected_rows: number;
+  total_rows: number;
+  parts_to_rewrite: number;
+  bytes_to_rewrite: number;
+  est_duration_seconds: number;
+  disk_free_bytes: number;
+  disk_sufficient: boolean;
+}
+
 export interface ReplicationMetrics {
   database: string;
   table: string;

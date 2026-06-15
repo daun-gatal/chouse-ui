@@ -38,6 +38,7 @@ export {
   useClusters,
   useClusterNames,
   useTopTables,
+  usePartsPressure,
 } from './useQuery';
 
 // Auth hooks

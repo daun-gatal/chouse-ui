@@ -7,12 +7,12 @@
  * to the configured channels — Slack (incoming webhook) and/or email (SMTP,
  * e.g. Gmail). This runs server-side so alerts fire even with no browser open.
  *
- * Config is a JSON file (default <data>/alert-config.json, override with
- * ALERT_CONFIG_FILE). It's re-read every tick so it can be edited live without
- * recreating the container. A missing/invalid file or `enabled: false` simply
- * turns delivery off.
+ * Config lives in the shared RBAC DB (single-row fleet_alert_config), loaded
+ * via fleetAlertConfig. It's re-read every tick so it can be edited live, and
+ * every replica sees the same settings. An empty config or `enabled: false`
+ * simply turns delivery off.
  *
- * Example alert-config.json:
+ * Example stored config (RawAlertConfig):
  * {
  *   "enabled": true,
  *   "rules": { "memoryPercent": 85, "queryMemoryGb": 10, "longQueryMin": 5 },
@@ -22,12 +22,9 @@
  * }
  */
 
-import { readFileSync } from "node:fs";
-
 import { logger } from "../utils/logger";
+import { loadRawAlertConfig } from "./fleetAlertConfig";
 import type { DoctorReport } from "./ai/capabilities/fleetScan";
-
-const CONFIG_PATH = process.env.ALERT_CONFIG_FILE || "/app/data/alert-config.json";
 /** Node-memory re-arms only once it drops this far below threshold (anti-flap). */
 const HYSTERESIS = 5;
 /** Min gap between autonomous RCA scans, so a breach storm can't spawn a scan storm. */
@@ -41,7 +38,10 @@ interface AlertRules {
   memoryPercent: number; // node memory %, 0 = off
   queryMemoryGb: number; // single query GB, 0 = off
   longQueryMin: number; // single query minutes, 0 = off
+  partsEtaMin: number; // projected minutes until a table hits parts_to_throw_insert, 0 = off
 }
+/** A diverging table re-arms only once its projected ETA climbs this far past the limit (anti-flap). */
+const PARTS_ETA_CLEAR_RATIO = 1.25;
 interface SlackConfig {
   webhookUrl: string;
 }
@@ -102,20 +102,18 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function loadConfig(): AlertConfig | null {
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-  } catch {
-    return null; // no/invalid file → delivery off
+async function loadConfig(): Promise<AlertConfig | null> {
+  const parsed = (await loadRawAlertConfig()) as Record<string, unknown>;
+  if (!parsed || Object.keys(parsed).length === 0 || parsed.enabled === false) {
+    return null; // no config / disabled → delivery off
   }
-  if (!parsed || parsed.enabled === false) return null;
 
   const rulesRaw = (parsed.rules ?? {}) as Record<string, unknown>;
   const rules: AlertRules = {
     memoryPercent: num(rulesRaw.memoryPercent),
     queryMemoryGb: num(rulesRaw.queryMemoryGb),
     longQueryMin: num(rulesRaw.longQueryMin),
+    partsEtaMin: num(rulesRaw.partsEtaMin),
   };
 
   const slackRaw = parsed.slack as { webhookUrl?: unknown; enabled?: unknown } | undefined;
@@ -164,6 +162,13 @@ function fmtDuration(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`;
 }
 
+function fmtMinutes(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes < 0) return "—";
+  if (minutes < 1) return "<1m";
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  return `${(minutes / 60).toFixed(1)}h`;
+}
+
 function querySnippet(q: Record<string, unknown>): string | undefined {
   const user = q.user ? String(q.user) : "";
   const sql = String(q.query_preview ?? "")
@@ -176,8 +181,8 @@ function querySnippet(q: Record<string, unknown>): string | undefined {
   return user || sql || undefined;
 }
 
-/** Pure rule evaluation for one node — mirrors the client's evaluateNode. */
-function evaluateNode(metrics: Record<string, Record<string, unknown>[]>, rules: AlertRules): RuleEval[] {
+/** Pure rule evaluation for one node — mirrors the client's evaluateNode. Exported for tests. */
+export function evaluateNode(metrics: Record<string, Record<string, unknown>[]>, rules: AlertRules): RuleEval[] {
   const out: RuleEval[] = [];
 
   if (rules.memoryPercent > 0) {
@@ -226,6 +231,31 @@ function evaluateNode(metrics: Record<string, Record<string, unknown>[]>, rules:
         detail: querySnippet(q),
         breaching: over,
         clearing: !over,
+      });
+    }
+  }
+
+  if (rules.partsEtaMin > 0) {
+    // Predictive "too many parts": each table in the parts_pressure snapshot
+    // carries a projected eta_minutes until its worst partition crosses
+    // parts_to_throw_insert (negative = converging / not at risk). Latch per
+    // table so independent tables fire and clear on their own.
+    for (const row of metrics.parts_pressure ?? []) {
+      const eta = num(row.eta_minutes);
+      const net = num(row.net_parts_per_min);
+      const db = String(row.database ?? "");
+      const table = String(row.table ?? "");
+      const maxParts = Math.round(num(row.max_parts_in_partition));
+      const threshold = Math.round(num(row.parts_threshold));
+      const diverging = net > 0 && eta >= 0;
+      out.push({
+        ruleKey: "partspressure",
+        instanceId: db && table ? `${db}.${table}` : table || db,
+        metric: "parts pressure",
+        summary: `~${fmtMinutes(eta)} to parts limit`,
+        detail: `${db}.${table} (${maxParts}/${threshold} parts, +${net.toFixed(1)}/min)`,
+        breaching: diverging && eta < rules.partsEtaMin,
+        clearing: !diverging || eta > rules.partsEtaMin * PARTS_ETA_CLEAR_RATIO,
       });
     }
   }
@@ -596,7 +626,7 @@ async function deliverRca(report: DoctorReport, triggers: string[], config: Aler
  * Used by the scheduler for scheduled scans. No-op if no channel is configured.
  */
 export async function deliverDoctorReport(report: DoctorReport, context: string): Promise<void> {
-  const config = loadConfig();
+  const config = await loadConfig();
   if (!config) return;
   await deliverRca(report, [context], config);
 }
@@ -639,9 +669,9 @@ async function runAutoRca(config: AlertConfig, triggers: string[]): Promise<void
  * (a "send test alert" action / one-off check). Throws if no config is loaded.
  */
 export async function sendTestAlert(): Promise<{ slack: boolean; googleChat: boolean; email: boolean }> {
-  const config = loadConfig();
+  const config = await loadConfig();
   if (!config) {
-    throw new Error(`No alert config at ${CONFIG_PATH} (missing, invalid, disabled, or no channel set)`);
+    throw new Error("No alert config (missing, disabled, or no channel set)");
   }
   await deliver(
     {
@@ -666,7 +696,7 @@ export async function processTick(
   rows: SnapshotInput[],
 ): Promise<void> {
   try {
-    const config = loadConfig();
+    const config = await loadConfig();
     if (!config) return;
 
     const nameById = new Map(connections.map((c) => [c.id, c.name]));

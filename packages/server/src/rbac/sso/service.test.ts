@@ -15,7 +15,11 @@ import { describe, it, expect, mock, beforeEach } from "bun:test";
 let mockGetUserIdentityResult: Record<string, unknown> | null = null;
 let mockGetUserByEmailResult: Record<string, unknown> | null = null;
 let mockGetUserByUsernameResults: Map<string, Record<string, unknown> | null> = new Map();
-let mockGetRoleByNameResult: Record<string, unknown> | null = null;
+// Either a fixed role (returned for any name) or a name-aware resolver — the
+// latter lets a test map several group→role names to distinct roles. Reset in
+// beforeEach so it never leaks across tests.
+type RoleResolver = (name: string) => Record<string, unknown> | null;
+let mockGetRoleByNameResult: Record<string, unknown> | null | RoleResolver = null;
 let mockGetUserRolesResult: string[] = [];
 let mockCreateUserResult: Record<string, unknown> = {
   id: "new-user-id",
@@ -61,7 +65,8 @@ const mockFns = {
   touchUserIdentity: mock(async (_id: string) => undefined),
   getUserByEmail: mock(async (_e: string) => mockGetUserByEmailResult),
   getUserByUsername: mock(async (u: string) => mockGetUserByUsernameResults.get(u) ?? null),
-  getRoleByName: mock(async (_n: string) => mockGetRoleByNameResult),
+  getRoleByName: mock(async (n: string) =>
+    typeof mockGetRoleByNameResult === "function" ? mockGetRoleByNameResult(n) : mockGetRoleByNameResult),
   getUserRoles: mock(async (_id: string) => mockGetUserRolesResult),
   createUser: mock(async (_input: unknown) => mockCreateUserResult),
   createSessionAndTokens: mock(async (_u: unknown, _ip?: string, _ua?: string) => mockCreateSessionResult),
@@ -92,6 +97,9 @@ function makeInsertBuilder(): Record<string, unknown> {
     mockDbInsertValues.push(v);
     return b;
   });
+  // Role sync upserts (insert ... on conflict (user_id) do update) so it never
+  // leaves the user role-less mid-sync.
+  b.onConflictDoUpdate = mock(() => b);
   b.then = mock((resolve: (v: unknown) => void) => resolve(undefined));
   return b;
 }
@@ -402,7 +410,7 @@ describe("provisionSsoUser", () => {
   // ----------------------------------------------------------------
   // Test 8: role re-sync via roleMapping (Fix 7 hygiene)
   // ----------------------------------------------------------------
-  it("8. role re-sync: roleMappingClaim 'groups', mapping ch-admins→admin, claims {groups:['ch-admins']} → db delete+insert with admin role id and assignedBy='sso:okta'", async () => {
+  it("8. role re-sync: roleMappingClaim 'groups', mapping ch-admins→admin, claims {groups:['ch-admins']} → atomic upsert with admin role id and assignedBy='sso:okta' (no delete)", async () => {
     mockGetUserIdentityResult = existingIdentityRow;
     mockDbUserRow = { ...existingUserRow };
     mockGetUserRolesResult = ["viewer"]; // current roles differ from mapped
@@ -416,15 +424,46 @@ describe("provisionSsoUser", () => {
 
     await provisionSsoUser(provider, identity);
 
-    // Verify role sync happened: delete was called then insert with admin roleId
-    expect(mockDb.delete).toHaveBeenCalled();
+    // Role sync is an atomic upsert — no delete-then-insert lockout window.
+    expect(mockDb.delete).not.toHaveBeenCalled();
     expect(mockDb.insert).toHaveBeenCalled();
 
-    // assert inserted rows have correct roleId and assignedBy
+    // assert upserted row has the correct roleId and assignedBy
     const inserted = mockDbInsertValues[0];
     const insertedArr = Array.isArray(inserted) ? inserted : [inserted];
     expect(insertedArr.some((r: unknown) => (r as Record<string, unknown>).roleId === "role-admin")).toBe(true);
     expect(insertedArr.some((r: unknown) => (r as Record<string, unknown>).assignedBy === "sso:okta")).toBe(true);
+  });
+
+  // ----------------------------------------------------------------
+  // Test 8b: multi-group claim → collapse to highest-privilege role (#261)
+  // ----------------------------------------------------------------
+  it("8b. multi-role mapping: claims {groups:['devs','admins']} mapping to developer+admin → upserts ONE role (admin, highest privilege)", async () => {
+    mockGetUserIdentityResult = existingIdentityRow;
+    mockDbUserRow = { ...existingUserRow };
+    mockGetUserRolesResult = ["viewer"];
+    // Resolve each mapped name to its own role (data-driven, reset in beforeEach).
+    mockGetRoleByNameResult = (name: string) => {
+      if (name === "admin") return { id: "role-admin", name: "admin", displayName: "Admin" };
+      if (name === "developer") return { id: "role-developer", name: "developer", displayName: "Developer" };
+      return null;
+    };
+
+    const provider = makeProvider({
+      roleMappingClaim: "groups",
+      roleMapping: { devs: "developer", admins: "admin" },
+    });
+    const identity = makeIdentity({ claims: { groups: ["devs", "admins"] } });
+
+    await provisionSsoUser(provider, identity);
+
+    // Exactly one role upserted, and it's the highest-privilege one (admin).
+    expect(mockDb.delete).not.toHaveBeenCalled();
+    expect(mockDbInsertValues.length).toBe(1);
+    const inserted = mockDbInsertValues[0];
+    const insertedArr = Array.isArray(inserted) ? inserted : [inserted];
+    expect(insertedArr.length).toBe(1);
+    expect((insertedArr[0] as Record<string, unknown>).roleId).toBe("role-admin");
   });
 
   // ----------------------------------------------------------------

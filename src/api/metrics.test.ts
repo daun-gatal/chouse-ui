@@ -8,6 +8,8 @@ import {
     getRecentQueries,
     getDiskMetrics,
     getTopTables,
+    getPartsPressure,
+    simulateDdl,
 } from './metrics';
 
 describe('Metrics API', () => {
@@ -72,6 +74,46 @@ describe('Metrics API', () => {
         it('should respect limit parameter', async () => {
             const tables = await getTopTables(3);
             expect(tables.length).toBeLessThanOrEqual(3);
+        });
+    });
+
+    describe('getPartsPressure', () => {
+        it('should fetch per-table parts pressure rows', async () => {
+            const rows = await getPartsPressure(10);
+
+            expect(Array.isArray(rows)).toBe(true);
+            expect(rows.length).toBeGreaterThan(0);
+            const first = rows[0];
+            expect(first).toHaveProperty('database');
+            expect(first).toHaveProperty('table');
+            expect(first).toHaveProperty('max_parts_in_partition');
+            expect(first).toHaveProperty('parts_threshold');
+            expect(first).toHaveProperty('net_parts_per_min');
+            expect(first).toHaveProperty('eta_minutes');
+        });
+
+        it('should preserve a negative eta for converging tables', async () => {
+            const rows = await getPartsPressure();
+            const converging = rows.find((r) => r.table === 'calm');
+
+            expect(converging).toBeDefined();
+            expect(converging?.eta_minutes).toBe(-1);
+            expect(converging?.net_parts_per_min).toBeLessThan(0);
+        });
+    });
+
+    describe('simulateDdl', () => {
+        it('returns an impact estimate for a valid ALTER mutation', async () => {
+            const est = await simulateDdl("ALTER TABLE demo.events UPDATE col = 1 WHERE id < 5");
+
+            expect(est.kind).toBe('update');
+            expect(est.affected_rows).toBe(159);
+            expect(est.parts_to_rewrite).toBe(300);
+            expect(est.disk_sufficient).toBe(true);
+        });
+
+        it('rejects a non-ALTER statement', async () => {
+            await expect(simulateDdl('SELECT 1')).rejects.toThrow();
         });
     });
 });

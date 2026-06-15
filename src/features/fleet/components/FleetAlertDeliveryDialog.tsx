@@ -57,6 +57,7 @@ export default function FleetAlertDeliveryDialog({
   const [memoryPercent, setMemoryPercent] = useState(85);
   const [queryMemoryGb, setQueryMemoryGb] = useState(0);
   const [longQueryMin, setLongQueryMin] = useState(0);
+  const [partsEtaMin, setPartsEtaMin] = useState(0);
   const [slackUrl, setSlackUrl] = useState("");
   const [emailUser, setEmailUser] = useState("");
   const [emailTo, setEmailTo] = useState("");
@@ -77,6 +78,7 @@ export default function FleetAlertDeliveryDialog({
     setMemoryPercent(data.rules.memoryPercent);
     setQueryMemoryGb(data.rules.queryMemoryGb);
     setLongQueryMin(data.rules.longQueryMin);
+    setPartsEtaMin(data.rules.partsEtaMin);
     setSlackUrl("");
     setGoogleChatUrl("");
     setEmailUser(data.email.user);
@@ -95,7 +97,7 @@ export default function FleetAlertDeliveryDialog({
         enabled,
         aiRcaOnBreach,
         aiRcaModelId: resolvedRcaModelId,
-        rules: { memoryPercent, queryMemoryGb, longQueryMin },
+        rules: { memoryPercent, queryMemoryGb, longQueryMin, partsEtaMin },
         slackWebhookUrl: slackUrl.trim() || undefined,
         slackEnabled,
         googleChatWebhookUrl: googleChatUrl.trim() || undefined,
@@ -126,7 +128,7 @@ export default function FleetAlertDeliveryDialog({
     mutationFn: (which: "slack" | "googleChat" | "email") =>
       updateFleetAlertConfig({
         enabled,
-        rules: { memoryPercent, queryMemoryGb, longQueryMin },
+        rules: { memoryPercent, queryMemoryGb, longQueryMin, partsEtaMin },
         ...(which === "slack" ? { removeSlack: true } : {}),
         ...(which === "googleChat" ? { removeGoogleChat: true } : {}),
         ...(which === "email" ? { removeEmail: true } : {}),
@@ -202,6 +204,7 @@ export default function FleetAlertDeliveryDialog({
                 <NumField label="Node mem %" value={memoryPercent} min={0} max={100} onChange={setMemoryPercent} />
                 <NumField label="Query GB" value={queryMemoryGb} min={0} max={1024} onChange={setQueryMemoryGb} />
                 <NumField label="Query min" value={longQueryMin} min={0} max={1440} onChange={setLongQueryMin} />
+                <NumField label="Parts ETA min" value={partsEtaMin} min={0} max={1440} onChange={setPartsEtaMin} />
               </div>
             </div>
 

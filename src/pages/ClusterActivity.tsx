@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, AlertTriangle, CheckCircle2, Network, Wrench, Activity, Layers, Database, Hourglass, Boxes, GitBranch, ServerCog } from "lucide-react";
+import { Search, AlertTriangle, CheckCircle2, Network, Wrench, Activity, Layers, Database, Hourglass, Boxes, GitBranch, ServerCog, FlaskConical, type LucideIcon } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { SkeletonRows } from "@/components/common/Skeletons";
 import { PaginationBar } from "@/components/monitoring/PaginationBar";
+import { DdlSimulator } from "@/components/monitoring/DdlSimulator";
 import {
   useMutations,
   useReplicationQueue,
@@ -39,7 +40,7 @@ function formatBytes(bytes: number): string {
   return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
 }
 
-type ClusterView = "mutations" | "replication" | "topology" | "distribution" | "ddl";
+type ClusterView = "mutations" | "replication" | "topology" | "distribution" | "ddl" | "simulator";
 
 interface ClusterActivityPageProps {
   embedded?: boolean;
@@ -79,6 +80,22 @@ const COPY: Record<ClusterView, { title: string; hint: string; rationale: string
     rationale:
       "ON CLUSTER DDL is applied node-by-node through ZooKeeper/Keeper. Entries that aren't 'Finished', or carry an exception, mean a schema change didn't propagate everywhere — a classic source of replica divergence.",
   },
+  simulator: {
+    title: "DDL simulator",
+    hint: "Estimate an ALTER before running it",
+    rationale:
+      "Mutations (ALTER UPDATE/DELETE) rewrite whole parts in the background and can run for hours. This estimates the cost — rows matched, parts and bytes rewritten, projected duration, and whether free disk can hold the transient rewrite — without executing anything.",
+  },
+};
+
+/** Per-view icon, shared by the sub-tabs and the rationale strip. */
+const VIEW_ICON: Record<ClusterView, LucideIcon> = {
+  mutations: Wrench,
+  replication: Network,
+  topology: ServerCog,
+  distribution: Boxes,
+  ddl: GitBranch,
+  simulator: FlaskConical,
 };
 
 export default function ClusterActivityPage({
@@ -176,8 +193,10 @@ export default function ClusterActivityPage({
   return (
     <div className="h-full overflow-hidden">
       <div className={cn("flex h-full flex-col gap-4", embedded ? "p-4" : "p-6")}>
-        {/* Sub-tabs */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
+        {/* Sub-tabs — same title · hint underline pattern as the Parts tab, so
+            the Monitoring sub-tabs stay consistent. The row scrolls on narrow
+            widths instead of cramping (this view has more tabs than Parts). */}
+        <div className="scrollbar-hide flex shrink-0 items-center gap-2 overflow-x-auto border-b border-ink-500">
           {(Object.keys(COPY) as ClusterView[]).map((id) => {
             const tab = COPY[id];
             const activeTab = view === id;
@@ -187,7 +206,7 @@ export default function ClusterActivityPage({
                 type="button"
                 onClick={() => setView(id)}
                 className={cn(
-                  "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  "group relative flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                   activeTab ? "text-paper" : "text-paper-muted hover:text-paper"
                 )}
               >
@@ -209,17 +228,10 @@ export default function ClusterActivityPage({
         {/* Rationale strip */}
         <div className="flex items-start gap-3 rounded-xs border border-ink-500 bg-ink-100 px-4 py-3">
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
-            {view === "mutations" ? (
-              <Wrench className="h-3.5 w-3.5" aria-hidden />
-            ) : view === "replication" ? (
-              <Network className="h-3.5 w-3.5" aria-hidden />
-            ) : view === "topology" ? (
-              <ServerCog className="h-3.5 w-3.5" aria-hidden />
-            ) : view === "distribution" ? (
-              <Boxes className="h-3.5 w-3.5" aria-hidden />
-            ) : (
-              <GitBranch className="h-3.5 w-3.5" aria-hidden />
-            )}
+            {(() => {
+              const Icon = VIEW_ICON[view];
+              return <Icon className="h-3.5 w-3.5" aria-hidden />;
+            })()}
           </span>
           <p className="text-[12px] leading-[1.6] text-paper-muted">{COPY[view].rationale}</p>
         </div>
@@ -306,6 +318,15 @@ export default function ClusterActivityPage({
           </div>
         )}
 
+        {/* DDL simulator — self-contained; bypasses the tabular row/search/pagination body. */}
+        {view === "simulator" && (
+          <div className="flex-1 min-h-0 overflow-auto pr-1">
+            <DdlSimulator />
+          </div>
+        )}
+
+        {view !== "simulator" && (
+          <>
         {/* Filter + summary strip */}
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-ink-500 bg-ink-100 p-3">
           <div className="flex w-full items-center gap-2 md:w-[320px]">
@@ -412,6 +433,8 @@ export default function ClusterActivityPage({
             />
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -436,6 +459,7 @@ function EmptyState({ view, hasSearch }: { view: ClusterView; hasSearch: boolean
     topology: "No clusters",
     distribution: "Backlog is clean",
     ddl: "DDL queue is clean",
+    simulator: "DDL simulator",
   };
   const BODY: Record<ClusterView, string> = {
     mutations: "No in-flight ALTER UPDATE/DELETE and nothing finished in the last 7 days.",
@@ -443,6 +467,7 @@ function EmptyState({ view, hasSearch }: { view: ClusterView; hasSearch: boolean
     topology: "No clusters defined — this server isn't part of a distributed setup.",
     distribution: "No Distributed-table insert backlog (or there are no Distributed tables).",
     ddl: "No ON CLUSTER DDL in the last day (or no ZooKeeper/Keeper is configured).",
+    simulator: "Enter an ALTER … UPDATE/DELETE above to estimate its impact.",
   };
   const Icon = view === "topology" ? ServerCog : CheckCircle2;
   return (
@@ -467,12 +492,12 @@ function MutationsTable({ rows }: MutationsTableProps) {
     <table className="w-full text-[12px]">
       <thead className="sticky top-0 z-10 bg-ink-200/90 backdrop-blur">
         <tr className="border-b border-ink-500">
-          {["Status", "Database", "Table", "Command", "Parts left", "Created", "Last failure"].map((h, i) => (
+          {["Status", "Database", "Table", "Command", "Progress", "Parts left", "Created", "Last failure"].map((h, i) => (
             <th
               key={h}
               className={cn(
                 "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint",
-                i === 4 ? "text-right" : "text-left"
+                i === 5 ? "text-right" : "text-left"
               )}
             >
               {h}
@@ -483,6 +508,14 @@ function MutationsTable({ rows }: MutationsTableProps) {
       <tbody>
         {rows.map((m, i) => {
           const isFailing = !!m.latest_fail_reason;
+          // Best-effort progress: 1 − remaining/total. Only meaningful while
+          // running (done rows render full; no denominator → no bar).
+          const pct =
+            m.is_done
+              ? 1
+              : m.total_parts > 0
+                ? Math.min(1, Math.max(0, 1 - m.parts_to_do / m.total_parts))
+                : null;
           return (
             <tr
               key={`${m.mutation_id}-${i}`}
@@ -490,7 +523,7 @@ function MutationsTable({ rows }: MutationsTableProps) {
             >
               <td className="px-3 py-1.5">
                 <StatusChip
-                  state={m.is_done ? "done" : isFailing ? "failing" : "active"}
+                  state={m.is_killed ? "killed" : m.is_done ? "done" : isFailing ? "failing" : "active"}
                 />
               </td>
               <td className="px-3 py-1.5 font-mono text-paper-muted">{m.database}</td>
@@ -500,6 +533,26 @@ function MutationsTable({ rows }: MutationsTableProps) {
                 title={m.command}
               >
                 {m.command}
+              </td>
+              <td className="px-3 py-1.5">
+                {pct === null ? (
+                  <span className="font-mono text-paper-faint">—</span>
+                ) : (
+                  <div className="flex items-center gap-2 min-w-[120px]">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-300">
+                      <div
+                        className={cn(
+                          "h-full rounded-full",
+                          isFailing ? "bg-red-500" : m.is_done ? "bg-emerald-500" : "bg-brand"
+                        )}
+                        style={{ width: `${pct * 100}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[11px] text-paper-muted tabular-nums">
+                      {Math.round(pct * 100)}%
+                    </span>
+                  </div>
+                )}
               </td>
               <td className="px-3 py-1.5 text-right font-mono text-paper">
                 {m.parts_to_do.toLocaleString()}
@@ -646,11 +699,12 @@ function BlockedChip({
   );
 }
 
-function StatusChip({ state }: { state: "active" | "done" | "failing" }) {
+function StatusChip({ state }: { state: "active" | "done" | "failing" | "killed" }) {
   const map = {
     active: { label: "Active", tone: "border-amber-500/40 text-amber-300" },
     done: { label: "Done", tone: "border-emerald-500/40 text-emerald-300" },
     failing: { label: "Failing", tone: "border-red-500/40 text-red-300" },
+    killed: { label: "Killed", tone: "border-paper-faint/40 text-paper-faint" },
   } as const;
   const c = map[state];
   return (

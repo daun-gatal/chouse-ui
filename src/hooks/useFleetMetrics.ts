@@ -369,6 +369,31 @@ export function topMemoryQueriesFromSnapshot(
   }));
 }
 
+export interface FleetPartsPressure {
+  database: string;
+  table: string;
+  maxPartsInPartition: number;
+  partsThreshold: number;
+  netPartsPerMin: number;
+  etaMinutes: number;
+}
+
+export function partsPressureFromSnapshot(
+  snapshot: FleetConnectionSnapshot | undefined,
+): FleetPartsPressure[] {
+  if (!snapshot?.metrics.parts_pressure) return [];
+  const { data, error } = snapshot.metrics.parts_pressure;
+  if (error || !data) return [];
+  return data.map((row) => ({
+    database: String(row.database ?? ""),
+    table: String(row.table ?? ""),
+    maxPartsInPartition: num(row.max_parts_in_partition),
+    partsThreshold: num(row.parts_threshold),
+    netPartsPerMin: num(row.net_parts_per_min),
+    etaMinutes: num(row.eta_minutes),
+  }));
+}
+
 export function lastExceptionFromSnapshot(
   snapshot: FleetConnectionSnapshot | undefined,
 ): FleetLastException | null | undefined {

@@ -481,6 +481,65 @@ metrics.get("/insert-throughput", async (c) => {
 });
 
 /**
+ * GET /metrics/parts-pressure
+ * Per-table parts pressure: live part counts, worst-partition vs threshold, and
+ * the insert-vs-merge race with a projected eta until "too many parts".
+ * @param interval - Rate window in minutes (default: 10)
+ */
+metrics.get("/parts-pressure", async (c) => {
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Advanced metrics: parts pressure exposes per-table operational internals.
+  await checkMetricsPermission(rbacUserId, rbacPermissions, isRbacAdmin, true);
+
+  const interval = parseInt(c.req.query("interval") || "10", 10);
+  const service = c.get("service");
+
+  const partsPressure = await service.getPartsPressure(Math.min(interval, 1440));
+
+  return c.json({
+    success: true,
+    data: partsPressure,
+  });
+});
+
+/**
+ * POST /metrics/ddl/simulate
+ * Read-only impact estimate for an ALTER … UPDATE/DELETE mutation. Parses the
+ * statement (strict allowlist — only UPDATE/DELETE) and runs SELECT/metadata
+ * queries to estimate affected rows, parts/bytes rewritten, duration, and disk.
+ * NEVER executes the mutation.
+ * Body: { statement: string }
+ */
+metrics.post("/ddl/simulate", async (c) => {
+  const rbacUserId = c.get("rbacUserId");
+  const rbacPermissions = c.get("rbacPermissions");
+  const isRbacAdmin = c.get("isRbacAdmin");
+
+  // Advanced metrics: estimating mutation cost is an operational concern.
+  await checkMetricsPermission(rbacUserId, rbacPermissions, isRbacAdmin, true);
+
+  const body = await c.req.json().catch(() => ({}));
+  const statement = typeof body?.statement === "string" ? body.statement : "";
+
+  const { parseMutationStatement } = await import("../services/ddlSimulator");
+  const parsed = parseMutationStatement(statement);
+  if (!parsed.ok) {
+    throw AppError.badRequest(parsed.error);
+  }
+
+  const service = c.get("service");
+  const estimate = await service.getDdlImpact(parsed.value, service.defaultDatabase);
+
+  return c.json({
+    success: true,
+    data: estimate,
+  });
+});
+
+/**
  * GET /metrics/top-tables
  * Get top tables by size
  * @param limit - Number of tables to return (default: 10)

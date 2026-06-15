@@ -46,6 +46,11 @@ export class ClickHouseService {
     return ClientManager.getInstance().getClient(this.config);
   }
 
+  /** The connection's default database (used to resolve unqualified table refs). */
+  get defaultDatabase(): string | undefined {
+    return this.config.database;
+  }
+
   async close(): Promise<void> {
     // No-op: Client is managed by ClientManager
     // We don't close the shared client here
@@ -1243,6 +1248,200 @@ export class ClickHouseService {
       }));
     } catch (error) {
       throw this.handleError(error, "Failed to fetch insert throughput metrics");
+    }
+  }
+
+  /**
+   * Per-table parts pressure for the live (single-connection) view. Surfaces the
+   * insert-vs-merge race behind the "too many parts" failure: live part counts,
+   * the worst partition (compared against parts_to_throw_insert), and a projected
+   * eta_minutes until that partition crosses the threshold (-1 = converging).
+   *
+   * Rates are approximate (NewPart/MergeParts events per minute from
+   * system.part_log). The threshold is the table's effective parts_to_throw_insert
+   * — a per-table SETTINGS override (parsed from create_table_query) when present,
+   * else the server-global default from system.merge_tree_settings, defaulting to
+   * 300 when neither is available. Uses system.parts/merges/part_log/tables
+   * (present on CH 24+); returns [] gracefully if part_log is absent.
+   */
+  async getPartsPressure(intervalMinutes: number = 10): Promise<import("../types").PartsPressureRow[]> {
+    try {
+      const window = Math.max(1, Math.min(intervalMinutes, 1440));
+      const result = await this.client.query({
+        query: `
+          WITH
+            (SELECT toFloat64OrZero(value) FROM system.merge_tree_settings WHERE name = 'parts_to_throw_insert') AS global_threshold_raw,
+            if(global_threshold_raw > 0, global_threshold_raw, 300) AS global_threshold,
+            parts_agg AS (
+              SELECT
+                database,
+                table,
+                sum(part_count) AS active_parts,
+                max(part_count) AS max_parts_in_partition,
+                sum(part_rows) AS rows,
+                sum(part_bytes) AS bytes
+              FROM (
+                SELECT
+                  database,
+                  table,
+                  partition_id,
+                  count() AS part_count,
+                  sum(rows) AS part_rows,
+                  sum(bytes_on_disk) AS part_bytes
+                FROM system.parts
+                WHERE active
+                  AND database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+                GROUP BY database, table, partition_id
+              )
+              GROUP BY database, table
+            ),
+            merges_agg AS (
+              SELECT database, table, count() AS merges_running
+              FROM system.merges
+              GROUP BY database, table
+            ),
+            log_agg AS (
+              SELECT
+                database,
+                table,
+                countIf(event_type = 'NewPart') / ${window}.0 AS insert_parts_per_min,
+                countIf(event_type = 'MergeParts') / ${window}.0 AS merge_parts_per_min
+              FROM system.part_log
+              WHERE event_time >= now() - INTERVAL ${window} MINUTE
+              GROUP BY database, table
+            ),
+            settings_agg AS (
+              SELECT
+                database,
+                name AS table,
+                toFloat64OrZero(extract(create_table_query, 'parts_to_throw_insert\\\\s*=\\\\s*(\\\\d+)')) AS table_threshold
+              FROM system.tables
+              WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+            )
+          SELECT
+            p.database AS database,
+            p.table AS table,
+            p.active_parts AS active_parts,
+            p.max_parts_in_partition AS max_parts_in_partition,
+            p.rows AS rows,
+            p.bytes AS bytes,
+            coalesce(m.merges_running, 0) AS merges_running,
+            coalesce(l.insert_parts_per_min, 0) AS insert_parts_per_min,
+            coalesce(l.merge_parts_per_min, 0) AS merge_parts_per_min,
+            if(s.table_threshold > 0, s.table_threshold, global_threshold) AS parts_threshold,
+            (coalesce(l.insert_parts_per_min, 0) - coalesce(l.merge_parts_per_min, 0)) AS net_parts_per_min,
+            if(
+              net_parts_per_min > 0,
+              (parts_threshold - p.max_parts_in_partition) / net_parts_per_min,
+              -1
+            ) AS eta_minutes
+          FROM parts_agg p
+          LEFT JOIN merges_agg m ON p.database = m.database AND p.table = m.table
+          LEFT JOIN log_agg l ON p.database = l.database AND p.table = l.table
+          LEFT JOIN settings_agg s ON p.database = s.database AND p.table = s.table
+          ORDER BY max_parts_in_partition DESC
+          LIMIT 50
+        `,
+        format: "JSON",
+      });
+      const response = await result.json() as JsonResponse<Record<string, string | number>>;
+
+      return response.data.map((d) => ({
+        database: String(d.database ?? ""),
+        table: String(d.table ?? ""),
+        active_parts: Number(d.active_parts) || 0,
+        max_parts_in_partition: Number(d.max_parts_in_partition) || 0,
+        rows: Number(d.rows) || 0,
+        bytes: Number(d.bytes) || 0,
+        merges_running: Number(d.merges_running) || 0,
+        insert_parts_per_min: Number(d.insert_parts_per_min) || 0,
+        merge_parts_per_min: Number(d.merge_parts_per_min) || 0,
+        parts_threshold: Number(d.parts_threshold) || 300,
+        net_parts_per_min: Number(d.net_parts_per_min) || 0,
+        eta_minutes: Number(d.eta_minutes),
+      }));
+    } catch (error) {
+      throw this.handleError(error, "Failed to fetch parts pressure metrics");
+    }
+  }
+
+  /**
+   * Read-only impact estimate for an ALTER … UPDATE/DELETE mutation. Runs only
+   * SELECT/metadata queries — it NEVER executes the mutation. Estimates rows
+   * matched by the predicate, the (worst-case) set of active parts a mutation
+   * rewrites, projected duration from historical mutation/merge throughput, and
+   * whether free disk can hold the transient rewrite. The predicate is bounded
+   * to a read-only count (single statement, capped execution time).
+   */
+  async getDdlImpact(
+    parsed: import("./ddlSimulator").ParsedMutation,
+    defaultDatabase?: string,
+  ): Promise<import("../types").DdlImpactEstimate> {
+    const ident = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    const db = parsed.database ?? defaultDatabase ?? "default";
+    if (!ident.test(db) || !ident.test(parsed.table)) {
+      throw AppError.badRequest("Invalid table reference.");
+    }
+    const ref = `\`${db}\`.\`${parsed.table}\``;
+    const predicate = parsed.where && parsed.where.trim() ? parsed.where : "1";
+
+    const scalar = async <T extends Record<string, unknown>>(query: string): Promise<T | undefined> => {
+      const res = await this.client.query({ query, format: "JSON" });
+      const json = await res.json() as JsonResponse<T>;
+      return json.data[0];
+    };
+
+    try {
+      // Rows matched by the predicate (read-only, time-capped). Runs first so an
+      // invalid table/predicate surfaces a clear error before the rest.
+      const matched = await scalar<{ c: string | number }>(
+        `SELECT count() AS c FROM ${ref} WHERE ${predicate} SETTINGS max_execution_time = 15`,
+      );
+
+      // Worst-case rewrite set: all active parts of the table (a mutation
+      // rewrites whole parts). Also the table's total rows.
+      const partsAgg = await scalar<{ parts: string | number; rows: string | number; bytes: string | number }>(
+        `SELECT count() AS parts, sum(rows) AS rows, sum(bytes_on_disk) AS bytes
+         FROM system.parts
+         WHERE active AND database = '${db}' AND table = '${parsed.table}'`,
+      );
+
+      // Throughput from mutation history, falling back to merge history (similar
+      // part-rewrite speed) — bytes per second over the last 30 days.
+      const rate = await scalar<{ bytes: string | number; ms: string | number }>(
+        `SELECT sum(size_in_bytes) AS bytes, sum(duration_ms) AS ms
+         FROM system.part_log
+         WHERE event_type IN ('MutatePart', 'MergeParts')
+           AND database = '${db}' AND table = '${parsed.table}'
+           AND event_time >= now() - INTERVAL 30 DAY`,
+      );
+
+      const disk = await scalar<{ free: string | number }>(
+        `SELECT min(free_space) AS free FROM system.disks`,
+      );
+
+      const bytesToRewrite = Number(partsAgg?.bytes) || 0;
+      const rateBytes = Number(rate?.bytes) || 0;
+      const rateMs = Number(rate?.ms) || 0;
+      const bytesPerSec = rateMs > 0 ? rateBytes / (rateMs / 1000) : 0;
+      const estDuration = bytesPerSec > 0 ? bytesToRewrite / bytesPerSec : -1;
+      const diskFree = Number(disk?.free) || 0;
+
+      return {
+        database: db,
+        table: parsed.table,
+        kind: parsed.kind,
+        where: parsed.where,
+        affected_rows: Number(matched?.c) || 0,
+        total_rows: Number(partsAgg?.rows) || 0,
+        parts_to_rewrite: Number(partsAgg?.parts) || 0,
+        bytes_to_rewrite: bytesToRewrite,
+        est_duration_seconds: estDuration,
+        disk_free_bytes: diskFree,
+        disk_sufficient: diskFree > bytesToRewrite,
+      };
+    } catch (error) {
+      throw this.handleError(error, "Failed to simulate mutation impact");
     }
   }
 

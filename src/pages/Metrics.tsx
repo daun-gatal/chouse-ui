@@ -53,8 +53,9 @@ import { Progress } from "@/components/ui/progress";
 import UPlotMetricItemComponent from "@/features/metrics/components/UPlotMetricItemComponent";
 import { ServerMemoryBreakdown } from "@/components/monitoring/ServerMemoryBreakdown";
 import { TopResourceQueriesPanel } from "@/components/monitoring/TopResourceQueriesPanel";
+import { PartsPressureSummary, PartsPressureTable } from "@/components/monitoring/PartsPressurePanel";
 import ConnectionBreakdownPanel from "@/components/monitoring/ConnectionBreakdownPanel";
-import { useMetrics, useProductionMetrics } from "@/hooks";
+import { useMetrics, useProductionMetrics, usePartsPressure } from "@/hooks";
 import { cn, formatBytes as formatBytesUtil, formatCompactNumber, formatNumber } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 
@@ -344,6 +345,58 @@ interface MetricsProps {
   onRefreshChange?: (isRefreshing: boolean) => void;
 }
 
+/**
+ * The header time-range control. Its options are contextual: on the Parts
+ * Pressure tab it offers only short rate windows (5/15/30m) bound to the rate
+ * lookback, since a long average makes the insert/merge ETA misleading;
+ * everywhere else it's the usual historical range driving the time-series.
+ */
+function MetricsRangeSelect({
+  isPartsTab,
+  partsWindowMin,
+  onPartsWindowChange,
+  timeRange,
+  onTimeRangeChange,
+  triggerClassName,
+}: {
+  isPartsTab: boolean;
+  partsWindowMin: number;
+  onPartsWindowChange: (m: number) => void;
+  timeRange: string;
+  onTimeRangeChange: (v: string) => void;
+  triggerClassName: string;
+}) {
+  if (isPartsTab) {
+    return (
+      <Select value={String(partsWindowMin)} onValueChange={(v) => onPartsWindowChange(Number(v))}>
+        <SelectTrigger className={triggerClassName}>
+          <Clock className="mr-2 h-3.5 w-3.5 text-paper-dim" />
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="5">5 minutes</SelectItem>
+          <SelectItem value="15">15 minutes</SelectItem>
+          <SelectItem value="30">30 minutes</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+  }
+  return (
+    <Select value={timeRange} onValueChange={onTimeRangeChange}>
+      <SelectTrigger className={triggerClassName}>
+        <Clock className="mr-2 h-3.5 w-3.5 text-paper-dim" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="15m">15 minutes</SelectItem>
+        <SelectItem value="1h">1 hour</SelectItem>
+        <SelectItem value="6h">6 hours</SelectItem>
+        <SelectItem value="24h">24 hours</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
 export default function Metrics({
   embedded = false,
   refreshKey,
@@ -389,9 +442,26 @@ export default function Metrics({
     refetchOnWindowFocus: false,
   });
 
+  // Parts pressure shares the page's refresh flow (manual button + auto-refresh
+  // + connection change) so it stays in sync with the other Metrics tabs.
+  // Its rate lookback is a SHORT, dedicated window (not the page time filter):
+  // the insert/merge rate + ETA projection are only meaningful over recent
+  // activity, so a 6h/24h average would be misleading.
+  const [partsWindowMin, setPartsWindowMin] = useState(15);
+  const {
+    data: partsPressureData,
+    isLoading: partsLoading,
+    isFetching: partsFetching,
+    error: partsError,
+    refetch: refetchParts,
+  } = usePartsPressure(partsWindowMin, {
+    refetchInterval: refreshInterval > 0 ? refreshInterval * 1000 : false,
+    refetchOnWindowFocus: false,
+  });
+
   // Combined loading/fetching state
   const isAnyLoading = isLoading || prodLoading;
-  const isAnyFetching = isFetching || prodFetching;
+  const isAnyFetching = isFetching || prodFetching || partsFetching;
 
   // Notify parent of refresh status change
   React.useEffect(() => {
@@ -404,8 +474,9 @@ export default function Metrics({
     setIsRefreshCooldown(true);
     refetch();
     refetchProd();
+    refetchParts();
     setTimeout(() => setIsRefreshCooldown(false), 3000);
-  }, [isRefreshCooldown, isAnyFetching, refetch, refetchProd]);
+  }, [isRefreshCooldown, isAnyFetching, refetch, refetchProd, refetchParts]);
 
   // Calculate QPS trend
   const qpsTrend = useMemo(() => {
@@ -421,19 +492,21 @@ export default function Metrics({
     if (refreshKey) {
       refetch();
       refetchProd();
+      refetchParts();
     }
-  }, [refreshKey, refetch, refetchProd]);
+  }, [refreshKey, refetch, refetchProd, refetchParts]);
 
   // Listen for connection changes and refetch metrics
   React.useEffect(() => {
     const handleConnectionChange = () => {
       refetch();
       refetchProd();
+      refetchParts();
     };
 
     window.addEventListener('clickhouse:connected', handleConnectionChange);
     return () => window.removeEventListener('clickhouse:connected', handleConnectionChange);
-  }, [refetch, refetchProd]);
+  }, [refetch, refetchProd, refetchParts]);
 
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : "--:--:--";
   const stats = metrics?.currentStats;
@@ -831,18 +904,14 @@ export default function Metrics({
                 <span className="font-mono text-[11px] text-paper-muted">{lastUpdated}</span>
               </div>
 
-              <Select value={internalTimeRange} onValueChange={setInternalTimeRange}>
-                <SelectTrigger className="h-10 w-[130px] rounded-xs border-ink-500 bg-ink-100 font-mono text-[12px] text-paper">
-                  <Clock className="mr-2 h-3.5 w-3.5 text-paper-dim" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15m">15 minutes</SelectItem>
-                  <SelectItem value="1h">1 hour</SelectItem>
-                  <SelectItem value="6h">6 hours</SelectItem>
-                  <SelectItem value="24h">24 hours</SelectItem>
-                </SelectContent>
-              </Select>
+              <MetricsRangeSelect
+                isPartsTab={activeTab === "parts"}
+                partsWindowMin={partsWindowMin}
+                onPartsWindowChange={setPartsWindowMin}
+                timeRange={internalTimeRange}
+                onTimeRangeChange={setInternalTimeRange}
+                triggerClassName="h-10 w-[130px] rounded-xs border-ink-500 bg-ink-100 font-mono text-[12px] text-paper"
+              />
 
               <Select value={String(internalRefreshInterval)} onValueChange={(v) => setInternalRefreshInterval(Number(v))}>
                 <SelectTrigger className="h-9 w-[140px] rounded-xs border-ink-500 bg-ink-100 text-paper hover:border-ink-700 hover:bg-ink-200">
@@ -947,6 +1016,17 @@ export default function Metrics({
                   Merges
                 </TabsTrigger>
                 <TabsTrigger
+                  value="parts"
+                  className={cn(
+                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
+                  )}
+                >
+                  <FileStack className="h-4 w-4" />
+                  Parts Pressure
+                </TabsTrigger>
+                <TabsTrigger
                   value="errors"
                   className={cn(
                     "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
@@ -1009,18 +1089,14 @@ export default function Metrics({
             ) : <span />}
 
             {embedded && (
-              <Select value={internalTimeRange} onValueChange={setInternalTimeRange}>
-                <SelectTrigger className="h-8 w-[130px] rounded-xs border-ink-500 bg-ink-100 font-mono text-[11px] text-paper">
-                  <Clock className="mr-2 h-3.5 w-3.5 text-paper-dim" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15m">15 minutes</SelectItem>
-                  <SelectItem value="1h">1 hour</SelectItem>
-                  <SelectItem value="6h">6 hours</SelectItem>
-                  <SelectItem value="24h">24 hours</SelectItem>
-                </SelectContent>
-              </Select>
+              <MetricsRangeSelect
+                isPartsTab={activeTab === "parts"}
+                partsWindowMin={partsWindowMin}
+                onPartsWindowChange={setPartsWindowMin}
+                timeRange={internalTimeRange}
+                onTimeRangeChange={setInternalTimeRange}
+                triggerClassName="h-8 w-[130px] rounded-xs border-ink-500 bg-ink-100 font-mono text-[11px] text-paper"
+              />
             )}
           </div>
 
@@ -1992,6 +2068,36 @@ export default function Metrics({
                   isLoading={prodLoading}
                   chartTitle="Delayed"
                   hideLatestValues
+                />
+              </motion.div>
+            </TabsContent>
+          )}
+
+          {/* Parts Tab - Advanced only */}
+          {hasAdvancedMetrics && (
+            <TabsContent value="parts" className="flex-1 overflow-auto space-y-6 pr-1 min-h-0 data-[state=active]:flex flex-col">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="rounded-md border border-ink-500 bg-ink-100"
+              >
+                <PartsPressureSummary
+                  data={partsPressureData ?? []}
+                  windowMinutes={partsWindowMin}
+                  isLoading={partsLoading}
+                />
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="rounded-md border border-ink-500 bg-ink-100"
+              >
+                <PartsPressureTable
+                  data={partsPressureData ?? []}
+                  isLoading={partsLoading}
+                  error={partsError}
                 />
               </motion.div>
             </TabsContent>

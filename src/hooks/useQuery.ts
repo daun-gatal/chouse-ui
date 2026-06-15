@@ -47,6 +47,7 @@ export const queryKeys = {
   recentQueries: (limit?: number, username?: string, connectionId?: string) => ['recentQueries', limit, username, connectionId] as const,
   productionMetrics: (interval: number, connectionId?: string) => ['productionMetrics', interval, connectionId] as const,
   topTables: (limit: number, connectionId?: string) => ['topTables', limit, connectionId] as const,
+  partsPressure: (interval: number, connectionId?: string) => ['partsPressure', interval, connectionId] as const,
 
   // Saved Queries
   savedQueries: (connectionId?: string) => connectionId ? ['savedQueries', connectionId] as const : ['savedQueries'] as const,
@@ -1185,6 +1186,28 @@ export function useTopTables(
     queryFn: () => metricsApi.getTopTables(limit),
     enabled: hasConnection,
     staleTime: 60000,
+    ...options,
+  });
+}
+
+/**
+ * Hook to fetch per-table parts pressure (insert-vs-merge race + "too many parts" eta)
+ */
+export function usePartsPressure(
+  intervalMinutes: number = 10,
+  options?: Partial<UseQueryOptions<metricsApi.PartsPressureRow[], Error>>
+) {
+  // Check if there's an active connection
+  const { activeConnectionId, sessionId } = useAuthStore();
+  const hasConnection = !!(activeConnectionId && sessionId);
+
+  return useQuery({
+    queryKey: queryKeys.partsPressure(intervalMinutes, activeConnectionId || undefined),
+    queryFn: () => metricsApi.getPartsPressure(intervalMinutes),
+    enabled: hasConnection,
+    staleTime: 30000,
+    retry: false,
+    refetchOnWindowFocus: false,
     ...options,
   });
 }

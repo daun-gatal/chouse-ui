@@ -78,6 +78,21 @@ export interface FleetSchemaTotalsRow {
   bytes: number;
 }
 
+export interface FleetPartsPressureRow {
+  database: string;
+  table: string;
+  active_parts: number;
+  max_parts_in_partition: number;
+  rows: number;
+  bytes: number;
+  merges_running: number;
+  insert_parts_per_min: number;
+  merge_parts_per_min: number;
+  parts_threshold: number;
+  net_parts_per_min: number;
+  eta_minutes: number;
+}
+
 // ============================================
 // M2 — Snapshot cache endpoints
 // ============================================
@@ -96,6 +111,7 @@ export interface FleetConnectionSnapshot {
     top_memory_query?: { data: FleetLongestQueryRow[]; error: string | null };
     last_exception?: { data: FleetLastExceptionRow[]; error: string | null };
     schema_totals?: { data: FleetSchemaTotalsRow[]; error: string | null };
+    parts_pressure?: { data: FleetPartsPressureRow[]; error: string | null };
   };
 }
 
@@ -180,7 +196,7 @@ export interface FleetAlertConfig {
   aiRcaOnBreach: boolean;
   /** AI config id used for the auto-RCA scan (null = default model). */
   aiRcaModelId: string | null;
-  rules: { memoryPercent: number; queryMemoryGb: number; longQueryMin: number };
+  rules: { memoryPercent: number; queryMemoryGb: number; longQueryMin: number; partsEtaMin: number };
   slack: { configured: boolean; enabled: boolean };
   googleChat: { configured: boolean; enabled: boolean };
   email: { configured: boolean; enabled: boolean; user: string; to: string };
@@ -190,7 +206,7 @@ export interface FleetAlertConfigUpdate {
   enabled: boolean;
   aiRcaOnBreach?: boolean;
   aiRcaModelId?: string;
-  rules: { memoryPercent: number; queryMemoryGb: number; longQueryMin: number };
+  rules: { memoryPercent: number; queryMemoryGb: number; longQueryMin: number; partsEtaMin: number };
   /** Blank/omitted = keep the existing webhook; use `removeSlack` to clear. */
   slackWebhookUrl?: string;
   /** Per-channel on/off — independent of whether it's configured. */

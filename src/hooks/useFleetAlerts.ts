@@ -24,6 +24,7 @@ import {
   summaryFromSnapshot,
   longestQueryFromSnapshot,
   topMemoryQueriesFromSnapshot,
+  partsPressureFromSnapshot,
   type FleetLongestQuery,
 } from "./useFleetMetrics";
 import type { FleetConnectionSnapshot } from "@/api";
@@ -43,6 +44,9 @@ export interface AlertConfig {
   longQueryEnabled: boolean;
   /** A single query running longer than this many minutes fires. */
   longQueryThresholdMinutes: number;
+  partsPressureEnabled: boolean;
+  /** A table projected to hit its parts limit within this many minutes fires. */
+  partsEtaThresholdMinutes: number;
 }
 
 const DEFAULT_CONFIG: AlertConfig = {
@@ -54,6 +58,8 @@ const DEFAULT_CONFIG: AlertConfig = {
   queryMemoryThresholdGb: 10,
   longQueryEnabled: false,
   longQueryThresholdMinutes: 5,
+  partsPressureEnabled: false,
+  partsEtaThresholdMinutes: 60,
 };
 
 const STORAGE_KEY = "chouse-fleet:alert-config";
@@ -115,6 +121,16 @@ function fmtDuration(seconds: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
   return `${(seconds / 3600).toFixed(1)}h`;
 }
+
+function fmtMinutes(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes < 0) return "—";
+  if (minutes < 1) return "<1m";
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  return `${(minutes / 60).toFixed(1)}h`;
+}
+
+/** Mirror of the server alerter: re-arm once ETA climbs this far past the limit. */
+const PARTS_ETA_CLEAR_RATIO = 1.25;
 
 function queryDetail(q: FleetLongestQuery): string {
   // Strip the leading comment block Redash/BI tools prepend
@@ -201,6 +217,23 @@ function evaluateNode(
         user: q.user || undefined,
         breaching: over,
         clearing: !over,
+      });
+    }
+  }
+
+  if (config.partsPressureEnabled) {
+    // One latch per table. Each parts_pressure row carries a projected ETA to
+    // its parts_to_throw_insert limit (negative = converging / not at risk).
+    for (const p of partsPressureFromSnapshot(snap)) {
+      const diverging = p.netPartsPerMin > 0 && p.etaMinutes >= 0;
+      out.push({
+        ruleKey: "partspressure",
+        instanceId: p.database && p.table ? `${p.database}.${p.table}` : p.table || p.database,
+        metric: "parts pressure",
+        summary: `~${fmtMinutes(p.etaMinutes)} to parts limit`,
+        detail: `${p.database}.${p.table} (${Math.round(p.maxPartsInPartition)}/${Math.round(p.partsThreshold)} parts, +${p.netPartsPerMin.toFixed(1)}/min)`,
+        breaching: diverging && p.etaMinutes < config.partsEtaThresholdMinutes,
+        clearing: !diverging || p.etaMinutes > config.partsEtaThresholdMinutes * PARTS_ETA_CLEAR_RATIO,
       });
     }
   }

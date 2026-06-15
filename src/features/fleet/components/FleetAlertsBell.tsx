@@ -129,6 +129,16 @@ export default function FleetAlertsBell({
             value={config.longQueryThresholdMinutes}
             onValue={(n) => setConfig({ longQueryThresholdMinutes: n })}
           />
+          <RuleRow
+            label="Parts limit ETA under"
+            unit="min"
+            min={1}
+            max={1440}
+            enabled={config.partsPressureEnabled}
+            onToggle={(v) => setConfig({ partsPressureEnabled: v })}
+            value={config.partsEtaThresholdMinutes}
+            onValue={(n) => setConfig({ partsEtaThresholdMinutes: n })}
+          />
         </div>
 
         {/* Delivery — dimmed along with the rules when the master switch is

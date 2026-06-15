@@ -143,6 +143,20 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
   "1.35.0": async () => {
     expect(await h.columnExists("rbac_sso_providers", "saml_trust_email_verified")).toBe(true);
   },
+  "1.36.0": async () => {
+    expect(await h.tableExists("fleet_alert_config")).toBe(true);
+    expect(await h.columnExists("fleet_alert_config", "config")).toBe(true);
+    // The single config row (id=1) is seeded by the migration.
+    const rows = await h.rawAll(sql`SELECT id FROM fleet_alert_config WHERE id = 1`);
+    expect(rows.length).toBe(1);
+  },
+  "1.37.0": async () => {
+    expect(await h.tableExists("doctor_schedule")).toBe(true);
+    expect(await h.columnExists("doctor_schedule", "last_run_at")).toBe(true);
+    expect(await h.columnExists("doctor_schedule", "last_run_by")).toBe(true);
+    const rows = await h.rawAll(sql`SELECT id FROM doctor_schedule WHERE id = 1`);
+    expect(rows.length).toBe(1);
+  },
 };
 
 // ---------------------------------------------------------------------------

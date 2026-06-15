@@ -7,6 +7,7 @@
  * - Version upgrades (runs only new migrations)
  */
 
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { eq } from 'drizzle-orm';
@@ -44,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.35.0';
+export const APP_VERSION = '1.37.0';
 
 // ============================================
 // Error Helpers
@@ -101,6 +102,22 @@ async function rebuildSsoProvidersNullable(db: SqliteDb): Promise<void> {
   db.run(sql`DROP TABLE rbac_sso_providers`);
   db.run(sql`ALTER TABLE rbac_sso_providers__new RENAME TO rbac_sso_providers`);
   db.run(sql`PRAGMA foreign_keys=ON`);
+}
+
+/**
+ * Read a legacy on-disk JSON config file for one-time import into the DB during
+ * a migration. Returns the raw file contents, or "{}" if the file is missing or
+ * unreadable (fresh installs, test runs, containers without the old volume).
+ * Never throws — a missing legacy file is the normal case, not an error.
+ */
+function readLegacyJsonFile(path: string): string {
+  try {
+    const raw = readFileSync(path, 'utf8');
+    JSON.parse(raw); // validate — store "{}" rather than a corrupt blob
+    return raw;
+  } catch {
+    return '{}';
+  }
 }
 
 // ============================================
@@ -3359,6 +3376,132 @@ export const MIGRATIONS: Migration[] = [
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.35.0] Added saml_trust_email_verified');
     },
     down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.36.0',
+    name: 'fleet_alert_config',
+    description: 'HA — move fleet alert config (rules/thresholds + Slack/email/Google Chat webhooks) off local pod disk into a single-row DB table so all replicas share one source of truth. Imports an existing alert-config.json file on first run.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS fleet_alert_config (
+            id         INTEGER PRIMARY KEY,
+            config     TEXT    NOT NULL DEFAULT '{}',
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS fleet_alert_config (
+            id         INTEGER PRIMARY KEY,
+            config     TEXT    NOT NULL DEFAULT '{}',
+            updated_at BIGINT  NOT NULL DEFAULT 0
+          )
+        `);
+      }
+
+      // Seed the single config row (id=1), importing the legacy on-disk file if
+      // present so existing deployments don't lose their alert settings. The
+      // INSERT is idempotent (IGNORE / ON CONFLICT DO NOTHING), so the import
+      // only happens the first time this migration runs.
+      const seed = readLegacyJsonFile(
+        process.env.ALERT_CONFIG_FILE || '/app/data/alert-config.json',
+      );
+      const now = Date.now();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          INSERT OR IGNORE INTO fleet_alert_config (id, config, updated_at)
+          VALUES (1, ${seed}, ${now})
+        `);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          INSERT INTO fleet_alert_config (id, config, updated_at)
+          VALUES (1, ${seed}, ${now})
+          ON CONFLICT (id) DO NOTHING
+        `);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.36.0] Created fleet_alert_config (${dbType})`);
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS fleet_alert_config`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS fleet_alert_config`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.36.0] Dropped fleet_alert_config');
+    },
+  },
+  {
+    version: '1.37.0',
+    name: 'doctor_schedule',
+    description: 'HA — move the Chouse AI scheduled-scan config + run-state off local pod disk into a single-row DB table. last_run_at/last_run_by double as a per-slot claim so that with multiple replicas only one fires a given scheduled scan. Imports an existing doctor-schedule.json file on first run.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS doctor_schedule (
+            id          INTEGER PRIMARY KEY,
+            config      TEXT    NOT NULL DEFAULT '{}',
+            last_run_at INTEGER NOT NULL DEFAULT 0,
+            last_run_by TEXT    NOT NULL DEFAULT ''
+          )
+        `);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS doctor_schedule (
+            id          INTEGER PRIMARY KEY,
+            config      TEXT    NOT NULL DEFAULT '{}',
+            last_run_at BIGINT  NOT NULL DEFAULT 0,
+            last_run_by TEXT    NOT NULL DEFAULT ''
+          )
+        `);
+      }
+
+      // Seed the single row (id=1), importing the legacy file if present. The
+      // file's lastRunAt is split out into the last_run_at column so the
+      // de-dupe guard carries over; the rest of the schedule stays in `config`.
+      const raw = readLegacyJsonFile(
+        process.env.DOCTOR_SCHEDULE_FILE || '/app/data/doctor-schedule.json',
+      );
+      let lastRunAt = 0;
+      let configJson = '{}';
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const lr = Number(parsed.lastRunAt);
+        lastRunAt = Number.isFinite(lr) && lr > 0 ? Math.floor(lr) : 0;
+        delete parsed.lastRunAt;
+        configJson = JSON.stringify(parsed);
+      } catch {
+        // No/invalid file — defaults are fine (loadSchedule fills DEFAULTS).
+      }
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          INSERT OR IGNORE INTO doctor_schedule (id, config, last_run_at, last_run_by)
+          VALUES (1, ${configJson}, ${lastRunAt}, '')
+        `);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          INSERT INTO doctor_schedule (id, config, last_run_at, last_run_by)
+          VALUES (1, ${configJson}, ${lastRunAt}, '')
+          ON CONFLICT (id) DO NOTHING
+        `);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.37.0] Created doctor_schedule (${dbType})`);
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS doctor_schedule`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS doctor_schedule`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.37.0] Dropped doctor_schedule');
+    },
   },
 ];
 

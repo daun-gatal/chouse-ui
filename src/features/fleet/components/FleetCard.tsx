@@ -23,6 +23,7 @@ import {
   summaryFromSnapshot,
   longestQueryFromSnapshot,
   lastExceptionFromSnapshot,
+  partsPressureFromSnapshot,
   type FleetCardStatus,
 } from "@/hooks/useFleetMetrics";
 import type { FleetConnectionSnapshot } from "@/api/fleet";
@@ -139,6 +140,12 @@ export default function FleetCard({
   const snapshotLongest = useSnapshot ? longestQueryFromSnapshot(snapshot) : undefined;
   const snapshotException = useSnapshot ? lastExceptionFromSnapshot(snapshot) : undefined;
 
+  // Worst (soonest) projected "too many parts" ETA across this node's tables —
+  // parts pressure is snapshot-only on the fleet view. Diverging tables only.
+  const worstParts = partsPressureFromSnapshot(snapshot)
+    .filter((p) => p.netPartsPerMin > 0 && p.etaMinutes >= 0)
+    .sort((a, b) => a.etaMinutes - b.etaMinutes)[0];
+
   const effectiveSummary = snapshotSummary ?? summary.data;
   const effectiveLongest =
     snapshotLongest !== undefined ? snapshotLongest : longest.data;
@@ -207,13 +214,16 @@ export default function FleetCard({
     }
   };
 
+  // A node that doesn't report a memory ceiling (no OSMemoryTotal / cgroup
+  // limit / max_server_memory_usage) comes back with total = 0. Show the used
+  // figure over an honest "—" rather than a phantom "/ 0 Bytes → 0%".
+  const hasMemoryTotal = (effectiveSummary?.memoryTotalBytes ?? 0) > 0;
   const memoryUsedDisplay = effectiveSummary
-    ? `${formatBytes(effectiveSummary.memoryUsedBytes)} / ${formatBytes(effectiveSummary.memoryTotalBytes)}`
+    ? `${formatBytes(effectiveSummary.memoryUsedBytes)} / ${hasMemoryTotal ? formatBytes(effectiveSummary.memoryTotalBytes) : "—"}`
     : "—";
   const memoryPercentValue = effectiveSummary?.memoryPercent ?? 0;
-  const memoryPercentDisplay = effectiveSummary
-    ? `${memoryPercentValue.toFixed(0)}%`
-    : "—";
+  const memoryPercentDisplay =
+    effectiveSummary && hasMemoryTotal ? `${memoryPercentValue.toFixed(0)}%` : "—";
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -356,6 +366,12 @@ export default function FleetCard({
           label="Max replica lag"
           value={effectiveSummary ? `${effectiveSummary.maxReplicaLagSeconds.toFixed(1)}s` : "—"}
           sub={effectiveSummary?.maxLagReplica || "no replicas"}
+          mono
+        />
+        <Tile
+          label="Parts limit ETA"
+          value={worstParts ? formatElapsed(worstParts.etaMinutes * 60) : "—"}
+          sub={worstParts ? `${worstParts.database}.${worstParts.table}` : "converging"}
           mono
         />
         {effectiveException ? (

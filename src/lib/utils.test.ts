@@ -34,6 +34,20 @@ describe('lib/utils', () => {
       expect(formatBytes(1536)).toBe('1.5 KB');
     });
 
+    it('should format large units beyond TB', () => {
+      expect(formatBytes(Math.pow(1024, 4))).toBe('1 TB');
+      expect(formatBytes(Math.pow(1024, 5))).toBe('1 PB');
+      expect(formatBytes(Math.pow(1024, 6))).toBe('1 EB');
+    });
+
+    it('should clamp an out-of-range sentinel instead of rendering "undefined"', () => {
+      // The ~2^63 "no cgroup limit" sentinel previously indexed past `sizes`
+      // and rendered "8 undefined". It must clamp to the largest known unit.
+      const result = formatBytes(Math.pow(2, 63));
+      expect(result).not.toContain('undefined');
+      expect(result.endsWith(' EB')).toBe(true);
+    });
+
     it('should handle zero bytes', () => {
       expect(formatBytes(0)).toBe('0 Bytes');
     });

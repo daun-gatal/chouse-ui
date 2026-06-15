@@ -26,7 +26,25 @@ export const FLEET_METRICS = {
    */
   summary: `
     SELECT
-      (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSMemoryTotal' LIMIT 1) AS server_memory_total_bytes,
+      -- Memory ceiling with a fallback chain so cgroup-limited / containerised
+      -- nodes (which don't expose OSMemoryTotal) still get a real denominator
+      -- instead of degrading to 0 (a phantom "X / 0 Bytes → 0%"):
+      --   1. OSMemoryTotal       — host RAM (bare-metal / VM).
+      --   2. CGroupMemoryTotal   — the cgroup limit, BUT skip the ~2^63
+      --      "no limit set" sentinel: value < 2^50 (1 PiB) rejects it while
+      --      still admitting any realistic limit.
+      --   3. max_server_memory_usage — the CH process ceiling (same sentinel
+      --      guard; 0 = "auto", which isn't a usable number, so > 0 too).
+      -- 0 only if none is available; the frontend renders that as "X / —".
+      coalesce(
+        (SELECT value FROM system.asynchronous_metrics WHERE metric = 'OSMemoryTotal' LIMIT 1),
+        (SELECT value FROM system.asynchronous_metrics
+           WHERE metric = 'CGroupMemoryTotal' AND value > 0 AND value < pow(2, 50) LIMIT 1),
+        (SELECT toFloat64(toUInt64OrZero(value)) FROM system.server_settings
+           WHERE name = 'max_server_memory_usage'
+             AND toUInt64OrZero(value) > 0 AND toUInt64OrZero(value) < pow(2, 50) LIMIT 1),
+        0
+      ) AS server_memory_total_bytes,
       (SELECT value FROM system.asynchronous_metrics WHERE metric = 'MemoryResident' LIMIT 1) AS server_memory_used_bytes,
       -- System-wide CPU usage %. Built from the *Normalized async metrics
       -- (already divided by core count) so it's 0..100 regardless of node
@@ -125,6 +143,97 @@ export const FLEET_METRICS = {
       AND exception != ''
     ORDER BY event_time DESC
     LIMIT 10
+  `,
+
+  /**
+   * Per-table parts pressure — the data behind the "too many parts" failure
+   * mode. For each table we report the live part count, the worst single
+   * partition's part count (the value ClickHouse actually compares against
+   * parts_to_throw_insert), and the insert-vs-merge race over the last 10
+   * minutes. net_parts_per_min > 0 means parts are accumulating faster than
+   * merges clear them; eta_minutes then projects when the worst partition
+   * crosses the threshold (-1 = converging / not approaching the wall).
+   *
+   * Rates are approximate by design: insert rate = NewPart events/min, merge
+   * rate = MergeParts events/min from system.part_log. The threshold is the
+   * table's effective parts_to_throw_insert: a per-table SETTINGS override
+   * (parsed from create_table_query) when present, otherwise the server-global
+   * default from system.merge_tree_settings, falling back to 300 when neither
+   * is available. LIMIT 20 (worst partitions first) keeps the payload small.
+   */
+  parts_pressure: `
+    WITH
+      (SELECT toFloat64OrZero(value) FROM system.merge_tree_settings WHERE name = 'parts_to_throw_insert') AS global_threshold_raw,
+      if(global_threshold_raw > 0, global_threshold_raw, 300) AS global_threshold,
+      parts_agg AS (
+        SELECT
+          database,
+          table,
+          sum(part_count) AS active_parts,
+          max(part_count) AS max_parts_in_partition,
+          sum(part_rows) AS rows,
+          sum(part_bytes) AS bytes
+        FROM (
+          SELECT
+            database,
+            table,
+            partition_id,
+            count() AS part_count,
+            sum(rows) AS part_rows,
+            sum(bytes_on_disk) AS part_bytes
+          FROM system.parts
+          WHERE active
+            AND database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+          GROUP BY database, table, partition_id
+        )
+        GROUP BY database, table
+      ),
+      merges_agg AS (
+        SELECT database, table, count() AS merges_running
+        FROM system.merges
+        GROUP BY database, table
+      ),
+      log_agg AS (
+        SELECT
+          database,
+          table,
+          countIf(event_type = 'NewPart') / 10.0 AS insert_parts_per_min,
+          countIf(event_type = 'MergeParts') / 10.0 AS merge_parts_per_min
+        FROM system.part_log
+        WHERE event_time >= now() - INTERVAL 10 MINUTE
+        GROUP BY database, table
+      ),
+      settings_agg AS (
+        SELECT
+          database,
+          name AS table,
+          toFloat64OrZero(extract(create_table_query, 'parts_to_throw_insert\\\\s*=\\\\s*(\\\\d+)')) AS table_threshold
+        FROM system.tables
+        WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')
+      )
+    SELECT
+      p.database AS database,
+      p.table AS table,
+      p.active_parts AS active_parts,
+      p.max_parts_in_partition AS max_parts_in_partition,
+      p.rows AS rows,
+      p.bytes AS bytes,
+      coalesce(m.merges_running, 0) AS merges_running,
+      coalesce(l.insert_parts_per_min, 0) AS insert_parts_per_min,
+      coalesce(l.merge_parts_per_min, 0) AS merge_parts_per_min,
+      if(s.table_threshold > 0, s.table_threshold, global_threshold) AS parts_threshold,
+      (coalesce(l.insert_parts_per_min, 0) - coalesce(l.merge_parts_per_min, 0)) AS net_parts_per_min,
+      if(
+        net_parts_per_min > 0,
+        (parts_threshold - p.max_parts_in_partition) / net_parts_per_min,
+        -1
+      ) AS eta_minutes
+    FROM parts_agg p
+    LEFT JOIN merges_agg m ON p.database = m.database AND p.table = m.table
+    LEFT JOIN log_agg l ON p.database = l.database AND p.table = l.table
+    LEFT JOIN settings_agg s ON p.database = s.database AND p.table = s.table
+    ORDER BY max_parts_in_partition DESC
+    LIMIT 20
   `,
 } as const;
 
