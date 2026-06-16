@@ -174,10 +174,27 @@ When a PR containing a fragment merges to `main`, `auto-release.yml` fires autom
 
 Manual override (emergency use only): `bun run release 2.20.0`
 
+## Architecture Decision Records (ADR)
+
+For **big, multi-component** changes, capture the proposal as an ADR in
+[`docs/adr/`](docs/adr/) **before** implementation — so approaches and concerns are
+discussed up front and the merged ADR becomes the spec. This is a reasonable
+process, not a hard gate: use it for significant decisions (security boundaries,
+data flow, deployment topology, anything spanning RBAC + ClickHouse + UI), and
+**skip it for patches, minor features, and bug fixes**.
+
+- **Flow:** PR the ADR (`Proposed`) → discuss → merge as `Accepted` → implement in
+  follow-up PR(s). Acceptance is separate from shipping the feature.
+- ADRs do **not** change releases — semver and `changelogs/unreleased/` fragments
+  are unaffected, and an ADR itself needs no changelog fragment.
+- Full rules and conventions: **[.rules/ADR.md](.rules/ADR.md)** and the
+  [`docs/adr/README.md`](docs/adr/README.md) template/index.
+
 ## When to Apply Each Rule
 
 | Situation | Rule file to follow |
 |-----------|-------------------|
+| Planning a **big / multi-component** change before writing code | **[.rules/ADR.md](.rules/ADR.md)** — when an ADR is required, the draft → discuss → accept → implement flow, and conventions. See [Architecture Decision Records](#architecture-decision-records-adr). |
 | Writing or modifying any code | **[.rules/CODE_CHANGES.md](.rules/CODE_CHANGES.md)** — standards, patterns, pre-commit checklist |
 | Reviewing a PR or diff, or self-checking before marking a task done | **[.rules/CODE_REVIEWER.md](.rules/CODE_REVIEWER.md)** — review checklist, approval criteria, common issues |
 | After finishing a task — scan files you touched | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — remove unused imports, symbols, exports left behind |
