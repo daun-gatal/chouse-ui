@@ -248,6 +248,16 @@ export function getDatabaseType(): DatabaseType {
 }
 
 /**
+ * Get the raw postgres-js client, or null when running on SQLite (or before
+ * initialization). Exposed so callers that need connection-pinned operations —
+ * e.g. session-level advisory locks, which must acquire and release on the same
+ * physical connection — can reserve a dedicated connection via `.reserve()`.
+ */
+export function getPostgresClient(): ReturnType<typeof postgres> | null {
+  return postgresClient;
+}
+
+/**
  * Check if using SQLite
  */
 export function isSqlite(): boolean {
