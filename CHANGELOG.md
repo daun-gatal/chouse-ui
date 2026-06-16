@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.5.1] - 2026-06-16
+
+### Fixed
+- **Migrations no longer race across replicas at startup (multi-replica PostgreSQL only)** — every replica runs RBAC migrations on boot, so when running **more than one replica** on PostgreSQL, a rolling deploy or scale-up could have several pods migrate the same database concurrently and the loser would crash on a duplicate version-table insert (or a non-idempotent step). `runMigrations()` now takes a PostgreSQL session-level advisory lock on a dedicated reserved connection, so exactly one replica migrates at a time and the others wait, then observe the work as already applied. Single-replica and SQLite deployments are unaffected (the lock is a no-op there).
+- **Login page no longer flashes the password form when password sign-in is disabled** — on refresh the login page optimistically rendered the email/password form and then yanked it away once the auth config loaded and reported password login disabled, leaving a visible flicker before the SSO-only view settled. The sign-in-method area now waits for both the SSO provider list and the auth config to resolve (showing a brief spinner) and renders once, so the correct set of options appears in a single paint. A failed config fetch still falls back to showing the password form, so a config error can't lock everyone out.
+- **Login & SSO rate limits now hold across replicas (multi-replica deployments only)** — the brute-force limiter used an in-process counter, so when running **more than one replica** the effective limit was N× the configured value: the load balancer spreads an attacker's attempts across pods and each pod counted separately, silently weakening a security control proportional to replica count. The login and SSO start/callback limiters now share a fixed-window counter in the RBAC database (atomic per-attempt upsert, expired rows swept periodically), enforcing the 10-attempts-per-15-minutes budget across all pods with no new infrastructure (no Redis). The counter now also survives pod restarts, so a deploy/crash no longer resets an attacker's budget. Single-replica deployments are functionally unchanged. The high-volume *resource* limiters (query/AI/general API) intentionally stay in-memory — per-pod throttling is fine there since capacity scales with replicas.
+
 ## [v3.5.0] - 2026-06-15
 
 ### Added
@@ -128,12 +135,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Release workflow** — tag and GitHub Release now correctly include version number and changelog notes
-
-## [v2.19.0] - 2026-06-11
-
-### Added
-- **SSO login with OIDC and OAuth2** — authorization code + PKCE flow, JIT user provisioning with configurable default role, auto-link by verified email, optional IdP claim→role mapping (never demotes super_admin), SSO-enforced sign-in for linked non-admin accounts
-
-### Removed
-- **"Latest release" section from docs site** — the v2.16.0 What's New strip has been removed from the portfolio page
 
