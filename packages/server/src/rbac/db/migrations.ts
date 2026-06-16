@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { getDatabase, getDatabaseType, isSqlite, getSchema, type RbacDb, type SqliteDb, type PostgresDb } from './index';
+import { getDatabase, getDatabaseType, getPostgresClient, isSqlite, getSchema, type RbacDb, type SqliteDb, type PostgresDb } from './index';
 import { SYSTEM_ROLES } from '../schema/base';
 import { hashPassword } from '../services/password';
 import { logger } from '../../utils/logger';
@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.37.0';
+export const APP_VERSION = '1.38.0';
 
 // ============================================
 // Error Helpers
@@ -3503,6 +3503,48 @@ export const MIGRATIONS: Migration[] = [
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.37.0] Dropped doctor_schedule');
     },
   },
+  {
+    version: '1.38.0',
+    name: 'rate_limits',
+    description: 'HA — shared store for the login/SSO rate limiters so the brute-force limit is enforced across all replicas instead of per-pod. A fixed-window counter keyed by limiter-prefixed client identifier; reset_at_ms is the window expiry (epoch ms).',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS _rbac_rate_limits (
+            key         TEXT    PRIMARY KEY,
+            hits        INTEGER NOT NULL DEFAULT 0,
+            reset_at_ms INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`
+          CREATE INDEX IF NOT EXISTS idx_rbac_rate_limits_reset_at_ms ON _rbac_rate_limits (reset_at_ms)
+        `);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS _rbac_rate_limits (
+            key         TEXT   PRIMARY KEY,
+            hits        INTEGER NOT NULL DEFAULT 0,
+            reset_at_ms BIGINT  NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE INDEX IF NOT EXISTS idx_rbac_rate_limits_reset_at_ms ON _rbac_rate_limits (reset_at_ms)
+        `);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.38.0] Created _rbac_rate_limits (${dbType})`);
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS _rbac_rate_limits`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS _rbac_rate_limits`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.38.0] Dropped _rbac_rate_limits');
+    },
+  },
 ];
 
 // ============================================
@@ -4251,7 +4293,55 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
 // Migration Runner
 // ============================================
 
+// Advisory-lock key for serializing migrations across processes. The two-int form
+// (classid, objid) keeps this in its own namespace so it can't collide with other
+// advisory-lock users. Arbitrary fixed constants — value is irrelevant as long as
+// every chouse-ui replica uses the same pair.
+const MIGRATION_ADVISORY_LOCK_KEY_1 = 0x43686f75; // "Chou"
+const MIGRATION_ADVISORY_LOCK_KEY_2 = 0x6d696772; // "migr"
+
+/**
+ * Run all pending migrations.
+ *
+ * On PostgreSQL this is wrapped in a session-level advisory lock so that, during a
+ * rolling deploy or scale-up, exactly one replica migrates at a time and the others
+ * wait — then observe the already-applied migrations and become no-ops. The lock is
+ * acquired and released on a single reserved connection (postgres-js `.reserve()`),
+ * because a session lock unlocked on a different pooled connection would leak. The
+ * lock wraps the entire migration body, including the read of applied migrations, so
+ * a waiting replica re-reads state only after the winner has committed.
+ *
+ * On SQLite this is a no-op wrapper — SQLite is single-process and not a multi-replica
+ * target — and the migration body runs directly.
+ */
 export async function runMigrations(options: { skipSeed?: boolean; through?: string } = {}): Promise<MigrationResult> {
+  const pg = getDatabaseType() === 'postgres' ? getPostgresClient() : null;
+  if (!pg) {
+    return runMigrationsBody(options);
+  }
+
+  const reserved = await pg.reserve();
+  try {
+    await reserved`SELECT pg_advisory_lock(${MIGRATION_ADVISORY_LOCK_KEY_1}, ${MIGRATION_ADVISORY_LOCK_KEY_2})`;
+    return await runMigrationsBody(options);
+  } finally {
+    try {
+      await reserved`SELECT pg_advisory_unlock(${MIGRATION_ADVISORY_LOCK_KEY_1}, ${MIGRATION_ADVISORY_LOCK_KEY_2})`;
+    } catch (error) {
+      // A failed unlock is non-fatal and can't leak the lock: the only way the
+      // unlock throws (rather than returning false) is a connection-level error,
+      // and postgres-js discards an errored connection instead of returning it to
+      // the pool — closing the session, which releases the advisory lock anyway.
+      logger.warn(
+        { module: 'RBAC', phase: 'migration', err: error instanceof Error ? error.message : String(error) },
+        '[Migration] Failed to release advisory lock (released on connection close)'
+      );
+    }
+    reserved.release();
+  }
+}
+
+async function runMigrationsBody(options: { skipSeed?: boolean; through?: string } = {}): Promise<MigrationResult> {
   const db = getDatabase();
 
   await ensureVersionTable(db);

@@ -6,6 +6,7 @@ import api from "./routes";
 import { corsMiddleware } from "./middleware/cors";
 import { samlAcsHandler, SAML_ACS_PATH } from "./rbac/sso/routes";
 import { rateLimiter } from "hono-rate-limiter";
+import { DbRateLimitStore, cleanupExpiredRateLimits } from "./middleware/rateLimitStore";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { cleanupExpiredSessions, getSessionCount } from "./services/clickhouse";
 import { initializeRbac, shutdownRbac } from "./rbac";
@@ -194,28 +195,38 @@ app.use('*', async (c, next) => {
 
 // 2. Rate Limiting Configuration
 
-// Login endpoints: 5 attempts per 15 minutes per IP
+// Login + SSO are the security-sensitive limiters: their counters live in the
+// RBAC database (DbRateLimitStore) so the limit holds across all replicas rather
+// than being multiplied per-pod by the default in-memory store. The high-volume
+// resource guards below intentionally stay in-memory (per-pod) to avoid a DB
+// write on every query/API call.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+// Login endpoints: 10 attempts per 15 minutes per IP
 app.use('/api/rbac/auth/login', rateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: LOGIN_WINDOW_MS,
   limit: 10, // 10 attempts per 15 minutes
   standardHeaders: true,
   keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  store: new DbRateLimitStore('login:', LOGIN_WINDOW_MS),
 }));
 
 // SSO start + callback share the login budget: 10 attempts per 15 minutes per IP.
 // Two explicit patterns keep /api/rbac/auth/sso/providers (fetched on every login
 // page load) outside this tighter limit, avoiding lockouts for shared IPs.
 app.use('/api/rbac/auth/sso/*/start', rateLimiter({
-  windowMs: 15 * 60 * 1000,
+  windowMs: LOGIN_WINDOW_MS,
   limit: 10,
   standardHeaders: true,
   keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  store: new DbRateLimitStore('sso-start:', LOGIN_WINDOW_MS),
 }));
 app.use('/api/rbac/auth/sso/callback', rateLimiter({
-  windowMs: 15 * 60 * 1000,
+  windowMs: LOGIN_WINDOW_MS,
   limit: 10,
   standardHeaders: true,
   keyGenerator: (c: Context) => c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown',
+  store: new DbRateLimitStore('sso-cb:', LOGIN_WINDOW_MS),
 }));
 
 // Query execution: 300 queries per minute per user
@@ -334,6 +345,8 @@ const cleanupInterval = setInterval(async () => {
   if (cleaned > 0) {
     logger.info({ phase: "cleanup", cleaned, activeSessions: getSessionCount() }, "Cleaned up expired sessions");
   }
+  // Drop expired rate-limit counters so the shared table stays bounded.
+  await cleanupExpiredRateLimits();
 }, SESSION_CLEANUP_INTERVAL);
 
 // Start server - bind app.fetch to preserve context

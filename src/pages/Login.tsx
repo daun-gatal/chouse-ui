@@ -53,7 +53,7 @@ export default function Login() {
   // provider list doesn't push the password form off the card.
   const SSO_COLLAPSED_COUNT = 3;
 
-  const { data: ssoProviders = [] } = useQuery({
+  const { data: ssoProviders = [], isLoading: ssoProvidersLoading } = useQuery({
     queryKey: ["sso-providers"],
     queryFn: ssoApi.getProviders,
     // Keep the login buttons in sync with the live provider list — admins can
@@ -67,9 +67,13 @@ export default function Login() {
   const visibleSsoProviders =
     ssoExpanded || !ssoHasMore ? ssoProviders : ssoProviders.slice(0, SSO_COLLAPSED_COUNT);
 
-  // Whether to render the password form. Defaults to true so a slow/failed
-  // fetch never hides the only way in; the server is the source of truth.
-  const { data: authConfig } = useQuery({
+  // Whether to render the password form. The server is the source of truth, so
+  // we wait for the config to resolve before deciding (see `authConfigLoading`
+  // below) — otherwise an optimistic default would flash the password form on
+  // load and then yank it away when "password login disabled" arrives. Once
+  // resolved, a *failed* fetch falls back to `true` so a config error can never
+  // hide the only way in.
+  const { data: authConfig, isLoading: authConfigLoading } = useQuery({
     queryKey: ["auth-config"],
     queryFn: authConfigApi.get,
     staleTime: 15 * 1000,
@@ -77,6 +81,11 @@ export default function Login() {
     retry: false,
   });
   const passwordLoginEnabled = authConfig?.passwordLoginEnabled ?? true;
+
+  // Render the available sign-in methods only once both the SSO provider list and
+  // the auth config are known, so the whole region resolves in one paint instead
+  // of flashing the password form (or "SSO only" message) before its companion.
+  const authMethodsLoading = authConfigLoading || ssoProvidersLoading;
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -149,7 +158,7 @@ export default function Login() {
 
             {/* Form */}
             <div className="px-7 py-7">
-              {ssoProviders.length > 0 && (
+              {!authMethodsLoading && ssoProviders.length > 0 && (
                 <div className="mb-5 flex flex-col gap-2">
                   <div className="flex flex-col gap-2">
                     {visibleSsoProviders.map((provider) => (
@@ -209,13 +218,25 @@ export default function Login() {
                 </div>
               )}
 
-              {!passwordLoginEnabled && (
+              {/* Defer the whole sign-in-method area until both the SSO list and
+                  the auth config resolve, so nothing flashes in and out. */}
+              {authMethodsLoading && (
+                <div className="flex justify-center py-6" aria-hidden>
+                  <Loader2 className="h-5 w-5 motion-safe:animate-spin text-paper-dim" />
+                </div>
+              )}
+
+              {/* Password sign-in disabled — the server only reports this when at
+                  least one usable SSO provider exists (it force-enables password
+                  login otherwise, to prevent lockout), so SSO buttons are always
+                  rendered above this message. */}
+              {!authMethodsLoading && !passwordLoginEnabled && (
                 <p className="text-center text-[13px] text-paper-muted">
                   Password sign-in is disabled. Continue with single sign-on above.
                 </p>
               )}
 
-              {passwordLoginEnabled && (
+              {!authMethodsLoading && passwordLoginEnabled && (
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
                   <FormField
