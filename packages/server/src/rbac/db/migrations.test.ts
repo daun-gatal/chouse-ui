@@ -144,11 +144,10 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.columnExists("rbac_sso_providers", "saml_trust_email_verified")).toBe(true);
   },
   "1.36.0": async () => {
-    expect(await h.tableExists("fleet_alert_config")).toBe(true);
-    expect(await h.columnExists("fleet_alert_config", "config")).toBe(true);
-    // The single config row (id=1) is seeded by the migration.
-    const rows = await h.rawAll(sql`SELECT id FROM fleet_alert_config WHERE id = 1`);
-    expect(rows.length).toBe(1);
+    // 1.36.0 created fleet_alert_config; its data was imported into the
+    // normalized alerting tables by 1.39.0 and the table was dropped by 1.39.1,
+    // so at HEAD it no longer exists.
+    expect(await h.tableExists("fleet_alert_config")).toBe(false);
   },
   "1.37.0": async () => {
     expect(await h.tableExists("doctor_schedule")).toBe(true);
@@ -182,6 +181,10 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.roleHasPermission("admin", "alerting:view")).toBe(true);
     expect(await h.roleHasPermission("admin", "alerting:edit")).toBe(true);
     expect(await h.roleHasPermission("admin", "alerting:delete")).toBe(false);
+  },
+  "1.39.1": async () => {
+    // The legacy blob table is dropped once its data has been imported.
+    expect(await h.tableExists("fleet_alert_config")).toBe(false);
   },
 };
 

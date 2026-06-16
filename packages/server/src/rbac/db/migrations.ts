@@ -3858,6 +3858,21 @@ export const MIGRATIONS: Migration[] = [
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.39.0] Dropped normalized alerting tables');
     },
   },
+  {
+    version: '1.39.1',
+    name: 'drop_legacy_fleet_alert_config',
+    description: 'Drop the legacy fleet_alert_config blob table. Its contents were imported into the normalized alerting tables by 1.39.0; this destructive step is split into its own migration so a failed import never reaches the drop.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS fleet_alert_config`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS fleet_alert_config`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.39.1] Dropped legacy fleet_alert_config (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
 ];
 
 // ============================================
