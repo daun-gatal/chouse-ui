@@ -11,6 +11,7 @@ import upload from "./upload";
 import aiChat from "./ai-chat";
 import ai from "./ai";
 import fleet from "./fleet";
+import alerting from "./alerting";
 
 const api = new Hono();
 
@@ -77,6 +78,7 @@ api.route("/upload", upload);
 api.route("/ai-chat", aiChat);
 api.route("/ai", ai);
 api.route("/fleet", fleet);
+api.route("/alerting", alerting);
 
 // RBAC routes (Role-Based Access Control)
 api.route("/rbac", rbacRoutes);

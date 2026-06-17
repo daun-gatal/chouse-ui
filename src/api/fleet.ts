@@ -190,51 +190,10 @@ export async function fetchFleetHistoryBulk(opts?: {
 // never returned (only whether a channel is configured).
 // ============================================
 
-export interface FleetAlertConfig {
-  enabled: boolean;
-  /** When true, a new breach also fires a Chouse AI RCA to the channels. */
-  aiRcaOnBreach: boolean;
-  /** AI config id used for the auto-RCA scan (null = default model). */
-  aiRcaModelId: string | null;
-  rules: { memoryPercent: number; queryMemoryGb: number; longQueryMin: number; partsEtaMin: number };
-  slack: { configured: boolean; enabled: boolean };
-  googleChat: { configured: boolean; enabled: boolean };
-  email: { configured: boolean; enabled: boolean; user: string; to: string };
-}
-
-export interface FleetAlertConfigUpdate {
-  enabled: boolean;
-  aiRcaOnBreach?: boolean;
-  aiRcaModelId?: string;
-  rules: { memoryPercent: number; queryMemoryGb: number; longQueryMin: number; partsEtaMin: number };
-  /** Blank/omitted = keep the existing webhook; use `removeSlack` to clear. */
-  slackWebhookUrl?: string;
-  /** Per-channel on/off — independent of whether it's configured. */
-  slackEnabled?: boolean;
-  removeSlack?: boolean;
-  /** Blank/omitted = keep the existing webhook; use `removeGoogleChat` to clear. */
-  googleChatWebhookUrl?: string;
-  googleChatEnabled?: boolean;
-  removeGoogleChat?: boolean;
-  /** Blank password = keep existing; use `removeEmail` to clear the channel. */
-  email?: { user: string; to: string; password?: string };
-  emailEnabled?: boolean;
-  removeEmail?: boolean;
-}
-
-export async function fetchFleetAlertConfig(): Promise<FleetAlertConfig> {
-  return api.get<FleetAlertConfig>("/fleet/alert-config");
-}
-
-export async function updateFleetAlertConfig(
-  body: FleetAlertConfigUpdate,
-): Promise<{ ok: boolean }> {
-  return api.put<{ ok: boolean }>("/fleet/alert-config", body);
-}
-
-export async function testFleetAlertConfig(): Promise<{ slack: boolean; googleChat: boolean; email: boolean }> {
-  return api.post<{ slack: boolean; googleChat: boolean; email: boolean }>("/fleet/alert-config/test");
-}
+// Fleet alert delivery is now managed through the normalized alerting model
+// (see src/api/alerting.ts and the Fleet "Alert delivery" dialog). The legacy
+// /fleet/alert-config client helpers were removed; the backend route still
+// exists as a compatibility shim over the same normalized tables.
 
 // ============================================
 // ChouseD — AI fleet doctor (agentic health scan)

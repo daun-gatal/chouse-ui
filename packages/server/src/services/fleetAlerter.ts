@@ -23,7 +23,8 @@
  */
 
 import { logger } from "../utils/logger";
-import { loadRawAlertConfig } from "./fleetAlertConfig";
+import { listRules, getRuleChannelsDecrypted, recordEvent } from "./alerting/store";
+import { ChannelType, AlertSourceType, AlertSeverity } from "./alerting/types";
 import type { DoctorReport } from "./ai/capabilities/fleetScan";
 /** Node-memory re-arms only once it drops this far below threshold (anti-flap). */
 const HYSTERESIS = 5;
@@ -57,15 +58,42 @@ interface EmailConfig {
   to: string;
   from: string;
 }
-interface AlertConfig {
+interface WebhookConfig {
+  url: string;
+  secret?: string;
+}
+/** A resolved delivery destination — one of a rule's linked, enabled channels. */
+interface DeliveryTarget {
+  id: string;
+  type: ChannelType;
+  name: string;
+  /** Decrypted, type-specific config. */
+  config: Record<string, unknown>;
+}
+/** One enabled fleet-threshold rule with its thresholds + delivery channels. */
+interface RuleConfig {
+  ruleId: string;
+  name: string;
+  severity: AlertSeverity;
   rules: AlertRules;
-  slack?: SlackConfig;
-  googleChat?: GoogleChatConfig;
-  email?: EmailConfig;
+  /** All enabled channels linked to this rule (any type). */
+  channels: DeliveryTarget[];
   /** When true, a new breach also kicks off a Chouse AI RCA delivered to the channels. */
   aiRcaOnBreach: boolean;
   /** AI config id for the auto-RCA scan (undefined = use the default model). */
   aiRcaModelId?: string;
+}
+
+function asEmailConfig(c: Record<string, unknown>): EmailConfig {
+  return {
+    host: String(c.host ?? "smtp.gmail.com"),
+    port: num(c.port) || 465,
+    secure: c.secure !== undefined ? Boolean(c.secure) : true,
+    user: String(c.user ?? ""),
+    password: String(c.password ?? ""),
+    to: String(c.to ?? ""),
+    from: String(c.from ?? c.user ?? ""),
+  };
 }
 
 interface SnapshotInput {
@@ -102,57 +130,66 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-async function loadConfig(): Promise<AlertConfig | null> {
-  const parsed = (await loadRawAlertConfig()) as Record<string, unknown>;
-  if (!parsed || Object.keys(parsed).length === 0 || parsed.enabled === false) {
-    return null; // no config / disabled → delivery off
+/** Resolve a rule's enabled, deliverable channels (secrets decrypted). */
+async function resolveRuleChannels(ruleId: string): Promise<DeliveryTarget[]> {
+  const linked = await getRuleChannelsDecrypted(ruleId);
+  const channels: DeliveryTarget[] = [];
+  for (const { row, config } of linked) {
+    if (row.type === ChannelType.Slack || row.type === ChannelType.GoogleChat) {
+      if (config.webhookUrl) channels.push({ id: row.id, type: row.type, name: row.name, config });
+    } else if (row.type === ChannelType.Webhook) {
+      if (config.url) channels.push({ id: row.id, type: row.type, name: row.name, config });
+    } else if (row.type === ChannelType.Email) {
+      if (config.user && config.password && config.to) {
+        channels.push({ id: row.id, type: row.type, name: row.name, config });
+      }
+    }
   }
+  return channels;
+}
 
-  const rulesRaw = (parsed.rules ?? {}) as Record<string, unknown>;
-  const rules: AlertRules = {
-    memoryPercent: num(rulesRaw.memoryPercent),
-    queryMemoryGb: num(rulesRaw.queryMemoryGb),
-    longQueryMin: num(rulesRaw.longQueryMin),
-    partsEtaMin: num(rulesRaw.partsEtaMin),
-  };
+/**
+ * Load every enabled fleet-threshold rule with its thresholds + delivery
+ * channels (any type, secrets decrypted). A rule with no deliverable channel is
+ * dropped. Returns [] when nothing is configured/enabled — the "delivery off"
+ * contract callers expect.
+ */
+async function loadRuleConfigs(): Promise<RuleConfig[]> {
+  const rules = await listRules();
+  const out: RuleConfig[] = [];
+  for (const rule of rules) {
+    if (!rule.enabled || rule.sourceType !== AlertSourceType.FleetThreshold) continue;
+    let rulesRaw: Record<string, unknown> = {};
+    try {
+      rulesRaw = JSON.parse(rule.config) as Record<string, unknown>;
+    } catch {
+      rulesRaw = {};
+    }
+    const channels = await resolveRuleChannels(rule.id);
+    if (channels.length === 0) continue;
+    out.push({
+      ruleId: rule.id,
+      name: rule.name,
+      severity: rule.severity,
+      rules: {
+        memoryPercent: num(rulesRaw.memoryPercent),
+        queryMemoryGb: num(rulesRaw.queryMemoryGb),
+        longQueryMin: num(rulesRaw.longQueryMin),
+        partsEtaMin: num(rulesRaw.partsEtaMin),
+      },
+      channels,
+      aiRcaOnBreach: rule.aiRcaEnabled,
+      aiRcaModelId: rule.aiRcaModelId ?? undefined,
+    });
+  }
+  return out;
+}
 
-  const slackRaw = parsed.slack as { webhookUrl?: unknown; enabled?: unknown } | undefined;
-  // A channel delivers only if configured AND not explicitly disabled
-  // (enabled defaults to true when the flag is absent, for older configs).
-  const slack =
-    slackRaw?.webhookUrl && slackRaw.enabled !== false
-      ? { webhookUrl: String(slackRaw.webhookUrl) }
-      : undefined;
-
-  const gchatRaw = parsed.googleChat as { webhookUrl?: unknown; enabled?: unknown } | undefined;
-  const googleChat =
-    gchatRaw?.webhookUrl && gchatRaw.enabled !== false
-      ? { webhookUrl: String(gchatRaw.webhookUrl) }
-      : undefined;
-
-  const e = parsed.email as Record<string, unknown> | undefined;
-  const email =
-    e?.user && e?.password && e?.to && e.enabled !== false
-      ? {
-          host: String(e.host ?? "smtp.gmail.com"),
-          port: num(e.port) || 465,
-          secure: e.secure !== undefined ? Boolean(e.secure) : true,
-          user: String(e.user),
-          password: String(e.password),
-          to: String(e.to),
-          from: String(e.from ?? e.user),
-        }
-      : undefined;
-
-  if (!slack && !googleChat && !email) return null; // nothing to deliver to
-  return {
-    rules,
-    slack,
-    googleChat,
-    email,
-    aiRcaOnBreach: parsed.aiRcaOnBreach === true,
-    aiRcaModelId: typeof parsed.aiRcaModelId === "string" && parsed.aiRcaModelId ? parsed.aiRcaModelId : undefined,
-  };
+/** Dedup union of all active rules' channels — used by test + scheduled-report delivery. */
+function unionChannels(configs: RuleConfig[]): DeliveryTarget[] {
+  const byId = new Map<string, DeliveryTarget>();
+  for (const cfg of configs) for (const ch of cfg.channels) byId.set(ch.id, ch);
+  return [...byId.values()];
 }
 
 function fmtDuration(seconds: number): string {
@@ -389,29 +426,51 @@ async function deliverEmail(b: Breach, email: EmailConfig): Promise<void> {
   });
 }
 
-async function deliver(b: Breach, config: AlertConfig): Promise<void> {
-  const tasks: Promise<void>[] = [];
-  if (config.slack) {
-    tasks.push(
-      deliverSlack(b, config.slack).catch((err) =>
-        logger.error({ module: "FleetAlerter", channel: "slack", err: String(err) }, "Slack delivery failed"),
-      ),
-    );
+async function deliverWebhook(b: Breach, webhook: WebhookConfig): Promise<void> {
+  const res = await fetch(webhook.url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(webhook.secret ? { Authorization: `Bearer ${webhook.secret}` } : {}),
+    },
+    body: JSON.stringify({
+      kind: "fleet_alert",
+      node: b.node,
+      metric: b.metric,
+      summary: b.summary,
+      user: b.user,
+      detail: b.detail,
+      firedAt: new Date().toISOString(),
+    }),
+  });
+  if (!res.ok) throw new Error(`Webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
+/** Dispatch a single breach to one channel by type. */
+function deliverToChannel(b: Breach, ch: DeliveryTarget): Promise<void> {
+  switch (ch.type) {
+    case ChannelType.Slack:
+      return deliverSlack(b, { webhookUrl: String(ch.config.webhookUrl) });
+    case ChannelType.GoogleChat:
+      return deliverGoogleChat(b, { webhookUrl: String(ch.config.webhookUrl) });
+    case ChannelType.Email:
+      return deliverEmail(b, asEmailConfig(ch.config));
+    case ChannelType.Webhook:
+      return deliverWebhook(b, { url: String(ch.config.url), secret: ch.config.secret ? String(ch.config.secret) : undefined });
+    default:
+      return Promise.resolve();
   }
-  if (config.googleChat) {
-    tasks.push(
-      deliverGoogleChat(b, config.googleChat).catch((err) =>
-        logger.error({ module: "FleetAlerter", channel: "google_chat", err: String(err) }, "Google Chat delivery failed"),
+}
+
+async function deliver(b: Breach, channels: DeliveryTarget[]): Promise<void> {
+  const tasks = channels.map((ch) =>
+    deliverToChannel(b, ch).catch((err) =>
+      logger.error(
+        { module: "FleetAlerter", channel: ch.type, name: ch.name, err: String(err) },
+        "Channel delivery failed",
       ),
-    );
-  }
-  if (config.email) {
-    tasks.push(
-      deliverEmail(b, config.email).catch((err) =>
-        logger.error({ module: "FleetAlerter", channel: "email", err: String(err) }, "Email delivery failed"),
-      ),
-    );
-  }
+    ),
+  );
   await Promise.allSettled(tasks);
   logger.info({ module: "FleetAlerter", node: b.node, metric: b.metric, summary: b.summary }, "Alert fired");
 }
@@ -598,26 +657,51 @@ async function deliverRcaEmail(report: DoctorReport, triggers: string[], email: 
   });
 }
 
-async function deliverRca(report: DoctorReport, triggers: string[], config: AlertConfig): Promise<void> {
-  const tasks: Promise<void>[] = [];
-  if (config.slack)
-    tasks.push(
-      deliverRcaSlack(report, triggers, config.slack).catch((err) =>
-        logger.error({ module: "FleetAlerter", channel: "slack", err: String(err) }, "RCA Slack delivery failed"),
+async function deliverRcaWebhook(report: DoctorReport, triggers: string[], webhook: WebhookConfig): Promise<void> {
+  const res = await fetch(webhook.url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(webhook.secret ? { Authorization: `Bearer ${webhook.secret}` } : {}),
+    },
+    body: JSON.stringify({
+      kind: "fleet_rca",
+      status: rcaStatus(report),
+      summary: rcaSummary(report),
+      triggers,
+      model: report.model,
+      reportId: report.id,
+      firedAt: new Date().toISOString(),
+    }),
+  });
+  if (!res.ok) throw new Error(`Webhook ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
+/** Dispatch an RCA report to one channel by type. */
+function deliverRcaToChannel(report: DoctorReport, triggers: string[], ch: DeliveryTarget): Promise<void> {
+  switch (ch.type) {
+    case ChannelType.Slack:
+      return deliverRcaSlack(report, triggers, { webhookUrl: String(ch.config.webhookUrl) });
+    case ChannelType.GoogleChat:
+      return deliverRcaGoogleChat(report, triggers, { webhookUrl: String(ch.config.webhookUrl) });
+    case ChannelType.Email:
+      return deliverRcaEmail(report, triggers, asEmailConfig(ch.config));
+    case ChannelType.Webhook:
+      return deliverRcaWebhook(report, triggers, { url: String(ch.config.url), secret: ch.config.secret ? String(ch.config.secret) : undefined });
+    default:
+      return Promise.resolve();
+  }
+}
+
+async function deliverRca(report: DoctorReport, triggers: string[], channels: DeliveryTarget[]): Promise<void> {
+  const tasks = channels.map((ch) =>
+    deliverRcaToChannel(report, triggers, ch).catch((err) =>
+      logger.error(
+        { module: "FleetAlerter", channel: ch.type, name: ch.name, err: String(err) },
+        "RCA delivery failed",
       ),
-    );
-  if (config.googleChat)
-    tasks.push(
-      deliverRcaGoogleChat(report, triggers, config.googleChat).catch((err) =>
-        logger.error({ module: "FleetAlerter", channel: "google_chat", err: String(err) }, "RCA Google Chat delivery failed"),
-      ),
-    );
-  if (config.email)
-    tasks.push(
-      deliverRcaEmail(report, triggers, config.email).catch((err) =>
-        logger.error({ module: "FleetAlerter", channel: "email", err: String(err) }, "RCA email delivery failed"),
-      ),
-    );
+    ),
+  );
   await Promise.allSettled(tasks);
 }
 
@@ -626,9 +710,9 @@ async function deliverRca(report: DoctorReport, triggers: string[], config: Aler
  * Used by the scheduler for scheduled scans. No-op if no channel is configured.
  */
 export async function deliverDoctorReport(report: DoctorReport, context: string): Promise<void> {
-  const config = await loadConfig();
-  if (!config) return;
-  await deliverRca(report, [context], config);
+  const channels = unionChannels(await loadRuleConfigs());
+  if (channels.length === 0) return;
+  await deliverRca(report, [context], channels);
 }
 
 /**
@@ -636,22 +720,26 @@ export async function deliverDoctorReport(report: DoctorReport, context: string)
  * imports the doctor service so the alerter never hard-depends on the AI SDK at
  * load. Best-effort: a failure is logged, never propagated to the poll loop.
  */
-async function runAutoRca(config: AlertConfig, triggers: string[]): Promise<void> {
+async function runAutoRca(
+  channels: DeliveryTarget[],
+  aiRcaModelId: string | undefined,
+  triggers: string[],
+): Promise<void> {
   try {
     const { runStructuredCapability } = await import("./ai/engine");
     const { fleetScanCapability } = await import("./ai/capabilities/fleetScan");
     const { saveDoctorReport } = await import("./doctorReports");
     logger.info(
-      { module: "FleetAlerter", triggers: triggers.length, model: config.aiRcaModelId ?? "default" },
+      { module: "FleetAlerter", triggers: triggers.length, model: aiRcaModelId ?? "default" },
       "Auto-RCA: Chouse AI scanning fleet",
     );
     const report = await runStructuredCapability(
       fleetScanCapability,
       {},
-      { modelId: config.aiRcaModelId },
+      { modelId: aiRcaModelId },
     );
     await saveDoctorReport(report, null, "auto");
-    await deliverRca(report, triggers, config);
+    await deliverRca(report, triggers, channels);
     logger.info(
       { module: "FleetAlerter", reportId: report.id, status: rcaStatus(report) },
       "Auto-RCA delivered",
@@ -668,9 +756,14 @@ async function runAutoRca(config: AlertConfig, triggers: string[]): Promise<void
  * Send a sample alert through the configured channels — for verifying setup
  * (a "send test alert" action / one-off check). Throws if no config is loaded.
  */
-export async function sendTestAlert(): Promise<{ slack: boolean; googleChat: boolean; email: boolean }> {
-  const config = await loadConfig();
-  if (!config) {
+export async function sendTestAlert(): Promise<{
+  slack: boolean;
+  googleChat: boolean;
+  email: boolean;
+  webhook: boolean;
+}> {
+  const channels = unionChannels(await loadRuleConfigs());
+  if (channels.length === 0) {
     throw new Error("No alert config (missing, disabled, or no channel set)");
   }
   await deliver(
@@ -681,9 +774,15 @@ export async function sendTestAlert(): Promise<{ slack: boolean; googleChat: boo
       user: "r_redash",
       detail: "r_redash · SELECT toInt32OrNull(customer_id) AS UserId, count() AS c FROM events …",
     },
-    config,
+    channels,
   );
-  return { slack: !!config.slack, googleChat: !!config.googleChat, email: !!config.email };
+  const has = (t: ChannelType): boolean => channels.some((ch) => ch.type === t);
+  return {
+    slack: has(ChannelType.Slack),
+    googleChat: has(ChannelType.GoogleChat),
+    email: has(ChannelType.Email),
+    webhook: has(ChannelType.Webhook),
+  };
 }
 
 /**
@@ -696,8 +795,8 @@ export async function processTick(
   rows: SnapshotInput[],
 ): Promise<void> {
   try {
-    const config = await loadConfig();
-    if (!config) return;
+    const configs = await loadRuleConfigs();
+    if (configs.length === 0) return;
 
     const nameById = new Map(connections.map((c) => [c.id, c.name]));
 
@@ -715,47 +814,61 @@ export async function processTick(
       byConn.get(r.connectionId)![r.metric] = parsed;
     }
 
+    // Latch keys are namespaced by ruleId so independent rules don't share state.
     const seenQueryKeys = new Set<string>();
-    const fires: Breach[] = [];
 
-    for (const [connId, metrics] of byConn) {
-      const node = nameById.get(connId) ?? connId;
-      for (const r of evaluateNode(metrics, config.rules)) {
-        const key = r.instanceId
-          ? `${connId}:${r.ruleKey}:${r.instanceId}`
-          : `${connId}:${r.ruleKey}`;
-        if (r.instanceId) seenQueryKeys.add(key);
-        const wasArmed = armed.get(key) ?? false;
-        if (r.breaching && !wasArmed) {
-          armed.set(key, true);
-          fires.push({ node, metric: r.metric, summary: r.summary, user: r.user, detail: r.detail });
-        } else if (r.clearing && wasArmed) {
-          armed.set(key, false);
+    // Evaluate every enabled rule against the snapshots; deliver each rule's
+    // breaches to that rule's own channels, and fire per-rule auto-RCA.
+    for (const config of configs) {
+      const fires: Breach[] = [];
+      for (const [connId, metrics] of byConn) {
+        const node = nameById.get(connId) ?? connId;
+        for (const r of evaluateNode(metrics, config.rules)) {
+          const key = r.instanceId
+            ? `${config.ruleId}:${connId}:${r.ruleKey}:${r.instanceId}`
+            : `${config.ruleId}:${connId}:${r.ruleKey}`;
+          if (r.instanceId) seenQueryKeys.add(key);
+          const wasArmed = armed.get(key) ?? false;
+          if (r.breaching && !wasArmed) {
+            armed.set(key, true);
+            fires.push({ node, metric: r.metric, summary: r.summary, user: r.user, detail: r.detail });
+          } else if (r.clearing && wasArmed) {
+            armed.set(key, false);
+          }
         }
+      }
+
+      // Deliver after the latch is settled (so a delivery failure can't double-fire),
+      // and record each fire so the "recent alerts" feed reflects what happened.
+      for (const b of fires) {
+        void deliver(b, config.channels);
+        void recordEvent({
+          ruleId: config.ruleId,
+          severity: config.severity,
+          payload: `${b.node} — ${b.metric}: ${b.summary}${b.user ? ` (${b.user})` : ""}`,
+          deliveredTo: config.channels.map((ch) => ch.name),
+        }).catch((err) =>
+          logger.error({ module: "FleetAlerter", err: String(err) }, "Failed to record alert event"),
+        );
+      }
+
+      // Autonomous RCA: a NEW breach also kicks off a ChouseD investigation whose
+      // root-cause analysis is delivered to this rule's channels. Cooldown is
+      // global (shared lastAutoRcaAt) so a breach storm across rules can't spawn a
+      // scan storm; the timestamp is set BEFORE the (slow) scan to prevent re-entry.
+      if (config.aiRcaOnBreach && fires.length > 0 && Date.now() - lastAutoRcaAt >= AUTO_RCA_COOLDOWN_MS) {
+        lastAutoRcaAt = Date.now();
+        const triggers = fires.map((b) => `${b.node} — ${b.metric}: ${b.summary}`);
+        void runAutoRca(config.channels, config.aiRcaModelId, triggers);
       }
     }
 
     // Re-arm latches for query rules whose query is gone (finished / dropped).
+    // Key shape for query rules is rule:conn:ruleKey:instance → 4 segments.
     for (const k of [...armed.keys()]) {
-      if (k.split(":").length === 3 && armed.get(k) && !seenQueryKeys.has(k)) {
+      if (k.split(":").length === 4 && armed.get(k) && !seenQueryKeys.has(k)) {
         armed.delete(k);
       }
-    }
-
-    // Deliver after the latch is settled (so a delivery failure can't double-fire).
-    for (const b of fires) {
-      void deliver(b, config);
-    }
-
-    // Autonomous RCA: a NEW breach also kicks off a ChouseD investigation whose
-    // root-cause analysis is delivered to the same channels — turning a raw
-    // "memory 92%" alert into "here's why + what to do". Cooldown-throttled so a
-    // breach storm can't spawn a scan storm; the timestamp is set BEFORE the
-    // (slow, ~10–30s) scan so the next ticks can't re-enter while it runs.
-    if (config.aiRcaOnBreach && fires.length > 0 && Date.now() - lastAutoRcaAt >= AUTO_RCA_COOLDOWN_MS) {
-      lastAutoRcaAt = Date.now();
-      const triggers = fires.map((b) => `${b.node} — ${b.metric}: ${b.summary}`);
-      void runAutoRca(config, triggers);
     }
   } catch (err) {
     logger.error({ module: "FleetAlerter", err: err instanceof Error ? err.message : String(err) }, "processTick failed");

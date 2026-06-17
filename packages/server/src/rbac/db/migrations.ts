@@ -3545,6 +3545,334 @@ export const MIGRATIONS: Migration[] = [
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.38.0] Dropped _rbac_rate_limits');
     },
   },
+  {
+    version: '1.39.0',
+    name: 'alerting_normalization',
+    description: 'Normalize alerting into reusable metadata tables — notification_channels (where to deliver, secrets encrypted), alert_rules (what fires), alert_rule_channels (M:N), alert_events (history). Imports the existing fleet_alert_config blob into the well-known fleet rule + channels so the existing Fleet alert experience is unchanged.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      // --- Schema: four normalized tables (idempotent) -----------------------
+      // Booleans are stored as INTEGER 0/1 in both dialects to avoid cross-dialect
+      // boolean coercion differences; the service layer reads them as `=== 1`.
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS notification_channels (
+            id         TEXT    PRIMARY KEY,
+            name       TEXT    NOT NULL,
+            type       TEXT    NOT NULL,
+            config     TEXT    NOT NULL DEFAULT '{}',
+            enabled    INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS alert_rules (
+            id              TEXT    PRIMARY KEY,
+            name            TEXT    NOT NULL,
+            source_type     TEXT    NOT NULL,
+            config          TEXT    NOT NULL DEFAULT '{}',
+            severity        TEXT    NOT NULL DEFAULT 'warning',
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            ai_rca_enabled  INTEGER NOT NULL DEFAULT 0,
+            ai_rca_model_id TEXT,
+            created_at      INTEGER NOT NULL DEFAULT 0,
+            updated_at      INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS alert_rule_channels (
+            rule_id    TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            PRIMARY KEY (rule_id, channel_id)
+          )
+        `);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS alert_events (
+            id           TEXT    PRIMARY KEY,
+            rule_id      TEXT,
+            severity     TEXT    NOT NULL DEFAULT 'warning',
+            fired_at     INTEGER NOT NULL DEFAULT 0,
+            payload      TEXT,
+            delivered_to TEXT,
+            resolved_at  INTEGER
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS idx_notification_channels_type ON notification_channels (type)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS idx_alert_rules_source_type ON alert_rules (source_type)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS idx_alert_rule_channels_channel_id ON alert_rule_channels (channel_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS idx_alert_events_fired_at ON alert_events (fired_at)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS idx_alert_events_rule_id ON alert_events (rule_id)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS notification_channels (
+            id         TEXT    PRIMARY KEY,
+            name       TEXT    NOT NULL,
+            type       TEXT    NOT NULL,
+            config     TEXT    NOT NULL DEFAULT '{}',
+            enabled    INTEGER NOT NULL DEFAULT 1,
+            created_by TEXT,
+            created_at BIGINT  NOT NULL DEFAULT 0,
+            updated_at BIGINT  NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS alert_rules (
+            id              TEXT    PRIMARY KEY,
+            name            TEXT    NOT NULL,
+            source_type     TEXT    NOT NULL,
+            config          TEXT    NOT NULL DEFAULT '{}',
+            severity        TEXT    NOT NULL DEFAULT 'warning',
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            ai_rca_enabled  INTEGER NOT NULL DEFAULT 0,
+            ai_rca_model_id TEXT,
+            created_at      BIGINT  NOT NULL DEFAULT 0,
+            updated_at      BIGINT  NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS alert_rule_channels (
+            rule_id    TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            PRIMARY KEY (rule_id, channel_id)
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS alert_events (
+            id           TEXT    PRIMARY KEY,
+            rule_id      TEXT,
+            severity     TEXT    NOT NULL DEFAULT 'warning',
+            fired_at     BIGINT  NOT NULL DEFAULT 0,
+            payload      TEXT,
+            delivered_to TEXT,
+            resolved_at  BIGINT
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS idx_notification_channels_type ON notification_channels (type)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS idx_alert_rules_source_type ON alert_rules (source_type)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS idx_alert_rule_channels_channel_id ON alert_rule_channels (channel_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS idx_alert_events_fired_at ON alert_events (fired_at)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS idx_alert_events_rule_id ON alert_events (rule_id)`);
+      }
+
+      // --- Data migration: fleet_alert_config blob -> normalized rows --------
+      // Read the legacy single-row blob (if the table exists / is seeded) and
+      // project it onto the well-known fleet rule + its channels, encrypting the
+      // (previously plaintext) secrets. Idempotent: inserts are guarded by the
+      // fixed ids so re-running this migration is a no-op.
+      let blob: Record<string, unknown> = {};
+      try {
+        let rows: Array<Record<string, unknown>> = [];
+        if (dbType === 'sqlite') {
+          rows = (db as SqliteDb).all(sql`SELECT config FROM fleet_alert_config WHERE id = 1 LIMIT 1`) as Array<Record<string, unknown>>;
+        } else {
+          const res = await (db as PostgresDb).execute(sql`SELECT config FROM fleet_alert_config WHERE id = 1 LIMIT 1`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const anyRes = res as any;
+          rows = (Array.isArray(anyRes) ? anyRes : anyRes.rows ?? []) as Array<Record<string, unknown>>;
+        }
+        const raw = rows[0]?.config;
+        if (typeof raw === 'string' && raw.length > 0) {
+          blob = JSON.parse(raw) as Record<string, unknown>;
+        }
+      } catch (err) {
+        // No fleet_alert_config table/row, or unparseable blob — nothing to import.
+        logger.info(
+          { module: 'RBAC', phase: 'migration', err: err instanceof Error ? err.message : String(err) },
+          '[Migration 1.39.0] No legacy fleet_alert_config to import (fresh install or empty)',
+        );
+      }
+
+      if (Object.keys(blob).length > 0) {
+        const { encryptSecret } = await import('../services/connections');
+        const now = Date.now();
+        const rulesRaw = (blob.rules ?? {}) as Record<string, unknown>;
+        const num = (v: unknown): number => {
+          const n = Number(v);
+          return Number.isFinite(n) ? n : 0;
+        };
+
+        const ruleConfig = JSON.stringify({
+          memoryPercent: num(rulesRaw.memoryPercent),
+          queryMemoryGb: num(rulesRaw.queryMemoryGb),
+          longQueryMin: num(rulesRaw.longQueryMin),
+          partsEtaMin: num(rulesRaw.partsEtaMin),
+        });
+        const ruleEnabled = blob.enabled === false ? 0 : 1;
+        const aiRcaEnabled = blob.aiRcaOnBreach === true ? 1 : 0;
+        const aiRcaModelId =
+          typeof blob.aiRcaModelId === 'string' && blob.aiRcaModelId ? blob.aiRcaModelId : null;
+
+        const insertRule = async (): Promise<void> => {
+          if (dbType === 'sqlite') {
+            (db as SqliteDb).run(sql`
+              INSERT OR IGNORE INTO alert_rules
+                (id, name, source_type, config, severity, enabled, ai_rca_enabled, ai_rca_model_id, created_at, updated_at)
+              VALUES ('fleet-default', 'Fleet thresholds', 'fleet_threshold', ${ruleConfig}, 'warning', ${ruleEnabled}, ${aiRcaEnabled}, ${aiRcaModelId}, ${now}, ${now})
+            `);
+          } else {
+            await (db as PostgresDb).execute(sql`
+              INSERT INTO alert_rules
+                (id, name, source_type, config, severity, enabled, ai_rca_enabled, ai_rca_model_id, created_at, updated_at)
+              VALUES ('fleet-default', 'Fleet thresholds', 'fleet_threshold', ${ruleConfig}, 'warning', ${ruleEnabled}, ${aiRcaEnabled}, ${aiRcaModelId}, ${now}, ${now})
+              ON CONFLICT (id) DO NOTHING
+            `);
+          }
+        };
+
+        const insertChannel = async (
+          id: string,
+          name: string,
+          type: string,
+          config: string,
+          enabled: number,
+        ): Promise<void> => {
+          if (dbType === 'sqlite') {
+            (db as SqliteDb).run(sql`
+              INSERT OR IGNORE INTO notification_channels (id, name, type, config, enabled, created_by, created_at, updated_at)
+              VALUES (${id}, ${name}, ${type}, ${config}, ${enabled}, NULL, ${now}, ${now})
+            `);
+            (db as SqliteDb).run(sql`
+              INSERT OR IGNORE INTO alert_rule_channels (rule_id, channel_id) VALUES ('fleet-default', ${id})
+            `);
+          } else {
+            await (db as PostgresDb).execute(sql`
+              INSERT INTO notification_channels (id, name, type, config, enabled, created_by, created_at, updated_at)
+              VALUES (${id}, ${name}, ${type}, ${config}, ${enabled}, NULL, ${now}, ${now})
+              ON CONFLICT (id) DO NOTHING
+            `);
+            await (db as PostgresDb).execute(sql`
+              INSERT INTO alert_rule_channels (rule_id, channel_id) VALUES ('fleet-default', ${id})
+              ON CONFLICT (rule_id, channel_id) DO NOTHING
+            `);
+          }
+        };
+
+        await insertRule();
+
+        const slack = blob.slack as { webhookUrl?: unknown; enabled?: unknown } | undefined;
+        if (slack?.webhookUrl) {
+          await insertChannel(
+            'fleet-slack',
+            'Fleet Slack',
+            'slack',
+            JSON.stringify({ webhookUrl: encryptSecret(String(slack.webhookUrl)) }),
+            slack.enabled === false ? 0 : 1,
+          );
+        }
+
+        const gchat = blob.googleChat as { webhookUrl?: unknown; enabled?: unknown } | undefined;
+        if (gchat?.webhookUrl) {
+          await insertChannel(
+            'fleet-google_chat',
+            'Fleet Google Chat',
+            'google_chat',
+            JSON.stringify({ webhookUrl: encryptSecret(String(gchat.webhookUrl)) }),
+            gchat.enabled === false ? 0 : 1,
+          );
+        }
+
+        const email = blob.email as Record<string, unknown> | undefined;
+        if (email?.user && email?.password && email?.to) {
+          await insertChannel(
+            'fleet-email',
+            'Fleet Email',
+            'email',
+            JSON.stringify({
+              host: String(email.host ?? 'smtp.gmail.com'),
+              port: num(email.port) || 465,
+              secure: email.secure !== undefined ? Boolean(email.secure) : true,
+              user: String(email.user),
+              password: encryptSecret(String(email.password)),
+              from: String(email.from ?? email.user),
+              to: String(email.to),
+            }),
+            email.enabled === false ? 0 : 1,
+          );
+        }
+      }
+
+      // Seed the alerting permissions and grant them: super_admin gets view +
+      // edit + delete, admin gets view + edit (delete is super-admin only).
+      const { seedPermissions } = await import('../services/seed');
+      const permissionIdMap = await seedPermissions();
+      const viewId = permissionIdMap.get('alerting:view');
+      const editId = permissionIdMap.get('alerting:edit');
+      const deleteId = permissionIdMap.get('alerting:delete');
+      if (viewId && editId && deleteId) {
+        const { SYSTEM_ROLES } = await import('../schema/base');
+        const { randomUUID } = await import('crypto');
+        const grants: Array<{ role: string; perms: string[] }> = [
+          { role: SYSTEM_ROLES.SUPER_ADMIN, perms: [viewId, editId, deleteId] },
+          { role: SYSTEM_ROLES.ADMIN, perms: [viewId, editId] },
+        ];
+        for (const { role: roleName, perms } of grants) {
+          let roleRows: Array<{ id: string }>;
+          if (dbType === 'sqlite') {
+            roleRows = (db as SqliteDb).all(sql`SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1`) as Array<{ id: string }>;
+          } else {
+            const res = await (db as PostgresDb).execute(sql`SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1`);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const anyRes = res as any;
+            roleRows = (Array.isArray(anyRes) ? anyRes : anyRes.rows ?? []) as Array<{ id: string }>;
+          }
+          if (roleRows.length === 0) continue;
+          const roleId = roleRows[0].id;
+          for (const permId of perms) {
+            let existing: Array<unknown>;
+            if (dbType === 'sqlite') {
+              existing = (db as SqliteDb).all(sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1`);
+            } else {
+              const res = await (db as PostgresDb).execute(sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1`);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const anyRes = res as any;
+              existing = (Array.isArray(anyRes) ? anyRes : anyRes.rows ?? []) as Array<unknown>;
+            }
+            if (existing.length > 0) continue;
+            const rpId = randomUUID();
+            if (dbType === 'sqlite') {
+              (db as SqliteDb).run(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${rpId}, ${roleId}, ${permId}, ${Math.floor(Date.now() / 1000)})`);
+            } else {
+              await (db as PostgresDb).execute(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${rpId}, ${roleId}, ${permId}, ${new Date().toISOString()})`);
+            }
+          }
+        }
+      } else {
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.39.0] Failed to resolve alerting permission IDs');
+      }
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.39.0] Created normalized alerting tables + permissions (${dbType})`);
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      const tables = ['alert_events', 'alert_rule_channels', 'alert_rules', 'notification_channels'];
+      for (const t of tables) {
+        if (dbType === 'sqlite') {
+          (db as SqliteDb).run(sql.raw(`DROP TABLE IF EXISTS ${t}`));
+        } else {
+          await (db as PostgresDb).execute(sql.raw(`DROP TABLE IF EXISTS ${t}`));
+        }
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.39.0] Dropped normalized alerting tables');
+    },
+  },
+  {
+    version: '1.39.1',
+    name: 'drop_legacy_fleet_alert_config',
+    description: 'Drop the legacy fleet_alert_config blob table. Its contents were imported into the normalized alerting tables by 1.39.0; this destructive step is split into its own migration so a failed import never reaches the drop.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS fleet_alert_config`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS fleet_alert_config`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.39.1] Dropped legacy fleet_alert_config (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
 ];
 
 // ============================================

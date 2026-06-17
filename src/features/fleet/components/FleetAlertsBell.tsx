@@ -1,12 +1,13 @@
 /**
  * FleetAlertsBell — the alert surface in the Fleet header.
  *
- * A bell with a breach count badge; the popover holds the rule settings
- * (enable, memory threshold, desktop-notification permission), the list of
- * nodes currently breaching, and a short history of fired alerts.
+ * A bell with a breach count badge. The popover holds the browser-notification
+ * settings (enable + per-rule thresholds + desktop-banner permission), the nodes
+ * currently breaching, and a short history of fired alerts. Slack/email delivery
+ * is configured separately in Admin → Settings → Alerting.
  */
 
-import { Bell, BellRing, MonitorCheck, MonitorX, Trash2, AlertTriangle, ArrowRight, Radio } from "lucide-react";
+import { Bell, BellRing, MonitorCheck, MonitorX, Trash2, AlertTriangle, ArrowRight } from "lucide-react";
 
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
@@ -23,14 +24,11 @@ function timeAgo(ts: number): string {
 export default function FleetAlertsBell({
   alerts,
   onInvestigate,
-  onConfigureDelivery,
   side = "bottom",
 }: {
   alerts: UseFleetAlerts;
   /** Open the node's live queries (so the operator can see what's eating memory). */
   onInvestigate?: (connectionId: string) => void;
-  /** Open the always-on delivery (Slack/email) config — shown only to admins. */
-  onConfigureDelivery?: () => void;
   /** Which side the popover opens — "right" when hosted in the left dock. */
   side?: "top" | "right" | "bottom" | "left";
 }) {
@@ -81,126 +79,89 @@ export default function FleetAlertsBell({
         collisionPadding={12}
         className="z-[100] w-[340px] overflow-hidden rounded-md border-ink-500 bg-ink-100 p-0"
       >
+        {/* Browser notifications — client-side desktop/toast alerts with their
+            own thresholds. (Slack/email delivery is configured in Settings →
+            Alerting, not here.) */}
         <div className="flex items-center justify-between border-b border-ink-500 px-4 py-3">
-          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Alerts</span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">Notifications</span>
           <Toggle
             checked={config.enabled}
             onChange={(v) => setConfig({ enabled: v })}
-            label="Enabled"
+            label="Browser notifications"
           />
         </div>
 
-        {/* Rules — a 4-column grid so toggle · label · input · unit line up
-            cleanly across rows instead of stretching apart. Dimmed while the
-            master switch is off, so it's obvious the rules are inactive. */}
-        <div
-          className={cn(
-            "grid grid-cols-[auto_auto_auto_auto] items-center gap-x-2.5 gap-y-3 border-b border-ink-500 px-4 py-3 transition-opacity",
-            !config.enabled && "opacity-40",
-          )}
-        >
-          <RuleRow
-            label="Node memory above"
-            unit="%"
-            min={1}
-            max={99}
-            enabled={config.memoryEnabled}
-            onToggle={(v) => setConfig({ memoryEnabled: v })}
-            value={config.memoryThresholdPercent}
-            onValue={(n) => setConfig({ memoryThresholdPercent: n })}
-          />
-          <RuleRow
-            label="Query memory above"
-            unit="GB"
-            min={1}
-            max={1024}
-            enabled={config.queryMemoryEnabled}
-            onToggle={(v) => setConfig({ queryMemoryEnabled: v })}
-            value={config.queryMemoryThresholdGb}
-            onValue={(n) => setConfig({ queryMemoryThresholdGb: n })}
-          />
-          <RuleRow
-            label="Query running over"
-            unit="min"
-            min={1}
-            max={1440}
-            enabled={config.longQueryEnabled}
-            onToggle={(v) => setConfig({ longQueryEnabled: v })}
-            value={config.longQueryThresholdMinutes}
-            onValue={(n) => setConfig({ longQueryThresholdMinutes: n })}
-          />
-          <RuleRow
-            label="Parts limit ETA under"
-            unit="min"
-            min={1}
-            max={1440}
-            enabled={config.partsPressureEnabled}
-            onToggle={(v) => setConfig({ partsPressureEnabled: v })}
-            value={config.partsEtaThresholdMinutes}
-            onValue={(n) => setConfig({ partsEtaThresholdMinutes: n })}
-          />
-        </div>
+        {config.enabled && (
+          <div className="space-y-3 border-b border-ink-500 px-4 py-3">
+            {/* Thresholds (4-column grid: toggle · label · input · unit) */}
+            <div className="grid grid-cols-[auto_auto_auto_auto] items-center gap-x-2.5 gap-y-3">
+                <RuleRow
+                  label="Node memory above"
+                  unit="%"
+                  min={1}
+                  max={99}
+                  enabled={config.memoryEnabled}
+                  onToggle={(v) => setConfig({ memoryEnabled: v })}
+                  value={config.memoryThresholdPercent}
+                  onValue={(n) => setConfig({ memoryThresholdPercent: n })}
+                />
+                <RuleRow
+                  label="Query memory above"
+                  unit="GB"
+                  min={1}
+                  max={1024}
+                  enabled={config.queryMemoryEnabled}
+                  onToggle={(v) => setConfig({ queryMemoryEnabled: v })}
+                  value={config.queryMemoryThresholdGb}
+                  onValue={(n) => setConfig({ queryMemoryThresholdGb: n })}
+                />
+                <RuleRow
+                  label="Query running over"
+                  unit="min"
+                  min={1}
+                  max={1440}
+                  enabled={config.longQueryEnabled}
+                  onToggle={(v) => setConfig({ longQueryEnabled: v })}
+                  value={config.longQueryThresholdMinutes}
+                  onValue={(n) => setConfig({ longQueryThresholdMinutes: n })}
+                />
+                <RuleRow
+                  label="Parts limit ETA under"
+                  unit="min"
+                  min={1}
+                  max={1440}
+                  enabled={config.partsPressureEnabled}
+                  onToggle={(v) => setConfig({ partsPressureEnabled: v })}
+                  value={config.partsEtaThresholdMinutes}
+                  onValue={(n) => setConfig({ partsEtaThresholdMinutes: n })}
+                />
+              </div>
 
-        {/* Delivery — dimmed along with the rules when the master switch is
-            off, since nothing fires while alerts are turned off. */}
-        <div
-          className={cn(
-            "border-b border-ink-500 px-4 py-3 transition-opacity",
-            !config.enabled && "opacity-40",
-          )}
-        >
-          {/* Desktop notification permission */}
-          {!notificationsSupported ? (
-            <p className="text-[11px] text-paper-faint">Desktop notifications aren't available in this browser.</p>
-          ) : permission === "granted" ? (
-            <div className="flex items-center justify-between gap-2">
-              <span
-                className={cn(
-                  "flex items-center gap-2 text-[11px]",
-                  config.desktopEnabled ? "text-emerald-600 dark:text-emerald-400" : "text-paper-faint",
-                )}
-              >
-                {config.desktopEnabled ? (
-                  <MonitorCheck className="h-3.5 w-3.5" aria-hidden />
+              {/* OS desktop banners ride along when the browser permission is
+                  granted — no separate toggle, just the permission prompt/status. */}
+              <div className="border-t border-ink-500 pt-3">
+                {!notificationsSupported ? (
+                  <p className="text-[11px] text-paper-faint">Desktop banners aren't available in this browser.</p>
+                ) : permission === "granted" ? (
+                  <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+                    <MonitorCheck className="h-3.5 w-3.5" aria-hidden /> Desktop banners active
+                  </div>
+                ) : permission === "denied" ? (
+                  <div className="flex items-center gap-2 text-[11px] text-paper-faint">
+                    <MonitorX className="h-3.5 w-3.5" aria-hidden /> Desktop banners blocked (allow them in browser settings)
+                  </div>
                 ) : (
-                  <MonitorX className="h-3.5 w-3.5" aria-hidden />
+                  <button
+                    type="button"
+                    onClick={requestPermission}
+                    className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:bg-ink-300 hover:text-paper"
+                  >
+                    <MonitorCheck className="h-3.5 w-3.5" aria-hidden /> Enable desktop banners
+                  </button>
                 )}
-                Desktop notifications {config.desktopEnabled ? "on" : "off"}
-              </span>
-              <Toggle
-                checked={config.desktopEnabled}
-                onChange={(v) => setConfig({ desktopEnabled: v })}
-                label="Desktop notifications"
-              />
+              </div>
             </div>
-          ) : permission === "denied" ? (
-            <div className="flex items-center gap-2 text-[11px] text-paper-faint">
-              <MonitorX className="h-3.5 w-3.5" aria-hidden /> Desktop notifications blocked (allow them in browser settings)
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={requestPermission}
-              className="inline-flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-200 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:bg-ink-300 hover:text-paper"
-            >
-              <MonitorCheck className="h-3.5 w-3.5" aria-hidden /> Enable desktop alerts
-            </button>
           )}
-        </div>
-
-        {/* Always-on delivery config (Slack / email) — super-admin only. */}
-        {onConfigureDelivery && (
-          <button
-            type="button"
-            onClick={onConfigureDelivery}
-            className="flex w-full items-center justify-between border-b border-ink-500 px-4 py-2.5 text-left transition-colors hover:bg-ink-200/50"
-          >
-            <span className="flex items-center gap-2 text-[12px] text-paper-muted">
-              <Radio className="h-3.5 w-3.5 text-paper-dim" aria-hidden /> Slack &amp; email delivery
-            </span>
-            <ArrowRight className="h-3 w-3 text-paper-faint" aria-hidden />
-          </button>
-        )}
 
         {/* Currently breaching */}
         {breaching && (

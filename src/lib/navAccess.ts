@@ -24,7 +24,8 @@ export type AdminTabKey =
   | "clickhouse-roles"
   | "ai-models"
   | "sso"
-  | "audit";
+  | "audit"
+  | "alerting";
 
 /**
  * Permission(s) that reveal each admin tab. A tab is visible if the user has ANY
@@ -40,6 +41,7 @@ export const ADMIN_TAB_PERMISSIONS: Record<AdminTabKey, string[]> = {
   "ai-models": [RBAC_PERMISSIONS.AI_MODELS_VIEW],
   sso: [RBAC_PERMISSIONS.SSO_VIEW],
   audit: [RBAC_PERMISSIONS.AUDIT_VIEW],
+  alerting: [RBAC_PERMISSIONS.ALERTING_VIEW],
 };
 
 /**

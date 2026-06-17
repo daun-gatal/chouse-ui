@@ -29,12 +29,16 @@ import {
 } from "./useFleetMetrics";
 import type { FleetConnectionSnapshot } from "@/api";
 
+/**
+ * Browser-notification config (localStorage, per-device). Independent of the
+ * server-side Slack/email delivery rules — the bell sets these thresholds
+ * separately for in-browser desktop/toast alerts.
+ */
 export interface AlertConfig {
-  /** Master switch — off silences every rule. */
+  /** Master switch — off silences every browser alert on this device. When on,
+   *  a breach raises an in-app toast + bell feed entry, plus an OS desktop banner
+   *  if the browser notification permission has been granted. */
   enabled: boolean;
-  /** App-level desktop-notification switch — lets the operator mute OS banners
-   *  without revoking the browser permission (which JS can't undo anyway). */
-  desktopEnabled: boolean;
   memoryEnabled: boolean;
   /** Node memory % above this fires. */
   memoryThresholdPercent: number;
@@ -51,7 +55,6 @@ export interface AlertConfig {
 
 const DEFAULT_CONFIG: AlertConfig = {
   enabled: true,
-  desktopEnabled: true,
   memoryEnabled: true,
   memoryThresholdPercent: 85,
   queryMemoryEnabled: false,
@@ -350,7 +353,8 @@ export function useFleetAlerts(
             at: Date.now(),
           };
           setFires((prev) => [ev, ...prev].slice(0, MAX_FEED));
-          if (config.desktopEnabled) fireDesktop(ev);
+          // fireDesktop no-ops unless the OS notification permission is granted.
+          fireDesktop(ev);
           // In-app alert toast — the red twin of the success toast.
           fireAlertToast({
             node: c.name,

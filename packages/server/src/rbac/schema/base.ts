@@ -145,6 +145,11 @@ export const PERMISSIONS = {
   SSO_VIEW: 'sso:view',
   SSO_EDIT: 'sso:edit',
   SSO_DELETE: 'sso:delete',
+
+  // Alerting (notification channels + alert rules)
+  ALERTING_VIEW: 'alerting:view',
+  ALERTING_EDIT: 'alerting:edit',
+  ALERTING_DELETE: 'alerting:delete',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -214,6 +219,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.AI_MODELS_UPDATE,
     PERMISSIONS.AI_MODELS_DELETE,
     PERMISSIONS.SSO_VIEW,
+    PERMISSIONS.ALERTING_VIEW,
+    PERMISSIONS.ALERTING_EDIT,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -442,6 +449,13 @@ export const AUDIT_ACTIONS = {
   DOCTOR_SCAN_RUN: 'doctor.scan_run',
   DOCTOR_SCHEDULE_UPDATE: 'doctor.schedule_update',
   DOCTOR_REPORT_DELETE: 'doctor.report_delete',
+
+  // Alerting (notification channels + alert rules)
+  ALERTING_CHANNEL_CREATE: 'alerting.channel_create',
+  ALERTING_CHANNEL_UPDATE: 'alerting.channel_update',
+  ALERTING_CHANNEL_DELETE: 'alerting.channel_delete',
+  ALERTING_CHANNEL_TEST: 'alerting.channel_test',
+  ALERTING_EVENTS_CLEAR: 'alerting.events_clear',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

@@ -137,6 +137,11 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.SSO_EDIT,
     PERMISSIONS.SSO_DELETE,
   ],
+  'Alerting': [
+    PERMISSIONS.ALERTING_VIEW,
+    PERMISSIONS.ALERTING_EDIT,
+    PERMISSIONS.ALERTING_DELETE,
+  ],
 };
 
 // Human-readable permission names
@@ -211,6 +216,9 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.SSO_VIEW]: 'View SSO Configuration',
   [PERMISSIONS.SSO_EDIT]: 'Edit SSO Configuration',
   [PERMISSIONS.SSO_DELETE]: 'Delete SSO Providers',
+  [PERMISSIONS.ALERTING_VIEW]: 'View Alerting Configuration',
+  [PERMISSIONS.ALERTING_EDIT]: 'Edit Alerting Configuration',
+  [PERMISSIONS.ALERTING_DELETE]: 'Delete Alerting Configuration',
 };
 
 // Role display names and descriptions

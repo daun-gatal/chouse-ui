@@ -516,6 +516,11 @@ export const RBAC_PERMISSIONS = {
   SSO_VIEW: 'sso:view',
   SSO_EDIT: 'sso:edit',
   SSO_DELETE: 'sso:delete',
+
+  // Alerting (notification channels + alert rules)
+  ALERTING_VIEW: 'alerting:view',
+  ALERTING_EDIT: 'alerting:edit',
+  ALERTING_DELETE: 'alerting:delete',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

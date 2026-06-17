@@ -144,11 +144,10 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.columnExists("rbac_sso_providers", "saml_trust_email_verified")).toBe(true);
   },
   "1.36.0": async () => {
-    expect(await h.tableExists("fleet_alert_config")).toBe(true);
-    expect(await h.columnExists("fleet_alert_config", "config")).toBe(true);
-    // The single config row (id=1) is seeded by the migration.
-    const rows = await h.rawAll(sql`SELECT id FROM fleet_alert_config WHERE id = 1`);
-    expect(rows.length).toBe(1);
+    // 1.36.0 created fleet_alert_config; its data was imported into the
+    // normalized alerting tables by 1.39.0 and the table was dropped by 1.39.1,
+    // so at HEAD it no longer exists.
+    expect(await h.tableExists("fleet_alert_config")).toBe(false);
   },
   "1.37.0": async () => {
     expect(await h.tableExists("doctor_schedule")).toBe(true);
@@ -162,6 +161,30 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.columnExists("_rbac_rate_limits", "hits")).toBe(true);
     expect(await h.columnExists("_rbac_rate_limits", "reset_at_ms")).toBe(true);
     expect(await h.indexExists("idx_rbac_rate_limits_reset_at_ms")).toBe(true);
+  },
+  "1.39.0": async () => {
+    expect(await h.tableExists("notification_channels")).toBe(true);
+    expect(await h.tableExists("alert_rules")).toBe(true);
+    expect(await h.tableExists("alert_rule_channels")).toBe(true);
+    expect(await h.tableExists("alert_events")).toBe(true);
+    expect(await h.columnExists("notification_channels", "config")).toBe(true);
+    expect(await h.columnExists("alert_rules", "source_type")).toBe(true);
+    expect(await h.indexExists("idx_alert_events_fired_at")).toBe(true);
+    // Permissions are seeded and granted in the same migration: super_admin gets
+    // view + edit + delete, admin gets view + edit (delete is super-admin only).
+    expect(await h.permissionExists("alerting:view")).toBe(true);
+    expect(await h.permissionExists("alerting:edit")).toBe(true);
+    expect(await h.permissionExists("alerting:delete")).toBe(true);
+    expect(await h.roleHasPermission("super_admin", "alerting:view")).toBe(true);
+    expect(await h.roleHasPermission("super_admin", "alerting:edit")).toBe(true);
+    expect(await h.roleHasPermission("super_admin", "alerting:delete")).toBe(true);
+    expect(await h.roleHasPermission("admin", "alerting:view")).toBe(true);
+    expect(await h.roleHasPermission("admin", "alerting:edit")).toBe(true);
+    expect(await h.roleHasPermission("admin", "alerting:delete")).toBe(false);
+  },
+  "1.39.1": async () => {
+    // The legacy blob table is dropped once its data has been imported.
+    expect(await h.tableExists("fleet_alert_config")).toBe(false);
   },
 };
 
@@ -477,6 +500,94 @@ for (const dialect of DIALECTS) {
       expect(String(rows[0].client_id)).toBe("acme-client");
       expect(String(rows[0].client_secret_encrypted)).toBe("enc:secret");
       expect(String(rows[0].scopes)).toBe("openid email profile");
+    });
+  });
+
+  describe(`migrations · 1.39.0 alerting normalization data migration [${dialect}]`, () => {
+    // 1.39.0 imports the legacy fleet_alert_config blob (id=1) into the
+    // normalized tables: one fleet-default rule + its channels, with the
+    // previously-plaintext secrets encrypted at rest. Prove the projection is
+    // correct, secrets are encrypted (and decrypt back), and re-running is a no-op.
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      // State BEFORE alerting normalization: fleet_alert_config exists (1.36.0)
+      // but the normalized tables do not yet.
+      await runMigrations({ skipSeed: true, through: "1.38.0" });
+
+      const blob = JSON.stringify({
+        enabled: true,
+        aiRcaOnBreach: true,
+        aiRcaModelId: "model-xyz",
+        rules: { memoryPercent: 90, queryMemoryGb: 8, longQueryMin: 5, partsEtaMin: 30 },
+        slack: { webhookUrl: "https://hooks.slack.com/services/T/B/secret", enabled: true },
+        email: {
+          user: "alerts@acme.test",
+          password: "smtp-secret",
+          to: "oncall@acme.test",
+          host: "smtp.acme.test",
+          port: 587,
+          secure: false,
+          enabled: false,
+        },
+      });
+      await h.rawRun(sql`UPDATE fleet_alert_config SET config = ${blob} WHERE id = 1`);
+
+      // Apply the remaining migrations (1.39.0 — the normalization import).
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("imported the fleet-default rule with thresholds + AI-RCA settings", async () => {
+      const rows = await h.rawAll(sql`SELECT name, source_type, config, severity, enabled, ai_rca_enabled, ai_rca_model_id
+        FROM alert_rules WHERE id = 'fleet-default'`);
+      expect(rows).toHaveLength(1);
+      const row = rows[0];
+      expect(String(row.source_type)).toBe("fleet_threshold");
+      expect(Number(row.enabled)).toBe(1);
+      expect(Number(row.ai_rca_enabled)).toBe(1);
+      expect(String(row.ai_rca_model_id)).toBe("model-xyz");
+      const cfg = JSON.parse(String(row.config));
+      expect(cfg.memoryPercent).toBe(90);
+      expect(cfg.queryMemoryGb).toBe(8);
+      expect(cfg.longQueryMin).toBe(5);
+      expect(cfg.partsEtaMin).toBe(30);
+    });
+
+    it("imported the slack + email channels and linked them to the rule", async () => {
+      const links = await h.rawAll(sql`SELECT channel_id FROM alert_rule_channels WHERE rule_id = 'fleet-default' ORDER BY channel_id`);
+      expect(links.map((l) => String(l.channel_id))).toEqual(["fleet-email", "fleet-slack"]);
+
+      const slack = await h.rawAll(sql`SELECT type, enabled FROM notification_channels WHERE id = 'fleet-slack'`);
+      expect(String(slack[0].type)).toBe("slack");
+      expect(Number(slack[0].enabled)).toBe(1);
+
+      const email = await h.rawAll(sql`SELECT type, enabled FROM notification_channels WHERE id = 'fleet-email'`);
+      expect(String(email[0].type)).toBe("email");
+      expect(Number(email[0].enabled)).toBe(0); // email.enabled: false in the blob
+    });
+
+    it("encrypted the previously-plaintext secrets at rest (and they decrypt back)", async () => {
+      const { decryptSecret } = await import("../services/connections");
+
+      const slack = await h.rawAll(sql`SELECT config FROM notification_channels WHERE id = 'fleet-slack'`);
+      const slackCfg = JSON.parse(String(slack[0].config));
+      expect(slackCfg.webhookUrl).not.toBe("https://hooks.slack.com/services/T/B/secret");
+      expect(decryptSecret(slackCfg.webhookUrl)).toBe("https://hooks.slack.com/services/T/B/secret");
+
+      const email = await h.rawAll(sql`SELECT config FROM notification_channels WHERE id = 'fleet-email'`);
+      const emailCfg = JSON.parse(String(email[0].config));
+      expect(emailCfg.password).not.toBe("smtp-secret");
+      expect(decryptSecret(emailCfg.password)).toBe("smtp-secret");
+      expect(emailCfg.host).toBe("smtp.acme.test");
+      expect(emailCfg.port).toBe(587);
+      expect(emailCfg.secure).toBe(false);
+    });
+
+    it("is idempotent — re-running imports nothing new", async () => {
+      const result = await runMigrations({ skipSeed: true });
+      expect(result.migrationsApplied).toEqual([]);
+      expect(await h.rowCount("alert_rules")).toBe(1);
+      expect(await h.rowCount("notification_channels")).toBe(2);
+      expect(await h.rowCount("alert_rule_channels")).toBe(2);
     });
   });
 }

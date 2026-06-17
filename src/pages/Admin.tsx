@@ -11,6 +11,7 @@ import ClickHouseUsersManagement from "@/features/admin/components/ClickHouseUse
 import ClickHouseRolesManagement from "@/features/admin/components/ClickHouseRoles";
 import AiModelsManagement from "@/features/admin/components/AiModels";
 import SsoSettings from "@/features/admin/components/SsoSettings";
+import AlertingSettings from "@/features/admin/components/AlertingSettings";
 import { useRbacStore } from "@/stores";
 import { ADMIN_TAB_PERMISSIONS, type AdminTabKey } from "@/lib/navAccess";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,8 @@ import {
   FileText,
   Server,
   UserCog,
+  Bell,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -80,6 +83,11 @@ const ADMIN_TAB_CONFIG: Record<AdminTabKey, AdminTabConfig> = {
     label: "SSO",
     description: "Single sign-on settings & providers",
   },
+  alerting: {
+    icon: Bell,
+    label: "Alerting",
+    description: "Channels, rules & recent alerts",
+  },
 };
 
 // Two-tier navigation. Sections are clustered into labelled groups; the group
@@ -99,6 +107,7 @@ const ADMIN_TAB_GROUPS: AdminTabGroup[] = [
   { label: "CH Management", icon: Server, tabs: ["connections", "clickhouse-users", "clickhouse-roles"] },
   { label: "Intelligence", icon: Bot, tabs: ["ai-models"] },
   { label: "Security", icon: FileText, tabs: ["sso", "audit"] },
+  { label: "Settings", icon: SlidersHorizontal, tabs: ["alerting"] },
 ];
 
 // Top-level group selector — segmented chip (icon + label), active one filled.
@@ -184,6 +193,7 @@ export default function Admin() {
   const canViewClickHouseRoles = hasAnyPermission(ADMIN_TAB_PERMISSIONS["clickhouse-roles"]);
   const canViewAiModels = hasAnyPermission(ADMIN_TAB_PERMISSIONS["ai-models"]);
   const canViewSso = hasAnyPermission(ADMIN_TAB_PERMISSIONS.sso);
+  const canViewAlerting = hasAnyPermission(ADMIN_TAB_PERMISSIONS.alerting);
 
   const { tab } = useParams<{ tab: string }>();
   const navigate = useNavigate();
@@ -198,6 +208,7 @@ export default function Admin() {
     ...(canViewAiModels ? (["ai-models"] as AdminTabKey[]) : []),
     ...(canViewSso ? (["sso"] as AdminTabKey[]) : []),
     ...(canViewAudit ? (["audit"] as AdminTabKey[]) : []),
+    ...(canViewAlerting ? (["alerting"] as AdminTabKey[]) : []),
   ];
 
   const getInitialTab = (): AdminTabKey => {
@@ -371,6 +382,14 @@ export default function Admin() {
             <TabsContent value="audit" className="mt-0 h-full outline-none">
               <div className="rounded-md border border-ink-500 bg-ink-100">
                 <RbacAuditLogs />
+              </div>
+            </TabsContent>
+          )}
+
+          {activeTab === "alerting" && canViewAlerting && (
+            <TabsContent value="alerting" className="mt-0 h-full outline-none">
+              <div className="rounded-md border border-ink-500 bg-ink-100">
+                <AlertingSettings />
               </div>
             </TabsContent>
           )}

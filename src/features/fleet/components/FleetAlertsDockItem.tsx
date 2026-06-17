@@ -8,7 +8,7 @@
  * Fleet page or alerts would fire twice.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -16,9 +16,7 @@ import type { FleetConnectionSnapshot } from "@/api/fleet";
 import { activateConnection } from "@/lib/activateConnection";
 import { useFleetConnections, useFleetSnapshots } from "@/hooks/useFleetMetrics";
 import { useFleetAlerts } from "@/hooks/useFleetAlerts";
-import { useRbacStore } from "@/stores";
 import FleetAlertsBell from "./FleetAlertsBell";
-import FleetAlertDeliveryDialog from "./FleetAlertDeliveryDialog";
 
 export default function FleetAlertsDockItem({
   side = "right",
@@ -66,22 +64,5 @@ export default function FleetAlertsDockItem({
 
   const alerts = useFleetAlerts(connections, snapshotsByConnection, investigateNode);
 
-  // Always-on delivery (Slack/email) is a global, secret-bearing config — expose
-  // its editor only to super admins (the backend enforces this too).
-  const isSuperAdmin = useRbacStore((s) => s.isSuperAdmin());
-  const [deliveryOpen, setDeliveryOpen] = useState(false);
-
-  return (
-    <>
-      <FleetAlertsBell
-        alerts={alerts}
-        onInvestigate={investigateNode}
-        onConfigureDelivery={isSuperAdmin ? () => setDeliveryOpen(true) : undefined}
-        side={side}
-      />
-      {isSuperAdmin && (
-        <FleetAlertDeliveryDialog open={deliveryOpen} onOpenChange={setDeliveryOpen} />
-      )}
-    </>
-  );
+  return <FleetAlertsBell alerts={alerts} onInvestigate={investigateNode} side={side} />;
 }

@@ -1,0 +1,10 @@
+type: minor
+
+### Added
+- **Admin → Settings → Alerting** — a new single-section settings area to manage reusable **notification channels** (Slack, Google Chat, Email, Webhook) with per-type forms and a "Send test" action, **alert rules** (add / edit / delete) with thresholds, severity, AI auto-RCA and the channels they deliver to, and a **recent alerts** feed that records every breach and can be cleared by time range (older than 24h / 7d / 30d / all). Multiple fleet rules are supported — each evaluates independently and delivers its breaches to its own attached channels. Gated by new permissions: `alerting:view` and `alerting:edit` (Super Admin + Admin), and a separate `alerting:delete` for removing channels/rules and clearing alerts (Super Admin only).
+
+### Changed
+- **Alerting config is now normalized** — the fleet alert delivery config (rules/thresholds + Slack/Google Chat/email) moved out of a single JSON blob into reusable metadata tables (`notification_channels`, `alert_rules`, `alert_rule_channels`, `alert_events`). Existing settings are migrated automatically on upgrade, with secrets encrypted in the process.
+- **Only one fleet rule can be enabled at a time** — enabling a second fleet-threshold rule is blocked (server-side 409 + an up-front notice in the rule editor) naming the rule that's already active. Fleet alerting is driven purely by which rule is enabled in Settings → Alerting; the fleet alerter delivers to every channel linked to the enabled rule, including the new Webhook type.
+- **Alerts bell is browser-notifications only** — the bell popover (renamed "Notifications") holds just the per-device browser desktop/toast alerting (enable + thresholds + desktop-banner permission). Slack/email delivery and rule enablement live in Admin → Settings → Alerting; the old in-bell delivery editor was removed.
+- **Notification channel secrets are now encrypted at rest** — Slack/Google Chat webhook URLs and SMTP passwords are stored with AES-256-GCM instead of plaintext, and are never returned to the browser.
