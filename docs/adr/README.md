@@ -23,10 +23,9 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 
 ## Index
 
-_No ADRs yet — the first accepted decision will appear here._
-
 | ADR | Title | Status |
 |-----|-------|--------|
+| [0001](0001-data-quality.md) | Data Health (scheduled column- and table-level checks) | Accepted |
 
 ## Conventions
 
