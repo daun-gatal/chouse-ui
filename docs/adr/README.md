@@ -25,7 +25,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [0001](0001-data-quality.md) | Data Health (scheduled column- and table-level checks) | Accepted |
+| [0001](0001-data-quality.md) | Data Health (scheduled column- and table-level checks) | Deprecated |
 
 ## Conventions
 

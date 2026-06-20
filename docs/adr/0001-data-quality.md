@@ -1,6 +1,6 @@
 # 0001 — Data Health (scheduled column- and table-level checks)
 
-- **Status:** Proposed
+- **Status:** Deprecated
 - **Date:** 2026-06-17
 - **Deciders:** CHouse UI maintainers
 - **Tags:** data-health, observability, scheduling, clickhouse, rbac, ui, deployment
