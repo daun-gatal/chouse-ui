@@ -10,8 +10,13 @@
 > that produced it. Where it says "mirror X", read the cited file first — the existing
 > pattern is the spec for that part.
 
-> **Naming.** The user-facing feature is **Scheduled Queries**, surfaced under
-> **Monitoring → Scheduled Queries**. Internal identifiers use the `sq_` / `scheduled_query`
+> **Naming.** The user-facing feature is **Scheduled Queries**, surfaced as a sub-tab of a
+> **new top-level `DataOps` page** (a dedicated home for user-defined, scheduled data jobs
+> and data observability — Scheduled Queries now, Data Health next, future data-quality/
+> freshness/report features later). `DataOps` sits beside `Monitoring` in the nav, not
+> inside it: Monitoring answers "is my *cluster* healthy?" (passive, read-only `system.*`);
+> DataOps answers "are my *data jobs* running and is my *data* healthy?" (user-created,
+> action-oriented, may write data). Internal identifiers use the `sq_` / `scheduled_query`
 > prefix (tables `scheduled_queries`, `scheduled_query_runs`, `scheduled_query_channels`,
 > `scheduled_query_outbox`; RBAC permissions `scheduled_queries:view|edit|delete|run`;
 > API prefix `/api/scheduled-queries`).
@@ -66,8 +71,10 @@ The forces that make this non-trivial:
    `Replicated*` / `Distributed`, floating-`now()` windows, queries that outlive their
    socket). A robust scheduled-query feature must address these explicitly (D3a), not
    pretend a scheduled `SELECT` is a transactional snapshot.
-5. **It must feel native.** Reuse the existing Monitoring page, RBAC, alerting channels,
-   SQL editor, and the migration test harness — not parallel systems.
+5. **It must feel native.** Reuse the existing nav/layout, RBAC, alerting channels, SQL
+   editor, the Monitoring tab pattern, and the migration test harness — not parallel
+   systems. (The surface is a new top-level `DataOps` page, but it reuses the same
+   `TabPill`/sub-tab pattern Monitoring uses.)
 
 This crosses RBAC + ClickHouse + scheduler + UI, so per [`.rules/ADR.md`](../../.rules/ADR.md)
 it warrants an ADR before implementation.
@@ -83,8 +90,9 @@ it warrants an ADR before implementation.
 | Read-only SQL validation (`node-sql-parser`) | the validation already used for the query routes (`packages/server/src/routes/query.ts`) |
 | Migration authoring + dual-dialect tests + concurrency guard | `packages/server/src/rbac/db/migrations.ts`, `migrations.test.ts`, `migrationTestHarness.ts`; `pg_advisory_lock` wrapper; `./scripts/test-migrations.sh` |
 | Permission catalog + default role grants | `packages/server/src/rbac/schema/base.ts` (`PERMISSIONS`, `DEFAULT_ROLE_PERMISSIONS`) |
-| Nav permission gating | `src/lib/navAccess.ts` (`MONITORING_ACCESS_PERMISSIONS`) |
-| Monitoring page tabs (`TabPill`, per-permission `availableTabs`) | `src/pages/Monitoring.tsx` |
+| Top-level nav entry (icon + label + permission gate) | `src/components/common/FloatingDock.tsx` (`navItems`, ~line 350) |
+| Nav permission gating pattern | `src/lib/navAccess.ts` (`MONITORING_ACCESS_PERMISSIONS` — add a parallel `DATAOPS_ACCESS_PERMISSIONS`) |
+| Page-with-sub-tabs pattern (`TabPill`, per-permission `availableTabs`) | `src/pages/Monitoring.tsx` (copy the pattern into the new `src/pages/DataOps.tsx`) |
 | Saved-query CRUD + frontend feature/API layout | `packages/server/src/routes/saved-queries.ts`, `src/features/alerting/`, `src/api/alerting.ts` |
 
 Migration HEAD is **`1.39.1`**. This feature takes migration **`1.40.0`** (it ships
@@ -98,8 +106,8 @@ Build Scheduled Queries as: a **normalized metadata schema** in the RBAC DB, an
 **in-process scheduler** (per-job atomic row lease) that **pushes a read-only SELECT down
 to ClickHouse** and optionally **materializes the result back into a destination table via
 an engine-generated, idempotent write** (D4a), a **crash-only run lifecycle** with a reaper
-and a transactional notification outbox, surfaced as a new **Monitoring → Scheduled
-Queries** tab with **Overview / Jobs / Runs** sub-tabs. The engine is generic so Data
+and a transactional notification outbox, surfaced as the first sub-tab of a new top-level
+**DataOps** page with **Overview / Jobs / Runs** sub-tabs. The engine is generic so Data
 Health and future features become *producers of jobs* rather than re-implementing the
 machinery.
 
@@ -831,17 +839,25 @@ POST   /api/scheduled-queries/preview            // builder helper (no persist):
                                                  //   CREATE/ALTER DDL preview. Requires :edit (+ :write for output)
 ```
 
-### D10 — Frontend: Monitoring → Scheduled Queries tab with sub-tabs
+### D10 — Frontend: new top-level `DataOps` page with sub-tabs
 
-- **Nav:** add a new Monitoring tab in `src/pages/Monitoring.tsx` (`TabKey` add
-  `"scheduled-queries"`, a `TAB_CONFIG` entry, route segment), add `scheduled_queries:view`
-  to `MONITORING_ACCESS_PERMISSIONS` in `src/lib/navAccess.ts` and to the page's
-  `availableTabs` gating. Reuse the existing `TabPill` component.
+- **Nav:** add a new top-level **`DataOps`** entry to `navItems` in
+  `src/components/common/FloatingDock.tsx` (~line 350, beside `Monitoring`) — icon + label
+  `"DataOps"` + route `/dataops`, gated on a new `canViewDataOps` derived from a
+  `DATAOPS_ACCESS_PERMISSIONS` set in `src/lib/navAccess.ts` (parallel to
+  `MONITORING_ACCESS_PERMISSIONS`; phase-1 membership = `scheduled_queries:view`). Add the
+  `/dataops/:sub?` route in `src/App.tsx` and a new page `src/pages/DataOps.tsx` that copies
+  the Monitoring `TabPill` + per-permission `availableTabs` pattern.
+- **DataOps is a category home, not a one-feature page.** Phase 1 ships the **Scheduled
+  Queries** sub-tab (group: Overview / Jobs / Runs); **Data Health** (ADR 0001) is intended
+  to move from "Monitoring → Data Health" to a sibling sub-tab here when built (see
+  Consequences). This keeps the page from launching as a lonely single tab and gives future
+  data-quality/observability features an obvious home.
 - **Feature dir:** `src/features/scheduled-queries/`. Data via TanStack Query
   (`useScheduledQueries`, `useScheduledQueryRuns`, `useScheduledQueriesOverview`); builder
   draft state local (`useState` / small Zustand slice); mutations invalidate query keys.
   Tests co-located.
-- **Sub-tabs** (own route segment `/monitoring/scheduled-queries/:sub?` for
+- **Sub-tabs** (own route segment `/dataops/scheduled-queries/:sub?` for
   deep-linking/back-button):
   - **Overview** (default) — KPI row (jobs enabled, **failing now**, **errored**,
     last-24h run count), **pass-rate trend** (group `scheduled_query_runs` by day), and
@@ -932,9 +948,13 @@ required):
 - **Scheduled rollups/ETL without raw write SQL:** materialize (append/replace/upsert,
   D4a) is engine-generated and idempotent, with a schema contract (D4c) that surfaces drift
   instead of silently mis-populating a table.
-- Reuses alerting channels, RBAC, the SQL editor, Monitoring tabs, and the migration
-  harness — and becomes the backbone Data Health later compiles onto (no duplicate
-  scheduler).
+- Reuses alerting channels, RBAC, the SQL editor, the Monitoring tab pattern, and the
+  migration harness — and becomes the backbone Data Health later compiles onto (no
+  duplicate scheduler).
+- Establishes a **`DataOps` home** for user-defined data jobs / data observability, keeping
+  `Monitoring` focused on cluster/infra health. Data Health (ADR 0001) should move here as a
+  sibling sub-tab when built (its "Monitoring → Data Health" placement in ADR 0001 is
+  superseded by this; behavior unchanged, only the nav location).
 
 **Harder / accepted trade-offs:**
 
@@ -1041,9 +1061,11 @@ required):
    + destination `INSERT`/`ALTER` check for `output_mode<>'none'`** (D4a/D8), and `{{…}}`
    token validation (D3b); mount in `routes/index.ts`.
 5. Client `src/api/scheduledQueries.ts` + hooks (+ tests).
-6. Frontend `src/features/scheduled-queries/` — Overview / Jobs (builder incl. the
-   write-gated **Output section**: mode + destination + `partitionExpr`) / Runs; Monitoring
-   tab + `navAccess` wiring; "Schedule this query" editor entry point (D10).
+6. Frontend: new top-level **`DataOps`** page (`src/pages/DataOps.tsx` + `/dataops` route in
+   `App.tsx` + `navItems` entry in `FloatingDock.tsx` + `DATAOPS_ACCESS_PERMISSIONS` in
+   `navAccess.ts`), then `src/features/scheduled-queries/` as its first sub-tab — Overview /
+   Jobs (builder incl. the write-gated **Output section**: mode + destination +
+   `partitionExpr`) / Runs; "Schedule this query" editor entry point (D10).
 7. HA startup guardrail (SQLite + `CHOUSE_HA` → warning) (D11).
 8. Changelog fragment `changelogs/unreleased/<pr>-scheduled-queries.md` (`type: minor`).
 9. Lint, typecheck, `bunx vitest run`, `./scripts/test-isolated-server.sh`,
