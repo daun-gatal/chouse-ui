@@ -346,21 +346,42 @@ export async function getRun(runId: string): Promise<ScheduledQueryRunRow | null
   return rows[0] ? toRunRow(rows[0]) : null;
 }
 
-export async function listRuns(opts: {
+export interface RunFilter {
   queryId?: string;
   status?: SqStatus;
-  limit: number;
-  offset: number;
-}): Promise<ScheduledQueryRunRow[]> {
+  /** Inclusive lower bound on started_at (ms). */
+  from?: number;
+  /** Exclusive upper bound on started_at (ms). */
+  to?: number;
+}
+
+function runWhere(f: RunFilter): ReturnType<typeof sql> {
   const conds = [sql`1 = 1`];
-  if (opts.queryId) conds.push(sql`query_id = ${opts.queryId}`);
-  if (opts.status) conds.push(sql`status = ${opts.status}`);
-  const where = sql.join(conds, sql` AND `);
+  if (f.queryId) conds.push(sql`query_id = ${f.queryId}`);
+  if (f.status) conds.push(sql`status = ${f.status}`);
+  if (f.from != null) conds.push(sql`started_at >= ${f.from}`);
+  if (f.to != null) conds.push(sql`started_at < ${f.to}`);
+  return sql.join(conds, sql` AND `);
+}
+
+export async function listRuns(opts: RunFilter & { limit: number; offset: number }): Promise<ScheduledQueryRunRow[]> {
+  const where = runWhere(opts);
   const rows = await all(sql`
     SELECT * FROM scheduled_query_runs WHERE ${where}
     ORDER BY started_at DESC LIMIT ${opts.limit} OFFSET ${opts.offset}
   `);
   return rows.map(toRunRow);
+}
+
+/** Delete runs (and their outbox rows) matching a filter; returns the count. */
+export async function deleteRuns(f: RunFilter): Promise<number> {
+  const where = runWhere(f);
+  const countRows = await all(sql`SELECT COUNT(*) AS c FROM scheduled_query_runs WHERE ${where}`);
+  const count = Number(countRows[0]?.c ?? 0);
+  if (count === 0) return 0;
+  await run(sql`DELETE FROM scheduled_query_outbox WHERE run_id IN (SELECT id FROM scheduled_query_runs WHERE ${where})`);
+  await run(sql`DELETE FROM scheduled_query_runs WHERE ${where}`);
+  return count;
 }
 
 export async function countRunsForSlot(queryId: string, slotAt: number): Promise<number> {

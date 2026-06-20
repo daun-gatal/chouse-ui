@@ -217,6 +217,31 @@ function bodyToInput(body: JobBody): store.JobInput {
   };
 }
 
+/** Build a run filter (status / time-range / older-than-N-days) from the query. */
+function runFilterFromQuery(c: Context, queryId: string): store.RunFilter {
+  const status = c.req.query("status");
+  const fromRaw = c.req.query("from");
+  const toRaw = c.req.query("to");
+  const olderThanDays = c.req.query("olderThanDays");
+  const num = (v: string | undefined): number | undefined => {
+    const n = v != null ? Number(v) : NaN;
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const filter: store.RunFilter = { queryId };
+  if (status) filter.status = status as store.RunFilter["status"];
+  const from = num(fromRaw);
+  if (from != null) filter.from = from;
+  const days = num(olderThanDays);
+  if (days != null && days > 0) {
+    // Delete/keep window: everything strictly older than (now - N days).
+    filter.to = Date.now() - days * 24 * 60 * 60 * 1000;
+  } else {
+    const to = num(toRaw);
+    if (to != null) filter.to = to;
+  }
+  return filter;
+}
+
 async function toJobResponse(job: ScheduledQueryRow, includeLastRun: boolean): Promise<Record<string, unknown>> {
   const channelIds = await store.getJobChannelIds(job.id);
   const base: Record<string, unknown> = { ...job, channelIds };
@@ -307,13 +332,8 @@ scheduledQueries.get("/:id/runs", requirePermission(PERMISSIONS.SCHEDULED_QUERIE
   await loadVisibleJob(c, id); // 404 if the job isn't visible to this user
   const limit = Math.min(200, Math.max(1, parseInt(c.req.query("limit") ?? "50", 10) || 50));
   const offset = Math.max(0, parseInt(c.req.query("offset") ?? "0", 10) || 0);
-  const statusParam = c.req.query("status");
-  const runs = await store.listRuns({
-    queryId: id,
-    status: statusParam as never,
-    limit,
-    offset,
-  });
+  const filter = runFilterFromQuery(c, id);
+  const runs = await store.listRuns({ ...filter, limit, offset });
   return ok(c, { runs });
 });
 
@@ -322,6 +342,21 @@ scheduledQueries.get("/runs/:runId", requirePermission(PERMISSIONS.SCHEDULED_QUE
   if (!run) throw AppError.notFound("Run not found");
   await loadVisibleJob(c, run.queryId); // 404 if the parent job isn't visible
   return ok(c, { run });
+});
+
+// Delete runs for a job by status / time-range / "older than N days" — like the
+// Audit Logs prune. Deleting history is a delete operation (+ ownership check).
+scheduledQueries.delete("/:id/runs", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_DELETE), async (c) => {
+  const id = c.req.param("id");
+  await loadVisibleJob(c, id);
+  const filter = runFilterFromQuery(c, id);
+  const deleted = await store.deleteRuns(filter);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), {
+    resourceType: "scheduled_query",
+    resourceId: id,
+    details: { deletedRuns: deleted },
+  });
+  return ok(c, { deleted });
 });
 
 // --- preview (builder helper) -----------------------------------------------

@@ -4,12 +4,17 @@
  * substituted window params. House tokens only.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileSearch } from "lucide-react";
+import { toast } from "sonner";
+import { FileSearch, Calendar as CalendarIcon, Trash2 } from "lucide-react";
+import { format, startOfDay, endOfDay, subDays } from "date-fns";
 
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -17,10 +22,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
-import type { ScheduledQueryRun, SqStatus } from "@/api/scheduledQueries";
-import { useScheduledQueries, useScheduledQueryRuns, useJobOwners } from "./hooks";
+import type { RunQuery, ScheduledQueryRun, SqStatus } from "@/api/scheduledQueries";
+import { useScheduledQueries, useScheduledQueryRuns, useJobOwners, useDeleteRuns } from "./hooks";
 import { StatusBadge, formatTime, formatDuration } from "./lib";
 import { TablePagination } from "./TablePagination";
 
@@ -89,16 +104,22 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
   const { hasPermission } = useRbacStore();
   const canViewLogs = hasPermission(RBAC_PERMISSIONS.LOGS_VIEW);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
+  const canDelete = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_DELETE);
   const openInLogs = (queryId: string) => navigate(`/monitoring/logs?q=${encodeURIComponent(queryId)}`);
   const { options: ownerOptions } = useJobOwners(jobs, canViewAll);
+  const deleteRunsMut = useDeleteRuns();
   const [jobId, setJobId] = useState<string>("");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [status, setStatus] = useState<SqStatus | "all">("all");
+  const [dateRange, setDateRange] = useState<{ start?: Date; end?: Date }>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<string>("filters");
 
   const jobOptions = (jobs ?? []).filter((j) => ownerFilter === "all" || j.createdBy === ownerFilter);
+  const selectedJob = jobOptions.find((j) => j.id === jobId);
 
   // If the selected job no longer matches the owner filter, drop to the first match.
   useEffect(() => {
@@ -110,9 +131,40 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
     if (!jobId || !jobOptions.some((j) => j.id === jobId)) setJobId(jobOptions[0].id);
   }, [selectedJobId, jobOptions, jobId]);
 
-  const { data: runs, isLoading } = useScheduledQueryRuns(jobId, status === "all" ? undefined : status, Boolean(jobId));
+  const from = dateRange.start ? startOfDay(dateRange.start).getTime() : undefined;
+  const to = dateRange.end ? endOfDay(dateRange.end).getTime() : undefined;
 
-  useEffect(() => setPage(1), [jobId, status, pageSize]);
+  const { data: runs, isLoading } = useScheduledQueryRuns(
+    jobId,
+    { status: status === "all" ? undefined : status, from, to },
+    Boolean(jobId),
+  );
+
+  useEffect(() => setPage(1), [jobId, status, from, to, pageSize]);
+
+  const handleDelete = async () => {
+    const opts: RunQuery =
+      deleteScope === "filters"
+        ? { status: status === "all" ? undefined : status, from, to }
+        : deleteScope === "all"
+          ? {}
+          : { olderThanDays: Number(deleteScope) };
+    try {
+      const deleted = await deleteRunsMut.mutateAsync({ id: jobId, opts });
+      toast.success(`Deleted ${deleted} run(s)`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleteOpen(false);
+    }
+  };
+
+  const dateLabel = useMemo(() => {
+    if (!dateRange.start) return "Date range";
+    if (dateRange.end && format(dateRange.start, "MMM d") !== format(dateRange.end, "MMM d"))
+      return `${format(dateRange.start, "MMM d")} – ${format(dateRange.end, "MMM d, yyyy")}`;
+    return format(dateRange.start, "MMM d, yyyy");
+  }, [dateRange]);
 
   const total = runs?.length ?? 0;
   const pageRuns = (runs ?? []).slice((page - 1) * pageSize, page * pageSize);
@@ -144,6 +196,48 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
             <SelectItem value="running">Running</SelectItem>
           </SelectContent>
         </Select>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 text-paper hover:border-ink-700 hover:bg-ink-200">
+              <CalendarIcon className="h-3.5 w-3.5 text-paper-dim" />
+              {dateLabel}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto rounded-xs border border-ink-500 bg-ink-100 p-0" align="start">
+            <div className="flex">
+              <div className="flex w-36 flex-col gap-1 border-r border-ink-500 bg-ink-200 p-3">
+                <p className="mb-1 px-2 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-dim">Presets</p>
+                {[
+                  { label: "Last 7 days", v: () => ({ start: subDays(new Date(), 7), end: new Date() }) },
+                  { label: "Last 30 days", v: () => ({ start: subDays(new Date(), 30), end: new Date() }) },
+                  { label: "Last 90 days", v: () => ({ start: subDays(new Date(), 90), end: new Date() }) },
+                ].map((p) => (
+                  <Button key={p.label} variant="ghost" size="sm" className="h-8 w-full justify-start rounded-xs font-mono text-[11px] uppercase tracking-[0.12em] text-paper-muted hover:bg-ink-100 hover:text-paper" onClick={() => setDateRange(p.v())}>
+                    {p.label}
+                  </Button>
+                ))}
+                <Button variant="ghost" size="sm" className="mt-1 h-8 w-full justify-start rounded-xs font-mono text-[11px] uppercase tracking-[0.12em] text-red-500 hover:text-red-700 dark:text-red-400" onClick={() => setDateRange({})}>
+                  Clear
+                </Button>
+              </div>
+              <div className="p-3">
+                <Calendar
+                  mode="range"
+                  selected={{ from: dateRange.start, to: dateRange.end }}
+                  onSelect={(r) => setDateRange({ start: r?.from, end: r?.to })}
+                  initialFocus
+                />
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {canDelete && jobId && (
+          <Button variant="outline" className="h-9 gap-2 rounded-xs border-ink-500 px-3 text-red-600 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-950/40" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="h-3.5 w-3.5" /> Delete runs
+          </Button>
+        )}
       </div>
 
       {!jobId ? (
@@ -203,6 +297,38 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
           <TablePagination page={page} total={total} pageSize={pageSize} rowLabel="runs" onPageChange={setPage} onPageSizeChange={setPageSize} />
         </>
       )}
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent className="rounded-xs border-ink-500 bg-ink-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete runs for "{selectedJob?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Permanently delete run history (and any pending notifications). This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Scope</p>
+            <Select value={deleteScope} onValueChange={setDeleteScope}>
+              <SelectTrigger className="h-9 rounded-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="filters">
+                  Matching current filters{status !== "all" ? ` · ${status}` : ""}{dateRange.start ? ` · ${dateLabel}` : ""}
+                </SelectItem>
+                <SelectItem value="7">Older than 7 days</SelectItem>
+                <SelectItem value="30">Older than 30 days</SelectItem>
+                <SelectItem value="90">Older than 90 days</SelectItem>
+                <SelectItem value="all">All runs for this job</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleteRunsMut.isPending} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

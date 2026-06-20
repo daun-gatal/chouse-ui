@@ -9,12 +9,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { rbacUsersApi } from "@/api/rbac";
 import {
   createScheduledQuery,
+  deleteRuns,
   deleteScheduledQuery,
   getOverview,
   listRuns,
   listScheduledQueries,
   runScheduledQuery,
   updateScheduledQuery,
+  type RunQuery,
   type ScheduledQuery,
   type ScheduledQueryInput,
   type SqStatus,
@@ -24,7 +26,8 @@ export const sqKeys = {
   all: ["scheduled-queries"] as const,
   list: () => [...sqKeys.all, "list"] as const,
   overview: (windowDays: number) => [...sqKeys.all, "overview", windowDays] as const,
-  runs: (id: string, status?: SqStatus) => [...sqKeys.all, "runs", id, status ?? "all"] as const,
+  runs: (id: string, status?: SqStatus, from?: number, to?: number) =>
+    [...sqKeys.all, "runs", id, status ?? "all", from ?? 0, to ?? 0] as const,
 };
 
 export function useScheduledQueries() {
@@ -35,11 +38,23 @@ export function useScheduledQueriesOverview(windowDays = 14) {
   return useQuery({ queryKey: sqKeys.overview(windowDays), queryFn: () => getOverview(windowDays) });
 }
 
-export function useScheduledQueryRuns(id: string, status?: SqStatus, enabled = true) {
+export function useScheduledQueryRuns(
+  id: string,
+  opts: { status?: SqStatus; from?: number; to?: number } = {},
+  enabled = true,
+) {
   return useQuery({
-    queryKey: sqKeys.runs(id, status),
-    queryFn: () => listRuns(id, { limit: 100, status }),
+    queryKey: sqKeys.runs(id, opts.status, opts.from, opts.to),
+    queryFn: () => listRuns(id, { limit: 200, status: opts.status, from: opts.from, to: opts.to }),
     enabled: enabled && Boolean(id),
+  });
+}
+
+export function useDeleteRuns() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, opts }: { id: string; opts: RunQuery }) => deleteRuns(id, opts),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: sqKeys.all }),
   });
 }
 

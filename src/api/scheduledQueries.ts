@@ -158,17 +158,38 @@ export async function runScheduledQuery(id: string): Promise<{ run: ScheduledQue
   return api.post<{ run: ScheduledQueryRun | null }>(`/scheduled-queries/${id}/run`);
 }
 
-export async function listRuns(
-  id: string,
-  opts: { limit?: number; offset?: number; status?: SqStatus } = {},
-): Promise<ScheduledQueryRun[]> {
+export interface RunQuery {
+  limit?: number;
+  offset?: number;
+  status?: SqStatus;
+  /** Inclusive lower bound on started_at (ms). */
+  from?: number;
+  /** Exclusive upper bound on started_at (ms). */
+  to?: number;
+  /** Delete/keep window: older than N days (overrides `to`). */
+  olderThanDays?: number;
+}
+
+function runQueryString(opts: RunQuery): string {
   const params = new URLSearchParams();
   if (opts.limit) params.set("limit", String(opts.limit));
   if (opts.offset) params.set("offset", String(opts.offset));
   if (opts.status) params.set("status", opts.status);
+  if (opts.from != null) params.set("from", String(opts.from));
+  if (opts.to != null) params.set("to", String(opts.to));
+  if (opts.olderThanDays != null) params.set("olderThanDays", String(opts.olderThanDays));
   const qs = params.toString();
-  const res = await api.get<{ runs: ScheduledQueryRun[] }>(`/scheduled-queries/${id}/runs${qs ? `?${qs}` : ""}`);
+  return qs ? `?${qs}` : "";
+}
+
+export async function listRuns(id: string, opts: RunQuery = {}): Promise<ScheduledQueryRun[]> {
+  const res = await api.get<{ runs: ScheduledQueryRun[] }>(`/scheduled-queries/${id}/runs${runQueryString(opts)}`);
   return res.runs;
+}
+
+export async function deleteRuns(id: string, opts: RunQuery): Promise<number> {
+  const res = await api.delete<{ deleted: number }>(`/scheduled-queries/${id}/runs${runQueryString(opts)}`);
+  return res.deleted;
 }
 
 export async function getRun(runId: string): Promise<ScheduledQueryRun> {

@@ -100,6 +100,21 @@ doctor:
   auto_rca_cooldown_minutes: 60
 
 # ============================================
+# Scheduled Queries (DataOps) — optional
+# ============================================
+scheduled_queries:
+  # Run the in-process scheduler on this pod (true by default). Correctness comes
+  # from a per-job atomic lease, so redundant ticks across pods are harmless; set
+  # false to disable it here and run a dedicated scheduler Deployment instead.
+  enabled: true
+# High-availability signal — when SQLite is the backend and this is true (the
+# Helm chart sets it when replicas > 1), the server warns at boot that the
+# scheduler lease cannot span pods (multi-replica HA requires PostgreSQL). Maps
+# to the CHOUSE_HA env var; normally set by your orchestration:
+# chouse:
+#   ha: false
+
+# ============================================
 # SSO (OIDC / OAuth2) — optional
 # ============================================
 # Register this redirect URI at your IdP: <base_url>/auth/sso/callback
