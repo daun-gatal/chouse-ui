@@ -10,8 +10,8 @@
 > that produced it. Where it says "mirror X", read the cited file first — the existing
 > pattern is the spec for that part.
 
-> **Naming.** The user-facing feature is **Scheduled Queries**, surfaced as a sub-tab of a
-> **new top-level `DataOps` page** (a dedicated home for user-defined, scheduled data jobs
+> **Naming.** The user-facing feature is **Scheduled Queries**, surfaced as a **feature tab**
+> of a **new top-level `DataOps` page** (a dedicated home for user-defined, scheduled data jobs
 > and data observability — Scheduled Queries now, Data Health next, future data-quality/
 > freshness/report features later). `DataOps` sits beside `Monitoring` in the nav, not
 > inside it: Monitoring answers "is my *cluster* healthy?" (passive, read-only `system.*`);
@@ -106,8 +106,9 @@ Build Scheduled Queries as: a **normalized metadata schema** in the RBAC DB, an
 **in-process scheduler** (per-job atomic row lease) that **pushes a read-only SELECT down
 to ClickHouse** and optionally **materializes the result back into a destination table via
 an engine-generated, idempotent write** (D4a), a **crash-only run lifecycle** with a reaper
-and a transactional notification outbox, surfaced as the first sub-tab of a new top-level
-**DataOps** page with **Overview / Jobs / Runs** sub-tabs. The engine is generic so Data
+and a transactional notification outbox, surfaced as the first **feature tab** of a new
+top-level **DataOps** page, the Scheduled Queries tab itself having **Overview / Jobs /
+Runs** sub-tabs. The engine is generic so Data
 Health and future features become *producers of jobs* rather than re-implementing the
 machinery.
 
@@ -839,26 +840,42 @@ POST   /api/scheduled-queries/preview            // builder helper (no persist):
                                                  //   CREATE/ALTER DDL preview. Requires :edit (+ :write for output)
 ```
 
-### D10 — Frontend: new top-level `DataOps` page with sub-tabs
+### D10 — Frontend: new top-level `DataOps` page → feature tabs → per-feature sub-tabs
 
-- **Nav:** add a new top-level **`DataOps`** entry to `navItems` in
+The IA is **three levels**:
+
+```
+DataOps (top-level page)                                   /dataops
+ ├─ Scheduled Queries (feature tab, phase 1)               /dataops/scheduled-queries
+ │    ├─ Overview (sub-tab, default)                       /dataops/scheduled-queries/overview
+ │    ├─ Jobs     (sub-tab)                                /dataops/scheduled-queries/jobs
+ │    └─ Runs     (sub-tab)                                /dataops/scheduled-queries/runs
+ ├─ Data Health (feature tab, ADR 0001, later)             /dataops/data-health
+ └─ … future data-quality / observability features
+```
+
+- **Level 1 — the page & nav:** add a new top-level **`DataOps`** entry to `navItems` in
   `src/components/common/FloatingDock.tsx` (~line 350, beside `Monitoring`) — icon + label
   `"DataOps"` + route `/dataops`, gated on a new `canViewDataOps` derived from a
   `DATAOPS_ACCESS_PERMISSIONS` set in `src/lib/navAccess.ts` (parallel to
-  `MONITORING_ACCESS_PERMISSIONS`; phase-1 membership = `scheduled_queries:view`). Add the
-  `/dataops/:sub?` route in `src/App.tsx` and a new page `src/pages/DataOps.tsx` that copies
-  the Monitoring `TabPill` + per-permission `availableTabs` pattern.
-- **DataOps is a category home, not a one-feature page.** Phase 1 ships the **Scheduled
-  Queries** sub-tab (group: Overview / Jobs / Runs); **Data Health** (ADR 0001) is intended
-  to move from "Monitoring → Data Health" to a sibling sub-tab here when built (see
-  Consequences). This keeps the page from launching as a lonely single tab and gives future
-  data-quality/observability features an obvious home.
-- **Feature dir:** `src/features/scheduled-queries/`. Data via TanStack Query
+  `MONITORING_ACCESS_PERMISSIONS`; phase-1 membership = `scheduled_queries:view`, growing as
+  features land). Add the `/dataops/:feature?/:sub?` route in `src/App.tsx` and a new page
+  `src/pages/DataOps.tsx`.
+- **Level 2 — feature tabs:** `DataOps.tsx` renders a **`TabPill` bar of feature tabs**
+  (copying the Monitoring `TabPill` + per-permission `availableTabs` pattern), one per data
+  feature. **Phase 1 has a single feature tab, `Scheduled Queries`**; **Data Health** (ADR
+  0001) becomes a sibling feature tab here when built (moving off "Monitoring → Data
+  Health" — see Consequences). DataOps is a category home, not a one-feature page; this is
+  what keeps it from launching as a lonely page and gives future features an obvious slot.
+  Each feature tab is permission-gated, so a user only sees the features they can access.
+- **Level 3 — the Scheduled Queries feature** lives in `src/features/scheduled-queries/`
+  and owns its own **inner sub-tab bar** (Overview / Jobs / Runs). Data via TanStack Query
   (`useScheduledQueries`, `useScheduledQueryRuns`, `useScheduledQueriesOverview`); builder
   draft state local (`useState` / small Zustand slice); mutations invalidate query keys.
   Tests co-located.
-- **Sub-tabs** (own route segment `/dataops/scheduled-queries/:sub?` for
-  deep-linking/back-button):
+- **Sub-tabs of the Scheduled Queries feature** (route segment
+  `/dataops/scheduled-queries/:sub?`, `:sub ∈ overview|jobs|runs`, for deep-linking/
+  back-button):
   - **Overview** (default) — KPI row (jobs enabled, **failing now**, **errored**,
     last-24h run count), **pass-rate trend** (group `scheduled_query_runs` by day), and
     **top failing jobs** ranked by failure streak (consecutive failed runs). Deep-link a
@@ -1061,11 +1078,12 @@ required):
    + destination `INSERT`/`ALTER` check for `output_mode<>'none'`** (D4a/D8), and `{{…}}`
    token validation (D3b); mount in `routes/index.ts`.
 5. Client `src/api/scheduledQueries.ts` + hooks (+ tests).
-6. Frontend: new top-level **`DataOps`** page (`src/pages/DataOps.tsx` + `/dataops` route in
-   `App.tsx` + `navItems` entry in `FloatingDock.tsx` + `DATAOPS_ACCESS_PERMISSIONS` in
-   `navAccess.ts`), then `src/features/scheduled-queries/` as its first sub-tab — Overview /
+6. Frontend: new top-level **`DataOps`** page (`src/pages/DataOps.tsx` with a feature-tab
+   bar + `/dataops/:feature?/:sub?` route in `App.tsx` + `navItems` entry in
+   `FloatingDock.tsx` + `DATAOPS_ACCESS_PERMISSIONS` in `navAccess.ts`), then
+   `src/features/scheduled-queries/` as its first **feature tab** with its own Overview /
    Jobs (builder incl. the write-gated **Output section**: mode + destination +
-   `partitionExpr`) / Runs; "Schedule this query" editor entry point (D10).
+   `partitionExpr`) / Runs sub-tabs; "Schedule this query" editor entry point (D10).
 7. HA startup guardrail (SQLite + `CHOUSE_HA` → warning) (D11).
 8. Changelog fragment `changelogs/unreleased/<pr>-scheduled-queries.md` (`type: minor`).
 9. Lint, typecheck, `bunx vitest run`, `./scripts/test-isolated-server.sh`,
