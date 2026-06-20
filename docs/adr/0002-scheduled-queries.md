@@ -18,7 +18,7 @@
 > DataOps answers "are my *data jobs* running and is my *data* healthy?" (user-created,
 > action-oriented, may write data). Internal identifiers use the `sq_` / `scheduled_query`
 > prefix (tables `scheduled_queries`, `scheduled_query_runs`, `scheduled_query_channels`,
-> `scheduled_query_outbox`; RBAC permissions `scheduled_queries:view|edit|delete|run`;
+> `scheduled_query_outbox`; RBAC permissions `scheduled_queries:view|edit|delete|run|write`;
 > API prefix `/api/scheduled-queries`).
 
 > **Self-contained and independent.** This subsystem owns its **own** scheduler, lease,
@@ -479,9 +479,12 @@ Execution & bookkeeping:
   records `written_rows` from the response summary. A small display snapshot (`result_json`)
   is **optionally** produced via a separate `… LIMIT max_rows` preview only if cheap;
   otherwise `result_json` holds the write summary (mode, dest, partitions replaced).
-- **Alert conditions still apply** to materialize jobs (e.g. alert when `written_rows = 0`,
-  i.e. an empty load) — `row_count`/`scalar` conditions evaluate the SELECT's aggregate as
-  in D4; `written_rows` is also exposed as a condition source for materialize jobs.
+- **Alert conditions still apply** to materialize jobs. For `output_mode<>'none'` the
+  condition is evaluated against **`written_rows`** (the rows ClickHouse reported writing),
+  so `row_count`/`no_rows`/`rows_returned`/`scalar` map naturally onto the load — e.g.
+  `{ "type": "row_count", "operator": "eq", "value": 0 }` alerts on an **empty load**, and
+  `no_rows` ⇔ `written_rows = 0`. (For `output_mode='none'` the condition is sourced from
+  the SELECT result as in D4/D3.) Whichever is used is stored in `condition_value`.
 - **Crash safety:** a death between the staging insert and the `REPLACE PARTITION` (replace
   mode), or mid-`INSERT` (append/upsert), is reaped → the slot retries → the staging
   `TRUNCATE`+insert and the atomic replace (or the dedup-token append) make the retry
@@ -693,8 +696,9 @@ depend on shutdown handlers. State is recoverable and recovery runs on the next 
   **Manual runs are reaped but never auto-retried** (their `slot_at = now` is unique, so the
   re-open/retry logic — keyed on the scheduled slot — does not apply); a reaped manual run is
   simply left `error` for the user to re-trigger.
-- **Re-execution is safe** because probes are **read-only** — at-least-once execution has
-  no ClickHouse side effects.
+- **Re-execution is safe** because the **source read is read-only** (no side effects) and
+  any **materialize write is idempotent** (slot-scoped dedup token / atomic `REPLACE
+  PARTITION`, D4a) — so at-least-once execution converges to the same state.
 - **Push-down protects the orchestrator:** heavy work + memory live in ClickHouse
   (`max_memory_usage`, `max_result_rows`, `max_rows_to_read`), so a runaway query fails
   the *run*, not the pod.
