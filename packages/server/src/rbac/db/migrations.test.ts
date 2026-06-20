@@ -186,6 +186,34 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     // The legacy blob table is dropped once its data has been imported.
     expect(await h.tableExists("fleet_alert_config")).toBe(false);
   },
+  "1.40.0": async () => {
+    // Four scheduled-queries tables + their indexes.
+    expect(await h.tableExists("scheduled_queries")).toBe(true);
+    expect(await h.tableExists("scheduled_query_runs")).toBe(true);
+    expect(await h.tableExists("scheduled_query_channels")).toBe(true);
+    expect(await h.tableExists("scheduled_query_outbox")).toBe(true);
+    expect(await h.columnExists("scheduled_queries", "output_mode")).toBe(true);
+    expect(await h.columnExists("scheduled_queries", "last_run_at")).toBe(true);
+    expect(await h.columnExists("scheduled_query_runs", "slot_at")).toBe(true);
+    expect(await h.columnExists("scheduled_query_runs", "written_rows")).toBe(true);
+    expect(await h.columnExists("scheduled_query_outbox", "dedup_key")).toBe(true);
+    expect(await h.indexExists("sq_enabled_idx")).toBe(true);
+    expect(await h.indexExists("sq_runs_status_idx")).toBe(true);
+    expect(await h.indexExists("sq_outbox_dedup_idx")).toBe(true);
+    // Permissions seeded and granted to super_admin + admin (write + view_all included).
+    for (const p of [
+      "scheduled_queries:view",
+      "scheduled_queries:edit",
+      "scheduled_queries:delete",
+      "scheduled_queries:run",
+      "scheduled_queries:write",
+      "scheduled_queries:view_all",
+    ]) {
+      expect(await h.permissionExists(p)).toBe(true);
+      expect(await h.roleHasPermission("super_admin", p)).toBe(true);
+      expect(await h.roleHasPermission("admin", p)).toBe(true);
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------

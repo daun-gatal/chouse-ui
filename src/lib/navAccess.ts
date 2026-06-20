@@ -69,3 +69,12 @@ export const EXPLORER_ACCESS_PERMISSIONS: string[] = [
   RBAC_PERMISSIONS.DB_VIEW,
   RBAC_PERMISSIONS.TABLE_VIEW,
 ];
+
+/**
+ * Having ANY of these reveals the DataOps page (route + nav entry). DataOps is a
+ * category home for user-defined, scheduled data jobs and data observability;
+ * phase-1 membership is the Scheduled Queries feature, growing as features land.
+ */
+export const DATAOPS_ACCESS_PERMISSIONS: string[] = [
+  RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW,
+];

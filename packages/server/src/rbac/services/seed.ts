@@ -142,6 +142,14 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.ALERTING_EDIT,
     PERMISSIONS.ALERTING_DELETE,
   ],
+  'Scheduled Queries': [
+    PERMISSIONS.SCHEDULED_QUERIES_VIEW,
+    PERMISSIONS.SCHEDULED_QUERIES_EDIT,
+    PERMISSIONS.SCHEDULED_QUERIES_DELETE,
+    PERMISSIONS.SCHEDULED_QUERIES_RUN,
+    PERMISSIONS.SCHEDULED_QUERIES_WRITE,
+    PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL,
+  ],
 };
 
 // Human-readable permission names
@@ -219,6 +227,12 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.ALERTING_VIEW]: 'View Alerting Configuration',
   [PERMISSIONS.ALERTING_EDIT]: 'Edit Alerting Configuration',
   [PERMISSIONS.ALERTING_DELETE]: 'Delete Alerting Configuration',
+  [PERMISSIONS.SCHEDULED_QUERIES_VIEW]: 'View Scheduled Queries',
+  [PERMISSIONS.SCHEDULED_QUERIES_EDIT]: 'Create and Edit Scheduled Queries',
+  [PERMISSIONS.SCHEDULED_QUERIES_DELETE]: 'Delete Scheduled Queries',
+  [PERMISSIONS.SCHEDULED_QUERIES_RUN]: 'Manually Run Scheduled Queries',
+  [PERMISSIONS.SCHEDULED_QUERIES_WRITE]: 'Create Materialize Scheduled Queries',
+  [PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL]: 'View and Act on All Scheduled Queries',
 };
 
 // Role display names and descriptions

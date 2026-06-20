@@ -61,7 +61,7 @@ import {
 } from "@/hooks/useMonitoringTimeline";
 import { QueryHistogramChart } from "@/components/monitoring/QueryHistogramChart";
 import { useRbacStore, RBAC_PERMISSIONS, useWorkspaceStore, genTabId } from "@/stores";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn, formatCompactNumber } from "@/lib/utils";
 import { DataControls } from "@/components/common/DataControls";
 import {
@@ -142,14 +142,18 @@ function processLogs(
     }
   });
 
-  const searchByQueryId = searchTerm && searchTerm.trim().length > 0;
+  const searchLower = searchTerm?.toLowerCase().trim() ?? "";
+  const searchByQueryId = searchLower.length > 0;
+  // A full query_id (UUID-shaped, ≥32 hex/dash chars) is matched EXACTLY — so a
+  // deep-link to one run doesn't also pull its derived sub-query ids (e.g. a
+  // materialize run's `<id>_staging`, `<id>_replace_…`), which share the prefix.
+  const isFullQueryId = searchLower.length >= 32 && /^[0-9a-f-]+$/.test(searchLower);
   const matchingQueryIds = new Set<string>();
   if (searchByQueryId) {
-    const searchLower = searchTerm.toLowerCase().trim();
     logs.forEach((log) => {
       if (log.query_id) {
         const idLower = log.query_id.toLowerCase();
-        if (idLower === searchLower || idLower.includes(searchLower)) {
+        if (isFullQueryId ? idLower === searchLower : idLower === searchLower || idLower.includes(searchLower)) {
           matchingQueryIds.add(log.query_id);
         }
       }
@@ -158,13 +162,14 @@ function processLogs(
 
   const filtered = logs.filter((log) => {
     const matchesIdSearch = searchByQueryId && matchingQueryIds.has(log.query_id);
-    const matchesSearch =
-      matchesIdSearch ||
-      !searchTerm ||
-      log.query?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.query_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.user?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.rbacUser?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = isFullQueryId
+      ? matchesIdSearch
+      : matchesIdSearch ||
+        !searchTerm ||
+        log.query?.toLowerCase().includes(searchLower) ||
+        log.query_id?.toLowerCase().includes(searchLower) ||
+        log.user?.toLowerCase().includes(searchLower) ||
+        log.rbacUser?.toLowerCase().includes(searchLower);
     const matchesType = logType === "all" || log.type === logType;
 
     let matchesRole = true;
@@ -327,8 +332,20 @@ export default function LogsPage({
   const [pageSize, setPageSize] = useState(defaultLimit);
   useEffect(() => setPageSize(defaultLimit), [defaultLimit]);
 
-  const [searchTerm, setSearchTerm] = useState(logsPrefs.defaultSearchQuery || "");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("q") || logsPrefs.defaultSearchQuery || "");
   const [logType, setLogType] = useState<string>(logsPrefs.defaultLogType || "all");
+
+  // Deep-link: `?q=<query_id>` (e.g. from a Scheduled Query run) seeds the search
+  // and auto-applies, then the param is cleared so refresh/back doesn't re-trigger.
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (!q) return;
+    setSearchTerm(q);
+    const next = new URLSearchParams(searchParams);
+    next.delete("q");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [internalAutoRefresh, setInternalAutoRefresh] = useState(logsPrefs.autoRefresh || false);
 
   const autoRefresh = embedded ? externalAutoRefresh : internalAutoRefresh;

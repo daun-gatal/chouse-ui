@@ -43,7 +43,12 @@ export class ClickHouseService {
   }
 
   private get client(): ClickHouseClient {
-    return ClientManager.getInstance().getClient(this.config);
+    // Tag every query this service runs with the RBAC user so query_log
+    // attributes them to the app user, not just the bare ClickHouse user.
+    const logComment = this.rbacUserId
+      ? JSON.stringify({ rbac_user_id: this.rbacUserId })
+      : undefined;
+    return ClientManager.getInstance().getClient(this.config, logComment);
   }
 
   /** The connection's default database (used to resolve unqualified table refs). */

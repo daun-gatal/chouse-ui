@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Database,
   Activity,
+  Workflow,
   Stethoscope,
   Shield,
   Settings,
@@ -38,6 +39,7 @@ import {
   ADMIN_ACCESS_PERMISSIONS,
   MONITORING_ACCESS_PERMISSIONS,
   EXPLORER_ACCESS_PERMISSIONS,
+  DATAOPS_ACCESS_PERMISSIONS,
 } from "@/lib/navAccess";
 import { motion, useDragControls, PanInfo, AnimatePresence } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
@@ -339,6 +341,8 @@ export default function FloatingDock() {
 
   const canViewMonitoring = hasAnyPermission(MONITORING_ACCESS_PERMISSIONS);
 
+  const canViewDataOps = hasAnyPermission(DATAOPS_ACCESS_PERMISSIONS);
+
   const canViewAdmin = hasAnyPermission(ADMIN_ACCESS_PERMISSIONS);
 
   const canViewExplorer = hasAnyPermission(EXPLORER_ACCESS_PERMISSIONS);
@@ -352,6 +356,7 @@ export default function FloatingDock() {
     { icon: LayoutDashboard, label: "Home", to: "/overview" },
     ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer" }] : []),
     ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring" }] : []),
+    ...(canViewDataOps ? [{ icon: Workflow, label: "DataOps", to: "/dataops" }] : []),
     ...(canViewAdmin ? [{ icon: Shield, label: "Admin", to: "/admin" }] : []),
     { icon: UserCog, label: "Preferences", to: "/preferences" },
   ];

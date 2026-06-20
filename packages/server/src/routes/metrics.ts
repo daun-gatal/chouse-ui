@@ -116,7 +116,7 @@ async function metricsAuthMiddleware(c: Context<{ Variables: Variables }>, next:
         username: connection.username,
         password: connection.password || "",
         database: connection.database || undefined,
-      });
+      }, { rbacUserId });
 
       // Validating connection via ping is skipped for performance.
       // If the connection is invalid, subsequent queries will fail properly.

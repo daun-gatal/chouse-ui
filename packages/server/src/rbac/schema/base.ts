@@ -150,6 +150,16 @@ export const PERMISSIONS = {
   ALERTING_VIEW: 'alerting:view',
   ALERTING_EDIT: 'alerting:edit',
   ALERTING_DELETE: 'alerting:delete',
+
+  // Scheduled Queries (DataOps — scheduled read-only SELECTs + materialize)
+  SCHEDULED_QUERIES_VIEW: 'scheduled_queries:view',
+  SCHEDULED_QUERIES_EDIT: 'scheduled_queries:edit',
+  SCHEDULED_QUERIES_DELETE: 'scheduled_queries:delete',
+  SCHEDULED_QUERIES_RUN: 'scheduled_queries:run',
+  SCHEDULED_QUERIES_WRITE: 'scheduled_queries:write',
+  // Cross-owner visibility: see and act on ALL jobs (per the action perms above).
+  // Without it, scheduled_queries:* is scoped to the jobs the user created.
+  SCHEDULED_QUERIES_VIEW_ALL: 'scheduled_queries:view_all',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -221,6 +231,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SSO_VIEW,
     PERMISSIONS.ALERTING_VIEW,
     PERMISSIONS.ALERTING_EDIT,
+    PERMISSIONS.SCHEDULED_QUERIES_VIEW,
+    PERMISSIONS.SCHEDULED_QUERIES_EDIT,
+    PERMISSIONS.SCHEDULED_QUERIES_DELETE,
+    PERMISSIONS.SCHEDULED_QUERIES_RUN,
+    PERMISSIONS.SCHEDULED_QUERIES_WRITE,
+    PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -456,6 +472,12 @@ export const AUDIT_ACTIONS = {
   ALERTING_CHANNEL_DELETE: 'alerting.channel_delete',
   ALERTING_CHANNEL_TEST: 'alerting.channel_test',
   ALERTING_EVENTS_CLEAR: 'alerting.events_clear',
+
+  // Scheduled Queries (DataOps)
+  SCHEDULED_QUERY_CREATE: 'scheduled_query.create',
+  SCHEDULED_QUERY_UPDATE: 'scheduled_query.update',
+  SCHEDULED_QUERY_DELETE: 'scheduled_query.delete',
+  SCHEDULED_QUERY_RUN: 'scheduled_query.run',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

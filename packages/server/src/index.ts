@@ -319,6 +319,23 @@ initializeRbac().then(async () => {
   // is enabled in the UI; cheap to run (checks a config file every 60s).
   const { DoctorScheduler } = await import("./services/doctorScheduler");
   DoctorScheduler.getInstance().start();
+  // Scheduled Queries (DataOps) — opt-in via SCHEDULED_QUERIES_ENABLED (defaults
+  // on; set to "false" to run a dedicated scheduler Deployment instead). The
+  // per-job atomic lease makes redundant ticks across pods harmless.
+  if (process.env.SCHEDULED_QUERIES_ENABLED !== "false") {
+    // HA guardrail: the lease only spans pods on a SHARED database. SQLite gives
+    // each pod its own file, so under HA every pod would run every job. Warn
+    // loudly (not refuse) so single-node SQLite installs are untouched.
+    const { getDatabaseType } = await import("./rbac/db");
+    if (getDatabaseType() === "sqlite" && process.env.CHOUSE_HA === "true") {
+      logger.error(
+        { phase: "startup", module: "ScheduledQueries" },
+        "SCHEDULED_QUERIES + SQLite + CHOUSE_HA=true: the scheduler lease cannot span pods on SQLite — every replica will run every job (duplicate runs + notifications). Use PostgreSQL for HA, or run a single replica.",
+      );
+    }
+    const { ScheduledQueryScheduler } = await import("./services/scheduledQueries/scheduler");
+    ScheduledQueryScheduler.getInstance().start();
+  }
   // Warm the SSO config so the provider summary (or a config error) is logged
   // at boot rather than lazily on the first login request. Isolated so an SSO
   // misconfiguration can't take down the rest of startup.
@@ -374,6 +391,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
       await FleetPoller.getInstance().stop();
     } catch (error) {
       logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Fleet poller stop failed");
+    }
+
+    // Stop claiming new scheduled-query slots. Anything in flight that can't be
+    // drained falls back to the crash-only reaper on another pod's next tick.
+    try {
+      const { ScheduledQueryScheduler } = await import("./services/scheduledQueries/scheduler");
+      ScheduledQueryScheduler.getInstance().stop();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Scheduled-query scheduler stop failed");
     }
 
     const { getSessionCount, cleanupExpiredSessions } = await import('./services/clickhouse');

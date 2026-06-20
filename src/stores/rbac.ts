@@ -521,6 +521,14 @@ export const RBAC_PERMISSIONS = {
   ALERTING_VIEW: 'alerting:view',
   ALERTING_EDIT: 'alerting:edit',
   ALERTING_DELETE: 'alerting:delete',
+
+  // Scheduled Queries (DataOps)
+  SCHEDULED_QUERIES_VIEW: 'scheduled_queries:view',
+  SCHEDULED_QUERIES_EDIT: 'scheduled_queries:edit',
+  SCHEDULED_QUERIES_DELETE: 'scheduled_queries:delete',
+  SCHEDULED_QUERIES_RUN: 'scheduled_queries:run',
+  SCHEDULED_QUERIES_WRITE: 'scheduled_queries:write',
+  SCHEDULED_QUERIES_VIEW_ALL: 'scheduled_queries:view_all',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

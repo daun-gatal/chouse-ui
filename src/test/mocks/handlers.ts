@@ -337,6 +337,68 @@ export const handlers = [
     });
   }),
 
+  // Scheduled Queries (DataOps)
+  http.get(`${API_BASE}/scheduled-queries`, () => {
+    return HttpResponse.json({
+      success: true,
+      data: {
+        jobs: [
+          {
+            id: 'sq-1',
+            name: 'errors_last_hour',
+            connectionId: 'conn-1',
+            query: 'SELECT count() FROM errors',
+            enabled: true,
+            frequency: 'daily',
+            outputMode: 'none',
+            channelIds: ['ch-1'],
+            lastRun: { id: 'run-1', status: 'success', startedAt: 1700000000000 },
+          },
+        ],
+      },
+    });
+  }),
+  http.get(`${API_BASE}/scheduled-queries/overview`, () => {
+    return HttpResponse.json({
+      success: true,
+      data: {
+        kpis: {
+          totalJobs: 2, enabledJobs: 1, disabledJobs: 1, failing: 0, healthy: 1, neverRun: 1,
+          runsLast24h: 3, runsWindow: 3, successRateWindow: 100, avgDurationMs: 1200, materializeJobs: 0, alertingJobs: 1,
+        },
+        byCadence: { daily: 1, weekly: 0, monthly: 0, cron: 0, manual: 1 },
+        byOutputMode: { none: 2, append: 0, replace: 0, upsert: 0 },
+        byLastStatus: { success: 1, failing: 0, running: 0, never: 1 },
+        upcoming: [{ id: 'sq-1', name: 'errors_last_hour', nextRunAt: 1700000600000 }],
+        topFailing: [],
+      },
+    });
+  }),
+  http.post(`${API_BASE}/scheduled-queries/preview`, async ({ request }) => {
+    const body = (await request.json()) as { query?: string };
+    const valid = Boolean(body.query && /select/i.test(body.query));
+    return HttpResponse.json({
+      success: true,
+      data: { readOnly: { ok: valid, error: valid ? undefined : 'not a select', tokens: [] }, nextFireTimes: [1700000000000] },
+    });
+  }),
+  http.post(`${API_BASE}/scheduled-queries/:id/run`, () => {
+    return HttpResponse.json({ success: true, data: { run: { id: 'run-2', status: 'success', startedAt: 1700000100000 } } });
+  }),
+  http.get(`${API_BASE}/scheduled-queries/:id/runs`, () => {
+    return HttpResponse.json({
+      success: true,
+      data: { runs: [{ id: 'run-1', queryId: 'sq-1', status: 'success', trigger: 'scheduled', startedAt: 1700000000000 }] },
+    });
+  }),
+  http.post(`${API_BASE}/scheduled-queries`, async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json({ success: true, data: { id: 'sq-new', ...body, channelIds: body.channelIds ?? [] } }, { status: 201 });
+  }),
+  http.delete(`${API_BASE}/scheduled-queries/:id`, () => {
+    return HttpResponse.json({ success: true, data: { success: true } });
+  }),
+
   // Default 404
   http.all('*', ({ request }) => {
     console.warn(`Unhandled: ${request.method} ${request.url}`);

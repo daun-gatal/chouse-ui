@@ -97,7 +97,7 @@
     },
     "packages/server": {
       "name": "@chouseui/server",
-      "version": "3.2.0",
+      "version": "3.6.1",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.44",
         "@ai-sdk/google": "^3.0.29",
@@ -109,6 +109,7 @@
         "@node-saml/node-saml": "^5.1.0",
         "@xmldom/xmldom": "^0.9.10",
         "ai": "^6.0.86",
+        "croner": "^10.0.1",
         "drizzle-orm": "^0.38.3",
         "hono": "^4.11.4",
         "hono-rate-limiter": "^0.5.3",
@@ -878,6 +879,8 @@
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
 
     "cookie": ["cookie@1.1.1", "", {}, "sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ=="],
+
+    "croner": ["croner@10.0.1", "", {}, "sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g=="],
 
     "cross-spawn": ["cross-spawn@7.0.6", "", { "dependencies": { "path-key": "^3.1.0", "shebang-command": "^2.0.0", "which": "^2.0.1" } }, "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="],
 

@@ -33,8 +33,8 @@ export class ClientManager {
     /**
      * Get an existing client or create a new one for the given configuration
      */
-    public getClient(config: ConnectionConfig): ClickHouseClient {
-        const key = this.getConfigKey(config);
+    public getClient(config: ConnectionConfig, logComment?: string): ClickHouseClient {
+        const key = this.getConfigKey(config, logComment);
         const entry = this.clients.get(key);
 
         if (entry) {
@@ -44,17 +44,24 @@ export class ClientManager {
 
         logger.debug({ module: "ClientManager" }, "No existing client found, creating new one");
 
+        // A client-level `log_comment` default tags EVERY query this client runs
+        // (ping, version, system.* reads, etc.) — not just the few that set it
+        // per-call — so query_log attributes them to the RBAC user, not the bare
+        // ClickHouse user. Per-query `log_comment` still overrides this default.
+        const baseSettings: Record<string, unknown> = {
+            max_result_rows: "10000",
+            max_result_bytes: "10000000",
+            result_overflow_mode: "break",
+        };
+        if (logComment) baseSettings.log_comment = logComment;
+
         const client = this.clientFactory({
             url: config.url,
             username: config.username,
             password: config.password || "",
             database: config.database,
             request_timeout: 300000,
-            clickhouse_settings: {
-                max_result_rows: "10000",
-                max_result_bytes: "10000000",
-                result_overflow_mode: "break",
-            } as ClickHouseSettings,
+            clickhouse_settings: baseSettings as ClickHouseSettings,
         });
 
         this.clients.set(key, {
@@ -115,13 +122,14 @@ export class ClientManager {
     /**
      * Generate a unique key for the connection configuration
      */
-    private getConfigKey(config: ConnectionConfig): string {
+    private getConfigKey(config: ConnectionConfig, logComment?: string): string {
         // Sort keys to ensure consistent order
         return JSON.stringify({
             url: config.url,
             u: config.username,
             p: config.password, // Include password in key to isolate different users
             d: config.database,
+            c: logComment, // Isolate clients per RBAC actor so log_comment is correct
         });
     }
 
