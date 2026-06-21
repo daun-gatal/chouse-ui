@@ -323,6 +323,17 @@ describe("RBAC SSO Admin Routes", () => {
       expect(JSON.stringify(details)).not.toContain("supersecret");
     });
 
+    it("persists multiple role mappings (multi-group is allowed; login fails closed on overlap)", async () => {
+      const res = await app.request("/sso-admin/providers", {
+        method: "POST",
+        headers: JSON_AUTH,
+        body: JSON.stringify({ ...validBody, id: "multi-map", roleMappingClaim: "groups", roleMapping: "admins:admin,devs:developer" }),
+      });
+      expect(res.status).toBe(201);
+      const arg = mockCreateDbProvider.mock.calls.at(-1)![0] as unknown as { roleMapping?: string };
+      expect(arg.roleMapping).toBe("admins:admin,devs:developer");
+    });
+
     it("persists auth_params passed in the body", async () => {
       const res = await app.request("/sso-admin/providers", {
         method: "POST",

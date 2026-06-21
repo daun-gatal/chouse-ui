@@ -24,7 +24,7 @@ import { getSsoConfig, type SsoProviderConfig } from './config';
 import type { SsoIdentity } from './client';
 import { logger } from '../../utils/logger';
 import { AppError } from '../../types';
-import { SYSTEM_ROLES, ROLE_HIERARCHY, type SystemRole } from '../schema/base';
+import { SYSTEM_ROLES } from '../schema/base';
 import type { User, UserResponse } from '../schema';
 import type { TokenPair } from '../services/jwt';
 
@@ -203,14 +203,18 @@ async function pickAvailableUsername(base: string): Promise<string> {
 
 /**
  * Set the user's role from the IdP claim. This system is single-role-per-user
- * (a UNIQUE index on rbac_user_roles.user_id), so when an IdP claim matches
- * several mapped groups we MUST collapse to exactly one role — otherwise the
- * multi-row insert violates that index and the login fails, leaving the user
- * role-less. We pick the highest-privilege resolved role (ROLE_HIERARCHY), the
- * same precedence migration 1.27.0 used to collapse legacy multi-role users.
+ * (a UNIQUE index on rbac_user_roles.user_id), and role mappings are gated to a
+ * single entry, so a login should resolve to at most one role.
  *
- * Behaviour preserved:
+ * If a claim nonetheless resolves to MORE than one distinct role (e.g. a stale
+ * multi-entry mapping that predates the gate), we fail closed: we refuse to
+ * assign any of them and keep the user's existing role. Silently collapsing to
+ * the highest-privilege match would be a privilege-escalation footgun (#270),
+ * so ambiguity is treated as a misconfiguration the admin must fix.
+ *
+ * Behaviour:
  *   - If no mapped role resolves to a known role, keep the existing role (avoid lockout).
+ *   - If the claim resolves to >1 distinct role, keep the existing role (fail closed).
  *   - If the user currently holds super_admin, skip sync entirely (avoid demotion).
  *
  * The write is a single atomic upsert keyed on user_id, so the user is never
@@ -278,10 +282,9 @@ async function syncMappedRoles(
     return;
   }
 
-  // Single-role-per-user: collapse multiple matched roles to the highest
-  // privilege one. Logged so admins can see when a user's group membership
-  // resolved to more than one mapping.
-  const chosen = pickHighestPrivilegeRole(targetRoles);
+  // Single-role-per-user: a claim must resolve to exactly one role. More than
+  // one distinct match is ambiguous — fail closed rather than silently picking
+  // a role, which previously escalated to the highest-privilege match (#270).
   if (targetRoles.length > 1) {
     logger.warn(
       {
@@ -289,11 +292,12 @@ async function syncMappedRoles(
         provider: provider.id,
         userId,
         resolvedRoles: targetRoles.map((r) => r.name),
-        chosenRole: chosen.name,
       },
-      'IdP claim mapped to multiple roles; collapsed to highest-privilege role (single-role-per-user)'
+      'IdP claim resolved to multiple roles; refusing to assign and keeping existing role (fix the role mapping to one entry)'
     );
+    return;
   }
+  const chosen = targetRoles[0];
 
   // No change needed when the user already holds exactly the chosen role.
   if (currentNames.length === 1 && currentNames[0] === chosen.name) return;
@@ -316,20 +320,6 @@ async function syncMappedRoles(
     { module: 'SSO', provider: provider.id, userId, role: chosen.name },
     'Synced role from IdP claim'
   );
-}
-
-/**
- * Pick the highest-privilege role from a resolved set, using the canonical
- * ROLE_HIERARCHY. Custom (non-system) roles rank lowest (0); ties break
- * alphabetically so the choice is deterministic. Callers must pass a non-empty
- * array.
- */
-function pickHighestPrivilegeRole<T extends { id: string; name: string }>(roles: T[]): T {
-  const rank = (name: string): number => ROLE_HIERARCHY[name as SystemRole] ?? 0;
-  return [...roles].sort((a, b) => {
-    const diff = rank(b.name) - rank(a.name);
-    return diff !== 0 ? diff : a.name.localeCompare(b.name);
-  })[0];
 }
 
 /** Returns true if the error is a unique-constraint violation (SQLite or PostgreSQL). */
