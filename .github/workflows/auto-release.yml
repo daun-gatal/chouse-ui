@@ -75,6 +75,16 @@ jobs:
           package: ${{ github.event.repository.name }}
           delete-tags: v${{ steps.version.outputs.version }}-pre,preview
 
+      # The UI version is read from package.json at frontend build time, so set
+      # it to <version>-pre here. The image is not committed — this only affects
+      # the bundle baked into the pre-release image.
+      - name: Set pre-release version in package.json
+        env:
+          PREVERSION: ${{ steps.version.outputs.version }}-pre
+        run: |
+          node -e "const fs=require('fs');const f='package.json';let s=fs.readFileSync(f,'utf8');s=s.replace(/\"version\":\s*\"[^\"]+\"/,'\"version\": \"'+process.env.PREVERSION+'\"');fs.writeFileSync(f,s)"
+          echo "Frontend pre-release version: $PREVERSION"
+
       - name: Build and push pre-release image
         uses: docker/build-push-action@v5
         with:
@@ -85,7 +95,7 @@ jobs:
             ghcr.io/${{ github.repository }}:v${{ steps.version.outputs.version }}-pre
             ghcr.io/${{ github.repository }}:preview
           build-args: |
-            VERSION=${{ steps.version.outputs.version }}
+            VERSION=${{ steps.version.outputs.version }}-pre
             COMMIT_SHA=${{ github.sha }}
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
           cache-from: type=gha
@@ -340,6 +350,11 @@ jobs:
       packages: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -350,20 +365,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Promote the exact image that was tested as v<version>-pre to the release
-      # tags — re-tag by digest (no rebuild), preserving the multi-arch manifest.
-      - name: Promote pre-release image to release tags
-        env:
-          IMAGE: ghcr.io/${{ github.repository }}
-          VERSION: ${{ needs.assemble.outputs.version }}
-        run: |
-          echo "Promoting $IMAGE:v$VERSION-pre -> latest, v$VERSION, $VERSION"
-          docker buildx imagetools create \
-            --tag "$IMAGE:latest" \
-            --tag "$IMAGE:v$VERSION" \
-            --tag "$IMAGE:$VERSION" \
-            "$IMAGE:v$VERSION-pre"
-          docker buildx imagetools inspect "$IMAGE:v$VERSION"
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=v${{ needs.assemble.outputs.version }}
+            type=raw,value=${{ needs.assemble.outputs.version }}
+
+      # Rebuild from the bumped main so the frontend bundle carries the real
+      # release version (the pre-release image carries v<version>-pre).
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.assemble.outputs.version }}
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
 
   # ── Step 4 (parallel, after Docker succeeds): publish tag + GitHub Release ─
   publish:
