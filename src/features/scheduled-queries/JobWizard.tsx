@@ -8,7 +8,7 @@
 
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Loader2, CheckCircle2, AlertTriangle, Info } from "lucide-react";
 
 import {
   Dialog,
@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -465,10 +466,6 @@ function ScheduleStep({ form, update, preview, onPreview, previewing }: StepProp
           </ul>
         </div>
       )}
-      <div className="space-y-3 border-t border-ink-500 pt-4">
-        <ToggleRow label="Apply FINAL (dedup *MergeTree)" checked={form.useFinal} onChange={(v) => update({ useFinal: v })} />
-        <ToggleRow label="Sequential consistency (Replicated*)" checked={form.seqConsistency} onChange={(v) => update({ seqConsistency: v })} />
-      </div>
     </>
   );
 }
@@ -534,6 +531,21 @@ function OutputStep({ form, update, preview, onPreview, previewing }: StepProps 
             </div>
           )}
           <ToggleRow label="Create destination table if missing" checked={form.createIfMissing} onChange={(v) => update({ createIfMissing: v })} />
+          <div className="space-y-3 border-t border-ink-500 pt-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Read semantics</p>
+            <ToggleRow
+              label="Apply FINAL (dedup *MergeTree)"
+              hint="Tables like ReplacingMergeTree keep old/duplicate rows until a background merge removes them, so a read can briefly see duplicates. Turn this on to deduplicate at read time so you don't write duplicate rows to the destination. Slower; leave off unless the source reads those table engines."
+              checked={form.useFinal}
+              onChange={(v) => update({ useFinal: v })}
+            />
+            <ToggleRow
+              label="Sequential consistency (Replicated*)"
+              hint="On Replicated source tables, the server your query hits can lag a few seconds behind, so a read may miss the latest rows. Turn this on to force an up-to-date read so you don't write stale data. Small latency cost; only matters for Replicated* source tables."
+              checked={form.seqConsistency}
+              onChange={(v) => update({ seqConsistency: v })}
+            />
+          </div>
           {form.createIfMissing && (
             <div className="flex gap-2">
               <div className={cn(sectionCls, "flex-1")}>
@@ -601,11 +613,25 @@ function ReviewStep({ form, channels, connectionName }: { form: FormState; chann
   );
 }
 
-function ToggleRow({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function ToggleRow({ label, hint, checked, onChange, disabled }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-[12px] text-paper">{label}</span>
-      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[12px] text-paper">{label}</span>
+        {hint && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" aria-label={`What is ${label}?`} className="grid h-4 w-4 place-items-center rounded-full text-paper-faint hover:text-paper">
+                <Info className="h-3.5 w-3.5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" side="top" className="w-72 rounded-xs border-ink-500 bg-ink-100 p-3 text-[11px] leading-relaxed text-paper-muted">
+              {hint}
+            </PopoverContent>
+          </Popover>
+        )}
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} className="shrink-0" />
     </div>
   );
 }
