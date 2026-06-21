@@ -436,9 +436,9 @@ describe("provisionSsoUser", () => {
   });
 
   // ----------------------------------------------------------------
-  // Test 8b: multi-group claim → collapse to highest-privilege role (#261)
+  // Test 8b: claim resolving to multiple roles → fail closed (#270)
   // ----------------------------------------------------------------
-  it("8b. multi-role mapping: claims {groups:['devs','admins']} mapping to developer+admin → upserts ONE role (admin, highest privilege)", async () => {
+  it("8b. ambiguous mapping: claims {groups:['devs','admins']} resolving to developer+admin → assigns NO role, keeps existing", async () => {
     mockGetUserIdentityResult = existingIdentityRow;
     mockDbUserRow = { ...existingUserRow };
     mockGetUserRolesResult = ["viewer"];
@@ -457,13 +457,136 @@ describe("provisionSsoUser", () => {
 
     await provisionSsoUser(provider, identity);
 
-    // Exactly one role upserted, and it's the highest-privilege one (admin).
+    // Fail closed: no role written at all (no silent escalation), the user keeps
+    // whatever role they already had.
+    expect(mockDb.delete).not.toHaveBeenCalled();
+    expect(mockDbInsertValues.length).toBe(0);
+  });
+
+  // ----------------------------------------------------------------
+  // Test 8c: single matched role still upserts normally.
+  // ----------------------------------------------------------------
+  it("8c. single mapping: claims {groups:['admins']} → upserts the one resolved role (admin)", async () => {
+    mockGetUserIdentityResult = existingIdentityRow;
+    mockDbUserRow = { ...existingUserRow };
+    mockGetUserRolesResult = ["viewer"];
+    mockGetRoleByNameResult = (name: string) =>
+      name === "admin" ? { id: "role-admin", name: "admin", displayName: "Admin" } : null;
+
+    const provider = makeProvider({
+      roleMappingClaim: "groups",
+      roleMapping: { admins: "admin" },
+    });
+    const identity = makeIdentity({ claims: { groups: ["admins"] } });
+
+    await provisionSsoUser(provider, identity);
+
     expect(mockDb.delete).not.toHaveBeenCalled();
     expect(mockDbInsertValues.length).toBe(1);
     const inserted = mockDbInsertValues[0];
     const insertedArr = Array.isArray(inserted) ? inserted : [inserted];
-    expect(insertedArr.length).toBe(1);
     expect((insertedArr[0] as Record<string, unknown>).roleId).toBe("role-admin");
+  });
+
+  // ----------------------------------------------------------------
+  // Test 8d: two groups mapping to the SAME role → not ambiguous, assign it.
+  // Guards that fail-closed keys off distinct *roles*, not distinct group hits.
+  // ----------------------------------------------------------------
+  it("8d. multi-group to one role: mapping {a:admin,b:admin}, claims {groups:['a','b']} → upserts admin (deduped, not fail-closed)", async () => {
+    mockGetUserIdentityResult = existingIdentityRow;
+    mockDbUserRow = { ...existingUserRow };
+    mockGetUserRolesResult = ["viewer"];
+    mockGetRoleByNameResult = (name: string) =>
+      name === "admin" ? { id: "role-admin", name: "admin", displayName: "Admin" } : null;
+
+    const provider = makeProvider({
+      roleMappingClaim: "groups",
+      roleMapping: { a: "admin", b: "admin" },
+    });
+    const identity = makeIdentity({ claims: { groups: ["a", "b"] } });
+
+    await provisionSsoUser(provider, identity);
+
+    expect(mockDb.delete).not.toHaveBeenCalled();
+    expect(mockDbInsertValues.length).toBe(1);
+    const inserted = mockDbInsertValues[0];
+    const insertedArr = Array.isArray(inserted) ? inserted : [inserted];
+    expect((insertedArr[0] as Record<string, unknown>).roleId).toBe("role-admin");
+  });
+
+  // ----------------------------------------------------------------
+  // Test 8e: several groups but only ONE resolves to a known role → assign it.
+  // Guards that ambiguity is measured after unknown roles are dropped.
+  // ----------------------------------------------------------------
+  it("8e. multi-group, one unknown: mapping {a:admin,b:ghost}, claims {groups:['a','b']} → upserts admin (ghost ignored)", async () => {
+    mockGetUserIdentityResult = existingIdentityRow;
+    mockDbUserRow = { ...existingUserRow };
+    mockGetUserRolesResult = ["viewer"];
+    mockGetRoleByNameResult = (name: string) =>
+      name === "admin" ? { id: "role-admin", name: "admin", displayName: "Admin" } : null;
+
+    const provider = makeProvider({
+      roleMappingClaim: "groups",
+      roleMapping: { a: "admin", b: "ghost" },
+    });
+    const identity = makeIdentity({ claims: { groups: ["a", "b"] } });
+
+    await provisionSsoUser(provider, identity);
+
+    expect(mockDb.delete).not.toHaveBeenCalled();
+    expect(mockDbInsertValues.length).toBe(1);
+    const inserted = mockDbInsertValues[0];
+    const insertedArr = Array.isArray(inserted) ? inserted : [inserted];
+    expect((insertedArr[0] as Record<string, unknown>).roleId).toBe("role-admin");
+  });
+
+  // ----------------------------------------------------------------
+  // Test 8f: resolved role equals the user's current role → no write at all.
+  // ----------------------------------------------------------------
+  it("8f. no-op: user already holds the single mapped role → db insert NOT called", async () => {
+    mockGetUserIdentityResult = existingIdentityRow;
+    mockDbUserRow = { ...existingUserRow };
+    mockGetUserRolesResult = ["admin"]; // already exactly the mapped role
+    mockGetRoleByNameResult = (name: string) =>
+      name === "admin" ? { id: "role-admin", name: "admin", displayName: "Admin" } : null;
+
+    const provider = makeProvider({
+      roleMappingClaim: "groups",
+      roleMapping: { admins: "admin" },
+    });
+    const identity = makeIdentity({ claims: { groups: ["admins"] } });
+
+    await provisionSsoUser(provider, identity);
+
+    expect(mockDb.delete).not.toHaveBeenCalled();
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockFns.createSessionAndTokens).toHaveBeenCalled();
+  });
+
+  // ----------------------------------------------------------------
+  // Test 8g: ambiguous claim still fails closed even when the user currently
+  // holds one of the resolved roles (no "keep the higher one" shortcut).
+  // ----------------------------------------------------------------
+  it("8g. ambiguous + currently holds one of them: claims resolve to admin+developer, current=developer → no write", async () => {
+    mockGetUserIdentityResult = existingIdentityRow;
+    mockDbUserRow = { ...existingUserRow };
+    mockGetUserRolesResult = ["developer"];
+    mockGetRoleByNameResult = (name: string) => {
+      if (name === "admin") return { id: "role-admin", name: "admin", displayName: "Admin" };
+      if (name === "developer") return { id: "role-developer", name: "developer", displayName: "Developer" };
+      return null;
+    };
+
+    const provider = makeProvider({
+      roleMappingClaim: "groups",
+      roleMapping: { devs: "developer", admins: "admin" },
+    });
+    const identity = makeIdentity({ claims: { groups: ["devs", "admins"] } });
+
+    await provisionSsoUser(provider, identity);
+
+    expect(mockDb.delete).not.toHaveBeenCalled();
+    expect(mockDbInsertValues.length).toBe(0);
   });
 
   // ----------------------------------------------------------------

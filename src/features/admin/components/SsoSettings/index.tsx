@@ -28,6 +28,7 @@ import {
   Check,
   AlertTriangle,
   AlertCircle,
+  Info,
   CheckCircle2,
   Play,
   ArrowLeft,
@@ -1580,6 +1581,16 @@ function ProviderWizard({ open, onClose, editing }: ProviderWizardProps) {
                   roles={roles ?? []}
                   onChange={(rows) => update({ roleMappingRows: rows })}
                 />
+                <p className={cn(HELP_CLASS, "flex items-start gap-1.5")}>
+                  <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                  <span>
+                    A user is assigned one role. If their claim matches several mappings that
+                    resolve to different roles, sign-in assigns no role and keeps their current
+                    one (no silent privilege escalation). Set a low-privilege{" "}
+                    <strong className="font-medium text-paper-dim">Default role</strong> so an
+                    ambiguous first sign-in lands there instead of with no access.
+                  </span>
+                </p>
               </section>
             </div>
           )}
