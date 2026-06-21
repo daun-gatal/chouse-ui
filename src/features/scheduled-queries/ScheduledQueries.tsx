@@ -25,7 +25,7 @@ const TAB_META: Record<SubTab, { label: string; icon: React.ElementType }> = {
   overview: { label: "Overview", icon: LayoutDashboard },
   jobs: { label: "Jobs", icon: ListChecks },
   runs: { label: "Runs", icon: History },
-  lineage: { label: "Lineage", icon: Network },
+  lineage: { label: "Runtime Lineage", icon: Network },
 };
 
 function SubTabPill({ tab, isActive, onClick }: { tab: SubTab; isActive: boolean; onClick: () => void }) {
