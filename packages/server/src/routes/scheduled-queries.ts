@@ -187,8 +187,11 @@ function validateBody(body: JobBody, canWrite: boolean): void {
       throw AppError.badRequest("Destination database and table are required for materialize jobs");
     }
     if (body.destDatabase === "system") throw AppError.badRequest("Destination cannot be a system table");
-    if (body.outputMode === "replace" && !body.outputConfig?.partitionExpr) {
-      throw AppError.badRequest("replace mode requires output_config.partitionExpr");
+    // Replace only needs an explicit partition expression when it creates the
+    // destination (the DDL must be partitioned). If the table already exists, its
+    // partition key is used and enforced by the engine-fit check at run time.
+    if (body.outputMode === "replace" && body.outputConfig?.createIfMissing && !body.outputConfig?.partitionExpr) {
+      throw AppError.badRequest("replace mode with create-if-missing requires output_config.partitionExpr");
     }
   }
 }
