@@ -154,7 +154,11 @@ export function buildCreateTableDDL(job: ScheduledQueryRow, columns: ExpectedCol
   const cfg = job.outputConfig ?? {};
   const cols = columns.map((c) => `  ${ident(c.name)} ${c.type}`).join(",\n");
   const engine = cfg.engine?.trim() || "MergeTree";
-  const partitionBy = cfg.partitionBy?.trim() ? `\nPARTITION BY ${cfg.partitionBy.trim()}` : "";
+  // `replace` collects the partition key as `partitionExpr`; `createIfMissing`
+  // exposes a dedicated `partitionBy`. Prefer the explicit one, falling back to
+  // the replace expression so the user's partition input is reflected in the DDL.
+  const partition = cfg.partitionBy?.trim() || cfg.partitionExpr?.trim();
+  const partitionBy = partition ? `\nPARTITION BY ${partition}` : "";
   const orderBy = cfg.orderBy?.trim() || "tuple()";
   return `CREATE TABLE IF NOT EXISTS ${qualified(job.destDatabase!, job.destTable!)} (\n${cols}\n) ENGINE = ${engine}${partitionBy}\nORDER BY ${orderBy}`;
 }
@@ -238,6 +242,15 @@ export async function executeMaterialize(args: MaterializeArgs): Promise<number 
         abort_signal: signal,
         query_params: { pid: p.partition_id },
       });
+    }
+    // Swap done — staging now holds a redundant full copy of the run's output.
+    // The table itself is kept and reused (CREATE IF NOT EXISTS + TRUNCATE next
+    // run), but free its storage now so we don't retain a run's worth of data
+    // between runs. Best-effort: the next run truncates again, so this is safe.
+    try {
+      await client.command({ query: `TRUNCATE TABLE ${stagingQ}`, query_id: `${queryId}_stg_cleanup`, abort_signal: signal });
+    } catch (err) {
+      logger.warn({ module: "ScheduledQueries", jobId: job.id, err }, "post-replace staging truncate failed (non-fatal)");
     }
     return written;
   }

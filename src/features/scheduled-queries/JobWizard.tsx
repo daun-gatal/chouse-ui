@@ -244,7 +244,11 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
       case "Schedule":
         return form.frequency !== "cron" || form.cronExpr.trim().length > 0;
       case "Output":
-        return form.outputMode === "none" || (form.destDatabase.trim().length > 0 && form.destTable.trim().length > 0);
+        if (form.outputMode === "none") return true;
+        if (form.destDatabase.trim().length === 0 || form.destTable.trim().length === 0) return false;
+        // Replace creates a partitioned table — the partition expression is required when creating it.
+        if (form.outputMode === "replace" && form.createIfMissing && form.partitionExpr.trim().length === 0) return false;
+        return true;
       default:
         return true;
     }
@@ -514,20 +518,58 @@ function ActionsStep({ form, update, channels }: StepProps & { channels: Notific
   );
 }
 
+const OUTPUT_MODE_HELP: Record<SqOutputMode, { title: string; what: string; when: string }> = {
+  none: {
+    title: "None (read-only)",
+    what: "Runs the SELECT and evaluates alert conditions only — nothing is written to ClickHouse.",
+    when: "Use for monitoring and data-health checks where you only want to be notified, not to persist results.",
+  },
+  append: {
+    title: "Append",
+    what: "Runs INSERT … SELECT into the destination each run, deduplicated per time slot so a retry never double-writes the same slot.",
+    when: "Use for accumulating immutable rows over time — e.g. appending each run's events or rollups to a growing history table.",
+  },
+  replace: {
+    title: "Replace partition",
+    what: "Writes the run's output to a staging table, then atomically swaps each produced partition into the destination via REPLACE PARTITION. The destination always reflects exactly the latest run with no duplicates.",
+    when: "Use when each run recomputes whole partitions (e.g. rebuilding yesterday's daily aggregate). Requires a MergeTree-family destination with a PARTITION BY key.",
+  },
+  upsert: {
+    title: "Upsert (ReplacingMergeTree)",
+    what: "Runs INSERT … SELECT into a ReplacingMergeTree / Aggregating / Collapsing destination, letting the engine merge duplicate keys by its sorting key.",
+    when: "Use when rows are keyed and updated over time, and you want the newest version of each key to win.",
+  },
+};
+
 function OutputStep({ form, update, preview, onPreview, previewing }: StepProps & { preview: PreviewResult | null; onPreview: () => Promise<unknown>; previewing: boolean }) {
+  const modeHelp = OUTPUT_MODE_HELP[form.outputMode];
   return (
     <>
       <div className={sectionCls}>
         <Label className={labelCls}>Output mode</Label>
-        <Select value={form.outputMode} onValueChange={(v) => update({ outputMode: v as SqOutputMode })}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">None (read-only)</SelectItem>
-            <SelectItem value="append">Append</SelectItem>
-            <SelectItem value="replace">Replace partition</SelectItem>
-            <SelectItem value="upsert">Upsert (ReplacingMergeTree)</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select value={form.outputMode} onValueChange={(v) => update({ outputMode: v as SqOutputMode })}>
+            <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None (read-only)</SelectItem>
+              <SelectItem value="append">Append</SelectItem>
+              <SelectItem value="replace">Replace partition</SelectItem>
+              <SelectItem value="upsert">Upsert (ReplacingMergeTree)</SelectItem>
+            </SelectContent>
+          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" aria-label={`About ${modeHelp.title}`} className="grid h-7 w-7 shrink-0 place-items-center rounded-xs text-paper-faint hover:text-paper">
+                <Info className="h-4 w-4" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" side="top" className="w-80 space-y-2 rounded-xs border-ink-500 bg-ink-100 p-3 text-[11px] leading-relaxed text-paper-muted">
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{modeHelp.title}</p>
+              <p><span className="text-paper">What:</span> {modeHelp.what}</p>
+              <p><span className="text-paper">When:</span> {modeHelp.when}</p>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
       {form.outputMode !== "none" && (
         <>
@@ -541,12 +583,6 @@ function OutputStep({ form, update, preview, onPreview, previewing }: StepProps 
               <Input value={form.destTable} onChange={(e) => update({ destTable: e.target.value })} />
             </div>
           </div>
-          {form.outputMode === "replace" && (
-            <div className={sectionCls}>
-              <Label className={labelCls}>Partition expression</Label>
-              <Input value={form.partitionExpr} onChange={(e) => update({ partitionExpr: e.target.value })} placeholder="toYYYYMMDD({{slot_end}})" className="font-mono" />
-            </div>
-          )}
           <ToggleRow label="Create destination table if missing" checked={form.createIfMissing} onChange={(v) => update({ createIfMissing: v })} />
           <div className="space-y-3 border-t border-ink-500 pt-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Read semantics</p>
@@ -564,16 +600,30 @@ function OutputStep({ form, update, preview, onPreview, previewing }: StepProps 
             />
           </div>
           {form.createIfMissing && (
-            <div className="flex gap-2">
-              <div className={cn(sectionCls, "flex-1")}>
-                <Label className={labelCls}>Engine</Label>
-                <Input value={form.engine} onChange={(e) => update({ engine: e.target.value })} />
+            <>
+              <div className="flex gap-2">
+                <div className={cn(sectionCls, "flex-1")}>
+                  <Label className={labelCls}>Engine</Label>
+                  <Input value={form.engine} onChange={(e) => update({ engine: e.target.value })} />
+                </div>
+                <div className={cn(sectionCls, "flex-1")}>
+                  <Label className={labelCls}>ORDER BY</Label>
+                  <Input value={form.orderBy} onChange={(e) => update({ orderBy: e.target.value })} />
+                </div>
               </div>
-              <div className={cn(sectionCls, "flex-1")}>
-                <Label className={labelCls}>ORDER BY</Label>
-                <Input value={form.orderBy} onChange={(e) => update({ orderBy: e.target.value })} />
-              </div>
-            </div>
+              {form.outputMode === "replace" ? (
+                <div className={sectionCls}>
+                  <Label className={labelCls}>Partition by</Label>
+                  <Input value={form.partitionExpr} onChange={(e) => update({ partitionExpr: e.target.value })} placeholder="toYYYYMMDD(event_time)" className="font-mono" />
+                  <p className="text-[11px] text-paper-muted">Required — the table is created partitioned by this expression so each run can swap whole partitions.</p>
+                </div>
+              ) : (
+                <div className={sectionCls}>
+                  <Label className={labelCls}>Partition by (optional)</Label>
+                  <Input value={form.partitionBy} onChange={(e) => update({ partitionBy: e.target.value })} placeholder="toYYYYMMDD(event_time)" className="font-mono" />
+                </div>
+              )}
+            </>
           )}
           <Button variant="outline" onClick={() => void onPreview()} disabled={previewing}>
             {previewing && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
