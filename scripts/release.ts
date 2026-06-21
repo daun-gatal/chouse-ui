@@ -77,7 +77,9 @@ for (const file of fragmentFiles) {
 
 // --- Compute version ---
 
-const overrideVersion = process.argv[2];
+const args = process.argv.slice(2);
+const dryRun = args.includes("--dry-run");
+const overrideVersion = args.find((arg) => !arg.startsWith("--"));
 
 let bumpType: BumpType = "patch";
 for (const f of fragments) {
@@ -91,6 +93,13 @@ for (const f of fragments) {
 const rootPkg = JSON.parse(readFileSync(PACKAGE_JSON_PATHS[0], "utf8"));
 const currentVersion: string = rootPkg.version;
 const newVersion = overrideVersion ?? bumpVersion(currentVersion, bumpType);
+
+// Dry run: print only the computed version (used by the pre-release image build
+// to derive its tag) and exit without writing any files.
+if (dryRun) {
+  console.log(newVersion);
+  process.exit(0);
+}
 
 console.log(`\nReleasing v${newVersion}  (${bumpType} bump from v${currentVersion})`);
 console.log(`Fragments: ${fragmentFiles.join(", ")}\n`);

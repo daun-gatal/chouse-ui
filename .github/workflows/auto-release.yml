@@ -9,10 +9,114 @@ on:
         default: ""
 
 jobs:
+  # ── Step 0: build pre-release images for manual testing ───────────────────
+  # Derives the would-be version from the changelog fragments (without writing
+  # anything) and publishes throwaway images tagged v<version>-pre and
+  # preview. Install/test these, then approve the gate on the assemble job
+  # to continue the real release.
+  prerelease:
+    name: Build Pre-release Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Check fragments exist
+        run: |
+          count=$(find changelogs/unreleased -name "*.md" ! -name "README.md" | wc -l | tr -d ' ')
+          if [ "$count" = "0" ]; then
+            echo "No changelog fragments found. Nothing to release."
+            exit 1
+          fi
+          echo "Found $count fragment(s)."
+
+      - name: Compute target version
+        id: version
+        run: |
+          VERSION=$(bun run scripts/release.ts ${{ inputs.version }} --dry-run | tail -n1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Target release version: $VERSION"
+
+      - name: Compute build date
+        id: meta
+        run: echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Re-running with the same version overwrites the v<version>-pre tag.
+      # Delete the previous pre-release image first so its bytes don't linger as
+      # orphaned versions. Manifest-aware (dataaxiom v1.2.2) so it removes only
+      # the digests these tags orphan — safe for the multi-arch released tags.
+      - name: Delete previous pre-release image
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          package: ${{ github.event.repository.name }}
+          delete-tags: v${{ steps.version.outputs.version }}-pre,preview
+
+      - name: Build and push pre-release image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:v${{ steps.version.outputs.version }}-pre
+            ghcr.io/${{ github.repository }}:preview
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Write pre-release summary
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          {
+            echo "## Pre-release image ready: v$VERSION"
+            echo ""
+            echo "Install and test before approving the release:"
+            echo ""
+            echo '```bash'
+            echo "docker pull $IMAGE:v$VERSION-pre"
+            echo "# or: docker pull $IMAGE:preview"
+            echo '```'
+            echo ""
+            echo "If it works, **approve** the \`prerelease-approval\` gate on the"
+            echo "*Assemble Changelog* job to continue the release. Reject to abort"
+            echo "(nothing has been committed yet)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── Step 1: assemble changelog + bump versions (no push to main yet) ──────
   assemble:
     name: Assemble Changelog
     runs-on: ubuntu-latest
+    needs: prerelease
+    environment: prerelease-approval
     permissions:
       contents: write
     outputs:
@@ -236,11 +340,6 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: main
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -251,31 +350,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest
-            type=raw,value=v${{ needs.assemble.outputs.version }}
-            type=raw,value=${{ needs.assemble.outputs.version }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ needs.assemble.outputs.version }}
-            COMMIT_SHA=${{ github.sha }}
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+      # Promote the exact image that was tested as v<version>-pre to the release
+      # tags — re-tag by digest (no rebuild), preserving the multi-arch manifest.
+      - name: Promote pre-release image to release tags
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          VERSION: ${{ needs.assemble.outputs.version }}
+        run: |
+          echo "Promoting $IMAGE:v$VERSION-pre -> latest, v$VERSION, $VERSION"
+          docker buildx imagetools create \
+            --tag "$IMAGE:latest" \
+            --tag "$IMAGE:v$VERSION" \
+            --tag "$IMAGE:$VERSION" \
+            "$IMAGE:v$VERSION-pre"
+          docker buildx imagetools inspect "$IMAGE:v$VERSION"
 
   # ── Step 4 (parallel, after Docker succeeds): publish tag + GitHub Release ─
   publish:
