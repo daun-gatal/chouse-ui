@@ -17,6 +17,7 @@
     "build:web": "vite build",
     "build:server": "cd packages/server && bun run build",
     "start": "bun run packages/server/src/index.ts",
+    "seed:scheduled-queries": "bun run packages/server/scripts/seed-scheduled-queries.ts",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -3873,6 +3873,265 @@ export const MIGRATIONS: Migration[] = [
     },
     down: async () => { /* forward-only */ },
   },
+  {
+    version: '1.40.0',
+    name: 'scheduled_queries',
+    description: 'Scheduled Queries (DataOps backbone): scheduled_queries (definitions + per-row scheduler lease), scheduled_query_runs (immutable run history + reaper deadline), scheduled_query_channels (M:N to notification_channels), scheduled_query_outbox (crash-safe at-least-once notification/export delivery). Seeds the scheduled_queries:view|edit|delete|run|write|view_all permissions (super_admin + admin).',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      // Booleans + millisecond timestamps are stored as INTEGER (SQLite) /
+      // BIGINT (PostgreSQL); the service layer reads booleans as `=== 1` and
+      // always supplies Date.now() millisecond timestamps. Mirrors the 1.39.0
+      // alerting migration exactly. Idempotent via IF NOT EXISTS.
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS scheduled_queries (
+            id              TEXT    PRIMARY KEY NOT NULL,
+            name            TEXT    NOT NULL,
+            description     TEXT,
+            kind            TEXT    NOT NULL DEFAULT 'sql_query',
+            connection_id   TEXT    NOT NULL,
+            query           TEXT    NOT NULL,
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            frequency       TEXT    NOT NULL DEFAULT 'daily',
+            hour            INTEGER NOT NULL DEFAULT 8,
+            day_of_week     INTEGER NOT NULL DEFAULT 1,
+            day_of_month    INTEGER NOT NULL DEFAULT 1,
+            cron_expr       TEXT,
+            alert_config    TEXT,
+            export_enabled  INTEGER NOT NULL DEFAULT 0,
+            severity        TEXT    NOT NULL DEFAULT 'warning',
+            output_mode     TEXT    NOT NULL DEFAULT 'none',
+            dest_database   TEXT,
+            dest_table      TEXT,
+            output_config   TEXT,
+            max_rows        INTEGER NOT NULL DEFAULT 100,
+            timeout_secs    INTEGER NOT NULL DEFAULT 60,
+            use_final       INTEGER NOT NULL DEFAULT 0,
+            seq_consistency INTEGER NOT NULL DEFAULT 0,
+            last_run_at     INTEGER NOT NULL DEFAULT 0,
+            last_run_by     TEXT,
+            max_attempts    INTEGER NOT NULL DEFAULT 2,
+            retention_days  INTEGER NOT NULL DEFAULT 90,
+            created_by      TEXT,
+            created_at      INTEGER NOT NULL DEFAULT 0,
+            updated_at      INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS sq_enabled_idx ON scheduled_queries (enabled)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS scheduled_query_runs (
+            id              TEXT    PRIMARY KEY NOT NULL,
+            query_id        TEXT    NOT NULL REFERENCES scheduled_queries(id) ON DELETE CASCADE,
+            trigger         TEXT    NOT NULL,
+            status          TEXT    NOT NULL,
+            slot_at         INTEGER NOT NULL,
+            attempt         INTEGER NOT NULL DEFAULT 1,
+            runner_id       TEXT,
+            deadline        INTEGER,
+            row_count       INTEGER,
+            truncated       INTEGER NOT NULL DEFAULT 0,
+            written_rows    INTEGER,
+            result_json     TEXT,
+            condition_value TEXT,
+            condition_met   INTEGER,
+            duration_ms     INTEGER,
+            message         TEXT,
+            notified        INTEGER NOT NULL DEFAULT 0,
+            started_at      INTEGER NOT NULL DEFAULT 0,
+            finished_at     INTEGER
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS sq_runs_query_idx  ON scheduled_query_runs (query_id, started_at)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS sq_runs_status_idx ON scheduled_query_runs (status, deadline)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS sq_runs_slot_idx   ON scheduled_query_runs (query_id, slot_at)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS scheduled_query_channels (
+            query_id   TEXT NOT NULL REFERENCES scheduled_queries(id) ON DELETE CASCADE,
+            channel_id TEXT NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE,
+            PRIMARY KEY (query_id, channel_id)
+          )
+        `);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS scheduled_query_outbox (
+            id         TEXT    PRIMARY KEY NOT NULL,
+            run_id     TEXT    NOT NULL REFERENCES scheduled_query_runs(id) ON DELETE CASCADE,
+            query_id   TEXT    NOT NULL REFERENCES scheduled_queries(id) ON DELETE CASCADE,
+            kind       TEXT    NOT NULL,
+            dedup_key  TEXT    NOT NULL,
+            payload    TEXT    NOT NULL,
+            status     TEXT    NOT NULL DEFAULT 'pending',
+            locked_by  TEXT,
+            locked_at  INTEGER,
+            attempts   INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            sent_at    INTEGER
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS sq_outbox_dedup_idx  ON scheduled_query_outbox (dedup_key)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS sq_outbox_status_idx ON scheduled_query_outbox (status, locked_at)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS scheduled_queries (
+            id              TEXT    PRIMARY KEY NOT NULL,
+            name            TEXT    NOT NULL,
+            description     TEXT,
+            kind            TEXT    NOT NULL DEFAULT 'sql_query',
+            connection_id   TEXT    NOT NULL,
+            query           TEXT    NOT NULL,
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            frequency       TEXT    NOT NULL DEFAULT 'daily',
+            hour            INTEGER NOT NULL DEFAULT 8,
+            day_of_week     INTEGER NOT NULL DEFAULT 1,
+            day_of_month    INTEGER NOT NULL DEFAULT 1,
+            cron_expr       TEXT,
+            alert_config    TEXT,
+            export_enabled  INTEGER NOT NULL DEFAULT 0,
+            severity        TEXT    NOT NULL DEFAULT 'warning',
+            output_mode     TEXT    NOT NULL DEFAULT 'none',
+            dest_database   TEXT,
+            dest_table      TEXT,
+            output_config   TEXT,
+            max_rows        INTEGER NOT NULL DEFAULT 100,
+            timeout_secs    INTEGER NOT NULL DEFAULT 60,
+            use_final       INTEGER NOT NULL DEFAULT 0,
+            seq_consistency INTEGER NOT NULL DEFAULT 0,
+            last_run_at     BIGINT  NOT NULL DEFAULT 0,
+            last_run_by     TEXT,
+            max_attempts    INTEGER NOT NULL DEFAULT 2,
+            retention_days  INTEGER NOT NULL DEFAULT 90,
+            created_by      TEXT,
+            created_at      BIGINT  NOT NULL DEFAULT 0,
+            updated_at      BIGINT  NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS sq_enabled_idx ON scheduled_queries (enabled)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS scheduled_query_runs (
+            id              TEXT    PRIMARY KEY NOT NULL,
+            query_id        TEXT    NOT NULL REFERENCES scheduled_queries(id) ON DELETE CASCADE,
+            trigger         TEXT    NOT NULL,
+            status          TEXT    NOT NULL,
+            slot_at         BIGINT  NOT NULL,
+            attempt         INTEGER NOT NULL DEFAULT 1,
+            runner_id       TEXT,
+            deadline        BIGINT,
+            row_count       BIGINT,
+            truncated       INTEGER NOT NULL DEFAULT 0,
+            written_rows    BIGINT,
+            result_json     TEXT,
+            condition_value TEXT,
+            condition_met   INTEGER,
+            duration_ms     BIGINT,
+            message         TEXT,
+            notified        INTEGER NOT NULL DEFAULT 0,
+            started_at      BIGINT  NOT NULL DEFAULT 0,
+            finished_at     BIGINT
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS sq_runs_query_idx  ON scheduled_query_runs (query_id, started_at)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS sq_runs_status_idx ON scheduled_query_runs (status, deadline)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS sq_runs_slot_idx   ON scheduled_query_runs (query_id, slot_at)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS scheduled_query_channels (
+            query_id   TEXT NOT NULL REFERENCES scheduled_queries(id) ON DELETE CASCADE,
+            channel_id TEXT NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE,
+            PRIMARY KEY (query_id, channel_id)
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS scheduled_query_outbox (
+            id         TEXT    PRIMARY KEY NOT NULL,
+            run_id     TEXT    NOT NULL REFERENCES scheduled_query_runs(id) ON DELETE CASCADE,
+            query_id   TEXT    NOT NULL REFERENCES scheduled_queries(id) ON DELETE CASCADE,
+            kind       TEXT    NOT NULL,
+            dedup_key  TEXT    NOT NULL,
+            payload    TEXT    NOT NULL,
+            status     TEXT    NOT NULL DEFAULT 'pending',
+            locked_by  TEXT,
+            locked_at  BIGINT,
+            attempts   INTEGER NOT NULL DEFAULT 0,
+            created_at BIGINT  NOT NULL DEFAULT 0,
+            sent_at    BIGINT
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS sq_outbox_dedup_idx  ON scheduled_query_outbox (dedup_key)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS sq_outbox_status_idx ON scheduled_query_outbox (status, locked_at)`);
+      }
+
+      // Seed + grant the five scheduled_queries permissions. super_admin and
+      // admin both receive the full set (materialize :write included): mirrors
+      // the explicit-grant approach of 1.39.0 so existing installs upgrade
+      // correctly (DEFAULT_ROLE_PERMISSIONS only seeds fresh roles).
+      const { seedPermissions } = await import('../services/seed');
+      const permissionIdMap = await seedPermissions();
+      const permNames = [
+        'scheduled_queries:view',
+        'scheduled_queries:edit',
+        'scheduled_queries:delete',
+        'scheduled_queries:run',
+        'scheduled_queries:write',
+        'scheduled_queries:view_all',
+      ];
+      const permIds = permNames.map((n) => permissionIdMap.get(n));
+      if (permIds.every((id): id is string => typeof id === 'string')) {
+        const { SYSTEM_ROLES } = await import('../schema/base');
+        const { randomUUID } = await import('crypto');
+        const grants: Array<{ role: string; perms: string[] }> = [
+          { role: SYSTEM_ROLES.SUPER_ADMIN, perms: permIds },
+          { role: SYSTEM_ROLES.ADMIN, perms: permIds },
+        ];
+        for (const { role: roleName, perms } of grants) {
+          let roleRows: Array<{ id: string }>;
+          if (dbType === 'sqlite') {
+            roleRows = (db as SqliteDb).all(sql`SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1`) as Array<{ id: string }>;
+          } else {
+            const res = await (db as PostgresDb).execute(sql`SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1`);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const anyRes = res as any;
+            roleRows = (Array.isArray(anyRes) ? anyRes : anyRes.rows ?? []) as Array<{ id: string }>;
+          }
+          if (roleRows.length === 0) continue;
+          const roleId = roleRows[0].id;
+          for (const permId of perms) {
+            let existing: Array<unknown>;
+            if (dbType === 'sqlite') {
+              existing = (db as SqliteDb).all(sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1`);
+            } else {
+              const res = await (db as PostgresDb).execute(sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${permId} LIMIT 1`);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const anyRes = res as any;
+              existing = (Array.isArray(anyRes) ? anyRes : anyRes.rows ?? []) as Array<unknown>;
+            }
+            if (existing.length > 0) continue;
+            const rpId = randomUUID();
+            if (dbType === 'sqlite') {
+              (db as SqliteDb).run(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${rpId}, ${roleId}, ${permId}, ${Math.floor(Date.now() / 1000)})`);
+            } else {
+              await (db as PostgresDb).execute(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${rpId}, ${roleId}, ${permId}, ${new Date().toISOString()})`);
+            }
+          }
+        }
+      } else {
+        logger.error({ module: 'RBAC', phase: 'migration' }, '[Migration 1.40.0] Failed to resolve scheduled_queries permission IDs');
+      }
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.40.0] Created scheduled_queries tables + permissions (${dbType})`);
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      const tables = ['scheduled_query_outbox', 'scheduled_query_channels', 'scheduled_query_runs', 'scheduled_queries'];
+      for (const t of tables) {
+        if (dbType === 'sqlite') {
+          (db as SqliteDb).run(sql.raw(`DROP TABLE IF EXISTS ${t}`));
+        } else {
+          await (db as PostgresDb).execute(sql.raw(`DROP TABLE IF EXISTS ${t}`));
+        }
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.40.0] Dropped scheduled_queries tables');
+    },
+  },
 ];
 
 // ============================================

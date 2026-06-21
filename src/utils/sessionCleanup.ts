@@ -79,6 +79,11 @@ export async function cleanupUserSession(currentUserId: string | null): Promise<
     queryClient.removeQueries({
       predicate: (query) => query.queryKey[0] === 'savedQueries'
     });
+    // Remove Scheduled Queries (DataOps) — jobs/runs/overview are per-user
+    // (scoped to the owner unless view_all), so the next user must refetch.
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'scheduled-queries'
+    });
     queryClient.removeQueries({ queryKey: queryKeys.intellisense });
     clearIntellisenseCache();
 

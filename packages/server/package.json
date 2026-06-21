@@ -28,6 +28,7 @@
     "@node-saml/node-saml": "^5.1.0",
     "@xmldom/xmldom": "^0.9.10",
     "ai": "^6.0.86",
+    "croner": "^10.0.1",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.11.4",
     "hono-rate-limiter": "^0.5.3",

@@ -12,6 +12,7 @@ import aiChat from "./ai-chat";
 import ai from "./ai";
 import fleet from "./fleet";
 import alerting from "./alerting";
+import scheduledQueries from "./scheduled-queries";
 
 const api = new Hono();
 
@@ -79,6 +80,7 @@ api.route("/ai-chat", aiChat);
 api.route("/ai", ai);
 api.route("/fleet", fleet);
 api.route("/alerting", alerting);
+api.route("/scheduled-queries", scheduledQueries);
 
 // RBAC routes (Role-Based Access Control)
 api.route("/rbac", rbacRoutes);
