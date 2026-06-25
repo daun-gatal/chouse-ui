@@ -1,4 +1,4 @@
-import { Shield, Users, FileText, LayoutGrid, Stethoscope, Activity, type LucideIcon } from "lucide-react";
+import { Shield, Users, FileText, LayoutGrid, Stethoscope, Activity, CalendarClock, KeyRound, type LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { Section, Container, SectionHeader } from "./Section";
 
@@ -9,8 +9,8 @@ interface Highlight {
   meta: string;
 }
 
-// The six pillars that make up the "combination" — a team access layer
-// (security / RBAC / audit) × fleet monitoring × an autonomous AI SRE.
+// The pillars that make up the "combination" — a team access layer
+// (security / RBAC / audit) × fleet monitoring × an autonomous AI SRE × scheduled DataOps.
 const HIGHLIGHTS: Highlight[] = [
   {
     icon: Shield,
@@ -48,6 +48,18 @@ const HIGHLIGHTS: Highlight[] = [
     description: "ClickHouse-native monitoring — query logs, memory breakdown, top-resource queries, replica lag, schema lints. No exporter to install.",
     meta: "No exporter",
   },
+  {
+    icon: CalendarClock,
+    title: "Scheduled queries",
+    description: "Cron-scheduled read-only SELECTs with deterministic time windows, idempotent materialize write-back, failure alerting, and runtime lineage — DataOps without a separate orchestrator.",
+    meta: "Built-in DataOps",
+  },
+  {
+    icon: KeyRound,
+    title: "SSO / OIDC",
+    description: "Sign in with any OIDC or OAuth2 provider — JIT user provisioning, email-based account linking, and optional IdP group → role sync.",
+    meta: "Any provider",
+  },
 ];
 
 export default function Highlights() {
@@ -61,7 +73,7 @@ export default function Highlights() {
           description="Plenty of ClickHouse tools nail one of these — CHouse UI is the combination. The things that matter when money or compliance is on the line."
         />
 
-        <div className="mt-16 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-ink-500 bg-ink-500 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-16 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-ink-500 bg-ink-500 sm:grid-cols-2 lg:grid-cols-4">
           {HIGHLIGHTS.map((h, idx) => {
             const Icon = h.icon;
             return (
@@ -70,7 +82,7 @@ export default function Highlights() {
                 initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-80px" }}
-                transition={{ duration: 0.5, delay: (idx % 3) * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: 0.5, delay: (idx % 4) * 0.06, ease: [0.16, 1, 0.3, 1] }}
                 className="group flex flex-col gap-6 bg-ink-100 p-6 transition-colors hover:bg-ink-200 md:p-8"
               >
                 <div className="flex items-center justify-between">

@@ -5,6 +5,7 @@ import {
   Download, Settings, Eye, Plus, Minus, Activity, Star, Sparkles, Bot, MessageSquare,
   Gauge, MemoryStick, Layers, Stethoscope, Network, SunMoon,
   LayoutGrid, BellRing, TableProperties, Radar,
+  CalendarClock, Clock, GitBranch, RefreshCw, ListChecks,
   type LucideIcon,
 } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
@@ -41,6 +42,18 @@ const GROUPS: FeatureGroup[] = [
       { icon: Zap, title: "Optimize from logs", desc: "Optimize any logged query with Chouse AI — a rewrite with the same result, a before→after EXPLAIN estimate, and one click to open it in the Explorer" },
       { icon: Bot, title: "Diagnose errors & parts", desc: "One-click Chouse AI on a system.errors row or a part-log entry → cause, impact, and ordered fixes (merge pressure, too many parts, partition key)" },
       { icon: MessageSquare, title: "Chat copilot", desc: "Conversational data exploration and chart building against a connection" },
+    ],
+  },
+  {
+    category: "DataOps & Scheduling",
+    icon: CalendarClock,
+    items: [
+      { icon: CalendarClock, title: "Scheduled Queries", desc: "Schedule any read-only SELECT on a daily / weekly / monthly preset or a custom UTC cron — a DataOps page with Overview, Jobs, and Runs" },
+      { icon: Clock, title: "Deterministic windows", desc: "Templated {{slot_start}} / {{slot_end}} / {{prev_run_at}} bind to each run's exact time window, so backfills and replays are reproducible" },
+      { icon: RefreshCw, title: "Materialize write-back", desc: "Optional engine-generated, idempotent write into a destination table — append, replace-partition, or upsert — alongside bounded result snapshots" },
+      { icon: BellRing, title: "Failure alerting", desc: "Transition-based notifications to linked channels on failure and once on recovery — no flapping" },
+      { icon: GitBranch, title: "Runtime Lineage", desc: "Graphs the tables a job actually reads and writes from system.query_log, chaining jobs together and revealing column-level flow on demand" },
+      { icon: ListChecks, title: "Replica-safe scheduler", desc: "In-process per-job-lease scheduler correct across replicas with no leader election, plus a crash-only reaper, bounded retry, and transactional outbox" },
     ],
   },
   {
@@ -112,7 +125,7 @@ export default function Features() {
           eyebrow="What's inside"
           eyebrowIndex={2}
           title="Everything you need to give ClickHouse to a team."
-          description="Seven domains, one consistent UI. Click a category to expand its items."
+          description="Eight domains, one consistent UI. Click a category to expand its items."
         />
 
         <div className="mt-16 grid grid-cols-12 gap-x-6 gap-y-4">
