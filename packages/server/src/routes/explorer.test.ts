@@ -159,6 +159,8 @@ describe("Explorer Routes", () => {
 
     describe("POST /explorer/database", () => {
         it("should create database", async () => {
+            mockCheckDatabaseAccess.mockResolvedValue(true);
+
             const res = await app.request("/explorer/database", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
@@ -172,6 +174,8 @@ describe("Explorer Routes", () => {
 
     describe("DELETE /explorer/database/:name", () => {
         it("should drop database", async () => {
+            mockCheckDatabaseAccess.mockResolvedValue(true);
+
             const res = await app.request("/explorer/database/dropped_db", {
                 method: "DELETE",
                 headers: { "Authorization": "Bearer token" }
