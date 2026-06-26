@@ -638,7 +638,7 @@ aiChat.post("/threads", zValidator("json", CreateThreadSchema), async (c) => {
  */
 aiChat.get("/threads/:id", async (c) => {
     const rbacUserId = c.get("rbacUserId")!;
-    const threadId = c.req.param("id");
+    const threadId = c.req.param("id")!;
 
     const thread = await getThread(threadId, rbacUserId);
     if (!thread) {
@@ -666,7 +666,7 @@ const UpdateThreadSchema = z.object({
  */
 aiChat.patch("/threads/:id", zValidator("json", UpdateThreadSchema), async (c) => {
     const rbacUserId = c.get("rbacUserId")!;
-    const threadId = c.req.param("id");
+    const threadId = c.req.param("id")!;
     const { title } = c.req.valid("json");
 
     await updateThreadTitle(threadId, rbacUserId, title);
@@ -680,7 +680,7 @@ aiChat.patch("/threads/:id", zValidator("json", UpdateThreadSchema), async (c) =
  */
 aiChat.delete("/threads/:id", async (c) => {
     const rbacUserId = c.get("rbacUserId")!;
-    const threadId = c.req.param("id");
+    const threadId = c.req.param("id")!;
 
     const deleted = await deleteThread(threadId, rbacUserId);
     if (!deleted) {

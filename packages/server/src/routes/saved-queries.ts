@@ -171,7 +171,7 @@ savedQueriesRouter.get("/connections", async (c) => {
  * Get a single saved query by ID
  */
 savedQueriesRouter.get("/:id", async (c) => {
-  const { id } = c.req.param();
+  const { id } = c.req.param()!;
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -266,7 +266,7 @@ savedQueriesRouter.post("/", zValidator("json", createQuerySchema), async (c) =>
  * Update an existing saved query
  */
 savedQueriesRouter.put("/:id", zValidator("json", updateQuerySchema), async (c) => {
-  const { id } = c.req.param();
+  const { id } = c.req.param()!;
   const input = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
@@ -320,7 +320,7 @@ savedQueriesRouter.put("/:id", zValidator("json", updateQuerySchema), async (c) 
  * Delete a saved query
  */
 savedQueriesRouter.delete("/:id", async (c) => {
-  const { id } = c.req.param();
+  const { id } = c.req.param()!;
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");

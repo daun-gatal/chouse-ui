@@ -217,7 +217,7 @@ ssoAdminRoutes.patch(
   requirePermission(PERMISSIONS.SSO_EDIT),
   zValidator("json", ProviderBody.partial().omit({ id: true })),
   async (c) => {
-    const id = c.req.param("id");
+    const id = c.req.param("id")!;
     const user = getRbacUser(c);
     const existing = await store.getDbProvider(id);
     if (!existing) {
@@ -241,7 +241,7 @@ ssoAdminRoutes.patch(
 );
 
 ssoAdminRoutes.delete("/providers/:id", requirePermission(PERMISSIONS.SSO_DELETE), async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   const user = getRbacUser(c);
   const ip = getClientIp(c);
   const existing = await store.getDbProvider(id);

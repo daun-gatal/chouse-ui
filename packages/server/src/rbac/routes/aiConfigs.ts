@@ -112,7 +112,7 @@ aiConfigsRoutes.get(
     requirePermission(PERMISSIONS.AI_MODELS_VIEW),
     async (c) => {
         try {
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const config = await getAiConfigById(id);
             if (!config) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Config not found' } }, 404);
             return c.json({ success: true, data: config });
@@ -157,7 +157,7 @@ aiConfigsRoutes.patch(
     async (c) => {
         try {
             const user = getRbacUser(c);
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const input = c.req.valid('json');
 
             const config = await updateAiConfig(id, input);
@@ -186,7 +186,7 @@ aiConfigsRoutes.delete(
     async (c) => {
         try {
             const user = getRbacUser(c);
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const deleted = await deleteAiConfig(id);
             if (!deleted) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Config not found' } }, 404);
 

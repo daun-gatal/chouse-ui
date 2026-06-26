@@ -117,7 +117,7 @@ ssoRoutes.get("/providers", (c) => {
  */
 ssoRoutes.get("/:provider/start", async (c) => {
   const config = getSsoConfig();
-  const providerId = c.req.param("provider");
+  const providerId = c.req.param("provider")!;
   const provider = config.providers.get(providerId);
   if (!config.enabled) {
     requestLogger(c.get("requestId")).warn(

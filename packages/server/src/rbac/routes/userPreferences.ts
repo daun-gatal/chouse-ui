@@ -69,7 +69,7 @@ userPreferencesRoutes.post(
  */
 userPreferencesRoutes.delete('/favorites/:id', async (c) => {
   const user = getRbacUser(c);
-  const favoriteId = c.req.param('id');
+  const favoriteId = c.req.param('id')!;
   
   const deleted = await removeUserFavorite(user.sub, favoriteId);
   if (!deleted) {

@@ -77,7 +77,7 @@ roleRoutes.get('/', requirePermission(PERMISSIONS.ROLES_VIEW), async (c) => {
  * Get role by ID
  */
 roleRoutes.get('/:id', requirePermission(PERMISSIONS.ROLES_VIEW), async (c) => {
-  const id = c.req.param('id');
+  const id = c.req.param('id')!;
   const role = await getRoleById(id);
 
   if (!role) {
@@ -131,7 +131,7 @@ roleRoutes.post('/', requirePermission(PERMISSIONS.ROLES_CREATE), zValidator('js
  * Update role
  */
 roleRoutes.patch('/:id', requirePermission(PERMISSIONS.ROLES_UPDATE), zValidator('json', UpdateRoleSchema), async (c) => {
-  const id = c.req.param('id');
+  const id = c.req.param('id')!;
   const input = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
@@ -176,7 +176,7 @@ roleRoutes.patch('/:id', requirePermission(PERMISSIONS.ROLES_UPDATE), zValidator
  * Delete role
  */
 roleRoutes.delete('/:id', requirePermission(PERMISSIONS.ROLES_DELETE), async (c) => {
-  const id = c.req.param('id');
+  const id = c.req.param('id')!;
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
 

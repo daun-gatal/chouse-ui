@@ -387,7 +387,7 @@ fleet.get(
   async (c) => {
     const user = getRbacUser(c);
     const isSuperAdmin = (user.roles ?? []).includes("super_admin");
-    const connectionId = c.req.param("connectionId");
+    const connectionId = c.req.param("connectionId")!;
 
     await assertConnectionAccess(user.sub, isSuperAdmin, connectionId);
 
@@ -676,7 +676,7 @@ fleet.get("/doctor/reports", async (c) => {
 
 // One stored report by id — backs its own page at /doctor/:id.
 fleet.get("/doctor/reports/:id", async (c) => {
-  const r = await getDoctorReport(c.req.param("id"));
+  const r = await getDoctorReport(c.req.param("id")!);
   if (!r) {
     return c.json({ success: false, error: "Report not found" }, 404);
   }

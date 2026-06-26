@@ -290,7 +290,7 @@ scheduledQueries.post(
 );
 
 scheduledQueries.get("/:id", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW), async (c) => {
-  const job = await loadVisibleJob(c, c.req.param("id"));
+  const job = await loadVisibleJob(c, c.req.param("id")!);
   return ok(c, await toJobResponse(job, true));
 });
 
@@ -299,7 +299,7 @@ scheduledQueries.patch(
   requirePermission(PERMISSIONS.SCHEDULED_QUERIES_EDIT),
   zValidator("json", jobBodySchema),
   async (c) => {
-    const id = c.req.param("id");
+    const id = c.req.param("id")!;
     await loadVisibleJob(c, id);
     const body = c.req.valid("json");
     validateBody(body, hasWritePerm(c));
@@ -315,7 +315,7 @@ scheduledQueries.patch(
 );
 
 scheduledQueries.delete("/:id", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_DELETE), async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   await loadVisibleJob(c, id);
   await store.deleteJob(id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_DELETE, userId(c), { resourceType: "scheduled_query", resourceId: id });
@@ -323,7 +323,7 @@ scheduledQueries.delete("/:id", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_
 });
 
 scheduledQueries.post("/:id/run", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_RUN), async (c) => {
-  const job = await loadVisibleJob(c, c.req.param("id"));
+  const job = await loadVisibleJob(c, c.req.param("id")!);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_RUN, userId(c), { resourceType: "scheduled_query", resourceId: job.id });
   const run = await runner.execute(job, { trigger: "manual", slotAt: Date.now(), attempt: 1 });
   return ok(c, { run });
@@ -332,7 +332,7 @@ scheduledQueries.post("/:id/run", requirePermission(PERMISSIONS.SCHEDULED_QUERIE
 // --- runs -------------------------------------------------------------------
 
 scheduledQueries.get("/:id/runs", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW), async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   await loadVisibleJob(c, id); // 404 if the job isn't visible to this user
   const limit = Math.min(200, Math.max(1, parseInt(c.req.query("limit") ?? "50", 10) || 50));
   const offset = Math.max(0, parseInt(c.req.query("offset") ?? "0", 10) || 0);
@@ -342,7 +342,7 @@ scheduledQueries.get("/:id/runs", requirePermission(PERMISSIONS.SCHEDULED_QUERIE
 });
 
 scheduledQueries.get("/runs/:runId", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW), async (c) => {
-  const run = await store.getRun(c.req.param("runId"));
+  const run = await store.getRun(c.req.param("runId")!);
   if (!run) throw AppError.notFound("Run not found");
   await loadVisibleJob(c, run.queryId); // 404 if the parent job isn't visible
   return ok(c, { run });
@@ -351,7 +351,7 @@ scheduledQueries.get("/runs/:runId", requirePermission(PERMISSIONS.SCHEDULED_QUE
 // Delete runs for a job by status / time-range / "older than N days" — like the
 // Audit Logs prune. Deleting history is a delete operation (+ ownership check).
 scheduledQueries.delete("/:id/runs", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_DELETE), async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   await loadVisibleJob(c, id);
   const filter = runFilterFromQuery(c, id);
   const deleted = await store.deleteRuns(filter);
@@ -366,7 +366,7 @@ scheduledQueries.delete("/:id/runs", requirePermission(PERMISSIONS.SCHEDULED_QUE
 // --- lineage (observed runtime) ---------------------------------------------
 
 scheduledQueries.get("/:id/lineage", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW), async (c) => {
-  const focusJob = await loadVisibleJob(c, c.req.param("id"));
+  const focusJob = await loadVisibleJob(c, c.req.param("id")!);
   const windowParam = c.req.query("window") ?? "14d";
   const windowDays = clampWindowDays(parseInt(windowParam, 10) || 14);
   // Only jobs the caller may see feed the cross-job chain (respects view_all).

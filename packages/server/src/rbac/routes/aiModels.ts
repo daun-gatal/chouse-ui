@@ -55,7 +55,7 @@ aiModelsRoutes.get(
     requirePermission(PERMISSIONS.AI_MODELS_VIEW),
     async (c) => {
         try {
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const model = await getAiModelById(id);
             if (!model) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Model not found' } }, 404);
             return c.json({ success: true, data: model });
@@ -97,7 +97,7 @@ aiModelsRoutes.patch(
     async (c) => {
         try {
             const user = getRbacUser(c);
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const input = c.req.valid('json');
 
             const model = await updateAiModel(id, input);
@@ -123,7 +123,7 @@ aiModelsRoutes.delete(
     async (c) => {
         try {
             const user = getRbacUser(c);
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const deleted = await deleteAiModel(id);
             if (!deleted) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Model not found' } }, 404);
 

@@ -59,7 +59,7 @@ aiProvidersRoutes.get(
     requirePermission(PERMISSIONS.AI_MODELS_VIEW),
     async (c) => {
         try {
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const provider = await getAiProviderById(id);
             if (!provider) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
             return c.json({ success: true, data: provider });
@@ -105,7 +105,7 @@ aiProvidersRoutes.patch(
     async (c) => {
         try {
             const user = getRbacUser(c);
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const input = c.req.valid('json');
 
             const updateInput: Parameters<typeof updateAiProvider>[1] = {
@@ -140,7 +140,7 @@ aiProvidersRoutes.delete(
     async (c) => {
         try {
             const user = getRbacUser(c);
-            const id = c.req.param('id');
+            const id = c.req.param('id')!;
             const deleted = await deleteAiProvider(id);
             if (!deleted) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
 

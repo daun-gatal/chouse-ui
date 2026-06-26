@@ -195,7 +195,7 @@ connectionsRoutes.get(
   requirePermission('settings:view'),
   async (c) => {
     try {
-      const id = c.req.param('id');
+      const id = c.req.param('id')!;
       const connection = await getConnectionById(id);
 
       if (!connection) {
@@ -276,7 +276,7 @@ connectionsRoutes.patch(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const id = c.req.param('id');
+      const id = c.req.param('id')!;
       const input = c.req.valid('json');
 
       const connection = await updateConnection(id, input);
@@ -328,7 +328,7 @@ connectionsRoutes.delete(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const id = c.req.param('id');
+      const id = c.req.param('id')!;
 
       // Get connection info before deleting (for audit log)
       const existing = await getConnectionById(id);
@@ -421,7 +421,7 @@ connectionsRoutes.post(
   requirePermission(PERMISSIONS.CONNECTIONS_VIEW),
   async (c) => {
     try {
-      const id = c.req.param('id');
+      const id = c.req.param('id')!;
       const result = await testSavedConnection(id);
 
       return c.json({
@@ -448,7 +448,7 @@ connectionsRoutes.post(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const id = c.req.param('id');
+      const id = c.req.param('id')!;
       const isSuperAdmin = user.roles.includes('super_admin');
 
       // Verify user has access to this connection

@@ -297,7 +297,7 @@ explorer.get("/databases", async (c) => {
  * Get table details (with access check)
  */
 explorer.get("/table/:database/:table", async (c) => {
-  const { database, table } = c.req.param();
+  const { database, table } = c.req.param()!;
   const service = c.get("service");
   const session = c.get("session");
   const rbacUserId = c.get("rbacUserId");
@@ -346,7 +346,7 @@ explorer.get("/table/:database/:table", async (c) => {
  * Get table data sample (with access check)
  */
 explorer.get("/table/:database/:table/sample", async (c) => {
-  const { database, table } = c.req.param();
+  const { database, table } = c.req.param()!;
   const limit = parseInt(c.req.query("limit") || "100", 10);
   const service = c.get("service");
   const session = c.get("session");
@@ -498,7 +498,7 @@ explorer.delete(
       isRbacAdmin,
       PERMISSIONS.DB_DROP
     );
-    const { name } = c.req.param();
+    const { name } = c.req.param()!;
     const service = c.get("service");
     const hasDataAccess = await checkDatabaseAccess(rbacUserId, isRbacAdmin, name, connectionId, "admin", PERMISSIONS.DB_DROP);
     if (!hasDataAccess) {
@@ -732,7 +732,7 @@ explorer.delete(
       isRbacAdmin,
       PERMISSIONS.TABLE_DROP
     );
-    const { database, table } = c.req.param();
+    const { database, table } = c.req.param()!;
     const service = c.get("service");
     const hasDataAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId, "admin", PERMISSIONS.TABLE_DROP);
     if (!hasDataAccess) {
