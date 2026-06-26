@@ -27,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: preview
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -138,6 +138,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: preview
           fetch-depth: 0
           token: ${{ secrets.RELEASE_SECRET }}
 
@@ -232,7 +233,8 @@ jobs:
           BRANCH="release/v$VERSION"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          git fetch origin preview
+          git checkout -b "$BRANCH" origin/preview
           git add \
             CHANGELOG.md \
             package.json \
