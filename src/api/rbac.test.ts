@@ -240,7 +240,7 @@ describe('rbacDataAccessPoliciesApi', () => {
     name: 'Analytics RO',
     description: null,
     isSystem: false,
-    rules: [{ id: 'r1', policyId: 'p1', connectionId: null, databasePattern: 'analytics', tablePattern: '*', isAllowed: true, priority: 0, description: null }],
+    rules: [{ id: 'r1', policyId: 'p1', connectionId: null, databasePattern: 'analytics', tablePattern: '*', permissions: ['table:select'], isAllowed: true, priority: 0, description: null }],
     roleIds: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -272,10 +272,9 @@ describe('rbacDataAccessPoliciesApi', () => {
     );
     await rbacDataAccessPoliciesApi.create({
       name: 'Analytics RO',
-      allConnections: true,
-      rules: [{ databasePattern: 'analytics', tablePattern: '*', isAllowed: true, priority: 0 }],
+      rules: [{ databasePattern: 'analytics', tablePattern: '*', permissions: ['table:select'], isAllowed: true, priority: 0 }],
     });
-    expect(captured).toMatchObject({ name: 'Analytics RO', allConnections: true });
+    expect(captured).toMatchObject({ name: 'Analytics RO', rules: [{ permissions: ['table:select'] }] });
   });
 
   it('replaces the policies attached to a role', async () => {

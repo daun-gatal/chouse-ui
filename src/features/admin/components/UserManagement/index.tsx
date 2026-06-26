@@ -99,6 +99,7 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<RbacUser[]>([]);
   const [roles, setRoles] = useState<RbacRole[]>([]);
   const [total, setTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState({ active: 0, inactive: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,15 +186,33 @@ const UserManagement: React.FC = () => {
     setError(null);
 
     try {
+      const baseFilters = {
+        search: searchQuery || undefined,
+        roleId: roleFilter !== "all" ? roleFilter : undefined,
+      };
       const result = await rbacUsersApi.list({
         page: currentPage,
         limit: pageSize,
-        search: searchQuery || undefined,
-        roleId: roleFilter !== "all" ? roleFilter : undefined,
+        ...baseFilters,
         isActive: statusFilter === "all" ? undefined : statusFilter === "active",
       });
+
+      const [activeTotal, inactiveTotal] = await Promise.all([
+        statusFilter === "inactive"
+          ? Promise.resolve(0)
+          : statusFilter === "active"
+            ? Promise.resolve(result.total)
+            : rbacUsersApi.list({ ...baseFilters, page: 1, limit: 1, isActive: true }).then((response) => response.total),
+        statusFilter === "active"
+          ? Promise.resolve(0)
+          : statusFilter === "inactive"
+            ? Promise.resolve(result.total)
+            : rbacUsersApi.list({ ...baseFilters, page: 1, limit: 1, isActive: false }).then((response) => response.total),
+      ]);
+
       setUsers(result.users);
       setTotal(result.total);
+      setStatusCounts({ active: activeTotal, inactive: inactiveTotal });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch users";
       setError(message);
@@ -352,15 +371,6 @@ const UserManagement: React.FC = () => {
       )}
     </>
   );
-
-  // Count users by status
-  const statusCounts = useMemo(() => {
-    return {
-      total: total,
-      active: users.filter((u) => u.isActive).length,
-      inactive: users.filter((u) => !u.isActive).length,
-    };
-  }, [users, total]);
 
   return (
     <motion.div

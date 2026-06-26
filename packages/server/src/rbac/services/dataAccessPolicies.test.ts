@@ -74,14 +74,16 @@ describe("dataAccessPolicies service", () => {
       name: "Analytics RO",
       description: "read analytics",
       rules: [
-        { connectionId, databasePattern: "analytics", tablePattern: "*", isAllowed: true, priority: 10 },
+        { connectionId, databasePattern: "analytics", tablePattern: "*", permissions: ["table:select", "query:execute"], isAllowed: true, priority: 10 },
         { connectionId: null, databasePattern: "shared", tablePattern: "*", isAllowed: true, priority: 5 },
       ],
     });
     expect(created.id).toBeTruthy();
     expect(created.rules.length).toBe(2);
     expect(created.rules.find((r) => r.databasePattern === "analytics")!.connectionId).toBe(connectionId);
+    expect(created.rules.find((r) => r.databasePattern === "analytics")!.permissions).toEqual(["table:select", "query:execute"]);
     expect(created.rules.find((r) => r.databasePattern === "shared")!.connectionId).toBeNull();
+    expect(created.rules.find((r) => r.databasePattern === "shared")!.permissions).toEqual(["database:view", "table:view", "table:select", "query:execute"]);
 
     const fetched = await policies.getPolicyById(created.id);
     expect(fetched!.name).toBe("Analytics RO");
@@ -96,6 +98,7 @@ describe("dataAccessPolicies service", () => {
 
     const onConn = await policies.getPolicyRulesForRoleIds([analystRoleId], connectionId);
     expect(onConn.some((r) => r.databasePattern === "scoped_db")).toBe(true);
+    expect(onConn.find((r) => r.databasePattern === "scoped_db")!.permissions).toContain("table:select");
 
     const otherConn = await policies.getPolicyRulesForRoleIds([analystRoleId], randomUUID());
     expect(otherConn.some((r) => r.databasePattern === "scoped_db")).toBe(false);

@@ -143,7 +143,7 @@ async function runSelect(
 /**
  * Re-evaluate the job OWNER's CURRENT data-access policy at run time, so a job
  * keeps failing once the owner loses access to a table it reads — access isn't
- * frozen at create time. Admin/super-admin owners bypass (as interactively).
+ * frozen at create time. Super-admin owners bypass (as interactively).
  * Returns `null` when allowed, or a human-readable reason when denied.
  */
 async function ownerDataAccessDenial(job: ScheduledQueryRow): Promise<string | null> {
@@ -154,7 +154,7 @@ async function ownerDataAccessDenial(job: ScheduledQueryRow): Promise<string | n
     getUserPermissions(ownerId),
     getConnectionById(job.connectionId),
   ]);
-  const isAdmin = roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || roles.includes(SYSTEM_ROLES.ADMIN);
+  const isAdmin = roles.includes(SYSTEM_ROLES.SUPER_ADMIN);
   const result = await validateQueryAccess(
     ownerId,
     isAdmin,

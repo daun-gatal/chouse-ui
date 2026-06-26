@@ -6,7 +6,7 @@
  * all connections (global, connectionId = null). Roles attach policies to grant
  * their users access.
  *
- * Create/edit is a 3-step wizard: Connections -> Access -> Details & Review.
+ * Create/edit is a 5-step wizard: Connections -> Scope -> Operations -> Exceptions -> Review.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -42,16 +42,71 @@ interface RuleDraft {
   connectionId: string | null;
   databasePattern: string;
   tablePattern: string;
+  permissions: string[];
   isAllowed: boolean;
   priority: number;
   description: string;
 }
+
+const DATA_PERMISSION_GROUPS = [
+  {
+    label: 'Database',
+    permissions: [
+      ['database:view', 'View'],
+      ['database:create', 'Create'],
+      ['database:drop', 'Drop'],
+    ],
+  },
+  {
+    label: 'Query',
+    permissions: [
+      ['query:execute', 'Execute'],
+      ['query:execute:ddl', 'DDL'],
+      ['query:execute:dml', 'DML'],
+      ['query:execute:misc', 'Misc'],
+    ],
+  },
+  {
+    label: 'Table',
+    permissions: [
+      ['table:view', 'View'],
+      ['table:select', 'Select'],
+      ['table:insert', 'Insert'],
+      ['table:update', 'Update'],
+      ['table:delete', 'Delete'],
+      ['table:create', 'Create'],
+      ['table:alter', 'Alter'],
+      ['table:drop', 'Drop'],
+    ],
+  },
+] as const;
+
+const DEFAULT_RULE_PERMISSIONS = ['database:view', 'table:view', 'table:select', 'query:execute'];
+
+const OPERATION_PRESETS = [
+  {
+    id: 'read',
+    label: 'Read only',
+    permissions: ['database:view', 'table:view', 'table:select', 'query:execute'],
+  },
+  {
+    id: 'write',
+    label: 'Read/write',
+    permissions: ['database:view', 'table:view', 'table:select', 'table:insert', 'table:update', 'table:delete', 'query:execute', 'query:execute:dml'],
+  },
+  {
+    id: 'schema',
+    label: 'Schema editor',
+    permissions: ['database:view', 'database:create', 'table:view', 'table:select', 'table:create', 'table:alter', 'table:drop', 'query:execute', 'query:execute:ddl'],
+  },
+] as const;
 
 function policyToRules(policy: DataAccessPolicy): RuleDraft[] {
   return policy.rules.map((r) => ({
     connectionId: r.connectionId ?? null,
     databasePattern: r.databasePattern,
     tablePattern: r.tablePattern,
+    permissions: r.permissions.length > 0 ? r.permissions : DEFAULT_RULE_PERMISSIONS,
     isAllowed: r.isAllowed,
     priority: r.priority,
     description: r.description ?? '',
@@ -74,6 +129,7 @@ export const DataAccessPolicies: React.FC = () => {
   const [description, setDescription] = useState('');
   const [scopeConns, setScopeConns] = useState<string[]>([]); // connections this policy configures
   const [rules, setRules] = useState<RuleDraft[]>([]);
+  const [expandedExceptionGroups, setExpandedExceptionGroups] = useState<Set<string>>(new Set());
 
   // Schema browse state (keyed by connectionId, and `${connId}:${db}` for tables)
   const [dbsByConn, setDbsByConn] = useState<Record<string, string[]>>({});
@@ -103,6 +159,7 @@ export const DataAccessPolicies: React.FC = () => {
           connectionId: r.connectionId,
           databasePattern: r.databasePattern || '*',
           tablePattern: r.tablePattern || '*',
+          permissions: r.permissions,
           isAllowed: r.isAllowed,
           priority: r.priority,
           description: r.description.trim() || null,
@@ -137,6 +194,7 @@ export const DataAccessPolicies: React.FC = () => {
     setEditingId(null);
     setName(''); setDescription('');
     setScopeConns([]); setRules([]);
+    setExpandedExceptionGroups(new Set());
     setStep(1); resetBrowse();
     setShowDialog(true);
   };
@@ -149,6 +207,7 @@ export const DataAccessPolicies: React.FC = () => {
     // Scope = the connections named by the policy's rules. Any global (null) rules
     // an existing/system policy carries are preserved on save but not edited here.
     setScopeConns(Array.from(new Set(drafts.map((r) => r.connectionId).filter((c): c is string => c !== null))));
+    setExpandedExceptionGroups(new Set());
     setStep(1); resetBrowse();
     setShowDialog(true);
   };
@@ -181,8 +240,22 @@ export const DataAccessPolicies: React.FC = () => {
     [connections, scopeConns],
   );
 
-  // Each connection is configured independently; rules are always per-connection.
-  const ruleGroups: string[] = scopeConns;
+  // Each connection is configured independently; null rules are preserved for old/global policies.
+  const ruleGroups: Array<string | null> = [
+    ...scopeConns,
+    ...(rules.some((r) => r.connectionId === null) ? [null] : []),
+  ];
+
+  const exceptionGroupKey = (group: string | null) => group ?? '__global__';
+  const toggleExceptionGroup = (group: string | null) => {
+    const key = exceptionGroupKey(group);
+    setExpandedExceptionGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   // ---- Schema browsing ----
   const loadDatabases = async (connId: string) => {
@@ -234,21 +307,48 @@ export const DataAccessPolicies: React.FC = () => {
     setRules((rs) => {
       const i = rs.findIndex((r) => r.connectionId === connId && r.databasePattern === db && r.tablePattern === table);
       if (i >= 0) return rs.filter((_, idx) => idx !== i);
-      return [...rs, { connectionId: connId, databasePattern: db, tablePattern: table, isAllowed: true, priority: 0, description: '' }];
+      return [...rs, { connectionId: connId, databasePattern: db, tablePattern: table, permissions: DEFAULT_RULE_PERMISSIONS, isAllowed: true, priority: 0, description: '' }];
     });
   };
 
   const addPatternRule = (connId: string | null) => {
-    setRules((rs) => [...rs, { connectionId: connId, databasePattern: '*', tablePattern: '*', isAllowed: true, priority: 0, description: '' }]);
+    setRules((rs) => [...rs, { connectionId: connId, databasePattern: '*', tablePattern: '*', permissions: DEFAULT_RULE_PERMISSIONS, isAllowed: true, priority: 0, description: '' }]);
   };
 
   const updateRuleAt = (globalIndex: number, patch: Partial<RuleDraft>) =>
     setRules((rs) => rs.map((r, i) => (i === globalIndex ? { ...r, ...patch } : r)));
   const removeRuleAt = (globalIndex: number) => setRules((rs) => rs.filter((_, i) => i !== globalIndex));
+  const toggleRulePermission = (globalIndex: number, permission: string) =>
+    setRules((rs) => rs.map((r, i) => {
+      if (i !== globalIndex) return r;
+      const permissions = r.permissions.includes(permission)
+        ? r.permissions.filter((p) => p !== permission)
+        : [...r.permissions, permission];
+      return { ...r, permissions: permissions.length > 0 ? permissions : [permission] };
+    }));
+  const applyPermissionsToAllowRules = (permissions: readonly string[]) =>
+    setRules((rs) => rs.map((r) => (r.isAllowed ? { ...r, permissions: Array.from(permissions) } : r)));
+  const togglePermissionForAllowRules = (permission: string) =>
+    setRules((rs) => {
+      const allowRules = rs.filter((r) => r.isAllowed);
+      const everyAllowRuleHasPermission = allowRules.length > 0 && allowRules.every((r) => r.permissions.includes(permission));
+      return rs.map((r) => {
+        if (!r.isAllowed) return r;
+        const permissions = everyAllowRuleHasPermission
+          ? r.permissions.filter((p) => p !== permission)
+          : Array.from(new Set([...r.permissions, permission]));
+        return { ...r, permissions: permissions.length > 0 ? permissions : [permission] };
+      });
+    });
 
   const step1Valid = scopeConns.length > 0;
   const step2Valid = rules.length > 0;
-  const step3Valid = name.trim().length >= 2;
+  const step3Valid = rules.every((r) => r.permissions.length > 0);
+  const step4Valid = rules.length > 0;
+  const step5Valid = name.trim().length >= 2;
+  const selectedRules = rules.filter((r) => r.isAllowed);
+  const selectedRuleCount = selectedRules.length;
+  const allowRulePermissions = Array.from(new Set(selectedRules.flatMap((r) => r.permissions)));
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-paper-dim" /></div>;
@@ -313,20 +413,46 @@ export const DataAccessPolicies: React.FC = () => {
     return (
       <div className="space-y-1">
         {groupRules.map(({ r, i }) => (
-          <div key={i} className="flex items-center gap-1.5 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1.5">
-            <Input value={r.databasePattern} onChange={(e) => updateRuleAt(i, { databasePattern: e.target.value })}
-              placeholder="db / * / /regex/" className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper" />
-            <span className="text-paper-faint">.</span>
-            <Input value={r.tablePattern} onChange={(e) => updateRuleAt(i, { tablePattern: e.target.value })}
-              placeholder="table / *" className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper" />
-            <button type="button" onClick={() => updateRuleAt(i, { isAllowed: !r.isAllowed })}
-              className={cn('rounded-xs border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]',
-                r.isAllowed ? 'border-emerald-700 text-emerald-300' : 'border-red-700 text-red-300')}>
-              {r.isAllowed ? 'Allow' : 'Deny'}
-            </button>
-            <Button size="icon" variant="ghost" className="h-6 w-6 rounded-xs text-red-400 hover:bg-red-950/40" onClick={() => removeRuleAt(i)}>
-              <X className="h-3 w-3" />
-            </Button>
+          <div key={i} className="space-y-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1.5">
+            <div className="flex items-center gap-1.5">
+              <Input value={r.databasePattern} onChange={(e) => updateRuleAt(i, { databasePattern: e.target.value })}
+                placeholder="db / * / /regex/" className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper" />
+              <span className="text-paper-faint">.</span>
+              <Input value={r.tablePattern} onChange={(e) => updateRuleAt(i, { tablePattern: e.target.value })}
+                placeholder="table / *" className="h-7 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper" />
+              <button type="button" onClick={() => updateRuleAt(i, { isAllowed: !r.isAllowed })}
+                className={cn('rounded-xs border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]',
+                  r.isAllowed ? 'border-emerald-700 text-emerald-300' : 'border-red-700 text-red-300')}>
+                {r.isAllowed ? 'Allow' : 'Deny'}
+              </button>
+              <Button size="icon" variant="ghost" className="h-6 w-6 rounded-xs text-red-400 hover:bg-red-950/40" onClick={() => removeRuleAt(i)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-3">
+              {DATA_PERMISSION_GROUPS.map((group) => (
+                <div key={group.label} className="rounded-xs border border-ink-500 bg-ink-200 p-1.5">
+                  <p className="mb-1 font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{group.label}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {group.permissions.map(([permission, label]) => (
+                      <button
+                        key={permission}
+                        type="button"
+                        onClick={() => toggleRulePermission(i, permission)}
+                        className={cn(
+                          'rounded-xs border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em]',
+                          r.permissions.includes(permission)
+                            ? 'border-brand/60 bg-brand/15 text-brand'
+                            : 'border-ink-500 text-paper-faint hover:text-paper',
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
         <Button size="sm" variant="ghost" onClick={() => addPatternRule(groupConn)}
@@ -428,15 +554,17 @@ export const DataAccessPolicies: React.FC = () => {
               {editingId ? 'Edit policy' : 'New data access policy'}
             </DialogTitle>
             <DialogDescription className="text-paper-muted">
-              {step === 1 && 'Step 1 of 3 — choose which connections this policy covers.'}
-              {step === 2 && 'Step 2 of 3 — pick the databases/tables to grant.'}
-              {step === 3 && 'Step 3 of 3 — name the policy and review.'}
+              {step === 1 && 'Step 1 of 5 — choose which connections this policy covers.'}
+              {step === 2 && 'Step 2 of 5 — select databases and tables.'}
+              {step === 3 && 'Step 3 of 5 — apply the operation profile.'}
+              {step === 4 && 'Step 4 of 5 — add exceptions or custom patterns.'}
+              {step === 5 && 'Step 5 of 5 — name the policy and review.'}
             </DialogDescription>
           </DialogHeader>
 
           {/* Stepper */}
-          <div className="flex items-center gap-2 px-1 pb-2">
-            {['Connections', 'Access', 'Details'].map((label, i) => {
+          <div className="flex flex-wrap items-center gap-2 px-1 pb-2">
+            {['Connections', 'Scope', 'Operations', 'Exceptions', 'Review'].map((label, i) => {
               const n = i + 1;
               return (
                 <div key={label} className="flex items-center gap-2">
@@ -445,7 +573,7 @@ export const DataAccessPolicies: React.FC = () => {
                     {step > n ? <Check className="h-3 w-3" /> : n}
                   </span>
                   <span className={cn('font-mono text-[10px] uppercase tracking-[0.14em]', step === n ? 'text-paper' : 'text-paper-faint')}>{label}</span>
-                  {n < 3 && <span className="mx-1 h-px w-4 bg-ink-500" />}
+                  {n < 5 && <span className="mx-1 h-px w-4 bg-ink-500" />}
                 </div>
               );
             })}
@@ -478,22 +606,49 @@ export const DataAccessPolicies: React.FC = () => {
               </>
             )}
 
-            {/* STEP 2 — Access */}
+            {/* STEP 2 — Scope */}
             {step === 2 && (
               <div className="space-y-4">
-                {/* Each connection is configured independently. */}
-                {browseConns.map((conn) => (
-                  <div key={conn.id} className="space-y-2 rounded-xs border border-ink-500 bg-ink-200 p-3">
-                    {renderTree(conn, conn.id)}
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Rules for {conn.name}</span>
-                      <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
-                        {rules.filter((r) => r.connectionId === conn.id).length} rule(s)
-                      </span>
-                    </div>
-                    {renderRuleGroup(conn.id)}
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="space-y-3">
+                    {browseConns.map((conn) => (
+                      <div key={conn.id} className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                        {renderTree(conn, conn.id)}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                  <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                    <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Selected scope</p>
+                    {rules.length === 0 ? (
+                      <p className="text-[11px] text-paper-faint">No scope selected.</p>
+                    ) : (
+                      <div className="max-h-72 space-y-2 overflow-y-auto">
+                        {ruleGroups.map((group) => {
+                          const groupRules = rules.filter((r) => r.connectionId === group);
+                          if (groupRules.length === 0) return null;
+                          return (
+                            <div key={group ?? '__global__'}>
+                              <p className="mb-1 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-paper-faint">{connectionName(group)}</p>
+                              <div className="space-y-1">
+                                {groupRules.map((r, i) => (
+                                  <div key={`${r.databasePattern}.${r.tablePattern}.${i}`} className="flex items-center justify-between gap-2 rounded-xs border border-ink-500 bg-ink-100 px-2 py-1">
+                                    <span className="truncate font-mono text-[11px] text-paper-muted">{r.databasePattern}.{r.tablePattern}</span>
+                                    <button type="button" onClick={() => setRules((rs) => rs.filter((candidate) => candidate !== r))} className="text-paper-faint hover:text-red-300">
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="mt-3 border-t border-ink-500 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                      {rules.length} rule(s)
+                    </div>
+                  </div>
+                </div>
 
                 {!step2Valid && (
                   <p className="flex items-center gap-1.5 text-[11px] text-amber-300"><Info className="h-3 w-3" /> Tick at least one table/database or add a pattern rule to continue.</p>
@@ -501,8 +656,134 @@ export const DataAccessPolicies: React.FC = () => {
               </div>
             )}
 
-            {/* STEP 3 — Details & Review */}
+            {/* STEP 3 — Operations */}
             {step === 3 && (
+              <div className="space-y-4">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {OPERATION_PRESETS.map((preset) => {
+                    const selected = selectedRules.length > 0 && selectedRules.every((r) =>
+                      r.permissions.length === preset.permissions.length &&
+                      preset.permissions.every((p) => r.permissions.includes(p))
+                    );
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => applyPermissionsToAllowRules(preset.permissions)}
+                        className={cn(
+                          'rounded-xs border p-3 text-left',
+                          selected ? 'border-brand/70 bg-brand/10' : 'border-ink-500 bg-ink-200 hover:bg-ink-300',
+                        )}
+                      >
+                        <span className={cn('block font-mono text-[10px] uppercase tracking-[0.14em]', selected ? 'text-brand' : 'text-paper')}>
+                          {preset.label}
+                        </span>
+                        <span className="mt-2 block text-[11px] leading-4 text-paper-faint">{preset.permissions.join(', ')}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Custom operations</p>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{selectedRuleCount} allow rule(s)</span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {DATA_PERMISSION_GROUPS.map((group) => (
+                      <div key={group.label} className="rounded-xs border border-ink-500 bg-ink-100 p-2">
+                        <p className="mb-1 font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{group.label}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {group.permissions.map(([permission, label]) => (
+                            <button
+                              key={permission}
+                              type="button"
+                              onClick={() => togglePermissionForAllowRules(permission)}
+                              className={cn(
+                                'rounded-xs border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em]',
+                                allowRulePermissions.includes(permission)
+                                  ? 'border-brand/60 bg-brand/15 text-brand'
+                                  : 'border-ink-500 text-paper-faint hover:text-paper',
+                              )}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 4 — Exceptions */}
+            {step === 4 && (
+              <div className="space-y-4">
+                {ruleGroups.map((group) => {
+                  const groupRules = rules.filter((r) => r.connectionId === group);
+                  const groupKey = exceptionGroupKey(group);
+                  const isExpanded = expandedExceptionGroups.has(groupKey);
+                  const denyCount = groupRules.filter((r) => !r.isAllowed).length;
+                  if (groupRules.length === 0 && group !== null) return null;
+                  return (
+                    <div key={groupKey} className="rounded-xs border border-ink-500 bg-ink-200">
+                      <button
+                        type="button"
+                        onClick={() => toggleExceptionGroup(group)}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-ink-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+                        aria-expanded={isExpanded}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-paper-faint" aria-hidden />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-paper-faint" aria-hidden />
+                          )}
+                          <span className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
+                            {connectionName(group)}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
+                          {groupRules.length} rule{groupRules.length === 1 ? '' : 's'} · {denyCount} den{denyCount === 1 ? 'y' : 'ies'}
+                        </span>
+                      </button>
+
+                      {isExpanded ? (
+                        <div className="border-t border-ink-500 p-3">
+                          {renderRuleGroup(group)}
+                        </div>
+                      ) : (
+                        <div className="border-t border-ink-500 px-3 py-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            {groupRules.slice(0, 4).map((r, i) => (
+                              <span
+                                key={`${r.databasePattern}.${r.tablePattern}.${i}`}
+                                className={cn(
+                                  'rounded-xs border px-1.5 py-0.5 font-mono text-[10px]',
+                                  r.isAllowed
+                                    ? 'border-emerald-700/60 text-emerald-300'
+                                    : 'border-red-700/60 text-red-300',
+                                )}
+                              >
+                                {r.isAllowed ? 'allow' : 'deny'} {r.databasePattern}.{r.tablePattern}
+                              </span>
+                            ))}
+                            {groupRules.length > 4 && (
+                              <span className="rounded-xs border border-ink-500 px-1.5 py-0.5 font-mono text-[10px] text-paper-faint">
+                                +{groupRules.length - 4} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* STEP 5 — Details & Review */}
+            {step === 5 && (
               <div className="space-y-3">
                 <div className="space-y-2">
                   <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Name</Label>
@@ -523,9 +804,12 @@ export const DataAccessPolicies: React.FC = () => {
                         <div key={g ?? '__all__'} className="rounded-xs border border-ink-500 bg-ink-200 p-2">
                           <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{connectionName(g)}</p>
                           {groupRules.map((r, i) => (
-                            <div key={i} className="flex items-center justify-between py-0.5 text-[12px]">
-                              <span className="font-mono text-paper-muted">{r.databasePattern}.{r.tablePattern}</span>
-                              <span className={cn('font-mono text-[10px] uppercase', r.isAllowed ? 'text-emerald-300' : 'text-red-300')}>{r.isAllowed ? 'allow' : 'deny'} · p{r.priority}</span>
+                            <div key={i} className="py-0.5 text-[12px]">
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono text-paper-muted">{r.databasePattern}.{r.tablePattern}</span>
+                                <span className={cn('font-mono text-[10px] uppercase', r.isAllowed ? 'text-emerald-300' : 'text-red-300')}>{r.isAllowed ? 'allow' : 'deny'} · p{r.priority}</span>
+                              </div>
+                              <p className="mt-0.5 break-words font-mono text-[10px] text-paper-faint">{r.permissions.join(', ')}</p>
                             </div>
                           ))}
                         </div>
@@ -542,13 +826,13 @@ export const DataAccessPolicies: React.FC = () => {
               className="h-9 gap-1 rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper">
               {step === 1 ? 'Cancel' : <><ArrowLeft className="h-3.5 w-3.5" /> Back</>}
             </Button>
-            {step < 3 ? (
-              <Button onClick={() => setStep(step + 1)} disabled={step === 1 ? !step1Valid : !step2Valid}
+            {step < 5 ? (
+              <Button onClick={() => setStep(step + 1)} disabled={(step === 1 && !step1Valid) || (step === 2 && !step2Valid) || (step === 3 && !step3Valid) || (step === 4 && !step4Valid)}
                 className="h-9 gap-1 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50">
                 Next <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             ) : (
-              <Button onClick={() => saveMutation.mutate()} disabled={!step3Valid || saveMutation.isPending}
+              <Button onClick={() => saveMutation.mutate()} disabled={!step5Valid || saveMutation.isPending}
                 className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50">
                 {saveMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 {editingId ? 'Save policy' : 'Create policy'}

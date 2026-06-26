@@ -16,6 +16,7 @@ import {
   type AccessType,
 } from '../services/dataAccess';
 import { rbacAuthMiddleware, getRbacUser } from '../middleware';
+import { PERMISSIONS, type Permission } from '../schema/base';
 import { requestLogger } from '../../utils/logger';
 
 const dataAccessRoutes = new Hono();
@@ -24,7 +25,7 @@ const dataAccessRoutes = new Hono();
 // Validation Schemas
 // ============================================
 
-const accessTypeSchema = z.enum(['read', 'write', 'admin']);
+const accessTypeSchema = z.enum(['read', 'write', 'admin', 'misc']);
 
 const checkAccessSchema = z.object({
   database: z.string().min(1),
@@ -32,6 +33,14 @@ const checkAccessSchema = z.object({
   accessType: accessTypeSchema.default('read'),
   connectionId: z.string().uuid().optional(),
 });
+
+function requiredPermissionForCheck(accessType: AccessType, table?: string): Permission {
+  if (!table) return accessType === 'admin' ? PERMISSIONS.DB_CREATE : PERMISSIONS.DB_VIEW;
+  if (accessType === 'write') return PERMISSIONS.TABLE_INSERT;
+  if (accessType === 'admin') return PERMISSIONS.TABLE_ALTER;
+  if (accessType === 'misc') return PERMISSIONS.QUERY_EXECUTE_MISC;
+  return PERMISSIONS.TABLE_SELECT;
+}
 
 // ============================================
 // Routes
@@ -46,13 +55,25 @@ dataAccessRoutes.post(
     try {
       const user = getRbacUser(c);
       const { database, table, accessType, connectionId } = c.req.valid('json');
+      const requiredPermission = requiredPermissionForCheck(accessType as AccessType, table);
+
+      if (!user.roles.includes('super_admin') && !user.permissions.includes(requiredPermission)) {
+        return c.json({
+          success: true,
+          data: {
+            allowed: false,
+            reason: `Permission '${requiredPermission}' required`,
+          },
+        });
+      }
 
       const result = await checkUserAccess(
         user.sub,
         database,
         table || null,
         accessType as AccessType,
-        connectionId
+        connectionId,
+        requiredPermission
       );
 
       return c.json({ success: true, data: result });
@@ -77,7 +98,7 @@ dataAccessRoutes.post(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const isAdmin = user.roles.includes('super_admin') || user.roles.includes('admin');
+      const isAdmin = user.roles.includes('super_admin');
       const { databases, connectionId } = c.req.valid('json');
 
       // Admins get all databases
@@ -109,7 +130,7 @@ dataAccessRoutes.post(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const isAdmin = user.roles.includes('super_admin') || user.roles.includes('admin');
+      const isAdmin = user.roles.includes('super_admin');
       const { database, tables, connectionId } = c.req.valid('json');
 
       // Admins get all tables

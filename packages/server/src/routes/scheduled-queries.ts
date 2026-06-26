@@ -130,7 +130,7 @@ async function dataAccessCheck(c: Context, query: string, connectionId: string):
   } catch {
     return { allowed: false, reason: "RBAC authentication is required." };
   }
-  const isAdmin = roles.includes(SYSTEM_ROLES.SUPER_ADMIN) || roles.includes(SYSTEM_ROLES.ADMIN);
+  const isAdmin = roles.includes(SYSTEM_ROLES.SUPER_ADMIN);
   const conn = await getConnectionById(connectionId);
   const result = await validateQueryAccess(
     userId(c),

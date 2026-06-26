@@ -4,6 +4,7 @@ import { describe, it, expect, mock, beforeEach } from "bun:test";
 let mockResolvedRules: Array<{
   databasePattern: string;
   tablePattern: string;
+  permissions: string[];
   isAllowed: boolean;
   priority: number;
   policyId: string;
@@ -39,6 +40,7 @@ function rule(partial: Partial<(typeof mockResolvedRules)[number]>): (typeof moc
   return {
     databasePattern: "*",
     tablePattern: "*",
+    permissions: ["database:view", "table:view", "table:select", "query:execute"],
     isAllowed: true,
     priority: 0,
     policyId: "p1",
@@ -68,6 +70,13 @@ describe("DataAccess Service (RBAC)", () => {
       expect(result.reason).toContain("No matching access rule");
     });
 
+    it("denies when pattern matches but the scoped permission is missing", async () => {
+      mockResolvedRules = [rule({ databasePattern: "db1", permissions: ["table:view"] })];
+      const result = await checkUserAccess("user-1", "db1", "t1", "read", undefined, "table:select");
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain("table:select");
+    });
+
     it("denies when a higher-priority deny rule matches", async () => {
       mockResolvedRules = [
         rule({ databasePattern: "*", priority: 0, isAllowed: true }),
@@ -86,7 +95,7 @@ describe("DataAccess Service (RBAC)", () => {
 
     it("allows system databases by default", async () => {
       mockResolvedRules = [];
-      const result = await checkUserAccess("user-1", "system", "tables", "read");
+      const result = await checkUserAccess("user-1", "system", "tables", "read", undefined, "table:select");
       expect(result.allowed).toBe(true);
     });
   });

@@ -21,7 +21,7 @@ import {
 import { listConnectionDatabases, listConnectionTables } from '../services/connections';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
-import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
+import { AUDIT_ACTIONS, DATA_RELATED_PERMISSIONS, DEFAULT_DATA_ACCESS_RULE_PERMISSIONS, PERMISSIONS } from '../schema/base';
 import { AppError } from '../../types';
 import { requestLogger } from '../../utils/logger';
 
@@ -36,6 +36,7 @@ const ruleSchema = z.object({
   connectionId: z.string().uuid().nullable().optional(),
   databasePattern: z.string().min(1).max(255).default('*'),
   tablePattern: z.string().min(1).max(255).default('*'),
+  permissions: z.array(z.enum(DATA_RELATED_PERMISSIONS)).min(1).default(Array.from(DEFAULT_DATA_ACCESS_RULE_PERMISSIONS)),
   isAllowed: z.boolean().default(true),
   priority: z.number().int().min(-1000).max(1000).default(0),
   description: z.string().max(500).nullable().optional(),

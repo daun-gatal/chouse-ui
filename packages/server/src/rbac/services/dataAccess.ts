@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { getDatabase, getSchema } from '../db';
 import { logger } from '../../utils/logger';
 import { getPolicyRulesForRoleIds, type ResolvedPolicyRule } from './dataAccessPolicies';
+import { PERMISSIONS, type Permission } from '../schema/base';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,9 +21,8 @@ type AnyDb = any;
 // Types
 // ============================================
 
-// Access type is governed by role permissions (table:select / table:insert / …),
-// not by data access rules. Kept here only so the middleware signatures that pass
-// an access type stay stable — it is not used for pattern matching.
+// Access type keeps older call sites stable; scoped data access is enforced with
+// the concrete RBAC permission for the operation.
 export type AccessType = 'read' | 'write' | 'admin' | 'misc';
 
 /**
@@ -32,6 +32,7 @@ export type AccessType = 'read' | 'write' | 'admin' | 'misc';
 export interface DataAccessRuleResponse {
   databasePattern: string;
   tablePattern: string;
+  permissions: Permission[];
   isAllowed: boolean;
   priority: number;
   policyId: string;
@@ -94,6 +95,7 @@ function mapResolvedRule(rule: ResolvedPolicyRule): DataAccessRuleResponse {
   return {
     databasePattern: rule.databasePattern,
     tablePattern: rule.tablePattern,
+    permissions: rule.permissions,
     isAllowed: rule.isAllowed,
     priority: rule.priority,
     policyId: rule.policyId,
@@ -146,11 +148,12 @@ export async function checkUserAccess(
   userId: string,
   database: string,
   table: string | null,
-  _accessType: AccessType,
-  connectionId?: string
+  accessType: AccessType,
+  connectionId?: string,
+  requiredPermission?: Permission
 ): Promise<AccessCheckResult> {
   const rules = await getRulesForUser(userId, connectionId);
-  return evaluateRules(rules, database, table);
+  return evaluateRules(rules, database, table, requiredPermission ?? permissionForAccessType(accessType, table));
 }
 
 /**
@@ -160,11 +163,32 @@ export async function checkRoleAccess(
   roleId: string,
   database: string,
   table: string | null,
-  _accessType: AccessType,
-  connectionId?: string
+  accessType: AccessType,
+  connectionId?: string,
+  requiredPermission?: Permission
 ): Promise<AccessCheckResult> {
   const rules = await getRulesForRole(roleId, connectionId);
-  return evaluateRules(rules, database, table);
+  return evaluateRules(rules, database, table, requiredPermission ?? permissionForAccessType(accessType, table));
+}
+
+function permissionForAccessType(accessType: AccessType, table: string | null): Permission {
+  if (table === null) {
+    if (accessType === 'admin') return PERMISSIONS.DB_CREATE;
+    return PERMISSIONS.DB_VIEW;
+  }
+
+  switch (accessType) {
+    case 'read':
+      return PERMISSIONS.TABLE_SELECT;
+    case 'write':
+      return PERMISSIONS.TABLE_INSERT;
+    case 'admin':
+      return PERMISSIONS.TABLE_ALTER;
+    case 'misc':
+      return PERMISSIONS.QUERY_EXECUTE_MISC;
+    default:
+      return PERMISSIONS.TABLE_VIEW;
+  }
 }
 
 /**
@@ -177,7 +201,8 @@ export async function checkRoleAccess(
 function evaluateRules(
   rules: DataAccessRuleResponse[],
   database: string,
-  table: string | null
+  table: string | null,
+  requiredPermission: Permission
 ): AccessCheckResult {
   // System databases are hidden from Explorer UI but queries are allowed by default
   // This allows users to query system tables even if they're hidden from the UI
@@ -208,17 +233,20 @@ function evaluateRules(
     if (table !== null && !matchesPattern(table, rule.tablePattern)) {
       continue;
     }
+    if (!rule.permissions.includes(requiredPermission)) {
+      continue;
+    }
     return {
       allowed: rule.isAllowed,
       rule,
       reason: rule.isAllowed
-        ? `Allowed by rule: ${rule.databasePattern}.${rule.tablePattern}`
-        : `Denied by rule: ${rule.databasePattern}.${rule.tablePattern}`,
+        ? `Allowed by rule: ${rule.databasePattern}.${rule.tablePattern} (${requiredPermission})`
+        : `Denied by rule: ${rule.databasePattern}.${rule.tablePattern} (${requiredPermission})`,
     };
   }
 
   // No matching rule = no access
-  return { allowed: false, reason: 'No matching access rule' };
+  return { allowed: false, reason: `No matching access rule for ${requiredPermission}` };
 }
 
 // System databases that should be hidden from non-admin users
@@ -261,7 +289,7 @@ export async function filterDatabasesForUser(
     if (SYSTEM_METADATA_DATABASES.includes(db)) {
       return false;
     }
-    const result = evaluateRules(rules, db, null);
+    const result = evaluateRules(rules, db, null, PERMISSIONS.DB_VIEW);
     return result.allowed;
   });
 }
@@ -281,7 +309,7 @@ export async function filterTablesForUser(
   if (rules.length === 0) return [];
 
   return tables.filter(table => {
-    const result = evaluateRules(rules, database, table);
+    const result = evaluateRules(rules, database, table, PERMISSIONS.TABLE_VIEW);
     return result.allowed;
   });
 }

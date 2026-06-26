@@ -63,7 +63,7 @@ describe("RBAC Schema Definitions", () => {
                 'users', 'roles', 'permissions', 'userRoles', 'rolePermissions',
                 'resourcePermissions', 'sessions', 'auditLogs', 'apiKeys',
                 'clickhouseConnections',
-                'dataAccessPolicies', 'dataAccessPolicyRules', 'roleDataAccessPolicies',
+                'dataAccessPolicies', 'dataAccessPolicyRules', 'dataAccessPolicyRulePermissions', 'roleDataAccessPolicies',
                 'clickhouseRoleState', 'userFavorites', 'userRecentItems',
                 'savedQueries', 'userPreferences'
             ];

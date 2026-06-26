@@ -214,6 +214,14 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
       expect(await h.roleHasPermission("admin", p)).toBe(true);
     }
   },
+  "1.41.0": async () => {
+    expect(await h.tableExists("rbac_data_access_policy_rule_permissions")).toBe(true);
+    expect(await h.indexExists("data_access_rule_permission_idx")).toBe(true);
+    for (const p of ["database:view", "table:view", "table:select", "query:execute"]) {
+      const rows = await h.rawAll(sql`SELECT 1 FROM rbac_data_access_policy_rule_permissions WHERE permission = ${p} LIMIT 1`);
+      expect(rows.length).toBeGreaterThan(0);
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -278,6 +286,14 @@ async function userRuleConnIds(userId: string): Promise<Set<string>> {
     WHERE ur.user_id = ${userId}
   `);
   return new Set(rows.map((r) => String(r.connection_id)));
+}
+
+async function dataAccessRulePermissions(): Promise<string[]> {
+  const rows = await h.rawAll(sql`
+    SELECT DISTINCT permission FROM rbac_data_access_policy_rule_permissions
+    ORDER BY permission
+  `);
+  return rows.map((r) => String(r.permission));
 }
 
 async function userRoleIds(userId: string): Promise<string[]> {
@@ -465,11 +481,22 @@ for (const dialect of DIALECTS) {
       expect(await userRuleConnIds(userConnScoped)).toContain(connX);
     });
 
+    it("backfilled scoped read-only permissions onto migrated data-access rules", async () => {
+      expect(await dataAccessRulePermissions()).toEqual([
+        "database:view",
+        "query:execute",
+        "table:select",
+        "table:view",
+      ]);
+    });
+
     it("is idempotent — re-running applies nothing and adds no duplicate policies", async () => {
       const before = await h.rowCount("rbac_data_access_policies");
+      const beforePermissions = await h.rowCount("rbac_data_access_policy_rule_permissions");
       const result = await runMigrations({ skipSeed: true });
       expect(result.migrationsApplied).toEqual([]);
       expect(await h.rowCount("rbac_data_access_policies")).toBe(before);
+      expect(await h.rowCount("rbac_data_access_policy_rule_permissions")).toBe(beforePermissions);
     });
   });
 

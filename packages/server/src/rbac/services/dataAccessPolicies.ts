@@ -10,6 +10,7 @@
 import { eq, and, inArray, desc, asc, or, isNull } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema } from '../db';
+import { DEFAULT_DATA_ACCESS_RULE_PERMISSIONS, type Permission } from '../schema/base';
 
 // Type helper for working with the dual (SQLite | PostgreSQL) database setup.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,6 +24,7 @@ export interface PolicyRuleInput {
   connectionId?: string | null;
   databasePattern: string;
   tablePattern: string;
+  permissions?: Permission[];
   isAllowed?: boolean;
   priority?: number;
   description?: string | null;
@@ -34,6 +36,7 @@ export interface PolicyRuleResponse {
   connectionId: string | null;
   databasePattern: string;
   tablePattern: string;
+  permissions: Permission[];
   isAllowed: boolean;
   priority: number;
   description: string | null;
@@ -72,6 +75,7 @@ export interface DataAccessPolicyResponse {
 export interface ResolvedPolicyRule {
   databasePattern: string;
   tablePattern: string;
+  permissions: Permission[];
   isAllowed: boolean;
   priority: number;
   policyId: string;
@@ -86,13 +90,21 @@ function toDate(value: unknown): Date {
   return value instanceof Date ? value : new Date((value as number) * 1000);
 }
 
-function mapPolicyRule(row: AnyDb): PolicyRuleResponse {
+function normalizeRulePermissions(permissions?: Permission[]): Permission[] {
+  const source = permissions && permissions.length > 0
+    ? permissions
+    : Array.from(DEFAULT_DATA_ACCESS_RULE_PERMISSIONS);
+  return Array.from(new Set(source));
+}
+
+function mapPolicyRule(row: AnyDb, permissions: Permission[]): PolicyRuleResponse {
   return {
     id: row.id,
     policyId: row.policyId,
     connectionId: row.connectionId ?? null,
     databasePattern: row.databasePattern,
     tablePattern: row.tablePattern,
+    permissions,
     isAllowed: Boolean(row.isAllowed),
     priority: row.priority,
     description: row.description ?? null,
@@ -150,13 +162,26 @@ export async function getPolicyById(id: string): Promise<DataAccessPolicyRespons
       .from(schema.roleDataAccessPolicies)
       .where(eq(schema.roleDataAccessPolicies.policyId, id)),
   ]);
+  const ruleIds = ruleRows.map((r: AnyDb) => r.id);
+  const permissionRows = ruleIds.length === 0
+    ? []
+    : await db.select()
+      .from(schema.dataAccessPolicyRulePermissions)
+      .where(inArray(schema.dataAccessPolicyRulePermissions.ruleId, ruleIds));
+  const permissionsByRule = new Map<string, Permission[]>();
+  for (const row of permissionRows) {
+    const ruleId = String(row.ruleId);
+    const values = permissionsByRule.get(ruleId) ?? [];
+    values.push(row.permission as Permission);
+    permissionsByRule.set(ruleId, values);
+  }
 
   return {
     id: policy.id,
     name: policy.name,
     description: policy.description ?? null,
     isSystem: Boolean(policy.isSystem),
-    rules: ruleRows.map(mapPolicyRule),
+    rules: ruleRows.map((row: AnyDb) => mapPolicyRule(row, normalizeRulePermissions(permissionsByRule.get(row.id)))),
     roleIds: roleRows.map((r: AnyDb) => r.roleId),
     createdAt: toDate(policy.createdAt),
     updatedAt: toDate(policy.updatedAt),
@@ -226,19 +251,31 @@ export async function replacePolicyRules(
   if (rules.length === 0) return;
 
   const now = new Date();
+  const rows = rules.map((rule) => ({
+    id: randomUUID(),
+    policyId,
+    connectionId: rule.connectionId ?? null,
+    databasePattern: rule.databasePattern,
+    tablePattern: rule.tablePattern,
+    isAllowed: rule.isAllowed ?? true,
+    priority: rule.priority ?? 0,
+    description: rule.description ?? null,
+    createdAt: now,
+    updatedAt: now,
+    permissions: normalizeRulePermissions(rule.permissions),
+  }));
+
   await db.insert(schema.dataAccessPolicyRules).values(
-    rules.map((rule) => ({
+    rows.map(({ permissions, ...rule }) => rule)
+  );
+
+  await db.insert(schema.dataAccessPolicyRulePermissions).values(
+    rows.flatMap((rule) => rule.permissions.map((permission) => ({
       id: randomUUID(),
-      policyId,
-      connectionId: rule.connectionId ?? null,
-      databasePattern: rule.databasePattern,
-      tablePattern: rule.tablePattern,
-      isAllowed: rule.isAllowed ?? true,
-      priority: rule.priority ?? 0,
-      description: rule.description ?? null,
+      ruleId: rule.id,
+      permission,
       createdAt: now,
-      updatedAt: now,
-    }))
+    })))
   );
 }
 
@@ -351,10 +388,24 @@ export async function getPolicyRulesForRoleIds(
   const ruleRows = await db.select()
     .from(schema.dataAccessPolicyRules)
     .where(whereClause);
+  const ruleIds = ruleRows.map((r: AnyDb) => r.id);
+  const permissionRows = ruleIds.length === 0
+    ? []
+    : await db.select()
+      .from(schema.dataAccessPolicyRulePermissions)
+      .where(inArray(schema.dataAccessPolicyRulePermissions.ruleId, ruleIds));
+  const permissionsByRule = new Map<string, Permission[]>();
+  for (const row of permissionRows) {
+    const ruleId = String(row.ruleId);
+    const values = permissionsByRule.get(ruleId) ?? [];
+    values.push(row.permission as Permission);
+    permissionsByRule.set(ruleId, values);
+  }
 
   return ruleRows.map((row: AnyDb) => ({
     databasePattern: row.databasePattern,
     tablePattern: row.tablePattern,
+    permissions: normalizeRulePermissions(permissionsByRule.get(row.id)),
     isAllowed: Boolean(row.isAllowed),
     priority: row.priority,
     policyId: row.policyId,

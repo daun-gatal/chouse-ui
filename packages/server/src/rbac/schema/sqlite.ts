@@ -322,6 +322,17 @@ export const dataAccessPolicyRules = sqliteTable('rbac_data_access_policy_rules'
   patternIdx: index('data_access_policy_rules_pattern_idx').on(table.databasePattern, table.tablePattern),
 }));
 
+export const dataAccessPolicyRulePermissions = sqliteTable('rbac_data_access_policy_rule_permissions', {
+  id: text('id').primaryKey(),
+  ruleId: text('rule_id').notNull().references(() => dataAccessPolicyRules.id, { onDelete: 'cascade' }),
+  permission: text('permission').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => ({
+  rulePermissionIdx: uniqueIndex('data_access_rule_permission_idx').on(table.ruleId, table.permission),
+  ruleIdx: index('data_access_rule_permission_rule_idx').on(table.ruleId),
+  permissionIdx: index('data_access_rule_permission_perm_idx').on(table.permission),
+}));
+
 // M:N link role <-> policy
 export const roleDataAccessPolicies = sqliteTable('rbac_role_data_access_policies', {
   id: text('id').primaryKey(),
@@ -548,6 +559,8 @@ export type DataAccessPolicy = typeof dataAccessPolicies.$inferSelect;
 export type NewDataAccessPolicy = typeof dataAccessPolicies.$inferInsert;
 export type DataAccessPolicyRule = typeof dataAccessPolicyRules.$inferSelect;
 export type NewDataAccessPolicyRule = typeof dataAccessPolicyRules.$inferInsert;
+export type DataAccessPolicyRulePermission = typeof dataAccessPolicyRulePermissions.$inferSelect;
+export type NewDataAccessPolicyRulePermission = typeof dataAccessPolicyRulePermissions.$inferInsert;
 export type RoleDataAccessPolicy = typeof roleDataAccessPolicies.$inferSelect;
 export type NewRoleDataAccessPolicy = typeof roleDataAccessPolicies.$inferInsert;
 export type ClickHouseRoleState = typeof clickhouseRoleState.$inferSelect;

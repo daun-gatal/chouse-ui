@@ -36,14 +36,23 @@ import {
   Check,
   Loader2,
   Database,
+  Info,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 import {
   rbacRolesApi,
   rbacDataAccessPoliciesApi,
+  rbacConnectionsApi,
   type RbacRole,
   type RbacPermission,
+  type DataAccessPolicy,
   type CreateRoleInput,
   type UpdateRoleInput,
 } from '@/api/rbac';
@@ -60,6 +69,47 @@ interface RoleFormDialogProps {
   role?: RbacRole | null;
   onSuccess?: () => void;
 }
+
+interface EffectiveDataAccessRule {
+  key: string;
+  policyName: string;
+  connectionId: string | null;
+  databasePattern: string;
+  tablePattern: string;
+  permissions: string[];
+  isAllowed: boolean;
+  priority: number;
+}
+
+const getConnectionLabel = (connectionId: string | null, connectionNameById: Map<string, string>): string => {
+  if (connectionId === null) return 'All connections';
+  return connectionNameById.get(connectionId) ?? `Connection ${connectionId.slice(0, 8)}`;
+};
+
+const sortEffectiveRules = (rules: EffectiveDataAccessRule[]): EffectiveDataAccessRule[] =>
+  [...rules].sort((a, b) => {
+    if (b.priority !== a.priority) return b.priority - a.priority;
+    if (a.isAllowed !== b.isAllowed) return a.isAllowed ? 1 : -1;
+    return `${a.connectionId ?? ''}.${a.databasePattern}.${a.tablePattern}.${a.policyName}`.localeCompare(
+      `${b.connectionId ?? ''}.${b.databasePattern}.${b.tablePattern}.${b.policyName}`
+    );
+  });
+
+const getEffectiveRulesFromPolicies = (policies: DataAccessPolicy[]): EffectiveDataAccessRule[] =>
+  sortEffectiveRules(
+    policies.flatMap((policy) =>
+      policy.rules.map((rule, index) => ({
+        key: `${policy.id}:${rule.id ?? index}`,
+        policyName: policy.name,
+        connectionId: rule.connectionId ?? null,
+        databasePattern: rule.databasePattern,
+        tablePattern: rule.tablePattern,
+        permissions: rule.permissions,
+        isAllowed: rule.isAllowed,
+        priority: rule.priority,
+      }))
+    )
+  );
 
 // ============================================
 // Component
@@ -101,6 +151,18 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
     queryFn: () => rbacDataAccessPoliciesApi.list(),
     enabled: isOpen,
   });
+
+  const { data: connections = [] } = useQuery({
+    queryKey: ['rbac-connections'],
+    queryFn: () => rbacConnectionsApi.list().then((result) => result.connections),
+    enabled: isOpen && hasPermission(RBAC_PERMISSIONS.CONNECTIONS_VIEW),
+  });
+
+  const connectionNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    connections.forEach((connection) => map.set(connection.id, connection.name));
+    return map;
+  }, [connections]);
 
   const permissionNameToIdMap = useMemo(() => {
     if (!permissionsByCategory) return new Map<string, string>();
@@ -309,6 +371,21 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
       }))
       .filter((c) => c.selected > 0);
   }, [permissionsByCategory, selectedPermissionIds]);
+
+  const selectedPolicies = useMemo(
+    () => (policies ?? []).filter((policy) => selectedPolicyIds.has(policy.id)),
+    [policies, selectedPolicyIds]
+  );
+
+  const effectiveDataAccessRules = useMemo(
+    () => getEffectiveRulesFromPolicies(selectedPolicies),
+    [selectedPolicies]
+  );
+
+  const connectionCount = useMemo(() => {
+    const connectionIds = new Set(effectiveDataAccessRules.map((rule) => rule.connectionId ?? '*'));
+    return connectionIds.size;
+  }, [effectiveDataAccessRules]);
 
   const STEPS = ['Details', 'Permissions', 'Data Access'];
 
@@ -805,6 +882,93 @@ export const RoleFormDialog: React.FC<RoleFormDialogProps> = ({
                       At least one data access policy is required for this role.
                     </AlertDescription>
                   </Alert>
+                )}
+
+                {selectedPolicyIds.size > 0 && (
+                  <div className="rounded-xs border border-ink-500 bg-ink-200 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
+                        <Database className="h-3.5 w-3.5 text-brand" aria-hidden />
+                        <span>Effective access order</span>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-grid h-5 w-5 place-items-center rounded-xs text-paper-faint transition-colors hover:bg-ink-100 hover:text-paper focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+                                aria-label="Explain effective access order"
+                              >
+                                <Info className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[280px] rounded-xs border border-ink-500 bg-ink-100 p-3 text-[12px] text-paper-muted">
+                              Combined rules from selected policies. Higher priority runs first; deny wins ties before allow.
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </span>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                        {effectiveDataAccessRules.length} rule{effectiveDataAccessRules.length === 1 ? '' : 's'} · {connectionCount} scope{connectionCount === 1 ? '' : 's'}
+                      </span>
+                    </div>
+
+                    {effectiveDataAccessRules.length === 0 ? (
+                      <p className="mt-3 text-[12px] text-paper-muted">
+                        Selected policies do not contain rules yet.
+                      </p>
+                    ) : (
+                      <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+                        {effectiveDataAccessRules.slice(0, 8).map((rule) => (
+                          <div
+                            key={rule.key}
+                            className="rounded-xs border border-ink-500 bg-ink-100 p-2"
+                          >
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span
+                                className={cn(
+                                  'rounded-xs border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]',
+                                  rule.isAllowed
+                                    ? 'border-emerald-500/40 text-emerald-300'
+                                    : 'border-red-500/40 text-red-300'
+                                )}
+                              >
+                                {rule.isAllowed ? 'Allow' : 'Deny'}
+                              </span>
+                              <span className="rounded-xs border border-ink-500 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                                Priority {rule.priority}
+                              </span>
+                              <span className="truncate text-[12px] font-medium text-paper">
+                                {rule.policyName}
+                              </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] text-paper-muted">
+                              <span className="rounded-xs bg-ink-200 px-1.5 py-0.5">
+                                {getConnectionLabel(rule.connectionId, connectionNameById)}
+                              </span>
+                              <span className="rounded-xs bg-ink-200 px-1.5 py-0.5">
+                                {rule.databasePattern}.{rule.tablePattern}
+                              </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {rule.permissions.map((permission) => (
+                                <span
+                                  key={permission}
+                                  className="rounded-xs border border-ink-500 px-1.5 py-0.5 font-mono text-[10px] text-paper-faint"
+                                >
+                                  {permission}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        {effectiveDataAccessRules.length > 8 && (
+                          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                            +{effectiveDataAccessRules.length - 8} more rule{effectiveDataAccessRules.length - 8 === 1 ? '' : 's'}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

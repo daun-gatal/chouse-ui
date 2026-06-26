@@ -20,7 +20,7 @@ import {
   getAccessTypeFromStatementType,
   type ParsedStatement
 } from './sqlParser';
-import { PERMISSIONS } from '../rbac/schema/base';
+import { PERMISSIONS, type Permission } from '../rbac/schema/base';
 import { logger } from '../utils/logger';
 
 // ============================================
@@ -38,29 +38,6 @@ export interface DataAccessContext {
 // Permission Constants (for access type mapping)
 // ============================================
 
-const READ_PERMISSIONS = ['table:select', 'query:execute', 'database:view', 'table:view'];
-const MISC_PERMISSIONS = ['query:execute:misc'];
-const WRITE_PERMISSIONS = ['table:insert', 'table:update', 'table:delete', 'query:execute:dml'];
-const ADMIN_PERMISSIONS = ['table:create', 'table:alter', 'table:drop', 'database:create', 'database:drop', 'query:execute:ddl'];
-
-/**
- * Check if user has permission for an access type based on their role permissions
- */
-function hasPermissionForAccessType(permissions: string[], accessType: AccessType): boolean {
-  switch (accessType) {
-    case 'read':
-      return permissions.some(p => READ_PERMISSIONS.includes(p));
-    case 'misc':
-      return permissions.some(p => MISC_PERMISSIONS.includes(p));
-    case 'write':
-      return permissions.some(p => WRITE_PERMISSIONS.includes(p));
-    case 'admin':
-      return permissions.some(p => ADMIN_PERMISSIONS.includes(p));
-    default:
-      return false;
-  }
-}
-
 /**
  * Get the required RBAC permission for a DDL statement (operation-specific).
  * Returns the permission name (e.g. database:drop, table:create) or null if unknown.
@@ -69,7 +46,7 @@ function hasPermissionForAccessType(permissions: string[], accessType: AccessTyp
 function getRequiredDdlPermission(
   statement: string,
   parsedType: ParsedStatement['type']
-): string | null {
+): Permission | null {
   const normalized = statement.trim().replace(/\s+/g, ' ');
   const upper = normalized.toUpperCase();
 
@@ -105,7 +82,7 @@ function getRequiredDdlPermission(
 function getRequiredStatementPermission(
   statement: string,
   parsedType: ParsedStatement['type']
-): string | null {
+): Permission | null {
   // DDL: create, drop, alter, truncate (database vs table handled inside)
   const ddlPerm = getRequiredDdlPermission(statement, parsedType);
   if (ddlPerm !== null) return ddlPerm;
@@ -130,6 +107,18 @@ function getRequiredStatementPermission(
   return null;
 }
 
+function getDatabaseOperationTarget(statement: string, requiredPermission: Permission): string | null {
+  if (
+    requiredPermission !== PERMISSIONS.DB_CREATE &&
+    requiredPermission !== PERMISSIONS.DB_DROP
+  ) {
+    return null;
+  }
+
+  const match = statement.match(/^\s*(?:CREATE|DROP|ALTER)\s+(?:DATABASE|SCHEMA)\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?([`"]?[\w-]+[`"]?)/i);
+  return match?.[1]?.replace(/[`"]/g, '') ?? null;
+}
+
 // ============================================
 // Middleware
 // ============================================
@@ -148,7 +137,7 @@ export async function optionalRbacMiddleware(c: Context, next: Next) {
       c.set('rbacUserId', payload.sub);
       c.set('rbacRoles', payload.roles);
       c.set('rbacPermissions', payload.permissions);
-      c.set('isRbacAdmin', payload.roles.includes('super_admin') || payload.roles.includes('admin'));
+      c.set('isRbacAdmin', payload.roles.includes('super_admin'));
     } catch {
       // Token invalid, continue without RBAC context
     }
@@ -169,9 +158,10 @@ export async function checkDatabaseAccess(
   isAdmin: boolean | undefined,
   database: string,
   connectionId?: string,
-  accessType: AccessType = 'read'
+  accessType: AccessType = 'read',
+  requiredPermission: Permission = PERMISSIONS.DB_VIEW
 ): Promise<boolean> {
-  // Admins have full access
+  // Super admins have full scoped data access.
   if (isAdmin) return true;
 
   // RBAC user is required
@@ -179,7 +169,7 @@ export async function checkDatabaseAccess(
     throw new Error('RBAC user is required for database access checks');
   }
 
-  const result = await checkUserAccess(userId, database, null, accessType, connectionId);
+  const result = await checkUserAccess(userId, database, null, accessType, connectionId, requiredPermission);
   return result.allowed;
 }
 
@@ -192,9 +182,10 @@ export async function checkTableAccess(
   database: string,
   table: string,
   connectionId?: string,
-  accessType: AccessType = 'read'
+  accessType: AccessType = 'read',
+  requiredPermission: Permission = PERMISSIONS.TABLE_VIEW
 ): Promise<boolean> {
-  // Admins have full access
+  // Super admins have full scoped data access.
   if (isAdmin) return true;
 
   // RBAC user is required
@@ -202,7 +193,7 @@ export async function checkTableAccess(
     throw new Error('RBAC user is required for table access checks');
   }
 
-  const result = await checkUserAccess(userId, database, table, accessType, connectionId);
+  const result = await checkUserAccess(userId, database, table, accessType, connectionId, requiredPermission);
   return result.allowed;
 }
 
@@ -220,7 +211,7 @@ export async function filterDatabases(
   connectionId?: string,
   _accessType: AccessType = 'read' // Access type is now determined by role permissions
 ): Promise<string[]> {
-  // Admins see all (including system databases)
+  // Super admins see all (including system databases)
   if (isAdmin) return databases;
 
   // RBAC user is required
@@ -245,7 +236,7 @@ export async function filterTables(
   connectionId?: string,
   _accessType: AccessType = 'read' // Access type is now determined by role permissions
 ): Promise<string[]> {
-  // Admins see all (including system tables)
+  // Super admins see all (including system tables)
   if (isAdmin) return tables;
 
   // RBAC user is required
@@ -386,7 +377,26 @@ async function validateSingleStatement(
   }
   tables = Array.from(tableMap.values());
 
-  // If no tables detected, allow (might be a system query)
+  const databaseTarget = getDatabaseOperationTarget(statement, requiredPermission);
+  if (databaseTarget) {
+    const validation = await checkUserAccess(
+      userId,
+      databaseTarget,
+      null,
+      'admin',
+      connectionId,
+      requiredPermission
+    );
+    if (!validation.allowed) {
+      return {
+        allowed: false,
+        reason: `Statement ${statementIndex + 1}: Access denied to ${databaseTarget} (requires ${requiredPermission})`,
+        statementIndex,
+      };
+    }
+  }
+
+  // If no tables detected, allow (might be a system query or table-less SELECT).
   if (tables.length === 0) {
     return { allowed: true };
   }
@@ -503,12 +513,12 @@ async function validateSingleStatement(
 
     // System databases are hidden from Explorer UI but queries are still allowed
     // Check user access normally (don't block system database queries)
-    const result = await checkUserAccess(userId, db, tbl, accessType, connectionId);
+    const result = await checkUserAccess(userId, db, tbl, accessType, connectionId, requiredPermission);
 
     if (!result.allowed) {
       return {
         allowed: false,
-        reason: `Statement ${statementIndex + 1}: Access denied to ${db}.${tbl} (requires ${accessType} permission)`,
+        reason: `Statement ${statementIndex + 1}: Access denied to ${db}.${tbl} (requires ${requiredPermission})`,
         statementIndex,
       };
     }
@@ -536,7 +546,7 @@ async function validateSingleStatement(
  * rejected (requires admin permission), preventing the entire query.
  * 
  * @param userId - RBAC user ID (required)
- * @param isAdmin - Whether user is admin (admins bypass all checks)
+ * @param isAdmin - Whether user is super admin (super admins bypass scoped checks)
  * @param permissions - User's role permissions array
  * @param sql - SQL query string (may contain multiple statements separated by semicolons)
  * @param defaultDatabase - Default database context for table references
@@ -551,7 +561,7 @@ export async function validateQueryAccess(
   defaultDatabase?: string,
   connectionId?: string
 ): Promise<{ allowed: boolean; reason?: string; statementIndex?: number; warnings?: string[] }> {
-  // Admins have full access
+  // Super admins have full access
   if (isAdmin) return { allowed: true };
 
   // RBAC user is required

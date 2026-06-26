@@ -1205,7 +1205,7 @@ export const rbacClickHouseRolesApi = {
 // Data Access Types
 // ============================================
 
-export type AccessType = 'read' | 'write' | 'admin';
+export type AccessType = 'read' | 'write' | 'admin' | 'misc';
 
 /**
  * A resolved effective rule (as returned by the profile endpoint). Access type and
@@ -1214,6 +1214,7 @@ export type AccessType = 'read' | 'write' | 'admin';
 export interface DataAccessRule {
   databasePattern: string;
   tablePattern: string;
+  permissions: string[];
   isAllowed: boolean;
   priority: number;
   policyId: string;
@@ -1236,6 +1237,7 @@ export interface DataAccessPolicyRule {
   connectionId?: string | null;
   databasePattern: string;
   tablePattern: string;
+  permissions: string[];
   isAllowed: boolean;
   priority: number;
   description?: string | null;

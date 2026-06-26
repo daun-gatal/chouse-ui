@@ -50,7 +50,7 @@ describe("Data Access Middleware", () => {
             mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
             const result = await checkDatabaseAccess(userId, false, "db1");
             expect(result).toBe(true);
-            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "db1", null, "read", undefined);
+            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "db1", null, "read", undefined, "database:view");
         });
 
         it("should throw if no user id", async () => {
@@ -63,7 +63,7 @@ describe("Data Access Middleware", () => {
             mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
             const result = await checkTableAccess(userId, false, "db1", "t1");
             expect(result).toBe(true);
-            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "db1", "t1", "read", undefined);
+            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "db1", "t1", "read", undefined, "table:view");
         });
     });
 
@@ -111,12 +111,24 @@ describe("Data Access Middleware", () => {
         });
 
         it("should allow if valid", async () => {
-            const sql = "SELECT * FROM db.users";
+            const sql = "SELECT * FROM db.customers";
             mockRbacService.checkUserAccess.mockResolvedValue({ allowed: true });
 
             const result = await validateQueryAccess(userId, false, ["table:select"], sql);
 
             expect(result.allowed).toBe(true);
+            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "db", "customers", "read", undefined, "table:select");
+        });
+
+        it("should deny when role has permission but scoped data access lacks it", async () => {
+            const sql = "DELETE FROM db.events WHERE id = 1";
+            mockRbacService.checkUserAccess.mockResolvedValue({ allowed: false, reason: "No matching access rule for table:delete" });
+
+            const result = await validateQueryAccess(userId, false, ["table:delete"], sql);
+
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain("table:delete");
+            expect(mockRbacService.checkUserAccess).toHaveBeenCalledWith(userId, "db", "events", "write", undefined, "table:delete");
         });
 
         it("should block multi-statement attacks", async () => {

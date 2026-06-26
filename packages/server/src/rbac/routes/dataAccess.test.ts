@@ -17,7 +17,7 @@ mock.module("../services/dataAccess", () => ({
 let mockTokenPayload = {
     sub: 'admin-id',
     roles: ['admin'],
-    permissions: ['roles:view', 'roles:update', 'users:view'],
+    permissions: ['roles:view', 'roles:update', 'users:view', 'table:select'],
     sessionId: 'sess-1'
 };
 
@@ -45,7 +45,7 @@ describe("RBAC Data Access Routes", () => {
         mockTokenPayload = {
             sub: 'admin-id',
             roles: ['admin'],
-            permissions: ['roles:view', 'roles:update', 'users:view'],
+            permissions: ['roles:view', 'roles:update', 'users:view', 'table:select'],
             sessionId: 'sess-1'
         };
     });
@@ -65,12 +65,13 @@ describe("RBAC Data Access Routes", () => {
             });
 
             expect(res.status).toBe(200);
-            expect(mockCheckUserAccess).toHaveBeenCalledWith("admin-id", "db1", "t1", "read", undefined);
+            expect(mockCheckUserAccess).toHaveBeenCalledWith("admin-id", "db1", "t1", "read", undefined, "table:select");
         });
     });
 
     describe("POST /data-access/filter/databases", () => {
-        it("should return all DBs for admin", async () => {
+        it("should return all DBs for super admin", async () => {
+            mockTokenPayload.roles = ["super_admin"];
             const res = await app.request("/data-access/filter/databases", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },

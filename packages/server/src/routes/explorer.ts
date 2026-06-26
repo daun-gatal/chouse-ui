@@ -325,7 +325,7 @@ explorer.get("/table/:database/:table", async (c) => {
   }
 
   // Check access
-  const hasAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId);
+  const hasAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId, "read", PERMISSIONS.TABLE_VIEW);
   if (!hasAccess) {
     return c.json({
       success: false,
@@ -375,7 +375,7 @@ explorer.get("/table/:database/:table/sample", async (c) => {
   }
 
   // Check access
-  const hasAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId);
+  const hasAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId, "read", PERMISSIONS.TABLE_SELECT);
   if (!hasAccess) {
     return c.json({
       success: false,
@@ -408,6 +408,7 @@ explorer.post(
     const rbacUserId = c.get("rbacUserId");
     const rbacPermissions = c.get("rbacPermissions");
     const isRbacAdmin = c.get("isRbacAdmin");
+    const connectionId = c.get("session")?.rbacConnectionId;
 
     // Check RBAC permission
     await checkExplorerPermission(
@@ -418,6 +419,13 @@ explorer.post(
     );
     const { name, engine, cluster } = c.req.valid("json");
     const service = c.get("service");
+    const hasDataAccess = await checkDatabaseAccess(rbacUserId, isRbacAdmin, name, connectionId, "admin", PERMISSIONS.DB_CREATE);
+    if (!hasDataAccess) {
+      return c.json({
+        success: false,
+        error: { code: "FORBIDDEN", message: `Access denied to create database ${name}` },
+      }, 403);
+    }
 
     // Validate and escape identifiers
     let escapedName: string;
@@ -481,6 +489,7 @@ explorer.delete(
     const rbacUserId = c.get("rbacUserId");
     const rbacPermissions = c.get("rbacPermissions");
     const isRbacAdmin = c.get("isRbacAdmin");
+    const connectionId = c.get("session")?.rbacConnectionId;
 
     // Check RBAC permission
     await checkExplorerPermission(
@@ -491,6 +500,13 @@ explorer.delete(
     );
     const { name } = c.req.param();
     const service = c.get("service");
+    const hasDataAccess = await checkDatabaseAccess(rbacUserId, isRbacAdmin, name, connectionId, "admin", PERMISSIONS.DB_DROP);
+    if (!hasDataAccess) {
+      return c.json({
+        success: false,
+        error: { code: "FORBIDDEN", message: `Access denied to drop database ${name}` },
+      }, 403);
+    }
 
     // Validate and escape identifier
     let escapedName: string;
@@ -554,6 +570,7 @@ explorer.post(
     const rbacUserId = c.get("rbacUserId");
     const rbacPermissions = c.get("rbacPermissions");
     const isRbacAdmin = c.get("isRbacAdmin");
+    const connectionId = c.get("session")?.rbacConnectionId;
 
     // Check RBAC permission
     await checkExplorerPermission(
@@ -564,6 +581,13 @@ explorer.post(
     );
     const { database, name, columns, engine, orderBy, partitionBy, primaryKey, cluster } = c.req.valid("json");
     const service = c.get("service");
+    const hasDataAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, name, connectionId, "admin", PERMISSIONS.TABLE_CREATE);
+    if (!hasDataAccess) {
+      return c.json({
+        success: false,
+        error: { code: "FORBIDDEN", message: `Access denied to create table ${database}.${name}` },
+      }, 403);
+    }
 
     // Validate and escape identifiers
     let escapedDatabase: string;
@@ -699,6 +723,7 @@ explorer.delete(
     const rbacUserId = c.get("rbacUserId");
     const rbacPermissions = c.get("rbacPermissions");
     const isRbacAdmin = c.get("isRbacAdmin");
+    const connectionId = c.get("session")?.rbacConnectionId;
 
     // Check RBAC permission
     await checkExplorerPermission(
@@ -709,6 +734,13 @@ explorer.delete(
     );
     const { database, table } = c.req.param();
     const service = c.get("service");
+    const hasDataAccess = await checkTableAccess(rbacUserId, isRbacAdmin, database, table, connectionId, "admin", PERMISSIONS.TABLE_DROP);
+    if (!hasDataAccess) {
+      return c.json({
+        success: false,
+        error: { code: "FORBIDDEN", message: `Access denied to drop table ${database}.${table}` },
+      }, 403);
+    }
 
     // Validate and escape identifiers
     let escapedDatabase: string;
@@ -748,4 +780,3 @@ explorer.delete(
 );
 
 export default explorer;
-

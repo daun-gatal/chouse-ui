@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.38.0';
+export const APP_VERSION = '1.41.0';
 
 // ============================================
 // Error Helpers
@@ -4131,6 +4131,68 @@ export const MIGRATIONS: Migration[] = [
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.40.0] Dropped scheduled_queries tables');
     },
+  },
+  {
+    version: '1.41.0',
+    name: 'data_access_rule_permissions',
+    description: 'Add per-rule scoped data permissions for Data Access policies and backfill existing rules with read-only operations.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      const all = async (stmt: ReturnType<typeof sql>): Promise<Array<Record<string, unknown>>> => {
+        if (dbType === 'sqlite') return (db as SqliteDb).all(stmt) as Array<Record<string, unknown>>;
+        const res = await (db as PostgresDb).execute(stmt);
+        return (Array.isArray(res) ? res : ((res as { rows?: unknown[] }).rows ?? [])) as Array<Record<string, unknown>>;
+      };
+      const run = async (stmt: ReturnType<typeof sql>): Promise<void> => {
+        if (dbType === 'sqlite') (db as SqliteDb).run(stmt);
+        else await (db as PostgresDb).execute(stmt);
+      };
+      const now = () => (dbType === 'sqlite' ? sql`unixepoch()` : sql`NOW()`);
+
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_data_access_policy_rule_permissions (
+            id TEXT PRIMARY KEY NOT NULL,
+            rule_id TEXT NOT NULL REFERENCES rbac_data_access_policy_rules(id) ON DELETE CASCADE,
+            permission TEXT NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_data_access_policy_rule_permissions (
+            id TEXT PRIMARY KEY NOT NULL,
+            rule_id TEXT NOT NULL REFERENCES rbac_data_access_policy_rules(id) ON DELETE CASCADE,
+            permission VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+      }
+      await run(sql`CREATE UNIQUE INDEX IF NOT EXISTS data_access_rule_permission_idx ON rbac_data_access_policy_rule_permissions (rule_id, permission)`);
+      await run(sql`CREATE INDEX IF NOT EXISTS data_access_rule_permission_rule_idx ON rbac_data_access_policy_rule_permissions (rule_id)`);
+      await run(sql`CREATE INDEX IF NOT EXISTS data_access_rule_permission_perm_idx ON rbac_data_access_policy_rule_permissions (permission)`);
+
+      const { DEFAULT_DATA_ACCESS_RULE_PERMISSIONS } = await import('../schema/base');
+      const rules = await all(sql`SELECT id FROM rbac_data_access_policy_rules`);
+      for (const rule of rules) {
+        const ruleId = String(rule.id);
+        for (const permission of DEFAULT_DATA_ACCESS_RULE_PERMISSIONS) {
+          const existing = await all(sql`
+            SELECT 1 FROM rbac_data_access_policy_rule_permissions
+            WHERE rule_id = ${ruleId} AND permission = ${permission}
+            LIMIT 1
+          `);
+          if (existing.length > 0) continue;
+          await run(sql`
+            INSERT INTO rbac_data_access_policy_rule_permissions (id, rule_id, permission, created_at)
+            VALUES (${randomUUID()}, ${ruleId}, ${permission}, ${now()})
+          `);
+        }
+      }
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.41.0] Added scoped data access rule permissions (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
   },
 ];
 
