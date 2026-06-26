@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
     branches:
-      - main
+      - preview
 
 # Cancel in-progress runs when a new commit is pushed to the same branch/PR
 concurrency:
