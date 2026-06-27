@@ -13,7 +13,7 @@ import { z } from "zod";
 import { PERMISSIONS, AUDIT_ACTIONS } from "../schema/base";
 import { requirePermission, getRbacUser, getClientIp } from "../middleware/rbacAuth";
 import { createAuditLogWithContext } from "../services/rbac";
-import { AppError } from "../../types";
+import { AppError, requireParam } from "../../types";
 import { getSsoConfig, refreshSsoConfig, loadSsoConfig } from "../sso/config";
 import * as store from "../sso/store";
 import { testProviderConfig } from "../sso/test";
@@ -217,7 +217,7 @@ ssoAdminRoutes.patch(
   requirePermission(PERMISSIONS.SSO_EDIT),
   zValidator("json", ProviderBody.partial().omit({ id: true })),
   async (c) => {
-    const id = c.req.param("id");
+    const id = requireParam(c, "id");
     const user = getRbacUser(c);
     const existing = await store.getDbProvider(id);
     if (!existing) {
@@ -241,7 +241,7 @@ ssoAdminRoutes.patch(
 );
 
 ssoAdminRoutes.delete("/providers/:id", requirePermission(PERMISSIONS.SSO_DELETE), async (c) => {
-  const id = c.req.param("id");
+  const id = requireParam(c, "id");
   const user = getRbacUser(c);
   const ip = getClientIp(c);
   const existing = await store.getDbProvider(id);

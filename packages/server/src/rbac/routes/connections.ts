@@ -5,6 +5,7 @@
  */
 
 import { Hono } from 'hono';
+import { requireParam } from "../../types";
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { randomUUID } from 'crypto';
@@ -195,7 +196,7 @@ connectionsRoutes.get(
   requirePermission('settings:view'),
   async (c) => {
     try {
-      const id = c.req.param('id');
+      const id = requireParam(c, 'id');
       const connection = await getConnectionById(id);
 
       if (!connection) {
@@ -276,7 +277,7 @@ connectionsRoutes.patch(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const id = c.req.param('id');
+      const id = requireParam(c, 'id');
       const input = c.req.valid('json');
 
       const connection = await updateConnection(id, input);
@@ -328,7 +329,7 @@ connectionsRoutes.delete(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const id = c.req.param('id');
+      const id = requireParam(c, 'id');
 
       // Get connection info before deleting (for audit log)
       const existing = await getConnectionById(id);
@@ -421,7 +422,7 @@ connectionsRoutes.post(
   requirePermission(PERMISSIONS.CONNECTIONS_VIEW),
   async (c) => {
     try {
-      const id = c.req.param('id');
+      const id = requireParam(c, 'id');
       const result = await testSavedConnection(id);
 
       return c.json({
@@ -448,7 +449,7 @@ connectionsRoutes.post(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const id = c.req.param('id');
+      const id = requireParam(c, 'id');
       const isSuperAdmin = user.roles.includes('super_admin');
 
       // Verify user has access to this connection

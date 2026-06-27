@@ -6,6 +6,7 @@
  */
 
 import { Hono } from 'hono';
+import { requireParam } from "../../types";
 import { z } from 'zod';
 import {
   listClickHouseRoles,
@@ -76,7 +77,7 @@ clickhouseRolesRoutes.get('/', rbacAuthMiddleware, requirePermission('clickhouse
 clickhouseRolesRoutes.get('/:name', rbacAuthMiddleware, requirePermission('clickhouse:roles:view'), async (c) => {
   try {
     const service = getClickHouseService(c);
-    const name = decodeURIComponent(c.req.param('name'));
+    const name = decodeURIComponent(requireParam(c, 'name'));
     const role = await getClickHouseRole(service, name);
     if (!role) {
       return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'ClickHouse role not found' } }, 404);
@@ -135,7 +136,7 @@ clickhouseRolesRoutes.post('/', rbacAuthMiddleware, requirePermission('clickhous
 // Preview update DDL (diff).
 clickhouseRolesRoutes.post('/:name/generate-ddl', rbacAuthMiddleware, requirePermission('clickhouse:roles:update'), async (c) => {
   try {
-    const name = decodeURIComponent(c.req.param('name'));
+    const name = decodeURIComponent(requireParam(c, 'name'));
     const parsed = updateRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
@@ -155,7 +156,7 @@ clickhouseRolesRoutes.patch('/:name', rbacAuthMiddleware, requirePermission('cli
   try {
     const user = getRbacUser(c);
     const service = getClickHouseService(c);
-    const name = decodeURIComponent(c.req.param('name'));
+    const name = decodeURIComponent(requireParam(c, 'name'));
     const parsed = updateRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
@@ -183,7 +184,7 @@ clickhouseRolesRoutes.delete('/:name', rbacAuthMiddleware, requirePermission('cl
   try {
     const user = getRbacUser(c);
     const service = getClickHouseService(c);
-    const name = decodeURIComponent(c.req.param('name'));
+    const name = decodeURIComponent(requireParam(c, 'name'));
     const cluster = c.req.query('cluster') || undefined;
 
     await deleteClickHouseRole(service, name, cluster);
@@ -216,7 +217,7 @@ clickhouseRolesRoutes.post('/:name/disable', rbacAuthMiddleware, requirePermissi
   try {
     const user = getRbacUser(c);
     const service = getClickHouseService(c);
-    const name = decodeURIComponent(c.req.param('name'));
+    const name = decodeURIComponent(requireParam(c, 'name'));
     const cluster = c.req.query('cluster') || undefined;
 
     await disableClickHouseRole(service, requireConnection(c), name, cluster, user.sub);
@@ -241,7 +242,7 @@ clickhouseRolesRoutes.post('/:name/enable', rbacAuthMiddleware, requirePermissio
   try {
     const user = getRbacUser(c);
     const service = getClickHouseService(c);
-    const name = decodeURIComponent(c.req.param('name'));
+    const name = decodeURIComponent(requireParam(c, 'name'));
     const cluster = c.req.query('cluster') || undefined;
 
     await enableClickHouseRole(service, requireConnection(c), name, cluster);

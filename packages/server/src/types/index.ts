@@ -511,6 +511,23 @@ export class AppError extends Error {
   }
 }
 
+/**
+ * Read a required path parameter from a Hono context.
+ *
+ * Hono 4.12 types `c.req.param(key)` as `string | undefined`. For routes whose
+ * path declares the segment (e.g. `/:id`) the value is always present, so this
+ * narrows the result to `string` and fails closed with a 400 if the segment is
+ * somehow missing — preserving the previous runtime behaviour while satisfying
+ * the stricter types.
+ */
+export function requireParam(c: { req: { param(key: string): string | undefined } }, key: string): string {
+  const value = c.req.param(key);
+  if (value === undefined) {
+    throw AppError.badRequest(`Missing required path parameter: ${key}`);
+  }
+  return value;
+}
+
 
 export interface DetailedMemoryMetric {
   timestamp: number;

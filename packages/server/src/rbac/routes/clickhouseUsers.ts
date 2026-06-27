@@ -7,6 +7,7 @@
  */
 
 import { Hono } from 'hono';
+import { requireParam } from "../../types";
 import { z } from 'zod';
 import {
   listClickHouseUsers,
@@ -110,7 +111,7 @@ clickhouseUsersRoutes.get('/', rbacAuthMiddleware, requirePermission('clickhouse
 clickhouseUsersRoutes.get('/:username', rbacAuthMiddleware, requirePermission('clickhouse:users:view'), async (c) => {
   try {
     const service = getClickHouseService(c);
-    const username = decodeURIComponent(c.req.param('username'));
+    const username = decodeURIComponent(requireParam(c, 'username'));
     const user = await getClickHouseUser(service, username);
     if (!user) {
       return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'ClickHouse user not found' } }, 404);
@@ -180,7 +181,7 @@ clickhouseUsersRoutes.post('/', rbacAuthMiddleware, requirePermission('clickhous
 // Preview update DDL.
 clickhouseUsersRoutes.post('/:username/generate-ddl', rbacAuthMiddleware, requirePermission('clickhouse:users:update'), async (c) => {
   try {
-    const username = decodeURIComponent(c.req.param('username'));
+    const username = decodeURIComponent(requireParam(c, 'username'));
     const parsed = updateUserSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
@@ -199,7 +200,7 @@ clickhouseUsersRoutes.patch('/:username', rbacAuthMiddleware, requirePermission(
   try {
     const user = getRbacUser(c);
     const service = getClickHouseService(c);
-    const username = decodeURIComponent(c.req.param('username'));
+    const username = decodeURIComponent(requireParam(c, 'username'));
     const parsed = updateUserSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
@@ -236,7 +237,7 @@ clickhouseUsersRoutes.post('/:username/extract-role', rbacAuthMiddleware, requir
   try {
     const user = getRbacUser(c);
     const service = getClickHouseService(c);
-    const username = decodeURIComponent(c.req.param('username'));
+    const username = decodeURIComponent(requireParam(c, 'username'));
     const parsed = extractRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
@@ -264,7 +265,7 @@ clickhouseUsersRoutes.delete('/:username', rbacAuthMiddleware, requirePermission
   try {
     const user = getRbacUser(c);
     const service = getClickHouseService(c);
-    const username = decodeURIComponent(c.req.param('username'));
+    const username = decodeURIComponent(requireParam(c, 'username'));
     const cluster = c.req.query('cluster') || undefined;
 
     await deleteClickHouseUser(service, username, cluster);
