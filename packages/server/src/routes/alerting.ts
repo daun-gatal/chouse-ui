@@ -9,6 +9,7 @@
  */
 
 import { Hono, type Context } from "hono";
+import { requireParam } from "../types";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
@@ -143,7 +144,7 @@ alerting.put(
   requirePermission(PERMISSIONS.ALERTING_EDIT),
   zValidator("json", channelBodySchema),
   async (c) => {
-    const id = c.req.param("id");
+    const id = requireParam(c, "id");
     const body = c.req.valid("json");
     let config: Record<string, unknown>;
     try {
@@ -168,7 +169,7 @@ alerting.put(
 );
 
 alerting.delete("/channels/:id", requirePermission(PERMISSIONS.ALERTING_DELETE), async (c) => {
-  const id = c.req.param("id");
+  const id = requireParam(c, "id");
   const existing = await store.getChannel(id);
   if (!existing) return c.json({ success: false, error: "Channel not found" }, 404);
   const usage = await store.countRulesUsingChannel(id);
@@ -188,7 +189,7 @@ alerting.delete("/channels/:id", requirePermission(PERMISSIONS.ALERTING_DELETE),
 });
 
 alerting.post("/channels/:id/test", requirePermission(PERMISSIONS.ALERTING_EDIT), async (c) => {
-  const id = c.req.param("id");
+  const id = requireParam(c, "id");
   const ch = await store.getChannel(id);
   if (!ch) return c.json({ success: false, error: "Channel not found" }, 404);
   const stored = JSON.parse(ch.config) as Record<string, unknown>;
@@ -297,7 +298,7 @@ alerting.put(
   requirePermission(PERMISSIONS.ALERTING_EDIT),
   zValidator("json", ruleBodySchema),
   async (c) => {
-    const id = c.req.param("id");
+    const id = requireParam(c, "id");
     const body = c.req.valid("json");
     const existing = await store.getRule(id);
 
@@ -337,7 +338,7 @@ alerting.put(
 );
 
 alerting.delete("/rules/:id", requirePermission(PERMISSIONS.ALERTING_DELETE), async (c) => {
-  const id = c.req.param("id");
+  const id = requireParam(c, "id");
   const existing = await store.getRule(id);
   if (!existing) return c.json({ success: false, error: "Rule not found" }, 404);
   if (existing.enabled) {

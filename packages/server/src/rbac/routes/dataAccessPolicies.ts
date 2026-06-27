@@ -22,7 +22,7 @@ import { listConnectionDatabases, listConnectionTables } from '../services/conne
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
-import { AppError } from '../../types';
+import { AppError, requireParam } from '../../types';
 import { requestLogger } from '../../utils/logger';
 
 const policyRoutes = new Hono();
@@ -64,7 +64,7 @@ const setRolePoliciesSchema = z.object({
 // Browse databases on a connection (for building policies)
 policyRoutes.get('/schema/:connectionId/databases', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACCESS_VIEW), async (c) => {
   try {
-    const databases = await listConnectionDatabases(c.req.param('connectionId'));
+    const databases = await listConnectionDatabases(requireParam(c, 'connectionId'));
     return c.json({ success: true, data: databases });
   } catch (error) {
     requestLogger(c.get('requestId')).error({ module: 'DataAccessPolicies', err: error instanceof Error ? error.message : String(error) }, 'List databases error');
@@ -77,7 +77,7 @@ policyRoutes.get('/schema/:connectionId/tables', rbacAuthMiddleware, requirePerm
   try {
     const database = c.req.query('database');
     if (!database) throw AppError.badRequest('database query parameter is required');
-    const tables = await listConnectionTables(c.req.param('connectionId'), database);
+    const tables = await listConnectionTables(requireParam(c, 'connectionId'), database);
     return c.json({ success: true, data: tables });
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -100,7 +100,7 @@ policyRoutes.get('/', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACC
 // Get policies attached to a role
 policyRoutes.get('/role/:roleId', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACCESS_VIEW), async (c) => {
   try {
-    const policies = await getPoliciesForRole(c.req.param('roleId'));
+    const policies = await getPoliciesForRole(requireParam(c, 'roleId'));
     return c.json({ success: true, data: policies });
   } catch (error) {
     requestLogger(c.get('requestId')).error({ module: 'DataAccessPolicies', err: error instanceof Error ? error.message : String(error) }, 'Get role policies error');
@@ -117,7 +117,7 @@ policyRoutes.post(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const roleId = c.req.param('roleId');
+      const roleId = requireParam(c, 'roleId');
       const { policyIds } = c.req.valid('json');
 
       await setPoliciesForRole(roleId, policyIds);
@@ -141,7 +141,7 @@ policyRoutes.post(
 // Get roles that use a policy
 policyRoutes.get('/:id/roles', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACCESS_VIEW), async (c) => {
   try {
-    const roleIds = await getRolesForPolicy(c.req.param('id'));
+    const roleIds = await getRolesForPolicy(requireParam(c, 'id'));
     return c.json({ success: true, data: roleIds });
   } catch (error) {
     requestLogger(c.get('requestId')).error({ module: 'DataAccessPolicies', err: error instanceof Error ? error.message : String(error) }, 'Get policy roles error');
@@ -152,7 +152,7 @@ policyRoutes.get('/:id/roles', rbacAuthMiddleware, requirePermission(PERMISSIONS
 // Get policy by id
 policyRoutes.get('/:id', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACCESS_VIEW), async (c) => {
   try {
-    const policy = await getPolicyById(c.req.param('id'));
+    const policy = await getPolicyById(requireParam(c, 'id'));
     if (!policy) throw AppError.notFound('Policy not found');
     return c.json({ success: true, data: policy });
   } catch (error) {
@@ -200,7 +200,7 @@ policyRoutes.patch(
   async (c) => {
     try {
       const user = getRbacUser(c);
-      const id = c.req.param('id');
+      const id = requireParam(c, 'id');
       const input = c.req.valid('json');
 
       const policy = await updatePolicy(id, input);
@@ -226,7 +226,7 @@ policyRoutes.patch(
 policyRoutes.delete('/:id', rbacAuthMiddleware, requirePermission(PERMISSIONS.DATA_ACCESS_DELETE), async (c) => {
   try {
     const user = getRbacUser(c);
-    const id = c.req.param('id');
+    const id = requireParam(c, 'id');
 
     const existing = await getPolicyById(id);
     if (!existing) throw AppError.notFound('Policy not found');

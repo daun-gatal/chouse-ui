@@ -28,7 +28,7 @@ import {
   getRbacUser,
   isSuperAdmin,
 } from '../middleware/rbacAuth';
-import { AppError } from '../../types';
+import { AppError, requireParam } from '../../types';
 import { requestLogger } from '../../utils/logger';
 
 const userRoutes = new Hono();
@@ -102,7 +102,7 @@ userRoutes.get('/', requirePermission(PERMISSIONS.USERS_VIEW), zValidator('query
  * - Users without USERS_VIEW permission can only view their own profile
  */
 userRoutes.get('/:id', rbacAuthMiddleware, async (c) => {
-  const id = c.req.param('id');
+  const id = requireParam(c, 'id');
 
   // Validate user ID format (basic UUID validation)
   if (!id || typeof id !== 'string' || id.trim().length === 0) {
@@ -203,7 +203,7 @@ userRoutes.post('/', requirePermission(PERMISSIONS.USERS_CREATE), zValidator('js
  * Update user
  */
 userRoutes.patch('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator('json', UpdateUserSchema), async (c) => {
-  const id = c.req.param('id');
+  const id = requireParam(c, 'id');
   const input = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
@@ -252,7 +252,7 @@ userRoutes.patch('/:id', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator
  * Delete user
  */
 userRoutes.delete('/:id', requirePermission(PERMISSIONS.USERS_DELETE), async (c) => {
-  const id = c.req.param('id');
+  const id = requireParam(c, 'id');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
 
@@ -300,7 +300,7 @@ userRoutes.delete('/:id', requirePermission(PERMISSIONS.USERS_DELETE), async (c)
  * Reset user password (admin action)
  */
 userRoutes.post('/:id/reset-password', requirePermission(PERMISSIONS.USERS_UPDATE), zValidator('json', ResetPasswordSchema), async (c) => {
-  const id = c.req.param('id');
+  const id = requireParam(c, 'id');
   const input = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
@@ -359,7 +359,7 @@ userRoutes.post('/:id/reset-password', requirePermission(PERMISSIONS.USERS_UPDAT
 userRoutes.post('/:id/assign-roles', requirePermission(PERMISSIONS.ROLES_ASSIGN), zValidator('json', z.object({
   roleIds: z.array(z.string()).length(1, 'Exactly one role must be assigned'),
 })), async (c) => {
-  const id = c.req.param('id');
+  const id = requireParam(c, 'id');
   const { roleIds } = c.req.valid('json');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
@@ -398,7 +398,7 @@ userRoutes.post('/:id/assign-roles', requirePermission(PERMISSIONS.ROLES_ASSIGN)
  * config and falls back to the raw provider id if that provider was removed.
  */
 userRoutes.get('/:id/identities', requirePermission(PERMISSIONS.USERS_VIEW), async (c) => {
-  const id = c.req.param('id');
+  const id = requireParam(c, 'id');
 
   const existingUser = await getUserById(id);
   if (!existingUser) {
@@ -429,8 +429,8 @@ userRoutes.get('/:id/identities', requirePermission(PERMISSIONS.USERS_VIEW), asy
  * no usable password and must have their password reset to sign in again.
  */
 userRoutes.delete('/:id/identities/:identityId', requirePermission(PERMISSIONS.USERS_UPDATE), async (c) => {
-  const id = c.req.param('id');
-  const identityId = c.req.param('identityId');
+  const id = requireParam(c, 'id');
+  const identityId = requireParam(c, 'identityId');
   const currentUser = getRbacUser(c);
   const ipAddress = getClientIp(c);
 

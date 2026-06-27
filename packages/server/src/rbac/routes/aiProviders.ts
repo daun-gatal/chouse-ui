@@ -5,6 +5,7 @@
  */
 
 import { Hono } from 'hono';
+import { requireParam } from "../../types";
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import {
@@ -59,7 +60,7 @@ aiProvidersRoutes.get(
     requirePermission(PERMISSIONS.AI_MODELS_VIEW),
     async (c) => {
         try {
-            const id = c.req.param('id');
+            const id = requireParam(c, 'id');
             const provider = await getAiProviderById(id);
             if (!provider) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
             return c.json({ success: true, data: provider });
@@ -105,7 +106,7 @@ aiProvidersRoutes.patch(
     async (c) => {
         try {
             const user = getRbacUser(c);
-            const id = c.req.param('id');
+            const id = requireParam(c, 'id');
             const input = c.req.valid('json');
 
             const updateInput: Parameters<typeof updateAiProvider>[1] = {
@@ -140,7 +141,7 @@ aiProvidersRoutes.delete(
     async (c) => {
         try {
             const user = getRbacUser(c);
-            const id = c.req.param('id');
+            const id = requireParam(c, 'id');
             const deleted = await deleteAiProvider(id);
             if (!deleted) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } }, 404);
 
