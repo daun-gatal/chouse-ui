@@ -78,7 +78,7 @@ describe("RBAC Users Routes", () => {
 
     describe("GET /users", () => {
         it("should list users", async () => {
-            mockListUsers.mockResolvedValue({ users: [], total: 0 });
+            mockListUsers.mockResolvedValue({ users: [], total: 0, activeCount: 0, inactiveCount: 0 });
 
             const res = await app.request("/users?page=1&limit=10", {
                 headers: { "Authorization": "Bearer token" }

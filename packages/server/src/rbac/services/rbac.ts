@@ -4,7 +4,7 @@
  * Core service for managing users, roles, and permissions.
  */
 
-import { eq, and, inArray, sql, desc, asc, like, or, gte, lte } from 'drizzle-orm';
+import { eq, and, inArray, sql, desc, asc, like, or, gte, lte, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema, isSqlite, type RbacDb } from '../db';
 import { setPoliciesForRole, getPolicyIdsForRole } from './dataAccessPolicies';
@@ -263,7 +263,7 @@ export async function listUsers(options: {
   search?: string;
   roleId?: string;
   isActive?: boolean;
-} = {}): Promise<{ users: UserResponse[]; total: number }> {
+} = {}): Promise<{ users: UserResponse[]; total: number; activeCount: number; inactiveCount: number }> {
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const page = options.page || 1;
@@ -282,11 +282,13 @@ export async function listUsers(options: {
 
       if (userIds.length === 0) {
         // No users have this role
-        return { users: [], total: 0 };
+        return { users: [], total: 0, activeCount: 0, inactiveCount: 0 };
       }
 
-      // Build conditions for filtering
-      const conditions = [inArray(schema.users.id, userIds)];
+      // Status-independent conditions (role membership + search). The
+      // active/inactive metric cards are computed over these so they reflect
+      // the full breakdown regardless of the status filter or page size.
+      const statusConditions: SQL[] = [inArray(schema.users.id, userIds)];
 
       if (options.search) {
         const searchPattern = `%${options.search.toLowerCase()}%`;
@@ -296,10 +298,12 @@ export async function listUsers(options: {
           like(schema.users.displayName, searchPattern)
         );
         if (searchCondition) {
-          conditions.push(searchCondition);
+          statusConditions.push(searchCondition);
         }
       }
 
+      // Conditions for the paginated list + its total (adds the status filter).
+      const conditions: SQL[] = [...statusConditions];
       if (options.isActive !== undefined) {
         conditions.push(eq(schema.users.isActive, options.isActive));
       }
@@ -312,41 +316,41 @@ export async function listUsers(options: {
         .limit(limit)
         .offset(offset);
 
-      // Get total count
-      const countResult = await db.select({ count: sql<number>`count(*)` })
-        .from(schema.users)
-        .where(and(...conditions));
-
-      const total = Number(countResult[0]?.count || 0);
+      const { total, activeCount, inactiveCount } = await countUsers(db, schema, conditions, statusConditions);
 
       // Expand user responses
       const userResponses = await Promise.all(users.map((u: User) => expandUserResponse(u)));
 
-      return { users: userResponses, total };
+      return { users: userResponses, total, activeCount, inactiveCount };
     } catch (error) {
       logger.error({ module: 'RBAC', err: error instanceof Error ? error.message : String(error) }, 'listUsers: error filtering by role');
       // Fall back to returning empty result if role filtering fails
-      return { users: [], total: 0 };
+      return { users: [], total: 0, activeCount: 0, inactiveCount: 0 };
     }
   }
 
   // Original logic when no roleId filter
   let query = db.select().from(schema.users);
 
-  // Apply filters
-  const conditions = [];
+  // Status-independent conditions (search only). Active/inactive metric counts
+  // are computed over these so they reflect the full breakdown regardless of
+  // the status filter or page size.
+  const statusConditions: SQL[] = [];
 
   if (options.search) {
     const searchPattern = `%${options.search.toLowerCase()}%`;
-    conditions.push(
-      or(
-        like(schema.users.email, searchPattern),
-        like(schema.users.username, searchPattern),
-        like(schema.users.displayName, searchPattern)
-      )
+    const searchCondition = or(
+      like(schema.users.email, searchPattern),
+      like(schema.users.username, searchPattern),
+      like(schema.users.displayName, searchPattern)
     );
+    if (searchCondition) {
+      statusConditions.push(searchCondition);
+    }
   }
 
+  // Conditions for the paginated list + its total (adds the status filter).
+  const conditions: SQL[] = [...statusConditions];
   if (options.isActive !== undefined) {
     conditions.push(eq(schema.users.isActive, options.isActive));
   }
@@ -360,17 +364,45 @@ export async function listUsers(options: {
     .limit(limit)
     .offset(offset);
 
-  // Get total count
-  const countResult = await db.select({ count: sql<number>`count(*)` })
-    .from(schema.users)
-    .where(conditions.length > 0 ? and(...conditions) : undefined);
-
-  const total = Number(countResult[0]?.count || 0);
+  const { total, activeCount, inactiveCount } = await countUsers(db, schema, conditions, statusConditions);
 
   // Expand user responses
   const userResponses = await Promise.all(users.map((u: User) => expandUserResponse(u)));
 
-  return { users: userResponses, total };
+  return { users: userResponses, total, activeCount, inactiveCount };
+}
+
+/**
+ * Count users for the metric cards.
+ *
+ * - `total` respects every filter (including the status filter) and drives
+ *   pagination.
+ * - `activeCount` / `inactiveCount` are computed over `statusConditions`
+ *   (search + role membership, *without* the status filter) so the cards show
+ *   the real active/inactive split and stay stable when the page size or the
+ *   status filter changes — the bug they previously had when derived from the
+ *   current page only.
+ */
+async function countUsers(
+  db: AnyDb,
+  schema: ReturnType<typeof getSchema>,
+  conditions: SQL[],
+  statusConditions: SQL[],
+): Promise<{ total: number; activeCount: number; inactiveCount: number }> {
+  const countWhere = async (where: SQL[]): Promise<number> => {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(schema.users)
+      .where(where.length > 0 ? and(...where) : undefined);
+    return Number(result[0]?.count || 0);
+  };
+
+  const [total, activeCount, inactiveCount] = await Promise.all([
+    countWhere(conditions),
+    countWhere([...statusConditions, eq(schema.users.isActive, true)]),
+    countWhere([...statusConditions, eq(schema.users.isActive, false)]),
+  ]);
+
+  return { total, activeCount, inactiveCount };
 }
 
 // ============================================

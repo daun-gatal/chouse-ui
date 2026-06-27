@@ -497,7 +497,7 @@ export const rbacUsersApi = {
     search?: string;
     roleId?: string;
     isActive?: boolean;
-  }): Promise<{ users: RbacUser[]; total: number }> {
+  }): Promise<{ users: RbacUser[]; total: number; activeCount: number; inactiveCount: number }> {
     const params = new URLSearchParams();
     if (options?.page) params.set('page', String(options.page));
     if (options?.limit) params.set('limit', String(options.limit));

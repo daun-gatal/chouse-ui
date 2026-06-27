@@ -99,6 +99,10 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<RbacUser[]>([]);
   const [roles, setRoles] = useState<RbacRole[]>([]);
   const [total, setTotal] = useState(0);
+  // Active/inactive totals come from the backend (over the whole filtered set),
+  // not the current page — so the metric cards stay correct across page sizes.
+  const [activeCount, setActiveCount] = useState(0);
+  const [inactiveCount, setInactiveCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +198,8 @@ const UserManagement: React.FC = () => {
       });
       setUsers(result.users);
       setTotal(result.total);
+      setActiveCount(result.activeCount);
+      setInactiveCount(result.inactiveCount);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch users";
       setError(message);
@@ -353,14 +359,15 @@ const UserManagement: React.FC = () => {
     </>
   );
 
-  // Count users by status
+  // User-status metrics. These come from backend totals over the whole filtered
+  // set (not the current page), so they don't shift when the page size changes.
   const statusCounts = useMemo(() => {
     return {
-      total: total,
-      active: users.filter((u) => u.isActive).length,
-      inactive: users.filter((u) => !u.isActive).length,
+      total: activeCount + inactiveCount,
+      active: activeCount,
+      inactive: inactiveCount,
     };
-  }, [users, total]);
+  }, [activeCount, inactiveCount]);
 
   return (
     <motion.div
@@ -501,7 +508,7 @@ const UserManagement: React.FC = () => {
       {/* Stats — hairline editorial grid */}
       <div className="grid grid-cols-2 border-l border-t border-ink-500 md:grid-cols-4">
         {[
-          { icon: Users, label: "Total users", value: total },
+          { icon: Users, label: "Total users", value: statusCounts.total },
           { icon: UserCheck, label: "Active", value: statusCounts.active },
           { icon: UserX, label: "Inactive", value: statusCounts.inactive },
           { icon: Shield, label: "Roles", value: roles.length },

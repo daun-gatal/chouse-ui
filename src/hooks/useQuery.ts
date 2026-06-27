@@ -603,7 +603,12 @@ export function useQueryLogs(
             memory_usage,
             user,
             substring(exception, 1, 2000) as exception,
-            Settings['log_comment'] as log_comment_json
+            -- The RBAC actor is tagged into log_comment when a query runs through
+            -- the app. Prefer the dedicated log_comment column (always populated
+            -- when set) and fall back to the Settings map, which can be empty on
+            -- some ClickHouse versions -- otherwise app queries show only the bare
+            -- ClickHouse user.
+            if(log_comment != '', log_comment, Settings['log_comment']) as log_comment_json
           FROM system.query_log AS __table1
           WHERE ${datePrune}
           AND ${timeFilter}
@@ -675,21 +680,28 @@ export function useQueryLogs(
           }
         }
 
-        // Fetch audit logs from the last 2 days to ensure we catch all queries
+        // Fetch audit logs (best-effort) for the timestamp-based fallback.
+        // This MUST NOT gate log_comment-based resolution below: right after a
+        // login the audit endpoint can transiently fail or lag, and previously
+        // any failure here threw out of the whole block and dropped EVERY row
+        // back to the bare ClickHouse user. Degrade to "no audit matches"
+        // instead, so log_comment-tagged queries still resolve to their RBAC user.
         const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-
-        // Fetch audit logs - optimize by fetching in larger batches
-        // If rbacUserId is provided, only fetch audit logs for that user
-        // Use a single large fetch instead of pagination to reduce API calls
-        const auditResult = await rbacAuditApi.list({
-          page: 1,
-          limit: 5000, // Fetch up to 5k logs in one call (covers most use cases)
-          action: 'clickhouse.query_execute',
-          userId: rbacUserId, // Filter by RBAC user ID if provided
-          startDate: twoDaysAgo.toISOString(),
-        });
-
-        const allAuditLogs = auditResult.logs;
+        let allAuditLogs: Awaited<ReturnType<typeof rbacAuditApi.list>>['logs'] = [];
+        try {
+          // Single large fetch instead of pagination to reduce API calls.
+          // If rbacUserId is provided, only fetch audit logs for that user.
+          const auditResult = await rbacAuditApi.list({
+            page: 1,
+            limit: 5000, // Fetch up to 5k logs in one call (covers most use cases)
+            action: 'clickhouse.query_execute',
+            userId: rbacUserId, // Filter by RBAC user ID if provided
+            startDate: twoDaysAgo.toISOString(),
+          });
+          allAuditLogs = auditResult.logs;
+        } catch (auditError) {
+          appLog.warn('[QueryLogs] Audit-log fetch failed; relying on log_comment for RBAC user resolution', auditError);
+        }
 
         // Create a map of timestamp -> Array<{ userId, connectionId, query, usernameSnapshot, emailSnapshot, displayNameSnapshot }>
         // Match audit logs with query logs by timestamp (within 60 seconds for better matching)
@@ -886,7 +898,10 @@ export function useQueryLogs(
               read_bytes: log.read_bytes,
               memory_usage: log.memory_usage,
               user: log.user,
-              rbacUser: rbacUserInfo ? (rbacUserInfo.displayName || rbacUserInfo.username || rbacUserInfo.email) : (rbacUserId || undefined),
+              // Only show a resolved display name. If we have an id but no user
+              // record (e.g. the user was deleted), leave rbacUser undefined so
+              // the UI falls back to the ClickHouse user rather than a raw UUID.
+              rbacUser: rbacUserInfo ? (rbacUserInfo.displayName || rbacUserInfo.username || rbacUserInfo.email) : undefined,
               rbacUserId: rbacUserId,
               connectionId,
               connectionName: connectionId ? connectionMap.get(connectionId) : undefined,
