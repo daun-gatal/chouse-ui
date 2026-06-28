@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.7.1] - 2026-06-28
+
+### Changed
+- **Dependency security updates** — Bumped dependencies to clear known high-severity advisories with no breaking API changes: `drizzle-orm` (0.38 → 0.45), `hono` (4.11 → 4.12), `react-router-dom` (7.10 → 7.15+), `nodemailer` (8 → 9), `yaml` (2.8 → 2.9) and `dompurify` (3.3 → 3.4). The transitive `lodash` (via `dagre`) is pinned to a patched release through an `overrides` entry.
+
+### Fixed
+- **User management metric cards** — Active/Inactive (and Total) counts on the Admin → User management tab are now computed from backend totals over the whole filtered set instead of the current page, so they no longer change when the page size changes.
+- **Query Logs RBAC user** — Query Logs now reads the RBAC actor from the dedicated `log_comment` column (falling back to the `Settings` map), so queries run through the app correctly attribute to the RBAC user instead of falling back to the bare ClickHouse user. RBAC-user resolution is also decoupled from the audit-log fetch: a failing or permission-gated audit request (e.g. right after login) no longer drops every row back to the ClickHouse user, since `log_comment`-tagged queries resolve independently. A resolved-but-deleted RBAC user no longer leaks a raw UUID into the user column.
+
 ## [v3.7.0] - 2026-06-25
 
 ### Added
@@ -112,22 +121,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SSO users** — the "Reset password" action is now hidden for SSO-linked accounts (both on the user card and the edit-user screen), since they have no local password.
 - **Inactive login message** — password sign-in by an inactive account now returns a clear "account is inactive, contact an administrator" message (after password verification, to avoid user enumeration); SSO wording aligned.
 - **Fleet doctor** — the "analyzing…" progress now reflects the selected investigation window instead of always showing "6h".
-
-## [v3.1.0] - 2026-06-12
-
-### Added
-- **Role wizard** — Creating or editing a role is now a guided 3-step wizard (Details → Permissions → Data Access & Review), matching the Data Access Policies flow.
-- **Data Access on role cards** — Each role card surfaces its assigned data access policies: a count badge in the stat row and named policy chips in the expanded view.
-- **Roles in Identity & access** — The Preferences Identity & access card now lists the signed-in user's roles.
-- **SSO identity management** — the user's **Security** tab now lists each linked SSO provider (display name, the email it was linked by, and last sign-in) and lets admins unlink an identity. Backed by new `GET`/`DELETE /rbac/users/:id/identities` endpoints (`users:view` to list, `users:update` to unlink, with super-admin targets protected), and a new `user.sso_identity_unlink` audit action. Unlinking warns that an SSO-only user will be locked out until their password is reset.
-
-### Changed
-- **Admin navigation** — The Admin header is now a two-tier nav: grouped section chips on top with the active group's sections shown below as sub-tabs.
-- **Data Access section header** — Now uses the standard icon + title + count header to match the other admin sections.
-- **Preferences cards** — Row-one cards are equal height; the ClickHouse node rows align the card with Identity & access. Monitoring's title and refresh controls gained breathing room from the header divider.
-- **SSO logging is more diagnosable** — the server now logs the configured providers at startup (`SSO enabled — N provider(s) loaded` with id/type/display name, or `SSO disabled`), and start/callback failures now include the identity provider's own `error`, `error_description`, `code`, and `cause` instead of only the wrapped error message. No behaviour or API change; secrets are never logged.
-
-### Fixed
-- **"Other" permission label** — `data_access` permissions now display as "Data Access" instead of "Other" on role cards.
-- **Inconsistent role labels** — User-list cards always show a readable role display name instead of occasionally leaking the raw role key.
 
