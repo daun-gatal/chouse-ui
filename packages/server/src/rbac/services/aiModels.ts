@@ -6,7 +6,7 @@
 
 import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
-import { getDatabase, getSchema } from '../db';
+import { getDatabase, getDatabaseType, getSchema } from '../db';
 import { encryptPassword, decryptPassword } from './connections';
 import { ProviderType, isValidProviderType } from '../constants/aiProviders';
 
@@ -16,6 +16,20 @@ type AnyDb = any;
 
 import type { AiProvider, AiModel, AiConfig } from '../schema';
 import { logger } from '../../utils/logger';
+
+export const AI_CAPABILITY_IDS = [
+    "chat",
+    "optimize-query",
+    "debug-query",
+    "check-optimize",
+    "optimize-log",
+    "diagnose-error",
+    "diagnose-parts",
+    "diagnose-schema",
+    "fleet-scan",
+] as const;
+
+export type AiCapabilityId = typeof AI_CAPABILITY_IDS[number];
 
 // ============================================
 // Types
@@ -54,13 +68,176 @@ export interface AiConfigResponse {
     updatedAt: Date;
 }
 
+export interface AiConfigPolicyResponse {
+    id: string;
+    configId: string;
+    capabilityId: AiCapabilityId;
+    isEnabled: boolean;
+    priority: number;
+    temperature: number | null;
+    maxOutputTokens: number | null;
+    stopAtSteps: number | null;
+    maxContextMessages: number | null;
+    maxToolCalls: number | null;
+    maxResultRows: number | null;
+    maxRuntimeMs: number | null;
+    providerOptions: Record<string, unknown> | null;
+    fallbackConfigIds: string[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface AiConfigPolicyInput {
+    capabilityId: AiCapabilityId;
+    isEnabled?: boolean;
+    priority?: number;
+    temperature?: number | null;
+    maxOutputTokens?: number | null;
+    stopAtSteps?: number | null;
+    maxContextMessages?: number | null;
+    maxToolCalls?: number | null;
+    maxResultRows?: number | null;
+    maxRuntimeMs?: number | null;
+    providerOptions?: Record<string, unknown> | null;
+    fallbackConfigIds?: string[];
+}
+
 export interface AiConfigFullResponse extends AiConfigResponse {
     model: AiModelResponse;
     provider: AiProviderResponse;
+    policies?: AiConfigPolicyResponse[];
 }
 
 export interface AiConfigWithKey extends AiConfigFullResponse {
     provider: AiProviderWithKey;
+    policy?: AiConfigPolicyResponse | null;
+}
+
+function isAiCapabilityId(value: unknown): value is AiCapabilityId {
+    return typeof value === "string" && (AI_CAPABILITY_IDS as readonly string[]).includes(value);
+}
+
+function parseJsonValue<T>(value: unknown, fallback: T): T {
+    if (value == null) return fallback;
+    if (typeof value === "string") {
+        try {
+            return JSON.parse(value) as T;
+        } catch {
+            return fallback;
+        }
+    }
+    return value as T;
+}
+
+function nullableNumber(value: unknown): number | null {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+async function ensureAiConfigPolicyStorage(): Promise<void> {
+    const db = getDatabase() as AnyDb;
+    const dbType = getDatabaseType();
+    if (dbType === "sqlite") {
+        db.run(sql`
+            CREATE TABLE IF NOT EXISTS rbac_ai_config_policies (
+                id                   TEXT    PRIMARY KEY NOT NULL,
+                config_id            TEXT    NOT NULL REFERENCES rbac_ai_configs(id) ON DELETE CASCADE,
+                capability_id        TEXT    NOT NULL,
+                is_enabled           INTEGER NOT NULL DEFAULT 1,
+                priority             INTEGER NOT NULL DEFAULT 100,
+                temperature          REAL,
+                max_output_tokens    INTEGER,
+                stop_at_steps        INTEGER,
+                max_context_messages INTEGER,
+                max_tool_calls       INTEGER,
+                max_result_rows      INTEGER,
+                max_runtime_ms       INTEGER,
+                provider_options     TEXT,
+                fallback_config_ids  TEXT,
+                created_at           INTEGER NOT NULL DEFAULT (unixepoch()),
+                updated_at           INTEGER NOT NULL DEFAULT (unixepoch())
+            )
+        `);
+        db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_config_policies_config_capability_idx ON rbac_ai_config_policies (config_id, capability_id)`);
+        db.run(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_capability_idx ON rbac_ai_config_policies (capability_id)`);
+        db.run(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_enabled_priority_idx ON rbac_ai_config_policies (is_enabled, priority)`);
+    } else {
+        await db.execute(sql`
+            CREATE TABLE IF NOT EXISTS rbac_ai_config_policies (
+                id                   TEXT PRIMARY KEY NOT NULL,
+                config_id            TEXT NOT NULL REFERENCES rbac_ai_configs(id) ON DELETE CASCADE,
+                capability_id        VARCHAR(80) NOT NULL,
+                is_enabled           BOOLEAN NOT NULL DEFAULT true,
+                priority             INTEGER NOT NULL DEFAULT 100,
+                temperature          REAL,
+                max_output_tokens    INTEGER,
+                stop_at_steps        INTEGER,
+                max_context_messages INTEGER,
+                max_tool_calls       INTEGER,
+                max_result_rows      INTEGER,
+                max_runtime_ms       INTEGER,
+                provider_options     JSONB,
+                fallback_config_ids  JSONB,
+                created_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                updated_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            )
+        `);
+        await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_config_policies_config_capability_idx ON rbac_ai_config_policies (config_id, capability_id)`);
+        await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_capability_idx ON rbac_ai_config_policies (capability_id)`);
+        await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_enabled_priority_idx ON rbac_ai_config_policies (is_enabled, priority)`);
+    }
+}
+
+function mapPolicy(row: Record<string, unknown>): AiConfigPolicyResponse {
+    const capabilityId = String(row.capabilityId ?? row.capability_id ?? "");
+    if (!isAiCapabilityId(capabilityId)) {
+        throw new Error(`Invalid AI capability policy id: ${capabilityId}`);
+    }
+    return {
+        id: String(row.id),
+        configId: String(row.configId ?? row.config_id),
+        capabilityId,
+        isEnabled: Boolean(row.isEnabled ?? row.is_enabled),
+        priority: Number(row.priority ?? 100),
+        temperature: nullableNumber(row.temperature),
+        maxOutputTokens: nullableNumber(row.maxOutputTokens ?? row.max_output_tokens),
+        stopAtSteps: nullableNumber(row.stopAtSteps ?? row.stop_at_steps),
+        maxContextMessages: nullableNumber(row.maxContextMessages ?? row.max_context_messages),
+        maxToolCalls: nullableNumber(row.maxToolCalls ?? row.max_tool_calls),
+        maxResultRows: nullableNumber(row.maxResultRows ?? row.max_result_rows),
+        maxRuntimeMs: nullableNumber(row.maxRuntimeMs ?? row.max_runtime_ms),
+        providerOptions: parseJsonValue<Record<string, unknown> | null>(row.providerOptions ?? row.provider_options, null),
+        fallbackConfigIds: parseJsonValue<string[]>(row.fallbackConfigIds ?? row.fallback_config_ids, []),
+        createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(String(row.createdAt ?? row.created_at ?? Date.now())),
+        updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(String(row.updatedAt ?? row.updated_at ?? Date.now())),
+    };
+}
+
+function validatePolicyInput(input: AiConfigPolicyInput): void {
+    if (!isAiCapabilityId(input.capabilityId)) {
+        throw new Error(`Invalid capability id: ${input.capabilityId}`);
+    }
+    const intFields: Array<[keyof AiConfigPolicyInput, number, number]> = [
+        ["priority", 0, 10_000],
+        ["maxOutputTokens", 1, 200_000],
+        ["stopAtSteps", 1, 100],
+        ["maxContextMessages", 1, 200],
+        ["maxToolCalls", 1, 500],
+        ["maxResultRows", 1, 100_000],
+        ["maxRuntimeMs", 1_000, 600_000],
+    ];
+    for (const [key, min, max] of intFields) {
+        const value = input[key];
+        if (value == null) continue;
+        if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+            throw new Error(`${String(key)} must be an integer between ${min} and ${max}`);
+        }
+    }
+    if (input.temperature != null && (typeof input.temperature !== "number" || input.temperature < 0 || input.temperature > 2)) {
+        throw new Error("temperature must be between 0 and 2");
+    }
+    if (input.fallbackConfigIds && new Set(input.fallbackConfigIds).size !== input.fallbackConfigIds.length) {
+        throw new Error("fallbackConfigIds cannot contain duplicates");
+    }
 }
 
 // ============================================
@@ -443,6 +620,162 @@ export async function deleteAiConfig(id: string): Promise<boolean> {
     const schema = getSchema();
     await db.delete(schema.aiConfigs).where(eq(schema.aiConfigs.id, id));
     return true;
+}
+
+export async function listAiConfigPolicies(configId: string): Promise<AiConfigPolicyResponse[]> {
+    await ensureAiConfigPolicyStorage();
+    const db = getDatabase() as AnyDb;
+    const schema = getSchema();
+    const rows = await db.select()
+        .from(schema.aiConfigPolicies)
+        .where(eq(schema.aiConfigPolicies.configId, configId))
+        .orderBy(asc(schema.aiConfigPolicies.priority), asc(schema.aiConfigPolicies.capabilityId));
+    return rows.map((row: Record<string, unknown>) => mapPolicy(row));
+}
+
+export async function replaceAiConfigPolicies(
+    configId: string,
+    policies: AiConfigPolicyInput[],
+): Promise<AiConfigPolicyResponse[]> {
+    await ensureAiConfigPolicyStorage();
+    const db = getDatabase() as AnyDb;
+    const schema = getSchema();
+    const config = await getAiConfigById(configId);
+    if (!config) throw new Error("Config not found");
+
+    const seen = new Set<string>();
+    for (const policy of policies) {
+        validatePolicyInput(policy);
+        if (seen.has(policy.capabilityId)) {
+            throw new Error(`Duplicate policy for capability ${policy.capabilityId}`);
+        }
+        seen.add(policy.capabilityId);
+        if (policy.fallbackConfigIds?.includes(configId)) {
+            throw new Error("fallbackConfigIds cannot include the owning config");
+        }
+    }
+
+    const fallbackIds = [...new Set(policies.flatMap((p) => p.fallbackConfigIds ?? []))];
+    if (fallbackIds.length > 0) {
+        const rows = await db.select({
+            id: schema.aiConfigs.id,
+            isActive: schema.aiConfigs.isActive,
+        })
+            .from(schema.aiConfigs)
+            .where(inArray(schema.aiConfigs.id, fallbackIds));
+        const activeIds = new Set(
+            rows
+                .filter((row: { id: string; isActive: boolean | number }) => Boolean(row.isActive))
+                .map((row: { id: string }) => row.id),
+        );
+        const missing = fallbackIds.filter((id) => !activeIds.has(id));
+        if (missing.length > 0) {
+            throw new Error(`Fallback config(s) must be active: ${missing.join(", ")}`);
+        }
+    }
+
+    await db.delete(schema.aiConfigPolicies).where(eq(schema.aiConfigPolicies.configId, configId));
+
+    const now = new Date();
+    for (const policy of policies) {
+        await db.insert(schema.aiConfigPolicies).values({
+            id: randomUUID(),
+            configId,
+            capabilityId: policy.capabilityId,
+            isEnabled: policy.isEnabled ?? true,
+            priority: policy.priority ?? 100,
+            temperature: policy.temperature ?? null,
+            maxOutputTokens: policy.maxOutputTokens ?? null,
+            stopAtSteps: policy.stopAtSteps ?? null,
+            maxContextMessages: policy.maxContextMessages ?? null,
+            maxToolCalls: policy.maxToolCalls ?? null,
+            maxResultRows: policy.maxResultRows ?? null,
+            maxRuntimeMs: policy.maxRuntimeMs ?? null,
+            providerOptions: policy.providerOptions ?? null,
+            fallbackConfigIds: policy.fallbackConfigIds ?? [],
+            createdAt: now,
+            updatedAt: now,
+        });
+    }
+
+    return listAiConfigPolicies(configId);
+}
+
+export async function getAiConfigPolicy(
+    configId: string,
+    capabilityId: string,
+): Promise<AiConfigPolicyResponse | null> {
+    if (!isAiCapabilityId(capabilityId)) return null;
+    await ensureAiConfigPolicyStorage();
+    const db = getDatabase() as AnyDb;
+    const schema = getSchema();
+    const rows = await db.select()
+        .from(schema.aiConfigPolicies)
+        .where(and(
+            eq(schema.aiConfigPolicies.configId, configId),
+            eq(schema.aiConfigPolicies.capabilityId, capabilityId),
+        ))
+        .limit(1);
+    return rows.length > 0 ? mapPolicy(rows[0] as Record<string, unknown>) : null;
+}
+
+export async function listEligibleAiConfigs(
+    capabilityId?: string,
+): Promise<AiConfigFullResponse[]> {
+    const { configs } = await listAiConfigs({ activeOnly: true, limit: 100 });
+    if (!capabilityId || !isAiCapabilityId(capabilityId)) return configs;
+
+    await ensureAiConfigPolicyStorage();
+    const db = getDatabase() as AnyDb;
+    const schema = getSchema();
+    const policyRows = await db.select()
+        .from(schema.aiConfigPolicies)
+        .where(and(
+            eq(schema.aiConfigPolicies.capabilityId, capabilityId),
+            eq(schema.aiConfigPolicies.isEnabled, true),
+        ))
+        .orderBy(asc(schema.aiConfigPolicies.priority));
+
+    if (policyRows.length === 0) return configs;
+
+    const policies: AiConfigPolicyResponse[] = policyRows.map((row: Record<string, unknown>) => mapPolicy(row));
+    const byConfigId = new Map<string, AiConfigFullResponse>(
+        configs.map((cfg: AiConfigFullResponse) => [cfg.id, cfg]),
+    );
+    const eligibleConfigs: AiConfigFullResponse[] = [];
+    for (const policy of policies) {
+        const cfg = byConfigId.get(policy.configId);
+        if (cfg) eligibleConfigs.push({ ...cfg, policies: [policy] });
+    }
+    return eligibleConfigs;
+}
+
+export async function getPreferredAiConfigForCapability(
+    capabilityId?: string,
+): Promise<AiConfigWithKey | null> {
+    if (!capabilityId || !isAiCapabilityId(capabilityId)) return getDefaultAiConfig();
+    await ensureAiConfigPolicyStorage();
+    const db = getDatabase() as AnyDb;
+    const schema = getSchema();
+    const rows = await db.select({
+        policy: schema.aiConfigPolicies,
+        config: schema.aiConfigs,
+    })
+        .from(schema.aiConfigPolicies)
+        .innerJoin(schema.aiConfigs, eq(schema.aiConfigPolicies.configId, schema.aiConfigs.id))
+        .where(and(
+            eq(schema.aiConfigPolicies.capabilityId, capabilityId),
+            eq(schema.aiConfigPolicies.isEnabled, true),
+            eq(schema.aiConfigs.isActive, true),
+        ))
+        .orderBy(asc(schema.aiConfigPolicies.priority), asc(schema.aiConfigs.name))
+        .limit(1);
+
+    if (rows.length === 0) return getDefaultAiConfig();
+
+    const policy = mapPolicy(rows[0].policy as Record<string, unknown>);
+    const config = await getAiConfigWithKey(rows[0].config.id);
+    return config ? { ...config, policy } : getDefaultAiConfig();
 }
 
 export async function listAiConfigs(options?: {

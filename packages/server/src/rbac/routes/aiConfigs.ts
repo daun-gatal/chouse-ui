@@ -15,6 +15,9 @@ import {
     updateAiConfig,
     deleteAiConfig,
     getDefaultAiConfig,
+    listAiConfigPolicies,
+    replaceAiConfigPolicies,
+    AI_CAPABILITY_IDS,
 } from '../services/aiModels';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
@@ -34,6 +37,25 @@ const updateConfigSchema = z.object({
     name: z.string().min(1).max(255).optional(),
     isActive: z.boolean().optional(),
     isDefault: z.boolean().optional(),
+});
+
+const policySchema = z.object({
+    capabilityId: z.enum(AI_CAPABILITY_IDS),
+    isEnabled: z.boolean().optional(),
+    priority: z.number().int().min(0).max(10_000).optional(),
+    temperature: z.number().min(0).max(2).nullable().optional(),
+    maxOutputTokens: z.number().int().min(1).max(200_000).nullable().optional(),
+    stopAtSteps: z.number().int().min(1).max(100).nullable().optional(),
+    maxContextMessages: z.number().int().min(1).max(200).nullable().optional(),
+    maxToolCalls: z.number().int().min(1).max(500).nullable().optional(),
+    maxResultRows: z.number().int().min(1).max(100_000).nullable().optional(),
+    maxRuntimeMs: z.number().int().min(1000).max(600_000).nullable().optional(),
+    providerOptions: z.record(z.string(), z.unknown()).nullable().optional(),
+    fallbackConfigIds: z.array(z.string()).optional(),
+});
+
+const replacePoliciesSchema = z.object({
+    policies: z.array(policySchema),
 });
 
 const listQuerySchema = z.object({
@@ -119,6 +141,49 @@ aiConfigsRoutes.get(
             return c.json({ success: true, data: config });
         } catch (error) {
             return c.json({ success: false, error: { code: 'FETCH_FAILED', message: 'Failed to fetch config' } }, 500);
+        }
+    }
+);
+
+aiConfigsRoutes.get(
+    '/:id/policies',
+    rbacAuthMiddleware,
+    requirePermission(PERMISSIONS.AI_MODELS_VIEW),
+    async (c) => {
+        try {
+            const id = requireParam(c, 'id');
+            const policies = await listAiConfigPolicies(id);
+            return c.json({ success: true, data: policies });
+        } catch (error) {
+            requestLogger(c.get('requestId')).error({ module: 'AI Configs', err: error instanceof Error ? error.message : String(error) }, 'Policy list error');
+            return c.json({ success: false, error: { code: 'FETCH_FAILED', message: 'Failed to fetch policies' } }, 500);
+        }
+    }
+);
+
+aiConfigsRoutes.put(
+    '/:id/policies',
+    rbacAuthMiddleware,
+    requirePermission(PERMISSIONS.AI_MODELS_UPDATE),
+    zValidator('json', replacePoliciesSchema),
+    async (c) => {
+        try {
+            const user = getRbacUser(c);
+            const id = requireParam(c, 'id');
+            const input = c.req.valid('json');
+            const policies = await replaceAiConfigPolicies(id, input.policies);
+
+            await createAuditLogWithContext(c, AUDIT_ACTIONS.AI_CONFIG_UPDATE, user.sub, {
+                resourceType: 'ai_config',
+                resourceId: id,
+                details: { operation: 'replace_policies', capabilities: policies.map((p) => p.capabilityId) },
+                ipAddress: getClientIp(c),
+            });
+            return c.json({ success: true, data: policies });
+        } catch (error) {
+            requestLogger(c.get('requestId')).error({ module: 'AI Configs', err: error instanceof Error ? error.message : String(error) }, 'Policy update error');
+            const message = error instanceof Error ? error.message : 'Failed to update policies';
+            return c.json({ success: false, error: { code: 'UPDATE_FAILED', message } }, 400);
         }
     }
 );
