@@ -252,10 +252,10 @@ aiChat.get("/status", async (c) => {
  */
 aiChat.get("/models", async (c) => {
     try {
-        const { listEligibleAiConfigs } = await import("../rbac/services/aiModels");
-        const configs = await listEligibleAiConfigs("chat");
+        const { listAiConfigs } = await import("../rbac/services/aiModels");
+        const initResult = await listAiConfigs({ activeOnly: true, limit: 100 });
 
-        const models = configs.map((cfg) => ({
+        const models = initResult.configs.map((cfg) => ({
             id: cfg.id,
             name: cfg.name,
             provider: cfg.provider.name,
@@ -356,7 +356,6 @@ aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema
         clickhouseService: service,
         defaultDatabase: session?.connectionConfig?.database,
         modelId,
-        capabilityId: "chat" as const,
     };
 
     try {

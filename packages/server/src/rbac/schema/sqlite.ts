@@ -5,7 +5,7 @@
  * Ideal for development and single-instance deployments.
  */
 
-import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 // ============================================
@@ -484,29 +484,6 @@ export const aiConfigs = sqliteTable('rbac_ai_configs', {
   isDefaultIdx: index('ai_configs_is_default_idx').on(table.isDefault),
 }));
 
-export const aiConfigPolicies = sqliteTable('rbac_ai_config_policies', {
-  id: text('id').primaryKey(),
-  configId: text('config_id').notNull().references(() => aiConfigs.id, { onDelete: 'cascade' }),
-  capabilityId: text('capability_id').notNull(),
-  isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(true),
-  priority: integer('priority').notNull().default(100),
-  temperature: real('temperature'),
-  maxOutputTokens: integer('max_output_tokens'),
-  stopAtSteps: integer('stop_at_steps'),
-  maxContextMessages: integer('max_context_messages'),
-  maxToolCalls: integer('max_tool_calls'),
-  maxResultRows: integer('max_result_rows'),
-  maxRuntimeMs: integer('max_runtime_ms'),
-  providerOptions: text('provider_options', { mode: 'json' }).$type<Record<string, unknown> | null>(),
-  fallbackConfigIds: text('fallback_config_ids', { mode: 'json' }).$type<string[] | null>(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-}, (table) => ({
-  configCapabilityIdx: uniqueIndex('ai_config_policies_config_capability_idx').on(table.configId, table.capabilityId),
-  capabilityIdx: index('ai_config_policies_capability_idx').on(table.capabilityId),
-  enabledPriorityIdx: index('ai_config_policies_enabled_priority_idx').on(table.isEnabled, table.priority),
-}));
-
 // ============================================
 // AI Chat Tables
 // Stores AI assistant conversation threads and messages
@@ -587,8 +564,6 @@ export type AiModel = typeof aiModels.$inferSelect;
 export type NewAiModel = typeof aiModels.$inferInsert;
 export type AiConfig = typeof aiConfigs.$inferSelect;
 export type NewAiConfig = typeof aiConfigs.$inferInsert;
-export type AiConfigPolicy = typeof aiConfigPolicies.$inferSelect;
-export type NewAiConfigPolicy = typeof aiConfigPolicies.$inferInsert;
 export type UserIdentity = typeof userIdentities.$inferSelect;
 export type NewUserIdentity = typeof userIdentities.$inferInsert;
 export type SsoSettings = typeof ssoSettings.$inferSelect;

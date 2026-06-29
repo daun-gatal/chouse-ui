@@ -646,7 +646,7 @@ fleet.post("/doctor/scan", requirePermission(PERMISSIONS.DOCTOR_RUN), zValidator
     const report = await runStructuredCapability(
       fleetScanCapability,
       { connectionIds, hours },
-      { userId: createdBy, modelId, capabilityId: "fleet-scan" },
+      { userId: createdBy, modelId },
     );
     // Persist (+ prune to retention) so the report gets its own page and lands
     // in the history rail. Best-effort — never fails the scan response.
