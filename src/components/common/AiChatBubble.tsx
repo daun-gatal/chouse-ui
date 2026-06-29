@@ -99,12 +99,6 @@ const SHEET_WIDTH_WIDE = 760;
 const MIN_SHEET_WIDTH = 360;
 const MAX_SHEET_WIDTH_RATIO = 0.7; // never exceed 70% of viewport width
 
-function getSheetMode(width: number): 'compact' | 'standard' | 'wide' {
-    if (width >= SHEET_WIDTH_WIDE) return 'wide';
-    if (width >= SHEET_WIDTH_STANDARD) return 'standard';
-    return 'compact';
-}
-
 // Register highlight.js languages
 hljs.registerLanguage('sql', sql);
 hljs.registerLanguage('json', json);
@@ -940,12 +934,11 @@ export default function AiChatBubble() {
     // Logical dimensions for internal layout (no zoom — side-sheet renders at 1:1)
     const logicalWidth = isMobile ? viewportWidth : effectiveSheetWidth;
     const logicalHeight = viewportHeight;
-    const sheetMode = getSheetMode(effectiveSheetWidth);
 
     // Adaptive internal layout thresholds
-    const splitSidebarThreshold = 720;
+    const hideSidebarThreshold = 720;
     const singleColPromptThreshold = 520;
-    const useSidebarOverlay = showSidebar && !isMobile && logicalWidth < splitSidebarThreshold;
+    const shouldHideSidebar = showSidebar && !isMobile && logicalWidth < hideSidebarThreshold;
     const useSingleColPrompt = isMobile || logicalWidth < singleColPromptThreshold;
 
     // Width-only resize (drag the left edge of the sheet)
@@ -1523,9 +1516,9 @@ export default function AiChatBubble() {
                                         <button
                                             onClick={() => {
                                                 // Cycle: compact → standard → wide → compact
-                                                const next = sheetMode === 'wide'
+                                                const next = sheetWidth >= SHEET_WIDTH_WIDE
                                                     ? SHEET_WIDTH_COMPACT
-                                                    : sheetMode === 'standard'
+                                                    : sheetWidth >= SHEET_WIDTH_STANDARD
                                                         ? SHEET_WIDTH_WIDE
                                                         : SHEET_WIDTH_STANDARD;
                                                 const clamped = Math.min(next, maxSheetWidth);
@@ -1533,10 +1526,10 @@ export default function AiChatBubble() {
                                                 saveChatPrefsDebounced(clamped);
                                             }}
                                             className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-300 hover:text-paper mr-1"
-                                            title={sheetMode === 'wide' ? 'Compact mode' : sheetMode === 'standard' ? 'Wide mode' : 'Standard mode'}
-                                            aria-label={`Switch from ${sheetMode} Ask AI mode`}
+                                            title={sheetWidth >= SHEET_WIDTH_WIDE ? 'Compact sheet' : sheetWidth >= SHEET_WIDTH_STANDARD ? 'Wide sheet' : 'Standard sheet'}
+                                            aria-label="Cycle sheet width"
                                         >
-                                            {sheetMode === 'wide' ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                                            {sheetWidth >= SHEET_WIDTH_WIDE ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                                         </button>
                                     )}
                                     <button
@@ -1566,18 +1559,9 @@ export default function AiChatBubble() {
                             </div>
 
                             <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden">
-                                {/* Thread Sidebar — overlay in compact/standard modes, split-pane in wide mode. */}
-                                {showSidebar && (
-                                    <>
-                                        {useSidebarOverlay && (
-                                            <button
-                                                type="button"
-                                                aria-label="Close thread history"
-                                                className="absolute inset-0 z-10 bg-black/20"
-                                                onClick={() => setShowSidebar(false)}
-                                            />
-                                        )}
-                                        <div className={`flex-shrink-0 bg-ink-100 border-r border-ink-500 overflow-y-auto z-20 transition-all ${isMobile ? 'absolute inset-0 w-full' : useSidebarOverlay ? 'absolute left-0 top-0 bottom-0 w-72 shadow-2xl shadow-black/35' : 'relative w-72'}`}>
+                                {/* Thread Sidebar — on mobile it acts as an overlay/slideover. Auto-hide on small desktop logical widths. */}
+                                {showSidebar && !shouldHideSidebar && (
+                                    <div className={`flex-shrink-0 bg-ink-100 border-r border-ink-500 overflow-y-auto z-20 transition-all ${isMobile ? 'absolute inset-0 w-full' : 'absolute left-0 top-0 bottom-0 w-72 md:relative md:w-72'}`}>
                                         <div className="p-3">
                                             <div className="mb-3 flex items-center justify-between px-1">
                                                 <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
@@ -1635,8 +1619,7 @@ export default function AiChatBubble() {
                                                 </div>
                                             )}
                                         </div>
-                                        </div>
-                                    </>
+                                    </div>
                                 )}
 
                                 {/* Main Chat Pane */}
