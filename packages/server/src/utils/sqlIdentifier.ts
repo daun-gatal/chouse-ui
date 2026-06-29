@@ -91,6 +91,10 @@ export function escapeQualifiedIdentifier(identifiers: string[]): string {
   return identifiers.map(escapeIdentifier).join('.');
 }
 
+export function escapeStringLiteral(value: string): string {
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
+}
+
 /**
  * Validates a column type against a whitelist
  * Prevents injection through type specifications

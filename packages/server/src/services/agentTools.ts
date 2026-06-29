@@ -8,6 +8,7 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import { ClickHouseService } from "./clickhouse";
+import { escapeIdentifier, escapeQualifiedIdentifier, escapeStringLiteral } from "../utils/sqlIdentifier";
 import {
   filterDatabases,
   filterTables,
@@ -185,7 +186,7 @@ export function createCoreTools(ctx: AgentToolContext) {
           }
           const result = await ctx.clickhouseService.executeQuery<{
             name: string;
-          }>(`SHOW TABLES FROM ${database}`, "JSON");
+          }>(`SHOW TABLES FROM ${escapeIdentifier(database)}`, "JSON");
           const allTables = result.data.map(
             (r: Record<string, unknown>) => (r as { name: string }).name
           );
@@ -238,7 +239,7 @@ export function createCoreTools(ctx: AgentToolContext) {
             };
           }
           const result = await ctx.clickhouseService.executeQuery(
-            `DESCRIBE TABLE ${database}.${table}`,
+            `DESCRIBE TABLE ${escapeQualifiedIdentifier([database, table])}`,
             "JSON"
           );
           return { database, table, columns: result.data };
@@ -285,7 +286,7 @@ export function createCoreTools(ctx: AgentToolContext) {
           }
           const result =
             await ctx.clickhouseService.executeQuery<Record<string, string>>(
-              `SHOW CREATE TABLE ${database}.${table}`,
+              `SHOW CREATE TABLE ${escapeQualifiedIdentifier([database, table])}`,
               "JSON"
             );
           const row = result.data[0] || {};
@@ -345,7 +346,7 @@ export function createCoreTools(ctx: AgentToolContext) {
                     sum(bytes_on_disk) as bytes_on_disk,
                     count() as parts_count
                 FROM system.parts 
-                WHERE database = '${database}' AND table = '${table}' AND active
+                WHERE database = ${escapeStringLiteral(database)} AND table = ${escapeStringLiteral(table)} AND active
              )`,
             "JSON"
           );
@@ -391,7 +392,7 @@ export function createCoreTools(ctx: AgentToolContext) {
             };
           }
           const result = await ctx.clickhouseService.executeQuery(
-            `SELECT * FROM ${database}.${table} LIMIT 5`,
+            `SELECT * FROM ${escapeQualifiedIdentifier([database, table])} LIMIT 5`,
             "JSON"
           );
           return {
@@ -572,7 +573,7 @@ export function createCoreTools(ctx: AgentToolContext) {
                 sum(total_rows) as total_rows,
                 formatReadableSize(sum(total_bytes)) as total_size
              FROM system.tables 
-             WHERE database = '${database}'`,
+             WHERE database = ${escapeStringLiteral(database)}`,
             "JSON"
           );
           return { database, ...(result.data[0] || {}) };
@@ -1030,7 +1031,7 @@ export function createChartTool(ctx: AgentToolContext) {
           if (!normalized.includes("LIMIT")) {
             const limit =
               chartType === "pie" || chartType === "donut" ? 20 : 500;
-            chartSql = `${sql.replace(/;\s*$/, "")} LIMIT ${limit}`;
+            chartSql = `${cleanedSql} LIMIT ${limit}`;
           }
 
           const result = await ctx.clickhouseService.executeQuery(
