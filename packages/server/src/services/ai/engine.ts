@@ -22,6 +22,16 @@ import type {
   StructuredCapability,
 } from "./types";
 
+type JsonValue = null | string | number | boolean | JsonValue[] | { [key: string]: JsonValue };
+type JsonObject = { [key: string]: JsonValue };
+type SdkProviderOptions = Record<string, JsonObject>;
+
+function sdkProviderOptions(
+  value: Record<string, unknown> | null | undefined,
+): SdkProviderOptions | undefined {
+  return value ? value as SdkProviderOptions : undefined;
+}
+
 /** Collect the agent's tool-call audit trail (best-effort). */
 async function collectSteps(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,6 +76,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       const stopAtSteps = policy?.stopAtSteps ?? cap.tuning?.stopAtSteps ?? 10;
       const maxOutputTokens = policy?.maxOutputTokens ?? cap.tuning?.maxOutputTokens;
       const temperature = policy?.temperature ?? cap.tuning?.temperature ?? 0;
+      const providerOptions = sdkProviderOptions(policy?.providerOptions);
 
       const agent = new ToolLoopAgent({
         model,
@@ -74,7 +85,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
         output: Output.object({ schema: cap.outputSchema, name: cap.id }),
         stopWhen: stepCountIs(stopAtSteps),
         temperature,
-        providerOptions: policy?.providerOptions ?? undefined,
+        providerOptions,
         ...(maxOutputTokens ? { maxOutputTokens } : {}),
       });
 
@@ -104,7 +115,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
           tools,
           stopWhen: stepCountIs(stopAtSteps),
           temperature,
-          providerOptions: policy?.providerOptions ?? undefined,
+          providerOptions,
           ...(maxOutputTokens ? { maxOutputTokens } : {}),
         });
         const streamResult = await fallbackAgent.stream({
@@ -210,6 +221,7 @@ export async function streamCapabilityAgent<TInput>(
   const stopAtSteps = policy?.stopAtSteps ?? cap.tuning?.stopAtSteps ?? 30;
   const maxOutputTokens = policy?.maxOutputTokens ?? cap.tuning?.maxOutputTokens;
   const temperature = policy?.temperature ?? cap.tuning?.temperature ?? 0;
+  const providerOptions = sdkProviderOptions(policy?.providerOptions);
 
   const agent = new ToolLoopAgent({
     model,
@@ -217,7 +229,7 @@ export async function streamCapabilityAgent<TInput>(
     tools,
     stopWhen: stepCountIs(stopAtSteps),
     temperature,
-    providerOptions: policy?.providerOptions ?? undefined,
+    providerOptions,
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
   });
 

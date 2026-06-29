@@ -738,14 +738,16 @@ export async function listEligibleAiConfigs(
 
     if (policyRows.length === 0) return configs;
 
-    const policies = policyRows.map((row: Record<string, unknown>) => mapPolicy(row));
-    const byConfigId = new Map(configs.map((cfg) => [cfg.id, cfg]));
-    return policies
-        .map((policy) => {
-            const cfg = byConfigId.get(policy.configId);
-            return cfg ? { ...cfg, policies: [policy] } : null;
-        })
-        .filter((cfg): cfg is AiConfigFullResponse => Boolean(cfg));
+    const policies: AiConfigPolicyResponse[] = policyRows.map((row: Record<string, unknown>) => mapPolicy(row));
+    const byConfigId = new Map<string, AiConfigFullResponse>(
+        configs.map((cfg: AiConfigFullResponse) => [cfg.id, cfg]),
+    );
+    const eligibleConfigs: AiConfigFullResponse[] = [];
+    for (const policy of policies) {
+        const cfg = byConfigId.get(policy.configId);
+        if (cfg) eligibleConfigs.push({ ...cfg, policies: [policy] });
+    }
+    return eligibleConfigs;
 }
 
 export async function getPreferredAiConfigForCapability(
