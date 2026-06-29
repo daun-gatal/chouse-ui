@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.40.0';
+export const APP_VERSION = '1.41.0';
 
 // ============================================
 // Error Helpers
@@ -4132,6 +4132,72 @@ export const MIGRATIONS: Migration[] = [
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.40.0] Dropped scheduled_queries tables');
     },
   },
+  {
+    version: '1.41.0',
+    name: 'ai_config_policies',
+    description: 'Add AI deployment policies for capability routing, tuning, guardrails, provider options, and fallback configuration.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_config_policies (
+            id                   TEXT    PRIMARY KEY NOT NULL,
+            config_id            TEXT    NOT NULL REFERENCES rbac_ai_configs(id) ON DELETE CASCADE,
+            capability_id        TEXT    NOT NULL,
+            is_enabled           INTEGER NOT NULL DEFAULT 1,
+            priority             INTEGER NOT NULL DEFAULT 100,
+            temperature          REAL,
+            max_output_tokens    INTEGER,
+            stop_at_steps        INTEGER,
+            max_context_messages INTEGER,
+            max_tool_calls       INTEGER,
+            max_result_rows      INTEGER,
+            max_runtime_ms       INTEGER,
+            provider_options     TEXT,
+            fallback_config_ids  TEXT,
+            created_at           INTEGER NOT NULL DEFAULT 0,
+            updated_at           INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_config_policies_config_capability_idx ON rbac_ai_config_policies (config_id, capability_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_capability_idx ON rbac_ai_config_policies (capability_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_enabled_priority_idx ON rbac_ai_config_policies (is_enabled, priority)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_ai_config_policies (
+            id                   TEXT PRIMARY KEY NOT NULL,
+            config_id            TEXT NOT NULL REFERENCES rbac_ai_configs(id) ON DELETE CASCADE,
+            capability_id        VARCHAR(80) NOT NULL,
+            is_enabled           BOOLEAN NOT NULL DEFAULT true,
+            priority             INTEGER NOT NULL DEFAULT 100,
+            temperature          REAL,
+            max_output_tokens    INTEGER,
+            stop_at_steps        INTEGER,
+            max_context_messages INTEGER,
+            max_tool_calls       INTEGER,
+            max_result_rows      INTEGER,
+            max_runtime_ms       INTEGER,
+            provider_options     JSONB,
+            fallback_config_ids  JSONB,
+            created_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_config_policies_config_capability_idx ON rbac_ai_config_policies (config_id, capability_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_capability_idx ON rbac_ai_config_policies (capability_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_enabled_priority_idx ON rbac_ai_config_policies (is_enabled, priority)`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.41.0] Created AI config policies table (${dbType})`);
+    },
+    down: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`DROP TABLE IF EXISTS rbac_ai_config_policies`);
+      } else {
+        await (db as PostgresDb).execute(sql`DROP TABLE IF EXISTS rbac_ai_config_policies`);
+      }
+    },
+  },
 ];
 
 // ============================================
@@ -4535,6 +4601,30 @@ async function createSqliteSchemaFromDrizzle(db: SqliteDb): Promise<void> {
   db.run(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_active_idx ON rbac_ai_configs(is_active)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_default_idx ON rbac_ai_configs(is_default)`);
 
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS rbac_ai_config_policies (
+      id                   TEXT    PRIMARY KEY NOT NULL,
+      config_id            TEXT    NOT NULL REFERENCES rbac_ai_configs(id) ON DELETE CASCADE,
+      capability_id        TEXT    NOT NULL,
+      is_enabled           INTEGER NOT NULL DEFAULT 1,
+      priority             INTEGER NOT NULL DEFAULT 100,
+      temperature          REAL,
+      max_output_tokens    INTEGER,
+      stop_at_steps        INTEGER,
+      max_context_messages INTEGER,
+      max_tool_calls       INTEGER,
+      max_result_rows      INTEGER,
+      max_runtime_ms       INTEGER,
+      provider_options     TEXT,
+      fallback_config_ids  TEXT,
+      created_at           INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at           INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+  db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_config_policies_config_capability_idx ON rbac_ai_config_policies (config_id, capability_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_capability_idx ON rbac_ai_config_policies (capability_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_enabled_priority_idx ON rbac_ai_config_policies (is_enabled, priority)`);
+
   // Saved Queries table (connectionId is optional - null means shared across all connections)
   db.run(sql`
     CREATE TABLE IF NOT EXISTS rbac_saved_queries (
@@ -4853,6 +4943,30 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_model_id_idx ON rbac_ai_configs(model_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_active_idx ON rbac_ai_configs(is_active)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_configs_is_default_idx ON rbac_ai_configs(is_default)`);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rbac_ai_config_policies (
+      id                   TEXT PRIMARY KEY NOT NULL,
+      config_id            TEXT NOT NULL REFERENCES rbac_ai_configs(id) ON DELETE CASCADE,
+      capability_id        VARCHAR(80) NOT NULL,
+      is_enabled           BOOLEAN NOT NULL DEFAULT true,
+      priority             INTEGER NOT NULL DEFAULT 100,
+      temperature          REAL,
+      max_output_tokens    INTEGER,
+      stop_at_steps        INTEGER,
+      max_context_messages INTEGER,
+      max_tool_calls       INTEGER,
+      max_result_rows      INTEGER,
+      max_runtime_ms       INTEGER,
+      provider_options     JSONB,
+      fallback_config_ids  JSONB,
+      created_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS ai_config_policies_config_capability_idx ON rbac_ai_config_policies (config_id, capability_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_capability_idx ON rbac_ai_config_policies (capability_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS ai_config_policies_enabled_priority_idx ON rbac_ai_config_policies (is_enabled, priority)`);
 
   // Saved Queries table (connectionId is optional - null means shared across all connections)
   await db.execute(sql`

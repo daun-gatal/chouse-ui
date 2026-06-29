@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ProvidersTab from './ProvidersTab';
 import BaseModelsTab from './BaseModelsTab';
 import ConfigsTab from './ConfigsTab';
+import PoliciesTab from './PoliciesTab';
 
 export default function AiModelsManagement() {
     return (
@@ -25,6 +26,9 @@ export default function AiModelsManagement() {
                     <TabsTrigger value="configs" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
                         Deployments
                     </TabsTrigger>
+                    <TabsTrigger value="policies" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
+                        Policies
+                    </TabsTrigger>
                     <TabsTrigger value="basemodels" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
                         SDK models
                     </TabsTrigger>
@@ -35,6 +39,9 @@ export default function AiModelsManagement() {
 
                 <TabsContent value="configs" className="m-0">
                     <ConfigsTab />
+                </TabsContent>
+                <TabsContent value="policies" className="m-0">
+                    <PoliciesTab />
                 </TabsContent>
                 <TabsContent value="basemodels" className="m-0">
                     <BaseModelsTab />

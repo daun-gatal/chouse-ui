@@ -45,6 +45,7 @@ async function requireCapabilityPermission(
 function buildRunContext(
   c: Context<{ Variables: Variables }>,
   modelId?: string,
+  capabilityId?: string,
 ): AgentRunContext {
   const session = c.get("session");
   return {
@@ -55,6 +56,7 @@ function buildRunContext(
     clickhouseService: c.get("service"),
     defaultDatabase: session?.connectionConfig?.database,
     modelId,
+    capabilityId: capabilityId as AgentRunContext["capabilityId"],
   };
 }
 
@@ -88,7 +90,7 @@ ai.post("/invoke", async (c) => {
   await requireCapabilityPermission(c, cap.permission);
 
   const parsedInput = cap.inputSchema.parse(body?.input ?? {});
-  const ctx = buildRunContext(c, body?.modelId);
+  const ctx = buildRunContext(c, body?.modelId, capId);
 
   const result = await runStructuredCapability(cap, parsedInput, ctx);
 
@@ -119,15 +121,23 @@ ai.post("/invoke", async (c) => {
 ai.get("/capabilities", async (c) => {
   const isAdmin = c.get("isRbacAdmin") ?? false;
   const perms = c.get("rbacPermissions") ?? [];
-  const list = CAPABILITY_IDS.map((id) => {
+  const { listEligibleAiConfigs, getPreferredAiConfigForCapability } = await import("../rbac/services/aiModels");
+  const list = await Promise.all(CAPABILITY_IDS.map(async (id) => {
     const cap = CAPABILITIES[id];
+    const [eligible, preferred] = await Promise.all([
+      listEligibleAiConfigs(id),
+      getPreferredAiConfigForCapability(id),
+    ]);
     return {
       id,
       permission: cap.permission,
       delivery: cap.delivery,
       allowed: isAdmin || perms.includes(cap.permission),
+      defaultModelId: preferred?.id ?? null,
+      eligibleModelCount: eligible.length,
+      policyConfigured: eligible.some((cfg) => cfg.policies && cfg.policies.length > 0),
     };
-  });
+  }));
   return c.json({ success: true, data: list });
 });
 
@@ -137,8 +147,9 @@ ai.get("/capabilities", async (c) => {
  */
 ai.get("/models", async (c) => {
   try {
-    const { listAiConfigs } = await import("../rbac/services/aiModels");
-    const { configs } = await listAiConfigs({ activeOnly: true });
+    const capability = c.req.query("capability");
+    const { listEligibleAiConfigs } = await import("../rbac/services/aiModels");
+    const configs = await listEligibleAiConfigs(capability);
     return c.json({
       success: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
