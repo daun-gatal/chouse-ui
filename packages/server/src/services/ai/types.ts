@@ -16,7 +16,6 @@ import type { ModelMessage, ToolSet } from "ai";
 import type { z } from "zod";
 import type { ClickHouseService } from "../clickhouse";
 import type { Permission } from "../../rbac/schema/base";
-import type { AiCapabilityId, AiConfigPolicyResponse } from "../../rbac/services/aiModels";
 
 // ============================================
 // Run context
@@ -43,10 +42,6 @@ export interface AgentRunContext {
   defaultDatabase?: string;
   /** Optional model override (config id). Falls back to the default config. */
   modelId?: string;
-  /** Capability being invoked; used for policy routing. */
-  capabilityId?: AiCapabilityId;
-  /** Optional request abort signal passed through to the AI SDK. */
-  abortSignal?: AbortSignal;
 }
 
 // ============================================
@@ -87,14 +82,6 @@ export interface RunMeta {
   steps: { tool: string; input: unknown }[];
   /** The resolved model label (for reports). */
   modelLabel: string;
-  /** AI SDK total usage for all steps when available. */
-  usage?: unknown;
-  /** Finish reason from the AI SDK when available. */
-  finishReason?: string;
-  /** Runtime policy used for this run, if any. */
-  policy?: AiConfigPolicyResponse | null;
-  /** How structured output was produced. */
-  outputMode?: "native" | "fallback";
 }
 
 /**

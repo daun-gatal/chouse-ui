@@ -736,7 +736,7 @@ async function runAutoRca(
     const report = await runStructuredCapability(
       fleetScanCapability,
       {},
-      { modelId: aiRcaModelId, capabilityId: "fleet-scan" },
+      { modelId: aiRcaModelId },
     );
     await saveDoctorReport(report, null, "auto");
     await deliverRca(report, triggers, channels);

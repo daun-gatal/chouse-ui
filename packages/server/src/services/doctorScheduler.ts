@@ -248,7 +248,7 @@ class DoctorScheduler {
       const report = await runStructuredCapability(
         fleetScanCapability,
         { connectionIds: cfg.connectionIds, hours: cfg.hours },
-        { modelId: cfg.modelId, capabilityId: "fleet-scan" },
+        { modelId: cfg.modelId },
       );
       await saveDoctorReport(report, null, "scheduled");
 

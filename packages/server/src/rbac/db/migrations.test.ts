@@ -214,12 +214,6 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
       expect(await h.roleHasPermission("admin", p)).toBe(true);
     }
   },
-  "1.41.0": async () => {
-    expect(await h.tableExists("rbac_ai_config_policies")).toBe(true);
-    expect(await h.indexExists("ai_config_policies_config_capability_idx")).toBe(true);
-    expect(await h.indexExists("ai_config_policies_capability_idx")).toBe(true);
-    expect(await h.indexExists("ai_config_policies_enabled_priority_idx")).toBe(true);
-  },
 };
 
 // ---------------------------------------------------------------------------

@@ -131,40 +131,7 @@ export interface AiConfig {
   updatedAt: string;
   model: AiBaseModel;
   provider: AiProvider;
-  policies?: AiConfigPolicy[];
 }
-
-export type AiCapabilityId =
-  | 'chat'
-  | 'optimize-query'
-  | 'debug-query'
-  | 'check-optimize'
-  | 'optimize-log'
-  | 'diagnose-error'
-  | 'diagnose-parts'
-  | 'diagnose-schema'
-  | 'fleet-scan';
-
-export interface AiConfigPolicy {
-  id: string;
-  configId: string;
-  capabilityId: AiCapabilityId;
-  isEnabled: boolean;
-  priority: number;
-  temperature: number | null;
-  maxOutputTokens: number | null;
-  stopAtSteps: number | null;
-  maxContextMessages: number | null;
-  maxToolCalls: number | null;
-  maxResultRows: number | null;
-  maxRuntimeMs: number | null;
-  providerOptions: Record<string, unknown> | null;
-  fallbackConfigIds: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type AiConfigPolicyInput = Omit<AiConfigPolicy, 'id' | 'configId' | 'createdAt' | 'updatedAt'>;
 
 export interface CreateAiConfigInput {
   modelId: string;
@@ -243,12 +210,6 @@ export const rbacAiConfigsApi = {
   },
   async delete(id: string): Promise<void> {
     await rbacFetch(`/ai-models/${id}`, { method: 'DELETE' });
-  },
-  async listPolicies(id: string): Promise<AiConfigPolicy[]> {
-    return rbacFetch(`/ai-models/${id}/policies`);
-  },
-  async replacePolicies(id: string, policies: AiConfigPolicyInput[]): Promise<AiConfigPolicy[]> {
-    return rbacFetch(`/ai-models/${id}/policies`, { method: 'PUT', body: { policies } });
   },
 };
 
