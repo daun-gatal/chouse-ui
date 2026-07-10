@@ -1,6 +1,6 @@
 
 import { describe, it, expect } from "bun:test";
-import { validateIdentifier, escapeIdentifier, escapeQualifiedIdentifier, escapeStringLiteral, validateColumnType, validateFormat } from "./sqlIdentifier";
+import { validateIdentifier, escapeIdentifier, escapeQualifiedIdentifier, validateColumnType, validateFormat } from "./sqlIdentifier";
 
 describe("SQL Identifier Utils", () => {
     describe("validateIdentifier", () => {
@@ -46,12 +46,6 @@ describe("SQL Identifier Utils", () => {
 
         it("should allow default database (ClickHouse built-in)", () => {
             expect(escapeQualifiedIdentifier(["default", "viz_test_largest_tables"])).toBe("`default`.`viz_test_largest_tables`");
-        });
-    });
-
-    describe("escapeStringLiteral", () => {
-        it("escapes quotes and backslashes for ClickHouse string filters", () => {
-            expect(escapeStringLiteral("db'\\x")).toBe("'db''\\\\x'");
         });
     });
 

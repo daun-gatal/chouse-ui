@@ -9,28 +9,17 @@
  * and chouseDoctor.ts.
  */
 
-import { Output, ToolLoopAgent, stepCountIs, type ModelMessage } from "ai";
+import { ToolLoopAgent, stepCountIs, type ModelMessage } from "ai";
 import { AppError } from "../../types";
-import { resolveFallbackModels, resolveModel, type ResolvedModel } from "./model";
+import { resolveModel } from "./model";
 import { structuredOutput } from "./structuredOutput";
 import { handleAiError } from "./errors";
-import { logger } from "../../utils/logger";
 import type {
   AgentRunContext,
   AnyStructuredCapability,
   StreamCapability,
   StructuredCapability,
 } from "./types";
-
-type JsonValue = null | string | number | boolean | JsonValue[] | { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
-type SdkProviderOptions = Record<string, JsonObject>;
-
-function sdkProviderOptions(
-  value: Record<string, unknown> | null | undefined,
-): SdkProviderOptions | undefined {
-  return value ? value as SdkProviderOptions : undefined;
-}
 
 /** Collect the agent's tool-call audit trail (best-effort). */
 async function collectSteps(
@@ -58,147 +47,55 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
   ctx: AgentRunContext,
 ): Promise<TOutput> {
   try {
+    const { model, label } = await resolveModel(ctx.modelId);
+
     const prepared = await cap.prepare(input, ctx);
     const tools = await cap.tools(prepared, ctx);
     const instructions = await cap.instructions(prepared, ctx);
     const messages = await cap.messages(prepared, ctx);
 
-    const primary = await resolveModel(ctx.modelId, cap.id);
-    const fallbacks = await resolveFallbackModels(primary.policy, cap.id);
-    const candidates = [primary, ...fallbacks];
-    let lastError: unknown;
+    const agent = new ToolLoopAgent({
+      model,
+      instructions,
+      tools,
+      stopWhen: stepCountIs(cap.tuning?.stopAtSteps ?? 10),
+      temperature: cap.tuning?.temperature ?? 0,
+      ...(cap.tuning?.maxOutputTokens ? { maxOutputTokens: cap.tuning.maxOutputTokens } : {}),
+    });
 
-    async function runWithModel(
-      resolved: ResolvedModel,
-      fallbackDepth: number,
-    ): Promise<TOutput> {
-      const { model, label, policy } = resolved;
-      const stopAtSteps = policy?.stopAtSteps ?? cap.tuning?.stopAtSteps ?? 10;
-      const maxOutputTokens = policy?.maxOutputTokens ?? cap.tuning?.maxOutputTokens;
-      const temperature = policy?.temperature ?? cap.tuning?.temperature ?? 0;
-      const providerOptions = sdkProviderOptions(policy?.providerOptions);
+    const streamResult = await agent.stream({ messages });
+    const raw = await streamResult.text;
+    const steps = await collectSteps(streamResult);
 
-      const agent = new ToolLoopAgent({
-        model,
-        instructions,
-        tools,
-        output: Output.object({ schema: cap.outputSchema, name: cap.id }),
-        stopWhen: stepCountIs(stopAtSteps),
-        temperature,
-        providerOptions,
-        ...(maxOutputTokens ? { maxOutputTokens } : {}),
-      });
+    const fallbackMessages: ModelMessage[] = cap.fallbackMessages
+      ? cap.fallbackMessages(prepared, ctx, raw)
+      : [
+          { role: "system", content: instructions },
+          {
+            role: "user",
+            content: `Investigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the JSON result now.`,
+          },
+        ];
 
-      let raw = "";
-      let parsed: TParsed | null = null;
-      let steps: { tool: string; input: unknown }[] = [];
-      let usage: unknown;
-      let finishReason: string | undefined;
-      let outputMode: "native" | "fallback" = "native";
+    const parsed = await structuredOutput({
+      model,
+      schema: cap.outputSchema,
+      raw,
+      fallbackMessages,
+      maxOutputTokens: cap.tuning?.maxOutputTokens,
+      module: `AI:${cap.id}`,
+    });
 
-      try {
-        const result = await agent.generate({
-          messages,
-          abortSignal: ctx.abortSignal,
-          ...(policy?.maxRuntimeMs ? { timeout: { totalMs: policy.maxRuntimeMs } } : {}),
-        });
-        raw = result.text;
-        parsed = result.output as TParsed;
-        steps = await collectSteps(result);
-        usage = result.totalUsage;
-        finishReason = result.finishReason;
-      } catch {
-        outputMode = "fallback";
-        const fallbackAgent = new ToolLoopAgent({
-          model,
-          instructions,
-          tools,
-          stopWhen: stepCountIs(stopAtSteps),
-          temperature,
-          providerOptions,
-          ...(maxOutputTokens ? { maxOutputTokens } : {}),
-        });
-        const streamResult = await fallbackAgent.stream({
-          messages,
-          abortSignal: ctx.abortSignal,
-          ...(policy?.maxRuntimeMs ? { timeout: { totalMs: policy.maxRuntimeMs } } : {}),
-        });
-        raw = await streamResult.text;
-        steps = await collectSteps(streamResult);
-        usage = await Promise.resolve(streamResult.totalUsage).catch(() => undefined);
-      }
+    const meta = { raw, steps, modelLabel: label };
 
-      const fallbackMessages: ModelMessage[] = cap.fallbackMessages
-        ? cap.fallbackMessages(prepared, ctx, raw)
-        : [
-            { role: "system", content: instructions },
-            {
-              role: "user",
-              content: `Investigation notes (may be empty):\n${raw || "(none)"}\n\nProduce the JSON result now.`,
-            },
-          ];
-
-      if (parsed === null) {
-        parsed = await structuredOutput({
-          model,
-          schema: cap.outputSchema,
-          raw,
-          fallbackMessages,
-          maxOutputTokens,
-          module: `AI:${cap.id}`,
-        });
-      }
-
-      const meta = { raw, steps, modelLabel: label, usage, finishReason, policy, outputMode };
-
-      if (parsed === null) {
-        if (cap.onParseFailure) return await cap.onParseFailure(prepared, ctx, meta);
-        throw AppError.internal(
-          `Chouse AI could not complete '${cap.id}' — please try again.`,
-        );
-      }
-
-      logger.info(
-        {
-          module: "AIEngine",
-          capability: cap.id,
-          configId: resolved.config.id,
-          model: label,
-          outputMode,
-          toolCalls: steps.length,
-          finishReason,
-          usage,
-          policyId: policy?.id,
-          fallbackDepth,
-          fallbackUsed: fallbackDepth > 0,
-        },
-        "AI structured capability completed",
+    if (parsed === null) {
+      if (cap.onParseFailure) return await cap.onParseFailure(prepared, ctx, meta);
+      throw AppError.internal(
+        `Chouse AI could not complete '${cap.id}' — please try again.`,
       );
-
-      return await cap.finalize(parsed, prepared, ctx, meta);
     }
 
-    for (let index = 0; index < candidates.length; index += 1) {
-      try {
-        return await runWithModel(candidates[index], index);
-      } catch (error) {
-        lastError = error;
-        if (index < candidates.length - 1) {
-          logger.warn(
-            {
-              module: "AIEngine",
-              capability: cap.id,
-              configId: candidates[index].config.id,
-              nextConfigId: candidates[index + 1].config.id,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "AI capability failed; trying fallback deployment",
-          );
-        }
-      }
-    }
-
-    throw lastError ?? AppError.internal(`Chouse AI could not complete '${cap.id}' — please try again.`);
+    return await cap.finalize(parsed, prepared, ctx, meta);
   } catch (error) {
     if (cap.softFail) return cap.softFail(error);
     handleAiError(error, `AI:${cap.id}`);
@@ -215,29 +112,20 @@ export async function streamCapabilityAgent<TInput>(
   ctx: AgentRunContext,
   messages: ModelMessage[],
 ) {
-  const { model, policy } = await resolveModel(ctx.modelId, cap.id);
+  const { model } = await resolveModel(ctx.modelId);
   const tools = await cap.tools(ctx);
   const instructions = await cap.instructions(ctx);
-  const stopAtSteps = policy?.stopAtSteps ?? cap.tuning?.stopAtSteps ?? 30;
-  const maxOutputTokens = policy?.maxOutputTokens ?? cap.tuning?.maxOutputTokens;
-  const temperature = policy?.temperature ?? cap.tuning?.temperature ?? 0;
-  const providerOptions = sdkProviderOptions(policy?.providerOptions);
 
   const agent = new ToolLoopAgent({
     model,
     instructions,
     tools,
-    stopWhen: stepCountIs(stopAtSteps),
-    temperature,
-    providerOptions,
-    ...(maxOutputTokens ? { maxOutputTokens } : {}),
+    stopWhen: stepCountIs(cap.tuning?.stopAtSteps ?? 30),
+    temperature: cap.tuning?.temperature ?? 0,
+    ...(cap.tuning?.maxOutputTokens ? { maxOutputTokens: cap.tuning.maxOutputTokens } : {}),
   });
 
-  return agent.stream({
-    messages,
-    abortSignal: ctx.abortSignal,
-    ...(policy?.maxRuntimeMs ? { timeout: { totalMs: policy.maxRuntimeMs } } : {}),
-  });
+  return agent.stream({ messages });
 }
 
 /** Type guard: is this capability structured (vs stream)? */

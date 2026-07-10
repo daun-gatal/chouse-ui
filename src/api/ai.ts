@@ -81,10 +81,8 @@ export interface AiModelOption {
 }
 
 /** Active AI deployments for the model picker. Unifies the old per-feature lists. */
-export async function fetchAiModels(capability?: string): Promise<AiModelOption[]> {
-  return api.get<AiModelOption[]>("/ai/models", {
-    params: capability ? { capability } : undefined,
-  });
+export async function fetchAiModels(): Promise<AiModelOption[]> {
+  return api.get<AiModelOption[]>("/ai/models");
 }
 
 /** Capability availability for the current user (drives showing/hiding AI buttons). */
@@ -93,9 +91,6 @@ export interface AiCapabilityInfo {
   permission: string;
   delivery: "structured" | "stream";
   allowed: boolean;
-  defaultModelId: string | null;
-  eligibleModelCount: number;
-  policyConfigured: boolean;
 }
 
 export async function fetchAiCapabilities(): Promise<AiCapabilityInfo[]> {
