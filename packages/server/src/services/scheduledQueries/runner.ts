@@ -24,6 +24,7 @@ import {
   validateReadOnlySelect,
 } from "./validation";
 import { describeSelectSchema, diffSchema, executeMaterialize } from "./materialize";
+import { currentDataHealthJob, processDataHealthError, processDataHealthSuccess } from "../dataHealth/execution";
 import type {
   ScheduledQueryRow,
   ScheduledQueryRunRow,
@@ -221,26 +222,30 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
   let writtenRows: number | null = null;
   let resultJson: string | null = null;
   let message: string | null = null;
+  let conditionValue: string | null = null;
+  let conditionMet: boolean | null = null;
+  let notified = false;
 
   let client: ClickHouseClient | null = null;
   const window = await resolveWindow(job, opts.slotAt);
   const params = buildParamValues(window);
 
   try {
+    const executionJob = job.kind === "data_health_check" ? await currentDataHealthJob(job) : job;
     // Re-validate read-only on the SOURCE every run (an edit can't smuggle a write).
-    const validation = validateReadOnlySelect(job.query);
+    const validation = validateReadOnlySelect(executionJob.query);
     if (!validation.ok) throw new Error(validation.error ?? "Source query failed read-only validation");
 
     // Re-check the owner's CURRENT data access every run — revoking access to a
     // table mid-life must start failing the job, not keep running on stale grants.
-    const denial = await ownerDataAccessDenial(job);
+    const denial = await ownerDataAccessDenial(executionJob);
     if (denial) throw new Error(`data access denied: ${denial}`);
 
-    const { sql: execSql } = buildExecutableQuery(job.query);
-    client = await clientForConnection(job.connectionId, scheduledLogComment(job));
+    const { sql: execSql } = buildExecutableQuery(executionJob.query);
+    client = await clientForConnection(executionJob.connectionId, scheduledLogComment(executionJob));
 
-    if (job.outputMode === "none") {
-      const outcome = await runSelect(client, job, execSql, params, runId, controller.signal);
+    if (executionJob.outputMode === "none") {
+      const outcome = await runSelect(client, executionJob, execSql, params, runId, controller.signal);
       rowCount = outcome.rowCount;
       truncated = outcome.truncated;
       resultJson = JSON.stringify({
@@ -248,10 +253,17 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
         rows: outcome.snapshot,
         window: { slot_start: params.sq_slot_start, slot_end: params.sq_slot_end, prev_run_at: params.sq_prev_run_at },
       });
+      if (job.kind === "data_health_check") {
+        const evaluation = await processDataHealthSuccess(job, runId, opts.slotAt, outcome.snapshot[0] ?? {}, client, params);
+        conditionValue = evaluation.conditionValue;
+        conditionMet = evaluation.conditionMet;
+        message = evaluation.message;
+        notified = evaluation.notified;
+      }
     } else {
       // Materialize: pin-diff the schema, then run the engine-generated write.
       const columns = await describeSelectSchema(client, execSql, params);
-      const pinned = job.outputConfig?.expectedSchema;
+      const pinned = executionJob.outputConfig?.expectedSchema;
       if (pinned && pinned.length > 0) {
         const diff = diffSchema(pinned, columns);
         if (!diff.compatible) {
@@ -264,12 +276,12 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
         }
       }
       writtenRows = await executeMaterialize({
-        client, job, selectSql: execSql, params, queryId: runId, slotAt: opts.slotAt, signal: controller.signal, columns,
+        client, job: executionJob, selectSql: execSql, params, queryId: runId, slotAt: opts.slotAt, signal: controller.signal, columns,
       });
       rowCount = writtenRows;
       resultJson = JSON.stringify({
-        mode: job.outputMode,
-        dest: `${job.destDatabase}.${job.destTable}`,
+        mode: executionJob.outputMode,
+        dest: `${executionJob.destDatabase}.${executionJob.destTable}`,
         writtenRows,
         window: { slot_start: params.sq_slot_start, slot_end: params.sq_slot_end },
       });
@@ -288,12 +300,21 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
       }
     }
     logger.warn({ module: "ScheduledQueries", jobId: job.id, runId, err: message }, "Scheduled query run failed");
+    if (job.kind === "data_health_check") {
+      try {
+        await processDataHealthError(job);
+      } catch (healthError) {
+        logger.warn({ module: "DataHealth", jobId: job.id, runId, err: healthError instanceof Error ? healthError.message : String(healthError) }, "Failed to mark Data Health promise unknown");
+      }
+    }
   } finally {
     clearTimeout(timer);
   }
 
   const finishedAt = Date.now();
-  const notified = await maybeEnqueueDeliveries(job, runId, status, message, window);
+  if (job.kind === "sql_query") {
+    notified = await maybeEnqueueDeliveries(job, runId, status, message, window);
+  }
 
   await store.finalizeRun(runId, {
     status,
@@ -301,8 +322,8 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
     truncated,
     writtenRows,
     resultJson,
-    conditionValue: null,
-    conditionMet: null,
+    conditionValue,
+    conditionMet,
     durationMs: finishedAt - startedAt,
     message,
     notified,

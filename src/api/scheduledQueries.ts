@@ -49,6 +49,7 @@ export interface ScheduledQuery {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr: string | null;
+  timezone: string;
   outputMode: SqOutputMode;
   destDatabase: string | null;
   destTable: string | null;
@@ -78,6 +79,7 @@ export interface ScheduledQueryInput {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr?: string | null;
+  timezone: string;
   outputMode: SqOutputMode;
   destDatabase?: string | null;
   destTable?: string | null;

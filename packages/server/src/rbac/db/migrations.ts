@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.40.0';
+export const APP_VERSION = '1.44.0';
 
 // ============================================
 // Error Helpers
@@ -4131,6 +4131,275 @@ export const MIGRATIONS: Migration[] = [
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.40.0] Dropped scheduled_queries tables');
     },
+  },
+  {
+    version: '1.44.0',
+    name: 'data_health_promises',
+    description: 'Add timezone-aware schedules and Data Health promise, check, metric sample, incident, and incident-event metadata with independent RBAC permissions.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+
+      if (dbType === 'sqlite') {
+        try {
+          (db as SqliteDb).run(sql`ALTER TABLE scheduled_queries ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'`);
+        } catch (error) {
+          if (!isDuplicateColumnError(error)) throw error;
+        }
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS data_health_promises (
+            id                 TEXT    PRIMARY KEY NOT NULL,
+            scheduled_query_id TEXT   NOT NULL REFERENCES scheduled_queries(id) ON DELETE CASCADE,
+            name               TEXT    NOT NULL,
+            description        TEXT,
+            connection_id      TEXT    NOT NULL,
+            source_type        TEXT    NOT NULL DEFAULT 'table',
+            database_name      TEXT,
+            table_name         TEXT,
+            source_query       TEXT,
+            event_time_column  TEXT,
+            row_filter         TEXT,
+            owner_id           TEXT,
+            criticality        TEXT    NOT NULL DEFAULT 'standard',
+            timezone           TEXT    NOT NULL DEFAULT 'UTC',
+            runbook_url        TEXT,
+            enabled            INTEGER NOT NULL DEFAULT 1,
+            status             TEXT    NOT NULL DEFAULT 'unknown',
+            grace_secs         INTEGER NOT NULL DEFAULT 0,
+            breach_after       INTEGER NOT NULL DEFAULT 2,
+            recover_after      INTEGER NOT NULL DEFAULT 2,
+            retention_days     INTEGER NOT NULL DEFAULT 90,
+            schema_snapshot    TEXT,
+            last_evaluated_at  INTEGER,
+            last_healthy_at    INTEGER,
+            created_by         TEXT,
+            created_at         INTEGER NOT NULL DEFAULT 0,
+            updated_at         INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE UNIQUE INDEX IF NOT EXISTS dh_promises_job_idx ON data_health_promises (scheduled_query_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS dh_promises_owner_idx ON data_health_promises (owner_id, status)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS dh_promises_connection_idx ON data_health_promises (connection_id)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS data_health_promise_checks (
+            id          TEXT    PRIMARY KEY NOT NULL,
+            promise_id  TEXT    NOT NULL REFERENCES data_health_promises(id) ON DELETE CASCADE,
+            check_key   TEXT    NOT NULL,
+            type        TEXT    NOT NULL,
+            name        TEXT    NOT NULL,
+            severity    TEXT    NOT NULL DEFAULT 'warning',
+            config      TEXT    NOT NULL,
+            enabled     INTEGER NOT NULL DEFAULT 1,
+            position    INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL DEFAULT 0,
+            updated_at  INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (promise_id, check_key)
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS dh_promise_checks_promise_idx ON data_health_promise_checks (promise_id, position)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS data_health_samples (
+            id             TEXT PRIMARY KEY NOT NULL,
+            promise_id     TEXT NOT NULL REFERENCES data_health_promises(id) ON DELETE CASCADE,
+            check_id       TEXT NOT NULL REFERENCES data_health_promise_checks(id) ON DELETE CASCADE,
+            run_id         TEXT,
+            origin         TEXT NOT NULL DEFAULT 'live',
+            outcome        TEXT NOT NULL,
+            observed_value REAL,
+            expected_lower REAL,
+            expected_upper REAL,
+            evidence       TEXT,
+            slot_at        INTEGER NOT NULL,
+            created_at     INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (check_id, slot_at, origin)
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS dh_samples_promise_slot_idx ON data_health_samples (promise_id, slot_at)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS dh_samples_check_slot_idx ON data_health_samples (check_id, slot_at)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS data_health_incidents (
+            id                TEXT PRIMARY KEY NOT NULL,
+            promise_id        TEXT NOT NULL REFERENCES data_health_promises(id) ON DELETE CASCADE,
+            status            TEXT NOT NULL DEFAULT 'open',
+            severity          TEXT NOT NULL,
+            kind              TEXT NOT NULL DEFAULT 'data',
+            summary           TEXT NOT NULL,
+            opened_at         INTEGER NOT NULL,
+            acknowledged_by   TEXT,
+            acknowledged_at   INTEGER,
+            snoozed_until      INTEGER,
+            recovered_at      INTEGER,
+            last_event_at     INTEGER NOT NULL,
+            created_at        INTEGER NOT NULL DEFAULT 0,
+            updated_at        INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS dh_incidents_promise_idx ON data_health_incidents (promise_id, opened_at)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS dh_incidents_status_idx ON data_health_incidents (status, severity, last_event_at)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS data_health_incident_events (
+            id          TEXT PRIMARY KEY NOT NULL,
+            incident_id TEXT NOT NULL REFERENCES data_health_incidents(id) ON DELETE CASCADE,
+            type        TEXT NOT NULL,
+            actor_id    TEXT,
+            run_id      TEXT,
+            payload     TEXT,
+            created_at  INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS dh_incident_events_idx ON data_health_incident_events (incident_id, created_at)`);
+      } else {
+        await (db as PostgresDb).execute(sql`ALTER TABLE scheduled_queries ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS data_health_promises (
+            id                 TEXT    PRIMARY KEY NOT NULL,
+            scheduled_query_id TEXT   NOT NULL REFERENCES scheduled_queries(id) ON DELETE CASCADE,
+            name               TEXT    NOT NULL,
+            description        TEXT,
+            connection_id      TEXT    NOT NULL,
+            source_type        TEXT    NOT NULL DEFAULT 'table',
+            database_name      TEXT,
+            table_name         TEXT,
+            source_query       TEXT,
+            event_time_column  TEXT,
+            row_filter         TEXT,
+            owner_id           TEXT,
+            criticality        TEXT    NOT NULL DEFAULT 'standard',
+            timezone           TEXT    NOT NULL DEFAULT 'UTC',
+            runbook_url        TEXT,
+            enabled            INTEGER NOT NULL DEFAULT 1,
+            status             TEXT    NOT NULL DEFAULT 'unknown',
+            grace_secs         INTEGER NOT NULL DEFAULT 0,
+            breach_after       INTEGER NOT NULL DEFAULT 2,
+            recover_after      INTEGER NOT NULL DEFAULT 2,
+            retention_days     INTEGER NOT NULL DEFAULT 90,
+            schema_snapshot    TEXT,
+            last_evaluated_at  BIGINT,
+            last_healthy_at    BIGINT,
+            created_by         TEXT,
+            created_at         BIGINT  NOT NULL DEFAULT 0,
+            updated_at         BIGINT  NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS dh_promises_job_idx ON data_health_promises (scheduled_query_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS dh_promises_owner_idx ON data_health_promises (owner_id, status)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS dh_promises_connection_idx ON data_health_promises (connection_id)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS data_health_promise_checks (
+            id          TEXT    PRIMARY KEY NOT NULL,
+            promise_id  TEXT    NOT NULL REFERENCES data_health_promises(id) ON DELETE CASCADE,
+            check_key   TEXT    NOT NULL,
+            type        TEXT    NOT NULL,
+            name        TEXT    NOT NULL,
+            severity    TEXT    NOT NULL DEFAULT 'warning',
+            config      TEXT    NOT NULL,
+            enabled     INTEGER NOT NULL DEFAULT 1,
+            position    INTEGER NOT NULL DEFAULT 0,
+            created_at  BIGINT  NOT NULL DEFAULT 0,
+            updated_at  BIGINT  NOT NULL DEFAULT 0,
+            UNIQUE (promise_id, check_key)
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS dh_promise_checks_promise_idx ON data_health_promise_checks (promise_id, position)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS data_health_samples (
+            id               TEXT PRIMARY KEY NOT NULL,
+            promise_id       TEXT NOT NULL REFERENCES data_health_promises(id) ON DELETE CASCADE,
+            check_id         TEXT NOT NULL REFERENCES data_health_promise_checks(id) ON DELETE CASCADE,
+            run_id           TEXT,
+            origin           TEXT NOT NULL DEFAULT 'live',
+            outcome          TEXT NOT NULL,
+            observed_value   DOUBLE PRECISION,
+            expected_lower   DOUBLE PRECISION,
+            expected_upper   DOUBLE PRECISION,
+            evidence         TEXT,
+            slot_at          BIGINT NOT NULL,
+            created_at       BIGINT NOT NULL DEFAULT 0,
+            UNIQUE (check_id, slot_at, origin)
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS dh_samples_promise_slot_idx ON data_health_samples (promise_id, slot_at)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS dh_samples_check_slot_idx ON data_health_samples (check_id, slot_at)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS data_health_incidents (
+            id                TEXT PRIMARY KEY NOT NULL,
+            promise_id        TEXT NOT NULL REFERENCES data_health_promises(id) ON DELETE CASCADE,
+            status            TEXT NOT NULL DEFAULT 'open',
+            severity          TEXT NOT NULL,
+            kind              TEXT NOT NULL DEFAULT 'data',
+            summary           TEXT NOT NULL,
+            opened_at         BIGINT NOT NULL,
+            acknowledged_by   TEXT,
+            acknowledged_at   BIGINT,
+            snoozed_until      BIGINT,
+            recovered_at      BIGINT,
+            last_event_at     BIGINT NOT NULL,
+            created_at        BIGINT NOT NULL DEFAULT 0,
+            updated_at        BIGINT NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS dh_incidents_promise_idx ON data_health_incidents (promise_id, opened_at)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS dh_incidents_status_idx ON data_health_incidents (status, severity, last_event_at)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS data_health_incident_events (
+            id          TEXT PRIMARY KEY NOT NULL,
+            incident_id TEXT NOT NULL REFERENCES data_health_incidents(id) ON DELETE CASCADE,
+            type        TEXT NOT NULL,
+            actor_id    TEXT,
+            run_id      TEXT,
+            payload     TEXT,
+            created_at  BIGINT NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS dh_incident_events_idx ON data_health_incident_events (incident_id, created_at)`);
+      }
+
+      const { seedPermissions } = await import('../services/seed');
+      const permissionIdMap = await seedPermissions();
+      const permNames = [
+        'data_health:view',
+        'data_health:edit',
+        'data_health:delete',
+        'data_health:run',
+        'data_health:view_all',
+      ];
+      const permIds = permNames.map((name) => permissionIdMap.get(name));
+      if (!permIds.every((id): id is string => typeof id === 'string')) {
+        throw new Error('Failed to resolve Data Health permission IDs');
+      }
+
+      for (const roleName of [SYSTEM_ROLES.SUPER_ADMIN, SYSTEM_ROLES.ADMIN]) {
+        let roleRows: Array<{ id: string }>;
+        if (dbType === 'sqlite') {
+          roleRows = (db as SqliteDb).all(sql`SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1`) as Array<{ id: string }>;
+        } else {
+          const result = await (db as PostgresDb).execute(sql`SELECT id FROM rbac_roles WHERE name = ${roleName} LIMIT 1`);
+          const rows = result as unknown as { rows?: Array<{ id: string }> };
+          roleRows = Array.isArray(result) ? result as unknown as Array<{ id: string }> : rows.rows ?? [];
+        }
+        if (roleRows.length === 0) continue;
+        for (const permissionId of permIds) {
+          const roleId = roleRows[0].id;
+          let exists: boolean;
+          if (dbType === 'sqlite') {
+            exists = (db as SqliteDb).all(sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${permissionId} LIMIT 1`).length > 0;
+          } else {
+            const result = await (db as PostgresDb).execute(sql`SELECT 1 FROM rbac_role_permissions WHERE role_id = ${roleId} AND permission_id = ${permissionId} LIMIT 1`);
+            const rows = result as unknown as { rows?: Array<unknown> };
+            exists = (Array.isArray(result) ? result : rows.rows ?? []).length > 0;
+          }
+          if (exists) continue;
+          const id = randomUUID();
+          if (dbType === 'sqlite') {
+            (db as SqliteDb).run(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${id}, ${roleId}, ${permissionId}, ${Math.floor(Date.now() / 1000)})`);
+          } else {
+            await (db as PostgresDb).execute(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${id}, ${roleId}, ${permissionId}, ${new Date().toISOString()})`);
+          }
+        }
+      }
+
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.44.0] Created Data Health Promise schema + permissions (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
   },
 ];
 

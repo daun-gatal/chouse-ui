@@ -529,6 +529,13 @@ export const RBAC_PERMISSIONS = {
   SCHEDULED_QUERIES_RUN: 'scheduled_queries:run',
   SCHEDULED_QUERIES_WRITE: 'scheduled_queries:write',
   SCHEDULED_QUERIES_VIEW_ALL: 'scheduled_queries:view_all',
+
+  // Data Health (DataOps)
+  DATA_HEALTH_VIEW: 'data_health:view',
+  DATA_HEALTH_EDIT: 'data_health:edit',
+  DATA_HEALTH_DELETE: 'data_health:delete',
+  DATA_HEALTH_RUN: 'data_health:run',
+  DATA_HEALTH_VIEW_ALL: 'data_health:view_all',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

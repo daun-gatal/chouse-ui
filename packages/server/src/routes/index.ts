@@ -13,6 +13,7 @@ import ai from "./ai";
 import fleet from "./fleet";
 import alerting from "./alerting";
 import scheduledQueries from "./scheduled-queries";
+import dataHealth from "./data-health";
 
 const api = new Hono();
 
@@ -81,6 +82,7 @@ api.route("/ai", ai);
 api.route("/fleet", fleet);
 api.route("/alerting", alerting);
 api.route("/scheduled-queries", scheduledQueries);
+api.route("/data-health", dataHealth);
 
 // RBAC routes (Role-Based Access Control)
 api.route("/rbac", rbacRoutes);
@@ -97,4 +99,3 @@ api.get("/health", (c) => {
 });
 
 export default api;
-

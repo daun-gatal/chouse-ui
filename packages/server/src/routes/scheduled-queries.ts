@@ -29,7 +29,7 @@ import {
   type ScheduledQueryRow,
 } from "../services/scheduledQueries/types";
 import { validateReadOnlySelect, toParseableSql } from "../services/scheduledQueries/validation";
-import { validateCron, nextFireTimes } from "../services/scheduledQueries/cadence";
+import { isValidTimeZone, validateCron, nextFireTimes } from "../services/scheduledQueries/cadence";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
 import {
   describeSelectSchema,
@@ -97,7 +97,7 @@ function ownerScope(c: Context): string | null {
  */
 async function loadVisibleJob(c: Context, id: string): Promise<ScheduledQueryRow> {
   const job = await store.getJob(id);
-  if (!job) throw AppError.notFound("Scheduled query not found");
+  if (!job || job.kind !== "sql_query") throw AppError.notFound("Scheduled query not found");
   if (!canViewAll(c) && job.createdBy !== userId(c)) {
     throw AppError.notFound("Scheduled query not found");
   }
@@ -156,6 +156,7 @@ const jobBodySchema = z.object({
   dayOfWeek: z.number().int().min(0).max(6).default(1),
   dayOfMonth: z.number().int().min(1).max(28).default(1),
   cronExpr: z.string().trim().nullish(),
+  timezone: z.string().trim().min(1).max(100).default("UTC"),
   outputMode: z.enum(SQ_OUTPUT_MODES as unknown as [string, ...string[]]).default("none"),
   destDatabase: z.string().trim().nullish(),
   destTable: z.string().trim().nullish(),
@@ -173,11 +174,12 @@ type JobBody = z.infer<typeof jobBodySchema>;
 
 /** Cross-field validation shared by create + edit. Throws AppError on failure. */
 function validateBody(body: JobBody, canWrite: boolean): void {
+  if (!isValidTimeZone(body.timezone)) throw AppError.badRequest("Invalid IANA timezone");
   const ro = validateReadOnlySelect(body.query);
   if (!ro.ok) throw AppError.badRequest(ro.error ?? "Invalid query");
 
   if (body.frequency === "cron") {
-    const cron = validateCron(body.cronExpr ?? "");
+    const cron = validateCron(body.cronExpr ?? "", body.timezone);
     if (!cron.valid) throw AppError.badRequest(cron.error ?? "Invalid cron expression");
   }
 
@@ -208,6 +210,7 @@ function bodyToInput(body: JobBody): store.JobInput {
     dayOfWeek: body.dayOfWeek,
     dayOfMonth: body.dayOfMonth,
     cronExpr: body.frequency === "cron" ? (body.cronExpr ?? null) : null,
+    timezone: body.timezone,
     outputMode: body.outputMode as ScheduledQueryRow["outputMode"],
     destDatabase: body.outputMode === "none" ? null : (body.destDatabase ?? null),
     destTable: body.outputMode === "none" ? null : (body.destTable ?? null),
@@ -398,17 +401,17 @@ scheduledQueries.post(
 
     // 2. Next fire-times.
     if (body.frequency === "cron") {
-      const cron = validateCron(body.cronExpr ?? "");
+      const cron = validateCron(body.cronExpr ?? "", body.timezone);
       result.cron = cron;
       if (cron.valid) {
         result.nextFireTimes = nextFireTimes(
-          { frequency: "cron", hour: body.hour, dayOfWeek: body.dayOfWeek, dayOfMonth: body.dayOfMonth, cronExpr: body.cronExpr ?? null },
+          { frequency: "cron", hour: body.hour, dayOfWeek: body.dayOfWeek, dayOfMonth: body.dayOfMonth, cronExpr: body.cronExpr ?? null, timezone: body.timezone },
           5,
         );
       }
     } else if (body.frequency !== "manual") {
       result.nextFireTimes = nextFireTimes(
-        { frequency: body.frequency as ScheduledQueryRow["frequency"], hour: body.hour, dayOfWeek: body.dayOfWeek, dayOfMonth: body.dayOfMonth, cronExpr: null },
+        { frequency: body.frequency as ScheduledQueryRow["frequency"], hour: body.hour, dayOfWeek: body.dayOfWeek, dayOfMonth: body.dayOfMonth, cronExpr: null, timezone: body.timezone },
         5,
       );
     }

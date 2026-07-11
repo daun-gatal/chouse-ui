@@ -112,6 +112,7 @@ const PERMISSION_CATEGORIES: Record<string, string> = {
   'sso': 'SSO Management',
   'alerting': 'Alerting',
   'scheduled_queries': 'Scheduled Queries',
+  'data_health': 'Data Health',
 };
 
 const getPermissionCategory = (permission: string): string => {

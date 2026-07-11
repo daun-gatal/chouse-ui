@@ -55,6 +55,7 @@ function jobToInput(job: ScheduledQuery, overrides: Partial<ScheduledQueryInput>
     dayOfWeek: job.dayOfWeek,
     dayOfMonth: job.dayOfMonth,
     cronExpr: job.cronExpr,
+    timezone: job.timezone,
     outputMode: job.outputMode,
     destDatabase: job.destDatabase,
     destTable: job.destTable,

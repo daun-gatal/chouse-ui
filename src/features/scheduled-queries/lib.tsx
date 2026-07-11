@@ -46,13 +46,13 @@ export function scheduleLabel(job: ScheduledQuery): string {
     case "manual":
       return "Manual only";
     case "cron":
-      return `Cron: ${job.cronExpr ?? "—"} (UTC)`;
+      return `Cron: ${job.cronExpr ?? "—"} (${job.timezone})`;
     case "daily":
-      return `Daily at ${h}:00 UTC`;
+      return `Daily at ${h}:00 ${job.timezone}`;
     case "weekly":
-      return `Weekly ${DOW[job.dayOfWeek] ?? "?"} at ${h}:00 UTC`;
+      return `Weekly ${DOW[job.dayOfWeek] ?? "?"} at ${h}:00 ${job.timezone}`;
     case "monthly":
-      return `Monthly day ${job.dayOfMonth} at ${h}:00 UTC`;
+      return `Monthly day ${job.dayOfMonth} at ${h}:00 ${job.timezone}`;
     default:
       return job.frequency;
   }

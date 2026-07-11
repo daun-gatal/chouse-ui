@@ -1,12 +1,12 @@
 /**
- * Cadence math for Scheduled Queries — a single source of truth (croner, UTC)
+ * Cadence math for Scheduled Queries — a single source of truth (croner)
  * for BOTH the firing schedule (`lastScheduledFireMs`) and the templated window
  * lower bound (`previousFireMs` → `{{slot_start}}`), so the two can never
  * disagree. See ADR 0002 (D5, D5a, D3a #2, D3b).
  *
  * Fixed presets (daily/weekly/monthly) are compiled to a 5-field cron pattern
  * and evaluated through the same engine as custom `cron` jobs. All evaluation is
- * in UTC (sidesteps DST ambiguity); `manual` never fires.
+ * in the job's IANA timezone; existing jobs default to UTC. `manual` never fires.
  */
 
 import { Cron } from "croner";
@@ -19,6 +19,7 @@ export interface CadenceSpec {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr: string | null;
+  timezone: string;
 }
 
 /** A digit (no list/range) field-only guard used while validating presets. */
@@ -56,22 +57,32 @@ export function cadenceToCron(spec: CadenceSpec): string | null {
   }
 }
 
-function specOf(job: Pick<ScheduledQueryRow, "frequency" | "hour" | "dayOfWeek" | "dayOfMonth" | "cronExpr">): CadenceSpec {
+function specOf(job: Pick<ScheduledQueryRow, "frequency" | "hour" | "dayOfWeek" | "dayOfMonth" | "cronExpr" | "timezone">): CadenceSpec {
   return {
     frequency: job.frequency,
     hour: job.hour,
     dayOfWeek: job.dayOfWeek,
     dayOfMonth: job.dayOfMonth,
     cronExpr: job.cronExpr,
+    timezone: job.timezone,
   };
 }
 
-/** Build a UTC croner instance for a cadence, or `null` if it never fires. */
+export function isValidTimeZone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Build a croner instance for a cadence, or `null` if it never fires. */
 function cronOf(spec: CadenceSpec): Cron | null {
   const pattern = cadenceToCron(spec);
   if (!pattern) return null;
   try {
-    return new Cron(pattern, { timezone: "UTC" });
+    return new Cron(pattern, { timezone: isValidTimeZone(spec.timezone) ? spec.timezone : "UTC" });
   } catch {
     return null;
   }
@@ -84,7 +95,7 @@ function cronOf(spec: CadenceSpec): Cron | null {
  * which is the no-backfill contract (D3a #6).
  */
 export function lastScheduledFireMs(
-  job: Pick<ScheduledQueryRow, "frequency" | "hour" | "dayOfWeek" | "dayOfMonth" | "cronExpr">,
+  job: Pick<ScheduledQueryRow, "frequency" | "hour" | "dayOfWeek" | "dayOfMonth" | "cronExpr" | "timezone">,
   nowMs: number,
 ): number | null {
   const cron = cronOf(specOf(job));
@@ -108,7 +119,7 @@ export function lastScheduledFireMs(
  * of run history, so a retry of the same slot yields the same window.
  */
 export function previousFireMs(
-  job: Pick<ScheduledQueryRow, "frequency" | "hour" | "dayOfWeek" | "dayOfMonth" | "cronExpr">,
+  job: Pick<ScheduledQueryRow, "frequency" | "hour" | "dayOfWeek" | "dayOfMonth" | "cronExpr" | "timezone">,
   slotAtMs: number,
 ): number | null {
   const cron = cronOf(specOf(job));
@@ -143,7 +154,7 @@ export interface CronValidationResult {
  * (sub-minute / seconds fields rejected — the tick is 60s, D5a), and produces a
  * future occurrence. Returns the trimmed expression as the normalized form.
  */
-export function validateCron(expr: string): CronValidationResult {
+export function validateCron(expr: string, timezone = "UTC"): CronValidationResult {
   const trimmed = expr.trim();
   if (!trimmed) return { valid: false, error: "Cron expression is required" };
   const fields = trimmed.split(/\s+/);
@@ -151,7 +162,8 @@ export function validateCron(expr: string): CronValidationResult {
     return { valid: false, error: "Expected a 5-field cron expression (minute hour day month weekday); sub-minute schedules are not supported" };
   }
   try {
-    const cron = new Cron(trimmed, { timezone: "UTC" });
+    if (!isValidTimeZone(timezone)) return { valid: false, error: "Invalid IANA timezone" };
+    const cron = new Cron(trimmed, { timezone });
     const next = cron.nextRun();
     if (!next) return { valid: false, error: "Cron expression never fires" };
     return { valid: true, normalized: trimmed };

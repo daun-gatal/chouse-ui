@@ -214,6 +214,37 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
       expect(await h.roleHasPermission("admin", p)).toBe(true);
     }
   },
+  "1.44.0": async () => {
+    expect(await h.columnExists("scheduled_queries", "timezone")).toBe(true);
+    for (const table of [
+      "data_health_promises",
+      "data_health_promise_checks",
+      "data_health_samples",
+      "data_health_incidents",
+      "data_health_incident_events",
+    ]) {
+      expect(await h.tableExists(table)).toBe(true);
+    }
+    expect(await h.columnExists("data_health_promises", "scheduled_query_id")).toBe(true);
+    expect(await h.columnExists("data_health_promises", "status")).toBe(true);
+    expect(await h.columnExists("data_health_samples", "observed_value")).toBe(true);
+    expect(await h.columnExists("data_health_incidents", "snoozed_until")).toBe(true);
+    expect(await h.indexExists("dh_promises_job_idx")).toBe(true);
+    expect(await h.indexExists("dh_promise_checks_promise_idx")).toBe(true);
+    expect(await h.indexExists("dh_samples_check_slot_idx")).toBe(true);
+    expect(await h.indexExists("dh_incidents_status_idx")).toBe(true);
+    for (const permission of [
+      "data_health:view",
+      "data_health:edit",
+      "data_health:delete",
+      "data_health:run",
+      "data_health:view_all",
+    ]) {
+      expect(await h.permissionExists(permission)).toBe(true);
+      expect(await h.roleHasPermission("super_admin", permission)).toBe(true);
+      expect(await h.roleHasPermission("admin", permission)).toBe(true);
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ function job(over: Partial<ScheduledQueryRow> & Pick<ScheduledQueryRow, "id" | "
     dayOfWeek: 1,
     dayOfMonth: 1,
     cronExpr: null,
+    timezone: "UTC",
     outputMode: "none",
     destDatabase: null,
     destTable: null,

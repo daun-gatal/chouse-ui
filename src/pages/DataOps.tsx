@@ -1,23 +1,24 @@
 /**
  * DataOps — a top-level home for user-defined, scheduled data jobs and data
- * observability. Level 1: the page + a TabPill bar of feature tabs (phase 1 has a
- * single feature, Scheduled Queries; Data Health joins later). Level 3 (the
- * feature's own Overview/Jobs/Runs sub-tabs) lives in the feature. Reuses the
+ * observability. Level 1: the page + a TabPill bar of feature tabs. Level 3 (each
+ * feature's own sub-tabs) lives in the feature. Reuses the
  * Monitoring page-with-sub-tabs pattern and house tokens (D10).
  */
 
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CalendarClock, Workflow } from "lucide-react";
+import { CalendarClock, HeartPulse, Workflow } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { ScheduledQueries, SUB_TABS, type SubTab } from "@/features/scheduled-queries";
+import { DataHealth, DATA_HEALTH_SUB_TABS, type DataHealthSubTab } from "@/features/data-health";
 
-type FeatureKey = "scheduled-queries";
+type FeatureKey = "scheduled-queries" | "data-health";
 
 const FEATURE_META: Record<FeatureKey, { label: string; icon: React.ElementType; permission: string }> = {
   "scheduled-queries": { label: "Scheduled Queries", icon: CalendarClock, permission: RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW },
+  "data-health": { label: "Data Health", icon: HeartPulse, permission: RBAC_PERMISSIONS.DATA_HEALTH_VIEW },
 };
 
 function FeaturePill({ feature, isActive, onClick }: { feature: FeatureKey; isActive: boolean; onClick: () => void }) {
@@ -51,17 +52,18 @@ export default function DataOps() {
 
   const activeFeature: FeatureKey =
     feature && (availableFeatures as string[]).includes(feature) ? (feature as FeatureKey) : availableFeatures[0] ?? "scheduled-queries";
-  const activeSub: SubTab = sub && (SUB_TABS as string[]).includes(sub) ? (sub as SubTab) : "overview";
+  const validSubs: string[] = activeFeature === "data-health" ? DATA_HEALTH_SUB_TABS : SUB_TABS;
+  const activeSub = sub && validSubs.includes(sub) ? sub : "overview";
 
   // Normalize the URL so deep links / refreshes land on a valid feature+sub.
   useEffect(() => {
     if (availableFeatures.length === 0) return;
-    if (!feature || !(availableFeatures as string[]).includes(feature) || !sub || !(SUB_TABS as string[]).includes(sub)) {
+    if (!feature || !(availableFeatures as string[]).includes(feature) || !sub || !validSubs.includes(sub)) {
       navigate(`/dataops/${activeFeature}/${activeSub}`, { replace: true });
     }
-  }, [feature, sub, activeFeature, activeSub, availableFeatures, navigate]);
+  }, [feature, sub, activeFeature, activeSub, availableFeatures, validSubs, navigate]);
 
-  const setSub = (next: SubTab) => navigate(`/dataops/${activeFeature}/${next}`);
+  const setSub = (next: string) => navigate(`/dataops/${activeFeature}/${next}`);
 
   if (availableFeatures.length === 0) {
     return (
@@ -98,7 +100,8 @@ export default function DataOps() {
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {activeFeature === "scheduled-queries" && <ScheduledQueries sub={activeSub} onSubChange={setSub} />}
+        {activeFeature === "scheduled-queries" && <ScheduledQueries sub={activeSub as SubTab} onSubChange={setSub} />}
+        {activeFeature === "data-health" && <DataHealth sub={activeSub as DataHealthSubTab} onSubChange={setSub} />}
       </div>
     </div>
   );

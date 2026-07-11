@@ -1,0 +1,209 @@
+import { api } from "./client";
+
+export type DataHealthState = "healthy" | "degraded" | "unhealthy" | "unknown" | "paused";
+export type DataHealthOutcome = "pass" | "breach" | "learning" | "not_evaluated";
+export type DataHealthSeverity = "warning" | "critical";
+export type DataHealthFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual";
+
+interface CheckBase {
+  checkKey: string;
+  name: string;
+  severity: DataHealthSeverity;
+  enabled: boolean;
+}
+
+export type DataHealthCheck =
+  | (CheckBase & { type: "freshness"; config: { eventTimeColumn: string; maxAgeSeconds: number } })
+  | (CheckBase & { type: "row_count"; config: { min?: number; max?: number } })
+  | (CheckBase & { type: "volume_anomaly"; config: { minSamples: number; sensitivity: number; minRelativeBand: number; hardMin?: number; hardMax?: number } })
+  | (CheckBase & { type: "completeness"; config: { column: string; minRatio: number } })
+  | (CheckBase & { type: "uniqueness"; config: { columns: string[]; maxDuplicateRatio: number } })
+  | (CheckBase & { type: "validity"; config: { predicate: string; minRatio: number } })
+  | (CheckBase & { type: "schema_contract"; config: { expectedColumns: Array<{ name: string; type: string }>; allowAdditionalColumns: boolean } })
+  | (CheckBase & { type: "custom_metric"; config: { expression: string; operator: "gt" | "gte" | "lt" | "lte" | "eq" | "between"; threshold: number; upperThreshold?: number } });
+
+export interface DataHealthSchedule {
+  frequency: DataHealthFrequency;
+  hour: number;
+  dayOfWeek: number;
+  dayOfMonth: number;
+  cronExpr: string | null;
+  timeoutSecs: number;
+}
+
+export interface DataHealthPromise {
+  id: string;
+  scheduledQueryId: string;
+  name: string;
+  description: string | null;
+  connectionId: string;
+  sourceType: "table" | "query";
+  databaseName: string | null;
+  tableName: string | null;
+  sourceQuery: string | null;
+  eventTimeColumn: string | null;
+  rowFilter: string | null;
+  ownerId: string | null;
+  ownerDisplayName: string | null;
+  criticality: "standard" | "important" | "critical";
+  timezone: string;
+  runbookUrl: string | null;
+  enabled: boolean;
+  status: DataHealthState;
+  graceSecs: number;
+  breachAfter: number;
+  recoverAfter: number;
+  retentionDays: number;
+  schemaSnapshot: Array<{ name: string; type: string }> | null;
+  lastEvaluatedAt: number | null;
+  lastHealthyAt: number | null;
+  createdBy: string | null;
+  createdAt: number;
+  updatedAt: number;
+  checks: DataHealthCheck[];
+  schedule: DataHealthSchedule;
+  channelIds: string[];
+}
+
+export interface DataHealthPromiseInput {
+  name: string;
+  description?: string | null;
+  connectionId: string;
+  source:
+    | { sourceType: "table"; databaseName: string; tableName: string; eventTimeColumn?: string; rowFilter?: string | null }
+    | { sourceType: "query"; sourceQuery: string; eventTimeColumn?: string; rowFilter?: string | null };
+  ownerId?: string | null;
+  criticality: DataHealthPromise["criticality"];
+  timezone: string;
+  runbookUrl?: string | null;
+  enabled: boolean;
+  frequency: DataHealthFrequency;
+  hour: number;
+  dayOfWeek: number;
+  dayOfMonth: number;
+  cronExpr?: string | null;
+  graceSecs: number;
+  breachAfter: number;
+  recoverAfter: number;
+  retentionDays: number;
+  timeoutSecs: number;
+  channelIds: string[];
+  checks: DataHealthCheck[];
+  runNow: boolean;
+}
+
+export interface DataHealthIncident {
+  id: string;
+  promiseId: string;
+  status: "open" | "acknowledged" | "snoozed" | "recovered";
+  severity: DataHealthSeverity;
+  kind: "data" | "execution";
+  summary: string;
+  openedAt: number;
+  acknowledgedBy: string | null;
+  acknowledgedAt: number | null;
+  snoozedUntil: number | null;
+  recoveredAt: number | null;
+  lastEventAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DataHealthSample {
+  id: string;
+  promiseId: string;
+  checkId: string;
+  checkKey: string;
+  runId: string | null;
+  origin: "live" | "backtest";
+  outcome: DataHealthOutcome;
+  observedValue: number | null;
+  expectedLower: number | null;
+  expectedUpper: number | null;
+  evidence: Record<string, unknown> | null;
+  slotAt: number;
+  createdAt: number;
+}
+
+export interface DataHealthRun {
+  id: string;
+  queryId: string;
+  trigger: "scheduled" | "manual";
+  status: "running" | "success" | "failed" | "error";
+  slotAt: number;
+  conditionValue: string | null;
+  conditionMet: boolean | null;
+  durationMs: number | null;
+  message: string | null;
+  startedAt: number;
+  finishedAt: number | null;
+}
+
+export interface DataHealthOverview {
+  totalPromises: number;
+  byStatus: Record<DataHealthState, number>;
+  openIncidents: number;
+  unownedCritical: number;
+  needsAttention: DataHealthPromise[];
+}
+
+export interface DataHealthPreview {
+  compiledSql: string;
+  metricCheckKeys: string[];
+  schemaCheckKeys: string[];
+  nextFireTimes: number[];
+}
+
+export async function listDataHealthPromises(): Promise<DataHealthPromise[]> {
+  const response = await api.get<{ promises: DataHealthPromise[] }>("/data-health");
+  return response.promises;
+}
+
+export function getDataHealthPromise(id: string): Promise<DataHealthPromise> {
+  return api.get<DataHealthPromise>(`/data-health/${id}`);
+}
+
+export function getDataHealthOverview(): Promise<DataHealthOverview> {
+  return api.get<DataHealthOverview>("/data-health/overview");
+}
+
+export function previewDataHealthPromise(input: DataHealthPromiseInput): Promise<DataHealthPreview> {
+  return api.post<DataHealthPreview>("/data-health/preview", input);
+}
+
+export async function createDataHealthPromise(input: DataHealthPromiseInput): Promise<DataHealthPromise> {
+  const response = await api.post<{ promise: DataHealthPromise; initialRun: DataHealthRun | null }>("/data-health", input);
+  return response.promise;
+}
+
+export function updateDataHealthPromise(id: string, input: DataHealthPromiseInput): Promise<DataHealthPromise> {
+  return api.patch<DataHealthPromise>(`/data-health/${id}`, input);
+}
+
+export async function deleteDataHealthPromise(id: string): Promise<void> {
+  await api.delete<{ success: boolean }>(`/data-health/${id}`);
+}
+
+export async function runDataHealthPromise(id: string): Promise<DataHealthRun | null> {
+  const response = await api.post<{ run: DataHealthRun | null }>(`/data-health/${id}/run`);
+  return response.run;
+}
+
+export function getDataHealthTimeline(id: string): Promise<{ samples: DataHealthSample[]; incidents: DataHealthIncident[]; runs: DataHealthRun[] }> {
+  return api.get(`/data-health/${id}/timeline`);
+}
+
+export async function listDataHealthIncidents(): Promise<DataHealthIncident[]> {
+  const response = await api.get<{ incidents: DataHealthIncident[] }>("/data-health/incidents");
+  return response.incidents;
+}
+
+export async function acknowledgeDataHealthIncident(id: string): Promise<DataHealthIncident | null> {
+  const response = await api.post<{ incident: DataHealthIncident | null }>(`/data-health/incidents/${id}/acknowledge`);
+  return response.incident;
+}
+
+export async function snoozeDataHealthIncident(id: string, until: number): Promise<DataHealthIncident | null> {
+  const response = await api.post<{ incident: DataHealthIncident | null }>(`/data-health/incidents/${id}/snooze`, { until });
+  return response.incident;
+}

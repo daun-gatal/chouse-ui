@@ -425,6 +425,36 @@ export const handlers = [
     });
   }),
 
+  // Data Health (DataOps)
+  http.get(`${API_BASE}/data-health`, () => HttpResponse.json({ success: true, data: { promises: [{
+    id: 'dh-1', scheduledQueryId: 'sq-health-1', name: 'Orders ready', description: null, connectionId: 'conn-1',
+    sourceType: 'table', databaseName: 'analytics', tableName: 'orders', sourceQuery: null, eventTimeColumn: 'created_at', rowFilter: null,
+    ownerId: 'user-1', criticality: 'critical', timezone: 'Asia/Jakarta', runbookUrl: null, enabled: true, status: 'healthy',
+    graceSecs: 900, breachAfter: 1, recoverAfter: 2, retentionDays: 90, schemaSnapshot: null, lastEvaluatedAt: 1700000000000,
+    lastHealthyAt: 1700000000000, createdBy: 'user-1', createdAt: 1690000000000, updatedAt: 1700000000000,
+    checks: [{ checkKey: 'row_count', name: 'Row volume', type: 'row_count', severity: 'critical', enabled: true, config: { min: 1 } }],
+    schedule: { frequency: 'daily', hour: 8, dayOfWeek: 1, dayOfMonth: 1, cronExpr: null, timeoutSecs: 60 }, channelIds: [],
+  }] } })),
+  http.get(`${API_BASE}/data-health/overview`, () => HttpResponse.json({ success: true, data: { totalPromises: 1, byStatus: { healthy: 1, degraded: 0, unhealthy: 0, unknown: 0, paused: 0 }, openIncidents: 0, unownedCritical: 0, needsAttention: [] } })),
+  http.post(`${API_BASE}/data-health/preview`, () => HttpResponse.json({ success: true, data: { compiledSql: 'SELECT count()', metricCheckKeys: ['row_count'], schemaCheckKeys: [], nextFireTimes: [1700000000000] } })),
+  http.post(`${API_BASE}/data-health`, async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>;
+    return HttpResponse.json({ success: true, data: { promise: { id: 'dh-new', status: 'unknown', checks: body.checks, ...body }, initialRun: null } }, { status: 201 });
+  }),
+  http.patch(`${API_BASE}/data-health/:id`, async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>;
+    return HttpResponse.json({ success: true, data: { id: params.id, status: 'unknown', ...body } });
+  }),
+  http.delete(`${API_BASE}/data-health/:id`, () => HttpResponse.json({ success: true, data: { success: true } })),
+  http.post(`${API_BASE}/data-health/:id/run`, () => HttpResponse.json({ success: true, data: { run: { id: 'dh-run-1', status: 'success', conditionValue: 'healthy', startedAt: 1700000000000 } } })),
+  http.get(`${API_BASE}/data-health/:id/timeline`, () => HttpResponse.json({ success: true, data: { samples: [], incidents: [], runs: [] } })),
+  http.get(`${API_BASE}/data-health/incidents`, () => HttpResponse.json({ success: true, data: { incidents: [{ id: 'incident-1', promiseId: 'dh-1', status: 'open', severity: 'critical', kind: 'data', summary: 'Rows too low', openedAt: 1700000000000, lastEventAt: 1700000000000 }] } })),
+  http.post(`${API_BASE}/data-health/incidents/:id/acknowledge`, ({ params }) => HttpResponse.json({ success: true, data: { incident: { id: params.id, status: 'acknowledged' } } })),
+  http.post(`${API_BASE}/data-health/incidents/:id/snooze`, async ({ params, request }) => {
+    const body = await request.json() as { until: number };
+    return HttpResponse.json({ success: true, data: { incident: { id: params.id, status: 'snoozed', snoozedUntil: body.until } } });
+  }),
+
   // Default 404
   http.all('*', ({ request }) => {
     console.warn(`Unhandled: ${request.method} ${request.url}`);

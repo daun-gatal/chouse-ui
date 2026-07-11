@@ -62,6 +62,7 @@ interface FormState {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr: string;
+  timezone: string;
   channelIds: string[];
   outputMode: SqOutputMode;
   destDatabase: string;
@@ -91,6 +92,7 @@ function emptyForm(connectionId: string): FormState {
     dayOfWeek: 1,
     dayOfMonth: 1,
     cronExpr: "",
+    timezone: "UTC",
     channelIds: [],
     outputMode: "none",
     destDatabase: "",
@@ -121,6 +123,7 @@ function formFromJob(job: ScheduledQuery): FormState {
     dayOfWeek: job.dayOfWeek,
     dayOfMonth: job.dayOfMonth,
     cronExpr: job.cronExpr ?? "",
+    timezone: job.timezone,
     channelIds: job.channelIds,
     outputMode: job.outputMode,
     destDatabase: job.destDatabase ?? "",
@@ -151,6 +154,7 @@ function buildInput(form: FormState): ScheduledQueryInput {
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
     cronExpr: form.frequency === "cron" ? form.cronExpr.trim() : null,
+    timezone: form.timezone,
     outputMode: form.outputMode,
     destDatabase: form.outputMode === "none" ? null : form.destDatabase.trim(),
     destTable: form.outputMode === "none" ? null : form.destTable.trim(),

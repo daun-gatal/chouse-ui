@@ -65,6 +65,7 @@ export interface ScheduledQueryRow {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr: string | null;
+  timezone: string;
   outputMode: SqOutputMode;
   destDatabase: string | null;
   destTable: string | null;
