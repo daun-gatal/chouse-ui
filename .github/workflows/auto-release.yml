@@ -7,6 +7,10 @@ on:
         description: "Version override (e.g. 2.20.0). Leave empty to auto-compute from fragments."
         required: false
         default: ""
+      branch:
+        description: "Branch to build the pre-release image from. Leave empty for 'preview'. Any branch other than 'preview' only builds the pre-release image — the rest of the release pipeline is skipped. 'main' is not allowed."
+        required: false
+        default: ""
 
 jobs:
   # ── Step 0: build pre-release images for manual testing ───────────────────
@@ -22,12 +26,33 @@ jobs:
       packages: write
     outputs:
       version: ${{ steps.version.outputs.version }}
+      full_release: ${{ steps.target.outputs.full_release }}
 
     steps:
+      - name: Resolve target branch
+        id: target
+        run: |
+          BRANCH="${{ inputs.branch }}"
+          if [ -z "$BRANCH" ]; then
+            BRANCH="preview"
+          fi
+          if [ "$BRANCH" = "main" ]; then
+            echo "::error::Building the pre-release image from 'main' is not allowed. Use 'preview' (or leave the branch input empty) for the release flow, or a feature branch for a throwaway test build."
+            exit 1
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          if [ "$BRANCH" = "preview" ]; then
+            FULL_RELEASE="true"
+          else
+            FULL_RELEASE="false"
+          fi
+          echo "full_release=$FULL_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "Building pre-release image from '$BRANCH' (full_release=$FULL_RELEASE)"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: preview
+          ref: ${{ steps.target.outputs.branch }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -126,6 +151,7 @@ jobs:
     name: Assemble Changelog
     runs-on: ubuntu-latest
     needs: prerelease
+    if: needs.prerelease.outputs.full_release == 'true'
     environment: prerelease-approval
     permissions:
       contents: write
