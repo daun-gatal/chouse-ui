@@ -1,5 +1,5 @@
 /**
- * AI Chat API Module
+ * AI Chat API Module.
  * 
  * Frontend API functions for communicating with the AI chat backend.
  * Handles invoked responses, thread management, and status checks.
