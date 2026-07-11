@@ -5,14 +5,15 @@
  * Strategy:
  *   1. Try to parse the agent's free text as the schema (whole text → fenced
  *      block → first {...} span).
- *   2. If that fails, fall back to a dedicated `generateObject` call that forces
- *      the model to emit schema-valid JSON from its own investigation notes.
+ *   2. If that fails, fall back to a dedicated LangChain structured-output call
+ *      that forces the model to emit schema-valid JSON from its own notes.
  */
 
-import { generateObject, type LanguageModel, type ModelMessage } from "ai";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { z } from "zod";
 import { AppError } from "../../types";
 import { logger } from "../../utils/logger";
+import type { AgentMessage } from "./types";
 
 /** 3-tier JSON extraction (whole text → fenced ```json block → first {...} span). */
 export function extractJson<T>(text: string, schema: z.ZodType<T>): T {
@@ -48,20 +49,20 @@ export function extractJson<T>(text: string, schema: z.ZodType<T>): T {
 }
 
 export interface StructuredOutputOptions<T> {
-  model: LanguageModel;
+  model: BaseChatModel;
   schema: z.ZodType<T>;
   /** The agent's raw final text (parsed first). */
   raw: string;
-  /** Messages for the generateObject fallback (system + user). */
-  fallbackMessages: ModelMessage[];
+  /** Messages for the structured fallback (system + user). */
+  fallbackMessages: AgentMessage[];
   maxOutputTokens?: number;
   /** Logging module tag. */
   module?: string;
 }
 
 /**
- * Parse the agent's text into `schema`, falling back to a forced
- * `generateObject` call when the free text doesn't parse. Returns null only if
+ * Parse the agent's text into `schema`, falling back to a forced structured
+ * LangChain call when the free text doesn't parse. Returns null only if
  * both paths fail (callers decide whether that's fatal).
  */
 export async function structuredOutput<T>(
@@ -74,13 +75,10 @@ export async function structuredOutput<T>(
   }
 
   try {
-    const { object } = await generateObject({
-      model: opts.model,
-      schema: opts.schema,
-      maxOutputTokens: opts.maxOutputTokens,
-      messages: opts.fallbackMessages,
-    });
-    return object;
+    if (!opts.model.withStructuredOutput) return null;
+    const structured = opts.model.withStructuredOutput(opts.schema);
+    const object = await structured.invoke(opts.fallbackMessages);
+    return opts.schema.parse(object);
   } catch (e) {
     logger.warn(
       { module: opts.module ?? "AIEngine", err: e instanceof Error ? e.message : String(e) },

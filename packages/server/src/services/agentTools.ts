@@ -5,7 +5,7 @@
  * composed into any agent (AI Chat, AI Optimizer, AI Debugger).
  */
 
-import { tool, zodSchema } from "ai";
+import { createAgentTool } from "./ai/langchainTools";
 import { z } from "zod";
 import { ClickHouseService } from "./clickhouse";
 import {
@@ -17,6 +17,8 @@ import {
 } from "../middleware/dataAccess";
 import { parseStatement } from "../middleware/sqlParser";
 import { analyzeQuery } from "./queryAnalyzer";
+
+const zodSchema = <T>(schema: T): T => schema;
 
 // ============================================
 // Context Type
@@ -129,7 +131,7 @@ export function inferYAxes(
 export function createCoreTools(ctx: AgentToolContext) {
   return {
     // 1. List databases (RBAC-filtered)
-    list_databases: tool({
+    list_databases: createAgentTool("list_databases", {
       description:
         "List all available database names. Results are filtered by user permissions.",
       inputSchema: zodSchema(z.object({})),
@@ -160,7 +162,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 2. List tables (RBAC-filtered)
-    list_tables: tool({
+    list_tables: createAgentTool("list_tables", {
       description:
         "List all tables in a specific database. Results are filtered by user permissions.",
       inputSchema: zodSchema(
@@ -209,7 +211,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 3. Get table schema
-    get_table_schema: tool({
+    get_table_schema: createAgentTool("get_table_schema", {
       description: "Get column names and types for a specific table.",
       inputSchema: zodSchema(
         z.object({
@@ -254,7 +256,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 4. Get table DDL
-    get_table_ddl: tool({
+    get_table_ddl: createAgentTool("get_table_ddl", {
       description:
         "Get the CREATE TABLE statement (DDL) for a specific table. Use this to understand table engines, sorting keys, partition keys, and index settings.",
       inputSchema: zodSchema(
@@ -304,7 +306,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 5. Get table size
-    get_table_size: tool({
+    get_table_size: createAgentTool("get_table_size", {
       description: "Get row count and disk size for a specific table.",
       inputSchema: zodSchema(
         z.object({
@@ -362,7 +364,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 6. Get table sample
-    get_table_sample: tool({
+    get_table_sample: createAgentTool("get_table_sample", {
       description: "Get first 5 rows of a table to preview the data.",
       inputSchema: zodSchema(
         z.object({
@@ -413,7 +415,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 7. Run SELECT query (RBAC-validated)
-    run_select_query: tool({
+    run_select_query: createAgentTool("run_select_query", {
       description:
         "Execute a read-only SELECT query. Only SELECT and WITH queries are allowed. LIMIT 100 is added automatically if the query has no LIMIT. Results limited to 100 rows. NEVER include a FORMAT clause — the application handles formatting internally.",
       inputSchema: zodSchema(
@@ -500,7 +502,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 8. Explain query
-    explain_query: tool({
+    explain_query: createAgentTool("explain_query", {
       description:
         "Get the EXPLAIN plan for a query to understand how ClickHouse will execute it. Useful for understanding index usage, partition pruning, and join strategies. NEVER include a FORMAT clause in the sql parameter.",
       inputSchema: zodSchema(
@@ -543,7 +545,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 9. Get database info
-    get_database_info: tool({
+    get_database_info: createAgentTool("get_database_info", {
       description:
         "Get table count and total size for a specific database.",
       inputSchema: zodSchema(
@@ -588,7 +590,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 10. Get running queries
-    get_running_queries: tool({
+    get_running_queries: createAgentTool("get_running_queries", {
       description:
         "List currently running queries on the ClickHouse server.",
       inputSchema: zodSchema(z.object({})),
@@ -616,7 +618,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 11. Get server info
-    get_server_info: tool({
+    get_server_info: createAgentTool("get_server_info", {
       description: "Get ClickHouse server version and uptime.",
       inputSchema: zodSchema(z.object({})),
       execute: async (): Promise<Record<string, unknown>> => {
@@ -641,7 +643,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 12. Search columns
-    search_columns: tool({
+    search_columns: createAgentTool("search_columns", {
       description:
         "Search for columns by name pattern across all accessible tables.",
       inputSchema: zodSchema(
@@ -711,7 +713,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 13. Analyze query
-    analyze_query: tool({
+    analyze_query: createAgentTool("analyze_query", {
       description:
         "Analyze a SQL query for complexity, performance characteristics, and get optimization recommendations.",
       inputSchema: zodSchema(
@@ -742,7 +744,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 14. Validate SQL syntax (no execution)
-    validate_sql: tool({
+    validate_sql: createAgentTool("validate_sql", {
       description:
         "Check if a SQL string is valid syntax. Does not execute the query. Use when the user wants to check syntax or validate a query before running.",
       inputSchema: zodSchema(
@@ -767,7 +769,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 15. Export query result as CSV or JSON string
-    export_query_result: tool({
+    export_query_result: createAgentTool("export_query_result", {
       description:
         "Run a read-only SELECT query and return the result as a CSV or JSON string. Use when the user explicitly asks to export, download, or get data as CSV/JSON. Limited to 1000 rows. NEVER include a FORMAT clause in the sql — the format parameter controls output format instead.",
       inputSchema: zodSchema(
@@ -862,7 +864,7 @@ export function createCoreTools(ctx: AgentToolContext) {
     }),
 
     // 16. Get slow queries from query_log
-    get_slow_queries: tool({
+    get_slow_queries: createAgentTool("get_slow_queries", {
       description:
         "List recently executed queries that were slow (by duration). Useful for troubleshooting and finding heavy queries. Non-admin users see only their own queries.",
       inputSchema: zodSchema(
@@ -942,7 +944,7 @@ export interface ChartSpec {
  */
 export function createChartTool(ctx: AgentToolContext) {
   return {
-    render_chart: tool({
+    render_chart: createAgentTool("render_chart", {
       description: [
         "MANDATORY: Use this whenever the user asks to visualize, chart, plot, graph, or show trends.",
         "Execute a SELECT query and return an interactive chart specification.",

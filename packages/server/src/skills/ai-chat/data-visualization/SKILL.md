@@ -1,7 +1,6 @@
 ---
 name: data-visualization
 description: Complex rules for calling render_chart, inferring axes, and choosing chart types based on user intent.
-when_to_use: User asks to visualize, chart, plot, graph, or show a trend/distribution/breakdown visually.
 ---
 
 ## WHEN TO USE

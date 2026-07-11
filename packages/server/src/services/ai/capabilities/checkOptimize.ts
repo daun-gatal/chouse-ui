@@ -5,12 +5,13 @@
  */
 
 import { z } from "zod";
-import type { ModelMessage, ToolSet } from "ai";
+import type { AgentMessage } from "../types";
+import type { AgentToolSet } from "../langchainTools";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { coreTools } from "../toolsets";
 import type { StructuredCapability } from "../types";
-import { EvaluatorOutputSchema, EVALUATOR_INSTRUCTIONS, loadSkillTool } from "./optimizerShared";
+import { EvaluatorOutputSchema, EVALUATOR_INSTRUCTIONS } from "./optimizerShared";
 
 export interface CheckOptimizeInput {
   query: string;
@@ -44,19 +45,18 @@ export const checkOptimizeCapability: StructuredCapability<
     return { query: input.query };
   },
 
-  async tools(_prepared, ctx): Promise<ToolSet> {
-    const skill = await loadSkillTool();
+  tools(_prepared, ctx): AgentToolSet {
     // Only a cheap subset of schema tools — and only when a session is present.
-    if (!ctx.clickhouseService) return skill;
+    if (!ctx.clickhouseService) return {};
     const { analyze_query, get_table_ddl, get_table_schema } = coreTools(ctx) as Record<string, unknown>;
-    return { ...skill, analyze_query, get_table_ddl, get_table_schema } as ToolSet;
+    return { analyze_query, get_table_ddl, get_table_schema } as AgentToolSet;
   },
 
   instructions() {
     return EVALUATOR_INSTRUCTIONS;
   },
 
-  messages(prepared): ModelMessage[] {
+  messages(prepared): AgentMessage[] {
     return [{ role: "user", content: `Evaluate this query:\n\`\`\`sql\n${prepared.query.trim()}\n\`\`\`` }];
   },
 

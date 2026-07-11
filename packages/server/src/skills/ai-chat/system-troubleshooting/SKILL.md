@@ -1,7 +1,6 @@
 ---
 name: system-troubleshooting
 description: Diagnose server-state issues using running queries, slow-query history, and server info.
-when_to_use: User reports lag, a stuck/slow server, high memory, or asks about current server health, running queries, or recent heavy/slow queries.
 ---
 
 ## WHEN TO USE
@@ -17,7 +16,7 @@ what ran heavy recently. Do NOT use this to optimize a specific SQL they gave yo
 4. `run_select_query` against `system.metrics` / `system.asynchronous_metrics` — only when you need a specific live metric value.
 
 ## REFERENCES TO LOAD
-- `load_reference` "system-table-reference" — BEFORE writing any raw `system.*` SELECT, so you use exact column names (e.g. system.errors has `last_error_time`, not event_time).
+- the `system-table-reference` reference skill — BEFORE writing any raw `system.*` SELECT, so you use exact column names (e.g. system.errors has `last_error_time`, not event_time).
 
 ## RULES
 - Summarize the longest-running queries; never dump massive JSON blobs.

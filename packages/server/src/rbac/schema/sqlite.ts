@@ -457,7 +457,7 @@ export const aiModels = sqliteTable('rbac_ai_models', {
   id: text('id').primaryKey(),
   providerId: text('provider_id').notNull().references(() => aiProviders.id, { onDelete: 'cascade' }),
   name: text('name').notNull(), // Display name, e.g., "GPT-4o"
-  modelId: text('model_id').notNull(), // String used by SDK, e.g., "gpt-4o"
+  modelId: text('model_id').notNull(), // Provider model ID, e.g., "gpt-4o"
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => ({

@@ -1,7 +1,6 @@
 ---
 name: query-optimization
 description: Rules for using explain/analyze/optimize tools to help the user tune their queries.
-when_to_use: User asks about query performance, EXPLAIN plans, bottlenecks, or wants a specific query rewritten/tuned for speed or memory.
 ---
 
 ## WHEN TO USE
@@ -18,7 +17,7 @@ parts-diagnosis.
 5. `optimize_query` — produce an AI rewrite with performance tips (delegates to the optimizer).
 
 ## REFERENCES TO LOAD
-- `load_reference` "clickhouse-playbook" — before recommending a rewrite, to name the exact pattern (argMax, predicate pushdown, PREWHERE, JOIN ordering, …).
+- the `clickhouse-playbook` reference skill — before recommending a rewrite, to name the exact pattern (argMax, predicate pushdown, PREWHERE, JOIN ordering, …).
 
 ## RULES
 - Ground every recommendation in DDL/EXPLAIN/analyze output — don't guess.

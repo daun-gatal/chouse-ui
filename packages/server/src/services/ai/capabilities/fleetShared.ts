@@ -9,14 +9,16 @@
  * Moved here (the canonical home) from chouseDoctor.ts.
  */
 
-import { tool, zodSchema } from "ai";
+import { createAgentTool } from "../langchainTools";
 import { z } from "zod";
 import { AppError } from "../../../types";
 import { logger } from "../../../utils/logger";
 import { buildFleetConfig } from "../../fleetMetrics";
 import { ClientManager } from "../../clientManager";
 import { listConnections } from "../../../rbac/services/connections";
-import { readReferenceSync } from "../../agentReferences";
+import { readReferenceSync } from "../../referenceFiles";
+
+const zodSchema = <T>(schema: T): T => schema;
 
 export interface FleetNode {
   id: string;
@@ -28,8 +30,8 @@ export interface FleetNode {
  * so the agent never guesses a column name (e.g. system.errors has
  * last_error_time, NOT event_time).
  *
- * Canonical text lives in `packages/server/src/references/system-table-reference.md`
- * (also loadable on demand by the chat agent via the `load_reference` tool).
+ * Canonical text lives in `packages/server/src/references/system-table-reference.md`.
+ * A copy is also exposed as a DeepAgents reference skill.
  */
 export const SYSTEM_TABLE_REFERENCE = readReferenceSync("system-table-reference.md");
 
@@ -70,7 +72,7 @@ function assertReadOnlySql(raw: string): string {
 export function queryNodeTool(connections: FleetNode[]) {
   const nameById = new Map(connections.map((c) => [c.id, c.name]));
   return {
-    query_node: tool({
+    query_node: createAgentTool("query_node", {
       description:
         "Run ONE read-only SQL SELECT against a node's system.* tables to investigate (processes, replicas, merges, mutations, query_log, parts, asynchronous_metrics, …). Read-only: writes/DDL/KILL are rejected. Returns up to 100 rows.",
       inputSchema: zodSchema(

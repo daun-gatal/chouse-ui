@@ -1,7 +1,6 @@
 ---
 name: data-exploration
 description: Rules and strategies for exploring databases, tables, schemas, and searching metadata.
-when_to_use: User asks what data exists, wants to browse databases/tables/columns or schema details, or doesn't know which table a field lives in.
 ---
 
 ## WHEN TO USE

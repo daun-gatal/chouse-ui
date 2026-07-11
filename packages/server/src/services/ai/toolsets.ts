@@ -5,7 +5,6 @@
  * via `queryNodeTool` in capabilities/fleetShared.ts.
  */
 
-import type { ToolSet } from "ai";
 import { AppError } from "../../types";
 import {
   type AgentToolContext,
@@ -13,6 +12,7 @@ import {
   createChartTool,
 } from "../agentTools";
 import type { AgentRunContext } from "./types";
+import type { AgentToolSet } from "./langchainTools";
 
 /**
  * Narrow an AgentRunContext to the session-based AgentToolContext the core/chart
@@ -36,11 +36,11 @@ export function requireToolContext(ctx: AgentRunContext): AgentToolContext {
 }
 
 /** Shared read-only schema/query tools (list/describe/ddl/explain/sample/…). */
-export function coreTools(ctx: AgentRunContext): ToolSet {
-  return createCoreTools(requireToolContext(ctx)) as ToolSet;
+export function coreTools(ctx: AgentRunContext): AgentToolSet {
+  return createCoreTools(requireToolContext(ctx)) as AgentToolSet;
 }
 
 /** Chart-rendering tool (chat). */
-export function chartTools(ctx: AgentRunContext): ToolSet {
-  return createChartTool(requireToolContext(ctx)) as ToolSet;
+export function chartTools(ctx: AgentRunContext): AgentToolSet {
+  return createChartTool(requireToolContext(ctx)) as AgentToolSet;
 }

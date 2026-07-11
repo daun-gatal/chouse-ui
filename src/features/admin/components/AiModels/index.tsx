@@ -15,7 +15,7 @@ export default function AiModelsManagement() {
                 <div className="flex flex-col gap-0.5">
                     <h2 className="text-[18px] font-semibold tracking-tight text-paper">AI models</h2>
                     <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
-                        Provider keys, SDK model IDs, deployments
+                        Provider keys, provider model IDs, deployments
                     </p>
                 </div>
             </div>
@@ -26,7 +26,7 @@ export default function AiModelsManagement() {
                         Deployments
                     </TabsTrigger>
                     <TabsTrigger value="basemodels" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
-                        SDK models
+                        Provider models
                     </TabsTrigger>
                     <TabsTrigger value="providers" className="h-8 rounded-xs px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim data-[state=active]:bg-ink-100 data-[state=active]:text-paper">
                         Providers

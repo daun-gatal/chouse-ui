@@ -65,6 +65,11 @@ export interface StreamDelta {
     retryable?: boolean;
     status?: string;
     tool?: string;
+    id?: string;
+    parentId?: string;
+    label?: string;
+    category?: string;
+    description?: string;
     /** Args passed to the tool (present on tool-call events) */
     args?: Record<string, unknown>;
     /** Human-readable result summary (present on tool-complete events) */

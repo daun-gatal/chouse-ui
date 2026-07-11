@@ -268,7 +268,7 @@ export default function ProvidersTab() {
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <FormDescription className="text-[11px] text-paper-faint">{isEditing ? 'Provider type cannot be changed after creation.' : 'Select the AI provider SDK type.'}</FormDescription>
+                                    <FormDescription className="text-[11px] text-paper-faint">{isEditing ? 'Provider type cannot be changed after creation.' : 'Select the AI provider type.'}</FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )} />

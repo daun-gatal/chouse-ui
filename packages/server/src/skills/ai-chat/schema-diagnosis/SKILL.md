@@ -1,7 +1,6 @@
 ---
 name: schema-diagnosis
 description: Diagnose a column/table schema issue — Nullable overhead, oversized integer, or weak compression — and propose an ALTER.
-when_to_use: User asks whether a column or table schema is wasteful (Nullable when rarely null, oversized int, poor compression/codec) and wants a concrete fix.
 ---
 
 ## WHEN TO USE
@@ -20,8 +19,8 @@ numbers, then propose a concrete `ALTER TABLE`.
 3. `get_table_size` — scale context for the rewrite cost.
 
 ## REFERENCES TO LOAD
-- `load_reference` "types-codecs-compression" — integer sizing, LowCardinality, Nullable, codec selection (Delta/DoubleDelta/Gorilla/ZSTD).
-- `load_reference` "system-table-reference" — exact `system.columns` / `system.parts_columns` columns.
+- the `types-codecs-compression` reference skill — integer sizing, LowCardinality, Nullable, codec selection (Delta/DoubleDelta/Gorilla/ZSTD).
+- the `system-table-reference` reference skill — exact `system.columns` / `system.parts_columns` columns.
 
 ## RULES
 - Propose a concrete `ALTER TABLE db.table MODIFY COLUMN …` (drop Nullable / narrow the int / set CODEC), grounded in the numbers you measured.

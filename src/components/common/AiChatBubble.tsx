@@ -109,9 +109,14 @@ hljs.registerLanguage('json', json);
 
 /** One tool call tracked during a streamed response */
 interface ToolCallStep {
+    id?: string;
+    parentId?: string;
     tool: string;
     args: Record<string, unknown>;
     status: 'running' | 'done';
+    label?: string;
+    category?: string;
+    description?: string;
     summary?: string | null;
 }
 
@@ -209,11 +214,71 @@ function timeAgo(dateStr: string): string {
 }
 
 // ============================================
-// ThinkingPanel: expandable tool call history
+// ActivityPanel: expandable assistant activity timeline
 // ============================================
 
-function formatToolName(name: string): string {
-    return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+function activityLabelFor(step: ToolCallStep): { label: string; category: string; description?: string } {
+    if (step.label || step.category || step.description) {
+        return {
+            label: step.label || step.tool.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+            category: step.category || 'Activity',
+            description: step.description,
+        };
+    }
+
+    const subjectKeys = ['database', 'table', 'tableName', 'queryId', 'nodeId', 'name'];
+    const subjectKey = subjectKeys.find((key) => typeof step.args[key] === 'string' && String(step.args[key]).trim());
+    const subject = subjectKey ? String(step.args[subjectKey]).slice(0, 80) : undefined;
+    const map: Record<string, { label: string; category: string }> = {
+        list_databases: { label: 'Checking available databases', category: 'Schema' },
+        list_tables: { label: 'Inspecting tables', category: 'Schema' },
+        get_database_info: { label: 'Summarizing database', category: 'Schema' },
+        get_table_schema: { label: 'Reading table schema', category: 'Schema' },
+        get_table_ddl: { label: 'Reading table definition', category: 'Schema' },
+        search_columns: { label: 'Searching columns', category: 'Schema' },
+        run_select_query: { label: 'Running read-only query', category: 'Query' },
+        validate_sql: { label: 'Validating SQL', category: 'Query' },
+        analyze_query: { label: 'Estimating query plan', category: 'Optimization' },
+        get_slow_queries: { label: 'Reviewing slow queries', category: 'System' },
+        get_running_queries: { label: 'Checking running queries', category: 'System' },
+        get_system_errors: { label: 'Checking system errors', category: 'System' },
+        export_query_result: { label: 'Preparing export', category: 'Export' },
+        generate_query: { label: 'Drafting SQL', category: 'Query' },
+        optimize_query: { label: 'Analyzing query performance', category: 'Optimization' },
+        query_node: { label: 'Checking fleet node', category: 'Fleet' },
+        render_chart: { label: 'Building visualization', category: 'Chart' },
+        write_todos: { label: 'Planning work', category: 'Planning' },
+        task: { label: 'Running deeper investigation', category: 'Deep analysis' },
+    };
+
+    const mapped = map[step.tool] ?? {
+        label: step.tool.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        category: 'Activity',
+    };
+    return { ...mapped, description: subject };
+}
+
+function activityIcon(category: string) {
+    const normalized = category.toLowerCase();
+    if (normalized.includes('schema')) return Database;
+    if (normalized.includes('query')) return Search;
+    if (normalized.includes('chart')) return BarChart3;
+    if (normalized.includes('optim')) return TrendingUp;
+    if (normalized.includes('fleet') || normalized.includes('system')) return Server;
+    if (normalized.includes('planning')) return FileText;
+    return Activity;
+}
+
+function visibleArgs(args: Record<string, unknown>): Array<[string, string]> {
+    const priority = ['database', 'table', 'tableName', 'queryId', 'nodeId', 'sql', 'query', 'description', 'subagent'];
+    return priority
+        .filter((key) => args[key] !== undefined && args[key] !== null && args[key] !== '')
+        .slice(0, 2)
+        .map((key) => {
+            const raw = args[key];
+            const value = typeof raw === 'string' ? raw : JSON.stringify(raw);
+            return [key, value.length > 120 ? `${value.slice(0, 117)}...` : value];
+        });
 }
 
 // Reusable component for sidebar thread item
@@ -399,16 +464,75 @@ function CollapsibleThreadGroup({
 // Component
 // ============================================
 
-function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; isStreaming?: boolean }) {
+function ActivityPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; isStreaming?: boolean }) {
     const [expanded, setExpanded] = useState(false);
 
     if (!toolCalls || toolCalls.length === 0) return null;
 
     const runningCount = toolCalls.filter((t) => t.status === 'running').length;
     const isRunning = isStreaming && runningCount > 0;
+    const roots = toolCalls.filter((step) => !step.parentId);
+    const childrenByParent = toolCalls.reduce<Record<string, ToolCallStep[]>>((acc, step) => {
+        if (!step.parentId) return acc;
+        acc[step.parentId] = [...(acc[step.parentId] ?? []), step];
+        return acc;
+    }, {});
+    const completedLabels = roots
+        .filter((step) => step.status === 'done')
+        .slice(-3)
+        .map((step) => activityLabelFor(step).label.toLowerCase());
     const label = isRunning
-        ? `Thinking… (${toolCalls.length} action${toolCalls.length !== 1 ? 's' : ''})`
-        : `Used ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}`;
+        ? `Working through ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}...`
+        : completedLabels.length > 0
+            ? `Completed ${completedLabels.join(', ')}`
+            : `Completed ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}`;
+
+    const renderStep = (step: ToolCallStep, depth = 0) => {
+        const presentation = activityLabelFor(step);
+        const Icon = activityIcon(presentation.category);
+        const args = visibleArgs(step.args);
+        const children = step.id ? childrenByParent[step.id] ?? [] : [];
+
+        return (
+            <div key={step.id ?? `${step.tool}-${depth}`} className={depth > 0 ? 'ml-5 border-l border-ink-500 pl-3' : ''}>
+                <div className="pt-2.5 flex gap-2.5">
+                    <div className="flex-shrink-0 pt-0.5">
+                        {step.status === 'running'
+                            ? <Loader2 className="w-3 h-3 text-brand motion-safe:animate-spin" />
+                            : <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
+                        }
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                            <Icon className="h-3 w-3 shrink-0 text-paper-dim" />
+                            <span className="truncate text-[12px] font-medium text-paper">{presentation.label}</span>
+                            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{presentation.category}</span>
+                        </div>
+                        {presentation.description && (
+                            <p className="truncate text-[11px] text-paper-muted">{presentation.description}</p>
+                        )}
+                        {args.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                                {args.map(([key, value]) => (
+                                    <span key={key} className="max-w-full truncate rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
+                                        {key}: {value}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {step.status === 'done' && step.summary && (
+                            <p className="text-[10px] text-emerald-400/80">{step.summary}</p>
+                        )}
+                    </div>
+                </div>
+                {children.length > 0 && (
+                    <div className="mt-1 space-y-1">
+                        {children.map((child) => renderStep(child, depth + 1))}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="mb-3 rounded-xs border border-ink-500 bg-ink-200 overflow-hidden">
@@ -431,42 +555,8 @@ function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; 
             </button>
 
             {expanded && (
-                <div className="px-3 pb-3 space-y-2.5 border-t border-ink-500">
-                    {toolCalls.map((step, i) => (
-                        <div key={i} className="pt-2.5 flex gap-2.5">
-                            <div className="flex-shrink-0 pt-0.5">
-                                {step.status === 'running'
-                                    ? <Loader2 className="w-3 h-3 text-brand motion-safe:animate-spin" />
-                                    : <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
-                                }
-                            </div>
-                            <div className="flex-1 min-w-0 space-y-1">
-                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper">{formatToolName(step.tool)}</span>
-                                {Object.entries(step.args)
-                                    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-                                    .map(([k, v]) => {
-                                        const strVal = typeof v === 'string' ? v
-                                            : typeof v === 'number' || typeof v === 'boolean' ? String(v)
-                                                : JSON.stringify(v, null, 2);
-                                        const isMultiLine = strVal.includes('\n') || strVal.length > 80;
-                                        return (
-                                            <div key={k} className={`text-[10px] ${isMultiLine ? '' : 'flex items-baseline gap-1.5'}`}>
-                                                <span className="font-mono uppercase tracking-[0.14em] text-paper-faint shrink-0">{k}:</span>
-                                                {isMultiLine ? (
-                                                    <pre className="mt-0.5 rounded-xs border border-ink-500 bg-ink-100 px-2.5 py-1.5 text-paper-muted font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-[120px] overflow-y-auto">{strVal.trim()}</pre>
-                                                ) : (
-                                                    <span className="text-paper-muted font-mono ml-1.5">{strVal}</span>
-                                                )}
-                                            </div>
-                                        );
-                                    })
-                                }
-                                {step.status === 'done' && step.summary && (
-                                    <p className="text-[10px] text-emerald-400/80">↳ {step.summary}</p>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                <div className="px-3 pb-3 space-y-1 border-t border-ink-500">
+                    {roots.map((step) => renderStep(step))}
                 </div>
             )}
         </div>
@@ -734,20 +824,25 @@ function useAiChatStream({
                         return updated;
                     });
                 } else if (delta.type === 'tool-call' && delta.tool) {
-                    const label = delta.tool.replace(/_/g, ' ');
-                    setToolStatus(`Querying ${label}...`);
+                    const label = delta.label || delta.tool.replace(/_/g, ' ');
+                    setToolStatus(label);
                     setMessages((prev) => {
                         const updated = [...prev];
                         const last = updated[updated.length - 1];
                         if (last && last.role === 'assistant') {
                             const newStep: ToolCallStep = {
+                                id: delta.id,
+                                parentId: delta.parentId,
                                 tool: delta.tool!,
                                 args: delta.args ?? {},
                                 status: 'running',
+                                label: delta.label,
+                                category: delta.category,
+                                description: delta.description,
                             };
                             updated[updated.length - 1] = {
                                 ...last,
-                                toolStatus: `Querying ${label}...`,
+                                toolStatus: label,
                                 toolCalls: [...(last.toolCalls ?? []), newStep],
                             };
                         }
@@ -772,7 +867,9 @@ function useAiChatStream({
                         if (last && last.role === 'assistant' && last.toolCalls) {
                             const steps = [...last.toolCalls];
                             for (let i = steps.length - 1; i >= 0; i--) {
-                                if (steps[i].tool === delta.tool && steps[i].status === 'running') {
+                                const idMatches = delta.id && steps[i].id === delta.id;
+                                const fallbackMatches = !delta.id && steps[i].tool === delta.tool && steps[i].status === 'running';
+                                if (idMatches || fallbackMatches) {
                                     steps[i] = { ...steps[i], status: 'done', summary: delta.summary ?? null };
                                     break;
                                 }
@@ -782,8 +879,8 @@ function useAiChatStream({
                         return updated;
                     });
                 } else if (delta.type === 'status' && delta.tool) {
-                    const label = delta.tool.replace(/_/g, ' ');
-                    setToolStatus(`Querying ${label}...`);
+                    const label = delta.label || delta.tool.replace(/_/g, ' ');
+                    setToolStatus(label);
                 } else if (delta.type === 'error') {
                     setToolStatus(null);
                     setMessages((prev) => {
@@ -1164,6 +1261,13 @@ export default function AiChatBubble() {
                     id: m.id,
                     role: m.role,
                     content: m.content,
+                    toolCalls: m.toolCalls?.map((tc, index) => ({
+                        id: `saved_${m.id}_${index}`,
+                        tool: tc.name,
+                        args: tc.args ?? {},
+                        status: 'done' as const,
+                        summary: tc.result ? null : undefined,
+                    })) || undefined,
                     chartSpecs: m.chartSpecs || undefined,
                     createdAt: m.createdAt,
                 }))
@@ -1767,7 +1871,7 @@ export default function AiChatBubble() {
                                                                 {msg.role === 'assistant' ? (
                                                                     <>
                                                                         {msg.toolCalls && msg.toolCalls.length > 0 && (
-                                                                            <ThinkingPanel
+                                                                            <ActivityPanel
                                                                                 toolCalls={msg.toolCalls}
                                                                                 isStreaming={msg.isStreaming}
                                                                             />

@@ -7,7 +7,8 @@
  */
 
 import { z } from "zod";
-import type { ModelMessage, ToolSet } from "ai";
+import type { AgentMessage } from "../types";
+import type { AgentToolSet } from "../langchainTools";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { CLICKHOUSE_PLAYBOOK } from "../../clickhousePlaybook";
@@ -43,8 +44,8 @@ function resolveNodePrepared(ctx: { connectionId?: string }): Promise<NodePrepar
   return resolveNode(ctx.connectionId).then((node) => ({ node }));
 }
 
-function diagnoseTools(prepared: NodePrepared): ToolSet {
-  return queryNodeTool([prepared.node]) as ToolSet;
+function diagnoseTools(prepared: NodePrepared): AgentToolSet {
+  return queryNodeTool([prepared.node]) as AgentToolSet;
 }
 
 // ============================================
@@ -79,7 +80,7 @@ export const diagnoseErrorCapability: StructuredCapability<
   },
   tools: diagnoseTools,
   instructions: () => `${ERROR_DIAGNOSE_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`,
-  messages(prepared): ModelMessage[] {
+  messages(prepared): AgentMessage[] {
     const { node, input } = prepared;
     return [
       {
@@ -88,7 +89,7 @@ export const diagnoseErrorCapability: StructuredCapability<
       },
     ];
   },
-  fallbackMessages(prepared, _ctx, raw): ModelMessage[] {
+  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
     const { input } = prepared;
     return [
       { role: "system", content: ERROR_DIAGNOSE_PROMPT },
@@ -137,7 +138,7 @@ export const diagnosePartsCapability: StructuredCapability<
   },
   tools: diagnoseTools,
   instructions: () => `${PARTS_DIAGNOSE_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`,
-  messages(prepared): ModelMessage[] {
+  messages(prepared): AgentMessage[] {
     const { node, input } = prepared;
     return [
       {
@@ -146,7 +147,7 @@ export const diagnosePartsCapability: StructuredCapability<
       },
     ];
   },
-  fallbackMessages(prepared, _ctx, raw): ModelMessage[] {
+  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
     const { input } = prepared;
     return [
       { role: "system", content: PARTS_DIAGNOSE_PROMPT },
@@ -222,7 +223,7 @@ export const diagnoseSchemaCapability: StructuredCapability<
   },
   tools: diagnoseTools,
   instructions: () => `${SCHEMA_DIAGNOSE_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`,
-  messages(prepared): ModelMessage[] {
+  messages(prepared): AgentMessage[] {
     const { node, input } = prepared;
     const sizeLine = schemaSizeLine(input.metrics);
     return [
@@ -232,7 +233,7 @@ export const diagnoseSchemaCapability: StructuredCapability<
       },
     ];
   },
-  fallbackMessages(prepared, _ctx, raw): ModelMessage[] {
+  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
     const { input } = prepared;
     const sizeLine = schemaSizeLine(input.metrics);
     return [

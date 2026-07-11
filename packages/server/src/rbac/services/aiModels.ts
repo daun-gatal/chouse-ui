@@ -8,7 +8,7 @@ import { eq, and, desc, asc, like, or, sql, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema } from '../db';
 import { encryptPassword, decryptPassword } from './connections';
-import { ProviderType, isValidProviderType } from '../constants/aiProviders';
+import { ProviderType, PROVIDER_TYPES, isValidProviderType } from '../constants/aiProviders';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,7 +77,7 @@ export async function createAiProvider(
 
     // Validate providerType
     if (!isValidProviderType(input.providerType)) {
-        throw new Error(`Invalid provider type: ${input.providerType}. Valid types are: ${['openai', 'anthropic', 'google', 'huggingface', 'openai-compatible'].join(', ')}`);
+        throw new Error(`Invalid provider type: ${input.providerType}. Valid types are: ${PROVIDER_TYPES.join(', ')}`);
     }
 
     const apiKeyEncrypted = input.apiKey ? encryptPassword(input.apiKey) : null;
@@ -131,7 +131,7 @@ export async function updateAiProvider(
 
     // Validate providerType if provided
     if (input.providerType !== undefined && !isValidProviderType(input.providerType)) {
-        throw new Error(`Invalid provider type: ${input.providerType}. Valid types are: ${['openai', 'anthropic', 'google', 'huggingface', 'openai-compatible'].join(', ')}`);
+        throw new Error(`Invalid provider type: ${input.providerType}. Valid types are: ${PROVIDER_TYPES.join(', ')}`);
     }
 
     const updateData: Record<string, any> = { updatedAt: now };

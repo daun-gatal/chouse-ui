@@ -371,160 +371,189 @@ aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema
         c.header('Cache-Control', 'no-cache');
         c.header('Connection', 'keep-alive');
 
-        // Use fullStream for step-aware text suppression.
-        // Text from tool-using steps is hallucinated filler — discard it.
-        // Only text from the final step (finishReason='stop') is real.
-        const stream = result.fullStream;
-
         const encoder = new TextEncoder();
         let fullResponse = '';
-
-        // Step tracking state
-        let currentStepBuffer = '';
-        let currentStepHasToolCalls = false;
-        let isFinalStep = false; // Once we know a step is final, stream in real-time
         const collectedToolCalls: Array<{ name: string; args: Record<string, unknown>; result?: unknown }> = [];
+        let activitySeq = 0;
 
         const readable = new ReadableStream({
             async start(controller) {
-                try {
-                    for await (const part of stream) {
-                        switch (part.type) {
-                            case 'start-step':
-                                // New step — reset buffer
-                                currentStepBuffer = '';
-                                currentStepHasToolCalls = false;
-                                break;
+                const send = (payload: Record<string, unknown>) => {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload, (_, v) =>
+                        typeof v === 'bigint' ? (v <= Number.MAX_SAFE_INTEGER ? Number(v) : v.toString()) : v
+                    )}\n\n`));
+                };
 
-                            case 'text-delta': {
-                                const text = part.text;
-                                if (isFinalStep) {
-                                    // Final step confirmed — stream in real-time
-                                    // Don't apply scratchpad stripping per-chunk
-                                    // (it's designed for full buffers)
-                                    fullResponse += text;
-                                    const sseData = `data: ${JSON.stringify({ type: 'text-delta', text })}\n\n`;
-                                    controller.enqueue(encoder.encode(sseData));
-                                } else {
-                                    // Not yet confirmed as final — buffer text
-                                    currentStepBuffer += text;
-                                }
-                                break;
-                            }
-
-                            case 'tool-call': {
-                                // This step uses tools — its text is hallucination
-                                currentStepHasToolCalls = true;
-                                // AI SDK v6 uses `input` for tool arguments (not `args`).
-                                // Fall back through: input → args → {} for backwards compat.
-                                const rawInput = (part as any).input ?? (part as any).args ?? {};
-                                const parsedArgs: Record<string, unknown> = typeof rawInput === 'string'
-                                    ? (() => { try { return JSON.parse(rawInput); } catch { return {}; } })()
-                                    : (rawInput && typeof rawInput === 'object' ? rawInput : {});
-                                // Collect tool call info for persistence
-                                collectedToolCalls.push({
-                                    name: (part as any).toolName,
-                                    args: parsedArgs,
-                                });
-                                // Notify frontend: tool is being called, include args for display
-                                controller.enqueue(encoder.encode(
-                                    `data: ${JSON.stringify({
-                                        type: 'tool-call',
-                                        tool: (part as any).toolName,
-                                        args: parsedArgs,
-                                    })}\n\n`
-                                ));
-                                break;
-                            }
-
-                            case 'tool-result': {
-                                // Match result back to the last tool call with the same name
-                                const toolName = (part as any).toolName;
-                                // AI SDK v6 uses 'output' for tool result, but fall back to 'result' or 'data'.
-                                const resultData = (part as any).output ?? (part as any).result ?? (part as any).data;
-                                const matchIdx = (() => {
-                                    for (let i = collectedToolCalls.length - 1; i >= 0; i--) {
-                                        if (collectedToolCalls[i].name === toolName && collectedToolCalls[i].result === undefined) return i;
-                                    }
-                                    return -1;
-                                })();
-                                if (matchIdx !== -1) {
-                                    collectedToolCalls[matchIdx].result = resultData;
-                                }
-
-                                // Emit a dedicated chart-data event when render_chart succeeds
-                                if (toolName === 'render_chart' && resultData && !(resultData as Record<string, unknown>).error) {
-                                    // Handle BigInt serialization for ClickHouse results
-                                    try {
-                                        const json = JSON.stringify({ type: 'chart-data', chartSpec: resultData }, (_, v) =>
-                                            typeof v === 'bigint' ? (v <= Number.MAX_SAFE_INTEGER ? Number(v) : v.toString()) : v
-                                        );
-                                        controller.enqueue(encoder.encode(`data: ${json}\n\n`));
-                                    } catch (e) {
-                                        logger.error(
-                                            { module: "AI Chat", err: e instanceof Error ? e.message : String(e) },
-                                            "Failed to serialize chart-data"
-                                        );
-                                    }
-                                }
-
-                                // Send completion event with a lightweight result summary
-                                let resultSummary: string | null = null;
-                                if (Array.isArray(resultData)) {
-                                    resultSummary = `${resultData.length} row${resultData.length !== 1 ? 's' : ''} returned`;
-                                } else if (resultData && typeof resultData === 'object') {
-                                    const keys = Object.keys(resultData);
-                                    if (keys.length > 0) {
-                                        const first = (resultData as any)[keys[0]];
-                                        resultSummary = typeof first === 'string' || typeof first === 'number'
-                                            ? String(first).substring(0, 60)
-                                            : `${keys.length} field${keys.length !== 1 ? 's' : ''}`;
-                                    }
-                                } else if (typeof resultData === 'string') {
-                                    resultSummary = resultData.substring(0, 60);
-                                }
-                                controller.enqueue(encoder.encode(
-                                    `data: ${JSON.stringify({
-                                        type: 'tool-complete',
-                                        tool: toolName,
-                                        summary: resultSummary,
-                                    })}\n\n`
-                                ));
-                                break;
-                            }
-
-                            case 'finish-step': {
-                                if (part.finishReason === 'stop' && !currentStepHasToolCalls) {
-                                    // Final answer step — flush buffer with scratchpad stripping
-                                    isFinalStep = true;
-                                    const cleaned = stripScratchpad(currentStepBuffer);
-                                    if (cleaned) {
-                                        fullResponse += cleaned;
-                                        const sseData = `data: ${JSON.stringify({ type: 'text-delta', text: cleaned })}\n\n`;
-                                        controller.enqueue(encoder.encode(sseData));
-                                    }
-                                }
-                                // Discard buffer for tool-using steps (hallucination)
-                                currentStepBuffer = '';
-                                break;
-                            }
-
-                            case 'error': {
-                                const errorMsg = part.error instanceof Error ? part.error.message : String(part.error);
-                                logger.warn({ module: "AI Chat", errorMsg }, "Stream error");
-                                const sseError = `data: ${JSON.stringify({ type: 'error', error: errorMsg, retryable: true })}\n\n`;
-                                controller.enqueue(encoder.encode(sseError));
-                                break;
-                            }
-
-                            // Ignore reasoning-delta, tool-input-delta, tool-result, etc.
-                            default:
-                                break;
+                const resultSummary = (resultData: unknown): string | null => {
+                    if (Array.isArray(resultData)) {
+                        return `${resultData.length} row${resultData.length !== 1 ? 's' : ''} returned`;
+                    }
+                    if (resultData && typeof resultData === 'object') {
+                        const keys = Object.keys(resultData);
+                        if (keys.length > 0) {
+                            const first = (resultData as Record<string, unknown>)[keys[0]];
+                            return typeof first === 'string' || typeof first === 'number'
+                                ? String(first).substring(0, 60)
+                                : `${keys.length} field${keys.length !== 1 ? 's' : ''}`;
                         }
                     }
+                    if (typeof resultData === 'string') return resultData.substring(0, 60);
+                    return null;
+                };
+
+                const nextActivityId = () => `activity_${++activitySeq}`;
+
+                const activityFor = (toolName: string, args: Record<string, unknown> = {}) => {
+                    const has = (key: string) => typeof args[key] === 'string' && String(args[key]).trim().length > 0;
+                    const firstString = (...keys: string[]) => keys.find(has);
+                    const subjectKey = firstString('database', 'table', 'tableName', 'queryId', 'nodeId', 'name');
+                    const subject = subjectKey ? String(args[subjectKey]).slice(0, 80) : undefined;
+
+                    const map: Record<string, { label: string; category: string; description?: string }> = {
+                        list_databases: { label: 'Checking available databases', category: 'Schema' },
+                        list_tables: { label: 'Inspecting tables', category: 'Schema' },
+                        get_database_info: { label: 'Summarizing database', category: 'Schema' },
+                        get_table_schema: { label: 'Reading table schema', category: 'Schema' },
+                        get_table_ddl: { label: 'Reading table definition', category: 'Schema' },
+                        search_columns: { label: 'Searching columns', category: 'Schema' },
+                        run_select_query: { label: 'Running read-only query', category: 'Query' },
+                        validate_sql: { label: 'Validating SQL', category: 'Query' },
+                        analyze_query: { label: 'Estimating query plan', category: 'Optimization' },
+                        get_slow_queries: { label: 'Reviewing slow queries', category: 'System' },
+                        get_running_queries: { label: 'Checking running queries', category: 'System' },
+                        get_system_errors: { label: 'Checking system errors', category: 'System' },
+                        export_query_result: { label: 'Preparing export', category: 'Export' },
+                        generate_query: { label: 'Drafting SQL', category: 'Query' },
+                        optimize_query: { label: 'Analyzing query performance', category: 'Optimization' },
+                        query_node: { label: 'Checking fleet node', category: 'Fleet' },
+                        render_chart: { label: 'Building visualization', category: 'Chart' },
+                        write_todos: { label: 'Planning work', category: 'Planning' },
+                        task: { label: 'Delegating deeper investigation', category: 'Analysis' },
+                    };
+
+                    const mapped = map[toolName] ?? {
+                        label: toolName.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+                        category: 'Activity',
+                    };
+
+                    return {
+                        ...mapped,
+                        description: mapped.description ?? (subject ? subject : undefined),
+                    };
+                };
+
+                try {
+                    const messageTask = (async () => {
+                        for await (const msg of result.run.messages) {
+                            for await (const token of msg.text) {
+                                if (!token) continue;
+                                fullResponse += token;
+                                send({ type: 'text-delta', text: token });
+                            }
+                        }
+                    })();
+
+                    const toolTask = (async () => {
+                        for await (const call of result.run.toolCalls) {
+                            const toolName = String(call.name);
+                            const rawInput = call.input ?? {};
+                            const parsedArgs: Record<string, unknown> =
+                                rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+                                    ? rawInput as Record<string, unknown>
+                                    : {};
+                            const persisted = { name: toolName, args: parsedArgs, result: undefined as unknown };
+                            collectedToolCalls.push(persisted);
+                            const id = nextActivityId();
+                            send({
+                                type: 'tool-call',
+                                id,
+                                tool: toolName,
+                                args: parsedArgs,
+                                ...activityFor(toolName, parsedArgs),
+                            });
+
+                            const status = await call.status;
+                            const output = status === 'finished' ? await call.output : await call.error;
+                            persisted.result = output;
+
+                            if (toolName === 'render_chart' && output && !(output as Record<string, unknown>).error) {
+                                send({ type: 'chart-data', chartSpec: output });
+                            }
+
+                            send({
+                                type: 'tool-complete',
+                                id,
+                                tool: toolName,
+                                summary: resultSummary(output),
+                            });
+                        }
+                    })();
+
+                    const subagentTask = (async () => {
+                        for await (const subagent of result.run.subagents) {
+                            const subagentName = String((subagent as { name?: unknown }).name ?? 'subagent');
+                            const id = nextActivityId();
+                            const label = subagentName
+                                .replace(/-/g, ' ')
+                                .replace(/\b\w/g, (c) => c.toUpperCase());
+
+                            send({
+                                type: 'tool-call',
+                                id,
+                                tool: 'task',
+                                args: { subagent: subagentName },
+                                label,
+                                category: 'Deep analysis',
+                                description: 'Running a focused specialist pass',
+                            });
+
+                            const nestedTools = (async () => {
+                                for await (const call of subagent.toolCalls) {
+                                    const toolName = String(call.name);
+                                    const rawInput = call.input ?? {};
+                                    const parsedArgs: Record<string, unknown> =
+                                        rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+                                            ? rawInput as Record<string, unknown>
+                                            : {};
+                                    const childId = nextActivityId();
+                                    send({
+                                        type: 'tool-call',
+                                        id: childId,
+                                        parentId: id,
+                                        tool: toolName,
+                                        args: parsedArgs,
+                                        ...activityFor(toolName, parsedArgs),
+                                    });
+
+                                    const status = await call.status;
+                                    const output = status === 'finished' ? await call.output : await call.error;
+                                    send({
+                                        type: 'tool-complete',
+                                        id: childId,
+                                        parentId: id,
+                                        tool: toolName,
+                                        summary: resultSummary(output),
+                                    });
+                                }
+                            })();
+
+                            await subagent.output;
+                            await nestedTools.catch(() => undefined);
+                            send({
+                                type: 'tool-complete',
+                                id,
+                                tool: 'task',
+                                summary: 'Specialist pass complete',
+                            });
+                        }
+                    })();
+
+                    await result.run.output;
+                    await Promise.allSettled([messageTask, toolTask, subagentTask]);
 
                     // Send done event
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+                    fullResponse = stripScratchpad(fullResponse);
+                    send({ type: 'done' });
                     controller.close();
 
                     // Save assistant response to DB (best-effort)

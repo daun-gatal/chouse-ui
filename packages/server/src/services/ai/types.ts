@@ -2,8 +2,8 @@
  * AI Capability — shared types
  *
  * Every AI feature (optimize/debug/diagnose/scan/chat) is described by a single
- * declarative `AgentCapability`. The engine (engine.ts) owns the common ritual —
- * model resolution, agent construction, structured-output extraction, step
+ * declarative `AgentCapability`. The engine (engine.ts) owns the common ritual:
+ * model resolution, DeepAgents construction, structured-output extraction, step
  * collection, error handling, audit logging — while each capability supplies
  * only what varies: which tools, which instructions, what prompt, what output
  * schema, and how to finalize the result.
@@ -12,10 +12,10 @@
  * aiOptimizer.ts and chouseDoctor.ts.
  */
 
-import type { ModelMessage, ToolSet } from "ai";
 import type { z } from "zod";
 import type { ClickHouseService } from "../clickhouse";
 import type { Permission } from "../../rbac/schema/base";
+import type { AgentToolSet } from "./langchainTools";
 
 // ============================================
 // Run context
@@ -44,13 +44,17 @@ export interface AgentRunContext {
   modelId?: string;
 }
 
+export type AgentMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
 // ============================================
 // Delivery + tool sets
 // ============================================
 
 export type DeliveryMode = "structured" | "stream";
 
-/** Named tool families the engine knows how to assemble. */
 export type ToolSetName = "core" | "chart" | "chat" | "query_node";
 
 // ============================================
@@ -89,10 +93,10 @@ export interface RunMeta {
  *
  * Lifecycle inside the engine:
  *   1. prepare(input, ctx)            → P   (fetch query text, build overview, resolve nodes…)
- *   2. tools(prepared, ctx)           → ToolSet
+ *   2. tools(prepared, ctx)           → AgentToolSet
  *   3. instructions(prepared, ctx)    → system prompt (may be conditional)
  *   4. messages(prepared, ctx)        → first user turn(s)
- *   5. <engine runs the ToolLoopAgent, extracts outputSchema, collects steps>
+ *   5. <engine runs DeepAgents, extracts outputSchema, collects steps>
  *   6. finalize(parsed, prepared, ctx, meta) → O   (EXPLAIN estimate, vitals, mapping…)
  *
  * `P` is the capability's private "prepared" bag threaded through the lifecycle.
@@ -118,17 +122,17 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
    */
   prepare(input: TInput, ctx: AgentRunContext): Promise<TPrepared> | TPrepared;
   /** Assemble the tools the agent may call (may be async, e.g. skill discovery). */
-  tools(prepared: TPrepared, ctx: AgentRunContext): ToolSet | Promise<ToolSet>;
+  tools(prepared: TPrepared, ctx: AgentRunContext): AgentToolSet | Promise<AgentToolSet>;
   /** Build the system instructions (may vary on prepared data). */
   instructions(prepared: TPrepared, ctx: AgentRunContext): string | Promise<string>;
   /** Build the first user message(s). */
-  messages(prepared: TPrepared, ctx: AgentRunContext): ModelMessage[] | Promise<ModelMessage[]>;
+  messages(prepared: TPrepared, ctx: AgentRunContext): AgentMessage[] | Promise<AgentMessage[]>;
   /**
-   * Build the messages used for the `generateObject` structured fallback when
+   * Build the messages used for the structured JSON fallback when
    * the agent's free text didn't parse. Defaults to a generic
    * "here are your notes, produce the JSON now" prompt if omitted.
    */
-  fallbackMessages?(prepared: TPrepared, ctx: AgentRunContext, raw: string): ModelMessage[];
+  fallbackMessages?(prepared: TPrepared, ctx: AgentRunContext, raw: string): AgentMessage[];
   /** Map the parsed JSON (+ run meta) into the public result. */
   finalize(
     parsed: TParsed,
@@ -138,7 +142,7 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
   ): Promise<TOutput> | TOutput;
   /**
    * Called when the agent produced no schema-valid output (both free-text
-   * extraction and the generateObject fallback failed). If set, its result is
+   * extraction and the structured fallback failed). If set, its result is
    * returned instead of throwing — used by fleet-scan to render the raw text +
    * a null analysis rather than 500. Receives the same prepared/meta as finalize.
    */
@@ -153,7 +157,7 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
 
 /**
  * A streaming capability (chat). The engine builds the agent and returns the
- * AI-SDK stream; SSE framing + presentation stays in the route, which is
+ * DeepAgents stream; SSE framing + presentation stays in the route, which is
  * genuinely chat-specific (chart-data events, scratchpad stripping).
  */
 export interface StreamCapability<TInput> {
@@ -162,7 +166,7 @@ export interface StreamCapability<TInput> {
   permission: Permission;
   inputSchema: z.ZodType<TInput>;
   tuning?: AgentTuning;
-  tools(ctx: AgentRunContext): Promise<ToolSet> | ToolSet;
+  tools(ctx: AgentRunContext): Promise<AgentToolSet> | AgentToolSet;
   instructions(ctx: AgentRunContext): Promise<string> | string;
 }
 

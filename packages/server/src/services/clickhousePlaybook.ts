@@ -13,13 +13,13 @@
  * finds a heavy query (see `needsPlaybook`), so a healthy-fleet scan stays light.
  */
 
-import { readReferenceSync } from "./agentReferences";
+import { readReferenceSync } from "./referenceFiles";
 
 /**
  * Canonical text lives in `packages/server/src/references/clickhouse-playbook.md`
- * (the single source of truth, also loadable on demand by the chat agent via the
- * `load_reference` tool). Read here as a string so existing consumers
- * (diagnose / optimize-log / fleet-scan) concatenate it into prompts unchanged.
+ * (the single source of truth). A copy is also exposed as a DeepAgents reference
+ * skill. Read here as a string so existing structured consumers concatenate it
+ * into prompts unchanged.
  */
 export const CLICKHOUSE_PLAYBOOK = readReferenceSync("clickhouse-playbook.md");
 
