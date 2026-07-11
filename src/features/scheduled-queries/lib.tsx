@@ -5,7 +5,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { ScheduledQuery, SqStatus } from "@/api/scheduledQueries";
+import type { ScheduledQuery, ScheduledQueryInput, SqStatus } from "@/api/scheduledQueries";
 
 /** Shared house-style classes so the feature matches Monitoring / alerting. */
 export const SQ_PANEL = "rounded-md border border-ink-500 bg-ink-100";
@@ -15,6 +15,38 @@ export const SQ_BTN_PRIMARY =
 export const SQ_BTN_GHOST =
   "h-9 rounded-xs font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper";
 export const SQ_LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint";
+
+/** Reconstruct the complete update contract from a persisted job. */
+export function scheduledQueryToInput(
+  job: ScheduledQuery,
+  overrides: Partial<ScheduledQueryInput> = {},
+): ScheduledQueryInput {
+  return {
+    name: job.name,
+    description: job.description,
+    connectionId: job.connectionId,
+    query: job.query,
+    enabled: job.enabled,
+    frequency: job.frequency,
+    hour: job.hour,
+    dayOfWeek: job.dayOfWeek,
+    dayOfMonth: job.dayOfMonth,
+    cronExpr: job.cronExpr,
+    timezone: job.timezone,
+    outputMode: job.outputMode,
+    destDatabase: job.destDatabase,
+    destTable: job.destTable,
+    outputConfig: job.outputConfig,
+    maxRows: job.maxRows,
+    timeoutSecs: job.timeoutSecs,
+    useFinal: job.useFinal,
+    seqConsistency: job.seqConsistency,
+    maxAttempts: job.maxAttempts,
+    retentionDays: job.retentionDays,
+    channelIds: job.channelIds,
+    ...overrides,
+  };
+}
 
 export function statusTone(status: SqStatus): string {
   switch (status) {

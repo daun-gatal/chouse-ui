@@ -40,7 +40,41 @@ describe("compileDataHealthQuery", () => {
       [{ checkKey: "freshness", name: "Freshness", type: "freshness", severity: "critical", enabled: true, config: { eventTimeColumn: "created_at", maxAgeSeconds: 3600 } }],
     );
 
-    expect(compiled.sql).toContain("if(countIf(`created_at` < {{slot_end}}) = 0, toFloat64(3601)");
+    expect(compiled.sql).toContain("if(count() = 0, toFloat64(3601)");
+    expect(compiled.sql).toContain("WHERE (`created_at` >= {{slot_end - 3600s}} AND `created_at` < {{slot_end}})");
     expect(compiled.sql).not.toContain("ifNull(dateDiff");
+  });
+
+  it("keeps custom metrics on the cadence window when freshness needs a lookback", () => {
+    const compiled = compileDataHealthQuery(
+      { sourceType: "table", databaseName: "analytics", tableName: "orders", eventTimeColumn: "created_at" },
+      [
+        { checkKey: "freshness", name: "Freshness", type: "freshness", severity: "critical", enabled: true, config: { eventTimeColumn: "created_at", maxAgeSeconds: 3600 } },
+        { checkKey: "paid", name: "Paid", type: "custom_metric", severity: "warning", enabled: true, config: { expression: "countIf(status = 'paid')", operator: "gte", threshold: 1 } },
+      ],
+    );
+
+    expect(compiled.sql).toContain("{{slot_end - 3600s}}");
+    expect(compiled.sql).toContain("FROM `analytics`.`orders` AS dh_source\nWHERE (`created_at` >= {{slot_start}} AND `created_at` < {{slot_end}})");
+    expect(compiled.sql).not.toContain("{{slot_start - 3600s}}");
+  });
+
+  it("compiles independent multi-column rules and composite uniqueness keys", () => {
+    const multiChecks: DataHealthCheckDefinition[] = [
+      { checkKey: "complete_customer", name: "Customer", type: "completeness", severity: "warning", enabled: true, config: { column: "customer_id", minRatio: 0.99 } },
+      { checkKey: "complete_email", name: "Email", type: "completeness", severity: "warning", enabled: true, config: { column: "email", minRatio: 0.95 } },
+      { checkKey: "unique_order_line", name: "Order line key", type: "uniqueness", severity: "critical", enabled: true, config: { columns: ["order_id", "line_id"], maxDuplicateRatio: 0 } },
+      { checkKey: "valid_amount", name: "Valid amount", type: "validity", severity: "warning", enabled: true, config: { predicate: "amount >= 0", minRatio: 1 } },
+      { checkKey: "paid_orders", name: "Paid orders", type: "custom_metric", severity: "warning", enabled: true, config: { expression: "countIf(status = 'paid')", operator: "gte", threshold: 1 } },
+      { checkKey: "refunds", name: "Refunds", type: "custom_metric", severity: "warning", enabled: true, config: { expression: "countIf(status = 'refunded')", operator: "lte", threshold: 10 } },
+    ];
+    const compiled = compileDataHealthQuery(
+      { sourceType: "table", databaseName: "analytics", tableName: "orders", eventTimeColumn: "created_at" },
+      multiChecks,
+    );
+
+    expect(compiled.sql).toContain("tuple(`order_id`, `line_id`)");
+    for (const check of multiChecks) expect(compiled.sql).toContain(`AS \`${check.checkKey}\``);
+    expect(compiled.metricCheckKeys).toEqual(multiChecks.map((check) => check.checkKey));
   });
 });

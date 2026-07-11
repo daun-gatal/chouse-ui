@@ -23,15 +23,19 @@ function ratio(numerator: string, denominator: string): string {
   return `if(${denominator} = 0, NULL, toFloat64(${numerator}) / toFloat64(${denominator}))`;
 }
 
+function freshnessExpression(check: Extract<DataHealthCheckDefinition, { type: "freshness" }>, source: DataHealthCompileSource): string {
+  const column = escapeIdentifier(check.config.eventTimeColumn);
+  const freshnessWindow = `${column} >= {{slot_end - ${check.config.maxAgeSeconds}s}} AND ${column} < {{slot_end}}`;
+  const filters = [freshnessWindow, source.rowFilter?.trim()].filter((filter): filter is string => Boolean(filter));
+  return `(SELECT if(count() = 0, toFloat64(${check.config.maxAgeSeconds + 1}), toFloat64(dateDiff('second', max(${column}), {{slot_end}}))) FROM ${sourceSql(source)} AS dh_freshness WHERE (${filters.join(") AND (")}))`;
+}
+
 function metricExpression(check: DataHealthCheckDefinition, source: DataHealthCompileSource): string | null {
   const eventTime = source.eventTimeColumn;
   const window = eventTime ? windowPredicate(eventTime) : null;
   switch (check.type) {
-    case "freshness": {
-      const column = escapeIdentifier(check.config.eventTimeColumn);
-      const eligible = `${column} < {{slot_end}}`;
-      return `if(countIf(${eligible}) = 0, toFloat64(${check.config.maxAgeSeconds + 1}), toFloat64(dateDiff('second', maxIf(${column}, ${eligible}), {{slot_end}})))`;
-    }
+    case "freshness":
+      return freshnessExpression(check, source);
     case "row_count":
     case "volume_anomaly":
       if (!window) throw new Error(`${check.type} requires an event-time column`);
@@ -67,6 +71,7 @@ export function compileDataHealthQuery(
   const metrics: string[] = [];
   const metricCheckKeys: string[] = [];
   const schemaCheckKeys: string[] = [];
+  let needsCadenceSource = false;
 
   for (const check of enabled) {
     if (aliases.has(check.checkKey)) throw new Error(`Duplicate check key: ${check.checkKey}`);
@@ -78,21 +83,19 @@ export function compileDataHealthQuery(
     }
     metrics.push(`${expression} AS ${escapeIdentifier(check.checkKey)}`);
     metricCheckKeys.push(check.checkKey);
+    if (check.type !== "freshness") needsCadenceSource = true;
   }
 
   if (metrics.length === 0) {
     metrics.push("toFloat64(1) AS `dh_schema_probe`");
   }
-  const maxFreshnessAge = enabled.reduce(
-    (max, check) => check.type === "freshness" ? Math.max(max, check.config.maxAgeSeconds) : max,
-    0,
-  );
-  const scanWindow = source.eventTimeColumn
-    ? `${escapeIdentifier(source.eventTimeColumn)} >= {{slot_start${maxFreshnessAge > 0 ? ` - ${maxFreshnessAge}s` : ""}}} AND ${escapeIdentifier(source.eventTimeColumn)} < {{slot_end}}`
+  const scanWindow = needsCadenceSource && source.eventTimeColumn
+    ? `${escapeIdentifier(source.eventTimeColumn)} >= {{slot_start}} AND ${escapeIdentifier(source.eventTimeColumn)} < {{slot_end}}`
     : undefined;
   const filters = [scanWindow, source.rowFilter?.trim()].filter((filter): filter is string => Boolean(filter));
-  const where = filters.length > 0 ? `\nWHERE (${filters.join(") AND (")})` : "";
-  const sql = `SELECT\n  ${metrics.join(",\n  ")}\nFROM ${sourceSql(source)} AS dh_source${where}`;
+  const where = needsCadenceSource && filters.length > 0 ? `\nWHERE (${filters.join(") AND (")})` : "";
+  const from = needsCadenceSource ? `\nFROM ${sourceSql(source)} AS dh_source${where}` : "";
+  const sql = `SELECT\n  ${metrics.join(",\n  ")}${from}`;
   const validation = validateReadOnlySelect(sql);
   if (!validation.ok) throw new Error(validation.error ?? "Generated Data Health query is not read-only");
   return { sql, metricCheckKeys, schemaCheckKeys };

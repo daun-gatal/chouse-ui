@@ -439,7 +439,7 @@ function LineageCanvas({ graph }: { graph: LineageGraph }) {
 
 // --- tab --------------------------------------------------------------------
 
-export function LineageTab({ selectedJobId }: { selectedJobId?: string }) {
+export function LineageTab({ selectedJobId, embedded = false }: { selectedJobId?: string; embedded?: boolean }) {
   const { data: jobs } = useScheduledQueries();
   const { hasPermission } = useRbacStore();
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
@@ -463,9 +463,9 @@ export function LineageTab({ selectedJobId }: { selectedJobId?: string }) {
   const { data: graph, isLoading, isError } = useScheduledQueryLineage(jobId, windowDays, Boolean(jobId));
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className={cn("flex flex-col gap-4", embedded ? "h-[32rem]" : "h-full")}>
       <div className="flex flex-wrap items-center gap-2">
-        {canViewAll && (
+        {!embedded && canViewAll && (
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
             <SelectTrigger className="h-9 w-[170px] rounded-xs"><SelectValue placeholder="Owner" /></SelectTrigger>
             <SelectContent>
@@ -474,7 +474,7 @@ export function LineageTab({ selectedJobId }: { selectedJobId?: string }) {
             </SelectContent>
           </Select>
         )}
-        <JobCombobox jobs={jobOptions} value={jobId} onChange={setJobId} />
+        {!embedded && <JobCombobox jobs={jobOptions} value={jobId} onChange={setJobId} />}
         <Select value={String(windowDays)} onValueChange={(v) => setWindowDays(Number(v))}>
           <SelectTrigger className="h-9 w-36 rounded-xs"><SelectValue /></SelectTrigger>
           <SelectContent>

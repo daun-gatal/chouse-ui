@@ -99,6 +99,14 @@ describe("Data Health store", () => {
     expect(await store.getChecks(promiseId)).toEqual(checks);
     expect((await store.listSamples(promiseId))[0].observedValue).toBe(50);
     expect(await store.metricHistory(promiseId)).toEqual({ rows: [50] });
+    await store.replaceChecks(promiseId, [{ ...checks[0], name: "Rows in delivery window" }]);
+    expect((await store.listSamples(promiseId))[0].observedValue).toBe(50);
+    expect((await store.getChecks(promiseId))[0].name).toBe("Rows in delivery window");
+
+    await store.updatePromiseEvaluation(promiseId, "healthy", 1_200);
+    expect((await store.getPromise(promiseId))?.lastHealthyAt).toBe(1_200);
+    await store.updatePromiseEvaluation(promiseId, "unknown", 1_300);
+    expect((await store.getPromise(promiseId))?.lastHealthyAt).toBe(1_200);
   });
 
   it("keeps generated health jobs out of normal Scheduled Queries lists and overview", async () => {

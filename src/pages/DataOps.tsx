@@ -53,7 +53,8 @@ export default function DataOps() {
   const activeFeature: FeatureKey =
     feature && (availableFeatures as string[]).includes(feature) ? (feature as FeatureKey) : availableFeatures[0] ?? "scheduled-queries";
   const validSubs: string[] = activeFeature === "data-health" ? DATA_HEALTH_SUB_TABS : SUB_TABS;
-  const activeSub = sub && validSubs.includes(sub) ? sub : "overview";
+  const legacyScheduledDetail = activeFeature === "scheduled-queries" && (sub === "runs" || sub === "lineage");
+  const activeSub = sub && validSubs.includes(sub) ? sub : legacyScheduledDetail ? "jobs" : "overview";
 
   // Normalize the URL so deep links / refreshes land on a valid feature+sub.
   useEffect(() => {

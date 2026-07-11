@@ -54,5 +54,27 @@ describe("evaluateDataHealth", () => {
     };
     expect(evaluateDataHealth([check], { volume: 50 }).checks[0].outcome).toBe("breach");
   });
-});
 
+  it("evaluates repeated checks independently", () => {
+    const checks: DataHealthCheckDefinition[] = [
+      { checkKey: "complete_customer", name: "Customer", type: "completeness", severity: "warning", enabled: true, config: { column: "customer_id", minRatio: 0.99 } },
+      { checkKey: "complete_email", name: "Email", type: "completeness", severity: "critical", enabled: true, config: { column: "email", minRatio: 0.9 } },
+      { checkKey: "valid_amount", name: "Amount", type: "validity", severity: "warning", enabled: true, config: { predicate: "amount >= 0", minRatio: 1 } },
+      { checkKey: "refunds", name: "Refunds", type: "custom_metric", severity: "warning", enabled: true, config: { expression: "countIf(refunded)", operator: "lte", threshold: 5 } },
+    ];
+    const result = evaluateDataHealth(checks, {
+      complete_customer: 1,
+      complete_email: 0.8,
+      valid_amount: 1,
+      refunds: 2,
+    });
+
+    expect(result.checks.map((check) => [check.checkKey, check.outcome])).toEqual([
+      ["complete_customer", "pass"],
+      ["complete_email", "breach"],
+      ["valid_amount", "pass"],
+      ["refunds", "pass"],
+    ]);
+    expect(result.state).toBe("unhealthy");
+  });
+});

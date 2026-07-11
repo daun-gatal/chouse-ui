@@ -99,7 +99,7 @@ function RunSnapshot({ run }: { run: ScheduledQueryRun }) {
   );
 }
 
-export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
+export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: string; embedded?: boolean }) {
   const { data: jobs } = useScheduledQueries();
   const navigate = useNavigate();
   const { hasPermission } = useRbacStore();
@@ -114,7 +114,7 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
   const [status, setStatus] = useState<SqStatus | "all">("all");
   const [dateRange, setDateRange] = useState<{ start?: Date; end?: Date }>({});
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(embedded ? 10 : 20);
   const [page, setPage] = useState(1);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteScope, setDeleteScope] = useState<string>("filters");
@@ -173,7 +173,7 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        {canViewAll && (
+        {!embedded && canViewAll && (
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
             <SelectTrigger className="h-9 w-[170px] rounded-xs"><SelectValue placeholder="Owner" /></SelectTrigger>
             <SelectContent>
@@ -182,7 +182,7 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
             </SelectContent>
           </Select>
         )}
-        <JobCombobox jobs={jobOptions} value={jobId} onChange={setJobId} />
+        {!embedded && <JobCombobox jobs={jobOptions} value={jobId} onChange={setJobId} />}
         <Select value={status} onValueChange={(v) => setStatus(v as SqStatus | "all")}>
           <SelectTrigger className="h-9 w-40 rounded-xs"><SelectValue /></SelectTrigger>
           <SelectContent>

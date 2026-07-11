@@ -193,14 +193,34 @@ export async function updatePromiseMetadata(id: string, input: CreatePromiseMeta
 
 export async function replaceChecks(promiseId: string, checks: DataHealthCheckDefinition[]): Promise<void> {
   const parsed = checks.map((check) => dataHealthCheckDefinitionSchema.parse(check));
-  await run(sql`DELETE FROM data_health_promise_checks WHERE promise_id = ${promiseId}`);
+  const existingRows = await all(sql`SELECT id, check_key FROM data_health_promise_checks WHERE promise_id = ${promiseId}`);
+  const existingByKey = new Map(existingRows.map((row) => [String(row.check_key), String(row.id)]));
+  const retainedIds = new Set<string>();
   const now = Date.now();
   for (let position = 0; position < parsed.length; position++) {
     const check = parsed[position];
-    await run(sql`
-      INSERT INTO data_health_promise_checks (id, promise_id, check_key, type, name, severity, config, enabled, position, created_at, updated_at)
-      VALUES (${randomUUID()}, ${promiseId}, ${check.checkKey}, ${check.type}, ${check.name}, ${check.severity}, ${JSON.stringify(check.config)}, ${check.enabled ? 1 : 0}, ${position}, ${now}, ${now})
-    `);
+    const existingId = existingByKey.get(check.checkKey);
+    if (existingId) {
+      retainedIds.add(existingId);
+      await run(sql`
+        UPDATE data_health_promise_checks SET
+          type = ${check.type}, name = ${check.name}, severity = ${check.severity},
+          config = ${JSON.stringify(check.config)}, enabled = ${check.enabled ? 1 : 0},
+          position = ${position}, updated_at = ${now}
+        WHERE id = ${existingId}
+      `);
+    } else {
+      const id = randomUUID();
+      retainedIds.add(id);
+      await run(sql`
+        INSERT INTO data_health_promise_checks (id, promise_id, check_key, type, name, severity, config, enabled, position, created_at, updated_at)
+        VALUES (${id}, ${promiseId}, ${check.checkKey}, ${check.type}, ${check.name}, ${check.severity}, ${JSON.stringify(check.config)}, ${check.enabled ? 1 : 0}, ${position}, ${now}, ${now})
+      `);
+    }
+  }
+  for (const row of existingRows) {
+    const id = String(row.id);
+    if (!retainedIds.has(id)) await run(sql`DELETE FROM data_health_promise_checks WHERE id = ${id}`);
   }
 }
 
@@ -269,12 +289,19 @@ export async function metricHistory(promiseId: string, limitPerCheck = 100): Pro
 }
 
 export async function updatePromiseEvaluation(id: string, state: Exclude<DataHealthPromiseState, "paused">, evaluatedAt: number): Promise<void> {
-  const lastHealthy = state === "healthy" ? evaluatedAt : null;
+  const updatedAt = Date.now();
+  if (state === "healthy") {
+    await run(sql`
+      UPDATE data_health_promises SET
+        status = ${state}, last_evaluated_at = ${evaluatedAt},
+        last_healthy_at = ${evaluatedAt}, updated_at = ${updatedAt}
+      WHERE id = ${id}
+    `);
+    return;
+  }
   await run(sql`
     UPDATE data_health_promises SET
-      status = ${state}, last_evaluated_at = ${evaluatedAt},
-      last_healthy_at = CASE WHEN ${lastHealthy} IS NULL THEN last_healthy_at ELSE ${lastHealthy} END,
-      updated_at = ${Date.now()}
+      status = ${state}, last_evaluated_at = ${evaluatedAt}, updated_at = ${updatedAt}
     WHERE id = ${id}
   `);
 }
