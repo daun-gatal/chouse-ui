@@ -34,12 +34,27 @@ export interface Tab {
   isDirty?: boolean;
 }
 
+export type QueryHistoryStatus = 'success' | 'error' | 'cancelled';
+
+export interface QueryHistoryItem {
+  id: string;
+  query: string;
+  connectionId: string | null;
+  connectionName: string | null;
+  executedAt: number;
+  durationMs: number;
+  rows: number;
+  status: QueryHistoryStatus;
+  error?: string;
+}
+
 export interface WorkspaceState {
   // State
   tabs: Tab[];
   activeTab: string;
   isTabLoading: boolean;
   tabError: string | null;
+  queryHistory: QueryHistoryItem[];
 
   // Tab actions
   addTab: (tab: Tab) => void;
@@ -55,6 +70,8 @@ export interface WorkspaceState {
   // Query actions
   runQuery: (query: string, tabId?: string) => Promise<QueryResult>;
   abortQuery: (tabId: string) => void;
+  removeQueryHistoryItem: (id: string) => void;
+  clearQueryHistory: () => void;
 
   // Saved queries actions
   saveQuery: (tabId: string, name: string, query: string, isPublic?: boolean) => Promise<void>;
@@ -81,6 +98,8 @@ const defaultTabs: Tab[] = [
     type: 'home',
   },
 ];
+
+const QUERY_HISTORY_LIMIT = 100;
 
 // Custom storage adapter that includes user ID in the key
 const createUserSpecificStorage = (): any => {
@@ -165,7 +184,7 @@ const checkAndClearWorkspaceData = (set: any) => {
     // 3. The new user is not null (userId !== null) - meaning we're logging in as a different user, not logging out
     if (workspaceCurrentUserId !== null && workspaceCurrentUserId !== userId && userId !== null) {
       // Clear tabs except home when user changes
-      set({ tabs: defaultTabs, activeTab: 'home' });
+      set({ tabs: defaultTabs, activeTab: 'home', queryHistory: [] });
       // Clear the stored user ID since it's a different user
       try {
         localStorage.removeItem('workspace-last-user-id');
@@ -197,6 +216,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       activeTab: 'home',
       isTabLoading: false,
       tabError: null,
+      queryHistory: [],
 
       /**
        * Add a new tab
@@ -326,6 +346,30 @@ export const useWorkspaceStore = create<WorkspaceState>()(
        */
       runQuery: async (query: string, tabId?: string) => {
         const executionQueryId = `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const startedAt = Date.now();
+        const authState = useAuthStore.getState();
+
+        const recordHistory = (
+          status: QueryHistoryStatus,
+          rows: number,
+          error?: string,
+        ): void => {
+          const historyItem: QueryHistoryItem = {
+            id: executionQueryId,
+            query,
+            connectionId: authState.activeConnectionId ?? null,
+            connectionName: authState.activeConnectionName ?? null,
+            executedAt: startedAt,
+            durationMs: Math.max(0, Date.now() - startedAt),
+            rows,
+            status,
+            ...(error ? { error } : {}),
+          };
+
+          set((state) => ({
+            queryHistory: [historyItem, ...state.queryHistory].slice(0, QUERY_HISTORY_LIMIT),
+          }));
+        };
 
         // Per-tab AbortController so the Stop button cancels the stream download.
         const controller = new AbortController();
@@ -434,6 +478,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               }
 
               if (tabId) tabAbortControllers.delete(tabId);
+              recordHistory('success', finalRowCount);
               resolveStream(finalResult);
             },
 
@@ -458,6 +503,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 tabAbortControllers.delete(tabId);
               }
 
+              recordHistory('error', 0, message);
               resolveStream(errorResult);
             },
           }
@@ -473,6 +519,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               });
               tabAbortControllers.delete(tabId);
             }
+            recordHistory('cancelled', streamedRows.length);
             resolveStream({
               meta: streamedMeta,
               data: streamedRows,
@@ -503,6 +550,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             });
             tabAbortControllers.delete(tabId);
           }
+          recordHistory('error', 0, message);
           resolveStream({
             meta: streamedMeta,
             data: streamedRows,
@@ -514,6 +562,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         });
 
         return streamPromise;
+      },
+
+      removeQueryHistoryItem: (id: string) => {
+        set((state) => ({
+          queryHistory: state.queryHistory.filter((item) => item.id !== id),
+        }));
+      },
+
+      clearQueryHistory: () => {
+        set({ queryHistory: [] });
       },
 
       /**
@@ -643,6 +701,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           activeTab: 'home',
           isTabLoading: false,
           tabError: null,
+          queryHistory: [],
         });
       },
     }),
@@ -657,6 +716,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           error: null,
         })),
         activeTab: state.activeTab,
+        queryHistory: state.queryHistory,
       }),
       // Restore tabs and check if user changed
       onRehydrateStorage: () => (state) => {
@@ -691,4 +751,3 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     }
   )
 );
-

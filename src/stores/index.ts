@@ -22,7 +22,12 @@ export type { RbacState, RbacPermission } from './rbac';
 
 // Workspace store
 export { useWorkspaceStore, genTabId } from './workspace';
-export type { WorkspaceState, Tab } from './workspace';
+export type {
+  WorkspaceState,
+  Tab,
+  QueryHistoryItem,
+  QueryHistoryStatus,
+} from './workspace';
 
 // Explorer store
 export { useExplorerStore } from './explorer';
@@ -36,4 +41,3 @@ export {
   RESULT_ROWS_DEFAULT,
 } from './preferences';
 export type { PreferencesState } from './preferences';
-
