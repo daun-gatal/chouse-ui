@@ -32,7 +32,7 @@ import {
     getThread,
     deleteThread,
     updateThreadTitle,
-    streamChatMessage,
+    invokeChatMessage,
     getAiModels,
     type AiModelSimple,
     type ChatThread,
@@ -107,11 +107,16 @@ hljs.registerLanguage('json', json);
 // Types
 // ============================================
 
-/** One tool call tracked during a streamed response */
+/** One tool call tracked during a invoked response */
 interface ToolCallStep {
+    id?: string;
+    parentId?: string;
     tool: string;
     args: Record<string, unknown>;
     status: 'running' | 'done';
+    label?: string;
+    category?: string;
+    description?: string;
     summary?: string | null;
 }
 
@@ -120,7 +125,7 @@ interface UIMessage {
     role: 'user' | 'assistant';
     content: string;
     createdAt: string;
-    isStreaming?: boolean;
+    isInvoking?: boolean;
     toolStatus?: string;
     isError?: boolean;
     /** snapshot of user message to retry */
@@ -209,11 +214,69 @@ function timeAgo(dateStr: string): string {
 }
 
 // ============================================
-// ThinkingPanel: expandable tool call history
+// ActivityPanel: expandable assistant activity timeline
 // ============================================
 
-function formatToolName(name: string): string {
-    return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+function activityLabelFor(step: ToolCallStep): { label: string; category: string; description?: string } {
+    if (step.label || step.category || step.description) {
+        return {
+            label: step.label || step.tool.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+            category: step.category || 'Activity',
+            description: step.description,
+        };
+    }
+
+    const subjectKeys = ['database', 'table', 'tableName', 'queryId', 'nodeId', 'name'];
+    const subjectKey = subjectKeys.find((key) => typeof step.args[key] === 'string' && String(step.args[key]).trim());
+    const subject = subjectKey ? String(step.args[subjectKey]).slice(0, 80) : undefined;
+    const map: Record<string, { label: string; category: string }> = {
+        list_databases: { label: 'Checking available databases', category: 'Schema' },
+        list_tables: { label: 'Inspecting tables', category: 'Schema' },
+        get_database_info: { label: 'Summarizing database', category: 'Schema' },
+        get_table_schema: { label: 'Reading table schema', category: 'Schema' },
+        get_table_ddl: { label: 'Reading table definition', category: 'Schema' },
+        search_columns: { label: 'Searching columns', category: 'Schema' },
+        run_select_query: { label: 'Running read-only query', category: 'Query' },
+        validate_sql: { label: 'Validating SQL', category: 'Query' },
+        analyze_query: { label: 'Estimating query plan', category: 'Optimization' },
+        get_slow_queries: { label: 'Reviewing slow queries', category: 'System' },
+        get_running_queries: { label: 'Checking running queries', category: 'System' },
+        get_system_errors: { label: 'Checking system errors', category: 'System' },
+        export_query_result: { label: 'Preparing export', category: 'Export' },
+        generate_query: { label: 'Drafting SQL', category: 'Query' },
+        optimize_query: { label: 'Analyzing query performance', category: 'Optimization' },
+        query_node: { label: 'Checking fleet node', category: 'Fleet' },
+        render_chart: { label: 'Building visualization', category: 'Chart' },
+    };
+
+    const mapped = map[step.tool] ?? {
+        label: step.tool.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        category: 'Activity',
+    };
+    return { ...mapped, description: subject };
+}
+
+function activityIcon(category: string) {
+    const normalized = category.toLowerCase();
+    if (normalized.includes('schema')) return Database;
+    if (normalized.includes('query')) return Search;
+    if (normalized.includes('chart')) return BarChart3;
+    if (normalized.includes('optim')) return TrendingUp;
+    if (normalized.includes('fleet') || normalized.includes('system')) return Server;
+    if (normalized.includes('planning')) return FileText;
+    return Activity;
+}
+
+function visibleArgs(args: Record<string, unknown>): Array<[string, string]> {
+    const priority = ['database', 'table', 'tableName', 'queryId', 'nodeId', 'sql', 'query', 'description', 'subagent'];
+    return priority
+        .filter((key) => args[key] !== undefined && args[key] !== null && args[key] !== '')
+        .slice(0, 2)
+        .map((key) => {
+            const raw = args[key];
+            const value = typeof raw === 'string' ? raw : JSON.stringify(raw);
+            return [key, value.length > 120 ? `${value.slice(0, 117)}...` : value];
+        });
 }
 
 // Reusable component for sidebar thread item
@@ -399,16 +462,75 @@ function CollapsibleThreadGroup({
 // Component
 // ============================================
 
-function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; isStreaming?: boolean }) {
+function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; isInvoking?: boolean }) {
     const [expanded, setExpanded] = useState(false);
 
     if (!toolCalls || toolCalls.length === 0) return null;
 
     const runningCount = toolCalls.filter((t) => t.status === 'running').length;
-    const isRunning = isStreaming && runningCount > 0;
+    const isRunning = isInvoking && runningCount > 0;
+    const roots = toolCalls.filter((step) => !step.parentId);
+    const childrenByParent = toolCalls.reduce<Record<string, ToolCallStep[]>>((acc, step) => {
+        if (!step.parentId) return acc;
+        acc[step.parentId] = [...(acc[step.parentId] ?? []), step];
+        return acc;
+    }, {});
+    const completedLabels = roots
+        .filter((step) => step.status === 'done')
+        .slice(-3)
+        .map((step) => activityLabelFor(step).label.toLowerCase());
     const label = isRunning
-        ? `Thinking… (${toolCalls.length} action${toolCalls.length !== 1 ? 's' : ''})`
-        : `Used ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}`;
+        ? `Working through ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}...`
+        : completedLabels.length > 0
+            ? `Completed ${completedLabels.join(', ')}`
+            : `Completed ${toolCalls.length} step${toolCalls.length !== 1 ? 's' : ''}`;
+
+    const renderStep = (step: ToolCallStep, depth = 0) => {
+        const presentation = activityLabelFor(step);
+        const Icon = activityIcon(presentation.category);
+        const args = visibleArgs(step.args);
+        const children = step.id ? childrenByParent[step.id] ?? [] : [];
+
+        return (
+            <div key={step.id ?? `${step.tool}-${depth}`} className={depth > 0 ? 'ml-5 border-l border-ink-500 pl-3' : ''}>
+                <div className="pt-2.5 flex gap-2.5">
+                    <div className="flex-shrink-0 pt-0.5">
+                        {step.status === 'running'
+                            ? <Loader2 className="w-3 h-3 text-brand motion-safe:animate-spin" />
+                            : <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
+                        }
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                            <Icon className="h-3 w-3 shrink-0 text-paper-dim" />
+                            <span className="truncate text-[12px] font-medium text-paper">{presentation.label}</span>
+                            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">{presentation.category}</span>
+                        </div>
+                        {presentation.description && (
+                            <p className="truncate text-[11px] text-paper-muted">{presentation.description}</p>
+                        )}
+                        {args.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                                {args.map(([key, value]) => (
+                                    <span key={key} className="max-w-full truncate rounded-xs border border-ink-500 bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted">
+                                        {key}: {value}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {step.status === 'done' && step.summary && (
+                            <p className="text-[10px] text-emerald-400/80">{step.summary}</p>
+                        )}
+                    </div>
+                </div>
+                {children.length > 0 && (
+                    <div className="mt-1 space-y-1">
+                        {children.map((child) => renderStep(child, depth + 1))}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="mb-3 rounded-xs border border-ink-500 bg-ink-200 overflow-hidden">
@@ -431,42 +553,8 @@ function ThinkingPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; 
             </button>
 
             {expanded && (
-                <div className="px-3 pb-3 space-y-2.5 border-t border-ink-500">
-                    {toolCalls.map((step, i) => (
-                        <div key={i} className="pt-2.5 flex gap-2.5">
-                            <div className="flex-shrink-0 pt-0.5">
-                                {step.status === 'running'
-                                    ? <Loader2 className="w-3 h-3 text-brand motion-safe:animate-spin" />
-                                    : <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
-                                }
-                            </div>
-                            <div className="flex-1 min-w-0 space-y-1">
-                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper">{formatToolName(step.tool)}</span>
-                                {Object.entries(step.args)
-                                    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-                                    .map(([k, v]) => {
-                                        const strVal = typeof v === 'string' ? v
-                                            : typeof v === 'number' || typeof v === 'boolean' ? String(v)
-                                                : JSON.stringify(v, null, 2);
-                                        const isMultiLine = strVal.includes('\n') || strVal.length > 80;
-                                        return (
-                                            <div key={k} className={`text-[10px] ${isMultiLine ? '' : 'flex items-baseline gap-1.5'}`}>
-                                                <span className="font-mono uppercase tracking-[0.14em] text-paper-faint shrink-0">{k}:</span>
-                                                {isMultiLine ? (
-                                                    <pre className="mt-0.5 rounded-xs border border-ink-500 bg-ink-100 px-2.5 py-1.5 text-paper-muted font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-[120px] overflow-y-auto">{strVal.trim()}</pre>
-                                                ) : (
-                                                    <span className="text-paper-muted font-mono ml-1.5">{strVal}</span>
-                                                )}
-                                            </div>
-                                        );
-                                    })
-                                }
-                                {step.status === 'done' && step.summary && (
-                                    <p className="text-[10px] text-emerald-400/80">↳ {step.summary}</p>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                <div className="px-3 pb-3 space-y-1 border-t border-ink-500">
+                    {roots.map((step) => renderStep(step))}
                 </div>
             )}
         </div>
@@ -683,10 +771,17 @@ export function preprocessMarkdown(text: string): string {
 }
 
 // ============================================
-// useAiChatStream hook
+// useAiChatInvoke hook
 // ============================================
 
-function useAiChatStream({
+const INVOKE_STATUS_STEPS = [
+    'Understanding your request',
+    'Working through ClickHouse context',
+    'Checking the evidence',
+    'Preparing the response',
+];
+
+function useAiChatInvoke({
     setMessages,
     loadThreads,
     selectedModelId,
@@ -695,155 +790,104 @@ function useAiChatStream({
     loadThreads: () => void;
     selectedModelId: string;
 }) {
-    const [isStreaming, setIsStreaming] = useState(false);
+    const [isInvoking, setIsInvoking] = useState(false);
     const [toolStatus, setToolStatus] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
 
-    const runStream = useCallback(async (
+    const runInvoke = useCallback(async (
         threadId: string,
         prompt: string,
         messageHistory: { role: string; content: string }[],
     ) => {
         const controller = new AbortController();
         abortRef.current = controller;
-        setIsStreaming(true);
-        setToolStatus(null);
+        setIsInvoking(true);
+        setToolStatus(INVOKE_STATUS_STEPS[0]);
+        setMessages((previous) => {
+            const updated = [...previous];
+            const last = updated[updated.length - 1];
+            if (last?.role === 'assistant' && last.isInvoking) {
+                updated[updated.length - 1] = { ...last, toolStatus: INVOKE_STATUS_STEPS[0] };
+            }
+            return updated;
+        });
+
+        let statusIndex = 0;
+        const statusTimer = window.setInterval(() => {
+            statusIndex = (statusIndex + 1) % INVOKE_STATUS_STEPS.length;
+            const status = INVOKE_STATUS_STEPS[statusIndex];
+            setToolStatus(status);
+            setMessages((previous) => {
+                const updated = [...previous];
+                const last = updated[updated.length - 1];
+                if (last?.role === 'assistant' && last.isInvoking) {
+                    updated[updated.length - 1] = { ...last, toolStatus: status };
+                }
+                return updated;
+            });
+        }, 2500);
 
         try {
-            const stream = streamChatMessage(
+            const result = await invokeChatMessage(
                 threadId,
                 prompt,
                 messageHistory,
                 selectedModelId || undefined,
-                controller.signal
+                controller.signal,
             );
 
-            for await (const delta of stream) {
-                if (delta.type === 'text-delta' && delta.text) {
-                    setToolStatus(null);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                content: last.content + delta.text!,
-                                toolStatus: undefined,
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'tool-call' && delta.tool) {
-                    const label = delta.tool.replace(/_/g, ' ');
-                    setToolStatus(`Querying ${label}...`);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            const newStep: ToolCallStep = {
-                                tool: delta.tool!,
-                                args: delta.args ?? {},
-                                status: 'running',
-                            };
-                            updated[updated.length - 1] = {
-                                ...last,
-                                toolStatus: `Querying ${label}...`,
-                                toolCalls: [...(last.toolCalls ?? []), newStep],
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'chart-data' && delta.chartSpec) {
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                chartSpecs: [...(last.chartSpecs || []), delta.chartSpec!]
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'tool-complete' && delta.tool) {
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant' && last.toolCalls) {
-                            const steps = [...last.toolCalls];
-                            for (let i = steps.length - 1; i >= 0; i--) {
-                                if (steps[i].tool === delta.tool && steps[i].status === 'running') {
-                                    steps[i] = { ...steps[i], status: 'done', summary: delta.summary ?? null };
-                                    break;
-                                }
-                            }
-                            updated[updated.length - 1] = { ...last, toolCalls: steps };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'status' && delta.tool) {
-                    const label = delta.tool.replace(/_/g, ' ');
-                    setToolStatus(`Querying ${label}...`);
-                } else if (delta.type === 'error') {
-                    setToolStatus(null);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                content: delta.error || 'An unexpected error occurred.',
-                                isStreaming: false,
-                                isError: true,
-                                retryPrompt: prompt,
-                                retryable: delta.retryable ?? true,
-                                toolStatus: undefined,
-                            };
-                        }
-                        return updated;
-                    });
-                }
-            }
-        } catch (err: unknown) {
-            if (err instanceof Error && err.name !== 'AbortError') {
-                const isNetwork = err.message?.includes('fetch') || err.message?.includes('network') || err.name === 'TypeError';
-                const errMsg = isNetwork ? 'Connection failed. You can retry.' : (err.message || 'Something went wrong. You can retry.');
-                setMessages((prev) => {
-                    const updated = [...prev];
-                    const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                        updated[updated.length - 1] = {
-                            ...last,
-                            content: errMsg,
-                            isStreaming: false,
-                            isError: true,
-                            retryPrompt: prompt,
-                            retryable: true,
-                        };
-                    }
-                    return updated;
-                });
-            }
-        } finally {
-            setToolStatus(null);
-            setMessages((prev) => {
-                const updated = [...prev];
+            setMessages((previous) => {
+                const updated = [...previous];
                 const last = updated[updated.length - 1];
-                if (last && last.isStreaming) {
-                    const isEmpty = !last.content.trim();
+                if (last?.role === 'assistant') {
                     updated[updated.length - 1] = {
                         ...last,
-                        isStreaming: false,
+                        content: result.content,
+                        isInvoking: false,
                         toolStatus: undefined,
-                        ...(isEmpty && !last.isError
-                            ? { content: 'I wasn\'t able to generate a response. Please try again.', isError: true, retryPrompt: prompt }
-                            : {}
-                        ),
+                        toolCalls: result.toolCalls.map((call, index) => ({
+                            id: `activity_${index + 1}`,
+                            tool: call.name,
+                            args: call.args,
+                            status: 'done',
+                        })),
+                        chartSpecs: result.chartSpecs,
                     };
                 }
                 return updated;
             });
-            setIsStreaming(false);
+        } catch (error: unknown) {
+            const wasStopped = error instanceof Error && error.name === 'AbortError';
+            const isNetwork = error instanceof Error &&
+                (error.message.includes('fetch') || error.message.includes('network') || error.name === 'TypeError');
+            const errorMessage = wasStopped
+                ? 'Generation stopped.'
+                : isNetwork
+                    ? 'Connection failed. You can retry.'
+                    : error instanceof Error
+                        ? error.message
+                        : 'Something went wrong. You can retry.';
+
+            setMessages((previous) => {
+                const updated = [...previous];
+                const last = updated[updated.length - 1];
+                if (last?.role === 'assistant') {
+                    updated[updated.length - 1] = {
+                        ...last,
+                        content: errorMessage,
+                        isInvoking: false,
+                        isError: !wasStopped,
+                        retryPrompt: wasStopped ? undefined : prompt,
+                        retryable: !wasStopped,
+                        toolStatus: undefined,
+                    };
+                }
+                return updated;
+            });
+        } finally {
+            window.clearInterval(statusTimer);
+            setToolStatus(null);
+            setIsInvoking(false);
             abortRef.current = null;
             loadThreads();
         }
@@ -853,7 +897,7 @@ function useAiChatStream({
         abortRef.current?.abort();
     }, []);
 
-    return { runStream, isStreaming, toolStatus, handleStop };
+    return { runInvoke, isInvoking, toolStatus, handleStop };
 }
 
 // ============================================
@@ -1098,7 +1142,7 @@ export default function AiChatBubble() {
         }
     }, [activeConnectionId]);
 
-    const { runStream, isStreaming, toolStatus, handleStop } = useAiChatStream({
+    const { runInvoke, isInvoking, toolStatus, handleStop } = useAiChatInvoke({
         setMessages,
         loadThreads,
         selectedModelId,
@@ -1106,10 +1150,10 @@ export default function AiChatBubble() {
 
     // Focus input when thread loads
     useEffect(() => {
-        if (activeThreadId && !isStreaming) {
+        if (activeThreadId && !isInvoking) {
             setTimeout(() => inputRef.current?.focus(), 100);
         }
-    }, [activeThreadId, isStreaming]);
+    }, [activeThreadId, isInvoking]);
 
     // Escape key closes the chat window
     useEffect(() => {
@@ -1164,6 +1208,13 @@ export default function AiChatBubble() {
                     id: m.id,
                     role: m.role,
                     content: m.content,
+                    toolCalls: m.toolCalls?.map((tc, index) => ({
+                        id: `saved_${m.id}_${index}`,
+                        tool: tc.name,
+                        args: tc.args ?? {},
+                        status: 'done' as const,
+                        summary: tc.result ? null : undefined,
+                    })) || undefined,
                     chartSpecs: m.chartSpecs || undefined,
                     createdAt: m.createdAt,
                 }))
@@ -1235,7 +1286,7 @@ export default function AiChatBubble() {
     const handleSend = useCallback(async (e?: FormEvent) => {
         e?.preventDefault();
         const trimmed = input.trim();
-        if (!trimmed || isStreaming || !activeThreadId) return;
+        if (!trimmed || isInvoking || !activeThreadId) return;
 
         const userMsg: UIMessage = {
             id: `user_${Date.now()}`,
@@ -1248,7 +1299,7 @@ export default function AiChatBubble() {
             role: 'assistant',
             content: '',
             createdAt: new Date().toISOString(),
-            isStreaming: true,
+            isInvoking: true,
         };
 
         const messageHistory = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -1261,11 +1312,11 @@ export default function AiChatBubble() {
             inputRef.current.style.height = 'auto';
         }
 
-        await runStream(activeThreadId, trimmed, messageHistory);
-    }, [input, isStreaming, activeThreadId, messages, runStream, selectedModelId]);
+        await runInvoke(activeThreadId, trimmed, messageHistory);
+    }, [input, isInvoking, activeThreadId, messages, runInvoke, selectedModelId]);
 
     const handleRetry = useCallback(async (retryPrompt: string) => {
-        if (!retryPrompt || isStreaming || !activeThreadId) return;
+        if (!retryPrompt || isInvoking || !activeThreadId) return;
 
         // Remove the last error assistant message, then re-run
         setMessages((prev) => {
@@ -1284,7 +1335,7 @@ export default function AiChatBubble() {
                 role: 'assistant',
                 content: '',
                 createdAt: new Date().toISOString(),
-                isStreaming: true,
+                isInvoking: true,
             },
         ]);
 
@@ -1293,8 +1344,8 @@ export default function AiChatBubble() {
             .map((m) => ({ role: m.role, content: m.content }));
         messageHistory.push({ role: 'user', content: retryPrompt });
 
-        await runStream(activeThreadId, retryPrompt, messageHistory);
-    }, [isStreaming, activeThreadId, messages, runStream, selectedModelId]);
+        await runInvoke(activeThreadId, retryPrompt, messageHistory);
+    }, [isInvoking, activeThreadId, messages, runInvoke, selectedModelId]);
 
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1303,9 +1354,9 @@ export default function AiChatBubble() {
         }
     }, [handleSend]);
 
-    // Helper to send a suggested prompt — shares runStream for consistent error handling
+    // Helper to send a suggested prompt — shares runInvoke for consistent error handling
     const handleSuggestedPrompt = useCallback(async (prompt: string) => {
-        if (isStreaming) return;
+        if (isInvoking) return;
         let threadId = activeThreadId;
         if (!threadId) {
             try {
@@ -1331,14 +1382,14 @@ export default function AiChatBubble() {
             role: 'assistant',
             content: '',
             createdAt: new Date().toISOString(),
-            isStreaming: true,
+            isInvoking: true,
         };
 
         setMessages((prev) => [...prev, userMsg, assistantMsg]);
         setInput('');
 
-        await runStream(threadId, prompt, [{ role: 'user', content: prompt }]);
-    }, [isStreaming, activeThreadId, runStream, activeConnectionId, selectedModelId]);
+        await runInvoke(threadId, prompt, [{ role: 'user', content: prompt }]);
+    }, [isInvoking, activeThreadId, runInvoke, activeConnectionId, selectedModelId]);
 
     // Don't render if no permission or AI is not enabled
     if (!hasPermission || aiEnabled === false) return null;
@@ -1767,12 +1818,12 @@ export default function AiChatBubble() {
                                                                 {msg.role === 'assistant' ? (
                                                                     <>
                                                                         {msg.toolCalls && msg.toolCalls.length > 0 && (
-                                                                            <ThinkingPanel
+                                                                            <ActivityPanel
                                                                                 toolCalls={msg.toolCalls}
-                                                                                isStreaming={msg.isStreaming}
+                                                                                isInvoking={msg.isInvoking}
                                                                             />
                                                                         )}
-                                                                        {msg.isStreaming && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
+                                                                        {msg.isInvoking && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
                                                                             <div className="flex items-center gap-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                                                                                 <Loader2 className="w-3 h-3 motion-safe:animate-spin" />
                                                                                 <span>{msg.toolStatus}</span>
@@ -1784,7 +1835,7 @@ export default function AiChatBubble() {
                                                                                 {msg.retryPrompt && (msg.retryable !== false) && (
                                                                                     <button
                                                                                         onClick={() => handleRetry(msg.retryPrompt!)}
-                                                                                        disabled={isStreaming}
+                                                                                        disabled={isInvoking}
                                                                                         className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300 hover:text-red-200
                                                                                      disabled:opacity-40 transition-colors self-start
                                                                                      px-2 py-1 rounded-xs hover:bg-red-950/40"
@@ -1805,7 +1856,7 @@ export default function AiChatBubble() {
                                                                                         remarkPlugins={[remarkGfm]}
                                                                                         components={markdownComponents}
                                                                                     >
-                                                                                        {preprocessMarkdown(msg.content) + (msg.isStreaming && !msg.toolStatus ? ' ▊' : '')}
+                                                                                        {preprocessMarkdown(msg.content) + (msg.isInvoking && !msg.toolStatus ? ' ▊' : '')}
                                                                                     </ReactMarkdown>
                                                                                 </div>
                                                                             </>
@@ -1855,7 +1906,7 @@ export default function AiChatBubble() {
                                                     onChange={(e) => setInput(e.target.value)}
                                                     onKeyDown={handleKeyDown}
                                                     placeholder="Ask about your databases, schemas, queries…"
-                                                    disabled={isStreaming}
+                                                    disabled={isInvoking}
                                                     rows={1}
                                                     className="flex-1 resize-none rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5
                                                                font-mono text-[12.5px] text-paper placeholder:text-paper-faint
@@ -1869,7 +1920,7 @@ export default function AiChatBubble() {
                                                         target.style.height = Math.min(target.scrollHeight, 120) + 'px';
                                                     }}
                                                 />
-                                                {isStreaming ? (
+                                                {isInvoking ? (
                                                     <button
                                                         type="button"
                                                         onClick={handleStop}
@@ -1895,7 +1946,7 @@ export default function AiChatBubble() {
                                                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                                                     Shift+Enter newline · Esc close
                                                 </span>
-                                                {isStreaming && toolStatus && (
+                                                {isInvoking && toolStatus && (
                                                     <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
                                                         <Loader2 className="h-2.5 w-2.5 motion-safe:animate-spin" />
                                                         {toolStatus}

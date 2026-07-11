@@ -17,10 +17,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
-import { fetchOptimizeModels, type ErrorDiagnosis } from "@/api/query";
+import type { ErrorDiagnosis } from "@/api/query";
 import { cn } from "@/lib/utils";
+import { AiModelSelect, useAiModelSelection } from "@/components/common/AiModelSelect";
 
 function DiagSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -87,24 +88,22 @@ export function AiDiagnoseButton({
   const { hasPermission } = useRbacStore();
   const canUse = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const [open, setOpen] = useState(false);
-  const [modelId, setModelId] = useState<string | undefined>(undefined);
+  const {
+    models,
+    selectedModelId,
+    setSelectedModelId,
+    isLoading: areModelsLoading,
+    error: modelsError,
+  } = useAiModelSelection(open && canUse);
   const abortRef = useRef<AbortController | null>(null);
-  const modelsQuery = useQuery({
-    queryKey: ["optimize-models"],
-    queryFn: fetchOptimizeModels,
-    enabled: open && canUse,
-    staleTime: 5 * 60_000,
-  });
   const mutation = useMutation({
-    mutationFn: (mid?: string) => {
+    mutationFn: (mid: string) => {
       abortRef.current = new AbortController();
       return runDiagnosis(mid, abortRef.current.signal);
     },
   });
 
   if (!canUse) return null;
-
-  const models = modelsQuery.data ?? [];
 
   const handleOpenChange = (value: boolean) => {
     // Abort any in-flight request when the dialog is closed.
@@ -153,37 +152,30 @@ export function AiDiagnoseButton({
               {subtitle ??
                 "Chouse AI investigates this node read-only (system.*) and proposes a concrete fix. Review before acting."}
             </DialogDescription>
-            {models.length > 1 && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Model</span>
-                <select
-                  value={modelId ?? ""}
-                  onChange={(e) => setModelId(e.target.value || undefined)}
+            <div className="mt-3 rounded-xs border border-ink-500 bg-ink-200 p-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <AiModelSelect
+                  models={models}
+                  value={selectedModelId}
+                  onValueChange={setSelectedModelId}
                   disabled={mutation.isPending}
-                  className="h-8 max-w-[280px] rounded-xs border border-ink-500 bg-ink-200 px-2 text-[11px] text-paper focus:border-brand focus:outline-none disabled:opacity-50"
-                  title="Model used for the diagnosis"
-                >
-                  <option value="">Default model</option>
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label} · {m.model}
-                      {m.isDefault ? " (default)" : ""}
-                    </option>
-                  ))}
-                </select>
+                  isLoading={areModelsLoading}
+                  error={modelsError}
+                  className="min-w-[240px] flex-1"
+                />
                 {mutation.data && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => mutation.mutate(modelId)}
-                    disabled={mutation.isPending}
-                    className="h-8 gap-1.5 rounded-xs border-ink-500 px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-200 hover:text-paper"
+                    onClick={() => mutation.mutate(selectedModelId)}
+                    disabled={mutation.isPending || !selectedModelId}
+                    className="h-10 gap-1.5 rounded-xs border-ink-500 px-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:bg-ink-300 hover:text-paper"
                   >
                     <Sparkles className="h-3 w-3" /> Re-run
                   </Button>
                 )}
               </div>
-            )}
+            </div>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
             {mutation.isPending ? (
@@ -198,7 +190,7 @@ export function AiDiagnoseButton({
                 <p className="max-w-md text-[13px] text-paper-muted">
                   {mutation.error instanceof Error ? mutation.error.message : "Diagnosis failed."}
                 </p>
-                <Button variant="outline" size="sm" onClick={() => mutation.mutate(modelId)} className="rounded-xs">
+                <Button variant="outline" size="sm" onClick={() => mutation.mutate(selectedModelId)} disabled={!selectedModelId} className="rounded-xs">
                   Try again
                 </Button>
               </div>
@@ -208,12 +200,11 @@ export function AiDiagnoseButton({
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <Sparkles className="h-8 w-8 text-brand/70" aria-hidden />
                 <p className="max-w-md text-[13px] text-paper-muted">
-                  {models.length > 1
-                    ? "Pick a model above (or keep the default), then run."
-                    : "Chouse AI investigates this node read-only and proposes a fix."}
+                  Select the AI model above, review the attached monitoring context, then run the diagnosis.
                 </p>
                 <Button
-                  onClick={() => mutation.mutate(modelId)}
+                  onClick={() => mutation.mutate(selectedModelId)}
+                  disabled={!selectedModelId || models.length === 0}
                   className="h-9 gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
                 >
                   <Sparkles className="h-3.5 w-3.5" /> {runLabel}

@@ -1,7 +1,7 @@
 /**
  * AI Chat Routes
  * 
- * Provides streaming chat with AI assistant and thread/message management.
+ * Provides invoked chat with AI assistant and thread/message management.
  * All routes require RBAC authentication with `ai:chat` permission.
  */
 
@@ -17,7 +17,7 @@ import { ClickHouseService } from "../services/clickhouse";
 import { userHasPermission } from "../rbac/services/rbac";
 import { PERMISSIONS } from "../rbac/schema/base";
 import { isAIEnabled } from "../services/aiConfig";
-import { streamCapabilityAgent } from "../services/ai/engine";
+import { invokeCapabilityAgent } from "../services/ai/engine";
 import { chatCapability } from "../services/ai/capabilities/chat";
 import {
     createThread,
@@ -281,10 +281,10 @@ aiChat.get("/models", async (c) => {
 });
 
 // ============================================
-// Streaming Chat Endpoint
+// Invoked Chat Endpoint
 // ============================================
 
-export const StreamMessageSchema = z.object({
+export const InvokeMessageSchema = z.object({
     role: z.enum(["user", "assistant"]),
     content: z.string(),
 });
@@ -292,25 +292,69 @@ export const StreamMessageSchema = z.object({
 export const MAX_MESSAGE_LENGTH = 32_000;
 export const MAX_MESSAGES_PAYLOAD = 50;
 
-export const StreamRequestSchema = z.object({
+export const InvokeRequestSchema = z.object({
     threadId: z.string().min(1, "Thread ID is required"),
     message: z.string().min(1, "Message is required").max(MAX_MESSAGE_LENGTH, "Message too long"),
-    messages: z.array(StreamMessageSchema).max(MAX_MESSAGES_PAYLOAD).optional(),
+    messages: z.array(InvokeMessageSchema).max(MAX_MESSAGES_PAYLOAD).optional(),
     modelId: z.string().optional(),
 });
 
-/** Per-user rate limit for stream (expensive LLM + tools) */
-const streamRateLimiter = rateLimiter({
+/** Per-user rate limit for invoked chat (expensive LLM + tools). */
+const invokeRateLimiter = rateLimiter({
     windowMs: 60 * 1000,
     limit: 30,
     keyGenerator: (c: Context<{ Variables: Variables }>) => c.get("rbacUserId") ?? "unknown",
 });
 
+function jsonSafe(value: unknown): unknown {
+    if (typeof value === "bigint") {
+        return value <= Number.MAX_SAFE_INTEGER ? Number(value) : value.toString();
+    }
+    if (Array.isArray(value)) return value.map(jsonSafe);
+    if (value && typeof value === "object") {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, nested]) => [key, jsonSafe(nested)]),
+        );
+    }
+    return value;
+}
+
+/** Unwrap LangChain tool-message content and JSON-serialized tool results. */
+export function parseToolResult(value: unknown, depth = 0): unknown {
+    if (depth > 3) return value;
+    if (typeof value === "string") {
+        try {
+            return parseToolResult(JSON.parse(value), depth + 1);
+        } catch {
+            return value;
+        }
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+
+    const record = value as Record<string, unknown>;
+    if ("chartType" in record || "rows" in record || "error" in record) return record;
+    if ("artifact" in record && record.artifact !== undefined) {
+        return parseToolResult(record.artifact, depth + 1);
+    }
+    if (typeof record.content === "string") {
+        return parseToolResult(record.content, depth + 1);
+    }
+    if (Array.isArray(record.content)) {
+        const text = record.content
+            .filter((part): part is { text: string } =>
+                !!part && typeof part === "object" && typeof (part as Record<string, unknown>).text === "string")
+            .map((part) => part.text)
+            .join("");
+        if (text) return parseToolResult(text, depth + 1);
+    }
+    return record;
+}
+
 /**
- * POST /ai-chat/stream
- * Stream a chat response via SSE
+ * POST /ai-chat/invoke
+ * Run the DeepAgent asynchronously and return one complete response.
  */
-aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema), async (c) => {
+aiChat.post("/invoke", invokeRateLimiter, zValidator("json", InvokeRequestSchema), async (c) => {
     const { threadId, message, messages: frontendMessages, modelId } = c.req.valid("json");
     const rbacUserId = c.get("rbacUserId")!;
     const isRbacAdmin = c.get("isRbacAdmin") || false;
@@ -319,35 +363,25 @@ aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema
     const service = c.get("service");
     const session = c.get("session");
 
-    // Verify thread belongs to user
     const thread = await getThread(threadId, rbacUserId);
     if (!thread) {
         throw AppError.notFound("Thread not found or does not belong to you.");
     }
 
-    // Save user message
-    await addMessage(threadId, 'user', message);
+    await addMessage(threadId, "user", message);
 
-    // Build messages array (limit to newest 50 to avoid token overflow)
     type CoreMessage = { role: "user" | "assistant"; content: string };
     let coreMessages: CoreMessage[];
-
-    if (frontendMessages && Array.isArray(frontendMessages) && frontendMessages.length > 0) {
-        // Use frontend-provided message history (validated by schema)
-        coreMessages = frontendMessages.slice(-MAX_MESSAGES_PAYLOAD).map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-        }));
+    if (frontendMessages && frontendMessages.length > 0) {
+        coreMessages = frontendMessages.slice(-MAX_MESSAGES_PAYLOAD);
     } else {
-        // Fall back to DB messages
         const dbMessages = await getMessages(threadId);
-        coreMessages = dbMessages.slice(-MAX_MESSAGES_PAYLOAD).map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
+        coreMessages = dbMessages.slice(-MAX_MESSAGES_PAYLOAD).map((dbMessage) => ({
+            role: dbMessage.role === "assistant" ? "assistant" : "user",
+            content: dbMessage.content,
         }));
     }
 
-    // Build the agent run context for the chat capability.
     const runContext = {
         userId: rbacUserId,
         isAdmin: isRbacAdmin,
@@ -359,230 +393,65 @@ aiChat.post("/stream", streamRateLimiter, zValidator("json", StreamRequestSchema
     };
 
     try {
-        const result = await streamCapabilityAgent(
+        const result = await invokeCapabilityAgent(
             chatCapability,
             { threadId },
             runContext,
             coreMessages,
+            c.req.raw.signal,
+        );
+        const content = stripScratchpad(result.content);
+        if (!content.trim()) {
+            throw AppError.internal("Chouse AI returned an empty response. Please try again.");
+        }
+
+        const toolCalls = result.toolCalls.map((call) => ({
+            name: call.name,
+            args: call.args,
+            result: jsonSafe(parseToolResult(call.result)),
+        }));
+        const chartSpecs = toolCalls
+            .filter((call) =>
+                call.name === "render_chart" &&
+                call.result &&
+                typeof call.result === "object" &&
+                !("error" in call.result),
+            )
+            .map((call) => call.result as Record<string, unknown>);
+
+        await addMessage(
+            threadId,
+            "assistant",
+            content,
+            toolCalls.length > 0 ? toolCalls : undefined,
+            chartSpecs.length > 0 ? chartSpecs : undefined,
         );
 
-        // Set up SSE response
-        c.header('Content-Type', 'text/event-stream');
-        c.header('Cache-Control', 'no-cache');
-        c.header('Connection', 'keep-alive');
+        if (!thread.title) {
+            const autoTitle = message.substring(0, 80) + (message.length > 80 ? "..." : "");
+            await updateThreadTitle(threadId, rbacUserId, autoTitle).catch((error) => {
+                logger.error(
+                    { module: "AI Chat", threadId, err: error instanceof Error ? error.message : String(error) },
+                    "Failed to auto-title thread",
+                );
+            });
+        }
 
-        // Use fullStream for step-aware text suppression.
-        // Text from tool-using steps is hallucinated filler — discard it.
-        // Only text from the final step (finishReason='stop') is real.
-        const stream = result.fullStream;
-
-        const encoder = new TextEncoder();
-        let fullResponse = '';
-
-        // Step tracking state
-        let currentStepBuffer = '';
-        let currentStepHasToolCalls = false;
-        let isFinalStep = false; // Once we know a step is final, stream in real-time
-        const collectedToolCalls: Array<{ name: string; args: Record<string, unknown>; result?: unknown }> = [];
-
-        const readable = new ReadableStream({
-            async start(controller) {
-                try {
-                    for await (const part of stream) {
-                        switch (part.type) {
-                            case 'start-step':
-                                // New step — reset buffer
-                                currentStepBuffer = '';
-                                currentStepHasToolCalls = false;
-                                break;
-
-                            case 'text-delta': {
-                                const text = part.text;
-                                if (isFinalStep) {
-                                    // Final step confirmed — stream in real-time
-                                    // Don't apply scratchpad stripping per-chunk
-                                    // (it's designed for full buffers)
-                                    fullResponse += text;
-                                    const sseData = `data: ${JSON.stringify({ type: 'text-delta', text })}\n\n`;
-                                    controller.enqueue(encoder.encode(sseData));
-                                } else {
-                                    // Not yet confirmed as final — buffer text
-                                    currentStepBuffer += text;
-                                }
-                                break;
-                            }
-
-                            case 'tool-call': {
-                                // This step uses tools — its text is hallucination
-                                currentStepHasToolCalls = true;
-                                // AI SDK v6 uses `input` for tool arguments (not `args`).
-                                // Fall back through: input → args → {} for backwards compat.
-                                const rawInput = (part as any).input ?? (part as any).args ?? {};
-                                const parsedArgs: Record<string, unknown> = typeof rawInput === 'string'
-                                    ? (() => { try { return JSON.parse(rawInput); } catch { return {}; } })()
-                                    : (rawInput && typeof rawInput === 'object' ? rawInput : {});
-                                // Collect tool call info for persistence
-                                collectedToolCalls.push({
-                                    name: (part as any).toolName,
-                                    args: parsedArgs,
-                                });
-                                // Notify frontend: tool is being called, include args for display
-                                controller.enqueue(encoder.encode(
-                                    `data: ${JSON.stringify({
-                                        type: 'tool-call',
-                                        tool: (part as any).toolName,
-                                        args: parsedArgs,
-                                    })}\n\n`
-                                ));
-                                break;
-                            }
-
-                            case 'tool-result': {
-                                // Match result back to the last tool call with the same name
-                                const toolName = (part as any).toolName;
-                                // AI SDK v6 uses 'output' for tool result, but fall back to 'result' or 'data'.
-                                const resultData = (part as any).output ?? (part as any).result ?? (part as any).data;
-                                const matchIdx = (() => {
-                                    for (let i = collectedToolCalls.length - 1; i >= 0; i--) {
-                                        if (collectedToolCalls[i].name === toolName && collectedToolCalls[i].result === undefined) return i;
-                                    }
-                                    return -1;
-                                })();
-                                if (matchIdx !== -1) {
-                                    collectedToolCalls[matchIdx].result = resultData;
-                                }
-
-                                // Emit a dedicated chart-data event when render_chart succeeds
-                                if (toolName === 'render_chart' && resultData && !(resultData as Record<string, unknown>).error) {
-                                    // Handle BigInt serialization for ClickHouse results
-                                    try {
-                                        const json = JSON.stringify({ type: 'chart-data', chartSpec: resultData }, (_, v) =>
-                                            typeof v === 'bigint' ? (v <= Number.MAX_SAFE_INTEGER ? Number(v) : v.toString()) : v
-                                        );
-                                        controller.enqueue(encoder.encode(`data: ${json}\n\n`));
-                                    } catch (e) {
-                                        logger.error(
-                                            { module: "AI Chat", err: e instanceof Error ? e.message : String(e) },
-                                            "Failed to serialize chart-data"
-                                        );
-                                    }
-                                }
-
-                                // Send completion event with a lightweight result summary
-                                let resultSummary: string | null = null;
-                                if (Array.isArray(resultData)) {
-                                    resultSummary = `${resultData.length} row${resultData.length !== 1 ? 's' : ''} returned`;
-                                } else if (resultData && typeof resultData === 'object') {
-                                    const keys = Object.keys(resultData);
-                                    if (keys.length > 0) {
-                                        const first = (resultData as any)[keys[0]];
-                                        resultSummary = typeof first === 'string' || typeof first === 'number'
-                                            ? String(first).substring(0, 60)
-                                            : `${keys.length} field${keys.length !== 1 ? 's' : ''}`;
-                                    }
-                                } else if (typeof resultData === 'string') {
-                                    resultSummary = resultData.substring(0, 60);
-                                }
-                                controller.enqueue(encoder.encode(
-                                    `data: ${JSON.stringify({
-                                        type: 'tool-complete',
-                                        tool: toolName,
-                                        summary: resultSummary,
-                                    })}\n\n`
-                                ));
-                                break;
-                            }
-
-                            case 'finish-step': {
-                                if (part.finishReason === 'stop' && !currentStepHasToolCalls) {
-                                    // Final answer step — flush buffer with scratchpad stripping
-                                    isFinalStep = true;
-                                    const cleaned = stripScratchpad(currentStepBuffer);
-                                    if (cleaned) {
-                                        fullResponse += cleaned;
-                                        const sseData = `data: ${JSON.stringify({ type: 'text-delta', text: cleaned })}\n\n`;
-                                        controller.enqueue(encoder.encode(sseData));
-                                    }
-                                }
-                                // Discard buffer for tool-using steps (hallucination)
-                                currentStepBuffer = '';
-                                break;
-                            }
-
-                            case 'error': {
-                                const errorMsg = part.error instanceof Error ? part.error.message : String(part.error);
-                                logger.warn({ module: "AI Chat", errorMsg }, "Stream error");
-                                const sseError = `data: ${JSON.stringify({ type: 'error', error: errorMsg, retryable: true })}\n\n`;
-                                controller.enqueue(encoder.encode(sseError));
-                                break;
-                            }
-
-                            // Ignore reasoning-delta, tool-input-delta, tool-result, etc.
-                            default:
-                                break;
-                        }
-                    }
-
-                    // Send done event
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
-                    controller.close();
-
-                    // Save assistant response to DB (best-effort)
-                    if (fullResponse.trim()) {
-                        const chartToolCalls = collectedToolCalls.filter(tc => tc.name === 'render_chart' && tc.result && !(tc.result as Record<string, unknown>).error);
-                        const chartSpecs = chartToolCalls.length > 0
-                            ? chartToolCalls.map(tc => tc.result as Record<string, unknown>)
-                            : undefined;
-
-                        await addMessage(
-                            threadId,
-                            'assistant',
-                            fullResponse,
-                            collectedToolCalls.length > 0 ? collectedToolCalls : undefined,
-                            chartSpecs
-
-                        ).catch(err => {
-                            logger.error(
-                                { module: "AI Chat", threadId, err: err instanceof Error ? err.message : String(err) },
-                                "Failed to save assistant message"
-                            );
-                        });
-
-                        // Auto-generate title for new threads
-                        if (!thread.title) {
-                            const autoTitle = message.substring(0, 80) + (message.length > 80 ? '...' : '');
-                            await updateThreadTitle(threadId, rbacUserId, autoTitle).catch(err => {
-                                logger.error(
-                                    { module: "AI Chat", threadId, err: err instanceof Error ? err.message : String(err) },
-                                    "Failed to auto-title thread"
-                                );
-                            });
-                        }
-                    }
-                } catch (error) {
-                    const errorMsg = error instanceof Error ? error.message : String(error);
-                    const sseError = `data: ${JSON.stringify({ type: 'error', error: errorMsg, retryable: true })}\n\n`;
-                    controller.enqueue(encoder.encode(sseError));
-                    controller.close();
-                }
-            },
-        });
-
-        return new Response(readable, {
-            headers: {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
+        return c.json({
+            success: true,
+            data: {
+                content,
+                toolCalls,
+                chartSpecs,
             },
         });
     } catch (error) {
         if (error instanceof AppError) throw error;
-        const msg = error instanceof Error ? error.message : String(error);
-        throw new AppError(msg, "AI_CHAT_ERROR", "unknown", 500);
+        const messageText = error instanceof Error ? error.message : String(error);
+        throw new AppError(messageText, "AI_CHAT_ERROR", "unknown", 500);
     }
 });
 
-// ============================================
 // Thread CRUD Endpoints
 // ============================================
 

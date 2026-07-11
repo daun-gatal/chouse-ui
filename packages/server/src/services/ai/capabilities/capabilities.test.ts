@@ -33,7 +33,7 @@ describe("capability registry", () => {
     for (const cap of Object.values(CAPABILITIES)) {
       expect(typeof cap.permission).toBe("string");
       expect(cap.inputSchema).toBeDefined();
-      expect(cap.delivery === "structured" || cap.delivery === "stream").toBe(true);
+      expect(cap.delivery === "structured" || cap.delivery === "invoke").toBe(true);
     }
   });
 

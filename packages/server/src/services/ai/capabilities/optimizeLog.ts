@@ -6,7 +6,8 @@
  */
 
 import { z } from "zod";
-import type { ModelMessage, ToolSet } from "ai";
+import type { AgentMessage } from "../types";
+import type { AgentToolSet } from "../langchainTools";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { CLICKHOUSE_PLAYBOOK } from "../../clickhousePlaybook";
@@ -93,13 +94,13 @@ export const optimizeLogCapability: StructuredCapability<
     return { node, connectionId: ctx.connectionId, cleaned, peakMemory, user };
   },
 
-  tools(prepared): ToolSet {
-    return queryNodeTool([prepared.node]) as ToolSet;
+  tools(prepared): AgentToolSet {
+    return queryNodeTool([prepared.node]) as AgentToolSet;
   },
 
   instructions: () => `${SINGLE_OPTIMIZE_PROMPT}\n\n${CLICKHOUSE_PLAYBOOK}`,
 
-  messages(prepared): ModelMessage[] {
+  messages(prepared): AgentMessage[] {
     const { node, cleaned, peakMemory } = prepared;
     return [
       {
@@ -109,7 +110,7 @@ export const optimizeLogCapability: StructuredCapability<
     ];
   },
 
-  fallbackMessages(prepared, _ctx, raw): ModelMessage[] {
+  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
     return [
       { role: "system", content: SINGLE_OPTIMIZE_PROMPT },
       {

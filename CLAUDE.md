@@ -38,7 +38,7 @@ bunx vitest run                # Frontend tests
 |-------|-------------|
 | **Frontend** | React 19, Vite 7, React Router v7, Zustand 5, TanStack Query v5, shadcn/ui, Tailwind CSS 4, Monaco Editor, AG Grid |
 | **Backend** | Bun, Hono v4, Drizzle ORM (SQLite / PostgreSQL), Pino logger |
-| **AI** | Vercel AI SDK v6, multi-provider (OpenAI, Anthropic, Google, etc.) |
+| **AI** | DeepAgents / LangChain, multi-provider (OpenAI, Anthropic, Google, OpenAI-compatible) |
 | **ClickHouse** | `@clickhouse/client` (server), `@clickhouse/client-web` (frontend) |
 | **Testing** | Vitest + jsdom + MSW (frontend), Bun Test (server) |
 

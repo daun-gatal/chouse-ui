@@ -5,16 +5,12 @@
  */
 
 import { AppError } from "../../types";
-import {
-  getConfiguration,
-  validateConfiguration,
-  initializeAIModel,
-} from "../aiConfig";
+import { getConfiguration, validateConfiguration, initializeDeepAgentModel } from "../aiConfig";
 import type { AiConfigWithKey } from "../../rbac/services/aiModels";
-import type { LanguageModel } from "ai";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
 export interface ResolvedModel {
-  model: LanguageModel;
+  model: BaseChatModel;
   config: AiConfigWithKey;
   /** Human label for reports/audit (model id, falling back to config name). */
   label: string;
@@ -24,13 +20,13 @@ export interface ResolvedModel {
  * Resolve the language model for a run. `modelId` selects a specific config;
  * omit it to use the default active config.
  */
-export async function resolveModel(modelId?: string): Promise<ResolvedModel> {
+export async function resolveDeepAgentModel(modelId?: string): Promise<ResolvedModel> {
   const config = await getConfiguration(modelId);
   const validation = validateConfiguration(config);
   if (!validation.valid) {
     throw AppError.badRequest(validation.error || "AI is not configured");
   }
-  const model = initializeAIModel(config!);
+  const model = initializeDeepAgentModel(config!);
   const label = config!.model?.modelId ?? config!.model?.name ?? "configured model";
   return { model, config: config!, label };
 }

@@ -717,8 +717,9 @@ export async function deliverDoctorReport(report: DoctorReport, context: string)
 
 /**
  * Have ChouseD investigate the fleet and deliver a root-cause analysis. Lazy-
- * imports the doctor service so the alerter never hard-depends on the AI SDK at
- * load. Best-effort: a failure is logged, never propagated to the poll loop.
+ * imports the doctor service so the alerter never hard-depends on the AI
+ * runtime at load. Best-effort: a failure is logged, never propagated to the
+ * poll loop.
  */
 async function runAutoRca(
   channels: DeliveryTarget[],

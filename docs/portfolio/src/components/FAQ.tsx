@@ -63,7 +63,7 @@ const FAQS: FaqItem[] = [
   },
   {
     question: "How does the AI Optimizer work?",
-    answer: "The optimizer and debugger run as tool-using agents on top of Vercel AI SDK v6 — they call shared ClickHouse tools (list databases, get DDL, run EXPLAIN, validate SQL) under RBAC, then return structured suggestions. Supports OpenAI, Anthropic, Google, HuggingFace, and OpenAI-compatible providers.",
+    answer: "The optimizer and debugger run as DeepAgents/LangChain tool-using agents — they call shared ClickHouse tools (list databases, get DDL, run EXPLAIN, validate SQL) under RBAC, then return structured suggestions. Supports OpenAI, Anthropic, Google, and OpenAI-compatible providers.",
   },
 ];
 

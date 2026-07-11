@@ -128,7 +128,7 @@ export default function BaseModelsTab() {
                 <div className="flex flex-col gap-1">
                     <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim">
                         <span className="h-px w-6 bg-ink-700" />
-                        <span>SDK models</span>
+                        <span>Provider models</span>
                     </span>
                     <p className="text-[12px] text-paper-muted">Underlying provider model identifiers used by deployments.</p>
                 </div>
@@ -162,7 +162,7 @@ export default function BaseModelsTab() {
                                 <TableRow className="border-ink-500 hover:bg-transparent">
                                     <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Name</TableHead>
                                     <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Provider</TableHead>
-                                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">SDK model ID</TableHead>
+                                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Provider model ID</TableHead>
                                     <TableHead className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -211,7 +211,7 @@ export default function BaseModelsTab() {
                             <Bot className="h-4 w-4 text-paper-dim" />
                             {isEditing ? 'Edit base model' : 'Add base model'}
                         </DialogTitle>
-                        <DialogDescription className="text-paper-muted">Define an underlying SDK model identifier.</DialogDescription>
+                        <DialogDescription className="text-paper-muted">Define an underlying provider model identifier.</DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -245,7 +245,7 @@ export default function BaseModelsTab() {
                             )} />
                             <FormField control={form.control} name="modelId" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">SDK model ID</FormLabel>
+                                    <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Provider model ID</FormLabel>
                                     <FormControl><Input placeholder="gpt-4o" className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
                                     <FormDescription className="text-[11px] text-paper-faint">The exact ID string expected by the provider (e.g. gpt-4o).</FormDescription>
                                     <FormMessage />

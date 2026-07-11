@@ -3,8 +3,7 @@
  */
 
 import { api, getSessionId, getRbacAccessToken } from './client';
-import { invokeAI, fetchAiModels, type QueryOptimization } from './ai';
-import type { FleetDoctorModel } from './fleet';
+import { invokeAI, type QueryOptimization } from './ai';
 
 // ============================================
 // Types
@@ -354,11 +353,6 @@ export async function optimizeQueryFromLog(
   signal?: AbortSignal
 ): Promise<QueryOptimization> {
   return invokeAI<QueryOptimization>("optimize-log", { queryId }, { modelId, signal });
-}
-
-/** Active AI models available to the "Optimize with Chouse AI" picker. */
-export async function fetchOptimizeModels(): Promise<FleetDoctorModel[]> {
-  return fetchAiModels();
 }
 
 // ============================================

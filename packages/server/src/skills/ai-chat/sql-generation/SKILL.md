@@ -1,7 +1,6 @@
 ---
 name: sql-generation
 description: Strict rules on outputting ClickHouse syntax, limiting rows, and rendering SQL in markdown.
-when_to_use: User wants you to write, run, validate, or export a SQL query against their data.
 ---
 
 ## WHEN TO USE

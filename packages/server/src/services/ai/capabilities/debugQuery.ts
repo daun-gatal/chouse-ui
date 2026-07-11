@@ -5,7 +5,8 @@
  */
 
 import { z } from "zod";
-import type { ModelMessage, ToolSet } from "ai";
+import type { AgentMessage } from "../types";
+import type { AgentToolSet } from "../langchainTools";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { coreTools } from "../toolsets";
 import type { StructuredCapability } from "../types";
@@ -13,7 +14,6 @@ import {
   DebugOutputSchema,
   DEBUGGER_INSTRUCTIONS,
   buildDebugPrompt,
-  loadSkillTool,
   stripFormatClause,
   unfence,
 } from "./optimizerShared";
@@ -63,15 +63,15 @@ export const debugQueryCapability: StructuredCapability<
     return { query: input.query, error: input.error, additionalPrompt: input.additionalPrompt };
   },
 
-  async tools(_prepared, ctx): Promise<ToolSet> {
-    return { ...(await loadSkillTool()), ...coreTools(ctx) };
+  tools(_prepared, ctx): AgentToolSet {
+    return coreTools(ctx);
   },
 
   instructions() {
     return DEBUGGER_INSTRUCTIONS;
   },
 
-  messages(prepared): ModelMessage[] {
+  messages(prepared): AgentMessage[] {
     return [
       { role: "user", content: buildDebugPrompt(prepared.query, prepared.error, prepared.additionalPrompt) },
     ];

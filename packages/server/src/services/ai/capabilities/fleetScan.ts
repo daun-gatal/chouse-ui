@@ -10,7 +10,8 @@
 
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import type { ModelMessage, ToolSet } from "ai";
+import type { AgentMessage } from "../types";
+import type { AgentToolSet } from "../langchainTools";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { CLICKHOUSE_PLAYBOOK, needsPlaybook } from "../../clickhousePlaybook";
@@ -269,15 +270,15 @@ export const fleetScanCapability: StructuredCapability<
     return { nodes, hours, overview, instructions, startedAt };
   },
 
-  tools(prepared): ToolSet {
-    return queryNodeTool(prepared.nodes) as ToolSet;
+  tools(prepared): AgentToolSet {
+    return queryNodeTool(prepared.nodes) as AgentToolSet;
   },
 
   instructions(prepared) {
     return prepared.instructions;
   },
 
-  messages(prepared): ModelMessage[] {
+  messages(prepared): AgentMessage[] {
     return [
       {
         role: "user",
@@ -286,7 +287,7 @@ export const fleetScanCapability: StructuredCapability<
     ];
   },
 
-  fallbackMessages(prepared, _ctx, raw): ModelMessage[] {
+  fallbackMessages(prepared, _ctx, raw): AgentMessage[] {
     return [
       { role: "system", content: prepared.instructions },
       {

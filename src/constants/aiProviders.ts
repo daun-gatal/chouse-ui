@@ -9,7 +9,6 @@ export const PROVIDER_TYPES = [
   'openai',
   'anthropic',
   'google',
-  'huggingface',
   'openai-compatible',
 ] as const;
 
@@ -23,7 +22,6 @@ export function formatProviderType(type: ProviderType): string {
     'openai': 'OpenAI',
     'anthropic': 'Anthropic',
     'google': 'Google',
-    'huggingface': 'Hugging Face',
     'openai-compatible': 'OpenAI Compatible',
   };
   return formatMap[type] || type;

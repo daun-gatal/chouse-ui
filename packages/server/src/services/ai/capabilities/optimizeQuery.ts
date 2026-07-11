@@ -5,7 +5,8 @@
  */
 
 import { z } from "zod";
-import type { ModelMessage, ToolSet } from "ai";
+import type { AgentMessage } from "../types";
+import type { AgentToolSet } from "../langchainTools";
 import { AppError } from "../../../types";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import { validateQueryAccess } from "../../../middleware/dataAccess";
@@ -17,7 +18,6 @@ import {
   type QueryOptimization,
   OPTIMIZER_INSTRUCTIONS,
   buildOptimizationPrompt,
-  loadSkillTool,
   stripFormatClause,
   unfence,
 } from "./optimizerShared";
@@ -74,15 +74,15 @@ export const optimizeQueryCapability: StructuredCapability<
     return { query: input.query, additionalPrompt: input.additionalPrompt, warnings: access.warnings };
   },
 
-  async tools(_prepared, ctx): Promise<ToolSet> {
-    return { ...(await loadSkillTool()), ...coreTools(ctx) };
+  tools(_prepared, ctx): AgentToolSet {
+    return coreTools(ctx);
   },
 
   instructions() {
     return OPTIMIZER_INSTRUCTIONS;
   },
 
-  messages(prepared): ModelMessage[] {
+  messages(prepared): AgentMessage[] {
     return [{ role: "user", content: buildOptimizationPrompt(prepared.query, prepared.additionalPrompt) }];
   },
 

@@ -333,7 +333,7 @@ graph TB
     Hono --> MW --> Routes --> Services
     Routes --> RBAC
     Services -->|"@clickhouse/client"| CH
-    Services -->|"AI SDK v6"| AI
+    Services -->|"DeepAgents / LangChain"| AI
     RBAC -->|"Drizzle ORM"| DB
 ```
 
@@ -423,7 +423,7 @@ This project was initially based on **[CH-UI](https://github.com/caioricciuti/ch
 - [Drizzle ORM](https://orm.drizzle.team/) — Database ORM (SQLite / PostgreSQL)
 - [Pino](https://getpino.io/) — Structured JSON logging
 - [jose](https://github.com/panva/jose) — JWT signing & verification
-- [Vercel AI SDK](https://sdk.vercel.ai/) — Multi-provider AI (OpenAI, Anthropic, Google, etc.)
+- [DeepAgents](https://docs.langchain.com/oss/javascript/deepagents/overview) / [LangChain](https://js.langchain.com/) — Tool-using AI agents (OpenAI, Anthropic, Google, OpenAI-compatible)
 - [node-sql-parser](https://github.com/taozhi8833998/node-sql-parser) — SQL parsing & validation
 
 #### Frontend

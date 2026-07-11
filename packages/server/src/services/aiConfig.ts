@@ -5,11 +5,10 @@
  * used by both the AI optimizer/debugger and the AI chat assistant.
  */
 
-import { createOpenAI } from "@ai-sdk/openai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createHuggingFace } from "@ai-sdk/huggingface";
+import { ChatOpenAI } from "@langchain/openai";
+import { ChatAnthropic } from "@langchain/anthropic";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { AppError } from "../types";
 import { getAiConfigById, getDefaultAiConfig, getAiConfigWithKey } from "../rbac/services/aiModels";
 import type { AiConfigWithKey } from "../rbac/services/aiModels";
@@ -34,7 +33,7 @@ export type AIProvider = ProviderType;
 export async function getConfiguration(configId?: string): Promise<AiConfigWithKey | null> {
     if (configId) {
         const config = await getAiConfigById(configId);
-        // We need the key to initialize the SDK
+        // We need the key to initialize the provider client.
         if (config) {
             return getAiConfigWithKey(configId);
         }
@@ -111,7 +110,7 @@ export function validateConfiguration(config: AiConfigWithKey | null): { valid: 
 /**
  * Provider initialization function type
  */
-type ProviderInitializer = (config: { apiKey?: string; baseUrl?: string }, modelName: string) => any;
+type ProviderInitializer = (config: { apiKey?: string; baseUrl?: string }, modelName: string) => BaseChatModel;
 
 /**
  * Provider Registry
@@ -123,50 +122,45 @@ type ProviderInitializer = (config: { apiKey?: string; baseUrl?: string }, model
  */
 const providerRegistry: Record<ProviderType, ProviderInitializer> = {
     'openai': (config, modelName) => {
-        const OpenAIProvider = createOpenAI({
+        return new ChatOpenAI({
+            model: modelName,
             apiKey: config.apiKey || undefined,
-            baseURL: config.baseUrl || undefined,
+            configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
+            temperature: 0,
         });
-        return OpenAIProvider(modelName);
     },
     'anthropic': (config, modelName) => {
-        const AnthropicProvider = createAnthropic({
+        return new ChatAnthropic({
+            model: modelName,
             apiKey: config.apiKey || undefined,
-            baseURL: config.baseUrl || undefined,
+            clientOptions: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
+            temperature: 0,
         });
-        return AnthropicProvider(modelName);
     },
     'google': (config, modelName) => {
-        const GoogleProvider = createGoogleGenerativeAI({
+        return new ChatGoogleGenerativeAI({
+            model: modelName,
             apiKey: config.apiKey || undefined,
-            baseURL: config.baseUrl || undefined,
+            temperature: 0,
         });
-        return GoogleProvider(modelName);
-    },
-    'huggingface': (config, modelName) => {
-        const HuggingFaceProvider = createHuggingFace({
-            apiKey: config.apiKey || undefined,
-            baseURL: config.baseUrl || undefined,
-        });
-        return HuggingFaceProvider(modelName);
     },
     'openai-compatible': (config, modelName) => {
         if (!config.baseUrl) {
             throw new AppError("Base URL is required for openai-compatible", "AI_CONFIGURATION_ERROR", "validation", 500);
         }
-        const OpenAICompatibleProvider = createOpenAICompatible({
-            name: "openai-compatible",
-            baseURL: config.baseUrl,
+        return new ChatOpenAI({
+            model: modelName,
             apiKey: config.apiKey || undefined,
+            configuration: { baseURL: config.baseUrl },
+            temperature: 0,
         });
-        return OpenAICompatibleProvider(modelName);
     },
 };
 
 /**
- * Initialize AI model based on provider configuration
+ * Initialize a DeepAgents/LangChain chat model based on provider configuration.
  */
-export function initializeAIModel(config: AiConfigWithKey) {
+export function initializeDeepAgentModel(config: AiConfigWithKey): BaseChatModel {
     const modelName = config.model.modelId;
 
     if (!modelName) {
@@ -194,7 +188,6 @@ export function initializeAIModel(config: AiConfigWithKey) {
         );
     }
 
-    // Initialize provider with config
     return initializer(
         {
             apiKey: config.provider.apiKey || undefined,

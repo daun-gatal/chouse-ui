@@ -1,8 +1,8 @@
 /**
- * AI Chat API Module
+ * AI Chat API Module.
  * 
  * Frontend API functions for communicating with the AI chat backend.
- * Handles SSE streaming, thread management, and status checks.
+ * Handles invoked responses, thread management, and status checks.
  */
 
 import { api } from './client';
@@ -53,24 +53,6 @@ export interface ChartSpec {
     yAxis: string | string[];
     /** Color palette key: 'violet' | 'blue' | 'green' | 'orange' | 'rainbow' */
     colorScheme: string;
-}
-
-export interface StreamDelta {
-    type: 'text-delta' | 'done' | 'error' | 'status' | 'tool-call' | 'tool-complete' | 'chart-data';
-    text?: string;
-    error?: string;
-    /** Optional error code from server */
-    code?: string;
-    /** When true, client may show a Retry button (default true for stream errors) */
-    retryable?: boolean;
-    status?: string;
-    tool?: string;
-    /** Args passed to the tool (present on tool-call events) */
-    args?: Record<string, unknown>;
-    /** Human-readable result summary (present on tool-complete events) */
-    summary?: string | null;
-    /** Chart specification (present on chart-data events) */
-    chartSpec?: ChartSpec;
 }
 
 export interface AiModelSimple {
@@ -139,107 +121,29 @@ export async function deleteThread(threadId: string): Promise<void> {
 }
 
 // ============================================
-// Streaming Chat
+// Invoked Chat
 // ============================================
 
+export interface ChatInvokeResult {
+    content: string;
+    toolCalls: Array<{ name: string; args: Record<string, unknown>; result?: unknown }>;
+    chartSpecs: ChartSpec[];
+}
+
 /**
- * Stream a chat message via SSE.
- * Returns an async generator that yields text deltas.
- * Uses raw fetch (not api client) for streaming support.
+ * Invoke a chat turn and resolve when the complete agent response is ready.
+ * The caller owns optimistic loading state and may cancel with AbortSignal.
  */
-export async function* streamChatMessage(
+export async function invokeChatMessage(
     threadId: string,
     message: string,
     messages?: Array<{ role: string; content: string }>,
     modelId?: string,
     signal?: AbortSignal
-): AsyncGenerator<StreamDelta> {
-    // Build auth headers manually for streaming
-    const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-    };
-
-    // Add session ID
-    const sessionId = sessionStorage.getItem('ch_session_id');
-    if (sessionId) {
-        headers['X-Session-ID'] = sessionId;
-    }
-
-    // Add RBAC token
-    const rbacToken = localStorage.getItem('rbac_access_token');
-    if (rbacToken) {
-        headers['Authorization'] = `Bearer ${rbacToken}`;
-    }
-
-    const response = await fetch('/api/ai-chat/stream', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-            threadId,
-            message,
-            messages,
-            modelId,
-        }),
-        credentials: 'include',
-        signal,
-    });
-
-    if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(
-            (errorBody as { error?: { message?: string } })?.error?.message ||
-            `Chat request failed: ${response.status}`
-        );
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-        throw new Error('No response body');
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-
-            // SSE events are separated by double newlines (\n\n).
-            // We must split on \n\n — NOT \n — because large payloads like
-            // chart-data contain embedded newlines inside the JSON, and
-            // splitting by \n would break JSON.parse on any multi-line event.
-            const events = buffer.split('\n\n');
-            buffer = events.pop() ?? ''; // Keep the last incomplete event in the buffer
-
-            for (const event of events) {
-                // An SSE event may have multiple "data: ..." lines — join them.
-                const dataLines = event
-                    .split('\n')
-                    .filter((l) => l.startsWith('data: '))
-                    .map((l) => l.slice(6));
-
-                if (dataLines.length === 0) continue;
-
-                // Re-join multi-line data values (rare but possible)
-                const rawJson = dataLines.join('');
-
-                try {
-                    const data = JSON.parse(rawJson) as StreamDelta;
-                    yield data;
-
-                    if (data.type === 'done' || data.type === 'error') {
-                        return;
-                    }
-                } catch {
-                    // Skip malformed SSE events
-                }
-            }
-        }
-    } finally {
-        reader.releaseLock();
-    }
+): Promise<ChatInvokeResult> {
+    return api.post<ChatInvokeResult>(
+        '/ai-chat/invoke',
+        { threadId, message, messages, modelId },
+        { signal },
+    );
 }

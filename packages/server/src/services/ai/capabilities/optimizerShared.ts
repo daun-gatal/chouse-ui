@@ -1,35 +1,14 @@
 /**
  * Shared bits for the SQL-editor optimizer capabilities (optimize-query,
  * debug-query, check-optimize). These use the session/service-based core tools
- * + the `load_skill` tool to pull detailed instructions from
- * src/skills/ai-optimizer/* at run time.
+ * + DeepAgents native skills from src/skills/ai-optimizer/* at run time.
  */
 
 import { z } from "zod";
-import { discoverSkills, createLoadSkillTool } from "../../agentSkills";
-import { discoverReferences, createLoadReferenceTool } from "../../agentReferences";
 import type { EstimateFigures } from "./fleetShared";
-import type { ToolSet } from "ai";
 
 /** Skill directory for the optimizer/debugger/evaluator SKILL.md files. */
 export const OPTIMIZER_SKILL_DIR = "../skills/ai-optimizer";
-const REFERENCES_DIR = "../references";
-
-/**
- * Build the `load_skill` + `load_reference` tools for the optimizer family, so
- * the agent can pull the query-optimizer/debugger/evaluator skill AND the
- * ClickHouse playbook / type-codec reference on demand.
- */
-export async function loadSkillTool(): Promise<ToolSet> {
-  const [skills, references] = await Promise.all([
-    discoverSkills([OPTIMIZER_SKILL_DIR]),
-    discoverReferences([REFERENCES_DIR]),
-  ]);
-  return {
-    load_skill: createLoadSkillTool(skills),
-    load_reference: createLoadReferenceTool(references),
-  } as ToolSet;
-}
 
 /**
  * Remove any trailing FORMAT clause the AI may have appended — the app passes
@@ -125,10 +104,11 @@ ${query.trim()}
 \`\`\`
 
 Use your tools to:
-1. Load the \`query-optimizer\` skill for detailed instructions.
-2. Fetch the DDL for all tables referenced in the query using \`get_table_ddl\`.
-3. Run \`explain_query\` to understand the current execution plan.
-4. Produce the optimized query as a JSON response matching the exact schema specified in the optimizer skill.`;
+1. Follow the native \`query-optimizer\` skill instructions.
+2. Use the \`clickhouse-playbook\` and \`types-codecs-compression\` reference skills when relevant.
+3. Fetch the DDL for all tables referenced in the query using \`get_table_ddl\`.
+4. Run \`explain_query\` to understand the current execution plan.
+5. Produce the optimized query as a JSON response matching the exact schema specified in the optimizer skill.`;
   if (additionalPrompt?.trim()) {
     prompt += `\n\nAdditional instructions from the user:\n${additionalPrompt.trim()}`;
   }
@@ -148,10 +128,11 @@ ${error.trim()}
 \`\`\`
 
 Use your tools to:
-1. Load the \`query-debugger\` skill for detailed instructions.
-2. Fetch the DDL for tables referenced in the query using \`get_table_ddl\`.
-3. Validate the corrected query with \`validate_sql\`.
-4. Produce the fixed query as a JSON response matching the exact schema specified in the debugger skill.`;
+1. Follow the native \`query-debugger\` skill instructions.
+2. Use the \`clickhouse-playbook\` reference skill when the fix is performance-related.
+3. Fetch the DDL for tables referenced in the query using \`get_table_ddl\`.
+4. Validate the corrected query with \`validate_sql\`.
+5. Produce the fixed query as a JSON response matching the exact schema specified in the debugger skill.`;
   if (additionalPrompt?.trim()) {
     prompt += `\n\nAdditional instructions from the user:\n${additionalPrompt.trim()}`;
   }
@@ -170,10 +151,11 @@ export const OPTIMIZER_INSTRUCTIONS = `You are an expert ClickHouse Query Optimi
 Your job is to analyze and optimize SQL queries using the available tools.
 
 WORKFLOW (follow this order strictly):
-1. Call \`load_skill\` with name "query-optimizer" to load your detailed instructions.
+1. Follow the native \`query-optimizer\` skill instructions.
 2. Use \`get_table_ddl\` (and \`get_table_size\`) for every table referenced in the query to ground per-table findings.
 3. Use \`explain_query\` to understand the current execution plan.
-4. Produce ONLY a JSON object (no markdown, no extra text) matching this exact schema:
+4. Use the reference skills when a recommendation needs ClickHouse-specific grounding.
+5. Produce ONLY a JSON object (no markdown, no extra text) matching this exact schema:
    {
      "optimizedQuery": "<full optimized SQL>",
      "summary": "<one-line headline of the main improvement>",
@@ -189,7 +171,7 @@ export const DEBUGGER_INSTRUCTIONS = `You are an expert ClickHouse Query Debugge
 Your job is to diagnose and fix failed SQL queries using the available tools.
 
 WORKFLOW (follow this order strictly):
-1. Call \`load_skill\` with name "query-debugger" to load your detailed instructions.
+1. Follow the native \`query-debugger\` skill instructions.
 2. Use \`get_table_ddl\` or \`get_table_schema\` for tables referenced in the query.
 3. Use \`validate_sql\` to verify the corrected query is syntactically valid.
 4. Produce ONLY a JSON object (no markdown, no extra text) matching this exact schema:
@@ -203,6 +185,6 @@ WORKFLOW (follow this order strictly):
 ${SQL_PRETTY_RULE}`;
 
 export const EVALUATOR_INSTRUCTIONS = `You are a ClickHouse query evaluator performing a rapid pre-screening check.
-Load the "query-evaluator" skill for detailed instructions, then evaluate the query.
+Follow the native "query-evaluator" skill instructions, then evaluate the query.
 Produce ONLY a JSON object (no markdown, no extra text):
 { "canOptimize": true|false, "reason": "<one sentence>" }`;

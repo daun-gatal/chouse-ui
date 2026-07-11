@@ -1,7 +1,6 @@
 ---
 name: error-diagnosis
 description: Diagnose a ClickHouse server error (code/name/exception) and give a concrete, actionable fix.
-when_to_use: User pastes or asks about a ClickHouse error, exception, or error code (e.g. TOO_MANY_PARTS, MEMORY_LIMIT_EXCEEDED) and wants the cause + fix.
 ---
 
 ## WHEN TO USE
@@ -19,8 +18,8 @@ concrete solution — not generic advice.
 3. `get_server_info` — version context if the error is version-specific.
 
 ## REFERENCES TO LOAD
-- `load_reference` "system-table-reference" — BEFORE any raw `system.*` SELECT (exact column names).
-- `load_reference` "clickhouse-playbook" — when the fix implies a query/schema change.
+- the `system-table-reference` reference skill — BEFORE any raw `system.*` SELECT (exact column names).
+- the `clickhouse-playbook` reference skill — when the fix implies a query/schema change.
 
 ## RULES
 - Stay FAST: a few cheap lookups, then answer. Don't run heavy `system.query_log` scans.

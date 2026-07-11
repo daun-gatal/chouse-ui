@@ -13,7 +13,6 @@ export const PROVIDER_TYPES = [
   'openai',
   'anthropic',
   'google',
-  'huggingface',
   'openai-compatible',
 ] as const;
 
@@ -31,7 +30,6 @@ export const PROVIDER_REQUIREMENTS: Record<ProviderType, ProviderRequirements> =
   'openai': { requiresBaseUrl: false, requiresApiKey: true },
   'anthropic': { requiresBaseUrl: false, requiresApiKey: true },
   'google': { requiresBaseUrl: false, requiresApiKey: true },
-  'huggingface': { requiresBaseUrl: false, requiresApiKey: true },
   'openai-compatible': { requiresBaseUrl: true, requiresApiKey: true },
 };
 

@@ -181,7 +181,7 @@ export default function ConfigsTab() {
                             <TableHeader>
                                 <TableRow className="border-ink-500 hover:bg-transparent">
                                     <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Deployment name</TableHead>
-                                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Base model (SDK)</TableHead>
+                                    <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Base model</TableHead>
                                     <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Provider</TableHead>
                                     <TableHead className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Status</TableHead>
                                     <TableHead className="text-right font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Actions</TableHead>

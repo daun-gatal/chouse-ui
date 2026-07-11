@@ -1,7 +1,6 @@
 ---
 name: parts-diagnosis
 description: Diagnose part/partition health of a MergeTree table — too many parts, slow/stuck merges, bad partition key.
-when_to_use: User asks why a table has too many parts, slow merges, TOO_MANY_PARTS insert failures, or whether its partitioning is healthy.
 ---
 
 ## WHEN TO USE
@@ -16,8 +15,8 @@ too fine. Investigate that one table read-only, then give a concrete fix.
 4. `get_table_size` — overall scale context.
 
 ## REFERENCES TO LOAD
-- `load_reference` "system-table-reference" — exact `system.parts` / `system.merges` / `system.mutations` columns.
-- `load_reference` "clickhouse-playbook" — the mutations/merges + partition-cardinality guidance.
+- the `system-table-reference` reference skill — exact `system.parts` / `system.merges` / `system.mutations` columns.
+- the `clickhouse-playbook` reference skill — the mutations/merges + partition-cardinality guidance.
 
 ## RULES
 - Ground the cause in the real part counts/sizes you found — never invent numbers.
