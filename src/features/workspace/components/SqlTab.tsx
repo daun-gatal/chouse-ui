@@ -161,7 +161,6 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
 
   // Optimizer state
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(false);
-  const [optimizerAutoStart, setOptimizerAutoStart] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<QueryOptimization | null>(null);
   const [optimizationReason, setOptimizationReason] = useState<string>("");
 
@@ -191,7 +190,6 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
     // reset previous result when running new query
     // reset previous result when running new query
     setOptimizationResult(null);
-    setOptimizerAutoStart(false);
     setOptimizationReason("");
 
     try {
@@ -206,7 +204,6 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
               action: {
                 label: "View",
                 onClick: () => {
-                  setOptimizerAutoStart(false);
                   setOptimizationReason(result.reason);
                   setIsOptimizerOpen(true);
                 }
@@ -227,7 +224,6 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
   // Handle manual optimization trigger
   const handleOptimize = useCallback((query: string) => {
     setDebugQueryString(query);
-    setOptimizerAutoStart(false);
     setIsOptimizerOpen(true);
   }, []);
 
@@ -852,7 +848,6 @@ const SqlTab: React.FC<SqlTabProps> = ({ tabId }) => {
         query={debugQueryString || (typeof tab?.content === 'string' ? tab.content : '')}
         database={typeof tab?.content === 'object' ? tab.content.database : undefined}
         initialResult={optimizationResult}
-        autoStart={optimizerAutoStart}
         initialPrompt={optimizationReason ? `Detected potential issue: ${optimizationReason}` : undefined}
         onAccept={(optimizedQuery) => {
           updateTab(tabId, { content: optimizedQuery });

@@ -4,24 +4,18 @@ import { ResponsiveDraggableDialog } from '@/components/common/ResponsiveDraggab
 import { Button } from '@/components/ui/button';
 import { Sparkles, Loader2, Check, Copy, AlertCircle, RefreshCw, FileText } from 'lucide-react';
 import { optimizeQuery, optimizeQueryFromLog } from '@/api/query';
-import { fetchAiModels, type AiModelOption, type QueryOptimization } from '@/api/ai';
+import type { QueryOptimization } from '@/api/ai';
 import { OptimizationAnalysis } from '@/features/fleet/components/DoctorReportView';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { log } from '@/lib/log';
 import { useWindowSize } from '@/hooks/useWindowSize';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { DiffEditor } from './DiffEditor';
 import ReactMarkdown from 'react-markdown';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+import { AiContextPreview } from './AiContextPreview';
+import { AiModelSelect, useAiModelSelection } from './AiModelSelect';
 
 interface OptimizeQueryDialogProps {
     isOpen: boolean;
@@ -30,7 +24,6 @@ interface OptimizeQueryDialogProps {
     database?: string;
     onAccept: (optimizedQuery: string) => void;
     initialResult?: QueryOptimization | null;
-    autoStart?: boolean;
     initialPrompt?: string;
     /**
      * When set, the dialog runs in "log mode": it optimizes the full query
@@ -52,7 +45,6 @@ export function OptimizeQueryDialog({
     database,
     onAccept,
     initialResult,
-    autoStart = false,
     initialPrompt,
     queryId,
     acceptLabel = 'Apply Changes',
@@ -62,28 +54,16 @@ export function OptimizeQueryDialog({
     const [result, setResult] = useState<QueryOptimization | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [additionalPrompt, setAdditionalPrompt] = useState(initialPrompt || DEFAULT_OPTIMIZATION_PROMPT);
-    const [aiModels, setAiModels] = useState<AiModelOption[]>([]);
-    const [selectedModelId, setSelectedModelId] = useState<string>('');
+    const {
+        models: aiModels,
+        selectedModelId,
+        setSelectedModelId,
+        isLoading: areModelsLoading,
+        error: modelsError,
+    } = useAiModelSelection(isOpen);
     const abortControllerRef = useRef<AbortController | null>(null);
     const { breakpoint } = useWindowSize();
     const isNarrow = breakpoint === 'mobile' || breakpoint === 'tablet';
-
-    // Fetch AI Models
-    useEffect(() => {
-        if (isOpen) {
-            fetchAiModels().then(models => {
-                setAiModels(models);
-                const defaultModel = models.find(m => m.isDefault);
-                if (defaultModel) {
-                    setSelectedModelId(defaultModel.id);
-                } else if (models.length > 0) {
-                    setSelectedModelId(models[0].id);
-                }
-            }).catch((e) => log.error('Failed to fetch AI models', e));
-        }
-    }, [isOpen]);
-
-
 
     // Reset or Initialize when dialog opens
     useEffect(() => {
@@ -111,13 +91,6 @@ export function OptimizeQueryDialog({
             }
         }
     }, [isOpen, initialResult, initialPrompt]);
-
-    // Auto-start optimization if requested
-    useEffect(() => {
-        if (isOpen && autoStart && !result && !isOptimizing && !initialResult) {
-            handleOptimize();
-        }
-    }, [isOpen, autoStart, result, isOptimizing, initialResult]);
 
     const handleOptimize = async () => {
         if (abortControllerRef.current) {
@@ -169,17 +142,6 @@ export function OptimizeQueryDialog({
         }
         onClose();
     };
-
-    // Auto-optimize on first open if no result
-    useEffect(() => {
-        if (isOpen && !result && !isOptimizing && query?.trim()) {
-            // Optional: Auto-start optimization?
-            // handleOptimize();
-            // Let's wait for user to click "Optimize" to allow them to adjust prompt first?
-            // Or maybe just run it. The previous implementation had it commented out.
-            // Let's stick to manual trigger for now to give users control over the prompt.
-        }
-    }, [isOpen]);
 
     const dialogTitle = (
         <div className="flex items-center justify-between gap-2 w-full">
@@ -293,14 +255,19 @@ export function OptimizeQueryDialog({
                                                 </Button>
                                             </div>
                                         ) : (
-                                            <div className="text-center p-8 max-w-md">
-                                                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xs border border-brand/40 bg-brand/5 mb-4">
-                                                    <Sparkles className="w-5 h-5 text-brand" />
-                                                </div>
-                                                <h3 className="text-[14px] font-semibold text-paper mb-2 tracking-tight">Ready to Optimize</h3>
-                                                <p className="text-[12px] text-paper-muted mb-6">
-                                                    Click "Optimize Query" to analyze your SQL and get performance recommendations.
-                                                </p>
+                                            <div className="h-full w-full overflow-auto p-4 sm:p-6">
+                                                <AiContextPreview
+                                                    content={query}
+                                                    label={isLogMode ? 'Attached query log SQL' : 'Attached Explorer query'}
+                                                    metadata={[
+                                                        ...(database ? [`Database · ${database}`] : []),
+                                                        ...(queryId ? [`Query ID · ${queryId}`] : []),
+                                                    ]}
+                                                    note={isLogMode
+                                                        ? 'The backend resolves the complete query text from system.query_log using this query ID before optimization.'
+                                                        : 'Review the SQL that will be attached to the optimization request before submitting.'}
+                                                    className="min-h-full"
+                                                />
                                             </div>
                                         )}
                                     </div>
@@ -316,35 +283,14 @@ export function OptimizeQueryDialog({
 
                                 {/* Controls Section */}
                                 <div className="space-y-5">
-                                    <div className="space-y-2">
-                                        <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">
-                                            AI Model
-                                        </Label>
-                                        <Select
-                                            value={selectedModelId}
-                                            onValueChange={(value) => setSelectedModelId(value)}
-                                        >
-                                            <SelectTrigger className="w-full h-10 rounded-xs border-ink-500 bg-ink-200 text-[12px] text-paper focus-visible:border-brand focus-visible:ring-0 transition-colors">
-                                                <SelectValue placeholder="Select an AI Model" />
-                                            </SelectTrigger>
-                                            <SelectContent className="rounded-xs border-ink-500 bg-ink-100">
-                                                {aiModels.length === 0 ? (
-                                                    <div className="p-4 text-center text-[12px] text-paper-dim">
-                                                        No AI models configured.<br />Please add one in the Admin UI.
-                                                    </div>
-                                                ) : (
-                                                    aiModels.map(m => (
-                                                        <SelectItem key={m.id} value={m.id} className="focus:bg-ink-200 focus:text-paper cursor-pointer py-2 rounded-xs mx-1 my-0.5">
-                                                            <div className="flex flex-col gap-0.5 text-left">
-                                                                <span className="font-medium text-[12px] text-paper">{m.label}</span>
-                                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim leading-none">{m.provider || 'AI Provider'}</span>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))
-                                                )}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                    <AiModelSelect
+                                        models={aiModels}
+                                        value={selectedModelId}
+                                        onValueChange={setSelectedModelId}
+                                        disabled={isOptimizing}
+                                        isLoading={areModelsLoading}
+                                        error={modelsError}
+                                    />
 
                                     {!isLogMode && (
                                         <div className="space-y-2">
@@ -363,7 +309,7 @@ export function OptimizeQueryDialog({
 
                                     <Button
                                         onClick={handleOptimize}
-                                        disabled={isOptimizing}
+                                        disabled={isOptimizing || !selectedModelId || aiModels.length === 0}
                                         className={cn(
                                             "w-full h-10 gap-2 rounded-xs font-mono text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors",
                                             isOptimizing

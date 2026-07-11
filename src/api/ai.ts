@@ -5,8 +5,8 @@
  * { capability, input, modelId }. The backend capability registry is the single
  * source of truth; this module is the single source of truth on the frontend.
  *
- * Streaming chat keeps its dedicated client (api/ai-chat.ts) — it's SSE + thread
- * history, a genuinely different surface — but shares the same backend engine.
+ * Invoked chat keeps its dedicated client for thread history, while sharing the
+ * same backend engine and model configurations.
  */
 
 import { api } from "./client";
@@ -89,7 +89,7 @@ export async function fetchAiModels(): Promise<AiModelOption[]> {
 export interface AiCapabilityInfo {
   id: string;
   permission: string;
-  delivery: "structured" | "stream";
+  delivery: "structured" | "invoke";
   allowed: boolean;
 }
 

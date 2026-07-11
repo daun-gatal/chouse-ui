@@ -11,7 +11,7 @@ import {
     deleteThread,
     updateThreadTitle,
     getAiModels,
-    streamChatMessage,
+    invokeChatMessage,
 } from './ai-chat';
 
 describe('AI Chat API', () => {
@@ -102,19 +102,14 @@ describe('AI Chat API', () => {
         });
     });
 
-    describe('streamChatMessage', () => {
-        it('should yield text-delta and done events from SSE stream', async () => {
-            const collected: Array<{ type: string; text?: string }> = [];
-            for await (const delta of streamChatMessage('thread-1', 'Hello', undefined, undefined)) {
-                collected.push({ type: delta.type, text: delta.text });
-                if (delta.type === 'done' || delta.type === 'error') break;
-            }
-            expect(collected.some((d) => d.type === 'text-delta')).toBe(true);
-            expect(collected.some((d) => d.type === 'done')).toBe(true);
-            const textDeltas = collected.filter((d) => d.type === 'text-delta' && d.text);
-            const fullText = textDeltas.map((d) => d.text).join('');
-            expect(fullText).toContain('Hello');
-            expect(fullText).toContain('world');
+    describe('invokeChatMessage', () => {
+        it('should return the complete response and activity in one payload', async () => {
+            const result = await invokeChatMessage('thread-1', 'Hello', undefined, undefined);
+            expect(result.content).toBe('Hello world');
+            expect(result.toolCalls).toEqual([
+                { name: 'list_databases', args: {}, result: ['default'] },
+            ]);
+            expect(result.chartSpecs).toEqual([]);
         });
     });
 });

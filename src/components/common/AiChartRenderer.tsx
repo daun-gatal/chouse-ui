@@ -19,6 +19,8 @@ import {
     buildColorPalette,
     resolveYAxes,
     formatAxisValue,
+    humanizeAxisName,
+    normalizeChartSpec,
     tooltipStyle,
     tooltipLabelStyle,
 } from './AiChartUtils';
@@ -30,7 +32,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Download, Image, FileText } from 'lucide-react';
+import { BarChart3, Download, Image, FileText } from 'lucide-react';
 import {
     ResponsiveContainer,
     BarChart,
@@ -58,6 +60,7 @@ import {
     FunnelChart,
     Funnel,
     LabelList,
+    Brush,
 } from 'recharts';
 
 /**
@@ -166,19 +169,49 @@ interface AiChartRendererProps {
 }
 
 export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElement | null {
+    const normalized = useMemo(() => normalizeChartSpec(spec), [spec]);
+
+    if (!normalized.spec) {
+        return (
+            <div className="mb-1 mt-3 flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-xs border border-dashed border-ink-500 bg-ink-100 px-4 text-center">
+                <BarChart3 className="h-5 w-5 text-paper-faint" aria-hidden />
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-paper-dim">
+                    Chart unavailable
+                </span>
+                <span className="max-w-sm text-[11px] leading-relaxed text-paper-faint">
+                    {normalized.reason ?? 'No plottable data was returned.'}
+                </span>
+            </div>
+        );
+    }
+
+    return <ChartRendererContent spec={normalized.spec} />;
+}
+
+function ChartRendererContent({ spec }: AiChartRendererProps): React.ReactElement {
     const { chartType, title, rows, xAxis, yAxis, colorScheme } = spec;
     const [containerRef, containerWidth] = useContainerWidth();
 
     const palette = useMemo(() => buildColorPalette(colorScheme), [colorScheme]);
     const yAxes = useMemo(() => resolveYAxes(yAxis), [yAxis]);
+    const yAxisMagnitudes = useMemo(() => new Map(yAxes.map((axis) => [
+        axis,
+        Math.max(...rows.map((row) => Math.abs(Number(row[axis] ?? 0))).filter(Number.isFinite), 0),
+    ])), [rows, yAxes]);
+    const canUseDualScale = yAxes.length === 2 && !['stacked_bar', 'stacked_area'].includes(chartType);
+    const [firstMagnitude, secondMagnitude] = yAxes.map((axis) => yAxisMagnitudes.get(axis) ?? 0);
+    const smallerMagnitude = Math.min(firstMagnitude, secondMagnitude);
+    const largerMagnitude = Math.max(firstMagnitude, secondMagnitude);
+    const useDualScale = canUseDualScale && smallerMagnitude > 0 && largerMagnitude / smallerMagnitude >= 50;
+    const rightAxisSeries = useDualScale
+        ? (firstMagnitude <= secondMagnitude ? yAxes[0] : yAxes[1])
+        : undefined;
+    const leftAxisSeries = yAxes.find((axis) => axis !== rightAxisSeries) ?? yAxes[0];
+    const axisForSeries = (axis: string): 'left' | 'right' => axis === rightAxisSeries ? 'right' : 'left';
 
-    if (!rows || rows.length === 0) {
-        return (
-            <div className="flex h-24 items-center justify-center font-mono text-[11px] uppercase tracking-[0.18em] text-paper-dim">
-                No data to display
-            </div>
-        );
-    }
+    const xAxisLabel = humanizeAxisName(xAxis);
+    const yAxisLabels = chartType === 'histogram' ? ['Count'] : yAxes.map(humanizeAxisName);
+    const needsAngledTicks = rows.length > 8;
 
     const sharedXAxis = (
         <XAxis
@@ -186,9 +219,16 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
             tick={{ fill: '#71717a', fontSize: 10 }}
             axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
             tickLine={false}
+            interval="preserveStartEnd"
+            minTickGap={18}
+            angle={needsAngledTicks ? -28 : 0}
+            textAnchor={needsAngledTicks ? 'end' : 'middle'}
+            height={needsAngledTicks ? 58 : 42}
+            label={{ value: xAxisLabel, position: 'insideBottom', offset: 0, fill: '#71717a', fontSize: 10 }}
             tickFormatter={(v: unknown) => {
                 const str = String(v);
-                return str.length > 12 ? str.slice(0, 11) + '…' : str;
+                const compact = str.includes('T') ? str.replace('T', ' ').replace(/:\d{2}(?:\.\d+)?Z?$/, '') : str;
+                return compact.length > 16 ? compact.slice(0, 15) + '…' : compact;
             }}
         />
     );
@@ -199,8 +239,56 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
             axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
             tickLine={false}
             tickFormatter={formatAxisValue}
-            width={55}
+            width={64}
+            label={yAxes.length === 1 ? {
+                value: humanizeAxisName(yAxes[0]),
+                angle: -90,
+                position: 'insideLeft',
+                offset: 8,
+                fill: '#71717a',
+                fontSize: 10,
+            } : undefined}
         />
+    );
+
+    const seriesYAxes = (
+        <>
+            <YAxis
+                yAxisId="left"
+                tick={{ fill: '#71717a', fontSize: 10 }}
+                axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
+                tickLine={false}
+                tickFormatter={formatAxisValue}
+                width={64}
+                label={leftAxisSeries ? {
+                    value: humanizeAxisName(leftAxisSeries),
+                    angle: -90,
+                    position: 'insideLeft',
+                    offset: 8,
+                    fill: '#71717a',
+                    fontSize: 10,
+                } : undefined}
+            />
+            {rightAxisSeries && (
+                <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fill: '#71717a', fontSize: 10 }}
+                    axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
+                    tickLine={false}
+                    tickFormatter={formatAxisValue}
+                    width={64}
+                    label={{
+                        value: humanizeAxisName(rightAxisSeries),
+                        angle: 90,
+                        position: 'insideRight',
+                        offset: 8,
+                        fill: '#71717a',
+                        fontSize: 10,
+                    }}
+                />
+            )}
+        </>
     );
 
     const sharedGrid = (
@@ -214,16 +302,18 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
             itemStyle={{ color: '#d4d4d8', fontSize: '11px' }}
             formatter={(value: unknown, name?: string) => [
                 formatAxisValue(value),
-                yAxes.length > 1 ? (name ?? '') : ''
+                humanizeAxisName(name ?? yAxes[0] ?? '')
             ]}
-            separator={yAxes.length > 1 ? ': ' : ''}
-            cursor={false}
+            labelFormatter={(label: unknown) => `${xAxisLabel}: ${String(label)}`}
+            separator=": "
+            cursor={{ fill: 'rgba(139,92,246,0.08)', stroke: 'rgba(139,92,246,0.18)' }}
         />
     );
 
     const sharedLegend = yAxes.length > 1 ? (
         <Legend
             wrapperStyle={{ fontSize: '10px', color: '#71717a', paddingTop: '8px' }}
+            formatter={(value: string) => humanizeAxisName(value)}
         />
     ) : null;
 
@@ -283,7 +373,10 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         URL.revokeObjectURL(url);
     }, [rows, baseName]);
 
-    const CHART_HEIGHT = 260;
+    const CHART_HEIGHT = chartType === 'horizontal_bar'
+        ? Math.min(520, Math.max(280, displayRows.length * 30 + 90))
+        : 320;
+    const chartMargin = { top: 8, right: rightAxisSeries ? 8 : 16, bottom: 4, left: 4 };
 
     // ============================================
     // Chart rendering per type
@@ -298,16 +391,18 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         case 'stacked_bar': {
             const isStacked = chartType === 'stacked_bar';
             chartElement = (
-                <BarChart data={displayRows}>
+                <BarChart data={displayRows} accessibilityLayer margin={chartMargin}>
                     {sharedGrid}
                     {sharedXAxis}
-                    {sharedYAxis}
+                    {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
                             dataKey={col}
+                            name={humanizeAxisName(col)}
+                            yAxisId={axisForSeries(col)}
                             fill={palette[i % palette.length]}
                             stackId={isStacked ? 'a' : undefined}
                             radius={isStacked ? [0, 0, 0, 0] : [3, 3, 0, 0]}
@@ -322,16 +417,18 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         // ---- GROUPED BAR ----
         case 'grouped_bar': {
             chartElement = (
-                <BarChart data={displayRows} barCategoryGap="25%">
+                <BarChart data={displayRows} barCategoryGap="25%" accessibilityLayer margin={chartMargin}>
                     {sharedGrid}
                     {sharedXAxis}
-                    {sharedYAxis}
+                    {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
                     {yAxes.map((col, i) => (
                         <Bar
                             key={col}
                             dataKey={col}
+                            name={humanizeAxisName(col)}
+                            yAxisId={axisForSeries(col)}
                             fill={palette[i % palette.length]}
                             radius={[3, 3, 0, 0]}
                             maxBarSize={40}
@@ -345,7 +442,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         // ---- HORIZONTAL BAR ----
         case 'horizontal_bar': {
             chartElement = (
-                <BarChart data={displayRows} layout="vertical">
+                <BarChart data={displayRows} layout="vertical" accessibilityLayer margin={{ ...chartMargin, left: 12 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
                     <XAxis
                         type="number"
@@ -372,6 +469,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                         <Bar
                             key={col}
                             dataKey={col}
+                            name={humanizeAxisName(col)}
                             fill={palette[i % palette.length]}
                             radius={[0, 3, 3, 0]}
                             maxBarSize={28}
@@ -386,10 +484,10 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         case 'line':
         case 'multi_line': {
             chartElement = (
-                <LineChart data={rows}>
+                <LineChart data={rows} accessibilityLayer margin={chartMargin}>
                     {sharedGrid}
                     {sharedXAxis}
-                    {sharedYAxis}
+                    {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
                     {yAxes.map((col, i) => (
@@ -397,12 +495,25 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                             key={col}
                             type="monotone"
                             dataKey={col}
+                            name={humanizeAxisName(col)}
+                            yAxisId={axisForSeries(col)}
                             stroke={palette[i % palette.length]}
                             strokeWidth={2}
                             dot={rows.length <= 50}
                             activeDot={{ r: 4 }}
+                            connectNulls={false}
                         />
                     ))}
+                    {rows.length > 30 && (
+                        <Brush
+                            dataKey={xAxis}
+                            height={18}
+                            travellerWidth={8}
+                            stroke={palette[0]}
+                            fill="#171923"
+                            tickFormatter={() => ''}
+                        />
+                    )}
                 </LineChart>
             );
             break;
@@ -413,7 +524,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         case 'stacked_area': {
             const isStacked = chartType === 'stacked_area';
             chartElement = (
-                <AreaChart data={rows}>
+                <AreaChart data={rows} accessibilityLayer margin={chartMargin}>
                     <defs>
                         {yAxes.map((col, i) => (
                             <linearGradient key={col} id={`grad-${i}`} x1="0" y1="0" x2="0" y2="1">
@@ -424,7 +535,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                     </defs>
                     {sharedGrid}
                     {sharedXAxis}
-                    {sharedYAxis}
+                    {seriesYAxes}
                     {sharedTooltip}
                     {sharedLegend}
                     {yAxes.map((col, i) => (
@@ -432,12 +543,24 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                             key={col}
                             type="monotone"
                             dataKey={col}
+                            name={humanizeAxisName(col)}
+                            yAxisId={axisForSeries(col)}
                             stroke={palette[i % palette.length]}
                             strokeWidth={2}
                             fill={`url(#grad-${i})`}
                             stackId={isStacked ? 'a' : undefined}
                         />
                     ))}
+                    {rows.length > 30 && (
+                        <Brush
+                            dataKey={xAxis}
+                            height={18}
+                            travellerWidth={8}
+                            stroke={palette[0]}
+                            fill="#171923"
+                            tickFormatter={() => ''}
+                        />
+                    )}
                 </AreaChart>
             );
             break;
@@ -453,7 +576,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
             const pieData = aggregatePieDonutData(rawPieData, PIE_DONUT_MAX_SLICES);
             const showPieLabels = pieData.length <= PIE_LABEL_MAX_SLICES;
             chartElement = (
-                <PieChart>
+                <PieChart accessibilityLayer>
                     <Pie
                         data={pieData}
                         dataKey="value"
@@ -499,7 +622,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
             const donutData = aggregatePieDonutData(rawDonutData, PIE_DONUT_MAX_SLICES);
             const total = donutData.reduce((s, d) => s + d.value, 0);
             chartElement = (
-                <PieChart>
+                <PieChart accessibilityLayer>
                     <Pie
                         data={donutData}
                         dataKey="value"
@@ -549,7 +672,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                 y: Number(r[yCol] ?? 0),
             }));
             chartElement = (
-                <ScatterChart>
+                <ScatterChart accessibilityLayer margin={chartMargin}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                     <XAxis
                         type="number"
@@ -593,7 +716,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                 return entry;
             });
             chartElement = (
-                <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%">
+                <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%" accessibilityLayer>
                     <PolarGrid stroke="rgba(255,255,255,0.08)" />
                     <PolarAngleAxis dataKey="subject" tick={{ fill: '#71717a', fontSize: 10 }} />
                     <PolarRadiusAxis tick={{ fill: '#71717a', fontSize: 9 }} tickFormatter={formatAxisValue} />
@@ -669,7 +792,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                 fill: palette[i % palette.length],
             }));
             chartElement = (
-                <FunnelChart>
+                <FunnelChart accessibilityLayer>
                     <Tooltip
                         contentStyle={tooltipStyle}
                         labelStyle={tooltipLabelStyle}
@@ -689,7 +812,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         case 'histogram': {
             const bins = buildHistogramBins(rows, xAxis);
             chartElement = (
-                <BarChart data={bins} barCategoryGap="2%">
+                <BarChart data={bins} barCategoryGap="2%" accessibilityLayer margin={chartMargin}>
                     {sharedGrid}
                     <XAxis
                         dataKey="bin"
@@ -722,12 +845,12 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
         default: {
             // Unknown chart type — fall back to a simple bar chart
             chartElement = (
-                <BarChart data={rows}>
+                <BarChart data={rows} accessibilityLayer margin={chartMargin}>
                     {sharedGrid}
                     {sharedXAxis}
-                    {sharedYAxis}
+                    {seriesYAxes}
                     {sharedTooltip}
-                    <Bar dataKey={yAxes[0]} fill={palette[0]} radius={[3, 3, 0, 0]} maxBarSize={60} />
+                    <Bar dataKey={yAxes[0]} yAxisId="left" fill={palette[0]} radius={[3, 3, 0, 0]} maxBarSize={60} />
                 </BarChart>
             );
         }
@@ -738,12 +861,23 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
     const chartHeight = CHART_HEIGHT - 20;
 
     return (
-        <div ref={containerRef} className="mb-1 mt-3 min-w-[320px] overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
-            {title && (
-                <div className="border-b border-ink-500 px-4 pb-1 pt-3 text-xs font-semibold text-paper">
-                    {title}
+        <div ref={containerRef} className="mb-1 mt-3 min-w-0 w-full overflow-hidden rounded-md border border-ink-500 bg-ink-100 shadow-sm shadow-black/10">
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-ink-500 px-4 py-3">
+                <div className="min-w-0">
+                    <div className="truncate text-xs font-semibold text-paper">
+                        {title || `${humanizeAxisName(chartType)} chart`}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-faint">
+                        <span className="rounded bg-ink-200 px-1.5 py-0.5">X · {xAxisLabel}</span>
+                        <span className="rounded bg-ink-200 px-1.5 py-0.5">
+                            Y · {yAxisLabels.join(' · ')}
+                        </span>
+                    </div>
                 </div>
-            )}
+                <span className="rounded-full border border-ink-500 bg-ink-200 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-dim">
+                    {rows.length.toLocaleString()} rows
+                </span>
+            </div>
             <div className="px-2 pb-2 pt-3" style={{ height: `${CHART_HEIGHT}px` }}>
                 {chartWidth > 0 && (
                     <ResponsiveContainer width={chartWidth} height={chartHeight}>
@@ -751,7 +885,7 @@ export function AiChartRenderer({ spec }: AiChartRendererProps): React.ReactElem
                     </ResponsiveContainer>
                 )}
             </div>
-            <div className="flex items-center justify-between gap-2 px-4 pb-2">
+            <div className="flex items-center justify-between gap-2 border-t border-ink-500 px-4 py-2">
                 <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-paper-faint">
                     {chartType.replace(/_/g, ' ')}
                     {barFamilyTruncated

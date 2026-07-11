@@ -39,3 +39,6 @@ data/*
 
 # Local config files
 .config.yaml
+
+# Claude config
+.claude

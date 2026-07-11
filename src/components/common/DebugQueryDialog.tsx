@@ -4,25 +4,18 @@ import { ResponsiveDraggableDialog } from '@/components/common/ResponsiveDraggab
 import { Button } from '@/components/ui/button';
 import { Sparkles, Loader2, Check, Copy, AlertCircle, RefreshCw, FileText, ArrowRight, Bug, Terminal } from 'lucide-react';
 import { debugQuery } from '@/api/query';
-import { getAiModels, type AiModelSimple } from '@/api/ai-chat';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { log } from '@/lib/log';
 import { DiffEditor } from './DiffEditor';
+import { AiContextPreview } from './AiContextPreview';
+import { AiModelSelect, useAiModelSelection } from './AiModelSelect';
 import ReactMarkdown from 'react-markdown';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 
 interface DebugQueryDialogProps {
     isOpen: boolean;
@@ -53,24 +46,14 @@ export function DebugQueryDialog({
     } | null>(null);
     const [apiError, setApiError] = useState<string | null>(null);
     const [additionalPrompt, setAdditionalPrompt] = useState(DEFAULT_DEBUG_PROMPT);
-    const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
-    const [selectedModelId, setSelectedModelId] = useState<string>('');
+    const {
+        models: aiModels,
+        selectedModelId,
+        setSelectedModelId,
+        isLoading: areModelsLoading,
+        error: modelsError,
+    } = useAiModelSelection(isOpen);
     const abortControllerRef = useRef<AbortController | null>(null);
-
-    // Fetch AI Models
-    useEffect(() => {
-        if (isOpen) {
-            getAiModels().then(models => {
-                setAiModels(models);
-                const defaultModel = models.find(m => m.isDefault);
-                if (defaultModel) {
-                    setSelectedModelId(defaultModel.id);
-                } else if (models.length > 0) {
-                    setSelectedModelId(models[0].id);
-                }
-            }).catch((e) => log.error('Failed to fetch AI models', e));
-        }
-    }, [isOpen]);
 
     // Reset when dialog closes
     useEffect(() => {
@@ -181,7 +164,7 @@ export function DebugQueryDialog({
                 {!isDebugging && result && (
                     <div className="hidden sm:flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-3 py-1.5">
                         <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Model</span>
-                        <span className="text-[11px] font-medium text-paper truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.name || 'AI Model'}</span>
+                        <span className="text-[11px] font-medium text-paper truncate max-w-[120px]">{aiModels.find(m => m.id === selectedModelId)?.label || 'AI Model'}</span>
                     </div>
                 )}
             </div>
@@ -266,34 +249,21 @@ export function DebugQueryDialog({
                                     <p className="text-[12px] text-paper-muted max-w-md mx-auto leading-relaxed">Select an AI model to analyze your query for schema compliance, logic errors, and optimization opportunities.</p>
                                 </div>
 
-                                <div className="w-full max-w-lg space-y-5 text-left rounded-xs border border-ink-500 bg-ink-200 p-5">
-                                    <div className="space-y-2">
-                                        <Label className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Select AI Model</Label>
-                                        <Select
+                                <div className="w-full max-w-3xl space-y-4 text-left">
+                                    <AiContextPreview
+                                        content={query}
+                                        label="Attached Explorer query"
+                                        metadata={database ? [`Database · ${database}`] : []}
+                                        note={queryError ? `Attached error · ${queryError}` : undefined}
+                                    />
+                                    <div className="space-y-4 rounded-xs border border-ink-500 bg-ink-200 p-5">
+                                        <AiModelSelect
+                                            models={aiModels}
                                             value={selectedModelId}
-                                            onValueChange={(value) => setSelectedModelId(value)}
-                                        >
-                                            <SelectTrigger className="w-full h-10 rounded-xs border-ink-500 bg-ink-100 text-[12px] text-paper hover:bg-ink-200 focus-visible:border-brand focus-visible:ring-0 transition-colors">
-                                                <SelectValue placeholder="Select an AI Model" />
-                                            </SelectTrigger>
-                                            <SelectContent className="rounded-xs border-ink-500 bg-ink-100 max-h-[220px]">
-                                                {aiModels.length === 0 ? (
-                                                    <div className="p-4 text-center text-[12px] text-paper-dim">
-                                                        No AI models configured.<br />Please add one in the Admin UI.
-                                                    </div>
-                                                ) : (
-                                                    aiModels.map(m => (
-                                                        <SelectItem key={m.id} value={m.id} className="focus:bg-ink-200 focus:text-paper cursor-pointer py-2 rounded-xs mx-1 my-0.5">
-                                                            <div className="flex flex-col gap-0.5 text-left">
-                                                                <span className="font-medium text-[12px] text-paper">{m.name}</span>
-                                                                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">{m.provider || 'AI Provider'}</span>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))
-                                                )}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                            onValueChange={setSelectedModelId}
+                                            isLoading={areModelsLoading}
+                                            error={modelsError}
+                                        />
                                     <Button
                                         onClick={handleDebug}
                                         className="w-full h-10 rounded-xs bg-brand font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft"
@@ -302,6 +272,7 @@ export function DebugQueryDialog({
                                         <Sparkles className="w-3.5 h-3.5 mr-2" />
                                         Analyze Query
                                     </Button>
+                                    </div>
                                 </div>
                             </div>
                         ) : !result && isDebugging ? (

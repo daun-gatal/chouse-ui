@@ -120,6 +120,25 @@ export function inferYAxes(
   return fallback ? fallback.name : columns[0]?.name ?? "";
 }
 
+function resolveColumnName(
+  columns: { name: string; type: string }[],
+  requested?: string,
+): string | undefined {
+  if (!requested) return undefined;
+  return columns.find((column) => column.name === requested)?.name ??
+    columns.find((column) => column.name.toLowerCase() === requested.trim().toLowerCase())?.name;
+}
+
+function inferChartXAxis(
+  columns: { name: string; type: string }[],
+  chartType: string,
+): string {
+  if (chartType === "scatter" || chartType === "histogram") {
+    return columns.find((column) => isNumericType(column.type))?.name ?? inferXAxis(columns);
+  }
+  return inferXAxis(columns);
+}
+
 // ============================================
 // Core Tools (schema + query — shared across all agents)
 // ============================================
@@ -818,7 +837,7 @@ export function createCoreTools(ctx: AgentToolContext) {
         }
         try {
           let limitedSql = cleanedSql;
-          if (!normalized.includes("LIMIT")) {
+          if (!/\bLIMIT\b/i.test(cleanedSql)) {
             limitedSql = `${cleanedSql} LIMIT 1000`;
           }
           const result = await ctx.clickhouseService.executeQuery(
@@ -939,8 +958,14 @@ export interface ChartSpec {
   colorScheme: string;
 }
 
+const CHART_TYPES = [
+  "bar", "horizontal_bar", "grouped_bar", "stacked_bar",
+  "line", "multi_line", "area", "stacked_area", "pie", "donut",
+  "scatter", "radar", "treemap", "funnel", "histogram", "heatmap",
+] as const;
+
 /**
- * Creates the render_chart tool — chat-only (requires SSE chart-data events).
+ * Creates the render_chart tool — chat-only.
  */
 export function createChartTool(ctx: AgentToolContext) {
   return {
@@ -958,7 +983,7 @@ export function createChartTool(ctx: AgentToolContext) {
             .describe(
               "SELECT query whose result will be charted. Must be read-only."
             ),
-          chartType: z.string().describe(
+          chartType: z.enum(CHART_TYPES).describe(
             "Chart type: bar | horizontal_bar | grouped_bar | stacked_bar | line | multi_line | area | stacked_area | pie | donut | scatter | radar | treemap | funnel | histogram | heatmap"
           ),
           xAxis: z
@@ -1032,7 +1057,7 @@ export function createChartTool(ctx: AgentToolContext) {
           if (!normalized.includes("LIMIT")) {
             const limit =
               chartType === "pie" || chartType === "donut" ? 20 : 500;
-            chartSql = `${sql.replace(/;\s*$/, "")} LIMIT ${limit}`;
+            chartSql = `${cleanedSql} LIMIT ${limit}`;
           }
 
           const result = await ctx.clickhouseService.executeQuery(
@@ -1040,7 +1065,7 @@ export function createChartTool(ctx: AgentToolContext) {
             "JSON"
           );
 
-          const columns: { name: string; type: string }[] = (
+          let columns: { name: string; type: string }[] = (
             result.meta ?? []
           ).map((col: { name: string; type: string }) => ({
             name: col.name,
@@ -1048,12 +1073,35 @@ export function createChartTool(ctx: AgentToolContext) {
           }));
           const rows = result.data as Record<string, unknown>[];
 
+          // Some OpenAI-compatible ClickHouse proxies omit JSON metadata even
+          // though row objects are present. Recover a usable contract from the
+          // first row instead of reporting a false empty-data result.
+          if (columns.length === 0 && rows.length > 0) {
+            columns = Object.entries(rows[0]).map(([name, value]) => ({
+              name,
+              type:
+                typeof value === "number" || typeof value === "bigint" ||
+                (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)))
+                  ? "Float64"
+                  : "String",
+            }));
+          }
+
           if (columns.length === 0 || rows.length === 0) {
             return { error: "Query returned no data to chart." };
           }
 
-          const resolvedXAxis = xAxis ?? inferXAxis(columns);
-          const resolvedYAxis = yAxis ?? inferYAxes(columns, resolvedXAxis);
+          const requestedXAxis = resolveColumnName(columns, xAxis);
+          const resolvedXAxis = requestedXAxis ?? inferChartXAxis(columns, chartType);
+          const requestedYAxes = (Array.isArray(yAxis) ? yAxis : yAxis ? [yAxis] : [])
+            .map((axis) => resolveColumnName(columns, axis))
+            .filter((axis): axis is string =>
+              !!axis && axis !== resolvedXAxis &&
+              isNumericType(columns.find((column) => column.name === axis)?.type ?? ""));
+          const inferredYAxis = inferYAxes(columns, resolvedXAxis);
+          const resolvedYAxis = requestedYAxes.length > 0
+            ? (requestedYAxes.length === 1 ? requestedYAxes[0] : requestedYAxes)
+            : inferredYAxis;
 
           if (!resolvedXAxis) {
             return {

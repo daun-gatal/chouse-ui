@@ -9,7 +9,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isChartSpec, resolveYAxes, formatAxisValue, buildColorPalette } from './AiChartUtils';
+import {
+    isChartSpec,
+    resolveYAxes,
+    formatAxisValue,
+    buildColorPalette,
+    humanizeAxisName,
+    normalizeChartSpec,
+    toFiniteNumber,
+} from './AiChartUtils';
 import type { ChartSpec } from '../../api/ai-chat';
 
 // ============================================
@@ -80,6 +88,99 @@ describe('AiChartRenderer / resolveYAxes', () => {
 
     it('should handle an empty array', () => {
         expect(resolveYAxes([])).toEqual([]);
+    });
+});
+
+describe('AiChartRenderer / normalizeChartSpec', () => {
+    it('repairs axis casing and converts ClickHouse numeric strings', () => {
+        const result = normalizeChartSpec({
+            chartType: 'line',
+            columns: [
+                { name: 'event_date', type: 'Date' },
+                { name: 'TotalBytes', type: 'UInt64' },
+            ],
+            rows: [
+                { event_date: '2026-07-10', TotalBytes: '1024' },
+                { event_date: '2026-07-11', TotalBytes: '2048' },
+            ],
+            xAxis: 'EVENT_DATE',
+            yAxis: 'totalbytes',
+            colorScheme: 'blue',
+        });
+
+        expect(result.reason).toBeUndefined();
+        expect(result.spec?.xAxis).toBe('event_date');
+        expect(result.spec?.yAxis).toBe('TotalBytes');
+        expect(result.spec?.rows[0].TotalBytes).toBe(1024);
+    });
+
+    it('infers axes when the requested names do not exist', () => {
+        const result = normalizeChartSpec({
+            chartType: 'bar',
+            columns: [
+                { name: 'database', type: 'String' },
+                { name: 'query_count', type: 'UInt64' },
+            ],
+            rows: [{ database: 'default', query_count: '12' }],
+            xAxis: 'missing_dimension',
+            yAxis: 'missing_measure',
+            colorScheme: 'violet',
+        });
+
+        expect(result.spec?.xAxis).toBe('database');
+        expect(result.spec?.yAxis).toBe('query_count');
+    });
+
+    it('uses numeric axes for scatter plots', () => {
+        const result = normalizeChartSpec({
+            chartType: 'scatter',
+            columns: [
+                { name: 'label', type: 'String' },
+                { name: 'duration_ms', type: 'Float64' },
+                { name: 'read_rows', type: 'UInt64' },
+            ],
+            rows: [{ label: 'q1', duration_ms: '4.5', read_rows: '100' }],
+            xAxis: 'label',
+            yAxis: 'duration_ms',
+            colorScheme: 'green',
+        });
+
+        expect(result.spec?.xAxis).toBe('duration_ms');
+        expect(result.spec?.yAxis).toBe('read_rows');
+    });
+
+    it('returns a useful reason for empty and non-numeric data', () => {
+        expect(normalizeChartSpec({ rows: [] }).reason).toContain('no rows');
+        expect(normalizeChartSpec({
+            chartType: 'bar',
+            rows: [{ category: 'A', status: 'ok' }],
+            columns: [
+                { name: 'category', type: 'String' },
+                { name: 'status', type: 'String' },
+            ],
+            xAxis: 'category',
+            yAxis: 'status',
+        }).reason).toContain('numeric measure');
+        expect(normalizeChartSpec({
+            chartType: 'line',
+            rows: [{ date: '2026-07-11', value: 'NaN' }],
+            columns: [{ name: 'date', type: 'Date' }, { name: 'value', type: 'Float64' }],
+            xAxis: 'date',
+            yAxis: 'value',
+        }).reason).toContain('finite numeric values');
+    });
+});
+
+describe('AiChartRenderer / formatting helpers', () => {
+    it('humanizes SQL aliases for readable axis labels', () => {
+        expect(humanizeAxisName('read_rows_total')).toBe('Read Rows Total');
+        expect(humanizeAxisName('durationMs')).toBe('Duration Ms');
+    });
+
+    it('coerces only finite numeric values', () => {
+        expect(toFiniteNumber('42.5')).toBe(42.5);
+        expect(toFiniteNumber('')).toBeNull();
+        expect(toFiniteNumber('not-a-number')).toBeNull();
     });
 });
 

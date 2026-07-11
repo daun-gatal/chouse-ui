@@ -32,7 +32,7 @@ import {
     getThread,
     deleteThread,
     updateThreadTitle,
-    streamChatMessage,
+    invokeChatMessage,
     getAiModels,
     type AiModelSimple,
     type ChatThread,
@@ -107,7 +107,7 @@ hljs.registerLanguage('json', json);
 // Types
 // ============================================
 
-/** One tool call tracked during a streamed response */
+/** One tool call tracked during a invoked response */
 interface ToolCallStep {
     id?: string;
     parentId?: string;
@@ -125,7 +125,7 @@ interface UIMessage {
     role: 'user' | 'assistant';
     content: string;
     createdAt: string;
-    isStreaming?: boolean;
+    isInvoking?: boolean;
     toolStatus?: string;
     isError?: boolean;
     /** snapshot of user message to retry */
@@ -247,8 +247,6 @@ function activityLabelFor(step: ToolCallStep): { label: string; category: string
         optimize_query: { label: 'Analyzing query performance', category: 'Optimization' },
         query_node: { label: 'Checking fleet node', category: 'Fleet' },
         render_chart: { label: 'Building visualization', category: 'Chart' },
-        write_todos: { label: 'Planning work', category: 'Planning' },
-        task: { label: 'Running deeper investigation', category: 'Deep analysis' },
     };
 
     const mapped = map[step.tool] ?? {
@@ -464,13 +462,13 @@ function CollapsibleThreadGroup({
 // Component
 // ============================================
 
-function ActivityPanel({ toolCalls, isStreaming }: { toolCalls: ToolCallStep[]; isStreaming?: boolean }) {
+function ActivityPanel({ toolCalls, isInvoking }: { toolCalls: ToolCallStep[]; isInvoking?: boolean }) {
     const [expanded, setExpanded] = useState(false);
 
     if (!toolCalls || toolCalls.length === 0) return null;
 
     const runningCount = toolCalls.filter((t) => t.status === 'running').length;
-    const isRunning = isStreaming && runningCount > 0;
+    const isRunning = isInvoking && runningCount > 0;
     const roots = toolCalls.filter((step) => !step.parentId);
     const childrenByParent = toolCalls.reduce<Record<string, ToolCallStep[]>>((acc, step) => {
         if (!step.parentId) return acc;
@@ -773,10 +771,17 @@ export function preprocessMarkdown(text: string): string {
 }
 
 // ============================================
-// useAiChatStream hook
+// useAiChatInvoke hook
 // ============================================
 
-function useAiChatStream({
+const INVOKE_STATUS_STEPS = [
+    'Understanding your request',
+    'Working through ClickHouse context',
+    'Checking the evidence',
+    'Preparing the response',
+];
+
+function useAiChatInvoke({
     setMessages,
     loadThreads,
     selectedModelId,
@@ -785,162 +790,104 @@ function useAiChatStream({
     loadThreads: () => void;
     selectedModelId: string;
 }) {
-    const [isStreaming, setIsStreaming] = useState(false);
+    const [isInvoking, setIsInvoking] = useState(false);
     const [toolStatus, setToolStatus] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
 
-    const runStream = useCallback(async (
+    const runInvoke = useCallback(async (
         threadId: string,
         prompt: string,
         messageHistory: { role: string; content: string }[],
     ) => {
         const controller = new AbortController();
         abortRef.current = controller;
-        setIsStreaming(true);
-        setToolStatus(null);
+        setIsInvoking(true);
+        setToolStatus(INVOKE_STATUS_STEPS[0]);
+        setMessages((previous) => {
+            const updated = [...previous];
+            const last = updated[updated.length - 1];
+            if (last?.role === 'assistant' && last.isInvoking) {
+                updated[updated.length - 1] = { ...last, toolStatus: INVOKE_STATUS_STEPS[0] };
+            }
+            return updated;
+        });
+
+        let statusIndex = 0;
+        const statusTimer = window.setInterval(() => {
+            statusIndex = (statusIndex + 1) % INVOKE_STATUS_STEPS.length;
+            const status = INVOKE_STATUS_STEPS[statusIndex];
+            setToolStatus(status);
+            setMessages((previous) => {
+                const updated = [...previous];
+                const last = updated[updated.length - 1];
+                if (last?.role === 'assistant' && last.isInvoking) {
+                    updated[updated.length - 1] = { ...last, toolStatus: status };
+                }
+                return updated;
+            });
+        }, 2500);
 
         try {
-            const stream = streamChatMessage(
+            const result = await invokeChatMessage(
                 threadId,
                 prompt,
                 messageHistory,
                 selectedModelId || undefined,
-                controller.signal
+                controller.signal,
             );
 
-            for await (const delta of stream) {
-                if (delta.type === 'text-delta' && delta.text) {
-                    setToolStatus(null);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                content: last.content + delta.text!,
-                                toolStatus: undefined,
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'tool-call' && delta.tool) {
-                    const label = delta.label || delta.tool.replace(/_/g, ' ');
-                    setToolStatus(label);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            const newStep: ToolCallStep = {
-                                id: delta.id,
-                                parentId: delta.parentId,
-                                tool: delta.tool!,
-                                args: delta.args ?? {},
-                                status: 'running',
-                                label: delta.label,
-                                category: delta.category,
-                                description: delta.description,
-                            };
-                            updated[updated.length - 1] = {
-                                ...last,
-                                toolStatus: label,
-                                toolCalls: [...(last.toolCalls ?? []), newStep],
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'chart-data' && delta.chartSpec) {
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                chartSpecs: [...(last.chartSpecs || []), delta.chartSpec!]
-                            };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'tool-complete' && delta.tool) {
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant' && last.toolCalls) {
-                            const steps = [...last.toolCalls];
-                            for (let i = steps.length - 1; i >= 0; i--) {
-                                const idMatches = delta.id && steps[i].id === delta.id;
-                                const fallbackMatches = !delta.id && steps[i].tool === delta.tool && steps[i].status === 'running';
-                                if (idMatches || fallbackMatches) {
-                                    steps[i] = { ...steps[i], status: 'done', summary: delta.summary ?? null };
-                                    break;
-                                }
-                            }
-                            updated[updated.length - 1] = { ...last, toolCalls: steps };
-                        }
-                        return updated;
-                    });
-                } else if (delta.type === 'status' && delta.tool) {
-                    const label = delta.label || delta.tool.replace(/_/g, ' ');
-                    setToolStatus(label);
-                } else if (delta.type === 'error') {
-                    setToolStatus(null);
-                    setMessages((prev) => {
-                        const updated = [...prev];
-                        const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                            updated[updated.length - 1] = {
-                                ...last,
-                                content: delta.error || 'An unexpected error occurred.',
-                                isStreaming: false,
-                                isError: true,
-                                retryPrompt: prompt,
-                                retryable: delta.retryable ?? true,
-                                toolStatus: undefined,
-                            };
-                        }
-                        return updated;
-                    });
-                }
-            }
-        } catch (err: unknown) {
-            if (err instanceof Error && err.name !== 'AbortError') {
-                const isNetwork = err.message?.includes('fetch') || err.message?.includes('network') || err.name === 'TypeError';
-                const errMsg = isNetwork ? 'Connection failed. You can retry.' : (err.message || 'Something went wrong. You can retry.');
-                setMessages((prev) => {
-                    const updated = [...prev];
-                    const last = updated[updated.length - 1];
-                        if (last && last.role === 'assistant') {
-                        updated[updated.length - 1] = {
-                            ...last,
-                            content: errMsg,
-                            isStreaming: false,
-                            isError: true,
-                            retryPrompt: prompt,
-                            retryable: true,
-                        };
-                    }
-                    return updated;
-                });
-            }
-        } finally {
-            setToolStatus(null);
-            setMessages((prev) => {
-                const updated = [...prev];
+            setMessages((previous) => {
+                const updated = [...previous];
                 const last = updated[updated.length - 1];
-                if (last && last.isStreaming) {
-                    const isEmpty = !last.content.trim();
+                if (last?.role === 'assistant') {
                     updated[updated.length - 1] = {
                         ...last,
-                        isStreaming: false,
+                        content: result.content,
+                        isInvoking: false,
                         toolStatus: undefined,
-                        ...(isEmpty && !last.isError
-                            ? { content: 'I wasn\'t able to generate a response. Please try again.', isError: true, retryPrompt: prompt }
-                            : {}
-                        ),
+                        toolCalls: result.toolCalls.map((call, index) => ({
+                            id: `activity_${index + 1}`,
+                            tool: call.name,
+                            args: call.args,
+                            status: 'done',
+                        })),
+                        chartSpecs: result.chartSpecs,
                     };
                 }
                 return updated;
             });
-            setIsStreaming(false);
+        } catch (error: unknown) {
+            const wasStopped = error instanceof Error && error.name === 'AbortError';
+            const isNetwork = error instanceof Error &&
+                (error.message.includes('fetch') || error.message.includes('network') || error.name === 'TypeError');
+            const errorMessage = wasStopped
+                ? 'Generation stopped.'
+                : isNetwork
+                    ? 'Connection failed. You can retry.'
+                    : error instanceof Error
+                        ? error.message
+                        : 'Something went wrong. You can retry.';
+
+            setMessages((previous) => {
+                const updated = [...previous];
+                const last = updated[updated.length - 1];
+                if (last?.role === 'assistant') {
+                    updated[updated.length - 1] = {
+                        ...last,
+                        content: errorMessage,
+                        isInvoking: false,
+                        isError: !wasStopped,
+                        retryPrompt: wasStopped ? undefined : prompt,
+                        retryable: !wasStopped,
+                        toolStatus: undefined,
+                    };
+                }
+                return updated;
+            });
+        } finally {
+            window.clearInterval(statusTimer);
+            setToolStatus(null);
+            setIsInvoking(false);
             abortRef.current = null;
             loadThreads();
         }
@@ -950,7 +897,7 @@ function useAiChatStream({
         abortRef.current?.abort();
     }, []);
 
-    return { runStream, isStreaming, toolStatus, handleStop };
+    return { runInvoke, isInvoking, toolStatus, handleStop };
 }
 
 // ============================================
@@ -1195,7 +1142,7 @@ export default function AiChatBubble() {
         }
     }, [activeConnectionId]);
 
-    const { runStream, isStreaming, toolStatus, handleStop } = useAiChatStream({
+    const { runInvoke, isInvoking, toolStatus, handleStop } = useAiChatInvoke({
         setMessages,
         loadThreads,
         selectedModelId,
@@ -1203,10 +1150,10 @@ export default function AiChatBubble() {
 
     // Focus input when thread loads
     useEffect(() => {
-        if (activeThreadId && !isStreaming) {
+        if (activeThreadId && !isInvoking) {
             setTimeout(() => inputRef.current?.focus(), 100);
         }
-    }, [activeThreadId, isStreaming]);
+    }, [activeThreadId, isInvoking]);
 
     // Escape key closes the chat window
     useEffect(() => {
@@ -1339,7 +1286,7 @@ export default function AiChatBubble() {
     const handleSend = useCallback(async (e?: FormEvent) => {
         e?.preventDefault();
         const trimmed = input.trim();
-        if (!trimmed || isStreaming || !activeThreadId) return;
+        if (!trimmed || isInvoking || !activeThreadId) return;
 
         const userMsg: UIMessage = {
             id: `user_${Date.now()}`,
@@ -1352,7 +1299,7 @@ export default function AiChatBubble() {
             role: 'assistant',
             content: '',
             createdAt: new Date().toISOString(),
-            isStreaming: true,
+            isInvoking: true,
         };
 
         const messageHistory = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -1365,11 +1312,11 @@ export default function AiChatBubble() {
             inputRef.current.style.height = 'auto';
         }
 
-        await runStream(activeThreadId, trimmed, messageHistory);
-    }, [input, isStreaming, activeThreadId, messages, runStream, selectedModelId]);
+        await runInvoke(activeThreadId, trimmed, messageHistory);
+    }, [input, isInvoking, activeThreadId, messages, runInvoke, selectedModelId]);
 
     const handleRetry = useCallback(async (retryPrompt: string) => {
-        if (!retryPrompt || isStreaming || !activeThreadId) return;
+        if (!retryPrompt || isInvoking || !activeThreadId) return;
 
         // Remove the last error assistant message, then re-run
         setMessages((prev) => {
@@ -1388,7 +1335,7 @@ export default function AiChatBubble() {
                 role: 'assistant',
                 content: '',
                 createdAt: new Date().toISOString(),
-                isStreaming: true,
+                isInvoking: true,
             },
         ]);
 
@@ -1397,8 +1344,8 @@ export default function AiChatBubble() {
             .map((m) => ({ role: m.role, content: m.content }));
         messageHistory.push({ role: 'user', content: retryPrompt });
 
-        await runStream(activeThreadId, retryPrompt, messageHistory);
-    }, [isStreaming, activeThreadId, messages, runStream, selectedModelId]);
+        await runInvoke(activeThreadId, retryPrompt, messageHistory);
+    }, [isInvoking, activeThreadId, messages, runInvoke, selectedModelId]);
 
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1407,9 +1354,9 @@ export default function AiChatBubble() {
         }
     }, [handleSend]);
 
-    // Helper to send a suggested prompt — shares runStream for consistent error handling
+    // Helper to send a suggested prompt — shares runInvoke for consistent error handling
     const handleSuggestedPrompt = useCallback(async (prompt: string) => {
-        if (isStreaming) return;
+        if (isInvoking) return;
         let threadId = activeThreadId;
         if (!threadId) {
             try {
@@ -1435,14 +1382,14 @@ export default function AiChatBubble() {
             role: 'assistant',
             content: '',
             createdAt: new Date().toISOString(),
-            isStreaming: true,
+            isInvoking: true,
         };
 
         setMessages((prev) => [...prev, userMsg, assistantMsg]);
         setInput('');
 
-        await runStream(threadId, prompt, [{ role: 'user', content: prompt }]);
-    }, [isStreaming, activeThreadId, runStream, activeConnectionId, selectedModelId]);
+        await runInvoke(threadId, prompt, [{ role: 'user', content: prompt }]);
+    }, [isInvoking, activeThreadId, runInvoke, activeConnectionId, selectedModelId]);
 
     // Don't render if no permission or AI is not enabled
     if (!hasPermission || aiEnabled === false) return null;
@@ -1873,10 +1820,10 @@ export default function AiChatBubble() {
                                                                         {msg.toolCalls && msg.toolCalls.length > 0 && (
                                                                             <ActivityPanel
                                                                                 toolCalls={msg.toolCalls}
-                                                                                isStreaming={msg.isStreaming}
+                                                                                isInvoking={msg.isInvoking}
                                                                             />
                                                                         )}
-                                                                        {msg.isStreaming && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
+                                                                        {msg.isInvoking && msg.toolStatus && !msg.content && !msg.toolCalls?.length && (
                                                                             <div className="flex items-center gap-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
                                                                                 <Loader2 className="w-3 h-3 motion-safe:animate-spin" />
                                                                                 <span>{msg.toolStatus}</span>
@@ -1888,7 +1835,7 @@ export default function AiChatBubble() {
                                                                                 {msg.retryPrompt && (msg.retryable !== false) && (
                                                                                     <button
                                                                                         onClick={() => handleRetry(msg.retryPrompt!)}
-                                                                                        disabled={isStreaming}
+                                                                                        disabled={isInvoking}
                                                                                         className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300 hover:text-red-200
                                                                                      disabled:opacity-40 transition-colors self-start
                                                                                      px-2 py-1 rounded-xs hover:bg-red-950/40"
@@ -1909,7 +1856,7 @@ export default function AiChatBubble() {
                                                                                         remarkPlugins={[remarkGfm]}
                                                                                         components={markdownComponents}
                                                                                     >
-                                                                                        {preprocessMarkdown(msg.content) + (msg.isStreaming && !msg.toolStatus ? ' ▊' : '')}
+                                                                                        {preprocessMarkdown(msg.content) + (msg.isInvoking && !msg.toolStatus ? ' ▊' : '')}
                                                                                     </ReactMarkdown>
                                                                                 </div>
                                                                             </>
@@ -1959,7 +1906,7 @@ export default function AiChatBubble() {
                                                     onChange={(e) => setInput(e.target.value)}
                                                     onKeyDown={handleKeyDown}
                                                     placeholder="Ask about your databases, schemas, queries…"
-                                                    disabled={isStreaming}
+                                                    disabled={isInvoking}
                                                     rows={1}
                                                     className="flex-1 resize-none rounded-xs border border-ink-500 bg-ink-100 px-3 py-2.5
                                                                font-mono text-[12.5px] text-paper placeholder:text-paper-faint
@@ -1973,7 +1920,7 @@ export default function AiChatBubble() {
                                                         target.style.height = Math.min(target.scrollHeight, 120) + 'px';
                                                     }}
                                                 />
-                                                {isStreaming ? (
+                                                {isInvoking ? (
                                                     <button
                                                         type="button"
                                                         onClick={handleStop}
@@ -1999,7 +1946,7 @@ export default function AiChatBubble() {
                                                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
                                                     Shift+Enter newline · Esc close
                                                 </span>
-                                                {isStreaming && toolStatus && (
+                                                {isInvoking && toolStatus && (
                                                     <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted">
                                                         <Loader2 className="h-2.5 w-2.5 motion-safe:animate-spin" />
                                                         {toolStatus}

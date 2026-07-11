@@ -12,7 +12,6 @@ import {
   registerHarnessProfile,
   type DeepAgent,
   type FilesystemPermission,
-  type SubAgent,
 } from "deepagents";
 import { tool } from "@langchain/core/tools";
 import { AppError } from "../../types";
@@ -24,7 +23,7 @@ import type {
   AgentMessage,
   AgentRunContext,
   AnyStructuredCapability,
-  StreamCapability,
+  InvokeCapability,
   StructuredCapability,
 } from "./types";
 import type { AiConfigWithKey } from "../../rbac/services/aiModels";
@@ -43,11 +42,10 @@ const FILESYSTEM_PERMISSIONS: FilesystemPermission[] = [
   { operations: ["write"], paths: ["/skills/**"], mode: "deny" },
 ];
 
-const CHAT_EXCLUDED_DEEPAGENT_TOOLS = [
+const FAST_EXCLUDED_TOOLS = [
   "task",
   "write_todos",
   "ls",
-  "read_file",
   "write_file",
   "edit_file",
   "glob",
@@ -60,13 +58,25 @@ const CHAT_EXCLUDED_DEEPAGENT_TOOLS = [
   "list_async_tasks",
 ];
 
-const registeredChatProfiles = new Set<string>();
+const registeredFastProfiles = new Set<string>();
 
 function recursionLimitFor(stepBudget: number): number {
   // DeepAgents/LangGraph executes several internal graph nodes for one visible
   // tool/subagent action. Keep Chouse's public "step" tuning readable while
   // giving the graph enough room to finish normal skill-heavy workflows.
-  return Math.max(50, stepBudget * 4);
+  return Math.max(24, stepBudget * 4);
+}
+
+// Neither the model provider call nor a tool (e.g. a slow ClickHouse query) has
+// a client-side timeout of its own, so a stalled network call would otherwise
+// hang the run — and the UI — forever. These bound every run to a hard wall
+// clock so a stall surfaces as a retryable error instead of an infinite spinner.
+const STRUCTURED_RUN_TIMEOUT_MS = 4 * 60_000;
+const CHAT_RUN_TIMEOUT_MS = 2 * 60_000;
+
+function runSignal(timeoutMs: number, externalSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return externalSignal ? AbortSignal.any([externalSignal, timeoutSignal]) : timeoutSignal;
 }
 
 function createBackend() {
@@ -92,7 +102,7 @@ function deepAgentProviderKey(config: AiConfigWithKey): string {
   }
 }
 
-function registerChatDirectToolProfile(config: AiConfigWithKey): void {
+function registerFastHarnessProfile(config: AiConfigWithKey): void {
   const modelId = config.model.modelId;
   if (!modelId) return;
 
@@ -100,61 +110,15 @@ function registerChatDirectToolProfile(config: AiConfigWithKey): void {
   const keys = modelId.includes(":") ? [modelId] : [`${provider}:${modelId}`];
 
   for (const key of keys) {
-    if (registeredChatProfiles.has(key)) continue;
+    if (registeredFastProfiles.has(key)) continue;
     registerHarnessProfile(key, {
-      excludedTools: CHAT_EXCLUDED_DEEPAGENT_TOOLS,
+      excludedTools: FAST_EXCLUDED_TOOLS,
       generalPurposeSubagent: { enabled: false },
       systemPromptSuffix:
-        "For this Chouse chat run, do not use planning, filesystem, or delegation tools. Use only the concrete Chouse tools provided for schema, query, chart, optimization, and export work.",
+        "For Chouse AI runs, use the concrete tools directly. Do not plan or delegate work to subagents; each capability already has focused instructions and a bounded tool set.",
     });
-    registeredChatProfiles.add(key);
+    registeredFastProfiles.add(key);
   }
-}
-
-function createSubagents(model: unknown, tools: AgentToolSet): SubAgent[] {
-  const sharedTools = toolsArray(tools);
-  return [
-    {
-      name: "schema-investigator",
-      description: "Investigates ClickHouse databases, tables, DDL, schemas, sizes, and column metadata.",
-      systemPrompt: "You are a ClickHouse schema investigator. Use tools first, cite concrete schema facts, and return a concise final report.",
-      model: model as SubAgent["model"],
-      tools: sharedTools as SubAgent["tools"],
-      skills: ["/skills/ai-chat"],
-    },
-    {
-      name: "query-optimizer",
-      description: "Optimizes ClickHouse SELECT/WITH queries using DDL, EXPLAIN, and table-size evidence.",
-      systemPrompt: "You are a ClickHouse query optimizer. Preserve semantics, validate SQL, and return only grounded optimization findings.",
-      model: model as SubAgent["model"],
-      tools: sharedTools as SubAgent["tools"],
-      skills: ["/skills/ai-optimizer", "/skills/references"],
-    },
-    {
-      name: "query-debugger",
-      description: "Debugs failed ClickHouse SQL and returns a corrected query with the root cause.",
-      systemPrompt: "You are a ClickHouse query debugger. Use schema tools, preserve intent, validate the fix, and keep the report concise.",
-      model: model as SubAgent["model"],
-      tools: sharedTools as SubAgent["tools"],
-      skills: ["/skills/ai-optimizer", "/skills/references"],
-    },
-    {
-      name: "fleet-investigator",
-      description: "Investigates ClickHouse fleet/node health through read-only system.* queries.",
-      systemPrompt: "You are a ClickHouse fleet SRE. Use only read-only evidence from system tables and summarize the important findings.",
-      model: model as SubAgent["model"],
-      tools: sharedTools as SubAgent["tools"],
-      skills: ["/skills/references"],
-    },
-    {
-      name: "visualization-planner",
-      description: "Plans and renders charts from ClickHouse query results using the render_chart tool.",
-      systemPrompt: "You are a data visualization planner. Use chart tools instead of markdown tables when the user asks for visual output.",
-      model: model as SubAgent["model"],
-      tools: sharedTools as SubAgent["tools"],
-      skills: ["/skills/ai-chat"],
-    },
-  ];
 }
 
 function normalizeMessages(messages: AgentMessage[]): AgentMessage[] {
@@ -193,7 +157,6 @@ function createAgent(
   model: unknown,
   tools: AgentToolSet,
   systemPrompt: string,
-  options: { subagents?: boolean } = {},
 ): DeepAgent {
   return createDeepAgent({
     model: model as never,
@@ -202,7 +165,7 @@ function createAgent(
     backend: createBackend(),
     permissions: FILESYSTEM_PERMISSIONS,
     skills: DEEP_AGENT_SKILL_SOURCES,
-    subagents: options.subagents === false ? [] : createSubagents(model, tools),
+    subagents: [],
   }) as DeepAgent;
 }
 
@@ -214,23 +177,42 @@ function stableToolInput(input: unknown): string {
   return JSON.stringify(sorted);
 }
 
-function guardDuplicateChatTools(tools: AgentToolSet): AgentToolSet {
+export interface InvokedToolCall {
+  name: string;
+  args: Record<string, unknown>;
+  result?: unknown;
+}
+
+function recordableInput(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  return Object.fromEntries(Object.entries(input));
+}
+
+function guardDuplicateTools(tools: AgentToolSet, calls: InvokedToolCall[]): AgentToolSet {
   const seen = new Set<string>();
   return Object.fromEntries(
     Object.entries(tools).map(([name, original]) => [
       name,
       tool(
-        async (input: unknown) => {
+        // Preserve LangGraph's call context so tracing, cancellation, and
+        // provider callbacks remain attached to the original tool invocation.
+        async (input: unknown, config: unknown) => {
+          const recorded: InvokedToolCall = { name, args: recordableInput(input) };
+          calls.push(recorded);
           const signature = `${name}:${stableToolInput(input)}`;
           if (seen.has(signature)) {
-            return {
+            const duplicateResult = {
               repeated: true,
               message:
                 "This exact action was already completed with the same inputs. Use the previous result, choose a different next action if needed, or provide the final answer now. Do not call this tool again unless the inputs change.",
             };
+            recorded.result = duplicateResult;
+            return duplicateResult;
           }
           seen.add(signature);
-          return original.invoke(input as never);
+          const result = await original.invoke(input as never, config as never);
+          recorded.result = result;
+          return result;
         },
         {
           name: original.name,
@@ -246,16 +228,24 @@ async function collectStructuredRun(
   agent: DeepAgent,
   messages: AgentMessage[],
   stepLimit: number,
-): Promise<{ raw: string; steps: { tool: string; input: unknown }[] }> {
+): Promise<string> {
   const result = await agent.invoke(
     { messages: normalizeMessages(messages) },
-    { recursionLimit: recursionLimitFor(stepLimit) },
+    {
+      recursionLimit: recursionLimitFor(stepLimit),
+      signal: runSignal(STRUCTURED_RUN_TIMEOUT_MS),
+    },
   );
-  return { raw: finalTextFromState(result), steps: [] };
+  return finalTextFromState(result);
 }
 
 /**
  * Run a structured (non-streaming) capability end to end.
+ *
+ * The capability prompt asks for schema-valid JSON. Parse that final response
+ * directly, with one forced structured-output call only when parsing fails.
+ * Avoiding a response-format tool on every agent step keeps provider behavior
+ * consistent and prevents schema-retry loops on compatible endpoints.
  */
 export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutput>(
   cap: StructuredCapability<TInput, TPrepared, TParsed, TOutput>,
@@ -263,19 +253,24 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
   ctx: AgentRunContext,
 ): Promise<TOutput> {
   try {
-    const { model, label } = await resolveDeepAgentModel(ctx.modelId);
+    const { model, config, label } = await resolveDeepAgentModel(ctx.modelId);
 
     const prepared = await cap.prepare(input, ctx);
-    const tools = await cap.tools(prepared, ctx);
+    const invokedToolCalls: InvokedToolCall[] = [];
+    const tools = guardDuplicateTools(await cap.tools(prepared, ctx), invokedToolCalls);
     const instructions = await cap.instructions(prepared, ctx);
     const messages = await cap.messages(prepared, ctx);
+    registerFastHarnessProfile(config);
     const agent = createAgent(model, tools, instructions);
 
-    const { raw, steps } = await collectStructuredRun(
+    const raw = await collectStructuredRun(
       agent,
       messages,
       cap.tuning?.stopAtSteps ?? 10,
     );
+    const steps = invokedToolCalls.map((call) => ({ tool: call.name, input: call.args }));
+
+    const meta = { raw, steps, modelLabel: label };
 
     const fallbackMessages: AgentMessage[] = cap.fallbackMessages
       ? cap.fallbackMessages(prepared, ctx, raw)
@@ -296,8 +291,6 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       module: `AI:${cap.id}`,
     });
 
-    const meta = { raw, steps, modelLabel: label };
-
     if (parsed === null) {
       if (cap.onParseFailure) return await cap.onParseFailure(prepared, ctx, meta);
       throw AppError.internal(`Chouse AI could not complete '${cap.id}' — please try again.`);
@@ -311,28 +304,33 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
 }
 
 /**
- * Build a streaming DeepAgent for chat. The route owns SSE framing and
- * persistence, preserving the existing frontend contract.
+ * Invoke chat to completion. The client keeps the interaction responsive with
+ * an optimistic assistant placeholder, elapsed status, and cancellation.
  */
-export async function streamCapabilityAgent<TInput>(
-  cap: StreamCapability<TInput>,
+export async function invokeCapabilityAgent<TInput>(
+  cap: InvokeCapability<TInput>,
   _input: TInput,
   ctx: AgentRunContext,
   messages: AgentMessage[],
-) {
+  signal?: AbortSignal,
+): Promise<{ content: string; toolCalls: InvokedToolCall[] }> {
   const { model, config } = await resolveDeepAgentModel(ctx.modelId);
-  registerChatDirectToolProfile(config);
-  const tools = guardDuplicateChatTools(await cap.tools(ctx));
+  registerFastHarnessProfile(config);
+  const toolCalls: InvokedToolCall[] = [];
+  const tools = guardDuplicateTools(await cap.tools(ctx), toolCalls);
   const instructions = await cap.instructions(ctx);
-  const agent = createAgent(model, tools, instructions, { subagents: false });
-  const run = await agent.streamEvents(
+  const agent = createAgent(model, tools, instructions);
+  const result = await agent.invoke(
     { messages: normalizeMessages(messages) },
-    { version: "v3", recursionLimit: recursionLimitFor(cap.tuning?.stopAtSteps ?? 30) },
+    {
+      recursionLimit: recursionLimitFor(cap.tuning?.stopAtSteps ?? 12),
+      signal: runSignal(CHAT_RUN_TIMEOUT_MS, signal),
+    },
   );
-  return { run };
+  return { content: finalTextFromState(result), toolCalls };
 }
 
-/** Type guard: is this capability structured (vs stream)? */
+/** Type guard: is this capability structured (vs invoked)? */
 export function isStructured(cap: {
   delivery: string;
 }): cap is AnyStructuredCapability {

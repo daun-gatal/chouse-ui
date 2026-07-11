@@ -318,22 +318,28 @@ export const handlers = [
     });
   }),
 
-  http.post(`${API_BASE}/ai-chat/stream`, async ({ request }) => {
+  http.get(`${API_BASE}/ai/models`, () => {
+    return HttpResponse.json({
+      success: true,
+      data: [
+        { id: 'model-1', label: 'GPT-4', model: 'gpt-4o', provider: 'OpenAI', isDefault: true },
+        { id: 'model-2', label: 'Claude', model: 'claude-sonnet', provider: 'Anthropic', isDefault: false },
+      ],
+    });
+  }),
+
+  http.post(`${API_BASE}/ai-chat/invoke`, async ({ request }) => {
     const body = await request.json() as { threadId: string; message: string };
     if (!body.threadId || !body.message) {
       return HttpResponse.json({ success: false, error: { message: 'threadId and message required' } }, { status: 400 });
     }
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'text-delta', text: 'Hello ' })}\n\n`));
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'text-delta', text: 'world' })}\n\n`));
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
-        controller.close();
+    return HttpResponse.json({
+      success: true,
+      data: {
+        content: 'Hello world',
+        toolCalls: [{ name: 'list_databases', args: {}, result: ['default'] }],
+        chartSpecs: [],
       },
-    });
-    return new HttpResponse(stream, {
-      headers: { 'Content-Type': 'text/event-stream' },
     });
   }),
 

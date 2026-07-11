@@ -1,9 +1,8 @@
 /**
  * Capability: chat — the conversational SRE assistant.
  *
- * The only streaming capability. The engine builds the agent (model + tools +
- * instructions); SSE framing, scratchpad stripping, chart-data events and
- * thread persistence stay in the route, which is genuinely chat-specific.
+ * The only invoked conversational capability. The engine runs the agent to
+ * completion; the route persists and returns the final answer and tool trail.
  */
 
 import { z } from "zod";
@@ -11,7 +10,8 @@ import { PERMISSIONS } from "../../../rbac/schema/base";
 import { coreTools, chartTools, requireToolContext } from "../toolsets";
 import { runStructuredCapability } from "../engine";
 import { optimizeQueryCapability } from "./optimizeQuery";
-import type { AgentRunContext, StreamCapability } from "../types";
+import { CHOUSE_OPERATING_RULES } from "../sharedInstructions";
+import type { AgentRunContext, InvokeCapability } from "../types";
 import { createAgentTool, type AgentToolSet } from "../langchainTools";
 
 function buildSystemPrompt(): string {
@@ -23,8 +23,6 @@ You operate in STRICT TOOL-FIRST MODE.
 DeepAgents native skills are available for data exploration, SQL generation, visualization,
 query optimization, system troubleshooting, schema diagnosis, error diagnosis, and parts
 diagnosis. Use the matching skill instructions before complex work.
-For chat, keep progress visible by calling the concrete Chouse tools directly.
-Do not delegate routine chat work to background specialist tasks.
 
 ## REFERENCES
 Reference docs hold exact ClickHouse facts (system.* column names, the optimization playbook, the type/codec guide).
@@ -49,13 +47,7 @@ Base your final answer strictly on tool results.
 If access is denied, explain clearly.
 If a tool fails, surface the error clearly.
 
-You have READ-ONLY access.
-Only SELECT / WITH / SHOW / DESCRIBE / EXPLAIN queries are allowed.
-Never attempt INSERT, UPDATE, DELETE, CREATE, ALTER, DROP.
-
-## SQL FORMATTING RULE
-NEVER append a FORMAT clause (e.g. FORMAT JSON, FORMAT CSV, FORMAT TabSeparated) to any SQL query.
-The application handles output formatting internally. A FORMAT clause will break query execution.
+${CHOUSE_OPERATING_RULES}
 `;
 }
 
@@ -102,12 +94,12 @@ export interface ChatInput {
   threadId?: string;
 }
 
-export const chatCapability: StreamCapability<ChatInput> = {
+export const chatCapability: InvokeCapability<ChatInput> = {
   id: "chat",
-  delivery: "stream",
+  delivery: "invoke",
   permission: PERMISSIONS.AI_CHAT,
   inputSchema: z.object({ threadId: z.string().optional() }),
-  tuning: { stopAtSteps: 60, temperature: 0 },
+  tuning: { stopAtSteps: 12, temperature: 0 },
 
   async tools(ctx): Promise<AgentToolSet> {
     // Validate a live session exists (chat needs core/chart tools).

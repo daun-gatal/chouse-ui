@@ -53,7 +53,7 @@ export type AgentMessage = {
 // Delivery + tool sets
 // ============================================
 
-export type DeliveryMode = "structured" | "stream";
+export type DeliveryMode = "structured" | "invoke";
 
 export type ToolSetName = "core" | "chart" | "chat" | "query_node";
 
@@ -156,13 +156,12 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
 }
 
 /**
- * A streaming capability (chat). The engine builds the agent and returns the
- * DeepAgents stream; SSE framing + presentation stays in the route, which is
- * genuinely chat-specific (chart-data events, scratchpad stripping).
+ * An invoked capability (chat). The engine waits for the DeepAgents run and
+ * returns the final answer plus the tool audit trail in one response.
  */
-export interface StreamCapability<TInput> {
+export interface InvokeCapability<TInput> {
   id: string;
-  delivery: "stream";
+  delivery: "invoke";
   permission: Permission;
   inputSchema: z.ZodType<TInput>;
   tuning?: AgentTuning;
@@ -173,5 +172,5 @@ export interface StreamCapability<TInput> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyStructuredCapability = StructuredCapability<any, any, any, any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyStreamCapability = StreamCapability<any>;
-export type AnyCapability = AnyStructuredCapability | AnyStreamCapability;
+export type AnyInvokeCapability = InvokeCapability<any>;
+export type AnyCapability = AnyStructuredCapability | AnyInvokeCapability;
