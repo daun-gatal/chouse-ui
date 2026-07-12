@@ -4,7 +4,7 @@ import { CheckCircle2, ChevronLeft, ChevronRight, Code2, Eye, ShieldCheck, Spark
 
 import { getDatabases, getTableDetails, type DatabaseInfo, type TableDetails } from "@/api/explorer";
 import { listChannels, type NotificationChannel } from "@/api/alerting";
-import { previewDataHealthPromise, type DataHealthCheck, type DataHealthEventTimeEncoding, type DataHealthFrequency, type DataHealthPreview, type DataHealthPromise, type DataHealthPromiseInput } from "@/api/dataHealth";
+import { describeDataHealthColumns, previewDataHealthPromise, type DataHealthCheck, type DataHealthColumn, type DataHealthEventTimeEncoding, type DataHealthFrequency, type DataHealthPreview, type DataHealthPromise, type DataHealthPromiseInput } from "@/api/dataHealth";
 import { recommendHealthPromise, type HealthPromiseRecommendation } from "@/api/dataOpsAi";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDebounce } from "@/hooks";
 import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { cn } from "@/lib/utils";
 import { useCreateDataHealthPromise, useUpdateDataHealthPromise } from "./hooks";
@@ -134,6 +135,8 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   const [form, setForm] = useState<FormState>(defaultForm);
   const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
   const [tableDetails, setTableDetails] = useState<TableDetails>();
+  const [queryColumns, setQueryColumns] = useState<DataHealthColumn[]>([]);
+  const [describingQuery, setDescribingQuery] = useState(false);
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [preview, setPreview] = useState<DataHealthPreview>();
   const [previewing, setPreviewing] = useState(false);
@@ -141,13 +144,15 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   const [recommendation, setRecommendation] = useState<HealthPromiseRecommendation>();
   const update = (patch: Partial<FormState>) => setForm((current) => {
     if (patch.eventTimeColumn !== undefined && patch.eventTimeColumn !== current.eventTimeColumn && patch.eventTimeEncoding === undefined) {
-      const column = tableDetails?.columns.find((candidate) => candidate.name === patch.eventTimeColumn);
+      const source = current.sourceType === "table" ? tableDetails?.columns : queryColumns;
+      const column = source?.find((candidate) => candidate.name === patch.eventTimeColumn);
       const requestedFreshnessMinutes = patch.freshnessMinutes ?? current.freshnessMinutes;
       const requestedFrequency = patch.frequency ?? current.frequency;
       return {
         ...current,
         ...patch,
         eventTimeEncoding: column ? suggestEventTimeEncoding(column) : "native",
+        queryNativeEventTimeType: column && current.sourceType === "query" ? (isDateOnlyColumnType(column.type) ? "Date" : "DateTime") : current.queryNativeEventTimeType,
         eventTimeTimezone: "",
         freshnessMinutes: column && isDateOnlyColumnType(column.type) ? Math.max(requestedFreshnessMinutes, 1440) : requestedFreshnessMinutes,
         frequency: column && isDateOnlyColumnType(column.type) && (requestedFrequency === "cron" || requestedFrequency === "manual") ? "daily" : requestedFrequency,
@@ -158,7 +163,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
 
   useEffect(() => {
     if (!open) return;
-    setStep(0); setPreview(undefined); setRecommendation(undefined); setTableDetails(undefined); setForm(promise ? formFromPromise(promise) : defaultForm());
+    setStep(0); setPreview(undefined); setRecommendation(undefined); setTableDetails(undefined); setQueryColumns([]); setForm(promise ? formFromPromise(promise) : defaultForm());
     let active = true;
     void Promise.all([getDatabases(), listChannels()]).then(([databaseRows, channelRows]) => { if (active) { setDatabases(databaseRows); setChannels(channelRows.filter((channel) => channel.enabled)); } }).catch(() => { if (active) toast.error("Could not load dataset metadata"); });
     return () => { active = false; };
@@ -190,7 +195,39 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
     return () => { active = false; };
   }, [open, form.sourceType, form.databaseName, form.tableName]);
 
-  const columns = tableDetails?.columns ?? [];
+  const debouncedSourceQuery = useDebounce(form.sourceType === "query" ? form.sourceQuery : "", 600);
+  useEffect(() => {
+    if (!open || form.sourceType !== "query") { setQueryColumns([]); return; }
+    const connectionId = promise?.connectionId ?? activeConnectionId;
+    const query = debouncedSourceQuery.trim();
+    if (!connectionId || !query) { setQueryColumns([]); return; }
+    let active = true;
+    setDescribingQuery(true);
+    void describeDataHealthColumns({ connectionId, sourceQuery: query }).then((result) => {
+      if (!active) return;
+      setQueryColumns(result.columns);
+      setForm((current) => {
+        if (current.sourceType !== "query" || current.sourceQuery.trim() !== query) return current;
+        const selectedColumnIsValid = result.columns.some((column) =>
+          column.name === current.eventTimeColumn && isSupportedEventTimeColumnType(column.type));
+        if (selectedColumnIsValid) return current;
+        const eventTimeColumn = detectEventTimeColumn(result.columns);
+        const column = result.columns.find((candidate) => candidate.name === eventTimeColumn);
+        return {
+          ...current,
+          eventTimeColumn,
+          eventTimeEncoding: column ? suggestEventTimeEncoding(column) : current.eventTimeEncoding,
+          queryNativeEventTimeType: column ? (isDateOnlyColumnType(column.type) ? "Date" : "DateTime") : current.queryNativeEventTimeType,
+          eventTimeTimezone: "",
+          freshnessMinutes: column && isDateOnlyColumnType(column.type) ? Math.max(current.freshnessMinutes, 1440) : current.freshnessMinutes,
+          frequency: column && isDateOnlyColumnType(column.type) && (current.frequency === "cron" || current.frequency === "manual") ? "daily" : current.frequency,
+        };
+      });
+    }).catch(() => { if (active) setQueryColumns([]); }).finally(() => { if (active) setDescribingQuery(false); });
+    return () => { active = false; };
+  }, [open, form.sourceType, debouncedSourceQuery, promise?.connectionId, activeConnectionId]);
+
+  const columns: DataHealthColumn[] = form.sourceType === "table" ? tableDetails?.columns ?? [] : queryColumns;
   const selectedEventTimeType = form.sourceType === "query" && form.eventTimeEncoding === "native"
     ? form.queryNativeEventTimeType
     : columns.find((column) => column.name === form.eventTimeColumn)?.type ?? promise?.eventTimeType ?? "";
@@ -288,7 +325,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="flex max-h-[92vh] max-w-4xl flex-col overflow-hidden rounded-xs border-ink-500 bg-ink-100 p-0 text-paper"><DialogHeader className="border-b border-ink-500 px-6 py-5"><DialogTitle>{promise ? "Edit Data Health promise" : "Protect a dataset"}</DialogTitle><DialogDescription>Describe what healthy data means. CHouse will generate, schedule, and evaluate the monitor.</DialogDescription><div className="mt-4 flex gap-1">{STEPS.map((label, index) => <div key={label} className={cn("flex flex-1 items-center gap-2 border-t-2 pt-2", index <= step ? "border-brand text-paper" : "border-ink-500 text-paper-faint")}><span className="font-mono text-[9px]">0{index + 1}</span><span className="font-mono text-[10px] uppercase tracking-[0.12em]">{label}</span></div>)}</div></DialogHeader>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        {step === 0 && <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div><Label>Promise name</Label><Input value={form.name} onChange={(event) => update({ name: event.target.value })} placeholder="Daily orders are ready" className="mt-1 rounded-xs" /></div><div><Label>Connection</Label><Input value={activeConnectionName ?? promise?.connectionId ?? "No active connection"} disabled className="mt-1 rounded-xs" /></div></div><div><Label>Description</Label><Textarea value={form.description} onChange={(event) => update({ description: event.target.value })} placeholder="Who relies on this data and why it matters…" className="mt-1 rounded-xs" /></div><div><HintLabel hint="Choose a table for automatic schema and partition inspection, or a read-only query when the monitored dataset needs joins, casts, or aliases.">Dataset source</HintLabel><div className="mt-1 grid grid-cols-2 gap-2"><Button type="button" variant={form.sourceType === "table" ? "default" : "outline"} className="rounded-xs" onClick={() => update({ sourceType: "table" })}>Table or view</Button><Button type="button" variant={form.sourceType === "query" ? "default" : "outline"} className="rounded-xs" onClick={() => update({ sourceType: "query", schemaContract: false })}><Code2 className="mr-2 h-3.5 w-3.5" /> Dataset query</Button></div></div>{form.sourceType === "table" ? <div className="grid gap-4 sm:grid-cols-2"><div><Label>Database</Label><Select value={form.databaseName} onValueChange={(value) => { setTableDetails(undefined); update({ databaseName: value, tableName: "", eventTimeColumn: "" }); }}><SelectTrigger className="mt-1 rounded-xs"><SelectValue placeholder="Select database" /></SelectTrigger><SelectContent>{databases.map((database) => <SelectItem key={database.name} value={database.name}>{database.name}</SelectItem>)}</SelectContent></Select></div><div><Label>Table or view</Label><Select value={form.tableName} onValueChange={(value) => { setTableDetails(undefined); update({ tableName: value, eventTimeColumn: "" }); }}><SelectTrigger className="mt-1 rounded-xs"><SelectValue placeholder="Select table" /></SelectTrigger><SelectContent>{tables.map((table) => <SelectItem key={table.name} value={table.name}>{table.name}</SelectItem>)}</SelectContent></Select></div></div> : <div><Label>Read-only dataset query</Label><Textarea value={form.sourceQuery} onChange={(event) => update({ sourceQuery: event.target.value })} placeholder="SELECT * FROM analytics.orders" className="mt-1 min-h-32 rounded-xs font-mono text-[11px]" /></div>}<div className="grid gap-4 sm:grid-cols-2"><div><HintLabel hint="This column assigns rows to each evaluation window. DateTime values represent instants; Date values represent local calendar days and require a calendar timezone.">Event-time column</HintLabel>{form.sourceType === "query" ? <Input value={form.eventTimeColumn} onChange={(event) => update({ eventTimeColumn: event.target.value })} placeholder="created_at" className="mt-1 rounded-xs font-mono" /> : <Select value={form.eventTimeColumn || "none"} onValueChange={(value) => update({ eventTimeColumn: value === "none" ? "" : value })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No event-time column</SelectItem>{columns.filter((column) => isSupportedEventTimeColumnType(column.type)).map((column) => <SelectItem key={column.name} value={column.name}>{column.name} · {column.type}</SelectItem>)}</SelectContent></Select>}<p className="mt-1 text-[10px] text-paper-faint">Required for windowed checks. Native times are used directly; encoded values need their stored format below.</p></div><div><HintLabel hint="Applied to every generated metric and diagnostic query. Use it to scope a shared table, for example to one environment or tenant.">Optional row filter</HintLabel><Input value={form.rowFilter} onChange={(event) => update({ rowFilter: event.target.value })} placeholder="environment = 'production'" className="mt-1 rounded-xs font-mono" /></div></div></div>}
+        {step === 0 && <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div><Label>Promise name</Label><Input value={form.name} onChange={(event) => update({ name: event.target.value })} placeholder="Daily orders are ready" className="mt-1 rounded-xs" /></div><div><Label>Connection</Label><Input value={activeConnectionName ?? promise?.connectionId ?? "No active connection"} disabled className="mt-1 rounded-xs" /></div></div><div><Label>Description</Label><Textarea value={form.description} onChange={(event) => update({ description: event.target.value })} placeholder="Who relies on this data and why it matters…" className="mt-1 rounded-xs" /></div><div><HintLabel hint="Choose a table for automatic schema and partition inspection, or a read-only query when the monitored dataset needs joins, casts, or aliases.">Dataset source</HintLabel><div className="mt-1 grid grid-cols-2 gap-2"><Button type="button" variant={form.sourceType === "table" ? "default" : "outline"} className="rounded-xs" onClick={() => update({ sourceType: "table" })}>Table or view</Button><Button type="button" variant={form.sourceType === "query" ? "default" : "outline"} className="rounded-xs" onClick={() => update({ sourceType: "query", schemaContract: false })}><Code2 className="mr-2 h-3.5 w-3.5" /> Dataset query</Button></div></div>{form.sourceType === "table" ? <div className="grid gap-4 sm:grid-cols-2"><div><Label>Database</Label><Select value={form.databaseName} onValueChange={(value) => { setTableDetails(undefined); update({ databaseName: value, tableName: "", eventTimeColumn: "" }); }}><SelectTrigger className="mt-1 rounded-xs"><SelectValue placeholder="Select database" /></SelectTrigger><SelectContent>{databases.map((database) => <SelectItem key={database.name} value={database.name}>{database.name}</SelectItem>)}</SelectContent></Select></div><div><Label>Table or view</Label><Select value={form.tableName} onValueChange={(value) => { setTableDetails(undefined); update({ tableName: value, eventTimeColumn: "" }); }}><SelectTrigger className="mt-1 rounded-xs"><SelectValue placeholder="Select table" /></SelectTrigger><SelectContent>{tables.map((table) => <SelectItem key={table.name} value={table.name}>{table.name}</SelectItem>)}</SelectContent></Select></div></div> : <div><Label>Read-only dataset query</Label><Textarea value={form.sourceQuery} onChange={(event) => update({ sourceQuery: event.target.value })} placeholder="SELECT * FROM analytics.orders" className="mt-1 min-h-32 rounded-xs font-mono text-[11px]" /><p className="mt-1 text-[10px] text-paper-faint">{describingQuery ? "Detecting columns…" : queryColumns.length > 0 ? `${queryColumns.length} columns detected — pick them below instead of typing names.` : "Columns are auto-detected once this resolves to a valid read-only SELECT."}</p></div>}<div className="grid gap-4 sm:grid-cols-2"><div><HintLabel hint="This column assigns rows to each evaluation window. DateTime values represent instants; Date values represent local calendar days and require a calendar timezone.">Event-time column</HintLabel>{columns.length > 0 ? <Select value={form.eventTimeColumn || "none"} onValueChange={(value) => update({ eventTimeColumn: value === "none" ? "" : value })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No event-time column</SelectItem>{columns.filter((column) => isSupportedEventTimeColumnType(column.type)).map((column) => <SelectItem key={column.name} value={column.name}>{column.name} · {column.type}</SelectItem>)}</SelectContent></Select> : <Input value={form.eventTimeColumn} onChange={(event) => update({ eventTimeColumn: event.target.value })} placeholder="created_at" className="mt-1 rounded-xs font-mono" />}<p className="mt-1 text-[10px] text-paper-faint">Required for windowed checks. Native times are used directly; encoded values need their stored format below.</p></div><div><HintLabel hint="Applied to every generated metric and diagnostic query. Use it to scope a shared table, for example to one environment or tenant.">Optional row filter</HintLabel><Input value={form.rowFilter} onChange={(event) => update({ rowFilter: event.target.value })} placeholder="environment = 'production'" className="mt-1 rounded-xs font-mono" /></div></div></div>}
         {step === 0 && form.eventTimeColumn && (form.sourceType === "query" || selectedEventTimeSupport !== "native" || dateOnlyEventTime) && <div className={cn("mt-4 grid gap-4 rounded-xs border border-ink-500 bg-ink-200/30 p-4", (form.sourceType === "query" || form.eventTimeEncoding === "string") && "sm:grid-cols-2")}>{(form.sourceType === "query" || selectedEventTimeSupport !== "native") && <div><HintLabel hint="Native ClickHouse times need no decoding. Integer timestamps need their exact seconds-to-nanoseconds unit, while timestamp text needs its stored-value timezone.">Stored timestamp format</HintLabel><Select value={form.eventTimeEncoding} onValueChange={(value) => update({ eventTimeEncoding: value as DataHealthEventTimeEncoding, eventTimeTimezone: value === "string" ? form.eventTimeTimezone : "" })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger><SelectContent>{form.sourceType === "query" && <SelectItem value="native">Native Date / DateTime</SelectItem>}{(form.sourceType === "query" || selectedEventTimeSupport === "unix") && <><SelectItem value="unix_seconds">Unix seconds</SelectItem><SelectItem value="unix_milliseconds">Unix milliseconds</SelectItem><SelectItem value="unix_microseconds">Unix microseconds</SelectItem><SelectItem value="unix_nanoseconds">Unix nanoseconds</SelectItem></>}{(form.sourceType === "query" || selectedEventTimeSupport === "string") && <SelectItem value="string">Timestamp text</SelectItem>}</SelectContent></Select>{form.eventTimeEncoding.startsWith("unix_") && <p className="mt-1 text-[10px] text-paper-faint">Choose the unit used by the stored integer timestamp.</p>}</div>}{form.sourceType === "query" && form.eventTimeEncoding === "native" && <div><HintLabel hint="For custom query sources, declare whether the selected alias returns an instant (DateTime) or a day-only calendar value (Date).">Native temporal type</HintLabel><Select value={form.queryNativeEventTimeType} onValueChange={(value) => update({ queryNativeEventTimeType: value as "DateTime" | "Date", eventTimeTimezone: "", freshnessMinutes: value === "Date" ? Math.max(form.freshnessMinutes, 1440) : form.freshnessMinutes, frequency: value === "Date" && (form.frequency === "cron" || form.frequency === "manual") ? "daily" : form.frequency })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="DateTime">DateTime / DateTime64</SelectItem><SelectItem value="Date">Date / Date32</SelectItem></SelectContent></Select></div>}{(form.eventTimeEncoding === "string" || dateOnlyEventTime) && <div><HintLabel hint={dateOnlyEventTime ? "Defines how UTC slot boundaries map to local Date or Date32 values. It does not change the UTC schedule." : "Used to interpret timestamp text that has no Z or numeric offset. Text containing an offset keeps that explicit instant."}>{dateOnlyEventTime ? "Calendar timezone" : "Timezone of stored text"}</HintLabel><Input value={form.eventTimeTimezone} onChange={(event) => update({ eventTimeTimezone: event.target.value })} placeholder="Asia/Jakarta" className="mt-1 rounded-xs font-mono" /><p className="mt-1 text-[10px] text-paper-faint">{dateOnlyEventTime ? "UTC slot boundaries are converted to calendar dates in this timezone." : "Used only when parsing text without an embedded UTC offset."}</p></div>}</div>}
         {step === 1 && (
           <div className="space-y-5">

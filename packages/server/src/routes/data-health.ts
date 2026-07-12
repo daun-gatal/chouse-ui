@@ -15,9 +15,9 @@ import { isValidTimeZone, nextFireTimes, validateCron } from "../services/schedu
 import * as runner from "../services/scheduledQueries/runner";
 import * as scheduledStore from "../services/scheduledQueries/store";
 import { SQ_FREQUENCIES } from "../services/scheduledQueries/types";
-import { toParseableSql } from "../services/scheduledQueries/validation";
+import { buildExecutableQuery, toDateTime64Param, toParseableSql, validateReadOnlySelect } from "../services/scheduledQueries/validation";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
-import { describeDestination } from "../services/scheduledQueries/materialize";
+import { describeDestination, describeSelectSchema } from "../services/scheduledQueries/materialize";
 import { AppError, requireParam } from "../types";
 
 const dataHealth = new Hono();
@@ -314,6 +314,36 @@ dataHealth.get("/overview", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW), asy
     coverageGaps,
   });
 });
+
+const describeColumnsBodySchema = z.object({
+  connectionId: z.string().min(1),
+  sourceQuery: z.string().trim().min(1).max(100_000),
+});
+
+dataHealth.post(
+  "/describe-columns",
+  requirePermission(PERMISSIONS.DATA_HEALTH_EDIT),
+  zValidator("json", describeColumnsBodySchema),
+  async (c) => {
+    const body = c.req.valid("json");
+    await assertConnectionAccess(c, body.connectionId);
+    const ro = validateReadOnlySelect(body.sourceQuery);
+    if (!ro.ok) throw AppError.badRequest(ro.error ?? "Query must be a single read-only SELECT statement");
+    await assertQueryAccess(c, body.sourceQuery, body.connectionId);
+    const { sql: execSql } = buildExecutableQuery(body.sourceQuery);
+    const now = Date.now();
+    const client = await clientForConnection(
+      body.connectionId,
+      JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_describe_columns" }),
+    );
+    const columns = await describeSelectSchema(client, execSql, {
+      sq_slot_start: toDateTime64Param(now - 86_400_000),
+      sq_slot_end: toDateTime64Param(now),
+      sq_prev_run_at: toDateTime64Param(now - 86_400_000),
+    });
+    return ok(c, { columns });
+  },
+);
 
 dataHealth.post(
   "/preview",

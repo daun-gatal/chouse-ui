@@ -171,6 +171,11 @@ export interface DataHealthPreview {
   nextFireTimes: number[];
 }
 
+export interface DataHealthColumn {
+  name: string;
+  type: string;
+}
+
 export async function listDataHealthPromises(connectionId?: string): Promise<DataHealthPromise[]> {
   const response = await api.get<{ promises: DataHealthPromise[] }>("/data-health", {
     params: { connectionId: connectionId || undefined },
@@ -190,6 +195,10 @@ export function getDataHealthOverview(connectionId?: string): Promise<DataHealth
 
 export function previewDataHealthPromise(input: DataHealthPromiseInput): Promise<DataHealthPreview> {
   return api.post<DataHealthPreview>("/data-health/preview", input);
+}
+
+export function describeDataHealthColumns(input: { connectionId: string; sourceQuery: string }): Promise<{ columns: DataHealthColumn[] }> {
+  return api.post<{ columns: DataHealthColumn[] }>("/data-health/describe-columns", input);
 }
 
 export async function createDataHealthPromise(input: DataHealthPromiseInput): Promise<DataHealthPromise> {

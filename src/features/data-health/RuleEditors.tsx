@@ -1,7 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 
-import type { TableDetails } from "@/api/explorer";
-import type { DataHealthCheck } from "@/api/dataHealth";
+import type { DataHealthCheck, DataHealthColumn } from "@/api/dataHealth";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -77,7 +76,7 @@ function RemoveButton({ label, onClick }: { label: string; onClick: () => void }
 }
 
 interface RuleEditorsProps {
-  columns: TableDetails["columns"];
+  columns: DataHealthColumn[];
   completenessRules: CompletenessRule[];
   uniquenessRules: UniquenessRule[];
   validityRules: ValidityRule[];
