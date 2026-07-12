@@ -41,6 +41,14 @@ afterEach(async () => {
 });
 
 describe("scheduled queries overview connection scope", () => {
+  it("reads Data Health schedules as UTC even when legacy metadata stored another timezone", async () => {
+    const input = jobInput("health", "connection-1");
+    input.timezone = "Asia/Jakarta";
+    const id = await store.createJob(input, "owner-1", "data_health_check");
+
+    expect((await store.getJob(id))?.timezone).toBe("UTC");
+  });
+
   it("counts only the requested connection's jobs when a scope is given", async () => {
     await store.createJob(jobInput("job-a", "connection-1"), "owner-1");
     await store.createJob(jobInput("job-b", "connection-2"), "owner-1");

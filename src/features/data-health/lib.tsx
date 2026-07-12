@@ -59,6 +59,10 @@ export function isTemporalColumnType(type: string): boolean {
   return TEMPORAL_TYPE.test(type);
 }
 
+export function isDateOnlyColumnType(type: string | null | undefined): boolean {
+  return Boolean(type && /(^|[^A-Za-z0-9_])(Date32|Date)(?=[^A-Za-z0-9_]|$)/.test(type) && !type.includes("DateTime"));
+}
+
 export type EventTimeSupport = "native" | "unix" | "string" | "unsupported";
 
 export function eventTimeSupport(type: string): EventTimeSupport {

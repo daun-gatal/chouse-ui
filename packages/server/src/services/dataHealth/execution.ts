@@ -1,7 +1,7 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 
 import { escapeQualifiedIdentifier } from "../../utils/sqlIdentifier";
-import { describeSelectSchema, diffSchema } from "../scheduledQueries/materialize";
+import { describeDestination, describeSelectSchema, diffSchema } from "../scheduledQueries/materialize";
 import type { ScheduledQueryRow } from "../scheduledQueries/types";
 import * as scheduledStore from "../scheduledQueries/store";
 import { buildExecutableQuery } from "../scheduledQueries/validation";
@@ -18,10 +18,13 @@ export interface DataHealthRunEvaluation {
 }
 
 /** Recompile generated SQL at execution time so existing promises receive compiler fixes. */
-export async function currentDataHealthJob(job: ScheduledQueryRow): Promise<ScheduledQueryRow> {
+export async function currentDataHealthJob(job: ScheduledQueryRow, client?: ClickHouseClient): Promise<ScheduledQueryRow> {
   const promise = await store.getPromiseByJobId(job.id);
   if (!promise) throw new Error("Data Health promise metadata is missing for the scheduled job");
   const checks = await store.getChecks(promise.id);
+  const partitionMetadata = client && promise.sourceType === "table" && promise.databaseName && promise.tableName
+    ? await describeDestination(client, promise.databaseName, promise.tableName)
+    : null;
   const compiled = compileDataHealthQuery({
     sourceType: promise.sourceType,
     databaseName: promise.databaseName ?? undefined,
@@ -33,6 +36,8 @@ export async function currentDataHealthJob(job: ScheduledQueryRow): Promise<Sche
     eventTimeTimezone: promise.eventTimeTimezone ?? undefined,
     eventTimeFormat: promise.eventTimeFormat,
     rowFilter: promise.rowFilter ?? undefined,
+    partitionKey: partitionMetadata?.partitionKey ?? undefined,
+    partitionColumns: partitionMetadata?.columns,
   }, checks);
   return { ...job, query: compiled.sql };
 }

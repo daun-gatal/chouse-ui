@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DataHealthSchedule } from "@/api/dataHealth";
-import { detectEventTimeColumn, eventTimeSupport, formatSchedule, isTemporalColumnType, suggestEventTimeEncoding } from "./lib";
+import { detectEventTimeColumn, eventTimeSupport, formatSchedule, isDateOnlyColumnType, isTemporalColumnType, suggestEventTimeEncoding } from "./lib";
 
 const SCHEDULE: DataHealthSchedule = {
   frequency: "daily",
@@ -33,6 +33,8 @@ describe("event-time column detection", () => {
     expect(isTemporalColumnType("Nullable(DateTime('Asia/Jakarta'))")).toBe(true);
     expect(isTemporalColumnType("DateTime64(3, 'UTC')")).toBe(true);
     expect(isTemporalColumnType("String")).toBe(false);
+    expect(isDateOnlyColumnType("Nullable(Date32)")).toBe(true);
+    expect(isDateOnlyColumnType("DateTime('Asia/Jakarta')")).toBe(false);
   });
 
   it("prefers a conventional event-time name and otherwise the most precise type", () => {

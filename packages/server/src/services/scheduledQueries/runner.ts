@@ -232,7 +232,8 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
   const params = buildParamValues(window);
 
   try {
-    const executionJob = job.kind === "data_health_check" ? await currentDataHealthJob(job) : job;
+    client = await clientForConnection(job.connectionId, scheduledLogComment(job));
+    const executionJob = job.kind === "data_health_check" ? await currentDataHealthJob(job, client) : job;
     // Re-validate read-only on the SOURCE every run (an edit can't smuggle a write).
     const validation = validateReadOnlySelect(executionJob.query);
     if (!validation.ok) throw new Error(validation.error ?? "Source query failed read-only validation");
@@ -243,8 +244,6 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
     if (denial) throw new Error(`data access denied: ${denial}`);
 
     const { sql: execSql } = buildExecutableQuery(executionJob.query);
-    client = await clientForConnection(executionJob.connectionId, scheduledLogComment(executionJob));
-
     if (executionJob.outputMode === "none") {
       const outcome = await runSelect(client, executionJob, execSql, params, runId, controller.signal);
       rowCount = outcome.rowCount;

@@ -80,11 +80,12 @@ function parseJson<T>(raw: unknown): T | null {
 function toJobRow(r: Record<string, unknown>): ScheduledQueryRow {
   const frequency = String(r.frequency);
   const outputMode = String(r.output_mode);
+  const kind = (String(r.kind) as ScheduledQueryRow["kind"]) || "sql_query";
   return {
     id: String(r.id),
     name: String(r.name),
     description: strOrNull(r.description),
-    kind: (String(r.kind) as ScheduledQueryRow["kind"]) || "sql_query",
+    kind,
     connectionId: String(r.connection_id),
     query: String(r.query),
     enabled: bool(r.enabled),
@@ -93,7 +94,7 @@ function toJobRow(r: Record<string, unknown>): ScheduledQueryRow {
     dayOfWeek: Number(r.day_of_week ?? 1),
     dayOfMonth: Number(r.day_of_month ?? 1),
     cronExpr: strOrNull(r.cron_expr),
-    timezone: String(r.timezone ?? "UTC"),
+    timezone: kind === "data_health_check" ? "UTC" : String(r.timezone ?? "UTC"),
     outputMode: isOutputMode(outputMode) ? outputMode : "none",
     destDatabase: strOrNull(r.dest_database),
     destTable: strOrNull(r.dest_table),

@@ -77,11 +77,10 @@ export interface DataHealthPromiseInput {
   description?: string | null;
   connectionId: string;
   source:
-    | { sourceType: "table"; databaseName: string; tableName: string; eventTimeColumn?: string; eventTimeType?: string; eventTimeEncoding?: DataHealthEventTimeEncoding; eventTimeTimezone?: string; eventTimeFormat?: DataHealthEventTimeFormat; rowFilter?: string | null }
-    | { sourceType: "query"; sourceQuery: string; eventTimeColumn?: string; eventTimeType?: string; eventTimeEncoding?: DataHealthEventTimeEncoding; eventTimeTimezone?: string; eventTimeFormat?: DataHealthEventTimeFormat; rowFilter?: string | null };
+    | { sourceType: "table"; databaseName: string; tableName: string; eventTimeColumn?: string; eventTimeType?: string; eventTimeEncoding?: DataHealthEventTimeEncoding; eventTimeTimezone?: string; rowFilter?: string | null }
+    | { sourceType: "query"; sourceQuery: string; eventTimeColumn?: string; eventTimeType?: string; eventTimeEncoding?: DataHealthEventTimeEncoding; eventTimeTimezone?: string; rowFilter?: string | null };
   ownerId?: string | null;
   criticality: DataHealthPromise["criticality"];
-  timezone: string;
   runbookUrl?: string | null;
   enabled: boolean;
   frequency: DataHealthFrequency;
@@ -170,12 +169,6 @@ export interface DataHealthPreview {
   metricCheckKeys: string[];
   schemaCheckKeys: string[];
   nextFireTimes: number[];
-  eventTimePreview: {
-    sampled: number;
-    invalid: number;
-    earliest: string | null;
-    latest: string | null;
-  } | null;
 }
 
 export async function listDataHealthPromises(connectionId?: string): Promise<DataHealthPromise[]> {

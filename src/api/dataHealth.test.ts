@@ -18,8 +18,8 @@ import {
 } from "./dataHealth";
 
 const input: DataHealthPromiseInput = {
-  name: "Orders ready", connectionId: "conn-1", source: { sourceType: "table", databaseName: "analytics", tableName: "orders", eventTimeColumn: "created_at", eventTimeType: "String", eventTimeEncoding: "string", eventTimeTimezone: "Asia/Jakarta", eventTimeFormat: "best_effort" },
-  criticality: "critical", timezone: "Asia/Jakarta", enabled: true, frequency: "daily", hour: 8, dayOfWeek: 1, dayOfMonth: 1,
+  name: "Orders ready", connectionId: "conn-1", source: { sourceType: "table", databaseName: "analytics", tableName: "orders", eventTimeColumn: "created_at", eventTimeType: "DateTime", eventTimeEncoding: "native" },
+  criticality: "critical", enabled: true, frequency: "daily", hour: 8, dayOfWeek: 1, dayOfMonth: 1,
   graceSecs: 900, breachAfter: 1, recoverAfter: 2, retentionDays: 90, timeoutSecs: 60, channelIds: [], runNow: true,
   checks: [{ checkKey: "row_count", name: "Row volume", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
 };

@@ -134,6 +134,8 @@ export interface DataHealthCompileSource {
   eventTimeTimezone?: string;
   eventTimeFormat?: DataHealthEventTimeFormat;
   rowFilter?: string;
+  partitionKey?: string;
+  partitionColumns?: Array<{ name: string; type: string }>;
 }
 
 export interface CompiledDataHealthQuery {

@@ -7,21 +7,17 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/midd
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getConnectionById, getUserConnections } from "../rbac/services/connections";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
-import { escapeIdentifier, escapeQualifiedIdentifier } from "../utils/sqlIdentifier";
-import { compileDataHealthQuery, eventTimeExpression, eventTimeTypeFromSchema } from "../services/dataHealth/compiler";
+import { compileDataHealthQuery, eventTimeTypeFromSchema, isDateOnlyEventTimeType } from "../services/dataHealth/compiler";
 import { backtestDataHealth, buildFailingRowsQuery, runFailingRowsDiagnostic } from "../services/dataHealth/diagnostics";
 import * as healthStore from "../services/dataHealth/store";
-import {
-  DATA_HEALTH_EVENT_TIME_ENCODINGS,
-  DATA_HEALTH_EVENT_TIME_FORMATS,
-  dataHealthCheckDefinitionSchema,
-} from "../services/dataHealth/types";
+import { DATA_HEALTH_EVENT_TIME_ENCODINGS, dataHealthCheckDefinitionSchema } from "../services/dataHealth/types";
 import { isValidTimeZone, nextFireTimes, validateCron } from "../services/scheduledQueries/cadence";
 import * as runner from "../services/scheduledQueries/runner";
 import * as scheduledStore from "../services/scheduledQueries/store";
 import { SQ_FREQUENCIES } from "../services/scheduledQueries/types";
 import { toParseableSql } from "../services/scheduledQueries/validation";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
+import { describeDestination } from "../services/scheduledQueries/materialize";
 import { AppError, requireParam } from "../types";
 
 const dataHealth = new Hono();
@@ -78,7 +74,6 @@ const promiseBodySchema = z.object({
       eventTimeType: z.string().trim().min(1).max(200).optional(),
       eventTimeEncoding: z.enum(DATA_HEALTH_EVENT_TIME_ENCODINGS).optional(),
       eventTimeTimezone: z.string().trim().min(1).max(100).optional(),
-      eventTimeFormat: z.enum(DATA_HEALTH_EVENT_TIME_FORMATS).optional(),
       rowFilter: z.string().trim().max(2000).nullish(),
     }),
     z.object({
@@ -88,13 +83,12 @@ const promiseBodySchema = z.object({
       eventTimeType: z.string().trim().min(1).max(200).optional(),
       eventTimeEncoding: z.enum(DATA_HEALTH_EVENT_TIME_ENCODINGS).optional(),
       eventTimeTimezone: z.string().trim().min(1).max(100).optional(),
-      eventTimeFormat: z.enum(DATA_HEALTH_EVENT_TIME_FORMATS).optional(),
       rowFilter: z.string().trim().max(2000).nullish(),
     }),
   ]),
   ownerId: z.string().nullish(),
   criticality: z.enum(["standard", "important", "critical"]).default("standard"),
-  timezone: z.string().trim().min(1).max(100).default("UTC"),
+  timezone: z.literal("UTC").optional().default("UTC"),
   runbookUrl: z.string().url().max(2000).nullish(),
   enabled: z.boolean().default(true),
   frequency: z.enum(SQ_FREQUENCIES as unknown as [string, ...string[]]),
@@ -114,18 +108,21 @@ const promiseBodySchema = z.object({
 
 type PromiseBody = z.infer<typeof promiseBodySchema>;
 
-function effectiveEventTimeTimezone(body: PromiseBody): string | undefined {
-  if (body.source.eventTimeTimezone) return body.source.eventTimeTimezone;
-  return body.source.eventTimeEncoding === "string" ? body.timezone : undefined;
-}
-
 function validatePromiseBody(body: PromiseBody): void {
-  if (!isValidTimeZone(body.timezone)) throw AppError.badRequest("Invalid IANA timezone");
-  if (body.source.eventTimeTimezone && !isValidTimeZone(body.source.eventTimeTimezone)) {
-    throw AppError.badRequest("Invalid event-time IANA timezone");
-  }
   if (!body.source.eventTimeColumn && (body.source.eventTimeType || body.source.eventTimeEncoding || body.source.eventTimeTimezone)) {
     throw AppError.badRequest("Event-time configuration requires an event-time column");
+  }
+  if (body.source.eventTimeColumn && (!body.source.eventTimeEncoding || body.source.eventTimeEncoding === "auto")) {
+    throw AppError.badRequest("Choose the stored event-time format");
+  }
+  if (body.source.sourceType === "query" && body.source.eventTimeEncoding === "native" && !body.source.eventTimeType) {
+    throw AppError.badRequest("Native query event time requires its DateTime or Date type");
+  }
+  if (body.source.eventTimeEncoding === "string" && !body.source.eventTimeTimezone) {
+    throw AppError.badRequest("String event-time values require their stored-value timezone");
+  }
+  if (body.source.eventTimeTimezone && !isValidTimeZone(body.source.eventTimeTimezone)) {
+    throw AppError.badRequest("Invalid stored event-time IANA timezone");
   }
   if (body.frequency === "cron") {
     const cron = validateCron(body.cronExpr ?? "", body.timezone);
@@ -133,49 +130,50 @@ function validatePromiseBody(body: PromiseBody): void {
   }
 }
 
-function compile(body: PromiseBody): ReturnType<typeof compileDataHealthQuery> {
-  return compileDataHealthQuery({
+function validateDateEventTime(body: PromiseBody, eventTimeType: string | undefined): void {
+  const dateOnlyEventTime = body.source.eventTimeEncoding === "native" && isDateOnlyEventTimeType(eventTimeType);
+  if (dateOnlyEventTime && !body.source.eventTimeTimezone) {
+    throw AppError.badRequest("Date event-time columns require their calendar timezone");
+  }
+  if (dateOnlyEventTime && (body.frequency === "cron" || body.frequency === "manual")) {
+    throw AppError.badRequest("Date event-time columns require a daily, weekly, or monthly cadence");
+  }
+  if (dateOnlyEventTime && body.checks.some((check) => check.type === "freshness" && check.config.maxAgeSeconds < 86_400)) {
+    throw AppError.badRequest("Date freshness must be at least one day");
+  }
+}
+
+interface PromiseCompilation {
+  compiled: ReturnType<typeof compileDataHealthQuery>;
+  eventTimeType: string | undefined;
+}
+
+async function compile(c: Context, body: PromiseBody): Promise<PromiseCompilation> {
+  const partitionMetadata = body.source.sourceType === "table"
+    ? await describeDestination(
+      await clientForConnection(body.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_partition_metadata" })),
+      body.source.databaseName,
+      body.source.tableName,
+    )
+    : null;
+  const eventTimeType = body.source.eventTimeColumn
+    ? partitionMetadata?.columns.find((column) => column.name === body.source.eventTimeColumn)?.type ?? body.source.eventTimeType
+    : undefined;
+  validateDateEventTime(body, eventTimeType);
+  const compiled = compileDataHealthQuery({
     sourceType: body.source.sourceType,
     databaseName: body.source.sourceType === "table" ? body.source.databaseName : undefined,
     tableName: body.source.sourceType === "table" ? body.source.tableName : undefined,
     sourceQuery: body.source.sourceType === "query" ? body.source.sourceQuery : undefined,
     eventTimeColumn: body.source.eventTimeColumn,
-    eventTimeType: body.source.eventTimeType,
+    eventTimeType,
     eventTimeEncoding: body.source.eventTimeEncoding,
-    eventTimeTimezone: effectiveEventTimeTimezone(body),
-    eventTimeFormat: body.source.eventTimeFormat,
+    eventTimeTimezone: body.source.eventTimeTimezone,
     rowFilter: body.source.rowFilter ?? undefined,
+    partitionKey: partitionMetadata?.partitionKey ?? undefined,
+    partitionColumns: partitionMetadata?.columns,
   }, body.checks);
-}
-
-async function previewEventTime(c: Context, body: PromiseBody): Promise<{
-  sampled: number;
-  invalid: number;
-  earliest: string | null;
-  latest: string | null;
-} | null> {
-  if (body.source.sourceType !== "table" || !body.source.eventTimeColumn) return null;
-  const column = escapeIdentifier(body.source.eventTimeColumn);
-  const expression = eventTimeExpression(
-    body.source.eventTimeColumn,
-    body.source.eventTimeType,
-    body.source.eventTimeEncoding,
-    effectiveEventTimeTimezone(body),
-    body.source.eventTimeFormat,
-  );
-  const source = escapeQualifiedIdentifier([body.source.databaseName, body.source.tableName]);
-  const query = `SELECT count() AS sampled, countIf(isNull(${expression})) AS invalid, if(count() = 0, NULL, toString(min(${expression}))) AS earliest, if(count() = 0, NULL, toString(max(${expression}))) AS latest FROM (SELECT ${column} FROM ${source} LIMIT 100)`;
-  await assertQueryAccess(c, query, body.connectionId);
-  const client = await clientForConnection(body.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_event_time_preview" }));
-  const result = await client.query({ query, format: "JSON", clickhouse_settings: { readonly: "1", max_execution_time: 10, max_result_rows: "1" } });
-  const json = (await result.json()) as { data?: Array<{ sampled?: number | string; invalid?: number | string; earliest?: string | null; latest?: string | null }> };
-  const row = json.data?.[0];
-  return {
-    sampled: Number(row?.sampled ?? 0),
-    invalid: Number(row?.invalid ?? 0),
-    earliest: row?.earliest ?? null,
-    latest: row?.latest ?? null,
-  };
+  return { compiled, eventTimeType };
 }
 
 function schemaSnapshotFromBody(body: PromiseBody): Array<{ name: string; type: string }> | null {
@@ -187,7 +185,7 @@ function schemaSnapshotFromBody(body: PromiseBody): Array<{ name: string; type: 
   return null;
 }
 
-function metadataInput(body: PromiseBody, scheduledQueryId: string, ownerId: string, createdBy: string): healthStore.CreatePromiseMetadataInput {
+function metadataInput(body: PromiseBody, scheduledQueryId: string, ownerId: string, createdBy: string, eventTimeType = body.source.eventTimeType): healthStore.CreatePromiseMetadataInput {
   return {
     scheduledQueryId,
     name: body.name,
@@ -198,10 +196,10 @@ function metadataInput(body: PromiseBody, scheduledQueryId: string, ownerId: str
     tableName: body.source.sourceType === "table" ? body.source.tableName : null,
     sourceQuery: body.source.sourceType === "query" ? body.source.sourceQuery : null,
     eventTimeColumn: body.source.eventTimeColumn ?? null,
-    eventTimeType: body.source.eventTimeType ?? null,
+    eventTimeType: eventTimeType ?? null,
     eventTimeEncoding: body.source.eventTimeColumn ? body.source.eventTimeEncoding ?? "auto" : "auto",
-    eventTimeTimezone: effectiveEventTimeTimezone(body) ?? null,
-    eventTimeFormat: body.source.eventTimeFormat ?? "best_effort",
+    eventTimeTimezone: body.source.eventTimeTimezone ?? null,
+    eventTimeFormat: "best_effort",
     rowFilter: body.source.rowFilter ?? null,
     ownerId,
     criticality: body.criticality,
@@ -252,6 +250,7 @@ async function promiseResponse(promise: NonNullable<Awaited<ReturnType<typeof he
   if (!job || job.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
   return {
     ...promise,
+    timezone: "UTC",
     checks,
     schedule: {
       frequency: job.frequency,
@@ -323,10 +322,9 @@ dataHealth.post(
   async (c) => {
     const body = c.req.valid("json");
     validatePromiseBody(body);
-    const compiled = compile(body);
     await assertConnectionAccess(c, body.connectionId);
+    const { compiled } = await compile(c, body);
     await assertQueryAccess(c, compiled.sql, body.connectionId);
-    const eventTimePreview = await previewEventTime(c, body);
     const fireTimes = body.frequency === "manual" ? [] : nextFireTimes({
       frequency: body.frequency,
       hour: body.hour,
@@ -335,7 +333,7 @@ dataHealth.post(
       cronExpr: body.frequency === "cron" ? body.cronExpr ?? null : null,
       timezone: body.timezone,
     }, 5);
-    return ok(c, { compiledSql: compiled.sql, metricCheckKeys: compiled.metricCheckKeys, schemaCheckKeys: compiled.schemaCheckKeys, nextFireTimes: fireTimes, eventTimePreview });
+    return ok(c, { compiledSql: compiled.sql, metricCheckKeys: compiled.metricCheckKeys, schemaCheckKeys: compiled.schemaCheckKeys, nextFireTimes: fireTimes });
   },
 );
 
@@ -346,8 +344,8 @@ dataHealth.post(
   async (c) => {
     const body = c.req.valid("json");
     validatePromiseBody(body);
-    const compiled = compile(body);
     await assertConnectionAccess(c, body.connectionId);
+    const { compiled, eventTimeType } = await compile(c, body);
     await assertQueryAccess(c, compiled.sql, body.connectionId);
     const user = currentUser(c);
     const ownerId = canViewAll(c) ? body.ownerId ?? user.sub : user.sub;
@@ -355,7 +353,7 @@ dataHealth.post(
 
     let promiseId: string;
     try {
-      promiseId = await healthStore.createPromiseMetadata(metadataInput(body, jobId, ownerId, user.sub));
+      promiseId = await healthStore.createPromiseMetadata(metadataInput(body, jobId, ownerId, user.sub, eventTimeType));
       await healthStore.replaceChecks(promiseId, body.checks);
       await scheduledStore.setJobChannels(jobId, body.channelIds);
     } catch (error) {
@@ -397,6 +395,11 @@ dataHealth.post(
       scheduledStore.getJob(promise.scheduledQueryId),
     ]);
     if (!job || job.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
+    await assertConnectionAccess(c, promise.connectionId);
+    const client = await clientForConnection(promise.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_backtest", promise_id: promise.id }));
+    const partitionMetadata = promise.sourceType === "table" && promise.databaseName && promise.tableName
+      ? await describeDestination(client, promise.databaseName, promise.tableName)
+      : null;
     const compiled = compileDataHealthQuery({
       sourceType: promise.sourceType,
       databaseName: promise.databaseName ?? undefined,
@@ -408,10 +411,10 @@ dataHealth.post(
       eventTimeTimezone: promise.eventTimeTimezone ?? undefined,
       eventTimeFormat: promise.eventTimeFormat,
       rowFilter: promise.rowFilter ?? undefined,
+      partitionKey: partitionMetadata?.partitionKey ?? undefined,
+      partitionColumns: partitionMetadata?.columns,
     }, checks);
-    await assertConnectionAccess(c, promise.connectionId);
     await assertQueryAccess(c, compiled.sql, promise.connectionId);
-    const client = await clientForConnection(promise.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_backtest", promise_id: promise.id }));
     return ok(c, await backtestDataHealth(client, job, compiled.sql, checks, c.req.valid("json").slots));
   },
 );
@@ -500,8 +503,8 @@ dataHealth.patch(
     if (body.connectionId !== promise.connectionId) {
       throw AppError.badRequest("A Data Health promise cannot be moved to a different connection");
     }
-    const compiled = compile(body);
     await assertConnectionAccess(c, body.connectionId);
+    const { compiled, eventTimeType } = await compile(c, body);
     await assertQueryAccess(c, compiled.sql, body.connectionId);
     const existingJob = await scheduledStore.getJob(promise.scheduledQueryId);
     if (!existingJob || existingJob.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
@@ -511,7 +514,7 @@ dataHealth.patch(
     const ownerId = canViewAll(c) ? body.ownerId ?? promise.ownerId ?? user.sub : promise.ownerId ?? user.sub;
     try {
       await scheduledStore.updateJob(existingJob.id, jobInput(body, compiled.sql));
-      await healthStore.updatePromiseMetadata(promise.id, metadataInput(body, existingJob.id, ownerId, promise.createdBy ?? user.sub));
+      await healthStore.updatePromiseMetadata(promise.id, metadataInput(body, existingJob.id, ownerId, promise.createdBy ?? user.sub, eventTimeType));
       await healthStore.replaceChecks(promise.id, body.checks);
       await scheduledStore.setJobChannels(existingJob.id, body.channelIds);
     } catch (error) {

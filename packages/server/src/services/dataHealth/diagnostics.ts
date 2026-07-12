@@ -4,7 +4,7 @@ import { escapeIdentifier, escapeQualifiedIdentifier } from "../../utils/sqlIden
 import { previousFireMs } from "../scheduledQueries/cadence";
 import { buildExecutableQuery, toDateTime64Param, validateReadOnlySelect } from "../scheduledQueries/validation";
 import { evaluateDataHealth } from "./evaluator";
-import { eventTimeExpression, eventTimeTypeFromSchema } from "./compiler";
+import { eventTimeExpression, eventTimeTypeFromSchema, eventTimeWindowPredicate } from "./compiler";
 import type { DataHealthCheckDefinition, DataHealthPromiseRow } from "./types";
 import type { ScheduledQueryRow } from "../scheduledQueries/types";
 
@@ -39,14 +39,16 @@ function sourceSql(promise: DataHealthPromiseRow): string {
 function baseFilters(promise: DataHealthPromiseRow, slotStart: string, slotEnd: string): string[] {
   const filters: string[] = [];
   if (promise.eventTimeColumn) {
-    const column = eventTimeExpression(
+    const eventTimeType = promise.eventTimeType ?? eventTimeTypeFromSchema(promise.eventTimeColumn, promise.schemaSnapshot);
+    filters.push(eventTimeWindowPredicate(
       promise.eventTimeColumn,
-      promise.eventTimeType ?? eventTimeTypeFromSchema(promise.eventTimeColumn, promise.schemaSnapshot),
+      eventTimeType,
       promise.eventTimeEncoding,
       promise.eventTimeTimezone ?? undefined,
       promise.eventTimeFormat,
-    );
-    filters.push(`${column} >= ${slotStart} AND ${column} < ${slotEnd}`);
+      slotStart,
+      slotEnd,
+    ));
   }
   if (promise.rowFilter?.trim()) filters.push(`(${promise.rowFilter.trim()})`);
   return filters;

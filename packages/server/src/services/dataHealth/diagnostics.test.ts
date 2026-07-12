@@ -37,6 +37,15 @@ describe("Data Health diagnostics", () => {
       { checkKey: "email_ok", name: "Email", type: "completeness", severity: "warning", enabled: true, config: { column: "email", minRatio: 0.99 } },
       20,
     );
-    expect(query).toContain("parseDateTime64BestEffortOrNull(toString(`created_at_text`), 3) >= {{slot_start}}");
+    expect(query).toContain("toTimeZone(parseDateTime64BestEffortOrNull(toString(`created_at_text`), 3), 'UTC') >= {{slot_start}}");
+  });
+
+  it("maps diagnostic windows to the saved calendar timezone for Date event time", () => {
+    const query = buildFailingRowsQuery(
+      { ...promise, eventTimeColumn: "business_date", eventTimeType: "Date", eventTimeTimezone: "Asia/Jakarta" },
+      { checkKey: "email_ok", name: "Email", type: "completeness", severity: "warning", enabled: true, config: { column: "email", minRatio: 0.99 } },
+      20,
+    );
+    expect(query).toContain("`business_date` >= toDate({{slot_start}}, 'Asia/Jakarta') AND `business_date` < toDate({{slot_end}}, 'Asia/Jakarta')");
   });
 });

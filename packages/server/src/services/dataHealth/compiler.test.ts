@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { compileDataHealthQuery, eventTimeExpression } from "./compiler";
+import { compileDataHealthQuery, eventTimeExpression, timePartitionPredicate } from "./compiler";
 import type { DataHealthCheckDefinition } from "./types";
 
 const checks: DataHealthCheckDefinition[] = [
@@ -77,15 +77,85 @@ describe("compileDataHealthQuery", () => {
       { sourceType: "table", databaseName: "analytics", tableName: "events", eventTimeColumn: "created_at", eventTimeType: "Nullable(String)", eventTimeEncoding: "string", eventTimeTimezone: "Asia/Jakarta" },
       [{ checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
     );
-    expect(string.sql).toContain("parseDateTime64BestEffortOrNull(toString(`created_at`), 3, 'Asia/Jakarta') >= {{slot_start}}");
+    expect(string.sql).toContain("toTimeZone(parseDateTime64BestEffortOrNull(toString(`created_at`), 3, 'Asia/Jakarta'), 'UTC') >= {{slot_start}}");
   });
 
-  it("reinterprets naïve native wall-clock values in their declared timezone", () => {
+  it("compares native ClickHouse time columns directly with UTC slot parameters", () => {
     const compiled = compileDataHealthQuery(
       { sourceType: "table", databaseName: "analytics", tableName: "events", eventTimeColumn: "created_at", eventTimeType: "DateTime", eventTimeEncoding: "native", eventTimeTimezone: "Asia/Jakarta" },
       [{ checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
     );
-    expect(compiled.sql).toContain("parseDateTime64BestEffortOrNull(toString(`created_at`), 3, 'Asia/Jakarta')");
+    expect(compiled.sql).toContain("`created_at` >= {{slot_start}}");
+    expect(compiled.sql).not.toContain("parseDateTime64BestEffortOrNull");
+  });
+
+  it("adds automatic pruning for time-based partition styles", () => {
+    expect(timePartitionPredicate("toYYYYMM(event_time)", [{ name: "event_time", type: "DateTime('Asia/Jakarta')" }])).toBe(
+      "toYYYYMM(event_time) >= toYYYYMM({{slot_start - 1d}}) AND toYYYYMM(event_time) <= toYYYYMM({{slot_end + 1d}})",
+    );
+    expect(timePartitionPredicate("partition_date", [{ name: "partition_date", type: "Date" }])).toBe(
+      "`partition_date` >= toDate({{slot_start - 1d}}) AND `partition_date` <= toDate({{slot_end + 1d}})",
+    );
+    expect(timePartitionPredicate("toDate(event_time, 'Asia/Jakarta')", [{ name: "event_time", type: "DateTime" }])).toBe(
+      "toDate(event_time, 'Asia/Jakarta') >= toDate({{slot_start - 1d}}, 'Asia/Jakarta') AND toDate(event_time, 'Asia/Jakarta') <= toDate({{slot_end + 1d}}, 'Asia/Jakarta')",
+    );
+    expect(timePartitionPredicate("tenant_id", [{ name: "tenant_id", type: "String" }])).toBeNull();
+  });
+
+  it("keeps the UTC event predicate authoritative when applying local-date partition pruning", () => {
+    const compiled = compileDataHealthQuery(
+      {
+        sourceType: "table",
+        databaseName: "analytics",
+        tableName: "events",
+        eventTimeColumn: "event_time",
+        partitionKey: "toDate(local_event_time)",
+        partitionColumns: [{ name: "local_event_time", type: "DateTime('Asia/Jakarta')" }],
+      },
+      [{ checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
+    );
+    expect(compiled.sql).toContain("`event_time` >= {{slot_start}} AND `event_time` < {{slot_end}}");
+    expect(compiled.sql).toContain("toDate(local_event_time) >= toDate({{slot_start - 1d}})");
+  });
+
+  it("maps UTC windows to the configured calendar timezone for Date event time", () => {
+    const compiled = compileDataHealthQuery(
+      {
+        sourceType: "table",
+        databaseName: "analytics",
+        tableName: "daily_orders",
+        eventTimeColumn: "business_date",
+        eventTimeType: "Date",
+        eventTimeEncoding: "native",
+        eventTimeTimezone: "Asia/Jakarta",
+      },
+      [{ checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
+    );
+    expect(compiled.sql).toContain("`business_date` >= toDate({{slot_start}}, 'Asia/Jakarta') AND `business_date` < toDate({{slot_end}}, 'Asia/Jakarta')");
+  });
+
+  it("measures Date freshness from the end of the latest local calendar day", () => {
+    const compiled = compileDataHealthQuery(
+      {
+        sourceType: "table",
+        databaseName: "analytics",
+        tableName: "daily_orders",
+        eventTimeColumn: "business_date",
+        eventTimeType: "Date32",
+        eventTimeEncoding: "native",
+        eventTimeTimezone: "Asia/Jakarta",
+      },
+      [{ checkKey: "freshness", name: "Freshness", type: "freshness", severity: "critical", enabled: true, config: { eventTimeColumn: "business_date", maxAgeSeconds: 86_400 } }],
+    );
+    expect(compiled.sql).toContain("`business_date` >= toDate({{slot_end - 86400s}}, 'Asia/Jakarta')");
+    expect(compiled.sql).toContain("toTimeZone(toDateTime(addDays(max(`business_date`), 1), 'Asia/Jakarta'), 'UTC')");
+  });
+
+  it("rejects Date event time without a calendar timezone", () => {
+    expect(() => compileDataHealthQuery(
+      { sourceType: "table", databaseName: "analytics", tableName: "daily_orders", eventTimeColumn: "business_date", eventTimeType: "Date", eventTimeEncoding: "native" },
+      [{ checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
+    )).toThrow("calendar timezone");
   });
 
   it("compiles independent multi-column rules and composite uniqueness keys", () => {

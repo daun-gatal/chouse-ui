@@ -65,9 +65,19 @@ and delivery, not continued evaluation.
 
 ### Time and security
 
-The shared cadence gains an IANA timezone. Existing Scheduled Queries default to `UTC`;
-Data Health defaults to the user's selected business timezone. Firing, previous-window
-calculation, preview, and baseline grouping use the same timezone.
+The shared cadence supports IANA timezones for Scheduled Queries. Data Health always
+uses `UTC` for firing, previous-window calculation, preview, and baseline grouping so
+its slot macros have the same semantics as Scheduled Queries' execution parameters.
+For table sources, Data Health inspects the ClickHouse partition key and adds a coarse
+time-partition predicate when it recognizes a time-based style. Local calendar/date
+partitions use a one-day boundary halo; the exact UTC event-time predicate remains the
+authoritative filter. Native ClickHouse `DateTime` columns are compared as instants.
+Day-only `Date`/`Date32` event-time columns require a calendar timezone; UTC slot
+boundaries are mapped to local calendar dates, freshness is measured from the end of
+the latest completed local day, and cadence is limited to daily, weekly, or monthly.
+String timestamps require the timezone of offset-less stored text, and integer
+timestamps require an explicit seconds, milliseconds, microseconds, or nanoseconds
+unit before conversion to an instant.
 
 Data Health has independent `view`, `edit`, `delete`, `run`, and `view_all` permissions.
 Connection and table access are checked at configuration time and re-evaluated against
