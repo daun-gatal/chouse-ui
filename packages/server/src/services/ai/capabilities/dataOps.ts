@@ -104,9 +104,9 @@ const HealthRecommendationSchema = z.object({
   summary: z.string(),
   eventTimeColumn: z.string().nullable(),
   checks: z.array(dataHealthCheckDefinitionSchema).min(1).max(20),
-  breachAfter: z.number().int().min(1).max(20),
-  recoverAfter: z.number().int().min(1).max(20),
-  graceSecs: z.number().int().min(0),
+  breachAfter: z.coerce.number().int().min(1).max(20),
+  recoverAfter: z.coerce.number().int().min(1).max(20),
+  graceSecs: z.coerce.number().int().min(0),
   rationale: z.array(z.string()).max(20),
   confidence: z.number().min(0).max(1),
 });

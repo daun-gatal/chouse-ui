@@ -12,7 +12,7 @@ import { debugQueryCapability } from "./debugQuery";
 import { checkOptimizeCapability } from "./checkOptimize";
 import { diagnoseErrorCapability, diagnosePartsCapability } from "./diagnose";
 import { fleetScanCapability } from "./fleetScan";
-import { draftScheduledQueryCapability, summarizeScheduledQueryCapability } from "./dataOps";
+import { draftScheduledQueryCapability, recommendHealthPromiseCapability, summarizeScheduledQueryCapability } from "./dataOps";
 import {
   buildOptimizationPrompt,
   buildDebugPrompt,
@@ -149,6 +149,56 @@ describe("optimizer prompt builders", () => {
   it("stripFormatClause removes trailing FORMAT + semicolon", () => {
     expect(stripFormatClause("SELECT 1 FORMAT JSON")).toBe("SELECT 1");
     expect(stripFormatClause("SELECT 1;")).toBe("SELECT 1");
+  });
+});
+
+describe("recommend-health-promise output schema", () => {
+  const validRecommendation = {
+    summary: "s",
+    eventTimeColumn: "event_time",
+    checks: [
+      {
+        checkKey: "row_count_min",
+        name: "row count",
+        severity: "warning",
+        enabled: true,
+        type: "row_count",
+        config: { min: 1 },
+      },
+    ],
+    breachAfter: 2,
+    recoverAfter: 1,
+    graceSecs: 0,
+    rationale: ["r"],
+    confidence: 0.8,
+  };
+
+  it("coerces numeric-string breachAfter/recoverAfter/graceSecs (LLMs sometimes emit strings)", () => {
+    const result = recommendHealthPromiseCapability.outputSchema.safeParse({
+      ...validRecommendation,
+      breachAfter: "2",
+      recoverAfter: "1",
+      graceSecs: "0",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.breachAfter).toBe(2);
+      expect(result.data.recoverAfter).toBe(1);
+      expect(result.data.graceSecs).toBe(0);
+    }
+  });
+
+  it("still rejects non-numeric or out-of-range values", () => {
+    expect(
+      recommendHealthPromiseCapability.outputSchema.safeParse({ ...validRecommendation, graceSecs: "not-a-number" })
+        .success,
+    ).toBe(false);
+    expect(
+      recommendHealthPromiseCapability.outputSchema.safeParse({ ...validRecommendation, graceSecs: -1 }).success,
+    ).toBe(false);
+    expect(
+      recommendHealthPromiseCapability.outputSchema.safeParse({ ...validRecommendation, breachAfter: 0 }).success,
+    ).toBe(false);
   });
 });
 
