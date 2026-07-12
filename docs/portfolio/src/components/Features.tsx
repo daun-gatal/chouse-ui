@@ -5,7 +5,7 @@ import {
   Download, Settings, Eye, Plus, Minus, Activity, Star, Sparkles, Bot, MessageSquare,
   Gauge, MemoryStick, Layers, Stethoscope, Network, SunMoon,
   LayoutGrid, BellRing, TableProperties, Radar,
-  CalendarClock, Clock, GitBranch, RefreshCw, ListChecks,
+  CalendarClock, Clock, GitBranch, RefreshCw, ListChecks, HeartPulse,
   type LucideIcon,
 } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
@@ -45,15 +45,17 @@ const GROUPS: FeatureGroup[] = [
     ],
   },
   {
-    category: "DataOps & Scheduling",
+    category: "DataOps & Data Health",
     icon: CalendarClock,
     items: [
       { icon: CalendarClock, title: "Scheduled Queries", desc: "Schedule any read-only SELECT on a daily / weekly / monthly preset or a custom UTC cron — a DataOps page with Overview, Jobs, and Runs" },
       { icon: Clock, title: "Deterministic windows", desc: "Templated {{slot_start}} / {{slot_end}} / {{prev_run_at}} bind to each run's exact time window, so backfills and replays are reproducible" },
       { icon: RefreshCw, title: "Materialize write-back", desc: "Optional engine-generated, idempotent write into a destination table — append, replace-partition, or upsert — alongside bounded result snapshots" },
-      { icon: BellRing, title: "Failure alerting", desc: "Transition-based notifications to linked channels on failure and once on recovery — no flapping" },
       { icon: GitBranch, title: "Runtime Lineage", desc: "Graphs the tables a job actually reads and writes from system.query_log, chaining jobs together and revealing column-level flow on demand" },
       { icon: ListChecks, title: "Replica-safe scheduler", desc: "In-process per-job-lease scheduler correct across replicas with no leader election, plus a crash-only reaper, bounded retry, and transactional outbox" },
+      { icon: HeartPulse, title: "Data Health Promises", desc: "Scheduled freshness, volume, per-column completeness, composite-key uniqueness, validity, schema, and custom-metric checks, with auto-selected event-time columns and deterministic UTC normalization" },
+      { icon: Eye, title: "Health evidence & incidents", desc: "Inspect the actual evaluated window and why a passing check had no violations; execution failures get dedicated incidents with recovery transitions and an immutable timeline" },
+      { icon: BellRing, title: "Failure alerting", desc: "Transition-based notifications to linked channels on job failure, promise breach, and once on recovery — no flapping" },
     ],
   },
   {

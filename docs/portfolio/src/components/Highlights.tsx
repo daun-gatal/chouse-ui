@@ -10,7 +10,7 @@ interface Highlight {
 }
 
 // The pillars that make up the "combination" — a team access layer
-// (security / RBAC / audit) × fleet monitoring × an autonomous AI SRE × scheduled DataOps.
+// (security / RBAC / audit) × fleet monitoring × an autonomous AI SRE × scheduled DataOps + Data Health.
 const HIGHLIGHTS: Highlight[] = [
   {
     icon: Shield,
@@ -50,8 +50,8 @@ const HIGHLIGHTS: Highlight[] = [
   },
   {
     icon: CalendarClock,
-    title: "Scheduled queries",
-    description: "Cron-scheduled read-only SELECTs with deterministic time windows, idempotent materialize write-back, failure alerting, and runtime lineage — DataOps without a separate orchestrator.",
+    title: "Scheduled queries & Data Health",
+    description: "Cron-scheduled read-only SELECTs with deterministic time windows and idempotent materialize write-back, plus scheduled freshness, volume, and validity promises with low-noise incidents — DataOps without a separate orchestrator.",
     meta: "Built-in DataOps",
   },
   {
