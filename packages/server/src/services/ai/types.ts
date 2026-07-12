@@ -109,10 +109,15 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
   delivery: "structured";
   /** RBAC permission required to invoke. Enforced by the route before the engine. */
   permission: Permission;
-  /** Validates the request `input`. */
-  inputSchema: z.ZodType<TInput>;
-  /** Schema the agent's final JSON must satisfy. */
-  outputSchema: z.ZodType<TParsed>;
+  /**
+   * Validates the request `input`. The third generic param is loosened to
+   * `unknown` so schemas with `.default()` fields (whose parsed *input* type is
+   * looser than the resulting `TInput` output type) remain assignable here —
+   * only the parsed `Output` (`TInput`) is ever relied on.
+   */
+  inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
+  /** Schema the agent's final JSON must satisfy. Same `.default()` note as `inputSchema` above. */
+  outputSchema: z.ZodType<TParsed, z.ZodTypeDef, unknown>;
   /** Agent loop tuning. */
   tuning?: AgentTuning;
 

@@ -8,7 +8,9 @@ import { buildExecutableQuery } from "../scheduledQueries/validation";
 import { compileDataHealthQuery, eventTimeTypeFromSchema } from "./compiler";
 import { evaluateDataHealth } from "./evaluator";
 import * as store from "./store";
-import type { DataHealthMetricEvaluation } from "./types";
+import type { DataHealthCheckDefinition, DataHealthMetricEvaluation } from "./types";
+
+type SchemaContractCheck = Extract<DataHealthCheckDefinition, { type: "schema_contract" }>;
 
 export interface DataHealthRunEvaluation {
   conditionMet: boolean;
@@ -60,7 +62,7 @@ export async function processDataHealthSuccess(
   if (!promise) throw new Error("Data Health promise metadata is missing for the scheduled job");
   const [checks, history] = await Promise.all([store.getChecks(promise.id), store.metricHistory(promise.id)]);
   const result = evaluateDataHealth(checks, observed, history);
-  const schemaChecks = checks.filter((check) => check.type === "schema_contract" && check.enabled);
+  const schemaChecks = checks.filter((check): check is SchemaContractCheck => check.type === "schema_contract" && check.enabled);
   if (schemaChecks.length > 0) {
     const rawSource = promise.sourceType === "table"
       ? `SELECT * FROM ${escapeQualifiedIdentifier([promise.databaseName ?? "", promise.tableName ?? ""])}`

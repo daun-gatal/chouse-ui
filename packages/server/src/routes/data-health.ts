@@ -14,7 +14,7 @@ import { DATA_HEALTH_EVENT_TIME_ENCODINGS, dataHealthCheckDefinitionSchema } fro
 import { isValidTimeZone, nextFireTimes, validateCron } from "../services/scheduledQueries/cadence";
 import * as runner from "../services/scheduledQueries/runner";
 import * as scheduledStore from "../services/scheduledQueries/store";
-import { SQ_FREQUENCIES } from "../services/scheduledQueries/types";
+import { SQ_FREQUENCIES, type SqFrequency } from "../services/scheduledQueries/types";
 import { buildExecutableQuery, toDateTime64Param, toParseableSql, validateReadOnlySelect } from "../services/scheduledQueries/validation";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
 import { describeDestination, describeSelectSchema } from "../services/scheduledQueries/materialize";
@@ -91,7 +91,7 @@ const promiseBodySchema = z.object({
   timezone: z.literal("UTC").optional().default("UTC"),
   runbookUrl: z.string().url().max(2000).nullish(),
   enabled: z.boolean().default(true),
-  frequency: z.enum(SQ_FREQUENCIES as unknown as [string, ...string[]]),
+  frequency: z.enum(SQ_FREQUENCIES as [SqFrequency, ...SqFrequency[]]),
   hour: z.number().int().min(0).max(23).default(8),
   dayOfWeek: z.number().int().min(0).max(6).default(1),
   dayOfMonth: z.number().int().min(1).max(28).default(1),

@@ -452,11 +452,7 @@ export const recommendHealthPromiseCapability: StructuredCapability<RecommendInp
     return input;
   },
   tools(_prepared, ctx): AgentToolSet {
-    const tools = coreTools(ctx) as Record<string, unknown>;
-    const { get_table_schema, get_table_ddl, run_select_query } = tools;
-    if (!run_select_query || typeof run_select_query !== "object" || !("invoke" in run_select_query) || typeof run_select_query.invoke !== "function") {
-      return { get_table_schema, get_table_ddl } as AgentToolSet;
-    }
+    const { get_table_schema, get_table_ddl, run_select_query } = coreTools(ctx);
     const aggregate = tool(async ({ sql }: { sql: string }) => {
       const normalized = sql.replace(/\s+/g, " ").trim();
       const hasAggregate = /\b(count|sum|avg|min|max|quantile\w*|uniq\w*)\s*\(/i.test(normalized);
