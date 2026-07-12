@@ -31,44 +31,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
-import type { ScheduledQuery, ScheduledQueryInput } from "@/api/scheduledQueries";
+import type { ScheduledQuery } from "@/api/scheduledQueries";
 import { useScheduledQueries, useDeleteScheduledQuery, useRunScheduledQuery, useUpdateScheduledQuery, useJobOwners } from "./hooks";
 import { JobWizard } from "./JobWizard";
-import { StatusBadge, scheduleLabel, formatRelative, SQ_BTN_PRIMARY, SQ_LABEL } from "./lib";
+import { JobDetail } from "./JobDetail";
+import { StatusBadge, scheduleLabel, formatRelative, scheduledQueryToInput, SQ_BTN_PRIMARY, SQ_LABEL } from "./lib";
 import { TablePagination } from "./TablePagination";
 
 const statusRank: Record<string, number> = { error: 0, failed: 1, running: 2, success: 3 };
 
 type EnabledFilter = "all" | "enabled" | "disabled";
 type StateFilter = "all" | "success" | "failing" | "running" | "never";
-
-/** Reconstruct the full update payload from a job (used to toggle enabled). */
-function jobToInput(job: ScheduledQuery, overrides: Partial<ScheduledQueryInput>): ScheduledQueryInput {
-  return {
-    name: job.name,
-    description: job.description,
-    connectionId: job.connectionId,
-    query: job.query,
-    enabled: job.enabled,
-    frequency: job.frequency,
-    hour: job.hour,
-    dayOfWeek: job.dayOfWeek,
-    dayOfMonth: job.dayOfMonth,
-    cronExpr: job.cronExpr,
-    outputMode: job.outputMode,
-    destDatabase: job.destDatabase,
-    destTable: job.destTable,
-    outputConfig: job.outputConfig,
-    maxRows: job.maxRows,
-    timeoutSecs: job.timeoutSecs,
-    useFinal: job.useFinal,
-    seqConsistency: job.seqConsistency,
-    maxAttempts: job.maxAttempts,
-    retentionDays: job.retentionDays,
-    channelIds: job.channelIds,
-    ...overrides,
-  };
-}
 
 function lastState(job: ScheduledQuery): StateFilter {
   const s = job.lastRun?.status;
@@ -78,7 +51,7 @@ function lastState(job: ScheduledQuery): StateFilter {
   return "success";
 }
 
-export function JobsTab({ onSelectJob }: { onSelectJob: (id: string) => void }) {
+export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?: string; onSelectedJobChange: (id?: string) => void }) {
   const { hasPermission } = useRbacStore();
   const canEdit = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_EDIT);
   const canDelete = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_DELETE);
@@ -125,6 +98,7 @@ export function JobsTab({ onSelectJob }: { onSelectJob: (id: string) => void }) 
 
   const total = filtered.length;
   const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const selectedJob = jobs?.find((job) => job.id === selectedJobId);
 
   const handleRun = async (job: ScheduledQuery) => {
     try {
@@ -138,7 +112,7 @@ export function JobsTab({ onSelectJob }: { onSelectJob: (id: string) => void }) 
 
   const handleToggle = async (job: ScheduledQuery) => {
     try {
-      await updateMut.mutateAsync({ id: job.id, input: jobToInput(job, { enabled: !job.enabled }) });
+      await updateMut.mutateAsync({ id: job.id, input: scheduledQueryToInput(job, { enabled: !job.enabled }) });
       toast.success(job.enabled ? "Job disabled" : "Job enabled");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Update failed");
@@ -156,6 +130,10 @@ export function JobsTab({ onSelectJob }: { onSelectJob: (id: string) => void }) 
       setDeleteTarget(undefined);
     }
   };
+
+  if (selectedJob) {
+    return <JobDetail job={selectedJob} jobs={jobs ?? []} onBack={() => onSelectedJobChange(undefined)} />;
+  }
 
   return (
     <div className="space-y-4">
@@ -220,7 +198,7 @@ export function JobsTab({ onSelectJob }: { onSelectJob: (id: string) => void }) 
           <div className="space-y-2">
             {pageItems.map((job) => (
               <Card key={job.id} className="flex items-center justify-between gap-4 rounded-xs border-ink-500 bg-ink-100 p-3">
-                <button type="button" onClick={() => onSelectJob(job.id)} className="min-w-0 flex-1 text-left">
+                <button type="button" onClick={() => onSelectedJobChange(job.id)} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[13px] font-medium text-paper">{job.name}</span>
                     {job.lastRun && <StatusBadge status={job.lastRun.status} />}

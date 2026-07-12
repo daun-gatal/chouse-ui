@@ -10,6 +10,7 @@ const mockQuery = new Hono();
 const mockExplorer = new Hono();
 const mockMetrics = new Hono();
 const mockSavedQueries = new Hono();
+const mockQueryHistory = new Hono();
 const mockRbac = new Hono();
 
 mock.module("./config", () => config);
@@ -17,6 +18,7 @@ mock.module("./query", () => mockQuery);
 mock.module("./explorer", () => mockExplorer);
 mock.module("./metrics", () => mockMetrics);
 mock.module("./saved-queries", () => mockSavedQueries);
+mock.module("./query-history", () => mockQueryHistory);
 mock.module("../rbac", () => ({ rbacRoutes: mockRbac }));
 
 // Import AFTER mocking

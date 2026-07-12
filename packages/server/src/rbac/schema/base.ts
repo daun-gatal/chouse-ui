@@ -160,6 +160,13 @@ export const PERMISSIONS = {
   // Cross-owner visibility: see and act on ALL jobs (per the action perms above).
   // Without it, scheduled_queries:* is scoped to the jobs the user created.
   SCHEDULED_QUERIES_VIEW_ALL: 'scheduled_queries:view_all',
+
+  // Data Health (dataset promises + incidents)
+  DATA_HEALTH_VIEW: 'data_health:view',
+  DATA_HEALTH_EDIT: 'data_health:edit',
+  DATA_HEALTH_DELETE: 'data_health:delete',
+  DATA_HEALTH_RUN: 'data_health:run',
+  DATA_HEALTH_VIEW_ALL: 'data_health:view_all',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -237,6 +244,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.SCHEDULED_QUERIES_RUN,
     PERMISSIONS.SCHEDULED_QUERIES_WRITE,
     PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL,
+    PERMISSIONS.DATA_HEALTH_VIEW,
+    PERMISSIONS.DATA_HEALTH_EDIT,
+    PERMISSIONS.DATA_HEALTH_DELETE,
+    PERMISSIONS.DATA_HEALTH_RUN,
+    PERMISSIONS.DATA_HEALTH_VIEW_ALL,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -478,6 +490,15 @@ export const AUDIT_ACTIONS = {
   SCHEDULED_QUERY_UPDATE: 'scheduled_query.update',
   SCHEDULED_QUERY_DELETE: 'scheduled_query.delete',
   SCHEDULED_QUERY_RUN: 'scheduled_query.run',
+
+  // Data Health
+  DATA_HEALTH_PROMISE_CREATE: 'data_health.promise_create',
+  DATA_HEALTH_PROMISE_UPDATE: 'data_health.promise_update',
+  DATA_HEALTH_PROMISE_DELETE: 'data_health.promise_delete',
+  DATA_HEALTH_PROMISE_RUN: 'data_health.promise_run',
+  DATA_HEALTH_INCIDENT_ACKNOWLEDGE: 'data_health.incident_acknowledge',
+  DATA_HEALTH_INCIDENT_SNOOZE: 'data_health.incident_snooze',
+  DATA_HEALTH_INCIDENT_NOTE: 'data_health.incident_note',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

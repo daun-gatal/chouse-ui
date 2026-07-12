@@ -29,7 +29,7 @@ import {
   type ScheduledQueryRow,
 } from "../services/scheduledQueries/types";
 import { validateReadOnlySelect, toParseableSql } from "../services/scheduledQueries/validation";
-import { validateCron, nextFireTimes } from "../services/scheduledQueries/cadence";
+import { fireTimesBetween, isValidTimeZone, validateCron, nextFireTimes } from "../services/scheduledQueries/cadence";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
 import {
   describeSelectSchema,
@@ -97,7 +97,7 @@ function ownerScope(c: Context): string | null {
  */
 async function loadVisibleJob(c: Context, id: string): Promise<ScheduledQueryRow> {
   const job = await store.getJob(id);
-  if (!job) throw AppError.notFound("Scheduled query not found");
+  if (!job || job.kind !== "sql_query") throw AppError.notFound("Scheduled query not found");
   if (!canViewAll(c) && job.createdBy !== userId(c)) {
     throw AppError.notFound("Scheduled query not found");
   }
@@ -156,6 +156,7 @@ const jobBodySchema = z.object({
   dayOfWeek: z.number().int().min(0).max(6).default(1),
   dayOfMonth: z.number().int().min(1).max(28).default(1),
   cronExpr: z.string().trim().nullish(),
+  timezone: z.string().trim().min(1).max(100).default("UTC"),
   outputMode: z.enum(SQ_OUTPUT_MODES as unknown as [string, ...string[]]).default("none"),
   destDatabase: z.string().trim().nullish(),
   destTable: z.string().trim().nullish(),
@@ -173,11 +174,12 @@ type JobBody = z.infer<typeof jobBodySchema>;
 
 /** Cross-field validation shared by create + edit. Throws AppError on failure. */
 function validateBody(body: JobBody, canWrite: boolean): void {
+  if (!isValidTimeZone(body.timezone)) throw AppError.badRequest("Invalid IANA timezone");
   const ro = validateReadOnlySelect(body.query);
   if (!ro.ok) throw AppError.badRequest(ro.error ?? "Invalid query");
 
   if (body.frequency === "cron") {
-    const cron = validateCron(body.cronExpr ?? "");
+    const cron = validateCron(body.cronExpr ?? "", body.timezone);
     if (!cron.valid) throw AppError.badRequest(cron.error ?? "Invalid cron expression");
   }
 
@@ -208,6 +210,7 @@ function bodyToInput(body: JobBody): store.JobInput {
     dayOfWeek: body.dayOfWeek,
     dayOfMonth: body.dayOfMonth,
     cronExpr: body.frequency === "cron" ? (body.cronExpr ?? null) : null,
+    timezone: body.timezone,
     outputMode: body.outputMode as ScheduledQueryRow["outputMode"],
     destDatabase: body.outputMode === "none" ? null : (body.destDatabase ?? null),
     destTable: body.outputMode === "none" ? null : (body.destTable ?? null),
@@ -259,7 +262,10 @@ async function toJobResponse(job: ScheduledQueryRow, includeLastRun: boolean): P
 // --- jobs -------------------------------------------------------------------
 
 scheduledQueries.get("/", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW), async (c) => {
-  const jobs = await store.listJobs(ownerScope(c));
+  // Optional connection scope: the UI passes the active connection so the list
+  // only shows jobs the current session can meaningfully open and edit.
+  const connectionId = c.req.query("connectionId");
+  const jobs = (await store.listJobs(ownerScope(c))).filter((j) => !connectionId || j.connectionId === connectionId);
   const data = await Promise.all(jobs.map((j) => toJobResponse(j, true)));
   return ok(c, { jobs: data });
 });
@@ -267,7 +273,7 @@ scheduledQueries.get("/", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW),
 scheduledQueries.get("/overview", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW), async (c) => {
   const windowParam = c.req.query("window") ?? "14d";
   const windowDays = Math.min(90, Math.max(1, parseInt(windowParam, 10) || 14));
-  const overview = await store.getOverview(windowDays, ownerScope(c));
+  const overview = await store.getOverview(windowDays, ownerScope(c), c.req.query("connectionId") ?? null);
   return ok(c, overview);
 });
 
@@ -300,15 +306,28 @@ scheduledQueries.patch(
   zValidator("json", jobBodySchema),
   async (c) => {
     const id = requireParam(c, "id");
-    await loadVisibleJob(c, id);
+    const previous = await loadVisibleJob(c, id);
     const body = c.req.valid("json");
     validateBody(body, hasWritePerm(c));
+    // The connection is the data-access boundary and is fixed at creation — an
+    // edit must never silently re-point a job at a different cluster.
+    if (body.connectionId !== previous.connectionId) {
+      throw AppError.badRequest("A scheduled query cannot be moved to a different connection");
+    }
     await assertConnectionAccess(c, body.connectionId);
     const access = await dataAccessCheck(c, body.query, body.connectionId);
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
     await store.updateJob(id, bodyToInput(body));
     await store.setJobChannels(id, body.channelIds);
-    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), { resourceType: "scheduled_query", resourceId: id });
+    const changedFields = [
+      previous.name !== body.name ? "name" : null,
+      previous.query !== body.query ? "query" : null,
+      previous.frequency !== body.frequency || previous.cronExpr !== (body.cronExpr ?? null) || previous.timezone !== body.timezone ? "schedule" : null,
+      previous.outputMode !== body.outputMode || previous.destDatabase !== (body.destDatabase ?? null) || previous.destTable !== (body.destTable ?? null) ? "output" : null,
+      previous.timeoutSecs !== body.timeoutSecs || previous.maxAttempts !== body.maxAttempts ? "reliability" : null,
+      previous.enabled !== body.enabled ? "enabled" : null,
+    ].filter((field): field is string => field !== null);
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), { resourceType: "scheduled_query", resourceId: id, details: { changedFields, previousUpdatedAt: previous.updatedAt } });
     const job = await store.getJob(id);
     return ok(c, await toJobResponse(job!, false));
   },
@@ -328,6 +347,47 @@ scheduledQueries.post("/:id/run", requirePermission(PERMISSIONS.SCHEDULED_QUERIE
   const run = await runner.execute(job, { trigger: "manual", slotAt: Date.now(), attempt: 1 });
   return ok(c, { run });
 });
+
+const recoverySchema = z.object({
+  from: z.number().int(),
+  to: z.number().int(),
+  execute: z.boolean().default(false),
+  confirm: z.boolean().default(false),
+  rerunSuccessful: z.boolean().default(false),
+}).refine((value) => value.from <= value.to, "Start must precede end");
+
+scheduledQueries.post(
+  "/:id/recovery",
+  requirePermission(PERMISSIONS.SCHEDULED_QUERIES_RUN),
+  zValidator("json", recoverySchema),
+  async (c) => {
+    const job = await loadVisibleJob(c, requireParam(c, "id"));
+    const body = c.req.valid("json");
+    const slots = fireTimesBetween(job, body.from, body.to, 100);
+    const existing = await Promise.all(slots.map((slotAt) => store.hasSuccessfulRunForSlot(job.id, slotAt)));
+    const plan = slots.map((slotAt, index) => ({ slotAt, alreadySucceeded: existing[index] }));
+    const runnable = plan.filter((slot) => body.rerunSuccessful || !slot.alreadySucceeded);
+    const warnings = [
+      ...(slots.length === 100 ? ["Range reached the 100-slot preview limit"] : []),
+      ...(job.outputMode === "append" ? ["Append recovery depends on ClickHouse deduplication being enabled for the destination engine"] : []),
+      ...(job.outputMode === "upsert" ? ["Upsert recovery deduplicates eventually after merges"] : []),
+    ];
+    if (!body.execute) return ok(c, { plan, runnable: runnable.length, warnings });
+    if (!body.confirm) throw AppError.badRequest("Recovery execution requires explicit confirmation");
+    if (runnable.length > 30) throw AppError.badRequest("Execute at most 30 recovery slots per request");
+    const runs = [];
+    for (const slot of runnable) {
+      const run = await runner.execute(job, { trigger: "manual", slotAt: slot.slotAt, attempt: 1, suppressNotifications: true });
+      if (run) runs.push(run);
+    }
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_RUN, userId(c), {
+      resourceType: "scheduled_query",
+      resourceId: job.id,
+      details: { recovery: true, from: body.from, to: body.to, slots: runs.length },
+    });
+    return ok(c, { plan, runnable: runnable.length, warnings, runs });
+  },
+);
 
 // --- runs -------------------------------------------------------------------
 
@@ -398,17 +458,17 @@ scheduledQueries.post(
 
     // 2. Next fire-times.
     if (body.frequency === "cron") {
-      const cron = validateCron(body.cronExpr ?? "");
+      const cron = validateCron(body.cronExpr ?? "", body.timezone);
       result.cron = cron;
       if (cron.valid) {
         result.nextFireTimes = nextFireTimes(
-          { frequency: "cron", hour: body.hour, dayOfWeek: body.dayOfWeek, dayOfMonth: body.dayOfMonth, cronExpr: body.cronExpr ?? null },
+          { frequency: "cron", hour: body.hour, dayOfWeek: body.dayOfWeek, dayOfMonth: body.dayOfMonth, cronExpr: body.cronExpr ?? null, timezone: body.timezone },
           5,
         );
       }
     } else if (body.frequency !== "manual") {
       result.nextFireTimes = nextFireTimes(
-        { frequency: body.frequency as ScheduledQueryRow["frequency"], hour: body.hour, dayOfWeek: body.dayOfWeek, dayOfMonth: body.dayOfMonth, cronExpr: null },
+        { frequency: body.frequency as ScheduledQueryRow["frequency"], hour: body.hour, dayOfWeek: body.dayOfWeek, dayOfMonth: body.dayOfMonth, cronExpr: null, timezone: body.timezone },
         5,
       );
     }

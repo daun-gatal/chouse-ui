@@ -27,6 +27,8 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 |-----|-------|--------|
 | [0001](0001-data-quality.md) | Data Health (scheduled column- and table-level checks) | Deprecated |
 | [0002](0002-scheduled-queries.md) | Scheduled Queries (a scheduled-execution backbone) | Accepted |
+| [0003](0003-data-health-promises.md) | Data Health Promises | Accepted |
+| [0004](0004-dataops-ai-operator-assistance.md) | Evidence-grounded DataOps AI operator assistance | Accepted |
 
 ## Conventions
 

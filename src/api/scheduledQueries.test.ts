@@ -3,8 +3,10 @@
  * unwrapping (`data.data`) and request shaping against MSW handlers.
  */
 
+import { http, HttpResponse } from "msw";
 import { describe, it, expect } from "vitest";
 
+import { server } from "@/test/mocks/server";
 import {
   listScheduledQueries,
   getOverview,
@@ -14,6 +16,7 @@ import {
   createScheduledQuery,
   deleteScheduledQuery,
   getLineage,
+  recoverScheduledQuery,
   type ScheduledQueryInput,
 } from "./scheduledQueries";
 
@@ -43,6 +46,24 @@ describe("Scheduled Queries API", () => {
     expect(jobs[0].id).toBe("sq-1");
     expect(jobs[0].lastRun?.status).toBe("success");
     expect(jobs[0].channelIds).toEqual(["ch-1"]);
+  });
+
+  it("scopes list and overview to a connection when one is provided", async () => {
+    const seen: Array<string | null> = [];
+    server.use(
+      http.get("/api/scheduled-queries", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("connectionId"));
+        return HttpResponse.json({ success: true, data: { jobs: [] } });
+      }),
+      http.get("/api/scheduled-queries/overview", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("connectionId"));
+        return HttpResponse.json({ success: true, data: { kpis: {}, byCadence: {}, byOutputMode: {}, upcoming: [], topFailing: [] } });
+      }),
+    );
+    await listScheduledQueries("conn-2");
+    await getOverview(14, "conn-2");
+    await listScheduledQueries();
+    expect(seen).toEqual(["conn-2", "conn-2", null]);
   });
 
   it("fetches the overview aggregation", async () => {
@@ -93,5 +114,12 @@ describe("Scheduled Queries API", () => {
     expect(write?.from).toBe("job:sq-1");
     expect(write?.to).toBe("table:db.out");
     expect(write?.columns).toEqual(["a"]);
+  });
+
+  it("previews and executes bounded recovery", async () => {
+    const preview = await recoverScheduledQuery("sq-1", { from: 1, to: 2 });
+    expect(preview.runnable).toBe(1);
+    const executed = await recoverScheduledQuery("sq-1", { from: 1, to: 2, execute: true, confirm: true });
+    expect(executed.runs?.[0].status).toBe("success");
   });
 });

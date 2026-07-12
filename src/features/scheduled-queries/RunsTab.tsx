@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { FileSearch, Calendar as CalendarIcon, Trash2 } from "lucide-react";
+import { FileSearch, Calendar as CalendarIcon, Trash2, Sparkles } from "lucide-react";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -35,8 +35,10 @@ import {
 import { cn } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import type { RunQuery, ScheduledQueryRun, SqStatus } from "@/api/scheduledQueries";
+import { diagnoseScheduledRun, type DataOpsInvestigation } from "@/api/dataOpsAi";
+import { AiInsightDialog, InvestigationView } from "@/features/dataops-ai";
 import { useScheduledQueries, useScheduledQueryRuns, useJobOwners, useDeleteRuns } from "./hooks";
-import { StatusBadge, formatTime, formatDuration } from "./lib";
+import { StatusBadge, formatDuration } from "./lib";
 import { TablePagination } from "./TablePagination";
 import { JobCombobox } from "./JobCombobox";
 
@@ -49,7 +51,7 @@ interface SnapshotShape {
   writtenRows?: number | null;
 }
 
-function RunSnapshot({ run }: { run: ScheduledQueryRun }) {
+function RunSnapshot({ run, timezone, canInvestigate, onInvestigate }: { run: ScheduledQueryRun; timezone: string; canInvestigate: boolean; onInvestigate: () => void }) {
   let snap: SnapshotShape = {};
   try {
     snap = run.resultJson ? (JSON.parse(run.resultJson) as SnapshotShape) : {};
@@ -59,10 +61,11 @@ function RunSnapshot({ run }: { run: ScheduledQueryRun }) {
   return (
     <div className="space-y-3 border-t border-ink-500 px-3 py-3">
       {run.message && <p className="text-[11px] text-red-600">{run.message}</p>}
+      {canInvestigate && (run.status === "failed" || run.status === "error") && <Button variant="outline" size="sm" className="h-8 rounded-xs" onClick={onInvestigate}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Investigate with AI</Button>}
       {snap.window && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-paper-muted">
           {Object.entries(snap.window).map(([k, v]) => (
-            <span key={k}>{k}=<span className="text-paper">{v}</span></span>
+            <span key={k}>{k}=<span className="text-paper">{v} UTC</span><span className="text-paper-faint"> ({new Date(`${v.replace(" ", "T")}Z`).toLocaleString(undefined, { timeZone: timezone, timeZoneName: "short" })})</span></span>
           ))}
         </div>
       )}
@@ -99,13 +102,14 @@ function RunSnapshot({ run }: { run: ScheduledQueryRun }) {
   );
 }
 
-export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
+export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: string; embedded?: boolean }) {
   const { data: jobs } = useScheduledQueries();
   const navigate = useNavigate();
   const { hasPermission } = useRbacStore();
   const canViewLogs = hasPermission(RBAC_PERMISSIONS.LOGS_VIEW);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
   const canDelete = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_DELETE);
+  const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const openInLogs = (queryId: string) => navigate(`/monitoring/logs?q=${encodeURIComponent(queryId)}`);
   const { options: ownerOptions } = useJobOwners(jobs, canViewAll);
   const deleteRunsMut = useDeleteRuns();
@@ -114,10 +118,14 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
   const [status, setStatus] = useState<SqStatus | "all">("all");
   const [dateRange, setDateRange] = useState<{ start?: Date; end?: Date }>({});
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(embedded ? 10 : 20);
   const [page, setPage] = useState(1);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteScope, setDeleteScope] = useState<string>("filters");
+  const [investigationOpen, setInvestigationOpen] = useState(false);
+  const [investigation, setInvestigation] = useState<DataOpsInvestigation>();
+  const [investigationLoading, setInvestigationLoading] = useState(false);
+  const [investigationError, setInvestigationError] = useState<string>();
 
   const jobOptions = (jobs ?? []).filter((j) => ownerFilter === "all" || j.createdBy === ownerFilter);
   const selectedJob = jobOptions.find((j) => j.id === jobId);
@@ -170,10 +178,24 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
   const total = runs?.length ?? 0;
   const pageRuns = (runs ?? []).slice((page - 1) * pageSize, page * pageSize);
 
+  const investigate = async (runId: string) => {
+    if (!jobId) return;
+    setInvestigationOpen(true);
+    setInvestigationLoading(true);
+    setInvestigationError(undefined);
+    try {
+      setInvestigation(await diagnoseScheduledRun(jobId, runId));
+    } catch (error) {
+      setInvestigationError(error instanceof Error ? error.message : "Run investigation failed");
+    } finally {
+      setInvestigationLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        {canViewAll && (
+        {!embedded && canViewAll && (
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
             <SelectTrigger className="h-9 w-[170px] rounded-xs"><SelectValue placeholder="Owner" /></SelectTrigger>
             <SelectContent>
@@ -182,7 +204,7 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
             </SelectContent>
           </Select>
         )}
-        <JobCombobox jobs={jobOptions} value={jobId} onChange={setJobId} />
+        {!embedded && <JobCombobox jobs={jobOptions} value={jobId} onChange={setJobId} />}
         <Select value={status} onValueChange={(v) => setStatus(v as SqStatus | "all")}>
           <SelectTrigger className="h-9 w-40 rounded-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -261,7 +283,7 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
                   >
                     <div className="flex items-center gap-2">
                       <StatusBadge status={run.status} />
-                      <span className="text-[12px] text-paper">{formatTime(run.startedAt)}</span>
+                      <span className="text-[12px] text-paper">{new Date(run.startedAt).toLocaleString(undefined, { timeZone: selectedJob?.timezone ?? "UTC", timeZoneName: "short" })}</span>
                       <span className="font-mono text-[10px] text-paper-faint">
                         {run.trigger}
                         {run.attempt > 1 ? ` · attempt ${run.attempt}` : ""}
@@ -286,7 +308,7 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
                     <span title={run.id} className="shrink-0 font-mono text-[10px] text-paper-faint">{run.id.slice(0, 8)}</span>
                   )}
                 </div>
-                {expanded === run.id && <RunSnapshot run={run} />}
+                {expanded === run.id && <RunSnapshot run={run} timezone={selectedJob?.timezone ?? "UTC"} canInvestigate={canUseAi} onInvestigate={() => void investigate(run.id)} />}
               </Card>
             ))}
           </div>
@@ -325,6 +347,7 @@ export function RunsTab({ selectedJobId }: { selectedJobId?: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AiInsightDialog open={investigationOpen} onOpenChange={setInvestigationOpen} title="Scheduled run investigation" description="Evidence-grounded diagnosis using the selected run and retained job history." loading={investigationLoading} error={investigationError}>{investigation && <InvestigationView result={investigation} />}</AiInsightDialog>
     </div>
   );
 }

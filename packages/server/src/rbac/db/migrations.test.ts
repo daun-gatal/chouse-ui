@@ -214,6 +214,51 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
       expect(await h.roleHasPermission("admin", p)).toBe(true);
     }
   },
+  "1.44.0": async () => {
+    expect(await h.columnExists("scheduled_queries", "timezone")).toBe(true);
+    for (const table of [
+      "data_health_promises",
+      "data_health_promise_checks",
+      "data_health_samples",
+      "data_health_incidents",
+      "data_health_incident_events",
+    ]) {
+      expect(await h.tableExists(table)).toBe(true);
+    }
+    expect(await h.columnExists("data_health_promises", "scheduled_query_id")).toBe(true);
+    expect(await h.columnExists("data_health_promises", "status")).toBe(true);
+    expect(await h.columnExists("data_health_samples", "observed_value")).toBe(true);
+    expect(await h.columnExists("data_health_incidents", "snoozed_until")).toBe(true);
+    expect(await h.indexExists("dh_promises_job_idx")).toBe(true);
+    expect(await h.indexExists("dh_promise_checks_promise_idx")).toBe(true);
+    expect(await h.indexExists("dh_samples_check_slot_idx")).toBe(true);
+    expect(await h.indexExists("dh_incidents_status_idx")).toBe(true);
+    for (const permission of [
+      "data_health:view",
+      "data_health:edit",
+      "data_health:delete",
+      "data_health:run",
+      "data_health:view_all",
+    ]) {
+      expect(await h.permissionExists(permission)).toBe(true);
+      expect(await h.roleHasPermission("super_admin", permission)).toBe(true);
+      expect(await h.roleHasPermission("admin", permission)).toBe(true);
+    }
+  },
+  "1.44.1": async () => {
+    for (const column of ["event_time_type", "event_time_encoding", "event_time_timezone", "event_time_format"]) {
+      expect(await h.columnExists("data_health_promises", column)).toBe(true);
+    }
+  },
+  "1.45.0": async () => {
+    expect(await h.tableExists("rbac_query_history")).toBe(true);
+    expect(await h.columnExists("rbac_query_history", "executed_at")).toBe(true);
+    expect(await h.columnExists("rbac_query_history", "status")).toBe(true);
+    expect(await h.indexExists("query_history_user_time_idx")).toBe(true);
+  },
+  "1.46.0": async () => {
+    expect(await h.columnExists("rbac_ai_models", "params")).toBe(true);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -616,6 +661,54 @@ for (const dialect of DIALECTS) {
       expect(await h.rowCount("alert_rules")).toBe(1);
       expect(await h.rowCount("notification_channels")).toBe(2);
       expect(await h.rowCount("alert_rule_channels")).toBe(2);
+    });
+  });
+
+  describe(`migrations · 1.46.0 ai model runtime params [${dialect}]`, () => {
+    // 1.46.0 adds a nullable params JSON column to rbac_ai_models. Prove an
+    // existing model survives the upgrade with params NULL (built-in defaults),
+    // that a JSON payload round-trips through the new column on this dialect,
+    // and that re-running is a no-op.
+    const providerId = randomUUID();
+    const modelId = randomUUID();
+
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.45.0" });
+
+      await h.rawRun(sql`INSERT INTO rbac_ai_providers
+        (id, name, provider_type, is_active, created_at, updated_at)
+        VALUES (${providerId}, 'Acme OpenAI', 'openai', ${b(true)}, ${now()}, ${now()})`);
+      await h.rawRun(sql`INSERT INTO rbac_ai_models
+        (id, provider_id, name, model_id, created_at, updated_at)
+        VALUES (${modelId}, ${providerId}, 'GPT-4o', 'gpt-4o', ${now()}, ${now()})`);
+
+      await runMigrations({ skipSeed: true });
+    }, 60_000);
+
+    it("left the pre-existing model intact with params NULL", async () => {
+      const rows = await h.rawAll(sql`SELECT name, model_id, params FROM rbac_ai_models WHERE id = ${modelId}`);
+      expect(rows).toHaveLength(1);
+      expect(String(rows[0].name)).toBe("GPT-4o");
+      expect(String(rows[0].model_id)).toBe("gpt-4o");
+      expect(rows[0].params).toBeNull();
+    });
+
+    it("round-trips a JSON params payload through the new column", async () => {
+      const params = { temperature: 0.4, maxTokens: 8192, recursionLimit: 64, stopSequences: ["END"] };
+      await h.rawRun(sql`UPDATE rbac_ai_models SET params = ${JSON.stringify(params)} WHERE id = ${modelId}`);
+
+      const rows = await h.rawAll(sql`SELECT params FROM rbac_ai_models WHERE id = ${modelId}`);
+      expect(rows).toHaveLength(1);
+      // Postgres JSONB returns an object, SQLite TEXT returns a string.
+      const stored = typeof rows[0].params === "string" ? JSON.parse(String(rows[0].params)) : rows[0].params;
+      expect(stored).toEqual(params);
+    });
+
+    it("is idempotent — re-running applies nothing and keeps the row", async () => {
+      const result = await runMigrations({ skipSeed: true });
+      expect(result.migrationsApplied).toEqual([]);
+      expect(await h.rowCount("rbac_ai_models")).toBe(1);
     });
   });
 }

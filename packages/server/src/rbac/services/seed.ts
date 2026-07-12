@@ -150,6 +150,13 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.SCHEDULED_QUERIES_WRITE,
     PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL,
   ],
+  'Data Health': [
+    PERMISSIONS.DATA_HEALTH_VIEW,
+    PERMISSIONS.DATA_HEALTH_EDIT,
+    PERMISSIONS.DATA_HEALTH_DELETE,
+    PERMISSIONS.DATA_HEALTH_RUN,
+    PERMISSIONS.DATA_HEALTH_VIEW_ALL,
+  ],
 };
 
 // Human-readable permission names
@@ -233,6 +240,11 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.SCHEDULED_QUERIES_RUN]: 'Manually Run Scheduled Queries',
   [PERMISSIONS.SCHEDULED_QUERIES_WRITE]: 'Create Materialize Scheduled Queries',
   [PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL]: 'View and Act on All Scheduled Queries',
+  [PERMISSIONS.DATA_HEALTH_VIEW]: 'View Data Health',
+  [PERMISSIONS.DATA_HEALTH_EDIT]: 'Create and Edit Data Health Promises',
+  [PERMISSIONS.DATA_HEALTH_DELETE]: 'Delete Data Health Promises',
+  [PERMISSIONS.DATA_HEALTH_RUN]: 'Manually Run Data Health Promises',
+  [PERMISSIONS.DATA_HEALTH_VIEW_ALL]: 'View and Act on All Data Health Promises',
 };
 
 // Role display names and descriptions

@@ -21,10 +21,12 @@ mock.module("deepagents", () => ({
   registerHarnessProfile: registerHarnessProfileMock,
 }));
 
+// Mutable so individual tests can attach per-model runtime params.
+let modelParams: Record<string, unknown> | null = null;
 mock.module("./model", () => ({
   resolveDeepAgentModel: mock(async () => ({
     model: {},
-    config: { model: { modelId: "gpt-4o" }, provider: { providerType: "openai" } },
+    config: { model: { modelId: "gpt-4o", params: modelParams }, provider: { providerType: "openai" } },
     label: "test-model",
   })),
 }));
@@ -101,6 +103,23 @@ describe("runStructuredCapability", () => {
     expect(onParseFailure).toHaveBeenCalled();
     expect(output).toEqual({ foo: "recovered" });
   });
+
+  it("returns an evidence-keyed cached result before creating an agent", async () => {
+    createDeepAgentMock.mockClear();
+    const cachedResult = mock(() => ({ foo: "cached" }));
+    const output = await runStructuredCapability(fakeStructuredCapability({ cachedResult }), { q: "hi" }, CTX);
+    expect(output).toEqual({ foo: "cached" });
+    expect(cachedResult).toHaveBeenCalledWith({ q: "hi" }, CTX);
+    expect(createDeepAgentMock).not.toHaveBeenCalled();
+  });
+
+  it("stores a successful finalized result", async () => {
+    invokeResult = { messages: [{ content: '{"foo":"fresh"}' }] };
+    const cacheResult = mock(() => {});
+    const output = await runStructuredCapability(fakeStructuredCapability({ cacheResult }), { q: "hi" }, CTX);
+    expect(output).toEqual({ foo: "fresh" });
+    expect(cacheResult).toHaveBeenCalledWith({ foo: "fresh" }, { q: "hi" }, CTX);
+  });
 });
 
 describe("invokeCapabilityAgent", () => {
@@ -115,5 +134,46 @@ describe("invokeCapabilityAgent", () => {
     );
 
     expect(result).toEqual({ content: "Complete answer", toolCalls: [] });
+  });
+});
+
+describe("per-model runtime overrides", () => {
+  function lastInvokeConfig(): { recursionLimit?: number; signal?: AbortSignal } {
+    const call = invokeMock.mock.calls.at(-1) as unknown[] | undefined;
+    return (call?.[1] ?? {}) as { recursionLimit?: number; signal?: AbortSignal };
+  }
+
+  it("uses the computed recursion limit when no params are set", async () => {
+    modelParams = null;
+    invokeResult = { messages: [{ content: '{"foo":"x"}' }] };
+
+    await runStructuredCapability(fakeStructuredCapability(), { q: "hi" }, CTX);
+    // Default stopAtSteps 10 -> max(24, 10*4) = 40.
+    expect(lastInvokeConfig().recursionLimit).toBe(40);
+
+    invokeResult = { messages: [{ content: "done" }] };
+    await invokeCapabilityAgent(fakeInvokeCapability(), {}, CTX, [{ role: "user", content: "hi" }]);
+    // Default stopAtSteps 12 -> max(24, 12*4) = 48.
+    expect(lastInvokeConfig().recursionLimit).toBe(48);
+  });
+
+  it("applies the per-model recursionLimit and runTimeoutMs to both run modes", async () => {
+    modelParams = { recursionLimit: 99, runTimeoutMs: 30_000 };
+    try {
+      invokeResult = { messages: [{ content: '{"foo":"x"}' }] };
+      await runStructuredCapability(fakeStructuredCapability(), { q: "hi" }, CTX);
+      let cfg = lastInvokeConfig();
+      expect(cfg.recursionLimit).toBe(99);
+      expect(cfg.signal).toBeInstanceOf(AbortSignal);
+      expect(cfg.signal?.aborted).toBe(false);
+
+      invokeResult = { messages: [{ content: "done" }] };
+      await invokeCapabilityAgent(fakeInvokeCapability(), {}, CTX, [{ role: "user", content: "hi" }]);
+      cfg = lastInvokeConfig();
+      expect(cfg.recursionLimit).toBe(99);
+      expect(cfg.signal).toBeInstanceOf(AbortSignal);
+    } finally {
+      modelParams = null;
+    }
   });
 });

@@ -6,7 +6,9 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { queryApi, savedQueriesApi } from '@/api';
+import { queryApi, queryHistoryApi, savedQueriesApi } from '@/api';
+import type { QueryHistoryItem, QueryHistoryStatus } from '@/api/queryHistory';
+import { log } from '@/lib/log';
 import { usePreferencesStore } from './preferences';
 import type { QueryResult, QueryMeta, QueryStatistics } from '@/api';
 import { toast } from 'sonner';
@@ -34,12 +36,15 @@ export interface Tab {
   isDirty?: boolean;
 }
 
+export type { QueryHistoryItem, QueryHistoryStatus } from '@/api/queryHistory';
+
 export interface WorkspaceState {
   // State
   tabs: Tab[];
   activeTab: string;
   isTabLoading: boolean;
   tabError: string | null;
+  queryHistory: QueryHistoryItem[];
 
   // Tab actions
   addTab: (tab: Tab) => void;
@@ -55,6 +60,9 @@ export interface WorkspaceState {
   // Query actions
   runQuery: (query: string, tabId?: string) => Promise<QueryResult>;
   abortQuery: (tabId: string) => void;
+  loadQueryHistory: () => Promise<void>;
+  removeQueryHistoryItem: (id: string) => void;
+  clearQueryHistory: () => void;
 
   // Saved queries actions
   saveQuery: (tabId: string, name: string, query: string, isPublic?: boolean) => Promise<void>;
@@ -81,6 +89,8 @@ const defaultTabs: Tab[] = [
     type: 'home',
   },
 ];
+
+const QUERY_HISTORY_LIMIT = 100;
 
 // Custom storage adapter that includes user ID in the key
 const createUserSpecificStorage = (): any => {
@@ -165,7 +175,7 @@ const checkAndClearWorkspaceData = (set: any) => {
     // 3. The new user is not null (userId !== null) - meaning we're logging in as a different user, not logging out
     if (workspaceCurrentUserId !== null && workspaceCurrentUserId !== userId && userId !== null) {
       // Clear tabs except home when user changes
-      set({ tabs: defaultTabs, activeTab: 'home' });
+      set({ tabs: defaultTabs, activeTab: 'home', queryHistory: [] });
       // Clear the stored user ID since it's a different user
       try {
         localStorage.removeItem('workspace-last-user-id');
@@ -197,6 +207,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       activeTab: 'home',
       isTabLoading: false,
       tabError: null,
+      queryHistory: [],
 
       /**
        * Add a new tab
@@ -326,6 +337,33 @@ export const useWorkspaceStore = create<WorkspaceState>()(
        */
       runQuery: async (query: string, tabId?: string) => {
         const executionQueryId = `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const startedAt = Date.now();
+        const authState = useAuthStore.getState();
+
+        const recordHistory = (
+          status: QueryHistoryStatus,
+          rows: number,
+          error?: string,
+        ): void => {
+          const historyItem: QueryHistoryItem = {
+            id: executionQueryId,
+            query,
+            connectionId: authState.activeConnectionId ?? null,
+            connectionName: authState.activeConnectionName ?? null,
+            executedAt: startedAt,
+            durationMs: Math.max(0, Date.now() - startedAt),
+            rows,
+            status,
+            ...(error ? { error } : {}),
+          };
+
+          set((state) => ({
+            queryHistory: [historyItem, ...state.queryHistory].slice(0, QUERY_HISTORY_LIMIT),
+          }));
+          void queryHistoryApi.recordQueryHistory(historyItem).catch((caught: unknown) => {
+            log.error("Failed to persist query history", { error: caught instanceof Error ? caught.message : String(caught) });
+          });
+        };
 
         // Per-tab AbortController so the Stop button cancels the stream download.
         const controller = new AbortController();
@@ -434,6 +472,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               }
 
               if (tabId) tabAbortControllers.delete(tabId);
+              recordHistory('success', finalRowCount);
               resolveStream(finalResult);
             },
 
@@ -458,6 +497,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 tabAbortControllers.delete(tabId);
               }
 
+              recordHistory('error', 0, message);
               resolveStream(errorResult);
             },
           }
@@ -473,6 +513,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               });
               tabAbortControllers.delete(tabId);
             }
+            recordHistory('cancelled', streamedRows.length);
             resolveStream({
               meta: streamedMeta,
               data: streamedRows,
@@ -503,6 +544,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             });
             tabAbortControllers.delete(tabId);
           }
+          recordHistory('error', 0, message);
           resolveStream({
             meta: streamedMeta,
             data: streamedRows,
@@ -514,6 +556,40 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         });
 
         return streamPromise;
+      },
+
+      loadQueryHistory: async () => {
+        try {
+          const remote = await queryHistoryApi.getQueryHistory();
+          const local = get().queryHistory;
+          const merged = [...remote, ...local]
+            .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index)
+            .sort((left, right) => right.executedAt - left.executedAt)
+            .slice(0, QUERY_HISTORY_LIMIT);
+          set({ queryHistory: merged });
+          const remoteIds = new Set(remote.map((item) => item.id));
+          await Promise.allSettled(
+            local.filter((item) => !remoteIds.has(item.id)).map((item) => queryHistoryApi.recordQueryHistory(item)),
+          );
+        } catch (caught) {
+          log.error("Failed to load persisted query history", { error: caught instanceof Error ? caught.message : String(caught) });
+        }
+      },
+
+      removeQueryHistoryItem: (id: string) => {
+        set((state) => ({
+          queryHistory: state.queryHistory.filter((item) => item.id !== id),
+        }));
+        void queryHistoryApi.deleteQueryHistoryItem(id).catch((caught: unknown) => {
+          log.error("Failed to delete persisted query history item", { error: caught instanceof Error ? caught.message : String(caught) });
+        });
+      },
+
+      clearQueryHistory: () => {
+        set({ queryHistory: [] });
+        void queryHistoryApi.clearQueryHistory().catch((caught: unknown) => {
+          log.error("Failed to clear persisted query history", { error: caught instanceof Error ? caught.message : String(caught) });
+        });
       },
 
       /**
@@ -643,6 +719,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           activeTab: 'home',
           isTabLoading: false,
           tabError: null,
+          queryHistory: [],
         });
       },
     }),
@@ -657,6 +734,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           error: null,
         })),
         activeTab: state.activeTab,
+        queryHistory: state.queryHistory,
       }),
       // Restore tabs and check if user changed
       onRehydrateStorage: () => (state) => {
@@ -691,4 +769,3 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     }
   )
 );
-

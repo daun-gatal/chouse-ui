@@ -12,6 +12,7 @@
  */
 
 import { Hono, type Context } from "hono";
+import { z } from "zod";
 import { AppError } from "../types";
 import { queryAuthMiddleware, type Variables } from "./query";
 import { getCapability, CAPABILITIES, CAPABILITY_IDS } from "../services/ai/capabilities";
@@ -19,7 +20,7 @@ import { runStructuredCapability, isStructured } from "../services/ai/engine";
 import { isAIEnabled } from "../services/aiConfig";
 import type { AgentRunContext } from "../services/ai/types";
 import { createAuditLogWithContext, userHasPermission } from "../rbac/services/rbac";
-import { AUDIT_ACTIONS } from "../rbac/schema/base";
+import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import type { Permission } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { requestLogger } from "../utils/logger";
@@ -153,6 +154,29 @@ ai.get("/models", async (c) => {
   } catch {
     return c.json({ success: true, data: [] });
   }
+});
+
+ai.post("/feedback", async (c) => {
+  await requireCapabilityPermission(c, PERMISSIONS.AI_OPTIMIZE);
+  const schema = z.object({
+    capability: z.string().min(1).max(100),
+    objectType: z.enum(["scheduled_query", "scheduled_run", "data_health_promise", "data_health_incident"]),
+    objectId: z.string().min(1).max(200),
+    rating: z.enum(["useful", "not_useful", "accepted", "edited", "rejected"]),
+    comment: z.string().trim().max(500).optional(),
+  });
+  const body = schema.parse(await c.req.json().catch(() => null));
+  const userId = c.get("rbacUserId");
+  if (userId) {
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.CH_QUERY_EXECUTE, userId, {
+      resourceType: "dataops_ai_feedback",
+      resourceId: body.objectId,
+      details: body,
+      ipAddress: getClientIp(c),
+      status: "success",
+    });
+  }
+  return c.json({ success: true, data: { recorded: true } });
 });
 
 export default ai;

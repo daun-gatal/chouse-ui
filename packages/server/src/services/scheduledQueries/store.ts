@@ -22,6 +22,7 @@ import {
   type ScheduledQueryRow,
   type ScheduledQueryRunRow,
   type SqOutboxKind,
+  type SqKind,
   type SqStatus,
   type SqTrigger,
 } from "./types";
@@ -79,11 +80,12 @@ function parseJson<T>(raw: unknown): T | null {
 function toJobRow(r: Record<string, unknown>): ScheduledQueryRow {
   const frequency = String(r.frequency);
   const outputMode = String(r.output_mode);
+  const kind = (String(r.kind) as ScheduledQueryRow["kind"]) || "sql_query";
   return {
     id: String(r.id),
     name: String(r.name),
     description: strOrNull(r.description),
-    kind: (String(r.kind) as ScheduledQueryRow["kind"]) || "sql_query",
+    kind,
     connectionId: String(r.connection_id),
     query: String(r.query),
     enabled: bool(r.enabled),
@@ -92,6 +94,7 @@ function toJobRow(r: Record<string, unknown>): ScheduledQueryRow {
     dayOfWeek: Number(r.day_of_week ?? 1),
     dayOfMonth: Number(r.day_of_month ?? 1),
     cronExpr: strOrNull(r.cron_expr),
+    timezone: kind === "data_health_check" ? "UTC" : String(r.timezone ?? "UTC"),
     outputMode: isOutputMode(outputMode) ? outputMode : "none",
     destDatabase: strOrNull(r.dest_database),
     destTable: strOrNull(r.dest_table),
@@ -164,6 +167,7 @@ export interface JobInput {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr: string | null;
+  timezone: string;
   outputMode: ScheduledQueryRow["outputMode"];
   destDatabase: string | null;
   destTable: string | null;
@@ -176,11 +180,11 @@ export interface JobInput {
   retentionDays: number;
 }
 
-/** List jobs, optionally scoped to a single owner (`created_by`). */
-export async function listJobs(ownerId?: string | null): Promise<ScheduledQueryRow[]> {
+/** List jobs for one producer, optionally scoped to a single owner. */
+export async function listJobs(ownerId?: string | null, kind: SqKind = "sql_query"): Promise<ScheduledQueryRow[]> {
   const rows = ownerId
-    ? await all(sql`SELECT * FROM scheduled_queries WHERE created_by = ${ownerId} ORDER BY name`)
-    : await all(sql`SELECT * FROM scheduled_queries ORDER BY name`);
+    ? await all(sql`SELECT * FROM scheduled_queries WHERE kind = ${kind} AND created_by = ${ownerId} ORDER BY name`)
+    : await all(sql`SELECT * FROM scheduled_queries WHERE kind = ${kind} ORDER BY name`);
   return rows.map(toJobRow);
 }
 
@@ -194,7 +198,7 @@ export async function getJob(id: string): Promise<ScheduledQueryRow | null> {
   return rows[0] ? toJobRow(rows[0]) : null;
 }
 
-export async function createJob(input: JobInput, createdBy: string | null): Promise<string> {
+export async function createJob(input: JobInput, createdBy: string | null, kind: SqKind = "sql_query"): Promise<string> {
   const id = randomUUID();
   const now = Date.now();
   const outputConfig = input.outputConfig ? JSON.stringify(input.outputConfig) : null;
@@ -204,15 +208,15 @@ export async function createJob(input: JobInput, createdBy: string | null): Prom
   await run(sql`
     INSERT INTO scheduled_queries (
       id, name, description, kind, connection_id, query, enabled,
-      frequency, hour, day_of_week, day_of_month, cron_expr,
+      frequency, hour, day_of_week, day_of_month, cron_expr, timezone,
       alert_config, export_enabled, severity,
       output_mode, dest_database, dest_table, output_config,
       max_rows, timeout_secs, use_final, seq_consistency,
       last_run_at, last_run_by, max_attempts, retention_days,
       created_by, created_at, updated_at
     ) VALUES (
-      ${id}, ${input.name}, ${input.description}, 'sql_query', ${input.connectionId}, ${input.query}, ${input.enabled ? 1 : 0},
-      ${input.frequency}, ${input.hour}, ${input.dayOfWeek}, ${input.dayOfMonth}, ${input.cronExpr},
+      ${id}, ${input.name}, ${input.description}, ${kind}, ${input.connectionId}, ${input.query}, ${input.enabled ? 1 : 0},
+      ${input.frequency}, ${input.hour}, ${input.dayOfWeek}, ${input.dayOfMonth}, ${input.cronExpr}, ${input.timezone},
       NULL, 0, 'warning',
       ${input.outputMode}, ${input.destDatabase}, ${input.destTable}, ${outputConfig},
       ${input.maxRows}, ${input.timeoutSecs}, ${input.useFinal ? 1 : 0}, ${input.seqConsistency ? 1 : 0},
@@ -233,7 +237,7 @@ export async function updateJob(id: string, input: JobInput): Promise<boolean> {
       name = ${input.name}, description = ${input.description}, connection_id = ${input.connectionId},
       query = ${input.query}, enabled = ${input.enabled ? 1 : 0},
       frequency = ${input.frequency}, hour = ${input.hour}, day_of_week = ${input.dayOfWeek},
-      day_of_month = ${input.dayOfMonth}, cron_expr = ${input.cronExpr},
+      day_of_month = ${input.dayOfMonth}, cron_expr = ${input.cronExpr}, timezone = ${input.timezone},
       output_mode = ${input.outputMode}, dest_database = ${input.destDatabase}, dest_table = ${input.destTable},
       output_config = ${outputConfig},
       max_rows = ${input.maxRows}, timeout_secs = ${input.timeoutSecs}, use_final = ${input.useFinal ? 1 : 0},
@@ -387,6 +391,15 @@ export async function deleteRuns(f: RunFilter): Promise<number> {
 export async function countRunsForSlot(queryId: string, slotAt: number): Promise<number> {
   const rows = await all(sql`SELECT COUNT(*) AS c FROM scheduled_query_runs WHERE query_id = ${queryId} AND slot_at = ${slotAt}`);
   return Number(rows[0]?.c ?? 0);
+}
+
+export async function hasSuccessfulRunForSlot(queryId: string, slotAt: number): Promise<boolean> {
+  const rows = await all(sql`
+    SELECT 1 AS present FROM scheduled_query_runs
+    WHERE query_id = ${queryId} AND slot_at = ${slotAt} AND status = 'success'
+    LIMIT 1
+  `);
+  return rows.length > 0;
 }
 
 /** The most recent successful run's slot before `beforeSlot` (`{{prev_run_at}}`). */
@@ -561,14 +574,16 @@ export interface OverviewSummary {
 /**
  * A real summary of the feature — counts, health, breakdowns, and what's next.
  * Scoped to `ownerId` when provided (a user without cross-owner visibility only
- * sees their own jobs/runs).
+ * sees their own jobs/runs) and to `connectionId` when provided (the UI passes
+ * the active connection so the overview matches the visible list).
  */
-export async function getOverview(windowDays: number, ownerId?: string | null): Promise<OverviewSummary> {
+export async function getOverview(windowDays: number, ownerId?: string | null, connectionId?: string | null): Promise<OverviewSummary> {
   const now = Date.now();
   const since = now - windowDays * 24 * 60 * 60 * 1000;
   const since24h = now - 24 * 60 * 60 * 1000;
 
-  const jobs = await listJobs(ownerId ?? undefined);
+  const allJobs = await listJobs(ownerId ?? undefined);
+  const jobs = connectionId ? allJobs.filter((j) => j.connectionId === connectionId) : allJobs;
   const totalJobs = jobs.length;
   const enabledJobs = jobs.filter((j) => j.enabled).length;
   const materializeJobs = jobs.filter((j) => j.outputMode !== "none").length;
@@ -576,17 +591,13 @@ export async function getOverview(windowDays: number, ownerId?: string | null): 
 
   // Limit run aggregates to the visible jobs. With an owner scope and no jobs,
   // `1 = 0` short-circuits the run queries to empty.
-  const inScope = ownerId
-    ? jobs.length > 0
-      ? sql`query_id IN (${sql.join(jobs.map((j) => sql`${j.id}`), sql`, `)})`
-      : sql`1 = 0`
-    : sql`1 = 1`;
+  const inScope = jobs.length > 0
+    ? sql`query_id IN (${sql.join(jobs.map((j) => sql`${j.id}`), sql`, `)})`
+    : sql`1 = 0`;
 
   // Channel links per job → alertingJobs (counted over the visible jobs only).
   const linkRows = await all(sql`SELECT DISTINCT query_id FROM scheduled_query_channels`);
-  const alertingJobs = ownerId
-    ? linkRows.filter((r) => jobIdSet.has(String(r.query_id))).length
-    : linkRows.length;
+  const alertingJobs = linkRows.filter((r) => jobIdSet.has(String(r.query_id))).length;
 
   const byCadence: Record<string, number> = { daily: 0, weekly: 0, monthly: 0, cron: 0, manual: 0 };
   const byOutputMode: Record<string, number> = { none: 0, append: 0, replace: 0, upsert: 0 };
@@ -651,7 +662,7 @@ export async function getOverview(windowDays: number, ownerId?: string | null): 
     .filter((j) => j.enabled && j.frequency !== "manual")
     .map((j) => {
       const next = nextFireTimes(
-        { frequency: j.frequency, hour: j.hour, dayOfWeek: j.dayOfWeek, dayOfMonth: j.dayOfMonth, cronExpr: j.cronExpr },
+        { frequency: j.frequency, hour: j.hour, dayOfWeek: j.dayOfWeek, dayOfMonth: j.dayOfMonth, cronExpr: j.cronExpr, timezone: j.timezone },
         1,
         now,
       );

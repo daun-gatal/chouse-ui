@@ -12,6 +12,7 @@ import { debugQueryCapability } from "./debugQuery";
 import { checkOptimizeCapability } from "./checkOptimize";
 import { diagnoseErrorCapability, diagnosePartsCapability } from "./diagnose";
 import { fleetScanCapability } from "./fleetScan";
+import { draftScheduledQueryCapability, recommendHealthPromiseCapability, summarizeScheduledQueryCapability } from "./dataOps";
 import {
   buildOptimizationPrompt,
   buildDebugPrompt,
@@ -42,8 +43,8 @@ describe("capability registry", () => {
     expect(getCapability("nope")).toBeUndefined();
   });
 
-  it("exposes all 9 capabilities", () => {
-    expect(CAPABILITY_IDS).toHaveLength(9);
+  it("exposes all 19 capabilities", () => {
+    expect(CAPABILITY_IDS).toHaveLength(19);
   });
 });
 
@@ -63,6 +64,13 @@ describe("input validation", () => {
   it("diagnose-error requires a name", () => {
     expect(diagnoseErrorCapability.inputSchema.safeParse({}).success).toBe(false);
     expect(diagnoseErrorCapability.inputSchema.safeParse({ name: "TOO_MANY_PARTS" }).success).toBe(true);
+  });
+
+  it("validates DataOps capability inputs", () => {
+    expect(summarizeScheduledQueryCapability.inputSchema.safeParse({ jobId: "nope" }).success).toBe(false);
+    expect(summarizeScheduledQueryCapability.inputSchema.safeParse({ jobId: "00000000-0000-4000-8000-000000000000" }).success).toBe(true);
+    expect(draftScheduledQueryCapability.inputSchema.safeParse({ intent: "too short", connectionId: "c", timezone: "UTC" }).success).toBe(true);
+    expect(draftScheduledQueryCapability.inputSchema.safeParse({ intent: "short", connectionId: "c", timezone: "UTC" }).success).toBe(false);
   });
 });
 
@@ -141,6 +149,56 @@ describe("optimizer prompt builders", () => {
   it("stripFormatClause removes trailing FORMAT + semicolon", () => {
     expect(stripFormatClause("SELECT 1 FORMAT JSON")).toBe("SELECT 1");
     expect(stripFormatClause("SELECT 1;")).toBe("SELECT 1");
+  });
+});
+
+describe("recommend-health-promise output schema", () => {
+  const validRecommendation = {
+    summary: "s",
+    eventTimeColumn: "event_time",
+    checks: [
+      {
+        checkKey: "row_count_min",
+        name: "row count",
+        severity: "warning",
+        enabled: true,
+        type: "row_count",
+        config: { min: 1 },
+      },
+    ],
+    breachAfter: 2,
+    recoverAfter: 1,
+    graceSecs: 0,
+    rationale: ["r"],
+    confidence: 0.8,
+  };
+
+  it("coerces numeric-string breachAfter/recoverAfter/graceSecs (LLMs sometimes emit strings)", () => {
+    const result = recommendHealthPromiseCapability.outputSchema.safeParse({
+      ...validRecommendation,
+      breachAfter: "2",
+      recoverAfter: "1",
+      graceSecs: "0",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.breachAfter).toBe(2);
+      expect(result.data.recoverAfter).toBe(1);
+      expect(result.data.graceSecs).toBe(0);
+    }
+  });
+
+  it("still rejects non-numeric or out-of-range values", () => {
+    expect(
+      recommendHealthPromiseCapability.outputSchema.safeParse({ ...validRecommendation, graceSecs: "not-a-number" })
+        .success,
+    ).toBe(false);
+    expect(
+      recommendHealthPromiseCapability.outputSchema.safeParse({ ...validRecommendation, graceSecs: -1 }).success,
+    ).toBe(false);
+    expect(
+      recommendHealthPromiseCapability.outputSchema.safeParse({ ...validRecommendation, breachAfter: 0 }).success,
+    ).toBe(false);
   });
 });
 

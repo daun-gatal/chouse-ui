@@ -62,9 +62,12 @@ export type ToolSetName = "core" | "chart" | "chat" | "query_node";
 // ============================================
 
 export interface AgentTuning {
-  /** Tool-loop step budget. Default 10. */
+  /** Tool-loop step budget. Default 10. Overridden by the per-model `recursionLimit` param. */
   stopAtSteps?: number;
-  /** Sampling temperature. Default 0. */
+  /**
+   * Sampling temperature. Never applied to the model — the per-model
+   * `temperature` runtime param (rbac_ai_models.params) is the live knob.
+   */
   temperature?: number;
   /** Max output tokens (large for report/optimize capabilities). */
   maxOutputTokens?: number;
@@ -106,10 +109,15 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
   delivery: "structured";
   /** RBAC permission required to invoke. Enforced by the route before the engine. */
   permission: Permission;
-  /** Validates the request `input`. */
-  inputSchema: z.ZodType<TInput>;
-  /** Schema the agent's final JSON must satisfy. */
-  outputSchema: z.ZodType<TParsed>;
+  /**
+   * Validates the request `input`. The third generic param is loosened to
+   * `unknown` so schemas with `.default()` fields (whose parsed *input* type is
+   * looser than the resulting `TInput` output type) remain assignable here —
+   * only the parsed `Output` (`TInput`) is ever relied on.
+   */
+  inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
+  /** Schema the agent's final JSON must satisfy. Same `.default()` note as `inputSchema` above. */
+  outputSchema: z.ZodType<TParsed, z.ZodTypeDef, unknown>;
   /** Agent loop tuning. */
   tuning?: AgentTuning;
 
@@ -121,6 +129,8 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
    * passed again).
    */
   prepare(input: TInput, ctx: AgentRunContext): Promise<TPrepared> | TPrepared;
+  /** Return a previously generated result for the prepared evidence, if any. */
+  cachedResult?(prepared: TPrepared, ctx: AgentRunContext): Promise<TOutput | undefined> | TOutput | undefined;
   /** Assemble the tools the agent may call (may be async, e.g. skill discovery). */
   tools(prepared: TPrepared, ctx: AgentRunContext): AgentToolSet | Promise<AgentToolSet>;
   /** Build the system instructions (may vary on prepared data). */
@@ -140,6 +150,8 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
     ctx: AgentRunContext,
     meta: RunMeta,
   ): Promise<TOutput> | TOutput;
+  /** Persist an evidence-keyed result after successful finalization. */
+  cacheResult?(output: TOutput, prepared: TPrepared, ctx: AgentRunContext): Promise<void> | void;
   /**
    * Called when the agent produced no schema-valid output (both free-text
    * extraction and the structured fallback failed). If set, its result is

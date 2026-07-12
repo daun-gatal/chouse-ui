@@ -8,7 +8,7 @@
 
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, AlertTriangle, Info } from "lucide-react";
+import { Loader2, CheckCircle2, AlertTriangle, Info, Sparkles } from "lucide-react";
 
 import {
   Dialog,
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
@@ -45,6 +46,8 @@ import { useCreateScheduledQuery, useUpdateScheduledQuery } from "./hooks";
 import { SQ_BTN_GHOST, SQ_BTN_PRIMARY } from "./lib";
 import { MultiSelect } from "./MultiSelect";
 import { MacrosHelp } from "./MacrosHelp";
+import { assessScheduledQuery, draftScheduledQuery, type ScheduledQueryAssessment } from "@/api/dataOpsAi";
+import { AssessmentView } from "@/features/dataops-ai";
 
 // Heavy Monaco editor — lazy so its chunk only loads when the builder opens.
 const MonacoSqlInput = lazy(() => import("./MonacoSqlInput"));
@@ -62,6 +65,7 @@ interface FormState {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr: string;
+  timezone: string;
   channelIds: string[];
   outputMode: SqOutputMode;
   destDatabase: string;
@@ -91,6 +95,7 @@ function emptyForm(connectionId: string): FormState {
     dayOfWeek: 1,
     dayOfMonth: 1,
     cronExpr: "",
+    timezone: "UTC",
     channelIds: [],
     outputMode: "none",
     destDatabase: "",
@@ -121,6 +126,7 @@ function formFromJob(job: ScheduledQuery): FormState {
     dayOfWeek: job.dayOfWeek,
     dayOfMonth: job.dayOfMonth,
     cronExpr: job.cronExpr ?? "",
+    timezone: job.timezone,
     channelIds: job.channelIds,
     outputMode: job.outputMode,
     destDatabase: job.destDatabase ?? "",
@@ -151,6 +157,7 @@ function buildInput(form: FormState): ScheduledQueryInput {
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
     cronExpr: form.frequency === "cron" ? form.cronExpr.trim() : null,
+    timezone: form.timezone,
     outputMode: form.outputMode,
     destDatabase: form.outputMode === "none" ? null : form.destDatabase.trim(),
     destTable: form.outputMode === "none" ? null : form.destTable.trim(),
@@ -190,6 +197,7 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
   const { hasPermission } = useRbacStore();
   const { activeConnectionId, activeConnectionName } = useAuthStore();
   const canWrite = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_WRITE);
+  const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const createMut = useCreateScheduledQuery();
   const updateMut = useUpdateScheduledQuery();
 
@@ -198,6 +206,10 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [intent, setIntent] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [assessing, setAssessing] = useState(false);
+  const [assessment, setAssessment] = useState<ScheduledQueryAssessment>();
 
   // The job runs on the currently active connection (create); an edited job keeps
   // its original connection. No picker — it follows the connection the user has
@@ -212,6 +224,8 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
     if (!isOpen) return;
     setStep(0);
     setPreview(null);
+    setIntent("");
+    setAssessment(undefined);
     void listChannels().then((chs) => setChannels(chs));
     if (job) {
       setForm(formFromJob(job));
@@ -233,6 +247,58 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
       return null;
     } finally {
       setPreviewing(false);
+    }
+  };
+
+  const createAiDraft = async () => {
+    if (!form.connectionId || intent.trim().length < 8) return;
+    setDrafting(true);
+    try {
+      const draft = await draftScheduledQuery({ intent: intent.trim(), connectionId: form.connectionId, timezone: form.timezone });
+      update({
+        name: draft.name,
+        description: draft.description,
+        query: draft.query,
+        frequency: draft.frequency,
+        hour: draft.hour,
+        dayOfWeek: draft.dayOfWeek,
+        dayOfMonth: draft.dayOfMonth,
+        cronExpr: draft.cronExpr ?? "",
+        timezone: draft.timezone,
+        outputMode: canWrite ? draft.outputMode : "none",
+        destDatabase: canWrite ? draft.destDatabase ?? "" : "",
+        destTable: canWrite ? draft.destTable ?? "" : "",
+        maxRows: draft.maxRows,
+        timeoutSecs: draft.timeoutSecs,
+        maxAttempts: draft.maxAttempts,
+      });
+      toast.success(`AI draft applied${draft.assumptions.length ? ` · review ${draft.assumptions.length} assumption(s)` : ""}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not draft the scheduled query");
+    } finally {
+      setDrafting(false);
+    }
+  };
+
+  const runAiAssessment = async () => {
+    setAssessing(true);
+    try {
+      setAssessment(await assessScheduledQuery({
+        name: form.name,
+        connectionId: form.connectionId,
+        query: form.query,
+        frequency: form.frequency,
+        timezone: form.timezone,
+        outputMode: form.outputMode,
+        destDatabase: form.destDatabase || null,
+        destTable: form.destTable || null,
+        timeoutSecs: form.timeoutSecs,
+        maxAttempts: form.maxAttempts,
+      }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "AI preflight failed");
+    } finally {
+      setAssessing(false);
     }
   };
 
@@ -336,7 +402,10 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
           {stepName === "Source" && (
-            <SourceStep form={form} update={update} connectionName={connectionName} preview={preview} onValidate={runPreview} validating={previewing} />
+            <>
+              {canUseAi && !job && <div className="rounded-xs border border-brand/25 bg-brand/5 p-3"><div className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5 text-brand" /><p className={labelCls}>Draft from intent</p></div><Textarea value={intent} onChange={(event) => setIntent(event.target.value)} placeholder="Every morning, aggregate completed orders from the previous business day into analytics.daily_orders…" className="mt-2 min-h-20 rounded-xs text-[11px]" /><div className="mt-2 flex items-center justify-between gap-3"><p className="text-[10px] text-paper-muted">AI creates an editable read-only draft. Existing validation still applies.</p><Button variant="outline" className="h-8 shrink-0 rounded-xs" onClick={() => void createAiDraft()} disabled={drafting || intent.trim().length < 8 || !form.connectionId}>{drafting && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}Draft with AI</Button></div></div>}
+              <SourceStep form={form} update={update} connectionName={connectionName} preview={preview} onValidate={runPreview} validating={previewing} />
+            </>
           )}
           {stepName === "Schedule" && (
             <ScheduleStep form={form} update={update} preview={preview} onPreview={runPreview} previewing={previewing} />
@@ -345,7 +414,7 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
           {stepName === "Output" && (
             <OutputStep form={form} update={update} preview={preview} onPreview={runPreview} previewing={previewing} />
           )}
-          {stepName === "Review" && <ReviewStep form={form} channels={channels} connectionName={connectionName} />}
+          {stepName === "Review" && <><ReviewStep form={form} channels={channels} connectionName={connectionName} />{canUseAi && <div className="rounded-xs border border-brand/25 bg-brand/5 p-3"><div className="flex items-center justify-between gap-3"><div><p className={labelCls}>AI preflight review</p><p className="mt-1 text-[10px] text-paper-muted">Check correctness, cost, window, and destination risks before saving.</p></div><Button variant="outline" className="h-8 rounded-xs" onClick={() => void runAiAssessment()} disabled={assessing}>{assessing && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}Review</Button></div>{assessment && <div className="mt-4 border-t border-brand/20 pt-4"><AssessmentView result={assessment} /></div>}</div>}</>}
         </div>
 
         <DialogFooter className="flex-shrink-0 items-center justify-between border-t border-ink-500 px-6 py-4 sm:justify-between">
@@ -444,7 +513,7 @@ function ScheduleStep({ form, update, preview, onPreview, previewing }: StepProp
       </div>
       {(form.frequency === "daily" || form.frequency === "weekly" || form.frequency === "monthly") && (
         <div className={sectionCls}>
-          <Label className={labelCls}>Hour (UTC)</Label>
+          <Label className={labelCls}>Hour ({form.timezone})</Label>
           <Input type="number" min={0} max={23} value={form.hour} onChange={(e) => update({ hour: Number(e.target.value) })} />
         </div>
       )}
@@ -469,7 +538,7 @@ function ScheduleStep({ form, update, preview, onPreview, previewing }: StepProp
       )}
       {form.frequency === "cron" && (
         <div className={sectionCls}>
-          <Label className={labelCls}>Cron expression (5-field, UTC)</Label>
+          <Label className={labelCls}>Cron expression (5-field, {form.timezone})</Label>
           <div className="flex gap-2">
             <Input value={form.cronExpr} onChange={(e) => update({ cronExpr: e.target.value })} placeholder="*/15 * * * *" className="font-mono" />
             <Button variant="outline" onClick={() => void onPreview()} disabled={previewing}>Preview</Button>
@@ -479,10 +548,10 @@ function ScheduleStep({ form, update, preview, onPreview, previewing }: StepProp
       )}
       {preview?.nextFireTimes && preview.nextFireTimes.length > 0 && (
         <div className="rounded-xs border border-ink-500 bg-ink-50 p-3">
-          <p className={labelCls}>Next fire times</p>
+          <p className={labelCls}>Next fire times · local / UTC</p>
           <ul className="mt-1 space-y-0.5">
             {preview.nextFireTimes.map((t) => (
-              <li key={t} className="font-mono text-[11px] text-paper-muted">{new Date(t).toISOString()}</li>
+              <li key={t} className="font-mono text-[11px] text-paper-muted"><span className="text-paper">{new Date(t).toLocaleString(undefined, { timeZone: form.timezone, timeZoneName: "short" })}</span> · {new Date(t).toISOString()}</li>
             ))}
           </ul>
         </div>

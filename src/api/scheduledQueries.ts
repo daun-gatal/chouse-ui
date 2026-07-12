@@ -49,6 +49,7 @@ export interface ScheduledQuery {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr: string | null;
+  timezone: string;
   outputMode: SqOutputMode;
   destDatabase: string | null;
   destTable: string | null;
@@ -78,6 +79,7 @@ export interface ScheduledQueryInput {
   dayOfWeek: number;
   dayOfMonth: number;
   cronExpr?: string | null;
+  timezone: string;
   outputMode: SqOutputMode;
   destDatabase?: string | null;
   destTable?: string | null;
@@ -133,8 +135,10 @@ export interface PreviewResult {
   };
 }
 
-export async function listScheduledQueries(): Promise<ScheduledQuery[]> {
-  const res = await api.get<{ jobs: ScheduledQuery[] }>("/scheduled-queries");
+export async function listScheduledQueries(connectionId?: string): Promise<ScheduledQuery[]> {
+  const res = await api.get<{ jobs: ScheduledQuery[] }>("/scheduled-queries", {
+    params: { connectionId: connectionId || undefined },
+  });
   return res.jobs;
 }
 
@@ -197,12 +201,25 @@ export async function getRun(runId: string): Promise<ScheduledQueryRun> {
   return res.run;
 }
 
-export async function getOverview(windowDays = 14): Promise<Overview> {
-  return api.get<Overview>(`/scheduled-queries/overview?window=${windowDays}d`);
+export async function getOverview(windowDays = 14, connectionId?: string): Promise<Overview> {
+  return api.get<Overview>("/scheduled-queries/overview", {
+    params: { window: `${windowDays}d`, connectionId: connectionId || undefined },
+  });
 }
 
 export async function previewScheduledQuery(input: Partial<ScheduledQueryInput>): Promise<PreviewResult> {
   return api.post<PreviewResult>("/scheduled-queries/preview", input);
+}
+
+export interface ScheduledRecoveryResult {
+  plan: Array<{ slotAt: number; alreadySucceeded: boolean }>;
+  runnable: number;
+  warnings: string[];
+  runs?: ScheduledQueryRun[];
+}
+
+export function recoverScheduledQuery(id: string, input: { from: number; to: number; execute?: boolean; confirm?: boolean; rerunSuccessful?: boolean }): Promise<ScheduledRecoveryResult> {
+  return api.post<ScheduledRecoveryResult>(`/scheduled-queries/${id}/recovery`, input);
 }
 
 // --- lineage (observed runtime) ---------------------------------------------

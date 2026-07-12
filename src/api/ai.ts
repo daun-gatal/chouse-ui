@@ -19,7 +19,17 @@ export type AiCapabilityId =
   | "optimize-log"
   | "diagnose-error"
   | "diagnose-parts"
-  | "diagnose-schema";
+  | "diagnose-schema"
+  | "draft-scheduled-query"
+  | "assess-scheduled-query"
+  | "summarize-scheduled-query"
+  | "diagnose-scheduled-run"
+  | "plan-scheduled-recovery"
+  | "recommend-health-promise"
+  | "summarize-data-health"
+  | "diagnose-health-incident"
+  | "tune-health-promise"
+  | "correlate-health-incidents";
 
 export interface InvokeOptions {
   modelId?: string;

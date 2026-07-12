@@ -23,6 +23,10 @@ import {
   Trash2,
   AlertTriangle,
   Loader2,
+  Clock3,
+  CheckCircle2,
+  CircleX,
+  Ban,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -61,6 +65,7 @@ import {
 } from "@/components/ui/tooltip";
 import PermissionGuard from "@/components/common/PermissionGuard";
 import type { SavedQuery } from "@/api";
+import type { QueryHistoryItem, QueryHistoryStatus } from "@/stores";
 import { cn } from "@/lib/utils";
 
 // ============================================
@@ -163,6 +168,100 @@ const SavedQueryItem: React.FC<SavedQueryItemProps> = ({ query, onOpen, onDelete
 };
 
 // ============================================
+// Query History Item Component
+// ============================================
+interface QueryHistoryItemRowProps {
+  item: QueryHistoryItem;
+  onOpen: () => void;
+  onDelete: () => void;
+}
+
+const HISTORY_STATUS_META: Record<QueryHistoryStatus, {
+  label: string;
+  icon: React.ReactNode;
+  className: string;
+}> = {
+  success: {
+    label: "Success",
+    icon: <CheckCircle2 className="h-3 w-3" aria-hidden />,
+    className: "text-emerald-400",
+  },
+  error: {
+    label: "Failed",
+    icon: <CircleX className="h-3 w-3" aria-hidden />,
+    className: "text-red-400",
+  },
+  cancelled: {
+    label: "Cancelled",
+    icon: <Ban className="h-3 w-3" aria-hidden />,
+    className: "text-amber-400",
+  },
+};
+
+const formatHistoryDuration = (durationMs: number): string => {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+  return `${(durationMs / 1000).toFixed(durationMs < 10000 ? 1 : 0)}s`;
+};
+
+const formatHistoryDate = (timestamp: number): string => new Date(timestamp).toLocaleString([], {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const QueryHistoryItemRow: React.FC<QueryHistoryItemRowProps> = ({
+  item,
+  onOpen,
+  onDelete,
+}) => {
+  const statusMeta = HISTORY_STATUS_META[item.status];
+  const querySummary = item.query.replace(/\s+/g, " ").trim();
+
+  return (
+    <div className="group flex items-stretch rounded-xs transition-colors hover:bg-ink-200">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="min-w-0 flex-1 px-3 py-2 text-left"
+        title={item.error || item.query}
+      >
+        <p className="truncate font-mono text-[11px] text-paper">{querySummary}</p>
+        <div className="mt-1 flex items-center gap-1.5 font-mono text-[9px] text-paper-faint">
+          <span className={cn("inline-flex items-center gap-1", statusMeta.className)}>
+            {statusMeta.icon}
+            {statusMeta.label}
+          </span>
+          <span>·</span>
+          <span>{formatHistoryDuration(item.durationMs)}</span>
+          <span>·</span>
+          <span>{item.rows.toLocaleString()} rows</span>
+        </div>
+        <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[9px] text-paper-faint">
+          {item.connectionName && (
+            <>
+              <span className="max-w-[110px] truncate">{item.connectionName}</span>
+              <span>·</span>
+            </>
+          )}
+          <span>{formatHistoryDate(item.executedAt)}</span>
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="my-auto mr-2 grid h-6 w-6 shrink-0 place-items-center rounded-xs opacity-0 transition-all hover:bg-ink-300 group-hover:opacity-100 focus:opacity-100"
+        aria-label="Delete query history item"
+      >
+        <Trash2 className="h-3 w-3 text-paper-faint hover:text-red-400" />
+      </button>
+    </div>
+  );
+};
+
+// ============================================
 // Tab Button Component
 // ============================================
 interface TabButtonProps {
@@ -230,13 +329,16 @@ const DatabaseExplorer: React.FC = () => {
   const canViewSavedQueries = hasPermission(RBAC_PERMISSIONS.SAVED_QUERIES_VIEW);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchQueryValue, setSearchQueryValue] = useState("");
+  const [searchHistoryValue, setSearchHistoryValue] = useState("");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | QueryHistoryStatus>("all");
   const [connectionFilter, setConnectionFilter] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"databases" | "pinned" | "recent" | "saved">("databases");
+  const [activeTab, setActiveTab] = useState<"databases" | "pinned" | "recent" | "history" | "saved">("databases");
   const navigate = useNavigate();
 
   // Debounce search terms
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const debouncedSearchQueryValue = useDebounce(searchQueryValue, 300);
+  const debouncedSearchHistoryValue = useDebounce(searchHistoryValue, 300);
 
   const {
     expandedNodes,
@@ -254,8 +356,18 @@ const DatabaseExplorer: React.FC = () => {
   const allRecentItems = useExplorerStore((state) => state.recentItems);
   const recentItems = useMemo(() => allRecentItems.slice(0, 8), [allRecentItems]);
 
-  const { addTab } = useWorkspaceStore();
+  const {
+    addTab,
+    queryHistory,
+    loadQueryHistory,
+    removeQueryHistoryItem,
+    clearQueryHistory,
+  } = useWorkspaceStore();
   const { activeConnectionId, activeConnectionName } = useAuthStore();
+
+  useEffect(() => {
+    void loadQueryHistory();
+  }, [loadQueryHistory]);
 
   const {
     data: databases = [],
@@ -281,6 +393,7 @@ const DatabaseExplorer: React.FC = () => {
   const deleteSavedQueryMutation = useDeleteSavedQuery();
   const [queryToDelete, setQueryToDelete] = useState<SavedQuery | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isClearHistoryOpen, setIsClearHistoryOpen] = useState(false);
 
   const handleDeleteClick = (query: SavedQuery) => {
     setQueryToDelete(query);
@@ -341,6 +454,31 @@ const DatabaseExplorer: React.FC = () => {
     return result;
   }, [savedQueriesList, debouncedSearchQueryValue, filterByConnection]);
 
+  const filterConnectionNames = useMemo(() => {
+    const names = new Set<string>(connectionNames);
+    [...favorites, ...recentItems, ...queryHistory].forEach((item) => {
+      if (item.connectionName) {
+        names.add(item.connectionName);
+      }
+    });
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [connectionNames, favorites, recentItems, queryHistory]);
+
+  const filteredHistory = useMemo(() => {
+    let result = filterByConnection(queryHistory);
+
+    if (historyStatusFilter !== "all") {
+      result = result.filter((item) => item.status === historyStatusFilter);
+    }
+
+    if (debouncedSearchHistoryValue) {
+      const lowerSearch = debouncedSearchHistoryValue.toLowerCase();
+      result = result.filter((item) => item.query.toLowerCase().includes(lowerSearch));
+    }
+
+    return result;
+  }, [queryHistory, historyStatusFilter, debouncedSearchHistoryValue, filterByConnection]);
+
   // Filtered and sorted databases
   const filteredData = useMemo(() => {
     let result = databases;
@@ -375,6 +513,19 @@ const DatabaseExplorer: React.FC = () => {
       type: 'sql',
       content: query.query,
       isSaved: true,
+    });
+  }, [addTab]);
+
+  const handleHistoryOpen = useCallback((item: QueryHistoryItem) => {
+    addTab({
+      id: genTabId(),
+      title: `History · ${new Date(item.executedAt).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`,
+      type: "sql",
+      content: item.query,
+      isSaved: false,
     });
   }, [addTab]);
 
@@ -433,7 +584,7 @@ const DatabaseExplorer: React.FC = () => {
     <div className="flex h-full flex-col bg-ink-50">
       {/* Tab navigation */}
       <div className="flex-shrink-0 border-b border-ink-500">
-        <div className="flex items-center gap-1 px-2 py-2">
+        <div className="flex items-center gap-0.5 overflow-x-auto px-2 py-2">
           <TabButton
             active={activeTab === "databases"}
             onClick={() => setActiveTab("databases")}
@@ -454,6 +605,13 @@ const DatabaseExplorer: React.FC = () => {
             icon={<History className="h-3.5 w-3.5" />}
             label="Recent"
             count={filteredRecentItems.length}
+          />
+          <TabButton
+            active={activeTab === "history"}
+            onClick={() => setActiveTab("history")}
+            icon={<Clock3 className="h-3.5 w-3.5" />}
+            label="History"
+            count={filteredHistory.length}
           />
           {canViewSavedQueries && (
             <TabButton
@@ -608,7 +766,7 @@ const DatabaseExplorer: React.FC = () => {
               className="p-2"
             >
               {/* Connection Filter for Pinned */}
-              {(favorites.length > 0 || connectionNames.length > 0) && (
+              {(favorites.length > 0 || filterConnectionNames.length > 0) && (
                 <div className="flex items-center gap-2 mb-3 px-1">
                   <Filter className="h-3 w-3 text-paper-faint" aria-hidden />
                   <Select value={connectionFilter} onValueChange={setConnectionFilter}>
@@ -630,7 +788,7 @@ const DatabaseExplorer: React.FC = () => {
                           </span>
                         </SelectItem>
                       )}
-                      {connectionNames
+                      {filterConnectionNames
                         .filter((name) => name !== activeConnectionName)
                         .map((name) => (
                           <SelectItem key={name} value={name}>
@@ -694,7 +852,7 @@ const DatabaseExplorer: React.FC = () => {
               className="p-2"
             >
               {/* Connection Filter for Recent */}
-              {(recentItems.length > 0 || connectionNames.length > 0) && (
+              {(recentItems.length > 0 || filterConnectionNames.length > 0) && (
                 <div className="flex items-center gap-2 mb-3 px-1">
                   <Filter className="h-3 w-3 text-paper-faint" aria-hidden />
                   <Select value={connectionFilter} onValueChange={setConnectionFilter}>
@@ -716,7 +874,7 @@ const DatabaseExplorer: React.FC = () => {
                           </span>
                         </SelectItem>
                       )}
-                      {connectionNames
+                      {filterConnectionNames
                         .filter((name) => name !== activeConnectionName)
                         .map((name) => (
                           <SelectItem key={name} value={name}>
@@ -784,6 +942,123 @@ const DatabaseExplorer: React.FC = () => {
             </motion.div>
           )}
 
+          {/* Query History Tab */}
+          {activeTab === "history" && (
+            <motion.div
+              key="history"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.15 }}
+              className="p-2"
+            >
+              {(queryHistory.length > 0 || filterConnectionNames.length > 0) && (
+                <div className="mb-2 flex items-center gap-2 px-1">
+                  <Filter className="h-3 w-3 text-paper-faint" aria-hidden />
+                  <Select value={connectionFilter} onValueChange={setConnectionFilter}>
+                    <SelectTrigger className="h-7 min-w-0 flex-1 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper">
+                      <SelectValue placeholder="All connections" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        <span className="flex items-center gap-2">
+                          <Layers className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                          All connections
+                        </span>
+                      </SelectItem>
+                      {activeConnectionId && (
+                        <SelectItem value="current">
+                          <span className="flex items-center gap-2">
+                            <Pin className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                            {activeConnectionName || "Current"}
+                          </span>
+                        </SelectItem>
+                      )}
+                      {filterConnectionNames
+                        .filter((name) => name !== activeConnectionName)
+                        .map((name) => (
+                          <SelectItem key={name} value={name}>
+                            <span className="flex items-center gap-2">
+                              <Database className="h-3.5 w-3.5 text-paper-dim" aria-hidden />
+                              {name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={historyStatusFilter}
+                    onValueChange={(value) => {
+                      if (value === "success" || value === "error" || value === "cancelled") {
+                        setHistoryStatusFilter(value);
+                        return;
+                      }
+                      setHistoryStatusFilter("all");
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-[104px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper">
+                      <SelectValue placeholder="All status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All status</SelectItem>
+                      <SelectItem value="success">Success</SelectItem>
+                      <SelectItem value="error">Failed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="mb-2 flex items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-paper-faint" />
+                  <Input
+                    type="text"
+                    placeholder="Search query history..."
+                    value={searchHistoryValue}
+                    onChange={(event) => setSearchHistoryValue(event.target.value)}
+                    className="h-8 rounded-xs border-ink-500 bg-ink-200 pl-8 font-mono text-[12px] text-paper placeholder:text-paper-faint focus-visible:border-brand focus-visible:ring-0"
+                  />
+                </div>
+                {queryHistory.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsClearHistoryOpen(true)}
+                    className="h-8 rounded-xs px-2 font-mono text-[10px] uppercase tracking-[0.12em] text-paper-faint hover:bg-ink-200 hover:text-red-400"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+
+              {filteredHistory.length > 0 ? (
+                <div className="space-y-0.5">
+                  {filteredHistory.map((item) => (
+                    <QueryHistoryItemRow
+                      key={item.id}
+                      item={item}
+                      onOpen={() => handleHistoryOpen(item)}
+                      onDelete={() => removeQueryHistoryItem(item.id)}
+                    />
+                  ))}
+                </div>
+              ) : queryHistory.length > 0 ? (
+                <EmptyState
+                  icon={<Search className="h-5 w-5" />}
+                  title="No matching history"
+                  description="Try a different query, connection, or status"
+                />
+              ) : (
+                <EmptyState
+                  icon={<Clock3 className="h-5 w-5" />}
+                  title="No query history"
+                  description="Queries run from the SQL editor will appear here"
+                />
+              )}
+            </motion.div>
+          )}
+
           {/* Saved Queries Tab - Only show if user has permission */}
           {activeTab === "saved" && canViewSavedQueries && (
             <motion.div
@@ -816,7 +1091,7 @@ const DatabaseExplorer: React.FC = () => {
                         </span>
                       </SelectItem>
                     )}
-                    {connectionNames
+                    {filterConnectionNames
                       .filter((name) => name !== activeConnectionName)
                       .map((name) => (
                         <SelectItem key={name} value={name}>
@@ -933,6 +1208,33 @@ const DatabaseExplorer: React.FC = () => {
               ) : (
                 "Delete"
               )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isClearHistoryOpen} onOpenChange={setIsClearHistoryOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Clear Query History
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove all {queryHistory.length} entries from your query history on this browser and the metadata database? Saved queries are not affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                clearQueryHistory();
+                setIsClearHistoryOpen(false);
+                toast.success("Query history cleared");
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Clear history
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

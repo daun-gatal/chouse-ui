@@ -10,13 +10,14 @@
  */
 
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 import { AppError } from "../../types";
 import { logger } from "../../utils/logger";
 import type { AgentMessage } from "./types";
 
 /** 3-tier JSON extraction (whole text → fenced ```json block → first {...} span). */
-export function extractJson<T>(text: string, schema: z.ZodType<T>): T {
+export function extractJson<T>(text: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>): T {
   const cleaned = text.trim();
 
   try {
@@ -50,7 +51,7 @@ export function extractJson<T>(text: string, schema: z.ZodType<T>): T {
 
 export interface StructuredOutputOptions<T> {
   model: BaseChatModel;
-  schema: z.ZodType<T>;
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>;
   /** The agent's raw final text (parsed first). */
   raw: string;
   /** Messages for the structured fallback (system + user). */
@@ -76,7 +77,16 @@ export async function structuredOutput<T>(
 
   try {
     if (!opts.model.withStructuredOutput) return null;
-    const structured = opts.model.withStructuredOutput(opts.schema);
+    // ChatOpenAI infers a response-format method from the model name string
+    // (only "gpt-3*"/"gpt-4*" get tool-calling by default) — any other name,
+    // including third-party "openai-compatible" models routed through this
+    // same class, is bumped to OpenAI's strict `json_schema` response format,
+    // which most compatible proxies don't implement. Force tool calling,
+    // which every OpenAI-compatible provider supports.
+    const structured = opts.model.withStructuredOutput(
+      opts.schema,
+      opts.model instanceof ChatOpenAI ? { method: "functionCalling" } : undefined,
+    );
     const object = await structured.invoke(opts.fallbackMessages);
     return opts.schema.parse(object);
   } catch (e) {
