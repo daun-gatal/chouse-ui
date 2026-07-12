@@ -166,8 +166,10 @@ export interface DataHealthPreview {
   nextFireTimes: number[];
 }
 
-export async function listDataHealthPromises(): Promise<DataHealthPromise[]> {
-  const response = await api.get<{ promises: DataHealthPromise[] }>("/data-health");
+export async function listDataHealthPromises(connectionId?: string): Promise<DataHealthPromise[]> {
+  const response = await api.get<{ promises: DataHealthPromise[] }>("/data-health", {
+    params: { connectionId: connectionId || undefined },
+  });
   return response.promises;
 }
 
@@ -175,8 +177,10 @@ export function getDataHealthPromise(id: string): Promise<DataHealthPromise> {
   return api.get<DataHealthPromise>(`/data-health/${id}`);
 }
 
-export function getDataHealthOverview(): Promise<DataHealthOverview> {
-  return api.get<DataHealthOverview>("/data-health/overview");
+export function getDataHealthOverview(connectionId?: string): Promise<DataHealthOverview> {
+  return api.get<DataHealthOverview>("/data-health/overview", {
+    params: { connectionId: connectionId || undefined },
+  });
 }
 
 export function previewDataHealthPromise(input: DataHealthPromiseInput): Promise<DataHealthPreview> {
@@ -205,8 +209,10 @@ export function getDataHealthTimeline(id: string): Promise<{ samples: DataHealth
   return api.get(`/data-health/${id}/timeline`);
 }
 
-export async function listDataHealthIncidents(): Promise<DataHealthIncident[]> {
-  const response = await api.get<{ incidents: DataHealthIncident[] }>("/data-health/incidents");
+export async function listDataHealthIncidents(connectionId?: string): Promise<DataHealthIncident[]> {
+  const response = await api.get<{ incidents: DataHealthIncident[] }>("/data-health/incidents", {
+    params: { connectionId: connectionId || undefined },
+  });
   return response.incidents;
 }
 

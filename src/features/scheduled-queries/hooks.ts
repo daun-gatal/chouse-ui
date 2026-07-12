@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { rbacUsersApi } from "@/api/rbac";
+import { useAuthStore } from "@/stores";
 import {
   createScheduledQuery,
   deleteRuns,
@@ -25,19 +26,32 @@ import {
 
 export const sqKeys = {
   all: ["scheduled-queries"] as const,
-  list: () => [...sqKeys.all, "list"] as const,
-  overview: (windowDays: number) => [...sqKeys.all, "overview", windowDays] as const,
+  list: (connectionId?: string | null) => [...sqKeys.all, "list", connectionId ?? "all"] as const,
+  overview: (windowDays: number, connectionId?: string | null) => [...sqKeys.all, "overview", windowDays, connectionId ?? "all"] as const,
   runs: (id: string, status?: SqStatus, from?: number, to?: number) =>
     [...sqKeys.all, "runs", id, status ?? "all", from ?? 0, to ?? 0] as const,
   lineage: (id: string, windowDays: number) => [...sqKeys.all, "lineage", id, windowDays] as const,
 };
 
+/**
+ * Scheduled queries are scoped to the active connection: the list only shows
+ * jobs the current session can open, edit, and test against. Jobs pinned to
+ * other connections keep running in the background and reappear on switch.
+ */
 export function useScheduledQueries() {
-  return useQuery({ queryKey: sqKeys.list(), queryFn: listScheduledQueries });
+  const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
+  return useQuery({
+    queryKey: sqKeys.list(activeConnectionId),
+    queryFn: () => listScheduledQueries(activeConnectionId ?? undefined),
+  });
 }
 
 export function useScheduledQueriesOverview(windowDays = 14) {
-  return useQuery({ queryKey: sqKeys.overview(windowDays), queryFn: () => getOverview(windowDays) });
+  const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
+  return useQuery({
+    queryKey: sqKeys.overview(windowDays, activeConnectionId),
+    queryFn: () => getOverview(windowDays, activeConnectionId ?? undefined),
+  });
 }
 
 export function useScheduledQueryRuns(

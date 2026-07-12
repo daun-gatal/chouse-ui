@@ -133,7 +133,7 @@ export function draftScheduledQuery(input: { intent: string; connectionId: strin
   return invokeAI("draft-scheduled-query", input);
 }
 
-export function assessScheduledQuery(input: Pick<ScheduledQueryInput, "name" | "query" | "frequency" | "timezone" | "outputMode" | "destDatabase" | "destTable" | "timeoutSecs" | "maxAttempts">): Promise<ScheduledQueryAssessment> {
+export function assessScheduledQuery(input: Pick<ScheduledQueryInput, "name" | "connectionId" | "query" | "frequency" | "timezone" | "outputMode" | "destDatabase" | "destTable" | "timeoutSecs" | "maxAttempts">): Promise<ScheduledQueryAssessment> {
   return invokeAI("assess-scheduled-query", input);
 }
 

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useAuthStore } from "@/stores";
 import {
   acknowledgeDataHealthIncident,
   createDataHealthPromise,
@@ -17,19 +18,32 @@ import {
 
 export const dhKeys = {
   all: ["data-health"] as const,
-  overview: () => [...dhKeys.all, "overview"] as const,
-  promises: () => [...dhKeys.all, "promises"] as const,
+  overview: (connectionId?: string | null) => [...dhKeys.all, "overview", connectionId ?? "all"] as const,
+  promises: (connectionId?: string | null) => [...dhKeys.all, "promises", connectionId ?? "all"] as const,
   promise: (id: string) => [...dhKeys.all, "promise", id] as const,
   timeline: (id: string) => [...dhKeys.all, "timeline", id] as const,
-  incidents: () => [...dhKeys.all, "incidents"] as const,
+  incidents: (connectionId?: string | null) => [...dhKeys.all, "incidents", connectionId ?? "all"] as const,
 };
 
+/**
+ * Data Health is scoped to the active connection: every tab shows one cluster's
+ * promises and incidents. Promises pinned to other connections keep evaluating
+ * in the background and reappear on switch.
+ */
 export function useDataHealthOverview() {
-  return useQuery({ queryKey: dhKeys.overview(), queryFn: getDataHealthOverview });
+  const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
+  return useQuery({
+    queryKey: dhKeys.overview(activeConnectionId),
+    queryFn: () => getDataHealthOverview(activeConnectionId ?? undefined),
+  });
 }
 
 export function useDataHealthPromises() {
-  return useQuery({ queryKey: dhKeys.promises(), queryFn: listDataHealthPromises });
+  const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
+  return useQuery({
+    queryKey: dhKeys.promises(activeConnectionId),
+    queryFn: () => listDataHealthPromises(activeConnectionId ?? undefined),
+  });
 }
 
 export function useDataHealthPromise(id: string, enabled = true) {
@@ -41,7 +55,11 @@ export function useDataHealthTimeline(id: string, enabled = true) {
 }
 
 export function useDataHealthIncidents() {
-  return useQuery({ queryKey: dhKeys.incidents(), queryFn: listDataHealthIncidents });
+  const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
+  return useQuery({
+    queryKey: dhKeys.incidents(activeConnectionId),
+    queryFn: () => listDataHealthIncidents(activeConnectionId ?? undefined),
+  });
 }
 
 function useInvalidateDataHealth(): () => Promise<void> {

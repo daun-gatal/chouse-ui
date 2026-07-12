@@ -573,14 +573,16 @@ export interface OverviewSummary {
 /**
  * A real summary of the feature — counts, health, breakdowns, and what's next.
  * Scoped to `ownerId` when provided (a user without cross-owner visibility only
- * sees their own jobs/runs).
+ * sees their own jobs/runs) and to `connectionId` when provided (the UI passes
+ * the active connection so the overview matches the visible list).
  */
-export async function getOverview(windowDays: number, ownerId?: string | null): Promise<OverviewSummary> {
+export async function getOverview(windowDays: number, ownerId?: string | null, connectionId?: string | null): Promise<OverviewSummary> {
   const now = Date.now();
   const since = now - windowDays * 24 * 60 * 60 * 1000;
   const since24h = now - 24 * 60 * 60 * 1000;
 
-  const jobs = await listJobs(ownerId ?? undefined);
+  const allJobs = await listJobs(ownerId ?? undefined);
+  const jobs = connectionId ? allJobs.filter((j) => j.connectionId === connectionId) : allJobs;
   const totalJobs = jobs.length;
   const enabledJobs = jobs.filter((j) => j.enabled).length;
   const materializeJobs = jobs.filter((j) => j.outputMode !== "none").length;

@@ -203,16 +203,27 @@ async function loadVisiblePromise(c: Context, id: string): Promise<NonNullable<A
   return promise;
 }
 
+/** Optional connection scope: the UI passes the active connection so every tab shows one cluster's resources. */
+function connectionScope(c: Context): string | undefined {
+  return c.req.query("connectionId") || undefined;
+}
+
 dataHealth.get("/", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW), async (c) => {
-  const promises = await healthStore.listPromises(canViewAll(c) ? null : currentUser(c).sub);
+  const connectionId = connectionScope(c);
+  const promises = (await healthStore.listPromises(canViewAll(c) ? null : currentUser(c).sub))
+    .filter((promise) => !connectionId || promise.connectionId === connectionId);
   return ok(c, { promises: await Promise.all(promises.map(promiseResponse)) });
 });
 
 dataHealth.get("/overview", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW), async (c) => {
-  const promises = await healthStore.listPromises(canViewAll(c) ? null : currentUser(c).sub);
-  const scheduledJobs = await scheduledStore.listJobs(canViewAll(c) ? null : currentUser(c).sub);
+  const connectionId = connectionScope(c);
+  const promises = (await healthStore.listPromises(canViewAll(c) ? null : currentUser(c).sub))
+    .filter((promise) => !connectionId || promise.connectionId === connectionId);
+  const scheduledJobs = (await scheduledStore.listJobs(canViewAll(c) ? null : currentUser(c).sub))
+    .filter((job) => !connectionId || job.connectionId === connectionId);
+  const promiseIds = new Set(promises.map((promise) => promise.id));
   const incidents = canViewAll(c)
-    ? await healthStore.listIncidents()
+    ? (await healthStore.listIncidents()).filter((incident) => !connectionId || promiseIds.has(incident.promiseId))
     : (await Promise.all(promises.map((promise) => healthStore.listIncidents(promise.id)))).flat();
   const byStatus = { healthy: 0, degraded: 0, unhealthy: 0, unknown: 0, paused: 0 };
   for (const promise of promises) byStatus[promise.status]++;
@@ -291,8 +302,14 @@ dataHealth.post(
 );
 
 dataHealth.get("/incidents", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW), async (c) => {
-  if (canViewAll(c)) return ok(c, { incidents: await healthStore.listIncidents() });
-  const promises = await healthStore.listPromises(currentUser(c).sub);
+  const connectionId = connectionScope(c);
+  if (canViewAll(c)) {
+    if (!connectionId) return ok(c, { incidents: await healthStore.listIncidents() });
+    const promiseIds = new Set((await healthStore.listPromises(null)).filter((promise) => promise.connectionId === connectionId).map((promise) => promise.id));
+    return ok(c, { incidents: (await healthStore.listIncidents()).filter((incident) => promiseIds.has(incident.promiseId)) });
+  }
+  const promises = (await healthStore.listPromises(currentUser(c).sub))
+    .filter((promise) => !connectionId || promise.connectionId === connectionId);
   const nested = await Promise.all(promises.map((promise) => healthStore.listIncidents(promise.id)));
   return ok(c, { incidents: nested.flat().sort((a, b) => b.lastEventAt - a.lastEventAt) });
 });
@@ -399,6 +416,11 @@ dataHealth.patch(
     const promise = await loadVisiblePromise(c, requireParam(c, "id"));
     const body = c.req.valid("json");
     validatePromiseBody(body);
+    // The connection is fixed at creation — an edit must never silently
+    // re-point a promise (and its execution job) at a different cluster.
+    if (body.connectionId !== promise.connectionId) {
+      throw AppError.badRequest("A Data Health promise cannot be moved to a different connection");
+    }
     const compiled = compile(body);
     await assertConnectionAccess(c, body.connectionId);
     await assertQueryAccess(c, compiled.sql, body.connectionId);

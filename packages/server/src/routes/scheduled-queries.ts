@@ -262,7 +262,10 @@ async function toJobResponse(job: ScheduledQueryRow, includeLastRun: boolean): P
 // --- jobs -------------------------------------------------------------------
 
 scheduledQueries.get("/", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW), async (c) => {
-  const jobs = await store.listJobs(ownerScope(c));
+  // Optional connection scope: the UI passes the active connection so the list
+  // only shows jobs the current session can meaningfully open and edit.
+  const connectionId = c.req.query("connectionId");
+  const jobs = (await store.listJobs(ownerScope(c))).filter((j) => !connectionId || j.connectionId === connectionId);
   const data = await Promise.all(jobs.map((j) => toJobResponse(j, true)));
   return ok(c, { jobs: data });
 });
@@ -270,7 +273,7 @@ scheduledQueries.get("/", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW),
 scheduledQueries.get("/overview", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW), async (c) => {
   const windowParam = c.req.query("window") ?? "14d";
   const windowDays = Math.min(90, Math.max(1, parseInt(windowParam, 10) || 14));
-  const overview = await store.getOverview(windowDays, ownerScope(c));
+  const overview = await store.getOverview(windowDays, ownerScope(c), c.req.query("connectionId") ?? null);
   return ok(c, overview);
 });
 
@@ -306,6 +309,11 @@ scheduledQueries.patch(
     const previous = await loadVisibleJob(c, id);
     const body = c.req.valid("json");
     validateBody(body, hasWritePerm(c));
+    // The connection is the data-access boundary and is fixed at creation — an
+    // edit must never silently re-point a job at a different cluster.
+    if (body.connectionId !== previous.connectionId) {
+      throw AppError.badRequest("A scheduled query cannot be moved to a different connection");
+    }
     await assertConnectionAccess(c, body.connectionId);
     const access = await dataAccessCheck(c, body.query, body.connectionId);
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");

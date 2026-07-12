@@ -1,5 +1,7 @@
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { server } from "@/test/mocks/server";
 import {
   acknowledgeDataHealthIncident,
   createDataHealthPromise,
@@ -26,6 +28,32 @@ describe("Data Health API", () => {
   it("lists promises and overview state", async () => {
     expect((await listDataHealthPromises())[0].status).toBe("healthy");
     expect((await getDataHealthOverview()).byStatus.healthy).toBe(1);
+  });
+
+  it("scopes promises, overview, and incidents to a connection when one is provided", async () => {
+    const seen: Array<string | null> = [];
+    const capture = (request: Request): void => {
+      seen.push(new URL(request.url).searchParams.get("connectionId"));
+    };
+    server.use(
+      http.get("/api/data-health", ({ request }) => {
+        capture(request);
+        return HttpResponse.json({ success: true, data: { promises: [] } });
+      }),
+      http.get("/api/data-health/overview", ({ request }) => {
+        capture(request);
+        return HttpResponse.json({ success: true, data: { totalPromises: 0, byStatus: {}, openIncidents: 0, unownedCritical: 0, needsAttention: [], coverageGaps: [] } });
+      }),
+      http.get("/api/data-health/incidents", ({ request }) => {
+        capture(request);
+        return HttpResponse.json({ success: true, data: { incidents: [] } });
+      }),
+    );
+    await listDataHealthPromises("conn-2");
+    await getDataHealthOverview("conn-2");
+    await listDataHealthIncidents("conn-2");
+    await listDataHealthPromises();
+    expect(seen).toEqual(["conn-2", "conn-2", "conn-2", null]);
   });
 
   it("previews and creates a promise", async () => {

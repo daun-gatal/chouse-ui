@@ -17,7 +17,7 @@ describe("DataOps AI API", () => {
 
     expect((await summarizeScheduledQuery("job-1")).headline).toBe("Healthy");
     expect((await diagnoseScheduledRun("job-1", "run-1")).likelyCause).toBe("Schema drift");
-    expect((await assessScheduledQuery({ name: "x", query: "SELECT 1", frequency: "daily", timezone: "UTC", outputMode: "none", timeoutSecs: 60, maxAttempts: 2 })).readiness).toBe("ready");
+    expect((await assessScheduledQuery({ name: "x", connectionId: "conn-1", query: "SELECT 1", frequency: "daily", timezone: "UTC", outputMode: "none", timeoutSecs: 60, maxAttempts: 2 })).readiness).toBe("ready");
     expect(seen).toEqual(["summarize-scheduled-query", "diagnose-scheduled-run", "assess-scheduled-query"]);
   });
 });

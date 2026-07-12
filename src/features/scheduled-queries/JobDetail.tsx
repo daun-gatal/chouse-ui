@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { formatClickHouseSQL } from "@/lib/formatSql";
-import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { useAuthStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { AiInsightDialog, AssessmentView, OperationalBriefCard } from "@/features/dataops-ai";
 import { useJobOwners, useRunScheduledQuery, useScheduledQueryRuns, useUpdateScheduledQuery } from "./hooks";
 import { JobWizard } from "./JobWizard";
@@ -52,6 +52,11 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+  const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
+  const activeConnectionName = useAuthStore((state) => state.activeConnectionName);
+  // The list is scoped to the active connection, so a visible job is always on
+  // it — show the human-readable name, falling back to the id defensively.
+  const connectionLabel = job.connectionId === activeConnectionId && activeConnectionName ? activeConnectionName : job.connectionId;
   const runMutation = useRunScheduledQuery();
   const updateMutation = useUpdateScheduledQuery();
   const { data: runs = [] } = useScheduledQueryRuns(job.id);
@@ -99,6 +104,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
     try {
       setPreflight(await assessScheduledQuery({
         name: job.name,
+        connectionId: job.connectionId,
         query: job.query,
         frequency: job.frequency,
         timezone: job.timezone,
@@ -240,7 +246,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
             <h3 className={SQ_LABEL}>Delivery &amp; reliability</h3>
           </div>
           <dl className="space-y-3 text-[11px]">
-            <div><dt className="text-paper-faint">Connection</dt><dd className="mt-0.5 truncate font-mono text-paper" title={job.connectionId}>{job.connectionId}</dd></div>
+            <div><dt className="text-paper-faint">Connection</dt><dd className="mt-0.5 truncate font-mono text-paper" title={connectionLabel}>{connectionLabel}</dd></div>
             <div><dt className="text-paper-faint">Output</dt><dd className="mt-0.5 text-paper"><span className="uppercase">{job.outputMode}</span> · {destination}</dd></div>
             <div><dt className="text-paper-faint">Execution limits</dt><dd className="mt-0.5 text-paper">{job.timeoutSecs}s timeout · {job.maxRows.toLocaleString()} max rows · {job.maxAttempts} attempt(s)</dd></div>
             <div><dt className="text-paper-faint">Read consistency</dt><dd className="mt-0.5 text-paper">{job.useFinal ? "FINAL enabled" : "Standard reads"} · {job.seqConsistency ? "sequential consistency" : "default consistency"}</dd></div>

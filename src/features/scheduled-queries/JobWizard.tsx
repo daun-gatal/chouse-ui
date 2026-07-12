@@ -285,6 +285,7 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
     try {
       setAssessment(await assessScheduledQuery({
         name: form.name,
+        connectionId: form.connectionId,
         query: form.query,
         frequency: form.frequency,
         timezone: form.timezone,

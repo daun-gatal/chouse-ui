@@ -392,6 +392,7 @@ export const draftScheduledQueryCapability: StructuredCapability<DraftInput, Dra
 
 const assessmentInputSchema = z.object({
   name: z.string().max(200),
+  connectionId: z.string().min(1),
   query: z.string().min(1).max(100000),
   frequency: z.enum(["daily", "weekly", "monthly", "cron", "manual"]),
   timezone: z.string(),
@@ -413,6 +414,9 @@ export const assessScheduledQueryCapability: StructuredCapability<AssessmentInpu
   tuning: { stopAtSteps: 6, temperature: 0, maxOutputTokens: 3000 },
   prepare(input, ctx) {
     requirePermission(ctx, PERMISSIONS.SCHEDULED_QUERIES_EDIT);
+    // Schema/explain tools run on the session's connection — refuse to assess a
+    // job pinned to a different one rather than reason over the wrong cluster.
+    if (ctx.connectionId !== input.connectionId) throw AppError.badRequest("Select the job's connection before requesting an AI preflight");
     return input;
   },
   tools(_prepared, ctx): AgentToolSet {

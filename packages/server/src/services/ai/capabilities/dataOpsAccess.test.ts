@@ -6,7 +6,13 @@ import { freshDatabase } from "../../../rbac/db/migrationTestHarness";
 import { PERMISSIONS } from "../../../rbac/schema/base";
 import * as healthStore from "../../dataHealth/store";
 import * as scheduledStore from "../../scheduledQueries/store";
-import { summarizeDataHealthCapability, summarizeScheduledQueryCapability } from "./dataOps";
+import {
+  assessScheduledQueryCapability,
+  draftScheduledQueryCapability,
+  recommendHealthPromiseCapability,
+  summarizeDataHealthCapability,
+  summarizeScheduledQueryCapability,
+} from "./dataOps";
 
 const jobInput: scheduledStore.JobInput = {
   name: "Owner-only job",
@@ -95,5 +101,41 @@ describe("DataOps AI object authorization", () => {
       permissions,
     });
     expect(evidence.promise.id).toBe(promiseId);
+  });
+});
+
+describe("DataOps AI connection guards", () => {
+  // These capabilities run schema/query tools on the SESSION's connection, so
+  // they must refuse to reason over a resource pinned to a different one.
+  const assessInput = {
+    name: "job",
+    connectionId: "connection-1",
+    query: "SELECT 1",
+    frequency: "daily" as const,
+    timezone: "UTC",
+    outputMode: "none" as const,
+    timeoutSecs: 60,
+    maxAttempts: 2,
+  };
+
+  it("rejects an AI preflight when the session is on a different connection", async () => {
+    const ctx = { userId: "owner-1", permissions: [PERMISSIONS.SCHEDULED_QUERIES_EDIT], connectionId: "connection-2" };
+    expect(() => assessScheduledQueryCapability.prepare(assessInput, ctx)).toThrow("Select the job's connection");
+    const prepared = assessScheduledQueryCapability.prepare(assessInput, { ...ctx, connectionId: "connection-1" });
+    expect(prepared.connectionId).toBe("connection-1");
+  });
+
+  it("rejects an AI draft when the session is on a different connection", () => {
+    const input = { intent: "count yesterday's orders", connectionId: "connection-1", timezone: "UTC" };
+    const ctx = { userId: "owner-1", permissions: [PERMISSIONS.SCHEDULED_QUERIES_EDIT], connectionId: "connection-2" };
+    expect(() => draftScheduledQueryCapability.prepare(input, ctx)).toThrow("Select the target connection");
+    expect(draftScheduledQueryCapability.prepare(input, { ...ctx, connectionId: "connection-1" }).connectionId).toBe("connection-1");
+  });
+
+  it("rejects a health recommendation when the session is on a different connection", () => {
+    const input = { connectionId: "connection-1", database: "analytics", table: "orders", criticality: "standard" as const, existingChecks: [] };
+    const ctx = { userId: "owner-1", permissions: [PERMISSIONS.DATA_HEALTH_EDIT], connectionId: "connection-2" };
+    expect(() => recommendHealthPromiseCapability.prepare(input, ctx)).toThrow("Select the dataset connection");
+    expect(recommendHealthPromiseCapability.prepare(input, { ...ctx, connectionId: "connection-1" }).connectionId).toBe("connection-1");
   });
 });
