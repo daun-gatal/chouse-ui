@@ -392,6 +392,15 @@ export async function countRunsForSlot(queryId: string, slotAt: number): Promise
   return Number(rows[0]?.c ?? 0);
 }
 
+export async function hasSuccessfulRunForSlot(queryId: string, slotAt: number): Promise<boolean> {
+  const rows = await all(sql`
+    SELECT 1 AS present FROM scheduled_query_runs
+    WHERE query_id = ${queryId} AND slot_at = ${slotAt} AND status = 'success'
+    LIMIT 1
+  `);
+  return rows.length > 0;
+}
+
 /** The most recent successful run's slot before `beforeSlot` (`{{prev_run_at}}`). */
 export async function getLastSuccessSlot(queryId: string, beforeSlot: number): Promise<number | null> {
   const rows = await all(sql`

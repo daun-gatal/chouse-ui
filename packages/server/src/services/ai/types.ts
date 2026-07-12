@@ -121,6 +121,8 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
    * passed again).
    */
   prepare(input: TInput, ctx: AgentRunContext): Promise<TPrepared> | TPrepared;
+  /** Return a previously generated result for the prepared evidence, if any. */
+  cachedResult?(prepared: TPrepared, ctx: AgentRunContext): Promise<TOutput | undefined> | TOutput | undefined;
   /** Assemble the tools the agent may call (may be async, e.g. skill discovery). */
   tools(prepared: TPrepared, ctx: AgentRunContext): AgentToolSet | Promise<AgentToolSet>;
   /** Build the system instructions (may vary on prepared data). */
@@ -140,6 +142,8 @@ export interface StructuredCapability<TInput, TPrepared, TParsed, TOutput> {
     ctx: AgentRunContext,
     meta: RunMeta,
   ): Promise<TOutput> | TOutput;
+  /** Persist an evidence-keyed result after successful finalization. */
+  cacheResult?(output: TOutput, prepared: TPrepared, ctx: AgentRunContext): Promise<void> | void;
   /**
    * Called when the agent produced no schema-valid output (both free-text
    * extraction and the structured fallback failed). If set, its result is

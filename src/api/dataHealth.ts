@@ -3,6 +3,7 @@ import { api } from "./client";
 export type DataHealthState = "healthy" | "degraded" | "unhealthy" | "unknown" | "paused";
 export type DataHealthOutcome = "pass" | "breach" | "learning" | "not_evaluated";
 export type DataHealthSeverity = "warning" | "critical";
+export type DataHealthCriticality = "standard" | "important" | "critical";
 export type DataHealthFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual";
 
 interface CheckBase {
@@ -45,7 +46,7 @@ export interface DataHealthPromise {
   rowFilter: string | null;
   ownerId: string | null;
   ownerDisplayName: string | null;
-  criticality: "standard" | "important" | "critical";
+  criticality: DataHealthCriticality;
   timezone: string;
   runbookUrl: string | null;
   enabled: boolean;
@@ -139,12 +140,23 @@ export interface DataHealthRun {
   finishedAt: number | null;
 }
 
+export interface DataHealthIncidentEvent {
+  id: string;
+  incidentId: string;
+  type: string;
+  actorId: string | null;
+  runId: string | null;
+  payload: Record<string, unknown> | null;
+  createdAt: number;
+}
+
 export interface DataHealthOverview {
   totalPromises: number;
   byStatus: Record<DataHealthState, number>;
   openIncidents: number;
   unownedCritical: number;
   needsAttention: DataHealthPromise[];
+  coverageGaps: Array<{ jobId: string; jobName: string; databaseName: string; tableName: string; outputMode: "append" | "replace" | "upsert" }>;
 }
 
 export interface DataHealthPreview {
@@ -189,7 +201,7 @@ export async function runDataHealthPromise(id: string): Promise<DataHealthRun | 
   return response.run;
 }
 
-export function getDataHealthTimeline(id: string): Promise<{ samples: DataHealthSample[]; incidents: DataHealthIncident[]; runs: DataHealthRun[] }> {
+export function getDataHealthTimeline(id: string): Promise<{ samples: DataHealthSample[]; incidents: DataHealthIncident[]; events: DataHealthIncidentEvent[]; runs: DataHealthRun[] }> {
   return api.get(`/data-health/${id}/timeline`);
 }
 
@@ -206,4 +218,30 @@ export async function acknowledgeDataHealthIncident(id: string): Promise<DataHea
 export async function snoozeDataHealthIncident(id: string, until: number): Promise<DataHealthIncident | null> {
   const response = await api.post<{ incident: DataHealthIncident | null }>(`/data-health/incidents/${id}/snooze`, { until });
   return response.incident;
+}
+
+export interface DataHealthBacktestResult {
+  slots: Array<{
+    slotAt: number;
+    state: "healthy" | "degraded" | "unhealthy" | "unknown";
+    checks: Array<{ checkKey: string; outcome: DataHealthOutcome; observedValue: number | null; expectedLower: number | null; expectedUpper: number | null }>;
+    error?: string;
+  }>;
+  summary: { evaluated: number; healthy: number; breached: number; unknown: number; errors: number };
+}
+
+export function backtestDataHealthPromise(id: string, slots = 14): Promise<DataHealthBacktestResult> {
+  return api.post<DataHealthBacktestResult>(`/data-health/${id}/backtest`, { slots });
+}
+
+export interface DataHealthDiagnosticResult {
+  supported: boolean;
+  rows: Array<Record<string, unknown>>;
+  columns: Array<{ name: string; type: string }>;
+  slotStart: number;
+  slotEnd: number;
+}
+
+export function diagnoseDataHealthCheck(id: string, checkKey: string, slotAt?: number, limit = 50): Promise<DataHealthDiagnosticResult> {
+  return api.post<DataHealthDiagnosticResult>(`/data-health/${id}/diagnostics`, { checkKey, slotAt, limit });
 }

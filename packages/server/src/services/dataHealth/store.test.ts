@@ -173,5 +173,14 @@ describe("Data Health store", () => {
     await store.insertEvaluations(promiseId, "run-good-2", 4_000, evaluation("pass", 130));
     expect((await store.transitionDataIncident(promise, "healthy", "run-good-2", "Healthy")).type).toBe("recovered");
     expect((await store.listIncidents(promiseId))[0].status).toBe("recovered");
+
+    const executionOpened = await store.transitionExecutionIncident(promise, true, "run-error-1", "Monitor timed out");
+    expect(executionOpened.type).toBe("opened");
+    expect(executionOpened.incident?.kind).toBe("execution");
+    expect((await store.transitionExecutionIncident(promise, true, "run-error-2", "Still unavailable")).type).toBe("none");
+    expect((await store.transitionExecutionIncident(promise, false, "run-recovered", "Monitor recovered")).type).toBe("recovered");
+    const events = await store.listIncidentEventsForPromise(promiseId);
+    expect(events.some((event) => event.type === "opened" && event.runId === "run-error-1")).toBe(true);
+    expect(events.some((event) => event.type === "recovered" && event.runId === "run-recovered")).toBe(true);
   });
 });

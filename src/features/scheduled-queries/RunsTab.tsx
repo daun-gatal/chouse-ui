@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { FileSearch, Calendar as CalendarIcon, Trash2 } from "lucide-react";
+import { FileSearch, Calendar as CalendarIcon, Trash2, Sparkles } from "lucide-react";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import type { RunQuery, ScheduledQueryRun, SqStatus } from "@/api/scheduledQueries";
+import { diagnoseScheduledRun, type DataOpsInvestigation } from "@/api/dataOpsAi";
+import { AiInsightDialog, InvestigationView } from "@/features/dataops-ai";
 import { useScheduledQueries, useScheduledQueryRuns, useJobOwners, useDeleteRuns } from "./hooks";
 import { StatusBadge, formatTime, formatDuration } from "./lib";
 import { TablePagination } from "./TablePagination";
@@ -49,7 +51,7 @@ interface SnapshotShape {
   writtenRows?: number | null;
 }
 
-function RunSnapshot({ run }: { run: ScheduledQueryRun }) {
+function RunSnapshot({ run, canInvestigate, onInvestigate }: { run: ScheduledQueryRun; canInvestigate: boolean; onInvestigate: () => void }) {
   let snap: SnapshotShape = {};
   try {
     snap = run.resultJson ? (JSON.parse(run.resultJson) as SnapshotShape) : {};
@@ -59,6 +61,7 @@ function RunSnapshot({ run }: { run: ScheduledQueryRun }) {
   return (
     <div className="space-y-3 border-t border-ink-500 px-3 py-3">
       {run.message && <p className="text-[11px] text-red-600">{run.message}</p>}
+      {canInvestigate && (run.status === "failed" || run.status === "error") && <Button variant="outline" size="sm" className="h-8 rounded-xs" onClick={onInvestigate}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Investigate with AI</Button>}
       {snap.window && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-paper-muted">
           {Object.entries(snap.window).map(([k, v]) => (
@@ -106,6 +109,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
   const canViewLogs = hasPermission(RBAC_PERMISSIONS.LOGS_VIEW);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
   const canDelete = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_DELETE);
+  const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const openInLogs = (queryId: string) => navigate(`/monitoring/logs?q=${encodeURIComponent(queryId)}`);
   const { options: ownerOptions } = useJobOwners(jobs, canViewAll);
   const deleteRunsMut = useDeleteRuns();
@@ -118,6 +122,10 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
   const [page, setPage] = useState(1);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteScope, setDeleteScope] = useState<string>("filters");
+  const [investigationOpen, setInvestigationOpen] = useState(false);
+  const [investigation, setInvestigation] = useState<DataOpsInvestigation>();
+  const [investigationLoading, setInvestigationLoading] = useState(false);
+  const [investigationError, setInvestigationError] = useState<string>();
 
   const jobOptions = (jobs ?? []).filter((j) => ownerFilter === "all" || j.createdBy === ownerFilter);
   const selectedJob = jobOptions.find((j) => j.id === jobId);
@@ -169,6 +177,20 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
 
   const total = runs?.length ?? 0;
   const pageRuns = (runs ?? []).slice((page - 1) * pageSize, page * pageSize);
+
+  const investigate = async (runId: string) => {
+    if (!jobId) return;
+    setInvestigationOpen(true);
+    setInvestigationLoading(true);
+    setInvestigationError(undefined);
+    try {
+      setInvestigation(await diagnoseScheduledRun(jobId, runId));
+    } catch (error) {
+      setInvestigationError(error instanceof Error ? error.message : "Run investigation failed");
+    } finally {
+      setInvestigationLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -286,7 +308,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
                     <span title={run.id} className="shrink-0 font-mono text-[10px] text-paper-faint">{run.id.slice(0, 8)}</span>
                   )}
                 </div>
-                {expanded === run.id && <RunSnapshot run={run} />}
+                {expanded === run.id && <RunSnapshot run={run} canInvestigate={canUseAi} onInvestigate={() => void investigate(run.id)} />}
               </Card>
             ))}
           </div>
@@ -325,6 +347,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AiInsightDialog open={investigationOpen} onOpenChange={setInvestigationOpen} title="Scheduled run investigation" description="Evidence-grounded diagnosis using the selected run and retained job history." loading={investigationLoading} error={investigationError}>{investigation && <InvestigationView result={investigation} />}</AiInsightDialog>
     </div>
   );
 }

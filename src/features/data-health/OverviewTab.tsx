@@ -54,7 +54,7 @@ export function OverviewTab({ onSelectPromise }: { onSelectPromise: (id: string)
           </dl>
         </Card>
       </div>
+      {data.coverageGaps.length > 0 && <Card className="rounded-xs border-brand/25 bg-brand/[0.04] p-4"><div className="flex items-baseline justify-between"><p className={DH_LABEL}>Suggested coverage</p><span className="font-mono text-[9px] uppercase text-paper-faint">Scheduled outputs without a promise</span></div><div className="mt-3 grid gap-2 md:grid-cols-2">{data.coverageGaps.map((gap) => <div key={gap.jobId} className="rounded-xs border border-ink-500 bg-ink-100 p-3"><p className="text-[11px] font-medium text-paper">{gap.databaseName}.{gap.tableName}</p><p className="mt-1 text-[10px] text-paper-muted">Produced by {gap.jobName} · {gap.outputMode}</p><p className="mt-1 text-[10px] text-paper-faint">Protect this dataset from Datasets → New promise, then use AI Coverage Advisor.</p></div>)}</div></Card>}
     </div>
   );
 }
-

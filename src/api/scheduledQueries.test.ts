@@ -14,6 +14,7 @@ import {
   createScheduledQuery,
   deleteScheduledQuery,
   getLineage,
+  recoverScheduledQuery,
   type ScheduledQueryInput,
 } from "./scheduledQueries";
 
@@ -93,5 +94,12 @@ describe("Scheduled Queries API", () => {
     expect(write?.from).toBe("job:sq-1");
     expect(write?.to).toBe("table:db.out");
     expect(write?.columns).toEqual(["a"]);
+  });
+
+  it("previews and executes bounded recovery", async () => {
+    const preview = await recoverScheduledQuery("sq-1", { from: 1, to: 2 });
+    expect(preview.runnable).toBe(1);
+    const executed = await recoverScheduledQuery("sq-1", { from: 1, to: 2, execute: true, confirm: true });
+    expect(executed.runs?.[0].status).toBe("success");
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 
-import { cadenceToCron, isValidTimeZone, lastScheduledFireMs, previousFireMs, nextFireTimes, validateCron } from "./cadence";
+import { cadenceToCron, fireTimesBetween, isValidTimeZone, lastScheduledFireMs, previousFireMs, nextFireTimes, validateCron } from "./cadence";
 
 const job = (over: Partial<Parameters<typeof lastScheduledFireMs>[0]>) => ({
   frequency: "daily" as const,
@@ -110,5 +110,19 @@ describe("nextFireTimes", () => {
     expect(times.length).toBe(3);
     expect(times[0]).toBe(Date.parse("2026-06-20T08:00:00Z"));
     expect(times[1]).toBeGreaterThan(times[0]);
+  });
+});
+
+describe("fireTimesBetween", () => {
+  it("returns inclusive bounded recovery slots", () => {
+    const from = Date.parse("2026-06-20T08:00:00Z");
+    const to = Date.parse("2026-06-20T10:00:00Z");
+    expect(fireTimesBetween({ frequency: "cron", hour: 0, dayOfWeek: 1, dayOfMonth: 1, cronExpr: "0 * * * *", timezone: "UTC" }, from, to)).toEqual([from, from + 3_600_000, to]);
+  });
+
+  it("rejects reversed ranges and caps output", () => {
+    expect(fireTimesBetween(job({}), 10, 1)).toEqual([]);
+    const slots = fireTimesBetween({ frequency: "cron", hour: 0, dayOfWeek: 1, dayOfMonth: 1, cronExpr: "* * * * *", timezone: "UTC" }, 0, 24 * 60 * 60 * 1000, 500);
+    expect(slots).toHaveLength(100);
   });
 });

@@ -195,6 +195,16 @@ export interface DataHealthIncidentRow {
   updatedAt: number;
 }
 
+export interface DataHealthIncidentEventRow {
+  id: string;
+  incidentId: string;
+  type: string;
+  actorId: string | null;
+  runId: string | null;
+  payload: Record<string, unknown> | null;
+  createdAt: number;
+}
+
 export interface DataHealthIncidentTransition {
   type: "none" | "opened" | "escalated" | "recovered";
   incident: DataHealthIncidentRow | null;

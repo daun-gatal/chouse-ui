@@ -81,6 +81,7 @@ export async function processDataHealthSuccess(
   await store.insertEvaluations(promise.id, runId, slotAt, result.checks);
   await store.updatePromiseEvaluation(promise.id, result.state, Date.now());
   const summary = evaluationSummary(promise.name, result);
+  const executionRecovery = await store.transitionExecutionIncident(promise, false, runId, `${promise.name} monitor execution recovered`);
   const transition = await store.transitionDataIncident(promise, result.state, runId, summary);
   let notified = false;
   if (transition.incident && transition.type !== "none") {
@@ -104,6 +105,23 @@ export async function processDataHealthSuccess(
       }
     }
   }
+  if (executionRecovery.incident && executionRecovery.type === "recovered") {
+    const channelIds = await scheduledStore.getJobChannelIds(job.id);
+    if (channelIds.length > 0) {
+      await scheduledStore.enqueueOutbox({
+        runId,
+        queryId: job.id,
+        kind: "recovery",
+        dedupKey: `data-health:${executionRecovery.incident.id}:recovered`,
+        payload: JSON.stringify({
+          title: `🟢 Data Health monitor recovered — ${promise.name}`,
+          text: `${promise.name} can evaluate data again.\nIncident: /dataops/data-health/incidents/${executionRecovery.incident.id}`,
+          channelIds,
+        }),
+      });
+      notified = true;
+    }
+  }
   return {
     conditionMet: result.state === "degraded" || result.state === "unhealthy",
     conditionValue: result.state,
@@ -112,7 +130,25 @@ export async function processDataHealthSuccess(
   };
 }
 
-export async function processDataHealthError(job: ScheduledQueryRow): Promise<void> {
+export async function processDataHealthError(job: ScheduledQueryRow, runId: string, message: string): Promise<boolean> {
   const promise = await store.getPromiseByJobId(job.id);
-  if (promise) await store.updatePromiseEvaluation(promise.id, "unknown", Date.now());
+  if (!promise) return false;
+  await store.updatePromiseEvaluation(promise.id, "unknown", Date.now());
+  const summary = `${promise.name} monitor could not execute: ${message}`;
+  const transition = await store.transitionExecutionIncident(promise, true, runId, summary);
+  if (!transition.incident || transition.type !== "opened") return false;
+  const channelIds = await scheduledStore.getJobChannelIds(job.id);
+  if (channelIds.length === 0) return false;
+  await scheduledStore.enqueueOutbox({
+    runId,
+    queryId: job.id,
+    kind: "alert",
+    dedupKey: `data-health:${transition.incident.id}:opened`,
+    payload: JSON.stringify({
+      title: `🔴 Data Health monitor failed — ${promise.name}`,
+      text: `${summary}\nThis is a monitoring failure; data health is unknown.\nIncident: /dataops/data-health/incidents/${transition.incident.id}`,
+      channelIds,
+    }),
+  });
+  return true;
 }

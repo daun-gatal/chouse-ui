@@ -12,13 +12,18 @@ import {
   Play,
   Power,
   ShieldCheck,
+  Sparkles,
+  RotateCcw,
 } from "lucide-react";
 
-import type { ScheduledQuery } from "@/api/scheduledQueries";
+import { assessScheduledQuery, planScheduledRecovery, type RecoveryAssessment, type ScheduledQueryAssessment } from "@/api/dataOpsAi";
+import { recoverScheduledQuery, type ScheduledQuery, type ScheduledRecoveryResult } from "@/api/scheduledQueries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { formatClickHouseSQL } from "@/lib/formatSql";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { AiInsightDialog, AssessmentView, OperationalBriefCard } from "@/features/dataops-ai";
 import { useJobOwners, useRunScheduledQuery, useScheduledQueryRuns, useUpdateScheduledQuery } from "./hooks";
 import { JobWizard } from "./JobWizard";
 import { LineageTab } from "./LineageTab";
@@ -46,11 +51,22 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const canEdit = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_EDIT);
   const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
+  const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const runMutation = useRunScheduledQuery();
   const updateMutation = useUpdateScheduledQuery();
   const { data: runs = [] } = useScheduledQueryRuns(job.id);
   const { nameOf: ownerName } = useJobOwners(jobs, canViewAll);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [preflightOpen, setPreflightOpen] = useState(false);
+  const [preflight, setPreflight] = useState<ScheduledQueryAssessment>();
+  const [preflightError, setPreflightError] = useState<string>();
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryFrom, setRecoveryFrom] = useState(() => new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 16));
+  const [recoveryTo, setRecoveryTo] = useState(() => new Date().toISOString().slice(0, 16));
+  const [recovery, setRecovery] = useState<{ assessment: RecoveryAssessment; preview: ScheduledRecoveryResult }>();
+  const [recoveryError, setRecoveryError] = useState<string>();
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   const successfulRuns = useMemo(() => runs.filter((run) => run.status === "success").length, [runs]);
   const completedRuns = useMemo(() => runs.filter((run) => run.status !== "running").length, [runs]);
@@ -73,6 +89,66 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
       toast.success(job.enabled ? "Job disabled" : "Job enabled");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Update failed");
+    }
+  };
+
+  const runPreflight = async () => {
+    setPreflightOpen(true);
+    setPreflightLoading(true);
+    setPreflightError(undefined);
+    try {
+      setPreflight(await assessScheduledQuery({
+        name: job.name,
+        query: job.query,
+        frequency: job.frequency,
+        timezone: job.timezone,
+        outputMode: job.outputMode,
+        destDatabase: job.destDatabase,
+        destTable: job.destTable,
+        timeoutSecs: job.timeoutSecs,
+        maxAttempts: job.maxAttempts,
+      }));
+    } catch (error) {
+      setPreflightError(error instanceof Error ? error.message : "Preflight review failed");
+    } finally {
+      setPreflightLoading(false);
+    }
+  };
+
+  const planRecovery = async () => {
+    const from = new Date(recoveryFrom).getTime();
+    const to = new Date(recoveryTo).getTime();
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
+      setRecoveryError("Choose a valid recovery time range.");
+      return;
+    }
+    setRecoveryLoading(true);
+    setRecoveryError(undefined);
+    try {
+      const [assessment, preview] = await Promise.all([
+        planScheduledRecovery(job.id, from, to),
+        recoverScheduledQuery(job.id, { from, to }),
+      ]);
+      setRecovery({ assessment, preview });
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : "Recovery planning failed");
+    } finally {
+      setRecoveryLoading(false);
+    }
+  };
+
+  const executeRecovery = async () => {
+    const from = new Date(recoveryFrom).getTime();
+    const to = new Date(recoveryTo).getTime();
+    setRecoveryLoading(true);
+    try {
+      const result = await recoverScheduledQuery(job.id, { from, to, execute: true, confirm: true });
+      setRecovery((current) => current ? { ...current, preview: result } : current);
+      toast.success(`Recovery completed ${result.runs?.length ?? 0} run(s)`);
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : "Recovery execution failed");
+    } finally {
+      setRecoveryLoading(false);
     }
   };
 
@@ -100,6 +176,16 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canUseAi && (
+            <Button variant="outline" className="h-9 rounded-xs" onClick={() => void runPreflight()}>
+              <Sparkles className="mr-2 h-3.5 w-3.5" /> AI preflight
+            </Button>
+          )}
+          {canRun && canUseAi && job.frequency !== "manual" && (
+            <Button variant="outline" className="h-9 rounded-xs" onClick={() => setRecoveryOpen(true)}>
+              <RotateCcw className="mr-2 h-3.5 w-3.5" /> Recovery planner
+            </Button>
+          )}
           {canEdit && (
             <Button variant="outline" className="h-9 rounded-xs" onClick={() => void toggleEnabled()} disabled={updateMutation.isPending}>
               <Power className="mr-2 h-3.5 w-3.5" /> {job.enabled ? "Disable" : "Enable"}
@@ -117,6 +203,8 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
           )}
         </div>
       </div>
+
+      <OperationalBriefCard kind="scheduled-query" id={job.id} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
@@ -183,6 +271,14 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
       </section>
 
       {wizardOpen && <JobWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} job={job} />}
+      <AiInsightDialog open={preflightOpen} onOpenChange={setPreflightOpen} title="Scheduled Query preflight" description="Read-only review of correctness, cost, schedule, destination, and recovery risks." loading={preflightLoading} error={preflightError}>{preflight && <AssessmentView result={preflight} />}</AiInsightDialog>
+      <AiInsightDialog open={recoveryOpen} onOpenChange={setRecoveryOpen} title="Historical recovery planner" description="Preview missed deterministic slots before any historical runs execute." loading={recoveryLoading} error={recoveryError}>
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2"><div><p className="font-mono text-[9px] uppercase text-paper-faint">From</p><Input type="datetime-local" value={recoveryFrom} onChange={(event) => setRecoveryFrom(event.target.value)} className="mt-1" /></div><div><p className="font-mono text-[9px] uppercase text-paper-faint">To</p><Input type="datetime-local" value={recoveryTo} onChange={(event) => setRecoveryTo(event.target.value)} className="mt-1" /></div></div>
+          <Button variant="outline" className="rounded-xs" onClick={() => void planRecovery()}>Preview recovery</Button>
+          {recovery && <><AssessmentView result={recovery.assessment} /><div className="rounded-xs border border-ink-500 p-3"><p className="text-[11px] text-paper">{recovery.preview.runnable} missing slot(s) ready to run</p><p className="mt-1 text-[10px] text-paper-muted">{recovery.preview.plan.filter((slot) => slot.alreadySucceeded).length} slot(s) already succeeded and will be skipped.</p>{recovery.preview.warnings.map((warning) => <p key={warning} className="mt-1 text-[10px] text-amber-500">{warning}</p>)}</div>{recovery.preview.runnable > 0 && recovery.preview.runnable <= 30 && <Button className={SQ_BTN_PRIMARY} onClick={() => void executeRecovery()}>Confirm and run {recovery.preview.runnable} slot(s)</Button>}</>}
+        </div>
+      </AiInsightDialog>
     </div>
   );
 }

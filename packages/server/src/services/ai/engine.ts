@@ -253,9 +253,11 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
   ctx: AgentRunContext,
 ): Promise<TOutput> {
   try {
-    const { model, config, label } = await resolveDeepAgentModel(ctx.modelId);
-
     const prepared = await cap.prepare(input, ctx);
+    const cached = await cap.cachedResult?.(prepared, ctx);
+    if (cached !== undefined) return cached;
+
+    const { model, config, label } = await resolveDeepAgentModel(ctx.modelId);
     const invokedToolCalls: InvokedToolCall[] = [];
     const tools = guardDuplicateTools(await cap.tools(prepared, ctx), invokedToolCalls);
     const instructions = await cap.instructions(prepared, ctx);
@@ -296,7 +298,9 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       throw AppError.internal(`Chouse AI could not complete '${cap.id}' — please try again.`);
     }
 
-    return await cap.finalize(parsed, prepared, ctx, meta);
+    const output = await cap.finalize(parsed, prepared, ctx, meta);
+    await cap.cacheResult?.(output, prepared, ctx);
+    return output;
   } catch (error) {
     if (cap.softFail) return cap.softFail(error);
     handleAiError(error, `AI:${cap.id}`);

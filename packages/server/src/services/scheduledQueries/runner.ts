@@ -173,6 +173,7 @@ export interface ExecuteOptions {
   trigger: SqTrigger;
   slotAt: number;
   attempt: number;
+  suppressNotifications?: boolean;
 }
 
 /** Insert the `running` row and return the run id (the ClickHouse query_id). */
@@ -302,7 +303,7 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
     logger.warn({ module: "ScheduledQueries", jobId: job.id, runId, err: message }, "Scheduled query run failed");
     if (job.kind === "data_health_check") {
       try {
-        await processDataHealthError(job);
+        notified = await processDataHealthError(job, runId, message);
       } catch (healthError) {
         logger.warn({ module: "DataHealth", jobId: job.id, runId, err: healthError instanceof Error ? healthError.message : String(healthError) }, "Failed to mark Data Health promise unknown");
       }
@@ -312,7 +313,7 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
   }
 
   const finishedAt = Date.now();
-  if (job.kind === "sql_query") {
+  if (job.kind === "sql_query" && !opts.suppressNotifications) {
     notified = await maybeEnqueueDeliveries(job, runId, status, message, window);
   }
 

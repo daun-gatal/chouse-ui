@@ -10,6 +10,8 @@ import {
   previewDataHealthPromise,
   runDataHealthPromise,
   snoozeDataHealthIncident,
+  backtestDataHealthPromise,
+  diagnoseDataHealthCheck,
   type DataHealthPromiseInput,
 } from "./dataHealth";
 
@@ -41,5 +43,11 @@ describe("Data Health API", () => {
     expect((await acknowledgeDataHealthIncident("incident-1"))?.status).toBe("acknowledged");
     expect((await snoozeDataHealthIncident("incident-1", 1800000000000))?.status).toBe("snoozed");
   });
-});
 
+  it("backtests promises and fetches bounded diagnostic evidence", async () => {
+    expect((await backtestDataHealthPromise("dh-1", 7)).summary.healthy).toBe(1);
+    const diagnostic = await diagnoseDataHealthCheck("dh-1", "row_count");
+    expect(diagnostic.supported).toBe(true);
+    expect(diagnostic.rows).toEqual([{ id: 1 }]);
+  });
+});

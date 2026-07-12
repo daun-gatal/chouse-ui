@@ -29,7 +29,7 @@ import {
   type ScheduledQueryRow,
 } from "../services/scheduledQueries/types";
 import { validateReadOnlySelect, toParseableSql } from "../services/scheduledQueries/validation";
-import { isValidTimeZone, validateCron, nextFireTimes } from "../services/scheduledQueries/cadence";
+import { fireTimesBetween, isValidTimeZone, validateCron, nextFireTimes } from "../services/scheduledQueries/cadence";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
 import {
   describeSelectSchema,
@@ -303,7 +303,7 @@ scheduledQueries.patch(
   zValidator("json", jobBodySchema),
   async (c) => {
     const id = requireParam(c, "id");
-    await loadVisibleJob(c, id);
+    const previous = await loadVisibleJob(c, id);
     const body = c.req.valid("json");
     validateBody(body, hasWritePerm(c));
     await assertConnectionAccess(c, body.connectionId);
@@ -311,7 +311,15 @@ scheduledQueries.patch(
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
     await store.updateJob(id, bodyToInput(body));
     await store.setJobChannels(id, body.channelIds);
-    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), { resourceType: "scheduled_query", resourceId: id });
+    const changedFields = [
+      previous.name !== body.name ? "name" : null,
+      previous.query !== body.query ? "query" : null,
+      previous.frequency !== body.frequency || previous.cronExpr !== (body.cronExpr ?? null) || previous.timezone !== body.timezone ? "schedule" : null,
+      previous.outputMode !== body.outputMode || previous.destDatabase !== (body.destDatabase ?? null) || previous.destTable !== (body.destTable ?? null) ? "output" : null,
+      previous.timeoutSecs !== body.timeoutSecs || previous.maxAttempts !== body.maxAttempts ? "reliability" : null,
+      previous.enabled !== body.enabled ? "enabled" : null,
+    ].filter((field): field is string => field !== null);
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_UPDATE, userId(c), { resourceType: "scheduled_query", resourceId: id, details: { changedFields, previousUpdatedAt: previous.updatedAt } });
     const job = await store.getJob(id);
     return ok(c, await toJobResponse(job!, false));
   },
@@ -331,6 +339,47 @@ scheduledQueries.post("/:id/run", requirePermission(PERMISSIONS.SCHEDULED_QUERIE
   const run = await runner.execute(job, { trigger: "manual", slotAt: Date.now(), attempt: 1 });
   return ok(c, { run });
 });
+
+const recoverySchema = z.object({
+  from: z.number().int(),
+  to: z.number().int(),
+  execute: z.boolean().default(false),
+  confirm: z.boolean().default(false),
+  rerunSuccessful: z.boolean().default(false),
+}).refine((value) => value.from <= value.to, "Start must precede end");
+
+scheduledQueries.post(
+  "/:id/recovery",
+  requirePermission(PERMISSIONS.SCHEDULED_QUERIES_RUN),
+  zValidator("json", recoverySchema),
+  async (c) => {
+    const job = await loadVisibleJob(c, requireParam(c, "id"));
+    const body = c.req.valid("json");
+    const slots = fireTimesBetween(job, body.from, body.to, 100);
+    const existing = await Promise.all(slots.map((slotAt) => store.hasSuccessfulRunForSlot(job.id, slotAt)));
+    const plan = slots.map((slotAt, index) => ({ slotAt, alreadySucceeded: existing[index] }));
+    const runnable = plan.filter((slot) => body.rerunSuccessful || !slot.alreadySucceeded);
+    const warnings = [
+      ...(slots.length === 100 ? ["Range reached the 100-slot preview limit"] : []),
+      ...(job.outputMode === "append" ? ["Append recovery depends on ClickHouse deduplication being enabled for the destination engine"] : []),
+      ...(job.outputMode === "upsert" ? ["Upsert recovery deduplicates eventually after merges"] : []),
+    ];
+    if (!body.execute) return ok(c, { plan, runnable: runnable.length, warnings });
+    if (!body.confirm) throw AppError.badRequest("Recovery execution requires explicit confirmation");
+    if (runnable.length > 30) throw AppError.badRequest("Execute at most 30 recovery slots per request");
+    const runs = [];
+    for (const slot of runnable) {
+      const run = await runner.execute(job, { trigger: "manual", slotAt: slot.slotAt, attempt: 1, suppressNotifications: true });
+      if (run) runs.push(run);
+    }
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_RUN, userId(c), {
+      resourceType: "scheduled_query",
+      resourceId: job.id,
+      details: { recovery: true, from: body.from, to: body.to, slots: runs.length },
+    });
+    return ok(c, { plan, runnable: runnable.length, warnings, runs });
+  },
+);
 
 // --- runs -------------------------------------------------------------------
 

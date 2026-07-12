@@ -101,6 +101,23 @@ describe("runStructuredCapability", () => {
     expect(onParseFailure).toHaveBeenCalled();
     expect(output).toEqual({ foo: "recovered" });
   });
+
+  it("returns an evidence-keyed cached result before creating an agent", async () => {
+    createDeepAgentMock.mockClear();
+    const cachedResult = mock(() => ({ foo: "cached" }));
+    const output = await runStructuredCapability(fakeStructuredCapability({ cachedResult }), { q: "hi" }, CTX);
+    expect(output).toEqual({ foo: "cached" });
+    expect(cachedResult).toHaveBeenCalledWith({ q: "hi" }, CTX);
+    expect(createDeepAgentMock).not.toHaveBeenCalled();
+  });
+
+  it("stores a successful finalized result", async () => {
+    invokeResult = { messages: [{ content: '{"foo":"fresh"}' }] };
+    const cacheResult = mock(() => {});
+    const output = await runStructuredCapability(fakeStructuredCapability({ cacheResult }), { q: "hi" }, CTX);
+    expect(output).toEqual({ foo: "fresh" });
+    expect(cacheResult).toHaveBeenCalledWith({ foo: "fresh" }, { q: "hi" }, CTX);
+  });
 });
 
 describe("invokeCapabilityAgent", () => {

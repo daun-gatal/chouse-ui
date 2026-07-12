@@ -18,6 +18,18 @@ import {
 } from "./diagnose";
 import { fleetScanCapability } from "./fleetScan";
 import { chatCapability } from "./chat";
+import {
+  assessScheduledQueryCapability,
+  correlateHealthIncidentsCapability,
+  diagnoseHealthIncidentCapability,
+  diagnoseScheduledRunCapability,
+  draftScheduledQueryCapability,
+  planScheduledRecoveryCapability,
+  recommendHealthPromiseCapability,
+  summarizeDataHealthCapability,
+  summarizeScheduledQueryCapability,
+  tuneHealthPromiseCapability,
+} from "./dataOps";
 
 export const CAPABILITIES = {
   "optimize-query": optimizeQueryCapability,
@@ -29,6 +41,16 @@ export const CAPABILITIES = {
   "diagnose-schema": diagnoseSchemaCapability,
   "fleet-scan": fleetScanCapability,
   "chat": chatCapability,
+  "draft-scheduled-query": draftScheduledQueryCapability,
+  "assess-scheduled-query": assessScheduledQueryCapability,
+  "summarize-scheduled-query": summarizeScheduledQueryCapability,
+  "diagnose-scheduled-run": diagnoseScheduledRunCapability,
+  "plan-scheduled-recovery": planScheduledRecoveryCapability,
+  "recommend-health-promise": recommendHealthPromiseCapability,
+  "summarize-data-health": summarizeDataHealthCapability,
+  "diagnose-health-incident": diagnoseHealthIncidentCapability,
+  "tune-health-promise": tuneHealthPromiseCapability,
+  "correlate-health-incidents": correlateHealthIncidentsCapability,
 } as const satisfies Record<string, AnyCapability>;
 
 export type CapabilityId = keyof typeof CAPABILITIES;

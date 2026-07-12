@@ -143,6 +143,13 @@ export function nextFireTimes(spec: CadenceSpec, count: number, fromMs: number =
   return out;
 }
 
+/** Bounded scheduled occurrences in the inclusive range, used by recovery preview. */
+export function fireTimesBetween(spec: CadenceSpec, fromMs: number, toMs: number, limit = 100): number[] {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs > toMs) return [];
+  const boundedLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
+  return nextFireTimes(spec, boundedLimit, fromMs - 1000).filter((time) => time >= fromMs && time <= toMs);
+}
+
 export interface CronValidationResult {
   valid: boolean;
   error?: string;

@@ -207,6 +207,17 @@ export async function previewScheduledQuery(input: Partial<ScheduledQueryInput>)
   return api.post<PreviewResult>("/scheduled-queries/preview", input);
 }
 
+export interface ScheduledRecoveryResult {
+  plan: Array<{ slotAt: number; alreadySucceeded: boolean }>;
+  runnable: number;
+  warnings: string[];
+  runs?: ScheduledQueryRun[];
+}
+
+export function recoverScheduledQuery(id: string, input: { from: number; to: number; execute?: boolean; confirm?: boolean; rerunSuccessful?: boolean }): Promise<ScheduledRecoveryResult> {
+  return api.post<ScheduledRecoveryResult>(`/scheduled-queries/${id}/recovery`, input);
+}
+
 // --- lineage (observed runtime) ---------------------------------------------
 
 export interface LineageTableNode {

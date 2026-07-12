@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, ChevronLeft, ChevronRight, Code2, Eye, ShieldCheck } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Code2, Eye, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
 
 import { getDatabases, getTableDetails, type DatabaseInfo, type TableDetails } from "@/api/explorer";
 import { listChannels, type NotificationChannel } from "@/api/alerting";
 import { previewDataHealthPromise, type DataHealthCheck, type DataHealthFrequency, type DataHealthPreview, type DataHealthPromise, type DataHealthPromiseInput } from "@/api/dataHealth";
+import { recommendHealthPromise, type HealthPromiseRecommendation } from "@/api/dataOpsAi";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuthStore } from "@/stores";
+import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { cn } from "@/lib/utils";
 import { useCreateDataHealthPromise, useUpdateDataHealthPromise } from "./hooks";
 import { DH_LABEL, DH_PRIMARY } from "./lib";
@@ -111,6 +112,7 @@ function CheckToggle({ checked, onCheckedChange, title, description, children }:
 export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; onOpenChange: (open: boolean) => void; promise?: DataHealthPromise }) {
   const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
   const activeConnectionName = useAuthStore((state) => state.activeConnectionName);
+  const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
   const createMutation = useCreateDataHealthPromise();
   const updateMutation = useUpdateDataHealthPromise();
   const [step, setStep] = useState(0);
@@ -120,11 +122,13 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [preview, setPreview] = useState<DataHealthPreview>();
   const [previewing, setPreviewing] = useState(false);
+  const [recommending, setRecommending] = useState(false);
+  const [recommendation, setRecommendation] = useState<HealthPromiseRecommendation>();
   const update = (patch: Partial<FormState>) => setForm((current) => ({ ...current, ...patch }));
 
   useEffect(() => {
     if (!open) return;
-    setStep(0); setPreview(undefined); setTableDetails(undefined); setForm(promise ? formFromPromise(promise) : defaultForm());
+    setStep(0); setPreview(undefined); setRecommendation(undefined); setTableDetails(undefined); setForm(promise ? formFromPromise(promise) : defaultForm());
     let active = true;
     void Promise.all([getDatabases(), listChannels()]).then(([databaseRows, channelRows]) => { if (active) { setDatabases(databaseRows); setChannels(channelRows.filter((channel) => channel.enabled)); } }).catch(() => { if (active) toast.error("Could not load dataset metadata"); });
     return () => { active = false; };
@@ -189,6 +193,45 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   const needsEventTime = form.freshness || form.rowCount || form.anomaly || form.completenessRules.length > 0 || form.uniquenessRules.length > 0 || form.validityRules.length > 0;
   const canContinue = step === 0 ? Boolean((promise?.connectionId || activeConnectionId) && form.name.trim() && (form.sourceType === "table" ? form.databaseName && form.tableName : form.sourceQuery.trim()) && (!needsEventTime || form.eventTimeColumn)) : step === 1 ? checks.length > 0 && ruleDefinitionsValid && (form.frequency !== "cron" || Boolean(form.cronExpr.trim())) : true;
   const runPreview = async () => { setPreviewing(true); try { const result = await previewDataHealthPromise(buildInput()); setPreview(result); toast.success("Promise validated"); } catch (error) { toast.error(error instanceof Error ? error.message : "Preview failed"); } finally { setPreviewing(false); } };
+  const requestRecommendation = async () => {
+    const connectionId = promise?.connectionId ?? activeConnectionId;
+    if (!connectionId || form.sourceType !== "table" || !form.databaseName || !form.tableName) return;
+    setRecommending(true);
+    try {
+      setRecommendation(await recommendHealthPromise({ connectionId, database: form.databaseName, table: form.tableName, criticality: form.criticality, existingChecks: checks }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not recommend health coverage");
+    } finally {
+      setRecommending(false);
+    }
+  };
+  const applyRecommendation = () => {
+    if (!recommendation) return;
+    const freshness = recommendation.checks.find((check) => check.type === "freshness");
+    const rowCount = recommendation.checks.find((check) => check.type === "row_count");
+    const anomaly = recommendation.checks.find((check) => check.type === "volume_anomaly");
+    const schema = recommendation.checks.find((check) => check.type === "schema_contract");
+    update({
+      eventTimeColumn: recommendation.eventTimeColumn ?? form.eventTimeColumn,
+      freshness: Boolean(freshness),
+      freshnessMinutes: freshness?.type === "freshness" ? Math.max(1, Math.round(freshness.config.maxAgeSeconds / 60)) : form.freshnessMinutes,
+      rowCount: Boolean(rowCount),
+      rowCountMin: rowCount?.type === "row_count" && rowCount.config.min != null ? String(rowCount.config.min) : "",
+      rowCountMax: rowCount?.type === "row_count" && rowCount.config.max != null ? String(rowCount.config.max) : "",
+      anomaly: Boolean(anomaly),
+      anomalyHardMin: anomaly?.type === "volume_anomaly" && anomaly.config.hardMin != null ? String(anomaly.config.hardMin) : "",
+      schemaContract: Boolean(schema),
+      allowAdditionalColumns: schema?.type === "schema_contract" ? schema.config.allowAdditionalColumns : form.allowAdditionalColumns,
+      completenessRules: recommendation.checks.flatMap((check) => check.type === "completeness" ? [{ checkKey: check.checkKey, column: check.config.column, minPercent: check.config.minRatio * 100 }] : []),
+      uniquenessRules: recommendation.checks.flatMap((check) => check.type === "uniqueness" ? [{ checkKey: check.checkKey, columns: check.config.columns, maxDuplicatePercent: check.config.maxDuplicateRatio * 100 }] : []),
+      validityRules: recommendation.checks.flatMap((check) => check.type === "validity" ? [{ checkKey: check.checkKey, name: check.name, predicate: check.config.predicate, minPercent: check.config.minRatio * 100 }] : []),
+      customMetricRules: recommendation.checks.flatMap((check) => check.type === "custom_metric" ? [{ checkKey: check.checkKey, name: check.name, expression: check.config.expression, operator: check.config.operator, threshold: check.config.threshold, upperThreshold: check.config.upperThreshold ?? 0 }] : []),
+      graceMinutes: Math.round(recommendation.graceSecs / 60),
+      breachAfter: recommendation.breachAfter,
+      recoverAfter: recommendation.recoverAfter,
+    });
+    toast.success("AI recommendations applied as an editable draft");
+  };
   const submit = async () => { try { const input = buildInput(); if (promise) await updateMutation.mutateAsync({ id: promise.id, input }); else await createMutation.mutateAsync(input); toast.success(promise ? "Data Health promise updated" : "Dataset protection activated"); onOpenChange(false); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not save the promise"); } };
 
   return (
@@ -197,6 +240,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
         {step === 0 && <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div><Label>Promise name</Label><Input value={form.name} onChange={(event) => update({ name: event.target.value })} placeholder="Daily orders are ready" className="mt-1 rounded-xs" /></div><div><Label>Connection</Label><Input value={activeConnectionName ?? promise?.connectionId ?? "No active connection"} disabled className="mt-1 rounded-xs" /></div></div><div><Label>Description</Label><Textarea value={form.description} onChange={(event) => update({ description: event.target.value })} placeholder="Who relies on this data and why it matters…" className="mt-1 rounded-xs" /></div><div><Label>Dataset source</Label><div className="mt-1 grid grid-cols-2 gap-2"><Button type="button" variant={form.sourceType === "table" ? "default" : "outline"} className="rounded-xs" onClick={() => update({ sourceType: "table" })}>Table or view</Button><Button type="button" variant={form.sourceType === "query" ? "default" : "outline"} className="rounded-xs" onClick={() => update({ sourceType: "query", schemaContract: false })}><Code2 className="mr-2 h-3.5 w-3.5" /> Dataset query</Button></div></div>{form.sourceType === "table" ? <div className="grid gap-4 sm:grid-cols-2"><div><Label>Database</Label><Select value={form.databaseName} onValueChange={(value) => update({ databaseName: value, tableName: "" })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue placeholder="Select database" /></SelectTrigger><SelectContent>{databases.map((database) => <SelectItem key={database.name} value={database.name}>{database.name}</SelectItem>)}</SelectContent></Select></div><div><Label>Table or view</Label><Select value={form.tableName} onValueChange={(value) => update({ tableName: value })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue placeholder="Select table" /></SelectTrigger><SelectContent>{tables.map((table) => <SelectItem key={table.name} value={table.name}>{table.name}</SelectItem>)}</SelectContent></Select></div></div> : <div><Label>Read-only dataset query</Label><Textarea value={form.sourceQuery} onChange={(event) => update({ sourceQuery: event.target.value })} placeholder="SELECT * FROM analytics.orders" className="mt-1 min-h-32 rounded-xs font-mono text-[11px]" /></div>}<div className="grid gap-4 sm:grid-cols-2"><div><Label>Event-time column</Label>{form.sourceType === "query" ? <Input value={form.eventTimeColumn} onChange={(event) => update({ eventTimeColumn: event.target.value })} placeholder="created_at" className="mt-1 rounded-xs font-mono" /> : <Select value={form.eventTimeColumn || "none"} onValueChange={(value) => update({ eventTimeColumn: value === "none" ? "" : value })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No event-time column</SelectItem>{columns.filter((column) => /Date|Time/i.test(column.type)).map((column) => <SelectItem key={column.name} value={column.name}>{column.name} · {column.type}</SelectItem>)}</SelectContent></Select>}<p className="mt-1 text-[10px] text-paper-faint">Required for windowed checks and bounded scans.</p></div><div><Label>Optional row filter</Label><Input value={form.rowFilter} onChange={(event) => update({ rowFilter: event.target.value })} placeholder="environment = 'production'" className="mt-1 rounded-xs font-mono" /></div></div></div>}
         {step === 1 && (
           <div className="space-y-5">
+            {canUseAi && form.sourceType === "table" && <div className="rounded-xs border border-brand/25 bg-brand/5 p-4"><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand" /><p className={DH_LABEL}>AI coverage advisor</p></div><p className="mt-1 text-[10px] text-paper-muted">Inspects schema and bounded evidence, then proposes explainable checks. Nothing changes until you apply the draft.</p></div><Button variant="outline" className="h-8 shrink-0 rounded-xs" onClick={() => void requestRecommendation()} disabled={recommending || !form.databaseName || !form.tableName}>{recommending && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}{recommendation ? "Refresh" : "Recommend"}</Button></div>{recommendation && <div className="mt-3 border-t border-brand/20 pt-3"><p className="text-[11px] text-paper">{recommendation.summary}</p><p className="mt-1 text-[10px] text-paper-muted">{recommendation.checks.length} checks · {Math.round(recommendation.confidence * 100)}% confidence</p><ul className="mt-2 space-y-1">{recommendation.rationale.slice(0, 5).map((reason) => <li key={reason} className="text-[10px] text-paper-muted">• {reason}</li>)}</ul><Button className={`${DH_PRIMARY} mt-3`} onClick={applyRecommendation}>Apply editable draft</Button></div>}</div>}
             <div className="grid gap-4 md:grid-cols-3">
               <div><Label>Evaluation cadence</Label><Select value={form.frequency} onValueChange={(value) => update({ frequency: value as DataHealthFrequency })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="daily">Daily</SelectItem><SelectItem value="weekly">Weekly</SelectItem><SelectItem value="monthly">Monthly</SelectItem><SelectItem value="cron">Custom cron</SelectItem><SelectItem value="manual">Manual only</SelectItem></SelectContent></Select></div>
               {form.frequency !== "manual" && form.frequency !== "cron" && <div><Label>Business hour</Label><Input type="number" min={0} max={23} value={form.hour} onChange={(event) => update({ hour: Number(event.target.value) })} className="mt-1 rounded-xs" /></div>}

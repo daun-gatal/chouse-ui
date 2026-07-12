@@ -11,6 +11,7 @@ import {
   type DataHealthIncidentRow,
   type DataHealthIncidentStatus,
   type DataHealthIncidentTransition,
+  type DataHealthIncidentEventRow,
   type DataHealthPromiseRow,
   type DataHealthPromiseState,
   type DataHealthSampleRow,
@@ -368,6 +369,25 @@ export async function getIncident(id: string): Promise<DataHealthIncidentRow | n
   return rows[0] ? incidentRow(rows[0]) : null;
 }
 
+export async function listIncidentEventsForPromise(promiseId: string, limit = 200): Promise<DataHealthIncidentEventRow[]> {
+  const boundedLimit = Math.min(500, Math.max(1, Math.trunc(limit)));
+  const rows = await all(sql`
+    SELECT e.* FROM data_health_incident_events e
+    JOIN data_health_incidents i ON i.id = e.incident_id
+    WHERE i.promise_id = ${promiseId}
+    ORDER BY e.created_at DESC LIMIT ${boundedLimit}
+  `);
+  return rows.map((row) => ({
+    id: String(row.id),
+    incidentId: String(row.incident_id),
+    type: String(row.type),
+    actorId: nullableString(row.actor_id),
+    runId: nullableString(row.run_id),
+    payload: parseJson<Record<string, unknown>>(row.payload),
+    createdAt: Number(row.created_at),
+  }));
+}
+
 async function activeIncident(promiseId: string, kind: DataHealthIncidentKind): Promise<DataHealthIncidentRow | null> {
   const rows = await all(sql`
     SELECT * FROM data_health_incidents
@@ -445,6 +465,35 @@ export async function transitionDataIncident(
     }
   }
   return { type: "none", incident: active };
+}
+
+export async function transitionExecutionIncident(
+  promise: DataHealthPromiseRow,
+  failed: boolean,
+  runId: string,
+  summary: string,
+): Promise<DataHealthIncidentTransition> {
+  const active = await activeIncident(promise.id, "execution");
+  const now = Date.now();
+  if (failed) {
+    if (!active) {
+      const id = randomUUID();
+      await run(sql`
+        INSERT INTO data_health_incidents (
+          id, promise_id, status, severity, kind, summary, opened_at,
+          last_event_at, created_at, updated_at
+        ) VALUES (${id}, ${promise.id}, 'open', 'critical', 'execution', ${summary}, ${now}, ${now}, ${now}, ${now})
+      `);
+      await addIncidentEvent(id, "opened", runId, null, { kind: "execution", summary });
+      return { type: "opened", incident: await getIncident(id) };
+    }
+    await run(sql`UPDATE data_health_incidents SET summary = ${summary}, last_event_at = ${now}, updated_at = ${now} WHERE id = ${active.id}`);
+    return { type: "none", incident: await getIncident(active.id) };
+  }
+  if (!active) return { type: "none", incident: null };
+  await run(sql`UPDATE data_health_incidents SET status = 'recovered', recovered_at = ${now}, last_event_at = ${now}, updated_at = ${now} WHERE id = ${active.id}`);
+  await addIncidentEvent(active.id, "recovered", runId, null, { kind: "execution" });
+  return { type: "recovered", incident: await getIncident(active.id) };
 }
 
 export async function acknowledgeIncident(id: string, actorId: string): Promise<DataHealthIncidentRow | null> {

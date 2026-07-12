@@ -8,6 +8,7 @@ import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getConnectionById, getUserConnections } from "../rbac/services/connections";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
 import { compileDataHealthQuery } from "../services/dataHealth/compiler";
+import { backtestDataHealth, buildFailingRowsQuery, runFailingRowsDiagnostic } from "../services/dataHealth/diagnostics";
 import * as healthStore from "../services/dataHealth/store";
 import { dataHealthCheckDefinitionSchema } from "../services/dataHealth/types";
 import { isValidTimeZone, nextFireTimes, validateCron } from "../services/scheduledQueries/cadence";
@@ -15,6 +16,7 @@ import * as runner from "../services/scheduledQueries/runner";
 import * as scheduledStore from "../services/scheduledQueries/store";
 import { SQ_FREQUENCIES } from "../services/scheduledQueries/types";
 import { toParseableSql } from "../services/scheduledQueries/validation";
+import { clientForConnection } from "../services/scheduledQueries/chClient";
 import { AppError, requireParam } from "../types";
 
 const dataHealth = new Hono();
@@ -208,11 +210,18 @@ dataHealth.get("/", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW), async (c) =
 
 dataHealth.get("/overview", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW), async (c) => {
   const promises = await healthStore.listPromises(canViewAll(c) ? null : currentUser(c).sub);
+  const scheduledJobs = await scheduledStore.listJobs(canViewAll(c) ? null : currentUser(c).sub);
   const incidents = canViewAll(c)
     ? await healthStore.listIncidents()
     : (await Promise.all(promises.map((promise) => healthStore.listIncidents(promise.id)))).flat();
   const byStatus = { healthy: 0, degraded: 0, unhealthy: 0, unknown: 0, paused: 0 };
   for (const promise of promises) byStatus[promise.status]++;
+  const protectedTables = new Set(promises.flatMap((promise) => promise.databaseName && promise.tableName ? [`${promise.databaseName}.${promise.tableName}`] : []));
+  const coverageGaps = scheduledJobs.flatMap((job) => {
+    const { destDatabase, destTable } = job;
+    if (job.outputMode === "none" || !destDatabase || !destTable || protectedTables.has(`${destDatabase}.${destTable}`)) return [];
+    return [{ jobId: job.id, jobName: job.name, databaseName: destDatabase, tableName: destTable, outputMode: job.outputMode }];
+  }).slice(0, 20);
   return ok(c, {
     totalPromises: promises.length,
     byStatus,
@@ -221,6 +230,7 @@ dataHealth.get("/overview", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW), asy
     needsAttention: promises.filter((promise) => promise.status === "degraded" || promise.status === "unhealthy" || promise.status === "unknown")
       .sort((a, b) => (b.lastEvaluatedAt ?? 0) - (a.lastEvaluatedAt ?? 0))
       .slice(0, 10),
+    coverageGaps,
   });
 });
 
@@ -287,6 +297,55 @@ dataHealth.get("/incidents", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW), as
   return ok(c, { incidents: nested.flat().sort((a, b) => b.lastEventAt - a.lastEventAt) });
 });
 
+dataHealth.post(
+  "/:id/backtest",
+  requirePermission(PERMISSIONS.DATA_HEALTH_RUN),
+  zValidator("json", z.object({ slots: z.number().int().min(1).max(30).default(14) })),
+  async (c) => {
+    const promise = await loadVisiblePromise(c, requireParam(c, "id"));
+    const [checks, job] = await Promise.all([
+      healthStore.getChecks(promise.id),
+      scheduledStore.getJob(promise.scheduledQueryId),
+    ]);
+    if (!job || job.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
+    const compiled = compileDataHealthQuery({
+      sourceType: promise.sourceType,
+      databaseName: promise.databaseName ?? undefined,
+      tableName: promise.tableName ?? undefined,
+      sourceQuery: promise.sourceQuery ?? undefined,
+      eventTimeColumn: promise.eventTimeColumn ?? undefined,
+      rowFilter: promise.rowFilter ?? undefined,
+    }, checks);
+    await assertConnectionAccess(c, promise.connectionId);
+    await assertQueryAccess(c, compiled.sql, promise.connectionId);
+    const client = await clientForConnection(promise.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_backtest", promise_id: promise.id }));
+    return ok(c, await backtestDataHealth(client, job, compiled.sql, checks, c.req.valid("json").slots));
+  },
+);
+
+dataHealth.post(
+  "/:id/diagnostics",
+  requirePermission(PERMISSIONS.DATA_HEALTH_VIEW),
+  zValidator("json", z.object({ checkKey: z.string().min(1).max(64), slotAt: z.number().int().optional(), limit: z.number().int().min(1).max(100).default(50) })),
+  async (c) => {
+    const promise = await loadVisiblePromise(c, requireParam(c, "id"));
+    const [checks, job] = await Promise.all([
+      healthStore.getChecks(promise.id),
+      scheduledStore.getJob(promise.scheduledQueryId),
+    ]);
+    if (!job || job.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
+    const body = c.req.valid("json");
+    const check = checks.find((candidate) => candidate.checkKey === body.checkKey);
+    if (!check) throw AppError.notFound("Data Health check not found");
+    const query = buildFailingRowsQuery(promise, check, body.limit);
+    if (query) await assertQueryAccess(c, query, promise.connectionId);
+    await assertConnectionAccess(c, promise.connectionId);
+    const client = await clientForConnection(promise.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_diagnostic", promise_id: promise.id }));
+    const slotAt = body.slotAt ?? promise.lastEvaluatedAt ?? Date.now();
+    return ok(c, await runFailingRowsDiagnostic(client, promise, job, check, slotAt, body.limit));
+  },
+);
+
 dataHealth.post("/incidents/:id/acknowledge", requirePermission(PERMISSIONS.DATA_HEALTH_EDIT), async (c) => {
   const id = requireParam(c, "id");
   const incident = await healthStore.getIncident(id);
@@ -323,12 +382,13 @@ dataHealth.get("/:id/timeline", requirePermission(PERMISSIONS.DATA_HEALTH_VIEW),
   const promise = await loadVisiblePromise(c, requireParam(c, "id"));
   const limit = Math.min(500, Math.max(1, Number(c.req.query("limit") ?? 200)));
   const offset = Math.max(0, Number(c.req.query("offset") ?? 0));
-  const [samples, incidents, runs] = await Promise.all([
+  const [samples, incidents, events, runs] = await Promise.all([
     healthStore.listSamples(promise.id, limit, offset),
     healthStore.listIncidents(promise.id, limit, offset),
+    healthStore.listIncidentEventsForPromise(promise.id, limit),
     scheduledStore.listRuns({ queryId: promise.scheduledQueryId, limit, offset }),
   ]);
-  return ok(c, { samples, incidents, runs });
+  return ok(c, { samples, incidents, events, runs });
 });
 
 dataHealth.patch(
@@ -404,7 +464,16 @@ dataHealth.patch(
       await scheduledStore.setJobChannels(existingJob.id, oldChannels);
       throw error;
     }
-    await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_HEALTH_PROMISE_UPDATE, user.sub, { resourceType: "data_health_promise", resourceId: promise.id });
+    const changedFields = [
+      promise.name !== body.name ? "name" : null,
+      promise.sourceType !== body.source.sourceType ? "source" : null,
+      promise.criticality !== body.criticality ? "criticality" : null,
+      promise.timezone !== body.timezone ? "schedule" : null,
+      promise.breachAfter !== body.breachAfter || promise.recoverAfter !== body.recoverAfter || promise.graceSecs !== body.graceSecs ? "incident_policy" : null,
+      oldChecks.length !== body.checks.length || JSON.stringify(oldChecks) !== JSON.stringify(body.checks) ? "checks" : null,
+      promise.enabled !== body.enabled ? "enabled" : null,
+    ].filter((field): field is string => field !== null);
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_HEALTH_PROMISE_UPDATE, user.sub, { resourceType: "data_health_promise", resourceId: promise.id, details: { changedFields, previousUpdatedAt: promise.updatedAt } });
     const updated = await healthStore.getPromise(promise.id);
     if (!updated) throw AppError.internal("Updated Data Health promise could not be loaded");
     return ok(c, await promiseResponse(updated));

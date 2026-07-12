@@ -12,6 +12,7 @@ import { debugQueryCapability } from "./debugQuery";
 import { checkOptimizeCapability } from "./checkOptimize";
 import { diagnoseErrorCapability, diagnosePartsCapability } from "./diagnose";
 import { fleetScanCapability } from "./fleetScan";
+import { draftScheduledQueryCapability, summarizeScheduledQueryCapability } from "./dataOps";
 import {
   buildOptimizationPrompt,
   buildDebugPrompt,
@@ -42,8 +43,8 @@ describe("capability registry", () => {
     expect(getCapability("nope")).toBeUndefined();
   });
 
-  it("exposes all 9 capabilities", () => {
-    expect(CAPABILITY_IDS).toHaveLength(9);
+  it("exposes all 19 capabilities", () => {
+    expect(CAPABILITY_IDS).toHaveLength(19);
   });
 });
 
@@ -63,6 +64,13 @@ describe("input validation", () => {
   it("diagnose-error requires a name", () => {
     expect(diagnoseErrorCapability.inputSchema.safeParse({}).success).toBe(false);
     expect(diagnoseErrorCapability.inputSchema.safeParse({ name: "TOO_MANY_PARTS" }).success).toBe(true);
+  });
+
+  it("validates DataOps capability inputs", () => {
+    expect(summarizeScheduledQueryCapability.inputSchema.safeParse({ jobId: "nope" }).success).toBe(false);
+    expect(summarizeScheduledQueryCapability.inputSchema.safeParse({ jobId: "00000000-0000-4000-8000-000000000000" }).success).toBe(true);
+    expect(draftScheduledQueryCapability.inputSchema.safeParse({ intent: "too short", connectionId: "c", timezone: "UTC" }).success).toBe(true);
+    expect(draftScheduledQueryCapability.inputSchema.safeParse({ intent: "short", connectionId: "c", timezone: "UTC" }).success).toBe(false);
   });
 });
 
