@@ -13,6 +13,7 @@ import { AppError } from "../types";
 import { getAiConfigById, getDefaultAiConfig, getAiConfigWithKey } from "../rbac/services/aiModels";
 import type { AiConfigWithKey } from "../rbac/services/aiModels";
 import { ProviderType, PROVIDER_TYPES, PROVIDER_REQUIREMENTS, isValidProviderType } from "../rbac/constants/aiProviders";
+import type { AiModelParams } from "../rbac/constants/aiModelParams";
 
 // ============================================
 // Types
@@ -110,50 +111,104 @@ export function validateConfiguration(config: AiConfigWithKey | null): { valid: 
 /**
  * Provider initialization function type
  */
-type ProviderInitializer = (config: { apiKey?: string; baseUrl?: string }, modelName: string) => BaseChatModel;
+type ProviderInitializer = (
+    config: { apiKey?: string; baseUrl?: string; params?: AiModelParams },
+    modelName: string,
+) => BaseChatModel;
+
+function buildOpenAiModel(
+    config: { apiKey?: string; baseUrl?: string; params?: AiModelParams },
+    modelName: string,
+): BaseChatModel {
+    const p = config.params ?? {};
+    return new ChatOpenAI({
+        model: modelName,
+        apiKey: config.apiKey || undefined,
+        configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
+        temperature: p.temperature ?? 0,
+        topP: p.topP,
+        frequencyPenalty: p.frequencyPenalty,
+        presencePenalty: p.presencePenalty,
+        maxTokens: p.maxTokens,
+        stopSequences: p.stopSequences,
+        verbosity: p.verbosity,
+        reasoning: p.reasoningEffort ? { effort: p.reasoningEffort } : undefined,
+        maxRetries: p.maxRetries,
+        timeout: p.requestTimeoutMs,
+        modelKwargs: p.extra,
+    });
+}
 
 /**
  * Provider Registry
- * 
- * Maps provider types to their initialization functions.
+ *
+ * Maps provider types to their initialization functions. Each initializer
+ * applies the per-model runtime params (rbac_ai_models.params); an absent
+ * param keeps the pre-existing default (notably temperature 0).
  * To add a new provider:
  * 1. Add it to PROVIDER_TYPES in constants/aiProviders.ts
  * 2. Add initialization logic here
+ * 3. Add its allowed params to constants/aiModelParams.ts
  */
 const providerRegistry: Record<ProviderType, ProviderInitializer> = {
-    'openai': (config, modelName) => {
-        return new ChatOpenAI({
-            model: modelName,
-            apiKey: config.apiKey || undefined,
-            configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
-            temperature: 0,
-        });
-    },
+    'openai': buildOpenAiModel,
     'anthropic': (config, modelName) => {
+        const p = config.params ?? {};
+        const clientOptions = config.baseUrl || p.requestTimeoutMs
+            ? {
+                ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+                ...(p.requestTimeoutMs ? { timeout: p.requestTimeoutMs } : {}),
+            }
+            : undefined;
+        const thinking = p.thinkingBudgetTokens !== undefined
+            ? { type: 'enabled' as const, budget_tokens: p.thinkingBudgetTokens }
+            : undefined;
         return new ChatAnthropic({
             model: modelName,
             apiKey: config.apiKey || undefined,
-            clientOptions: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
-            temperature: 0,
+            clientOptions,
+            // Anthropic rejects temperature != 1 when extended thinking is on,
+            // so the temperature-0 default must not be sent alongside a budget.
+            temperature: thinking ? p.temperature : (p.temperature ?? 0),
+            topP: p.topP,
+            topK: p.topK,
+            maxTokens: p.maxTokens,
+            stopSequences: p.stopSequences,
+            thinking,
+            outputConfig: p.reasoningEffort && p.reasoningEffort !== 'minimal'
+                ? { effort: p.reasoningEffort }
+                : undefined,
+            maxRetries: p.maxRetries,
+            invocationKwargs: p.extra,
         });
     },
     'google': (config, modelName) => {
+        const p = config.params ?? {};
         return new ChatGoogleGenerativeAI({
             model: modelName,
             apiKey: config.apiKey || undefined,
-            temperature: 0,
+            baseUrl: config.baseUrl || undefined,
+            apiVersion: p.apiVersion,
+            temperature: p.temperature ?? 0,
+            topP: p.topP,
+            topK: p.topK,
+            maxOutputTokens: p.maxTokens,
+            stopSequences: p.stopSequences,
+            // Stored as validated {category, threshold} string pairs; the Google
+            // SDK enum types aren't importable here (transitive, non-hoisted dep),
+            // so the structural cast below is the only way to hand them over.
+            safetySettings: p.safetySettings as ConstructorParameters<typeof ChatGoogleGenerativeAI>[0]['safetySettings'],
+            thinkingConfig: p.thinkingBudgetTokens !== undefined
+                ? { thinkingBudget: p.thinkingBudgetTokens }
+                : undefined,
+            maxRetries: p.maxRetries,
         });
     },
     'openai-compatible': (config, modelName) => {
         if (!config.baseUrl) {
             throw new AppError("Base URL is required for openai-compatible", "AI_CONFIGURATION_ERROR", "validation", 500);
         }
-        return new ChatOpenAI({
-            model: modelName,
-            apiKey: config.apiKey || undefined,
-            configuration: { baseURL: config.baseUrl },
-            temperature: 0,
-        });
+        return buildOpenAiModel(config, modelName);
     },
 };
 
@@ -192,6 +247,7 @@ export function initializeDeepAgentModel(config: AiConfigWithKey): BaseChatModel
         {
             apiKey: config.provider.apiKey || undefined,
             baseUrl: config.provider.baseUrl || undefined,
+            params: config.model.params ?? undefined,
         },
         modelName
     );

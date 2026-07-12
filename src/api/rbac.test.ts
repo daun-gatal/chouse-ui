@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { ssoApi, authConfigApi, rbacDataAccessPoliciesApi, rbacUsersApi, rbacSsoAdminApi } from './rbac';
+import { ssoApi, authConfigApi, rbacAiBaseModelsApi, rbacDataAccessPoliciesApi, rbacUsersApi, rbacSsoAdminApi } from './rbac';
 import { RBAC_ACCESS_TOKEN_KEY, RBAC_REFRESH_TOKEN_KEY } from './client';
 import { server } from '../test/mocks/server';
 import { http, HttpResponse } from 'msw';
@@ -310,6 +310,57 @@ describe('rbacDataAccessPoliciesApi', () => {
     const tables = await rbacDataAccessPoliciesApi.listTables('conn-1', 'my db');
     expect(tables).toEqual(['events', 'users']);
     expect(capturedUrl).toContain('database=my%20db');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rbacAiBaseModelsApi — runtime params passthrough
+// ---------------------------------------------------------------------------
+
+describe('rbacAiBaseModelsApi params', () => {
+  const MODEL = {
+    id: 'model-1',
+    providerId: 'prov-1',
+    name: 'GPT-4o',
+    modelId: 'gpt-4o',
+    params: { temperature: 0.4, recursionLimit: 64 },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  beforeEach(() => {
+    localStorage.setItem(RBAC_ACCESS_TOKEN_KEY, 'access-token');
+  });
+
+  it('sends params in the create body and surfaces them on the response', async () => {
+    let captured: unknown = null;
+    server.use(
+      http.post('/api/rbac/ai-base-models', async ({ request }) => {
+        captured = await request.json();
+        return HttpResponse.json({ success: true, data: MODEL }, { status: 201 });
+      })
+    );
+    const created = await rbacAiBaseModelsApi.create({
+      providerId: 'prov-1',
+      name: 'GPT-4o',
+      modelId: 'gpt-4o',
+      params: { temperature: 0.4, recursionLimit: 64 },
+    });
+    expect(captured).toMatchObject({ params: { temperature: 0.4, recursionLimit: 64 } });
+    expect(created.params).toEqual({ temperature: 0.4, recursionLimit: 64 });
+  });
+
+  it('sends params: null on update to clear stored params', async () => {
+    let captured: unknown = null;
+    server.use(
+      http.patch('/api/rbac/ai-base-models/model-1', async ({ request }) => {
+        captured = await request.json();
+        return HttpResponse.json({ success: true, data: { ...MODEL, params: null } });
+      })
+    );
+    const updated = await rbacAiBaseModelsApi.update('model-1', { name: 'GPT-4o', params: null });
+    expect(captured).toMatchObject({ params: null });
+    expect(updated.params).toBeNull();
   });
 });
 

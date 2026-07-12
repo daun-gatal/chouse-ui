@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { getDatabase, getSchema } from '../db';
 import { encryptPassword, decryptPassword } from './connections';
 import { ProviderType, PROVIDER_TYPES, isValidProviderType } from '../constants/aiProviders';
+import type { AiModelParams } from '../constants/aiModelParams';
 
 // Type helper for working with dual database setup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,6 +40,7 @@ export interface AiModelResponse {
     providerId: string;
     name: string;
     modelId: string;
+    params: AiModelParams | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -213,7 +215,7 @@ export async function listAiProviders(): Promise<AiProviderResponse[]> {
 // ============================================
 
 export async function createAiModel(
-    input: { providerId: string; name: string; modelId: string }
+    input: { providerId: string; name: string; modelId: string; params?: AiModelParams | null }
 ): Promise<AiModelResponse> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
@@ -225,6 +227,7 @@ export async function createAiModel(
         providerId: input.providerId,
         name: input.name,
         modelId: input.modelId,
+        params: input.params ?? null,
         createdAt: now,
         updatedAt: now,
     });
@@ -251,6 +254,7 @@ export async function getAiModelById(id: string): Promise<AiModelResponse | null
         providerId: m.providerId,
         name: m.name,
         modelId: m.modelId,
+        params: m.params ?? null,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
     };
@@ -258,7 +262,7 @@ export async function getAiModelById(id: string): Promise<AiModelResponse | null
 
 export async function updateAiModel(
     id: string,
-    input: { name?: string; modelId?: string }
+    input: { name?: string; modelId?: string; params?: AiModelParams | null }
 ): Promise<AiModelResponse | null> {
     const db = getDatabase() as AnyDb;
     const schema = getSchema();
@@ -267,6 +271,8 @@ export async function updateAiModel(
     const updateData: Record<string, any> = { updatedAt: now };
     if (input.name !== undefined) updateData.name = input.name;
     if (input.modelId !== undefined) updateData.modelId = input.modelId;
+    // Whole-object replace: null clears, absent leaves the stored params untouched.
+    if (input.params !== undefined) updateData.params = input.params;
 
     await db.update(schema.aiModels).set(updateData).where(eq(schema.aiModels.id, id));
     return getAiModelById(id);
@@ -301,6 +307,7 @@ export async function listAiModels(providerId?: string): Promise<AiModelResponse
         providerId: m.providerId,
         name: m.name,
         modelId: m.modelId,
+        params: m.params ?? null,
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
     }));
@@ -511,6 +518,7 @@ export async function listAiConfigs(options?: {
             providerId: row.model.providerId,
             name: row.model.name,
             modelId: row.model.modelId,
+            params: row.model.params ?? null,
             createdAt: row.model.createdAt,
             updatedAt: row.model.updatedAt,
         },
@@ -575,6 +583,7 @@ export async function getAiConfigWithKey(id: string): Promise<AiConfigWithKey | 
             providerId: row.model.providerId,
             name: row.model.name,
             modelId: row.model.modelId,
+            params: row.model.params ?? null,
             createdAt: row.model.createdAt,
             updatedAt: row.model.updatedAt,
         },

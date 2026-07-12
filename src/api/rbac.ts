@@ -73,6 +73,7 @@ export interface RbacPermission {
 // ============================================
 
 import type { ProviderType } from '@/constants/aiProviders';
+import type { AiModelParams } from '@/constants/aiModelParams';
 
 export interface AiProvider {
   id: string;
@@ -105,6 +106,7 @@ export interface AiBaseModel {
   providerId: string;
   name: string;
   modelId: string;
+  params: AiModelParams | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -113,11 +115,14 @@ export interface CreateAiBaseModelInput {
   providerId: string;
   name: string;
   modelId: string;
+  params?: AiModelParams | null;
 }
 
 export interface UpdateAiBaseModelInput {
   name?: string;
   modelId?: string;
+  /** Whole-object replace; null clears all runtime params. */
+  params?: AiModelParams | null;
 }
 
 export interface AiConfig {

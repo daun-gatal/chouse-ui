@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.45.0';
+export const APP_VERSION = '1.46.0';
 
 // ============================================
 // Error Helpers
@@ -4470,6 +4470,25 @@ export const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS query_history_user_time_idx ON rbac_query_history (user_id, executed_at DESC)`);
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.45.0] Created metadata query history (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.46.0',
+    name: 'ai_model_runtime_params',
+    description: 'Add a nullable params JSON column to rbac_ai_models so admins can tune per-model runtime parameters (sampling, token limits, timeouts, recursion limit); NULL keeps the built-in defaults.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        try {
+          (db as SqliteDb).run(sql.raw(`ALTER TABLE rbac_ai_models ADD COLUMN params TEXT`));
+        } catch (error) {
+          if (!isDuplicateColumnError(error)) throw error;
+        }
+      } else {
+        await (db as PostgresDb).execute(sql.raw(`ALTER TABLE rbac_ai_models ADD COLUMN IF NOT EXISTS params JSONB`));
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.46.0] Added runtime params column to rbac_ai_models (${dbType})`);
     },
     down: async () => { /* forward-only */ },
   },

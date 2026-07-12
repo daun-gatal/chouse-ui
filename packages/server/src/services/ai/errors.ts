@@ -13,6 +13,16 @@ export function handleAiError(error: unknown, context: string): never {
   const msg = error instanceof Error ? error.message : String(error);
   logger.error({ module: context }, msg);
 
+  const lcErrorCode =
+    typeof error === "object" && error !== null && "lc_error_code" in error
+      ? error.lc_error_code
+      : undefined;
+  if (lcErrorCode === "GRAPH_RECURSION_LIMIT" || msg.includes("Recursion limit")) {
+    throw AppError.badRequest(
+      "The AI agent hit its step limit before finishing. An administrator can raise the 'Recursion limit' runtime parameter on this Provider Model (Admin → AI Models → Provider models), or simplify the request.",
+    );
+  }
+
   if (msg.includes("rate limit")) {
     throw AppError.badRequest("AI service rate limit exceeded. Please try again later.");
   }

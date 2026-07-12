@@ -7,6 +7,7 @@
 
 import { pgTable, text, boolean, timestamp, integer, uniqueIndex, index, jsonb, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { AiModelParams } from '../constants/aiModelParams';
 
 // ============================================
 // Users Table
@@ -456,6 +457,7 @@ export const aiModels = pgTable('rbac_ai_models', {
   providerId: text('provider_id').notNull().references(() => aiProviders.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 255 }).notNull(), // Display name, e.g., "GPT-4o"
   modelId: varchar('model_id', { length: 255 }).notNull(), // Provider model ID, e.g., "gpt-4o"
+  params: jsonb('params').$type<AiModelParams>(), // Runtime parameters (NULL = built-in defaults)
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

@@ -62,9 +62,12 @@ export type ToolSetName = "core" | "chart" | "chat" | "query_node";
 // ============================================
 
 export interface AgentTuning {
-  /** Tool-loop step budget. Default 10. */
+  /** Tool-loop step budget. Default 10. Overridden by the per-model `recursionLimit` param. */
   stopAtSteps?: number;
-  /** Sampling temperature. Default 0. */
+  /**
+   * Sampling temperature. Never applied to the model — the per-model
+   * `temperature` runtime param (rbac_ai_models.params) is the live knob.
+   */
   temperature?: number;
   /** Max output tokens (large for report/optimize capabilities). */
   maxOutputTokens?: number;

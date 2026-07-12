@@ -67,6 +67,18 @@ function recursionLimitFor(stepBudget: number): number {
   return Math.max(24, stepBudget * 4);
 }
 
+interface RuntimeOverrides {
+  recursionLimit?: number;
+  runTimeoutMs?: number;
+}
+
+// Admin-set per-model runtime params (rbac_ai_models.params) win over the
+// computed recursion limit and the built-in run timeouts.
+function runtimeOverrides(config: AiConfigWithKey): RuntimeOverrides {
+  const params = config.model.params ?? {};
+  return { recursionLimit: params.recursionLimit, runTimeoutMs: params.runTimeoutMs };
+}
+
 // Neither the model provider call nor a tool (e.g. a slow ClickHouse query) has
 // a client-side timeout of its own, so a stalled network call would otherwise
 // hang the run — and the UI — forever. These bound every run to a hard wall
@@ -228,12 +240,13 @@ async function collectStructuredRun(
   agent: DeepAgent,
   messages: AgentMessage[],
   stepLimit: number,
+  overrides: RuntimeOverrides,
 ): Promise<string> {
   const result = await agent.invoke(
     { messages: normalizeMessages(messages) },
     {
-      recursionLimit: recursionLimitFor(stepLimit),
-      signal: runSignal(STRUCTURED_RUN_TIMEOUT_MS),
+      recursionLimit: overrides.recursionLimit ?? recursionLimitFor(stepLimit),
+      signal: runSignal(overrides.runTimeoutMs ?? STRUCTURED_RUN_TIMEOUT_MS),
     },
   );
   return finalTextFromState(result);
@@ -269,6 +282,7 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       agent,
       messages,
       cap.tuning?.stopAtSteps ?? 10,
+      runtimeOverrides(config),
     );
     const steps = invokedToolCalls.map((call) => ({ tool: call.name, input: call.args }));
 
@@ -324,11 +338,12 @@ export async function invokeCapabilityAgent<TInput>(
   const tools = guardDuplicateTools(await cap.tools(ctx), toolCalls);
   const instructions = await cap.instructions(ctx);
   const agent = createAgent(model, tools, instructions);
+  const overrides = runtimeOverrides(config);
   const result = await agent.invoke(
     { messages: normalizeMessages(messages) },
     {
-      recursionLimit: recursionLimitFor(cap.tuning?.stopAtSteps ?? 12),
-      signal: runSignal(CHAT_RUN_TIMEOUT_MS, signal),
+      recursionLimit: overrides.recursionLimit ?? recursionLimitFor(cap.tuning?.stopAtSteps ?? 12),
+      signal: runSignal(overrides.runTimeoutMs ?? CHAT_RUN_TIMEOUT_MS, signal),
     },
   );
   return { content: finalTextFromState(result), toolCalls };
