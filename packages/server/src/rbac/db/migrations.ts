@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.44.1';
+export const APP_VERSION = '1.45.0';
 
 // ============================================
 // Error Helpers
