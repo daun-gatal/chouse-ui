@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.44.0';
+export const APP_VERSION = '1.44.1';
 
 // ============================================
 // Error Helpers
@@ -4398,6 +4398,78 @@ export const MIGRATIONS: Migration[] = [
       }
 
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.44.0] Created Data Health Promise schema + permissions (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.44.1',
+    name: 'data_health_event_time_config',
+    description: 'Persist explicit Data Health event-time type, encoding, timezone, and string-format semantics so every monitored value is normalized to UTC deterministically.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      const columns = [
+        { name: 'event_time_type', sqliteType: 'TEXT', pgType: 'TEXT' },
+        { name: 'event_time_encoding', sqliteType: "TEXT NOT NULL DEFAULT 'auto'", pgType: "TEXT NOT NULL DEFAULT 'auto'" },
+        { name: 'event_time_timezone', sqliteType: 'TEXT', pgType: 'TEXT' },
+        { name: 'event_time_format', sqliteType: "TEXT NOT NULL DEFAULT 'best_effort'", pgType: "TEXT NOT NULL DEFAULT 'best_effort'" },
+      ];
+      for (const column of columns) {
+        if (dbType === 'sqlite') {
+          try {
+            (db as SqliteDb).run(sql.raw(`ALTER TABLE data_health_promises ADD COLUMN ${column.name} ${column.sqliteType}`));
+          } catch (error) {
+            if (!isDuplicateColumnError(error)) throw error;
+          }
+        } else {
+          await (db as PostgresDb).execute(sql.raw(`ALTER TABLE data_health_promises ADD COLUMN IF NOT EXISTS ${column.name} ${column.pgType}`));
+        }
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.44.1] Added explicit Data Health event-time semantics (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.45.0',
+    name: 'query_history_metadata',
+    description: 'Persist each user\'s bounded Explorer query execution history in the metadata database so it survives browser and device changes.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_query_history (
+            id              TEXT PRIMARY KEY NOT NULL,
+            user_id         TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            query           TEXT NOT NULL,
+            connection_id   TEXT,
+            connection_name TEXT,
+            executed_at     INTEGER NOT NULL,
+            duration_ms     INTEGER NOT NULL DEFAULT 0,
+            row_count       INTEGER NOT NULL DEFAULT 0,
+            status          TEXT NOT NULL,
+            error           TEXT,
+            created_at      INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS query_history_user_time_idx ON rbac_query_history (user_id, executed_at DESC)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_query_history (
+            id              TEXT PRIMARY KEY NOT NULL,
+            user_id         TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            query           TEXT NOT NULL,
+            connection_id   TEXT,
+            connection_name VARCHAR(255),
+            executed_at     BIGINT NOT NULL,
+            duration_ms     BIGINT NOT NULL DEFAULT 0,
+            row_count       BIGINT NOT NULL DEFAULT 0,
+            status          VARCHAR(20) NOT NULL,
+            error           TEXT,
+            created_at      BIGINT NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS query_history_user_time_idx ON rbac_query_history (user_id, executed_at DESC)`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.45.0] Created metadata query history (${dbType})`);
     },
     down: async () => { /* forward-only */ },
   },

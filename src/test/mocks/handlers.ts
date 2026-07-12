@@ -101,6 +101,26 @@ export const handlers = [
     return HttpResponse.json({ success: true, data: { message: 'Query deleted successfully' } });
   }),
 
+  // Query history
+  http.get(`${API_BASE}/query-history`, () => {
+    return HttpResponse.json({ success: true, data: [{
+      id: 'history-1', query: 'SELECT 1', connectionId: 'conn-1', connectionName: 'Production',
+      executedAt: 1_700_000_000_000, durationMs: 12, rows: 1, status: 'success'
+    }] });
+  }),
+
+  http.post(`${API_BASE}/query-history`, async ({ request }) => {
+    return HttpResponse.json({ success: true, data: await request.json() }, { status: 201 });
+  }),
+
+  http.delete(`${API_BASE}/query-history`, () => {
+    return HttpResponse.json({ success: true, data: { deleted: true } });
+  }),
+
+  http.delete(`${API_BASE}/query-history/:id`, () => {
+    return HttpResponse.json({ success: true, data: { deleted: true } });
+  }),
+
   // Query
   http.post(`${API_BASE}/query/table/select`, () => {
     return HttpResponse.json({
@@ -432,7 +452,8 @@ export const handlers = [
   // Data Health (DataOps)
   http.get(`${API_BASE}/data-health`, () => HttpResponse.json({ success: true, data: { promises: [{
     id: 'dh-1', scheduledQueryId: 'sq-health-1', name: 'Orders ready', description: null, connectionId: 'conn-1',
-    sourceType: 'table', databaseName: 'analytics', tableName: 'orders', sourceQuery: null, eventTimeColumn: 'created_at', rowFilter: null,
+    sourceType: 'table', databaseName: 'analytics', tableName: 'orders', sourceQuery: null, eventTimeColumn: 'created_at',
+    eventTimeType: 'DateTime', eventTimeEncoding: 'native', eventTimeTimezone: null, eventTimeFormat: 'best_effort', rowFilter: null,
     ownerId: 'user-1', criticality: 'critical', timezone: 'Asia/Jakarta', runbookUrl: null, enabled: true, status: 'healthy',
     graceSecs: 900, breachAfter: 1, recoverAfter: 2, retentionDays: 90, schemaSnapshot: null, lastEvaluatedAt: 1700000000000,
     lastHealthyAt: 1700000000000, createdBy: 'user-1', createdAt: 1690000000000, updatedAt: 1700000000000,
@@ -440,7 +461,7 @@ export const handlers = [
     schedule: { frequency: 'daily', hour: 8, dayOfWeek: 1, dayOfMonth: 1, cronExpr: null, timeoutSecs: 60 }, channelIds: [],
   }] } })),
   http.get(`${API_BASE}/data-health/overview`, () => HttpResponse.json({ success: true, data: { totalPromises: 1, byStatus: { healthy: 1, degraded: 0, unhealthy: 0, unknown: 0, paused: 0 }, openIncidents: 0, unownedCritical: 0, needsAttention: [], coverageGaps: [] } })),
-  http.post(`${API_BASE}/data-health/preview`, () => HttpResponse.json({ success: true, data: { compiledSql: 'SELECT count()', metricCheckKeys: ['row_count'], schemaCheckKeys: [], nextFireTimes: [1700000000000] } })),
+  http.post(`${API_BASE}/data-health/preview`, () => HttpResponse.json({ success: true, data: { compiledSql: 'SELECT count()', metricCheckKeys: ['row_count'], schemaCheckKeys: [], nextFireTimes: [1700000000000], eventTimePreview: null } })),
   http.post(`${API_BASE}/data-health`, async ({ request }) => {
     const body = await request.json() as Record<string, unknown>;
     return HttpResponse.json({ success: true, data: { promise: { id: 'dh-new', status: 'unknown', checks: body.checks, ...body }, initialRun: null } }, { status: 201 });

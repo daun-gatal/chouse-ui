@@ -4,6 +4,7 @@ import { escapeIdentifier, escapeQualifiedIdentifier } from "../../utils/sqlIden
 import { previousFireMs } from "../scheduledQueries/cadence";
 import { buildExecutableQuery, toDateTime64Param, validateReadOnlySelect } from "../scheduledQueries/validation";
 import { evaluateDataHealth } from "./evaluator";
+import { eventTimeExpression, eventTimeTypeFromSchema } from "./compiler";
 import type { DataHealthCheckDefinition, DataHealthPromiseRow } from "./types";
 import type { ScheduledQueryRow } from "../scheduledQueries/types";
 
@@ -38,7 +39,13 @@ function sourceSql(promise: DataHealthPromiseRow): string {
 function baseFilters(promise: DataHealthPromiseRow, slotStart: string, slotEnd: string): string[] {
   const filters: string[] = [];
   if (promise.eventTimeColumn) {
-    const column = escapeIdentifier(promise.eventTimeColumn);
+    const column = eventTimeExpression(
+      promise.eventTimeColumn,
+      promise.eventTimeType ?? eventTimeTypeFromSchema(promise.eventTimeColumn, promise.schemaSnapshot),
+      promise.eventTimeEncoding,
+      promise.eventTimeTimezone ?? undefined,
+      promise.eventTimeFormat,
+    );
     filters.push(`${column} >= ${slotStart} AND ${column} < ${slotEnd}`);
   }
   if (promise.rowFilter?.trim()) filters.push(`(${promise.rowFilter.trim()})`);
@@ -64,7 +71,13 @@ export function buildFailingRowsQuery(
       filters.push(`NOT (${check.config.predicate})`);
       break;
     case "freshness": {
-      const column = escapeIdentifier(check.config.eventTimeColumn);
+      const column = eventTimeExpression(
+        check.config.eventTimeColumn,
+        promise.eventTimeType ?? eventTimeTypeFromSchema(check.config.eventTimeColumn, promise.schemaSnapshot),
+        promise.eventTimeEncoding,
+        promise.eventTimeTimezone ?? undefined,
+        promise.eventTimeFormat,
+      );
       const query = `SELECT * FROM ${source}${filters.length > 0 ? ` WHERE ${filters.join(" AND ")}` : ""} ORDER BY ${column} DESC LIMIT ${boundedLimit}`;
       const validation = validateReadOnlySelect(query);
       if (!validation.ok) throw new Error(validation.error ?? "Invalid diagnostic query");

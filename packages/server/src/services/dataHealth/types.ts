@@ -14,11 +14,23 @@ export const DATA_HEALTH_CHECK_TYPES = [
 export const DATA_HEALTH_SEVERITIES = ["warning", "critical"] as const;
 export const DATA_HEALTH_PROMISE_STATES = ["healthy", "degraded", "unhealthy", "unknown", "paused"] as const;
 export const DATA_HEALTH_CHECK_OUTCOMES = ["pass", "breach", "learning", "not_evaluated"] as const;
+export const DATA_HEALTH_EVENT_TIME_ENCODINGS = [
+  "auto",
+  "native",
+  "unix_seconds",
+  "unix_milliseconds",
+  "unix_microseconds",
+  "unix_nanoseconds",
+  "string",
+] as const;
+export const DATA_HEALTH_EVENT_TIME_FORMATS = ["best_effort"] as const;
 
 export type DataHealthCheckType = (typeof DATA_HEALTH_CHECK_TYPES)[number];
 export type DataHealthSeverity = (typeof DATA_HEALTH_SEVERITIES)[number];
 export type DataHealthPromiseState = (typeof DATA_HEALTH_PROMISE_STATES)[number];
 export type DataHealthCheckOutcome = (typeof DATA_HEALTH_CHECK_OUTCOMES)[number];
+export type DataHealthEventTimeEncoding = (typeof DATA_HEALTH_EVENT_TIME_ENCODINGS)[number];
+export type DataHealthEventTimeFormat = (typeof DATA_HEALTH_EVENT_TIME_FORMATS)[number];
 
 const checkBase = {
   checkKey: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9_]*$/),
@@ -117,6 +129,10 @@ export interface DataHealthCompileSource {
   tableName?: string;
   sourceQuery?: string;
   eventTimeColumn?: string;
+  eventTimeType?: string;
+  eventTimeEncoding?: DataHealthEventTimeEncoding;
+  eventTimeTimezone?: string;
+  eventTimeFormat?: DataHealthEventTimeFormat;
   rowFilter?: string;
 }
 
@@ -139,6 +155,10 @@ export interface DataHealthPromiseRow {
   tableName: string | null;
   sourceQuery: string | null;
   eventTimeColumn: string | null;
+  eventTimeType: string | null;
+  eventTimeEncoding: DataHealthEventTimeEncoding;
+  eventTimeTimezone: string | null;
+  eventTimeFormat: DataHealthEventTimeFormat;
   rowFilter: string | null;
   ownerId: string | null;
   ownerDisplayName: string | null;

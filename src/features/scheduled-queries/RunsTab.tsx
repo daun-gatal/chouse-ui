@@ -38,7 +38,7 @@ import type { RunQuery, ScheduledQueryRun, SqStatus } from "@/api/scheduledQueri
 import { diagnoseScheduledRun, type DataOpsInvestigation } from "@/api/dataOpsAi";
 import { AiInsightDialog, InvestigationView } from "@/features/dataops-ai";
 import { useScheduledQueries, useScheduledQueryRuns, useJobOwners, useDeleteRuns } from "./hooks";
-import { StatusBadge, formatTime, formatDuration } from "./lib";
+import { StatusBadge, formatDuration } from "./lib";
 import { TablePagination } from "./TablePagination";
 import { JobCombobox } from "./JobCombobox";
 
@@ -51,7 +51,7 @@ interface SnapshotShape {
   writtenRows?: number | null;
 }
 
-function RunSnapshot({ run, canInvestigate, onInvestigate }: { run: ScheduledQueryRun; canInvestigate: boolean; onInvestigate: () => void }) {
+function RunSnapshot({ run, timezone, canInvestigate, onInvestigate }: { run: ScheduledQueryRun; timezone: string; canInvestigate: boolean; onInvestigate: () => void }) {
   let snap: SnapshotShape = {};
   try {
     snap = run.resultJson ? (JSON.parse(run.resultJson) as SnapshotShape) : {};
@@ -65,7 +65,7 @@ function RunSnapshot({ run, canInvestigate, onInvestigate }: { run: ScheduledQue
       {snap.window && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-paper-muted">
           {Object.entries(snap.window).map(([k, v]) => (
-            <span key={k}>{k}=<span className="text-paper">{v}</span></span>
+            <span key={k}>{k}=<span className="text-paper">{v} UTC</span><span className="text-paper-faint"> ({new Date(`${v.replace(" ", "T")}Z`).toLocaleString(undefined, { timeZone: timezone, timeZoneName: "short" })})</span></span>
           ))}
         </div>
       )}
@@ -283,7 +283,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
                   >
                     <div className="flex items-center gap-2">
                       <StatusBadge status={run.status} />
-                      <span className="text-[12px] text-paper">{formatTime(run.startedAt)}</span>
+                      <span className="text-[12px] text-paper">{new Date(run.startedAt).toLocaleString(undefined, { timeZone: selectedJob?.timezone ?? "UTC", timeZoneName: "short" })}</span>
                       <span className="font-mono text-[10px] text-paper-faint">
                         {run.trigger}
                         {run.attempt > 1 ? ` · attempt ${run.attempt}` : ""}
@@ -308,7 +308,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
                     <span title={run.id} className="shrink-0 font-mono text-[10px] text-paper-faint">{run.id.slice(0, 8)}</span>
                   )}
                 </div>
-                {expanded === run.id && <RunSnapshot run={run} canInvestigate={canUseAi} onInvestigate={() => void investigate(run.id)} />}
+                {expanded === run.id && <RunSnapshot run={run} timezone={selectedJob?.timezone ?? "UTC"} canInvestigate={canUseAi} onInvestigate={() => void investigate(run.id)} />}
               </Card>
             ))}
           </div>

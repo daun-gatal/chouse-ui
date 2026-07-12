@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { queryApi } from '@/api';
+import { queryApi, queryHistoryApi } from '@/api';
 
 import type { QueryHistoryItem } from './workspace';
 
@@ -22,6 +22,10 @@ const historyItem = (id: string): QueryHistoryItem => ({
 describe('stores/workspace', () => {
     beforeEach(async () => {
         vi.restoreAllMocks();
+        vi.spyOn(queryHistoryApi, 'getQueryHistory').mockResolvedValue([]);
+        vi.spyOn(queryHistoryApi, 'recordQueryHistory').mockResolvedValue(historyItem('persisted'));
+        vi.spyOn(queryHistoryApi, 'deleteQueryHistoryItem').mockResolvedValue();
+        vi.spyOn(queryHistoryApi, 'clearQueryHistory').mockResolvedValue();
         localStorage.clear();
         const { useWorkspaceStore } = await import('./workspace');
         useWorkspaceStore.setState({
@@ -110,6 +114,19 @@ describe('stores/workspace', () => {
 
         useWorkspaceStore.getState().clearQueryHistory();
         expect(useWorkspaceStore.getState().queryHistory).toEqual([]);
+    });
+
+    it('merges metadata history with local history and uploads missing local entries', async () => {
+        const { useWorkspaceStore } = await import('./workspace');
+        const remote = historyItem('remote');
+        const local = { ...historyItem('local'), executedAt: 2 };
+        vi.mocked(queryHistoryApi.getQueryHistory).mockResolvedValue([remote]);
+        useWorkspaceStore.setState({ queryHistory: [local] });
+
+        await useWorkspaceStore.getState().loadQueryHistory();
+
+        expect(useWorkspaceStore.getState().queryHistory.map((item) => item.id)).toEqual(['local', 'remote']);
+        expect(queryHistoryApi.recordQueryHistory).toHaveBeenCalledWith(local);
     });
 
     it('clears query history when the workspace session is reset', async () => {

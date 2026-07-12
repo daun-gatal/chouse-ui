@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { compileDataHealthQuery } from "./compiler";
+import { compileDataHealthQuery, eventTimeExpression } from "./compiler";
 import type { DataHealthCheckDefinition } from "./types";
 
 const checks: DataHealthCheckDefinition[] = [
@@ -10,6 +10,13 @@ const checks: DataHealthCheckDefinition[] = [
 ];
 
 describe("compileDataHealthQuery", () => {
+  it("normalizes every explicit Unix precision to a UTC DateTime", () => {
+    expect(eventTimeExpression("ts", "UInt64", "unix_seconds")).toBe("toDateTime64(toInt64(`ts`), 3, 'UTC')");
+    expect(eventTimeExpression("ts", "UInt64", "unix_milliseconds")).toBe("fromUnixTimestamp64Milli(toInt64(`ts`), 'UTC')");
+    expect(eventTimeExpression("ts", "UInt64", "unix_microseconds")).toBe("fromUnixTimestamp64Micro(toInt64(`ts`), 'UTC')");
+    expect(eventTimeExpression("ts", "UInt64", "unix_nanoseconds")).toBe("fromUnixTimestamp64Nano(toInt64(`ts`), 'UTC')");
+  });
+
   it("folds compatible metrics into one read-only aggregate query", () => {
     const compiled = compileDataHealthQuery(
       { sourceType: "table", databaseName: "analytics", tableName: "orders", eventTimeColumn: "created_at" },
@@ -57,6 +64,28 @@ describe("compileDataHealthQuery", () => {
     expect(compiled.sql).toContain("{{slot_end - 3600s}}");
     expect(compiled.sql).toContain("FROM `analytics`.`orders` AS dh_source\nWHERE (`created_at` >= {{slot_start}} AND `created_at` < {{slot_end}})");
     expect(compiled.sql).not.toContain("{{slot_start - 3600s}}");
+  });
+
+  it("converts Unix and string event-time columns before applying windows", () => {
+    const unix = compileDataHealthQuery(
+      { sourceType: "table", databaseName: "analytics", tableName: "events", eventTimeColumn: "timestamp_ms", eventTimeType: "UInt64", eventTimeEncoding: "unix_milliseconds" },
+      [{ checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
+    );
+    expect(unix.sql).toContain("fromUnixTimestamp64Milli(toInt64(`timestamp_ms`), 'UTC')");
+
+    const string = compileDataHealthQuery(
+      { sourceType: "table", databaseName: "analytics", tableName: "events", eventTimeColumn: "created_at", eventTimeType: "Nullable(String)", eventTimeEncoding: "string", eventTimeTimezone: "Asia/Jakarta" },
+      [{ checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
+    );
+    expect(string.sql).toContain("parseDateTime64BestEffortOrNull(toString(`created_at`), 3, 'Asia/Jakarta') >= {{slot_start}}");
+  });
+
+  it("reinterprets naïve native wall-clock values in their declared timezone", () => {
+    const compiled = compileDataHealthQuery(
+      { sourceType: "table", databaseName: "analytics", tableName: "events", eventTimeColumn: "created_at", eventTimeType: "DateTime", eventTimeEncoding: "native", eventTimeTimezone: "Asia/Jakarta" },
+      [{ checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 1 } }],
+    );
+    expect(compiled.sql).toContain("parseDateTime64BestEffortOrNull(toString(`created_at`), 3, 'Asia/Jakarta')");
   });
 
   it("compiles independent multi-column rules and composite uniqueness keys", () => {

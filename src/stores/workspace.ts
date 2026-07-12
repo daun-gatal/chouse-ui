@@ -6,7 +6,9 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { queryApi, savedQueriesApi } from '@/api';
+import { queryApi, queryHistoryApi, savedQueriesApi } from '@/api';
+import type { QueryHistoryItem, QueryHistoryStatus } from '@/api/queryHistory';
+import { log } from '@/lib/log';
 import { usePreferencesStore } from './preferences';
 import type { QueryResult, QueryMeta, QueryStatistics } from '@/api';
 import { toast } from 'sonner';
@@ -34,19 +36,7 @@ export interface Tab {
   isDirty?: boolean;
 }
 
-export type QueryHistoryStatus = 'success' | 'error' | 'cancelled';
-
-export interface QueryHistoryItem {
-  id: string;
-  query: string;
-  connectionId: string | null;
-  connectionName: string | null;
-  executedAt: number;
-  durationMs: number;
-  rows: number;
-  status: QueryHistoryStatus;
-  error?: string;
-}
+export type { QueryHistoryItem, QueryHistoryStatus } from '@/api/queryHistory';
 
 export interface WorkspaceState {
   // State
@@ -70,6 +60,7 @@ export interface WorkspaceState {
   // Query actions
   runQuery: (query: string, tabId?: string) => Promise<QueryResult>;
   abortQuery: (tabId: string) => void;
+  loadQueryHistory: () => Promise<void>;
   removeQueryHistoryItem: (id: string) => void;
   clearQueryHistory: () => void;
 
@@ -369,6 +360,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           set((state) => ({
             queryHistory: [historyItem, ...state.queryHistory].slice(0, QUERY_HISTORY_LIMIT),
           }));
+          void queryHistoryApi.recordQueryHistory(historyItem).catch((caught: unknown) => {
+            log.error("Failed to persist query history", { error: caught instanceof Error ? caught.message : String(caught) });
+          });
         };
 
         // Per-tab AbortController so the Stop button cancels the stream download.
@@ -564,14 +558,38 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return streamPromise;
       },
 
+      loadQueryHistory: async () => {
+        try {
+          const remote = await queryHistoryApi.getQueryHistory();
+          const local = get().queryHistory;
+          const merged = [...remote, ...local]
+            .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index)
+            .sort((left, right) => right.executedAt - left.executedAt)
+            .slice(0, QUERY_HISTORY_LIMIT);
+          set({ queryHistory: merged });
+          const remoteIds = new Set(remote.map((item) => item.id));
+          await Promise.allSettled(
+            local.filter((item) => !remoteIds.has(item.id)).map((item) => queryHistoryApi.recordQueryHistory(item)),
+          );
+        } catch (caught) {
+          log.error("Failed to load persisted query history", { error: caught instanceof Error ? caught.message : String(caught) });
+        }
+      },
+
       removeQueryHistoryItem: (id: string) => {
         set((state) => ({
           queryHistory: state.queryHistory.filter((item) => item.id !== id),
         }));
+        void queryHistoryApi.deleteQueryHistoryItem(id).catch((caught: unknown) => {
+          log.error("Failed to delete persisted query history item", { error: caught instanceof Error ? caught.message : String(caught) });
+        });
       },
 
       clearQueryHistory: () => {
         set({ queryHistory: [] });
+        void queryHistoryApi.clearQueryHistory().catch((caught: unknown) => {
+          log.error("Failed to clear persisted query history", { error: caught instanceof Error ? caught.message : String(caught) });
+        });
       },
 
       /**

@@ -5,6 +5,8 @@ export type DataHealthOutcome = "pass" | "breach" | "learning" | "not_evaluated"
 export type DataHealthSeverity = "warning" | "critical";
 export type DataHealthCriticality = "standard" | "important" | "critical";
 export type DataHealthFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual";
+export type DataHealthEventTimeEncoding = "auto" | "native" | "unix_seconds" | "unix_milliseconds" | "unix_microseconds" | "unix_nanoseconds" | "string";
+export type DataHealthEventTimeFormat = "best_effort";
 
 interface CheckBase {
   checkKey: string;
@@ -43,6 +45,10 @@ export interface DataHealthPromise {
   tableName: string | null;
   sourceQuery: string | null;
   eventTimeColumn: string | null;
+  eventTimeType: string | null;
+  eventTimeEncoding: DataHealthEventTimeEncoding;
+  eventTimeTimezone: string | null;
+  eventTimeFormat: DataHealthEventTimeFormat;
   rowFilter: string | null;
   ownerId: string | null;
   ownerDisplayName: string | null;
@@ -71,8 +77,8 @@ export interface DataHealthPromiseInput {
   description?: string | null;
   connectionId: string;
   source:
-    | { sourceType: "table"; databaseName: string; tableName: string; eventTimeColumn?: string; rowFilter?: string | null }
-    | { sourceType: "query"; sourceQuery: string; eventTimeColumn?: string; rowFilter?: string | null };
+    | { sourceType: "table"; databaseName: string; tableName: string; eventTimeColumn?: string; eventTimeType?: string; eventTimeEncoding?: DataHealthEventTimeEncoding; eventTimeTimezone?: string; eventTimeFormat?: DataHealthEventTimeFormat; rowFilter?: string | null }
+    | { sourceType: "query"; sourceQuery: string; eventTimeColumn?: string; eventTimeType?: string; eventTimeEncoding?: DataHealthEventTimeEncoding; eventTimeTimezone?: string; eventTimeFormat?: DataHealthEventTimeFormat; rowFilter?: string | null };
   ownerId?: string | null;
   criticality: DataHealthPromise["criticality"];
   timezone: string;
@@ -164,6 +170,12 @@ export interface DataHealthPreview {
   metricCheckKeys: string[];
   schemaCheckKeys: string[];
   nextFireTimes: number[];
+  eventTimePreview: {
+    sampled: number;
+    invalid: number;
+    earliest: string | null;
+    latest: string | null;
+  } | null;
 }
 
 export async function listDataHealthPromises(connectionId?: string): Promise<DataHealthPromise[]> {

@@ -14,6 +14,7 @@ import fleet from "./fleet";
 import alerting from "./alerting";
 import scheduledQueries from "./scheduled-queries";
 import dataHealth from "./data-health";
+import queryHistory from "./query-history";
 
 const api = new Hono();
 
@@ -83,6 +84,7 @@ api.route("/fleet", fleet);
 api.route("/alerting", alerting);
 api.route("/scheduled-queries", scheduledQueries);
 api.route("/data-health", dataHealth);
+api.route("/query-history", queryHistory);
 
 // RBAC routes (Role-Based Access Control)
 api.route("/rbac", rbacRoutes);

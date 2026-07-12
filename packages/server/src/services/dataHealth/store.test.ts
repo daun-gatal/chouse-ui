@@ -64,6 +64,10 @@ describe("Data Health store", () => {
       tableName: "orders",
       sourceQuery: null,
       eventTimeColumn: "created_at",
+      eventTimeType: "DateTime",
+      eventTimeEncoding: "native",
+      eventTimeTimezone: null,
+      eventTimeFormat: "best_effort",
       rowFilter: null,
       ownerId: "owner-1",
       criticality: "critical",
@@ -96,8 +100,16 @@ describe("Data Health store", () => {
     const promise = await store.getPromise(promiseId);
     expect(promise?.status).toBe("unhealthy");
     expect(promise?.ownerDisplayName).toBe("Owner Display Name");
+    expect(promise).toMatchObject({
+      eventTimeType: "DateTime",
+      eventTimeEncoding: "native",
+      eventTimeTimezone: null,
+      eventTimeFormat: "best_effort",
+    });
     expect(await store.getChecks(promiseId)).toEqual(checks);
     expect((await store.listSamples(promiseId))[0].observedValue).toBe(50);
+    expect((await store.latestSampleForCheck(promiseId, "rows"))?.slotAt).toBe(1_000);
+    expect(await store.latestSampleForCheck(promiseId, "missing")).toBeNull();
     expect(await store.metricHistory(promiseId)).toEqual({ rows: [50] });
     await store.replaceChecks(promiseId, [{ ...checks[0], name: "Rows in delivery window" }]);
     expect((await store.listSamples(promiseId))[0].observedValue).toBe(50);
@@ -130,6 +142,10 @@ describe("Data Health store", () => {
       tableName: "orders",
       sourceQuery: null,
       eventTimeColumn: "created_at",
+      eventTimeType: "DateTime",
+      eventTimeEncoding: "native",
+      eventTimeTimezone: null,
+      eventTimeFormat: "best_effort",
       rowFilter: null,
       ownerId: "owner-1",
       criticality: "critical",

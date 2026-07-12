@@ -5,6 +5,8 @@ import { sql } from "drizzle-orm";
 import { getDatabase, getDatabaseType, type PostgresDb, type SqliteDb } from "../../rbac/db";
 import {
   dataHealthCheckDefinitionSchema,
+  DATA_HEALTH_EVENT_TIME_ENCODINGS,
+  DATA_HEALTH_EVENT_TIME_FORMATS,
   type DataHealthCheckDefinition,
   type DataHealthMetricEvaluation,
   type DataHealthIncidentKind,
@@ -55,6 +57,10 @@ function promiseRow(row: Record<string, unknown>): DataHealthPromiseRow {
   const statusValues: DataHealthPromiseState[] = ["healthy", "degraded", "unhealthy", "unknown", "paused"];
   const rawStatus = String(row.status);
   const status = statusValues.includes(rawStatus as DataHealthPromiseState) ? rawStatus as DataHealthPromiseState : "unknown";
+  const rawEventTimeEncoding = String(row.event_time_encoding ?? "auto");
+  const eventTimeEncoding = DATA_HEALTH_EVENT_TIME_ENCODINGS.find((value) => value === rawEventTimeEncoding) ?? "auto";
+  const rawEventTimeFormat = String(row.event_time_format ?? "best_effort");
+  const eventTimeFormat = DATA_HEALTH_EVENT_TIME_FORMATS.find((value) => value === rawEventTimeFormat) ?? "best_effort";
   return {
     id: String(row.id),
     scheduledQueryId: String(row.scheduled_query_id),
@@ -66,6 +72,10 @@ function promiseRow(row: Record<string, unknown>): DataHealthPromiseRow {
     tableName: nullableString(row.table_name),
     sourceQuery: nullableString(row.source_query),
     eventTimeColumn: nullableString(row.event_time_column),
+    eventTimeType: nullableString(row.event_time_type),
+    eventTimeEncoding,
+    eventTimeTimezone: nullableString(row.event_time_timezone),
+    eventTimeFormat,
     rowFilter: nullableString(row.row_filter),
     ownerId: nullableString(row.owner_id),
     ownerDisplayName: nullableString(row.owner_display_name),
@@ -97,6 +107,10 @@ export interface CreatePromiseMetadataInput {
   tableName: string | null;
   sourceQuery: string | null;
   eventTimeColumn: string | null;
+  eventTimeType: string | null;
+  eventTimeEncoding: DataHealthPromiseRow["eventTimeEncoding"];
+  eventTimeTimezone: string | null;
+  eventTimeFormat: DataHealthPromiseRow["eventTimeFormat"];
   rowFilter: string | null;
   ownerId: string | null;
   criticality: DataHealthPromiseRow["criticality"];
@@ -158,13 +172,15 @@ export async function createPromiseMetadata(input: CreatePromiseMetadataInput): 
   await run(sql`
     INSERT INTO data_health_promises (
       id, scheduled_query_id, name, description, connection_id, source_type,
-      database_name, table_name, source_query, event_time_column, row_filter,
+      database_name, table_name, source_query, event_time_column, event_time_type,
+      event_time_encoding, event_time_timezone, event_time_format, row_filter,
       owner_id, criticality, timezone, runbook_url, enabled, status,
       grace_secs, breach_after, recover_after, retention_days, schema_snapshot,
       created_by, created_at, updated_at
     ) VALUES (
       ${id}, ${input.scheduledQueryId}, ${input.name}, ${input.description}, ${input.connectionId}, ${input.sourceType},
-      ${input.databaseName}, ${input.tableName}, ${input.sourceQuery}, ${input.eventTimeColumn}, ${input.rowFilter},
+      ${input.databaseName}, ${input.tableName}, ${input.sourceQuery}, ${input.eventTimeColumn}, ${input.eventTimeType},
+      ${input.eventTimeEncoding}, ${input.eventTimeTimezone}, ${input.eventTimeFormat}, ${input.rowFilter},
       ${input.ownerId}, ${input.criticality}, ${input.timezone}, ${input.runbookUrl}, ${input.enabled ? 1 : 0}, 'unknown',
       ${input.graceSecs}, ${input.breachAfter}, ${input.recoverAfter}, ${input.retentionDays}, ${schemaSnapshot},
       ${input.createdBy}, ${now}, ${now}
@@ -181,7 +197,9 @@ export async function updatePromiseMetadata(id: string, input: CreatePromiseMeta
     UPDATE data_health_promises SET
       name = ${input.name}, description = ${input.description}, connection_id = ${input.connectionId},
       source_type = ${input.sourceType}, database_name = ${input.databaseName}, table_name = ${input.tableName},
-      source_query = ${input.sourceQuery}, event_time_column = ${input.eventTimeColumn}, row_filter = ${input.rowFilter},
+      source_query = ${input.sourceQuery}, event_time_column = ${input.eventTimeColumn},
+      event_time_type = ${input.eventTimeType}, event_time_encoding = ${input.eventTimeEncoding},
+      event_time_timezone = ${input.eventTimeTimezone}, event_time_format = ${input.eventTimeFormat}, row_filter = ${input.rowFilter},
       owner_id = ${input.ownerId}, criticality = ${input.criticality}, timezone = ${input.timezone},
       runbook_url = ${input.runbookUrl}, enabled = ${input.enabled ? 1 : 0},
       status = CASE WHEN ${input.enabled ? 1 : 0} = 0 THEN 'paused' WHEN status = 'paused' THEN 'unknown' ELSE status END,
@@ -334,6 +352,18 @@ export async function listSamples(promiseId: string, limit = 200, offset = 0): P
     ORDER BY s.slot_at DESC LIMIT ${limit} OFFSET ${offset}
   `);
   return rows.map(sampleRow);
+}
+
+export async function latestSampleForCheck(promiseId: string, checkKey: string): Promise<DataHealthSampleRow | null> {
+  const rows = await all(sql`
+    SELECT s.*, c.check_key
+    FROM data_health_samples s
+    JOIN data_health_promise_checks c ON c.id = s.check_id
+    WHERE s.promise_id = ${promiseId} AND c.check_key = ${checkKey} AND s.origin = 'live'
+    ORDER BY s.slot_at DESC
+    LIMIT 1
+  `);
+  return rows[0] ? sampleRow(rows[0]) : null;
 }
 
 function incidentRow(row: Record<string, unknown>): DataHealthIncidentRow {

@@ -35,6 +35,11 @@ describe('API Index', () => {
         expect(apiIndex.savedQueriesApi.getSavedQueries).toBeDefined();
     });
 
+    it('should export queryHistoryApi namespace', () => {
+        expect(apiIndex.queryHistoryApi).toBeDefined();
+        expect(apiIndex.queryHistoryApi.getQueryHistory).toBeDefined();
+    });
+
     it('should export configApi namespace', () => {
         expect(apiIndex.configApi).toBeDefined();
         expect(apiIndex.configApi.getConfig).toBeDefined();

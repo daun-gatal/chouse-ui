@@ -10,6 +10,7 @@
  */
 
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 import { AppError } from "../../types";
 import { logger } from "../../utils/logger";
@@ -76,7 +77,16 @@ export async function structuredOutput<T>(
 
   try {
     if (!opts.model.withStructuredOutput) return null;
-    const structured = opts.model.withStructuredOutput(opts.schema);
+    // ChatOpenAI infers a response-format method from the model name string
+    // (only "gpt-3*"/"gpt-4*" get tool-calling by default) — any other name,
+    // including third-party "openai-compatible" models routed through this
+    // same class, is bumped to OpenAI's strict `json_schema` response format,
+    // which most compatible proxies don't implement. Force tool calling,
+    // which every OpenAI-compatible provider supports.
+    const structured = opts.model.withStructuredOutput(
+      opts.schema,
+      opts.model instanceof ChatOpenAI ? { method: "functionCalling" } : undefined,
+    );
     const object = await structured.invoke(opts.fallbackMessages);
     return opts.schema.parse(object);
   } catch (e) {

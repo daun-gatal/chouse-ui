@@ -359,10 +359,15 @@ const DatabaseExplorer: React.FC = () => {
   const {
     addTab,
     queryHistory,
+    loadQueryHistory,
     removeQueryHistoryItem,
     clearQueryHistory,
   } = useWorkspaceStore();
   const { activeConnectionId, activeConnectionName } = useAuthStore();
+
+  useEffect(() => {
+    void loadQueryHistory();
+  }, [loadQueryHistory]);
 
   const {
     data: databases = [],
@@ -1216,7 +1221,7 @@ const DatabaseExplorer: React.FC = () => {
               Clear Query History
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Remove all {queryHistory.length} entries from your local query history? Saved queries are not affected.
+              Remove all {queryHistory.length} entries from your query history on this browser and the metadata database? Saved queries are not affected.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -5,7 +5,7 @@ import { describeSelectSchema, diffSchema } from "../scheduledQueries/materializ
 import type { ScheduledQueryRow } from "../scheduledQueries/types";
 import * as scheduledStore from "../scheduledQueries/store";
 import { buildExecutableQuery } from "../scheduledQueries/validation";
-import { compileDataHealthQuery } from "./compiler";
+import { compileDataHealthQuery, eventTimeTypeFromSchema } from "./compiler";
 import { evaluateDataHealth } from "./evaluator";
 import * as store from "./store";
 import type { DataHealthMetricEvaluation } from "./types";
@@ -28,6 +28,10 @@ export async function currentDataHealthJob(job: ScheduledQueryRow): Promise<Sche
     tableName: promise.tableName ?? undefined,
     sourceQuery: promise.sourceQuery ?? undefined,
     eventTimeColumn: promise.eventTimeColumn ?? undefined,
+    eventTimeType: promise.eventTimeType ?? eventTimeTypeFromSchema(promise.eventTimeColumn, promise.schemaSnapshot),
+    eventTimeEncoding: promise.eventTimeEncoding,
+    eventTimeTimezone: promise.eventTimeTimezone ?? undefined,
+    eventTimeFormat: promise.eventTimeFormat,
     rowFilter: promise.rowFilter ?? undefined,
   }, checks);
   return { ...job, query: compiled.sql };

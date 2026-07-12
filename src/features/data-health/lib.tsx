@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { DataHealthCheck, DataHealthOutcome, DataHealthState } from "@/api/dataHealth";
+import type { DataHealthCheck, DataHealthEventTimeEncoding, DataHealthOutcome, DataHealthSchedule, DataHealthState } from "@/api/dataHealth";
 
 export const DH_LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint";
 export const DH_PRIMARY = "h-9 gap-2 rounded-xs bg-brand px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft disabled:opacity-50";
@@ -31,6 +31,87 @@ export function HealthBadge({ state }: { state: DataHealthState | DataHealthOutc
 
 export function formatHealthTime(value: number | null | undefined): string {
   return value ? new Date(value).toLocaleString() : "Never";
+}
+
+interface ColumnWithType {
+  name: string;
+  type: string;
+}
+
+const TEMPORAL_TYPE = /(^|[^A-Za-z0-9_])(DateTime64|DateTime|Date32|Date)(?=[^A-Za-z0-9_]|$)/;
+const INTEGER_TYPE = /(^|[^A-Za-z0-9_])U?Int(?:8|16|32|64|128|256)(?=[^A-Za-z0-9_]|$)/;
+const STRING_TYPE = /(^|[^A-Za-z0-9_])(FixedString|String)(?=[^A-Za-z0-9_]|$)/;
+const EVENT_TIME_NAMES = [
+  "event_time",
+  "event_timestamp",
+  "event_ts",
+  "occurred_at",
+  "timestamp",
+  "ts",
+  "created_at",
+  "updated_at",
+  "datetime",
+  "event_date",
+  "date",
+];
+
+export function isTemporalColumnType(type: string): boolean {
+  return TEMPORAL_TYPE.test(type);
+}
+
+export type EventTimeSupport = "native" | "unix" | "string" | "unsupported";
+
+export function eventTimeSupport(type: string): EventTimeSupport {
+  if (isTemporalColumnType(type)) return "native";
+  if (INTEGER_TYPE.test(type)) return "unix";
+  if (STRING_TYPE.test(type)) return "string";
+  return "unsupported";
+}
+
+export function isSupportedEventTimeColumnType(type: string): boolean {
+  return eventTimeSupport(type) !== "unsupported";
+}
+
+export function suggestEventTimeEncoding(column: ColumnWithType): DataHealthEventTimeEncoding {
+  const support = eventTimeSupport(column.type);
+  if (support === "native") return "native";
+  if (support === "string") return "string";
+  const name = column.name.toLowerCase();
+  if (/(?:^|_)ns$|nano/.test(name)) return "unix_nanoseconds";
+  if (/(?:^|_)us$|micro/.test(name)) return "unix_microseconds";
+  if (/(?:^|_)ms$|milli/.test(name)) return "unix_milliseconds";
+  return support === "unix" ? "unix_seconds" : "auto";
+}
+
+export function detectEventTimeColumn(columns: ColumnWithType[]): string {
+  const supported = columns.filter((column) => eventTimeSupport(column.type) !== "unsupported");
+  for (const preferredName of EVENT_TIME_NAMES) {
+    const match = supported.find((column) => column.name.toLowerCase() === preferredName);
+    if (match) return match.name;
+  }
+  const temporal = supported.filter((column) => isTemporalColumnType(column.type));
+  return temporal.find((column) => column.type.includes("DateTime64"))?.name
+    ?? temporal.find((column) => column.type.includes("DateTime"))?.name
+    ?? temporal[0]?.name
+    ?? "";
+}
+
+const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+export function formatSchedule(schedule: DataHealthSchedule, timezone: string): string {
+  const hour = String(schedule.hour).padStart(2, "0");
+  switch (schedule.frequency) {
+    case "manual":
+      return "Manual";
+    case "cron":
+      return `cron · ${schedule.cronExpr ?? "—"} ${timezone}`;
+    case "daily":
+      return `daily · ${hour}:00 ${timezone}`;
+    case "weekly":
+      return `weekly · ${DAYS_OF_WEEK[schedule.dayOfWeek] ?? "?"} ${hour}:00 ${timezone}`;
+    case "monthly":
+      return `monthly · day ${schedule.dayOfMonth} ${hour}:00 ${timezone}`;
+  }
 }
 
 function formatDuration(seconds: number): string {

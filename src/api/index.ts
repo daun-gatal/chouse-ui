@@ -40,6 +40,7 @@ export type { SystemStats, RecentQuery } from './metrics';
 
 // Saved queries
 export * as savedQueriesApi from './saved-queries';
+export * as queryHistoryApi from './queryHistory';
 export type { SavedQuery, SaveQueryInput, UpdateQueryInput } from './saved-queries';
 
 // Configuration

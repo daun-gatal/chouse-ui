@@ -101,6 +101,12 @@ describe("timezone behavior", () => {
       Date.parse("2026-03-09T12:00:00Z"),
     ]);
   });
+
+  it("evaluates custom cron hours in the configured timezone", () => {
+    const from = Date.parse("2026-06-19T23:00:00Z");
+    expect(nextFireTimes(job({ frequency: "cron", cronExpr: "0 8 * * *", timezone: "Asia/Jakarta" }), 1, from))
+      .toEqual([Date.parse("2026-06-20T01:00:00Z")]);
+  });
 });
 
 describe("nextFireTimes", () => {

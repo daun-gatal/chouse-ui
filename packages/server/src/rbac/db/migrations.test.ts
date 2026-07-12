@@ -245,6 +245,17 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
       expect(await h.roleHasPermission("admin", permission)).toBe(true);
     }
   },
+  "1.44.1": async () => {
+    for (const column of ["event_time_type", "event_time_encoding", "event_time_timezone", "event_time_format"]) {
+      expect(await h.columnExists("data_health_promises", column)).toBe(true);
+    }
+  },
+  "1.45.0": async () => {
+    expect(await h.tableExists("rbac_query_history")).toBe(true);
+    expect(await h.columnExists("rbac_query_history", "executed_at")).toBe(true);
+    expect(await h.columnExists("rbac_query_history", "status")).toBe(true);
+    expect(await h.indexExists("query_history_user_time_idx")).toBe(true);
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ import { AiInsightDialog, AssessmentView, OperationalBriefCard } from "@/feature
 import { useJobOwners, useRunScheduledQuery, useScheduledQueryRuns, useUpdateScheduledQuery } from "./hooks";
 import { JobWizard } from "./JobWizard";
 import { LineageTab } from "./LineageTab";
-import { formatDuration, formatRelative, formatTime, scheduleLabel, scheduledQueryToInput, SQ_BTN_PRIMARY, SQ_LABEL, StatusBadge } from "./lib";
+import { formatDuration, formatRelative, scheduleLabel, scheduledQueryToInput, SQ_BTN_PRIMARY, SQ_LABEL, StatusBadge } from "./lib";
 import { RunsTab } from "./RunsTab";
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -216,7 +216,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
         <MetricCard
           label="Last run"
           value={formatRelative(job.lastRun?.startedAt)}
-          detail={job.lastRun ? `${formatDuration(job.lastRun.durationMs)} · ${formatTime(job.lastRun.startedAt)}` : "No runs yet"}
+          detail={job.lastRun ? `${formatDuration(job.lastRun.durationMs)} · ${new Date(job.lastRun.startedAt).toLocaleString(undefined, { timeZone: job.timezone, timeZoneName: "short" })}` : "No runs yet"}
         />
         <MetricCard label="Success rate" value={successRate} detail={`${completedRuns} completed run(s) loaded`} />
         <MetricCard label="Schedule" value={scheduleLabel(job)} detail={job.timezone} />

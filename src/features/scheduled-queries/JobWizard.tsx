@@ -513,7 +513,7 @@ function ScheduleStep({ form, update, preview, onPreview, previewing }: StepProp
       </div>
       {(form.frequency === "daily" || form.frequency === "weekly" || form.frequency === "monthly") && (
         <div className={sectionCls}>
-          <Label className={labelCls}>Hour (UTC)</Label>
+          <Label className={labelCls}>Hour ({form.timezone})</Label>
           <Input type="number" min={0} max={23} value={form.hour} onChange={(e) => update({ hour: Number(e.target.value) })} />
         </div>
       )}
@@ -538,7 +538,7 @@ function ScheduleStep({ form, update, preview, onPreview, previewing }: StepProp
       )}
       {form.frequency === "cron" && (
         <div className={sectionCls}>
-          <Label className={labelCls}>Cron expression (5-field, UTC)</Label>
+          <Label className={labelCls}>Cron expression (5-field, {form.timezone})</Label>
           <div className="flex gap-2">
             <Input value={form.cronExpr} onChange={(e) => update({ cronExpr: e.target.value })} placeholder="*/15 * * * *" className="font-mono" />
             <Button variant="outline" onClick={() => void onPreview()} disabled={previewing}>Preview</Button>
@@ -548,10 +548,10 @@ function ScheduleStep({ form, update, preview, onPreview, previewing }: StepProp
       )}
       {preview?.nextFireTimes && preview.nextFireTimes.length > 0 && (
         <div className="rounded-xs border border-ink-500 bg-ink-50 p-3">
-          <p className={labelCls}>Next fire times</p>
+          <p className={labelCls}>Next fire times · local / UTC</p>
           <ul className="mt-1 space-y-0.5">
             {preview.nextFireTimes.map((t) => (
-              <li key={t} className="font-mono text-[11px] text-paper-muted">{new Date(t).toISOString()}</li>
+              <li key={t} className="font-mono text-[11px] text-paper-muted"><span className="text-paper">{new Date(t).toLocaleString(undefined, { timeZone: form.timezone, timeZoneName: "short" })}</span> · {new Date(t).toISOString()}</li>
             ))}
           </ul>
         </div>
