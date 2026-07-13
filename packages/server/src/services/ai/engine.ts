@@ -110,6 +110,11 @@ function deepAgentProviderKey(config: AiConfigWithKey): string {
     case "openai":
     case "openai-compatible":
     default:
+      // All other provider types (azure-openai, groq, mistral, cohere, ollama,
+      // xai, deepseek, cerebras, bedrock, fireworks, together, openrouter)
+      // register their fast profile under the "openai" key; the ChatOpenAI
+      // name hint in model.ts makes deepagents resolve it (except bedrock,
+      // which keeps its class name and skips the fast profile).
       return "openai";
   }
 }

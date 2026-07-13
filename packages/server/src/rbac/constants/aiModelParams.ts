@@ -60,8 +60,8 @@ export interface AiModelParams {
   /** Per-request timeout in ms. OpenAI/compatible and Anthropic only. */
   requestTimeoutMs?: number;
 
-  // — Google transport —
-  /** Google API version, e.g. 'v1beta'. Google only. */
+  // — API transport —
+  /** API version: Google (e.g. 'v1beta') or Azure OpenAI (e.g. '2024-10-21'). */
   apiVersion?: string;
   /** Gemini safety settings. Google only. */
   safetySettings?: AiSafetySetting[];
@@ -92,11 +92,37 @@ const COMMON_KEYS: readonly AiModelParamKey[] = [
   'runTimeoutMs',
 ];
 
+const OPENAI_FAMILY_KEYS: readonly AiModelParamKey[] = [
+  ...COMMON_KEYS,
+  'frequencyPenalty',
+  'presencePenalty',
+  'verbosity',
+  'reasoningEffort',
+  'requestTimeoutMs',
+  'extra',
+];
+
+// Key lists mirror what each SDK's constructor actually accepts (verified
+// against the installed @langchain/* type definitions) — e.g. Mistral,
+// Cerebras, and Bedrock expose no stop-sequence constructor field, Cohere
+// only exposes temperature, and xAI omits topP.
 export const PROVIDER_PARAM_KEYS: Record<ProviderType, readonly AiModelParamKey[]> = {
-  'openai': [...COMMON_KEYS, 'frequencyPenalty', 'presencePenalty', 'verbosity', 'reasoningEffort', 'requestTimeoutMs', 'extra'],
-  'openai-compatible': [...COMMON_KEYS, 'frequencyPenalty', 'presencePenalty', 'verbosity', 'reasoningEffort', 'requestTimeoutMs', 'extra'],
+  'openai': OPENAI_FAMILY_KEYS,
+  'openai-compatible': OPENAI_FAMILY_KEYS,
   'anthropic': [...COMMON_KEYS, 'topK', 'reasoningEffort', 'thinkingBudgetTokens', 'requestTimeoutMs', 'extra'],
   'google': [...COMMON_KEYS, 'topK', 'thinkingBudgetTokens', 'apiVersion', 'safetySettings'],
+  'azure-openai': [...OPENAI_FAMILY_KEYS, 'apiVersion'],
+  'groq': [...COMMON_KEYS, 'requestTimeoutMs'],
+  'mistral': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'cohere': ['temperature', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'ollama': [...COMMON_KEYS, 'topK'],
+  'xai': ['temperature', 'maxTokens', 'stopSequences', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'deepseek': [...COMMON_KEYS, 'frequencyPenalty', 'presencePenalty', 'requestTimeoutMs', 'extra'],
+  'cerebras': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'requestTimeoutMs', 'recursionLimit', 'runTimeoutMs'],
+  'bedrock': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'fireworks': OPENAI_FAMILY_KEYS,
+  'together': OPENAI_FAMILY_KEYS,
+  'openrouter': OPENAI_FAMILY_KEYS,
 };
 
 /** Provider-independent bounds (the widest any provider accepts). */
@@ -119,6 +145,18 @@ export const STOP_SEQUENCES_MAX: Record<ProviderType, number> = {
   'openai-compatible': 4,
   'anthropic': 10,
   'google': 5,
+  'azure-openai': 4,
+  'groq': 4,
+  'mistral': 4,
+  'cohere': 4,
+  'ollama': 4,
+  'xai': 4,
+  'deepseek': 4,
+  'cerebras': 4,
+  'bedrock': 4,
+  'fireworks': 4,
+  'together': 4,
+  'openrouter': 4,
 };
 
 /**

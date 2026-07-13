@@ -91,6 +91,10 @@ export interface CreateAiProviderInput {
   baseUrl?: string | null;
   apiKey?: string;
   isActive?: boolean;
+  // Bedrock only — sent instead of apiKey (all three together).
+  awsRegion?: string;
+  awsAccessKeyId?: string;
+  awsSecretAccessKey?: string;
 }
 
 export interface UpdateAiProviderInput {
@@ -99,6 +103,10 @@ export interface UpdateAiProviderInput {
   baseUrl?: string | null;
   apiKey?: string;
   isActive?: boolean;
+  // Bedrock only — sent instead of apiKey (all three together).
+  awsRegion?: string;
+  awsAccessKeyId?: string;
+  awsSecretAccessKey?: string;
 }
 
 export interface AiBaseModel {
