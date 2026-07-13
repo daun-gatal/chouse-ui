@@ -109,6 +109,25 @@ const cases: Case[] = [
   },
   { name: 'extra oversized payload rejected', providerType: 'openai', params: { extra: { blob: 'x'.repeat(9000) } }, expectErrors: true, errorIncludes: 'bytes' },
 
+  // New providers
+  {
+    name: 'azure-openai accepts the openai set plus apiVersion',
+    providerType: 'azure-openai',
+    params: { temperature: 0.5, reasoningEffort: 'minimal', apiVersion: '2024-10-21', extra: { seed: 1 } },
+    expectErrors: false,
+  },
+  { name: 'groq rejects verbosity', providerType: 'groq', params: { verbosity: 'low' }, expectErrors: true, errorIncludes: "'verbosity'" },
+  { name: 'groq allows stop sequences up to 4', providerType: 'groq', params: { stopSequences: ['a', 'b', 'c', 'd'] }, expectErrors: false },
+  { name: 'mistral rejects stopSequences', providerType: 'mistral', params: { stopSequences: ['END'] }, expectErrors: true, errorIncludes: "'stopSequences'" },
+  { name: 'cohere rejects topP', providerType: 'cohere', params: { topP: 0.9 }, expectErrors: true, errorIncludes: "'topP'" },
+  { name: 'ollama allows topK and common keys', providerType: 'ollama', params: { topK: 20, maxTokens: 256, stopSequences: ['###'] }, expectErrors: false },
+  { name: 'xai rejects topP', providerType: 'xai', params: { topP: 0.9 }, expectErrors: true, errorIncludes: "'topP'" },
+  { name: 'deepseek accepts openai-style penalties and extra', providerType: 'deepseek', params: { frequencyPenalty: 0.5, extra: { seed: 7 } }, expectErrors: false },
+  { name: 'deepseek rejects verbosity', providerType: 'deepseek', params: { verbosity: 'high' }, expectErrors: true, errorIncludes: "'verbosity'" },
+  { name: 'cerebras rejects stopSequences', providerType: 'cerebras', params: { stopSequences: ['END'] }, expectErrors: true, errorIncludes: "'stopSequences'" },
+  { name: 'bedrock rejects extra', providerType: 'bedrock', params: { extra: { a: 1 } }, expectErrors: true, errorIncludes: "'extra'" },
+  { name: 'fireworks mirrors openai keys', providerType: 'fireworks', params: { reasoningEffort: 'minimal', extra: { seed: 2 } }, expectErrors: false },
+
   // Empty object is valid everywhere
   { name: 'empty params valid', providerType: 'anthropic', params: {}, expectErrors: false },
 ];
@@ -131,11 +150,14 @@ describe('validateAiModelParams', () => {
 
 describe('PROVIDER_PARAM_KEYS', () => {
   it('covers every provider type with agent-runtime keys', () => {
-    for (const keys of Object.values(PROVIDER_PARAM_KEYS)) {
+    for (const [providerType, keys] of Object.entries(PROVIDER_PARAM_KEYS)) {
       expect(keys).toContain('recursionLimit');
       expect(keys).toContain('runTimeoutMs');
       expect(keys).toContain('temperature');
-      expect(keys).toContain('maxTokens');
+      // ChatCohere's constructor exposes no output-token cap.
+      if (providerType !== 'cohere') {
+        expect(keys).toContain('maxTokens');
+      }
     }
   });
 });

@@ -79,7 +79,7 @@ CHouse UI provides security and access control features for teams that need:
 - **Query Execution** - Run queries with per-query execution statistics
 - **Saved Queries** - Persist frequently used queries, organize by connection
 - **Data Export** - CSV, JSON, TSV formats
-- **AI Assist** - Optimizer / Debugger / Chat with schema-aware context (provider-pluggable: OpenAI, Anthropic, Google, etc.)
+- **AI Assist** - Optimizer / Debugger / Chat with schema-aware context (provider-pluggable: OpenAI, Anthropic, Google, Azure OpenAI, AWS Bedrock, Groq, Mistral, Cohere, Ollama, xAI, DeepSeek, Cerebras, Fireworks, Together, OpenRouter, and any OpenAI-compatible API)
 - **Overview Dashboard** - System stats, recent queries, and quick actions (admin only)
 
 ### 🔬 Monitoring & Observability
@@ -323,7 +323,7 @@ graph TB
 
     subgraph External["External"]
         CH["ClickHouse"]
-        AI["AI Provider (OpenAI, Anthropic, Google, etc.)"]
+        AI["AI Provider (OpenAI, Anthropic, Google, Bedrock, etc.)"]
         DB["SQLite / PostgreSQL"]
     end
 
@@ -423,7 +423,7 @@ This project was initially based on **[CH-UI](https://github.com/caioricciuti/ch
 - [Drizzle ORM](https://orm.drizzle.team/) — Database ORM (SQLite / PostgreSQL)
 - [Pino](https://getpino.io/) — Structured JSON logging
 - [jose](https://github.com/panva/jose) — JWT signing & verification
-- [DeepAgents](https://docs.langchain.com/oss/javascript/deepagents/overview) / [LangChain](https://js.langchain.com/) — Tool-using AI agents (OpenAI, Anthropic, Google, OpenAI-compatible)
+- [DeepAgents](https://docs.langchain.com/oss/javascript/deepagents/overview) / [LangChain](https://js.langchain.com/) — Tool-using AI agents (OpenAI, Anthropic, Google, Azure OpenAI, AWS Bedrock, Groq, Mistral, Cohere, Ollama, xAI, DeepSeek, Cerebras, and OpenAI-compatible endpoints incl. Fireworks/Together/OpenRouter)
 - [node-sql-parser](https://github.com/taozhi8833998/node-sql-parser) — SQL parsing & validation
 
 #### Frontend

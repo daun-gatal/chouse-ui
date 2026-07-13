@@ -49,11 +49,35 @@ const COMMON_KEYS: readonly AiModelParamKey[] = [
   'runTimeoutMs',
 ];
 
+const OPENAI_FAMILY_KEYS: readonly AiModelParamKey[] = [
+  ...COMMON_KEYS,
+  'frequencyPenalty',
+  'presencePenalty',
+  'verbosity',
+  'reasoningEffort',
+  'requestTimeoutMs',
+  'extra',
+];
+
+// Key lists mirror what each SDK's constructor actually accepts — see the
+// server copy for the per-provider rationale.
 export const PROVIDER_PARAM_KEYS: Record<ProviderType, readonly AiModelParamKey[]> = {
-  'openai': [...COMMON_KEYS, 'frequencyPenalty', 'presencePenalty', 'verbosity', 'reasoningEffort', 'requestTimeoutMs', 'extra'],
-  'openai-compatible': [...COMMON_KEYS, 'frequencyPenalty', 'presencePenalty', 'verbosity', 'reasoningEffort', 'requestTimeoutMs', 'extra'],
+  'openai': OPENAI_FAMILY_KEYS,
+  'openai-compatible': OPENAI_FAMILY_KEYS,
   'anthropic': [...COMMON_KEYS, 'topK', 'reasoningEffort', 'thinkingBudgetTokens', 'requestTimeoutMs', 'extra'],
   'google': [...COMMON_KEYS, 'topK', 'thinkingBudgetTokens', 'apiVersion', 'safetySettings'],
+  'azure-openai': [...OPENAI_FAMILY_KEYS, 'apiVersion'],
+  'groq': [...COMMON_KEYS, 'requestTimeoutMs'],
+  'mistral': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'cohere': ['temperature', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'ollama': [...COMMON_KEYS, 'topK'],
+  'xai': ['temperature', 'maxTokens', 'stopSequences', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'deepseek': [...COMMON_KEYS, 'frequencyPenalty', 'presencePenalty', 'requestTimeoutMs', 'extra'],
+  'cerebras': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'requestTimeoutMs', 'recursionLimit', 'runTimeoutMs'],
+  'bedrock': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'fireworks': OPENAI_FAMILY_KEYS,
+  'together': OPENAI_FAMILY_KEYS,
+  'openrouter': OPENAI_FAMILY_KEYS,
 };
 
 export const PARAM_BOUNDS = {
@@ -75,6 +99,18 @@ export const STOP_SEQUENCES_MAX: Record<ProviderType, number> = {
   'openai-compatible': 4,
   'anthropic': 10,
   'google': 5,
+  'azure-openai': 4,
+  'groq': 4,
+  'mistral': 4,
+  'cohere': 4,
+  'ollama': 4,
+  'xai': 4,
+  'deepseek': 4,
+  'cerebras': 4,
+  'bedrock': 4,
+  'fireworks': 4,
+  'together': 4,
+  'openrouter': 4,
 };
 
 export const EXTRA_BLOCKED_KEYS = [
@@ -248,11 +284,25 @@ export const NUMBER_PARAM_FIELDS: NumberParamField[] = [
   { key: 'runTimeoutMs', label: 'Run timeout (ms)', description: 'Wall-clock budget for a whole agent run.', group: 'Reliability & agent', step: 1000, min: 10_000, max: 3_600_000, placeholder: 'auto (2–4 min)' },
 ];
 
+const OPENAI_EFFORTS: readonly ReasoningEffort[] = ['minimal', 'low', 'medium', 'high'];
+
 export const REASONING_EFFORT_OPTIONS: Record<ProviderType, readonly ReasoningEffort[]> = {
-  'openai': ['minimal', 'low', 'medium', 'high'],
-  'openai-compatible': ['minimal', 'low', 'medium', 'high'],
+  'openai': OPENAI_EFFORTS,
+  'openai-compatible': OPENAI_EFFORTS,
   'anthropic': ['low', 'medium', 'high'],
   'google': [],
+  'azure-openai': OPENAI_EFFORTS,
+  'groq': [],
+  'mistral': [],
+  'cohere': [],
+  'ollama': [],
+  'xai': [],
+  'deepseek': [],
+  'cerebras': [],
+  'bedrock': [],
+  'fireworks': OPENAI_EFFORTS,
+  'together': OPENAI_EFFORTS,
+  'openrouter': OPENAI_EFFORTS,
 };
 
 export const VERBOSITY_OPTIONS: readonly Verbosity[] = ['low', 'medium', 'high'];

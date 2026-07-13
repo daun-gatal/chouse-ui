@@ -5,9 +5,17 @@
  * used by both the AI optimizer/debugger and the AI chat assistant.
  */
 
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI, AzureChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatGroq } from "@langchain/groq";
+import { ChatMistralAI } from "@langchain/mistralai";
+import { ChatCohere } from "@langchain/cohere";
+import { ChatOllama } from "@langchain/ollama";
+import { ChatXAI } from "@langchain/xai";
+import { ChatDeepSeek } from "@langchain/deepseek";
+import { ChatCerebras } from "@langchain/cerebras";
+import { ChatBedrockConverse } from "@langchain/aws";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { AppError } from "../types";
 import { getAiConfigById, getDefaultAiConfig, getAiConfigWithKey } from "../rbac/services/aiModels";
@@ -88,6 +96,19 @@ export function validateConfiguration(config: AiConfigWithKey | null): { valid: 
         };
     }
 
+    // Surface unusable Bedrock credentials at validation time instead of
+    // mid-run inside the agent.
+    if (config.provider.providerType === 'bedrock' && config.provider.apiKey) {
+        try {
+            parseBedrockCredentials(config.provider.apiKey);
+        } catch {
+            return {
+                valid: false,
+                error: "Bedrock credentials are malformed. Re-enter the AWS region, access key ID, and secret access key in the Admin UI.",
+            };
+        }
+    }
+
     if (config.provider.baseUrl) {
         try {
             const url = new URL(config.provider.baseUrl);
@@ -115,6 +136,63 @@ type ProviderInitializer = (
     config: { apiKey?: string; baseUrl?: string; params?: AiModelParams },
     modelName: string,
 ) => BaseChatModel;
+
+/**
+ * Hosted OpenAI-compatible endpoints exposed as first-class provider types.
+ * A stored baseUrl (if any) overrides the preset.
+ */
+export const DEFAULT_BASE_URLS: Partial<Record<ProviderType, string>> = {
+    'fireworks': "https://api.fireworks.ai/inference/v1",
+    'together': "https://api.together.xyz/v1",
+    'openrouter': "https://openrouter.ai/api/v1",
+};
+
+/** Azure ships no SDK-side default; requests fail without an api-version. */
+const AZURE_OPENAI_DEFAULT_API_VERSION = "2024-10-21";
+
+export interface BedrockCredentials {
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+}
+
+/**
+ * Bedrock has no single API key: the aiProviders route packs
+ * {region, accessKeyId, secretAccessKey} as a JSON string into the encrypted
+ * api_key_encrypted slot. This unpacks and validates it.
+ */
+export function parseBedrockCredentials(apiKey: string | undefined): BedrockCredentials {
+    const fail = (): never => {
+        throw new AppError(
+            "Bedrock credentials are malformed. Re-enter the AWS region, access key ID, and secret access key for this provider in the Admin UI.",
+            "AI_CONFIGURATION_ERROR",
+            "validation",
+            500,
+        );
+    };
+    if (!apiKey) fail();
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(apiKey as string);
+    } catch {
+        fail();
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) fail();
+    const { region, accessKeyId, secretAccessKey } = parsed as Record<string, unknown>;
+    if (typeof region !== "string" || region.length === 0
+        || typeof accessKeyId !== "string" || accessKeyId.length === 0
+        || typeof secretAccessKey !== "string" || secretAccessKey.length === 0) {
+        fail();
+    }
+    return { region, accessKeyId, secretAccessKey } as BedrockCredentials;
+}
+
+function requireBaseUrl(config: { baseUrl?: string }, providerType: ProviderType): string {
+    if (!config.baseUrl) {
+        throw new AppError(`Base URL is required for ${providerType}`, "AI_CONFIGURATION_ERROR", "validation", 500);
+    }
+    return config.baseUrl;
+}
 
 function buildOpenAiModel(
     config: { apiKey?: string; baseUrl?: string; params?: AiModelParams },
@@ -205,11 +283,142 @@ const providerRegistry: Record<ProviderType, ProviderInitializer> = {
         });
     },
     'openai-compatible': (config, modelName) => {
-        if (!config.baseUrl) {
-            throw new AppError("Base URL is required for openai-compatible", "AI_CONFIGURATION_ERROR", "validation", 500);
-        }
+        requireBaseUrl(config, 'openai-compatible');
         return buildOpenAiModel(config, modelName);
     },
+    'azure-openai': (config, modelName) => {
+        const p = config.params ?? {};
+        return new AzureChatOpenAI({
+            // The model ID doubles as the Azure deployment name.
+            model: modelName,
+            azureOpenAIApiDeploymentName: modelName,
+            azureOpenAIApiKey: config.apiKey || undefined,
+            azureOpenAIEndpoint: requireBaseUrl(config, 'azure-openai'),
+            azureOpenAIApiVersion: p.apiVersion ?? AZURE_OPENAI_DEFAULT_API_VERSION,
+            temperature: p.temperature ?? 0,
+            topP: p.topP,
+            frequencyPenalty: p.frequencyPenalty,
+            presencePenalty: p.presencePenalty,
+            maxTokens: p.maxTokens,
+            stopSequences: p.stopSequences,
+            verbosity: p.verbosity,
+            reasoning: p.reasoningEffort ? { effort: p.reasoningEffort } : undefined,
+            maxRetries: p.maxRetries,
+            timeout: p.requestTimeoutMs,
+            modelKwargs: p.extra,
+        });
+    },
+    'groq': (config, modelName) => {
+        const p = config.params ?? {};
+        return new ChatGroq({
+            model: modelName,
+            apiKey: config.apiKey || undefined,
+            baseUrl: config.baseUrl || undefined,
+            temperature: p.temperature ?? 0,
+            topP: p.topP,
+            maxTokens: p.maxTokens,
+            stopSequences: p.stopSequences,
+            maxRetries: p.maxRetries,
+            timeout: p.requestTimeoutMs,
+        });
+    },
+    'mistral': (config, modelName) => {
+        const p = config.params ?? {};
+        return new ChatMistralAI({
+            model: modelName,
+            apiKey: config.apiKey || undefined,
+            serverURL: config.baseUrl || undefined,
+            temperature: p.temperature ?? 0,
+            topP: p.topP,
+            maxTokens: p.maxTokens,
+            maxRetries: p.maxRetries,
+        });
+    },
+    'cohere': (config, modelName) => {
+        const p = config.params ?? {};
+        return new ChatCohere({
+            model: modelName,
+            apiKey: config.apiKey || undefined,
+            temperature: p.temperature ?? 0,
+            maxRetries: p.maxRetries,
+        });
+    },
+    'ollama': (config, modelName) => {
+        const p = config.params ?? {};
+        return new ChatOllama({
+            model: modelName,
+            baseUrl: requireBaseUrl(config, 'ollama'),
+            temperature: p.temperature ?? 0,
+            topP: p.topP,
+            topK: p.topK,
+            numPredict: p.maxTokens,
+            stop: p.stopSequences,
+            maxRetries: p.maxRetries,
+        });
+    },
+    'xai': (config, modelName) => {
+        const p = config.params ?? {};
+        return new ChatXAI({
+            model: modelName,
+            apiKey: config.apiKey || undefined,
+            baseURL: config.baseUrl || undefined,
+            temperature: p.temperature ?? 0,
+            maxTokens: p.maxTokens,
+            stopSequences: p.stopSequences,
+            maxRetries: p.maxRetries,
+        });
+    },
+    'deepseek': (config, modelName) => {
+        const p = config.params ?? {};
+        return new ChatDeepSeek({
+            model: modelName,
+            apiKey: config.apiKey || undefined,
+            configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
+            temperature: p.temperature ?? 0,
+            topP: p.topP,
+            frequencyPenalty: p.frequencyPenalty,
+            presencePenalty: p.presencePenalty,
+            maxTokens: p.maxTokens,
+            stopSequences: p.stopSequences,
+            maxRetries: p.maxRetries,
+            timeout: p.requestTimeoutMs,
+            modelKwargs: p.extra,
+        });
+    },
+    'cerebras': (config, modelName) => {
+        const p = config.params ?? {};
+        return new ChatCerebras({
+            model: modelName,
+            apiKey: config.apiKey || undefined,
+            temperature: p.temperature ?? 0,
+            topP: p.topP,
+            maxCompletionTokens: p.maxTokens,
+            maxRetries: p.maxRetries,
+            timeout: p.requestTimeoutMs,
+        });
+    },
+    'bedrock': (config, modelName) => {
+        const p = config.params ?? {};
+        const credentials = parseBedrockCredentials(config.apiKey);
+        return new ChatBedrockConverse({
+            model: modelName,
+            region: credentials.region,
+            credentials: {
+                accessKeyId: credentials.accessKeyId,
+                secretAccessKey: credentials.secretAccessKey,
+            },
+            temperature: p.temperature ?? 0,
+            topP: p.topP,
+            maxTokens: p.maxTokens,
+            maxRetries: p.maxRetries,
+        });
+    },
+    'fireworks': (config, modelName) =>
+        buildOpenAiModel({ ...config, baseUrl: config.baseUrl || DEFAULT_BASE_URLS['fireworks'] }, modelName),
+    'together': (config, modelName) =>
+        buildOpenAiModel({ ...config, baseUrl: config.baseUrl || DEFAULT_BASE_URLS['together'] }, modelName),
+    'openrouter': (config, modelName) =>
+        buildOpenAiModel({ ...config, baseUrl: config.baseUrl || DEFAULT_BASE_URLS['openrouter'] }, modelName),
 };
 
 /**

@@ -14,7 +14,7 @@ import ConfirmationDialog from '@/components/common/ConfirmationDialog';
 import { toast } from 'sonner';
 import { rbacAiProvidersApi, type AiProvider, type CreateAiProviderInput, type UpdateAiProviderInput } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
-import { PROVIDER_TYPES, formatProviderType, type ProviderType } from '@/constants/aiProviders';
+import { PROVIDER_TYPES, PROVIDER_REQUIREMENTS, PROVIDER_BASE_URL_PLACEHOLDERS, formatProviderType, type ProviderType } from '@/constants/aiProviders';
 import { SkeletonRows } from '@/components/common/Skeletons';
 
 const providerSchema = z.object({
@@ -22,6 +22,9 @@ const providerSchema = z.object({
     providerType: z.enum(PROVIDER_TYPES as unknown as [string, ...string[]]),
     baseUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
     apiKey: z.string().optional(),
+    awsRegion: z.string().optional(),
+    awsAccessKeyId: z.string().optional(),
+    awsSecretAccessKey: z.string().optional(),
 });
 
 type ProviderFormData = z.infer<typeof providerSchema>;
@@ -40,10 +43,13 @@ export default function ProvidersTab() {
 
     const form = useForm<ProviderFormData>({
         resolver: zodResolver(providerSchema),
-        defaultValues: { name: '', providerType: 'openai' as const, baseUrl: '', apiKey: '' },
+        defaultValues: { name: '', providerType: 'openai' as const, baseUrl: '', apiKey: '', awsRegion: '', awsAccessKeyId: '', awsSecretAccessKey: '' },
     });
 
     const isEditing = !!editingItem;
+    const selectedType = form.watch('providerType') as ProviderType;
+    const requirements = PROVIDER_REQUIREMENTS[selectedType] ?? PROVIDER_REQUIREMENTS.openai;
+    const isBedrock = selectedType === 'bedrock';
 
     const fetchProviders = async () => {
         setIsLoading(true);
@@ -68,6 +74,9 @@ export default function ProvidersTab() {
                 providerType: editingItem?.providerType || 'openai' as const,
                 baseUrl: editingItem?.baseUrl || '',
                 apiKey: '',
+                awsRegion: '',
+                awsAccessKeyId: '',
+                awsSecretAccessKey: '',
             });
         }
     }, [isFormOpen, editingItem, form]);
@@ -95,29 +104,60 @@ export default function ProvidersTab() {
     };
 
     const onSubmit = async (values: ProviderFormData) => {
+        const type = values.providerType as ProviderType;
+        const typeRequirements = PROVIDER_REQUIREMENTS[type];
+        const awsFieldsFilled = [values.awsRegion, values.awsAccessKeyId, values.awsSecretAccessKey].filter(Boolean).length;
+
+        if (typeRequirements.requiresBaseUrl && !values.baseUrl) {
+            toast.error('Base URL is required for this provider type');
+            return;
+        }
+        if (type === 'bedrock') {
+            if (!isEditing && awsFieldsFilled < 3) {
+                toast.error('AWS region, access key ID, and secret access key are required');
+                return;
+            }
+            if (isEditing && awsFieldsFilled > 0 && awsFieldsFilled < 3) {
+                toast.error('Provide all three AWS credential fields to rotate credentials');
+                return;
+            }
+        } else if (!isEditing && typeRequirements.requiresApiKey && !values.apiKey) {
+            toast.error('API Key is required for new providers');
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             if (isEditing) {
                 const updateData: UpdateAiProviderInput = {
                     name: values.name,
-                    providerType: values.providerType as ProviderType,
+                    providerType: type,
                     baseUrl: values.baseUrl || null,
                 };
-                if (values.apiKey) updateData.apiKey = values.apiKey;
+                if (type === 'bedrock') {
+                    if (awsFieldsFilled === 3) {
+                        updateData.awsRegion = values.awsRegion;
+                        updateData.awsAccessKeyId = values.awsAccessKeyId;
+                        updateData.awsSecretAccessKey = values.awsSecretAccessKey;
+                    }
+                } else if (values.apiKey) {
+                    updateData.apiKey = values.apiKey;
+                }
                 await rbacAiProvidersApi.update(editingItem.id, updateData);
                 toast.success('Provider updated');
             } else {
-                if (!values.apiKey) {
-                    toast.error('API Key is required for new providers');
-                    setIsSubmitting(false);
-                    return;
-                }
                 const createData: CreateAiProviderInput = {
                     name: values.name,
-                    providerType: values.providerType as ProviderType,
+                    providerType: type,
                     baseUrl: values.baseUrl || null,
-                    apiKey: values.apiKey
                 };
+                if (type === 'bedrock') {
+                    createData.awsRegion = values.awsRegion;
+                    createData.awsAccessKeyId = values.awsAccessKeyId;
+                    createData.awsSecretAccessKey = values.awsSecretAccessKey;
+                } else if (values.apiKey) {
+                    createData.apiKey = values.apiKey;
+                }
                 await rbacAiProvidersApi.create(createData);
                 toast.success('Provider created');
             }
@@ -272,20 +312,53 @@ export default function ProvidersTab() {
                                     <FormMessage />
                                 </FormItem>
                             )} />
-                            <FormField control={form.control} name="baseUrl" render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Base URL <span className="text-paper-faint">(optional)</span></FormLabel>
-                                    <FormControl><Input placeholder="https://api.openai.com/v1" className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )} />
-                            <FormField control={form.control} name="apiKey" render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">API key {isEditing && <span className="text-paper-faint normal-case tracking-normal">(leave empty to keep current)</span>}</FormLabel>
-                                    <FormControl><Input type="password" placeholder="sk-..." className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )} />
+                            {!isBedrock && (
+                                <FormField control={form.control} name="baseUrl" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">Base URL {!requirements.requiresBaseUrl && <span className="text-paper-faint">(optional)</span>}</FormLabel>
+                                        <FormControl><Input placeholder={PROVIDER_BASE_URL_PLACEHOLDERS[selectedType] ?? 'https://api.openai.com/v1'} className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
+                                        {selectedType === 'azure-openai' && (
+                                            <FormDescription className="text-[11px] text-paper-faint">Azure resource endpoint. Model IDs on the Models tab must be Azure deployment names; set the API version via the model's params.</FormDescription>
+                                        )}
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                            )}
+                            {!isBedrock && requirements.requiresApiKey && (
+                                <FormField control={form.control} name="apiKey" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">API key {isEditing && <span className="text-paper-faint normal-case tracking-normal">(leave empty to keep current)</span>}</FormLabel>
+                                        <FormControl><Input type="password" placeholder="sk-..." className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                            )}
+                            {isBedrock && (
+                                <>
+                                    <FormField control={form.control} name="awsRegion" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">AWS region {isEditing && <span className="text-paper-faint normal-case tracking-normal">(leave empty to keep current)</span>}</FormLabel>
+                                            <FormControl><Input placeholder="us-east-1" className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="awsAccessKeyId" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">AWS access key ID</FormLabel>
+                                            <FormControl><Input type="password" placeholder="AKIA..." className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="awsSecretAccessKey" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim">AWS secret access key</FormLabel>
+                                            <FormControl><Input type="password" placeholder="••••••••" className="rounded-xs border-ink-500 bg-ink-200 font-mono text-paper" {...field} /></FormControl>
+                                            <FormDescription className="text-[11px] text-paper-faint">Credentials are stored encrypted. To rotate them later, re-enter all three fields.</FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                </>
+                            )}
                             <DialogFooter className="mt-6">
                                 <Button type="submit" disabled={isSubmitting} className="h-9 gap-2 rounded-xs bg-brand px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-50 hover:bg-brand-soft">
                                     {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isEditing ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}

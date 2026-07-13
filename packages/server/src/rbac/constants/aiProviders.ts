@@ -14,6 +14,18 @@ export const PROVIDER_TYPES = [
   'anthropic',
   'google',
   'openai-compatible',
+  'azure-openai',
+  'groq',
+  'mistral',
+  'cohere',
+  'ollama',
+  'xai',
+  'deepseek',
+  'cerebras',
+  'bedrock',
+  'fireworks',
+  'together',
+  'openrouter',
 ] as const;
 
 export type ProviderType = typeof PROVIDER_TYPES[number];
@@ -31,6 +43,22 @@ export const PROVIDER_REQUIREMENTS: Record<ProviderType, ProviderRequirements> =
   'anthropic': { requiresBaseUrl: false, requiresApiKey: true },
   'google': { requiresBaseUrl: false, requiresApiKey: true },
   'openai-compatible': { requiresBaseUrl: true, requiresApiKey: true },
+  // Base URL is the Azure resource endpoint (https://<resource>.openai.azure.com).
+  'azure-openai': { requiresBaseUrl: true, requiresApiKey: true },
+  'groq': { requiresBaseUrl: false, requiresApiKey: true },
+  'mistral': { requiresBaseUrl: false, requiresApiKey: true },
+  'cohere': { requiresBaseUrl: false, requiresApiKey: true },
+  'ollama': { requiresBaseUrl: true, requiresApiKey: false },
+  'xai': { requiresBaseUrl: false, requiresApiKey: true },
+  'deepseek': { requiresBaseUrl: false, requiresApiKey: true },
+  'cerebras': { requiresBaseUrl: false, requiresApiKey: true },
+  // The "API key" slot holds encrypted JSON credentials
+  // {region, accessKeyId, secretAccessKey} — see aiProviders route.
+  'bedrock': { requiresBaseUrl: false, requiresApiKey: true },
+  // Preset base URLs are applied in aiConfig.ts when none is stored.
+  'fireworks': { requiresBaseUrl: false, requiresApiKey: true },
+  'together': { requiresBaseUrl: false, requiresApiKey: true },
+  'openrouter': { requiresBaseUrl: false, requiresApiKey: true },
 };
 
 /**

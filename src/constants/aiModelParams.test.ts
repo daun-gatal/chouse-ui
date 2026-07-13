@@ -55,8 +55,38 @@ const cases: Case[] = [
   { name: 'google thinking budget above 32768 rejected', providerType: 'google', params: { thinkingBudgetTokens: 64_000 }, expectErrors: true, errorIncludes: '32768' },
   { name: 'openai rejects 5 stop sequences', providerType: 'openai', params: { stopSequences: ['a', 'b', 'c', 'd', 'e'] }, expectErrors: true, errorIncludes: "'stopSequences'" },
   { name: 'extra blocked key stream rejected', providerType: 'openai', params: { extra: { stream: true } }, expectErrors: true, errorIncludes: 'reserved' },
+  { name: 'azure-openai accepts openai keys plus apiVersion', providerType: 'azure-openai', params: { reasoningEffort: 'minimal', apiVersion: '2024-10-21' }, expectErrors: false },
+  { name: 'groq rejects verbosity', providerType: 'groq', params: { verbosity: 'low' }, expectErrors: true, errorIncludes: "'verbosity'" },
+  { name: 'mistral rejects stopSequences', providerType: 'mistral', params: { stopSequences: ['END'] }, expectErrors: true, errorIncludes: "'stopSequences'" },
+  { name: 'cohere rejects topP', providerType: 'cohere', params: { topP: 0.9 }, expectErrors: true, errorIncludes: "'topP'" },
+  { name: 'ollama allows topK', providerType: 'ollama', params: { topK: 20, maxTokens: 256 }, expectErrors: false },
+  { name: 'xai rejects topP', providerType: 'xai', params: { topP: 0.9 }, expectErrors: true, errorIncludes: "'topP'" },
+  { name: 'deepseek rejects verbosity', providerType: 'deepseek', params: { verbosity: 'high' }, expectErrors: true, errorIncludes: "'verbosity'" },
+  { name: 'bedrock rejects extra', providerType: 'bedrock', params: { extra: { a: 1 } }, expectErrors: true, errorIncludes: "'extra'" },
+  { name: 'openrouter mirrors openai keys', providerType: 'openrouter', params: { reasoningEffort: 'minimal', extra: { seed: 2 } }, expectErrors: false },
   { name: 'empty params valid', providerType: 'anthropic', params: {}, expectErrors: false },
 ];
+
+// Guard against the server/frontend mirrors drifting: this hardcoded list must
+// match PROVIDER_TYPES in packages/server/src/rbac/constants/aiProviders.ts.
+const EXPECTED_PROVIDER_TYPES = [
+  'openai',
+  'anthropic',
+  'google',
+  'openai-compatible',
+  'azure-openai',
+  'groq',
+  'mistral',
+  'cohere',
+  'ollama',
+  'xai',
+  'deepseek',
+  'cerebras',
+  'bedrock',
+  'fireworks',
+  'together',
+  'openrouter',
+] as const;
 
 describe('validateAiModelParams (frontend mirror)', () => {
   for (const c of cases) {
@@ -75,6 +105,10 @@ describe('validateAiModelParams (frontend mirror)', () => {
 });
 
 describe('UI metadata consistency', () => {
+  it('matches the expected provider type list (mirror-sync guard)', () => {
+    expect([...PROVIDER_TYPES]).toEqual([...EXPECTED_PROVIDER_TYPES]);
+  });
+
   it('covers every provider type in PROVIDER_PARAM_KEYS and REASONING_EFFORT_OPTIONS', () => {
     for (const providerType of PROVIDER_TYPES) {
       expect(PROVIDER_PARAM_KEYS[providerType].length).toBeGreaterThan(0);

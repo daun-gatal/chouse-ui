@@ -522,12 +522,12 @@ export default function BaseModelsTab() {
                                                     <label className="flex flex-col gap-1">
                                                         <span className={fieldLabelClass}>API version</span>
                                                         <Input
-                                                            placeholder="v1beta"
+                                                            placeholder={providerType === 'azure-openai' ? '2024-10-21' : 'v1beta'}
                                                             value={paramsDraft.apiVersion ?? ''}
                                                             onChange={(e) => setDraftValue('apiVersion', e.target.value)}
                                                             className={`h-9 ${inputClass} font-mono text-[13px]`}
                                                         />
-                                                        <span className="text-[11px] text-paper-faint">Google API version override.</span>
+                                                        <span className="text-[11px] text-paper-faint">{providerType === 'azure-openai' ? 'Azure OpenAI api-version (defaults to 2024-10-21).' : 'Google API version override.'}</span>
                                                     </label>
                                                 )}
 
