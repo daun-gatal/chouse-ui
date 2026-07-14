@@ -28,8 +28,13 @@ const SUBVIEWS: { id: PartsView; title: string; hint: string }[] = [
   { id: "skipindex", title: "Skip indexes", hint: "Data-skipping (secondary)" },
 ];
 
+function isPartsView(value: string | undefined): value is PartsView {
+  return SUBVIEWS.some((view) => view.id === value);
+}
+
 interface PartsPageProps {
   embedded?: boolean;
+  onboardingView?: string;
   refreshKey?: number;
   autoRefresh?: boolean;
   onRefreshChange?: (isRefreshing: boolean) => void;
@@ -72,15 +77,22 @@ function formatDuration(ms: number): string {
 
 export default function PartsPage({
   embedded = false,
+  onboardingView,
   refreshKey = 0,
   autoRefresh = false,
   onRefreshChange,
 }: PartsPageProps) {
-  const [view, setView] = useState<PartsView>("log");
+  const [selectedView, setView] = useState<PartsView>("log");
+  const guidedView = isPartsView(onboardingView) ? onboardingView : undefined;
+  const view = guidedView ?? selectedView;
   const [searchTerm, setSearchTerm] = useState("");
   const [eventType, setEventType] = useState<string>("all");
   const [pageSize, setPageSize] = useState(100);
   const [currentPage, setCurrentPage] = useState(0);
+
+  useEffect(() => {
+    if (guidedView) setView(guidedView);
+  }, [guidedView]);
 
   const { data, isLoading, isFetching, error, refetch } = usePartLog(PART_LOG_FETCH_LIMIT, 6, {
     enabled: view === "log",
@@ -140,16 +152,17 @@ export default function PartsPage({
     <div className="h-full overflow-hidden">
       <div className={cn("flex h-full flex-col gap-4", embedded ? "p-4" : "p-6")}>
         {/* Sub-tabs */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
+        <div className="scrollbar-hide flex min-w-0 shrink-0 items-center gap-2 overflow-x-auto border-b border-ink-500">
           {SUBVIEWS.map((sv) => {
             const activeTab = view === sv.id;
             return (
               <button
                 key={sv.id}
                 type="button"
+                data-onboarding-id={`monitoring-parts-${sv.id}`}
                 onClick={() => setView(sv.id)}
                 className={cn(
-                  "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  "group relative flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                   activeTab ? "text-paper" : "text-paper-muted hover:text-paper"
                 )}
               >

@@ -275,6 +275,7 @@ export default function ConnectionSelector({
   if (isLoading || isConnecting) {
     return (
       <div
+        data-onboarding-id="connection-selector"
         className={cn(
           "flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-2.5 py-1.5",
           isCollapsed && "h-9 w-9 justify-center px-0 py-0"
@@ -296,6 +297,7 @@ export default function ConnectionSelector({
       <Tooltip>
         <TooltipTrigger asChild>
           <div
+            data-onboarding-id="connection-selector"
             className={cn(
               "flex items-center gap-2 rounded-xs border border-brand/30 bg-brand/[0.04] px-2.5 py-1.5",
               isCollapsed && "h-9 w-9 justify-center px-0 py-0"
@@ -329,6 +331,7 @@ export default function ConnectionSelector({
       <Tooltip>
         <TooltipTrigger asChild>
           <button
+            data-onboarding-id="connection-selector"
             type="button"
             onClick={() => !isConnected && connectToClickHouse(conn)}
             className={cn(
@@ -372,6 +375,7 @@ export default function ConnectionSelector({
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button
+          data-onboarding-id="connection-selector"
           variant="ghost"
           className={cn(
             "h-auto justify-between rounded-xs border border-ink-500 bg-ink-100 px-2.5 py-1.5 transition-colors hover:border-ink-700 hover:bg-ink-200",

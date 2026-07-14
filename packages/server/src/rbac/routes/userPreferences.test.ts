@@ -13,6 +13,12 @@ const mockAddUserRecentItem = mock();
 const mockClearUserRecentItems = mock();
 const mockGetUserPreferences = mock();
 const mockUpdateUserPreferences = mock();
+const mockGetUserOnboardingProgress = mock();
+const mockUpdateUserOnboardingProgress = mock();
+const mockGetUserById = mock();
+const mockCompleteBootstrapOnboarding = mock();
+const mockGetUserConnections = mock();
+const mockListConnections = mock();
 
 mock.module("../services/userPreferences", () => ({
     getUserFavorites: mockGetUserFavorites,
@@ -24,7 +30,19 @@ mock.module("../services/userPreferences", () => ({
     addUserRecentItem: mockAddUserRecentItem,
     clearUserRecentItems: mockClearUserRecentItems,
     getUserPreferences: mockGetUserPreferences,
-    updateUserPreferences: mockUpdateUserPreferences
+    updateUserPreferences: mockUpdateUserPreferences,
+    getUserOnboardingProgress: mockGetUserOnboardingProgress,
+    updateUserOnboardingProgress: mockUpdateUserOnboardingProgress,
+}));
+
+mock.module("../services/rbac", () => ({
+    getUserById: mockGetUserById,
+    completeBootstrapOnboarding: mockCompleteBootstrapOnboarding,
+}));
+
+mock.module("../services/connections", () => ({
+    getUserConnections: mockGetUserConnections,
+    listConnections: mockListConnections,
 }));
 
 // Mock JWT Service
@@ -62,6 +80,39 @@ describe("RBAC User Preferences Routes", () => {
         mockClearUserRecentItems.mockClear();
         mockGetUserPreferences.mockClear();
         mockUpdateUserPreferences.mockClear();
+        mockGetUserOnboardingProgress.mockClear();
+        mockUpdateUserOnboardingProgress.mockClear();
+        mockGetUserById.mockClear();
+        mockCompleteBootstrapOnboarding.mockClear();
+        mockGetUserConnections.mockClear();
+        mockListConnections.mockClear();
+
+        mockGetUserById.mockResolvedValue({
+            id: "user-123",
+            bootstrapOnboardingPending: false,
+            requiresPasswordChange: false,
+        });
+        mockGetUserOnboardingProgress.mockResolvedValue({
+            formatRevision: 1,
+            welcomeSeen: false,
+            completedChapterIds: [],
+            dismissedChapterIds: [],
+            lastStepIndex: 0,
+        });
+        mockUpdateUserOnboardingProgress.mockImplementation(async (_userId, patch) => ({
+            formatRevision: 1,
+            welcomeSeen: patch.welcomeSeen ?? false,
+            completedChapterIds: patch.completedChapterIds ?? [],
+            dismissedChapterIds: patch.dismissedChapterIds ?? [],
+            lastChapterId: patch.lastChapterId ?? undefined,
+            lastStepId: patch.lastStepId ?? undefined,
+            lastStepIndex: patch.lastStepIndex ?? 0,
+        }));
+        mockGetUserConnections.mockResolvedValue([{ id: "connection-1" }]);
+        mockListConnections.mockResolvedValue({
+            connections: [{ id: "connection-1" }],
+            total: 1,
+        });
 
         mockTokenPayload = {
             sub: 'user-123',
@@ -171,6 +222,135 @@ describe("RBAC User Preferences Routes", () => {
 
             expect(res.status).toBe(200);
             expect(mockUpdateUserPreferences).toHaveBeenCalled();
+        });
+    });
+
+    describe("GET /user-prefs/preferences/onboarding", () => {
+        it("returns progress and bootstrap requirements for the current user", async () => {
+            mockGetUserById.mockResolvedValue({
+                id: "user-123",
+                bootstrapOnboardingPending: true,
+                requiresPasswordChange: true,
+            });
+
+            const res = await app.request("/user-prefs/preferences/onboarding", {
+                headers: { "Authorization": "Bearer token" },
+            });
+
+            expect(res.status).toBe(200);
+            const body = await res.json();
+            expect(body.bootstrapOnboardingPending).toBe(true);
+            expect(body.requiresPasswordChange).toBe(true);
+            expect(mockGetUserOnboardingProgress).toHaveBeenCalledWith("user-123");
+        });
+    });
+
+    describe("PATCH /user-prefs/preferences/onboarding", () => {
+        it("merges bounded progress for the current user", async () => {
+            const res = await app.request("/user-prefs/preferences/onboarding", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({
+                    welcomeSeen: true,
+                    completedChapterIds: ["shell"],
+                    lastChapterId: "explorer",
+                    lastStepId: "explorer.import",
+                    lastStepIndex: 2,
+                }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(mockUpdateUserOnboardingProgress).toHaveBeenCalledWith("user-123", {
+                welcomeSeen: true,
+                completedChapterIds: ["shell"],
+                lastChapterId: "explorer",
+                lastStepId: "explorer.import",
+                lastStepIndex: 2,
+            });
+        });
+
+        it("requires a connection before completing fresh-install setup", async () => {
+            mockGetUserConnections.mockResolvedValue([]);
+
+            const res = await app.request("/user-prefs/preferences/onboarding", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ bootstrapComplete: true }),
+            });
+
+            expect(res.status).toBe(400);
+            expect(mockCompleteBootstrapOnboarding).not.toHaveBeenCalled();
+        });
+
+        it("completes bootstrap only after readiness checks pass", async () => {
+            const res = await app.request("/user-prefs/preferences/onboarding", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ bootstrapComplete: true }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(mockCompleteBootstrapOnboarding).toHaveBeenCalledWith("user-123");
+        });
+
+        it("uses all active connections for a freshly seeded super administrator", async () => {
+            mockTokenPayload.roles = ["super_admin"];
+            mockGetUserById.mockResolvedValue({
+                id: "user-123",
+                bootstrapOnboardingPending: true,
+                requiresPasswordChange: false,
+            });
+            mockGetUserConnections.mockResolvedValue([]);
+
+            const res = await app.request("/user-prefs/preferences/onboarding", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ bootstrapComplete: true }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(mockListConnections).toHaveBeenCalledWith({ activeOnly: true });
+            expect(mockGetUserConnections).not.toHaveBeenCalled();
+            expect(mockCompleteBootstrapOnboarding).toHaveBeenCalledWith("user-123");
+        });
+
+        it("does not run a no-op progress write after committing bootstrap metadata", async () => {
+            mockUpdateUserOnboardingProgress.mockRejectedValue(new Error("preference write failed"));
+
+            const res = await app.request("/user-prefs/preferences/onboarding", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ bootstrapComplete: true }),
+            });
+
+            expect(res.status).toBe(200);
+            expect(mockGetUserOnboardingProgress).toHaveBeenCalledWith("user-123");
+            expect(mockUpdateUserOnboardingProgress).not.toHaveBeenCalled();
+            expect(mockCompleteBootstrapOnboarding).toHaveBeenCalledWith("user-123");
+        });
+
+        it("does not commit bootstrap metadata when the response progress cannot be read", async () => {
+            mockGetUserOnboardingProgress.mockRejectedValue(new Error("preference read failed"));
+
+            const res = await app.request("/user-prefs/preferences/onboarding", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ bootstrapComplete: true }),
+            });
+
+            expect(res.status).toBe(500);
+            expect(mockCompleteBootstrapOnboarding).not.toHaveBeenCalled();
+        });
+
+        it("rejects unbounded chapter identifiers", async () => {
+            const res = await app.request("/user-prefs/preferences/onboarding", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ completedChapterIds: ["x".repeat(101)] }),
+            });
+
+            expect(res.status).toBe(400);
+            expect(mockUpdateUserOnboardingProgress).not.toHaveBeenCalled();
         });
     });
 });

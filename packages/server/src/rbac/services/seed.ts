@@ -429,6 +429,13 @@ export async function seedSuperAdmin(roleIdMap: Map<string, string>): Promise<vo
       displayName: 'System Administrator',
       isActive: true,
       isSystemUser: true,
+      metadata: {
+        onboardingBootstrap: {
+          status: 'pending',
+          requiresPasswordChange: adminPassword === 'admin123!',
+          createdAt: new Date().toISOString(),
+        },
+      },
       createdAt: new Date(),
       updatedAt: new Date(),
     });

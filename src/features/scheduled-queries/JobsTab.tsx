@@ -100,6 +100,11 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
   const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
   const selectedJob = jobs?.find((job) => job.id === selectedJobId);
 
+  const openNewJob = (): void => {
+    setEditing(undefined);
+    setWizardOpen(true);
+  };
+
   const handleRun = async (job: ScheduledQuery) => {
     try {
       const res = await runMut.mutateAsync(job.id);
@@ -132,7 +137,23 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
   };
 
   if (selectedJob) {
-    return <JobDetail job={selectedJob} jobs={jobs ?? []} onBack={() => onSelectedJobChange(undefined)} />;
+    return (
+      <div className="space-y-4">
+        {canEdit && (
+          <div className="flex justify-end">
+            <Button
+              data-onboarding-id="dataops-scheduled-create"
+              className={SQ_BTN_PRIMARY}
+              onClick={openNewJob}
+            >
+              <Plus className="h-3.5 w-3.5" /> New job
+            </Button>
+          </div>
+        )}
+        <JobDetail job={selectedJob} jobs={jobs ?? []} onBack={() => onSelectedJobChange(undefined)} />
+        {wizardOpen && <JobWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />}
+      </div>
+    );
   }
 
   return (
@@ -176,7 +197,11 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
           </Select>
         )}
         {canEdit && (
-          <Button className={SQ_BTN_PRIMARY} onClick={() => { setEditing(undefined); setWizardOpen(true); }}>
+          <Button
+            data-onboarding-id="dataops-scheduled-create"
+            className={SQ_BTN_PRIMARY}
+            onClick={openNewJob}
+          >
             <Plus className="h-3.5 w-3.5" /> New job
           </Button>
         )}

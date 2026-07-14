@@ -30,6 +30,10 @@ export interface RbacUser {
   isActive: boolean;
   /** True when the user has at least one linked SSO identity (no usable local password). */
   hasSsoIdentity: boolean;
+  /** True only for the system administrator seeded on a fresh installation. */
+  bootstrapOnboardingPending: boolean;
+  /** True while the freshly seeded administrator still uses the built-in password. */
+  requiresPasswordChange: boolean;
   roles: string[];
   rolesMetadata?: Array<{
     name: string;
@@ -311,9 +315,19 @@ export interface UpdateRoleInput {
 // API Client with Auth Header
 // ============================================
 
+interface RbacFetchOptions {
+  method?: string;
+  body?: unknown;
+  headers?: Record<string, string>;
+  responseType?: 'json' | 'blob';
+  signal?: AbortSignal;
+  unwrapData?: boolean;
+}
+
 async function rbacFetch<T>(
   endpoint: string,
-  options: { method?: string; body?: unknown; headers?: Record<string, string>; responseType?: 'json' | 'blob' } = {}
+  options: RbacFetchOptions = {},
+  authRefreshAttempted = false,
 ): Promise<T> {
   const accessToken = getRbacAccessToken();
   const sessionId = getSessionId();
@@ -337,6 +351,7 @@ async function rbacFetch<T>(
   const fetchOptions: RequestInit = {
     method: options.method || 'GET',
     headers,
+    signal: options.signal,
   };
 
   // Handle body - stringify if it's an object
@@ -352,17 +367,18 @@ async function rbacFetch<T>(
     // Try to refresh token on 401
     // We try to refresh even if we didn't send an access token (e.g. it was deleted), 
     // because we might still have a valid refresh token.
-    if (response.status === 401) {
+    if (response.status === 401 && !authRefreshAttempted) {
       const refreshed = await refreshTokens();
       if (refreshed) {
         // Retry with new token
-        return rbacFetch<T>(endpoint, options);
-      } else {
-        // Refresh failed (or no refresh token) - trigger logout
-        clearSession();
-        clearRbacTokens();
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        return rbacFetch<T>(endpoint, options, true);
       }
+    }
+    if (response.status === 401) {
+      // Refresh failed (or the retried token was also rejected) - trigger logout.
+      clearSession();
+      clearRbacTokens();
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
     }
 
     // Try to parse error as JSON even if we expect a blob, as errors are usually JSON
@@ -385,7 +401,7 @@ async function rbacFetch<T>(
   }
 
   const data = await response.json();
-  return data.data;
+  return options.unwrapData === false ? data : data.data;
 }
 
 // refreshTokens imported from client.ts
@@ -1311,6 +1327,74 @@ export interface UserPreferences {
   workspacePreferences?: Record<string, unknown>;
 }
 
+export interface OnboardingProgress {
+  formatRevision: 1;
+  welcomeSeen: boolean;
+  completedChapterIds: string[];
+  dismissedChapterIds: string[];
+  lastChapterId?: string;
+  lastStepId?: string;
+  lastStepIndex: number;
+  completedAt?: string;
+}
+
+export interface OnboardingProgressPatch {
+  welcomeSeen?: boolean;
+  completedChapterIds?: string[];
+  dismissedChapterIds?: string[];
+  lastChapterId?: string | null;
+  lastStepId?: string | null;
+  lastStepIndex?: number;
+  completedAt?: string | null;
+  bootstrapComplete?: boolean;
+}
+
+export interface OnboardingResponse {
+  progress: OnboardingProgress;
+  bootstrapOnboardingPending: boolean;
+  requiresPasswordChange: boolean;
+}
+
+const ONBOARDING_REQUEST_TIMEOUT_MS = 10_000;
+
+async function fetchOnboarding<T>(
+  request: (signal?: AbortSignal) => Promise<T>,
+  externalSignal?: AbortSignal,
+): Promise<T> {
+  const controller = new AbortController();
+  const abortFromCaller = (): void => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromCaller();
+  else externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = globalThis.setTimeout(() => controller.abort(), ONBOARDING_REQUEST_TIMEOUT_MS);
+
+  try {
+    // Some test/embedded realms expose a DOM AbortSignal that their fetch
+    // implementation cannot consume. Production browsers take the true abort
+    // path; the bounded race remains a safe fallback for mixed realms.
+    let signalIsCompatible = true;
+    try {
+      new Request('http://localhost', { signal: controller.signal });
+    } catch {
+      signalIsCompatible = false;
+    }
+    if (controller.signal.aborted) {
+      throw controller.signal.reason ?? new DOMException('Request aborted', 'AbortError');
+    }
+    const aborted = new Promise<never>((_resolve, reject) => {
+      controller.signal.addEventListener('abort', () => {
+        reject(controller.signal.reason ?? new DOMException('Request aborted', 'AbortError'));
+      }, { once: true });
+    });
+    return await Promise.race([
+      request(signalIsCompatible ? controller.signal : undefined),
+      aborted,
+    ]);
+  } finally {
+    globalThis.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromCaller);
+  }
+}
+
 export const rbacUserPreferencesApi = {
   /**
    * Get all favorites for the authenticated user
@@ -1575,6 +1659,28 @@ export const rbacUserPreferencesApi = {
       throw new ApiError(data.error?.message || 'Failed to update preferences', response.status);
     }
     return data.preferences || {};
+  },
+
+  /** Get role-independent progress and fresh-install requirements for this user. */
+  async getOnboarding(signal?: AbortSignal): Promise<OnboardingResponse> {
+    return fetchOnboarding(
+      (requestSignal) => rbacFetch<OnboardingResponse>(
+        '/user-preferences/preferences/onboarding',
+        { method: 'GET', signal: requestSignal, unwrapData: false },
+      ),
+      signal,
+    );
+  },
+
+  /** Merge onboarding progress without replacing other workspace preferences. */
+  async updateOnboarding(patch: OnboardingProgressPatch, signal?: AbortSignal): Promise<OnboardingResponse> {
+    return fetchOnboarding(
+      (requestSignal) => rbacFetch<OnboardingResponse>(
+        '/user-preferences/preferences/onboarding',
+        { method: 'PATCH', body: patch, signal: requestSignal, unwrapData: false },
+      ),
+      signal,
+    );
   },
 };
 

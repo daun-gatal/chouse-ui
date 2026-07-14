@@ -18,6 +18,7 @@ type ErrorsView = "errors" | "crashes";
 
 interface ErrorsPageProps {
   embedded?: boolean;
+  onboardingView?: string;
   refreshKey?: number;
   autoRefresh?: boolean;
   onRefreshChange?: (isRefreshing: boolean) => void;
@@ -38,6 +39,10 @@ const COPY: Record<ErrorsView, { title: string; hint: string; rationale: string 
   },
 };
 
+function isErrorsView(value: string | undefined): value is ErrorsView {
+  return Object.keys(COPY).some((view) => view === value);
+}
+
 // Common POSIX signals seen in crash_log.
 const SIGNALS: Record<number, string> = {
   4: "SIGILL",
@@ -50,14 +55,21 @@ const SIGNALS: Record<number, string> = {
 
 export default function ErrorsPage({
   embedded = false,
+  onboardingView,
   refreshKey = 0,
   autoRefresh = false,
   onRefreshChange,
 }: ErrorsPageProps) {
-  const [view, setView] = useState<ErrorsView>("errors");
+  const [selectedView, setView] = useState<ErrorsView>("errors");
+  const guidedView = isErrorsView(onboardingView) ? onboardingView : undefined;
+  const view = guidedView ?? selectedView;
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 50;
+
+  useEffect(() => {
+    if (guidedView) setView(guidedView);
+  }, [guidedView]);
 
   const errors = useServerErrors({ enabled: view === "errors" });
   const crashes = useCrashLog({ enabled: view === "crashes" });
@@ -109,7 +121,7 @@ export default function ErrorsPage({
     <div className="h-full overflow-hidden">
       <div className={cn("flex h-full flex-col gap-4", embedded ? "p-4" : "p-6")}>
         {/* Sub-tabs */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
+        <div className="scrollbar-hide flex min-w-0 shrink-0 items-center gap-2 overflow-x-auto border-b border-ink-500">
           {(Object.keys(COPY) as ErrorsView[]).map((id) => {
             const tab = COPY[id];
             const activeTab = view === id;
@@ -117,9 +129,10 @@ export default function ErrorsPage({
               <button
                 key={id}
                 type="button"
+                data-onboarding-id={`monitoring-errors-${id}`}
                 onClick={() => setView(id)}
                 className={cn(
-                  "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
+                  "group relative flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
                   activeTab ? "text-paper" : "text-paper-muted hover:text-paper"
                 )}
               >

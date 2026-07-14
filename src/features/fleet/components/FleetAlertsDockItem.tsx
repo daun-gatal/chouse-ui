@@ -64,5 +64,5 @@ export default function FleetAlertsDockItem({
 
   const alerts = useFleetAlerts(connections, snapshotsByConnection, investigateNode);
 
-  return <FleetAlertsBell alerts={alerts} onInvestigate={investigateNode} side={side} />;
+  return <FleetAlertsBell alerts={alerts} onInvestigate={investigateNode} side={side} onboardingId="fleet-alerts" />;
 }

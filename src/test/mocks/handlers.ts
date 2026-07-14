@@ -482,6 +482,35 @@ export const handlers = [
     return HttpResponse.json({ success: true, data: { incident: { id: params.id, status: 'snoozed', snoozedUntil: body.until } } });
   }),
 
+  // Onboarding
+  http.get(`${API_BASE}/rbac/user-preferences/preferences/onboarding`, () => HttpResponse.json({
+    progress: {
+      formatRevision: 1,
+      welcomeSeen: true,
+      completedChapterIds: [],
+      dismissedChapterIds: [],
+      lastStepIndex: 0,
+    },
+    bootstrapOnboardingPending: false,
+    requiresPasswordChange: false,
+  })),
+  http.patch(`${API_BASE}/rbac/user-preferences/preferences/onboarding`, async ({ request }) => {
+    const patch = await request.json() as Record<string, unknown>;
+    return HttpResponse.json({
+      progress: {
+        formatRevision: 1,
+        welcomeSeen: typeof patch.welcomeSeen === 'boolean' ? patch.welcomeSeen : true,
+        completedChapterIds: Array.isArray(patch.completedChapterIds) ? patch.completedChapterIds : [],
+        dismissedChapterIds: Array.isArray(patch.dismissedChapterIds) ? patch.dismissedChapterIds : [],
+        lastChapterId: typeof patch.lastChapterId === 'string' ? patch.lastChapterId : undefined,
+        lastStepId: typeof patch.lastStepId === 'string' ? patch.lastStepId : undefined,
+        lastStepIndex: typeof patch.lastStepIndex === 'number' ? patch.lastStepIndex : 0,
+      },
+      bootstrapOnboardingPending: false,
+      requiresPasswordChange: false,
+    });
+  }),
+
   // Default 404
   http.all('*', ({ request }) => {
     console.warn(`Unhandled: ${request.method} ${request.url}`);

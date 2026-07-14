@@ -59,6 +59,10 @@ export interface UserResponse {
   isActive: boolean;
   /** True when the user has at least one linked SSO identity (no usable local password). */
   hasSsoIdentity: boolean;
+  /** True only for the system administrator seeded on a fresh installation. */
+  bootstrapOnboardingPending: boolean;
+  /** True while the freshly seeded administrator still uses the built-in password. */
+  requiresPasswordChange: boolean;
   roles: string[];
   permissions: string[];
   lastLoginAt: Date | null;

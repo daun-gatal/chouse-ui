@@ -29,8 +29,9 @@ function FeaturePill({ feature, isActive, onClick }: { feature: FeatureKey; isAc
       type="button"
       onClick={onClick}
       aria-current={isActive ? "page" : undefined}
+      data-onboarding-id={`dataops-feature-${feature}`}
       className={cn(
-        "group relative inline-flex h-9 items-center gap-2 px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+        "group relative inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
         isActive ? "text-paper" : "text-paper-muted hover:text-paper",
       )}
@@ -76,7 +77,7 @@ export default function DataOps() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50" data-onboarding-id="dataops-page">
       {/* Header — icon + title + feature tabs share one row (mirrors Monitoring) */}
       <header className="flex-none border-b border-ink-500 px-6 pt-4">
         <div className="flex flex-wrap items-end justify-start gap-6 pb-0">
@@ -94,7 +95,10 @@ export default function DataOps() {
             </div>
           </div>
 
-          <nav aria-label="DataOps features" className="scrollbar-hide -mb-px flex items-center overflow-x-auto">
+          <nav
+            aria-label="DataOps features"
+            className="scrollbar-hide -mb-px flex min-w-0 max-w-full items-center overflow-x-auto"
+          >
             {availableFeatures.map((f) => (
               <FeaturePill key={f} feature={f} isActive={activeFeature === f} onClick={() => navigate(`/dataops/${f}/overview`)} />
             ))}
@@ -105,7 +109,7 @@ export default function DataOps() {
           </div>
         </div>
       </header>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden" data-onboarding-id="dataops-content">
         {activeFeature === "scheduled-queries" && <ScheduledQueries sub={activeSub as SubTab} onSubChange={setSub} />}
         {activeFeature === "data-health" && <DataHealth sub={activeSub as DataHealthSubTab} onSubChange={setSub} />}
       </div>

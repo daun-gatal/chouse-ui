@@ -83,8 +83,10 @@ const LABEL_MONO_BOLDER = "font-mono text-[11px] uppercase tracking-[0.16em] tex
 const EditorialCard: React.FC<{
   children: React.ReactNode;
   className?: string;
-}> = ({ children, className }) => (
+  onboardingId?: string;
+}> = ({ children, className, onboardingId }) => (
   <div
+    data-onboarding-id={onboardingId}
     className={cn(
       "flex flex-col rounded-md border border-ink-500 bg-ink-100",
       className
@@ -425,7 +427,7 @@ export default function HomePage() {
   const greeting = getGreeting();
 
   return (
-    <div className="h-full overflow-y-auto bg-ink-50">
+    <div className="h-full overflow-y-auto bg-ink-50" data-onboarding-id="overview-page">
       <UploadFromFile />
 
       <div className="mx-auto max-w-[1280px] px-6 py-10 md:px-10">
@@ -455,7 +457,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" data-onboarding-id="overview-status">
             {activeConnectionName && (
               <div className="inline-flex items-center gap-3 rounded-xs border border-ink-500 bg-ink-100 px-3 py-2">
                 <span className="inline-flex items-center gap-2">
@@ -529,7 +531,7 @@ export default function HomePage() {
         </section>
 
         {/* ─── Quick actions ─── */}
-        <section className="mt-12 flex flex-col gap-5" aria-label="Quick actions">
+        <section data-onboarding-id="overview-quick-actions" className="mt-12 flex flex-col gap-5" aria-label="Quick actions">
           <SectionHeader eyebrowIndex={2} eyebrow="Start" />
           <div className="grid grid-cols-2 border-l border-t border-ink-500 md:grid-cols-4">
             <ActionCell
@@ -598,7 +600,7 @@ export default function HomePage() {
         <section className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-2" aria-label="Personal workspace">
           {/* Quick Access */}
           <EditorialCard className="h-[440px]">
-            <div className="flex items-center justify-between gap-4 border-b border-ink-500 px-5 py-3">
+            <div data-onboarding-id="overview-quick-access" className="flex items-center justify-between gap-4 border-b border-ink-500 px-5 py-3">
               <div className="flex items-center gap-3">
                 {tablesTab === "favorites" ? (
                   <Star className="h-4 w-4 text-paper-muted" aria-hidden />
@@ -662,7 +664,7 @@ export default function HomePage() {
 
           {/* Saved Queries */}
           <EditorialCard className="h-[440px]">
-            <div className="flex items-center justify-between gap-4 border-b border-ink-500 px-5 py-3">
+            <div data-onboarding-id="overview-saved-queries" className="flex items-center justify-between gap-4 border-b border-ink-500 px-5 py-3">
               <div className="flex items-center gap-3">
                 <FileCode className="h-4 w-4 text-paper-muted" aria-hidden />
                 <span className="text-[13.5px] font-medium text-paper">Saved queries</span>
@@ -723,15 +725,17 @@ export default function HomePage() {
 
         {/* ─── Recent activity ─── */}
         <section className="mt-12 flex flex-col gap-5" aria-label="Recent activity">
-          <SectionHeader
-            eyebrowIndex={3}
-            eyebrow="Recent activity"
-            action={
-              recentQueries.length > 0 ? (
-                <InlineLink onClick={() => navigate("/monitoring/logs")}>View all</InlineLink>
-              ) : undefined
-            }
-          />
+          <div data-onboarding-id="overview-activity">
+            <SectionHeader
+              eyebrowIndex={3}
+              eyebrow="Recent activity"
+              action={
+                recentQueries.length > 0 ? (
+                  <InlineLink onClick={() => navigate("/monitoring/logs")}>View all</InlineLink>
+                ) : undefined
+              }
+            />
+          </div>
           {isRecentLoading && recentQueries.length === 0 ? (
             <div className="grid grid-cols-1 border-l border-t border-ink-500 md:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (

@@ -310,8 +310,23 @@ function formatRowTime(eventDate: string, eventTime: string): string {
   return formatDate(parsed, "MMM d HH:mm:ss");
 }
 
+type LogsView = "queries" | "patterns" | "tables" | "redash" | "histogram";
+
+const LOG_VIEW_TABS: ReadonlyArray<{ id: LogsView; label: string; hint: string }> = [
+  { id: "queries", label: "Queries", hint: "Every execution" },
+  { id: "patterns", label: "Patterns", hint: "Grouped by query shape" },
+  { id: "tables", label: "By table", hint: "Hot tables" },
+  { id: "redash", label: "By Redash", hint: "Grouped by Redash query_id" },
+  { id: "histogram", label: "Histogram", hint: "Metric distribution" },
+];
+
+function isLogsView(value: string | undefined): value is LogsView {
+  return LOG_VIEW_TABS.some((tab) => tab.id === value);
+}
+
 interface LogsPageProps {
   embedded?: boolean;
+  onboardingView?: string;
   refreshKey?: number;
   autoRefresh?: boolean;
   onRefreshChange?: (isRefreshing: boolean) => void;
@@ -319,6 +334,7 @@ interface LogsPageProps {
 
 export default function LogsPage({
   embedded = false,
+  onboardingView,
   refreshKey = 0,
   autoRefresh: externalAutoRefresh = false,
   onRefreshChange,
@@ -392,7 +408,9 @@ export default function LogsPage({
     : timeRangeHours;
 
   // Sub-view inside Logs — flat query list, aggregated patterns, by-table, by-redash, or histogram.
-  const [view, setView] = useState<"queries" | "patterns" | "tables" | "redash" | "histogram">("queries");
+  const [selectedView, setView] = useState<LogsView>("queries");
+  const guidedView = isLogsView(onboardingView) ? onboardingView : undefined;
+  const view = guidedView ?? selectedView;
   const [histogramMetric, setHistogramMetric] = useState<HistogramMetric>("duration");
   const [patternSort, setPatternSort] = useState<QueryPatternSort>("total_duration_ms");
   const [patternPage, setPatternPage] = useState(0);
@@ -400,6 +418,10 @@ export default function LogsPage({
   const [byTablePage, setByTablePage] = useState(0);
   const [redashSort, setRedashSort] = useState<ByRedashSort>("total_duration_ms");
   const [redashPage, setRedashPage] = useState(0);
+
+  useEffect(() => {
+    if (guidedView) setView(guidedView);
+  }, [guidedView]);
 
   const {
     data: patterns = [],
@@ -702,8 +724,8 @@ export default function LogsPage({
       )}
 
       {/* Top strip — filters + time range + counter */}
-      <div className={cn("border-b border-ink-500 bg-ink-100", embedded ? "px-4" : "px-6")}>
-        <div className="flex flex-wrap items-center gap-3 py-2.5">
+      <div className={cn("scrollbar-hide overflow-x-auto border-b border-ink-500 bg-ink-100", embedded ? "px-4" : "px-6")}>
+        <div className="flex min-w-max flex-nowrap items-center gap-3 py-2.5 sm:min-w-0 sm:flex-wrap">
           <div className="flex items-center gap-2">
             <Search className="h-3.5 w-3.5 text-paper-dim" />
             <Input
@@ -958,40 +980,19 @@ export default function LogsPage({
 
       {/* Body — chart on top, table below */}
       <div className={cn("flex flex-1 min-h-0 flex-col gap-4 overflow-hidden", embedded ? "p-4" : "p-6")}>
-        {/* Chart card — query-kind counts + resource metrics in one chart
-            (metric toggle), so the table below stays in view. */}
-        <QueryTimelineChart
-          hoursBack={effectiveHours}
-          bucket={bucket}
-          refreshKey={refreshKey}
-          customRange={customRangeSql}
-        />
-
-        {/* Error banner */}
-        {error && (
-          <div className="flex items-center gap-3 rounded-xs border border-red-900/60 bg-red-950/40 p-3">
-            <AlertTriangle className="h-4 w-4 text-red-300" />
-            <p className="text-[13px] text-red-200">{error.message}</p>
-          </div>
-        )}
-
-        {/* View tabs — queries / patterns / by-table / histogram */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
-          {[
-            { id: "queries", label: "Queries", hint: "Every execution" },
-            { id: "patterns", label: "Patterns", hint: "Grouped by query shape" },
-            { id: "tables", label: "By table", hint: "Hot tables" },
-            { id: "redash", label: "By Redash", hint: "Grouped by Redash query_id" },
-            { id: "histogram", label: "Histogram", hint: "Metric distribution" },
-          ].map((tab) => {
+        {/* Keep the guided sub-tabs above fixed-height charts so every tab is
+            reachable on short and narrow viewports. */}
+        <div className="scrollbar-hide flex min-w-0 shrink-0 items-center gap-2 overflow-x-auto border-b border-ink-500">
+          {LOG_VIEW_TABS.map((tab) => {
             const active = view === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setView(tab.id as typeof view)}
+                data-onboarding-id={`monitoring-logs-${tab.id}`}
+                onClick={() => setView(tab.id)}
                 className={cn(
-                  "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  "group relative flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                   active
                     ? "text-paper"
                     : "text-paper-muted hover:text-paper"
@@ -1011,6 +1012,23 @@ export default function LogsPage({
             );
           })}
         </div>
+
+        {/* Chart card — query-kind counts + resource metrics in one chart
+            (metric toggle), so the table below stays in view. */}
+        <QueryTimelineChart
+          hoursBack={effectiveHours}
+          bucket={bucket}
+          refreshKey={refreshKey}
+          customRange={customRangeSql}
+        />
+
+        {/* Error banner */}
+        {error && (
+          <div className="flex items-center gap-3 rounded-xs border border-red-900/60 bg-red-950/40 p-3">
+            <AlertTriangle className="h-4 w-4 text-red-300" />
+            <p className="text-[13px] text-red-200">{error.message}</p>
+          </div>
+        )}
 
         {/* Histogram view sits on its own — own card, no pagination */}
         {view === "histogram" ? (

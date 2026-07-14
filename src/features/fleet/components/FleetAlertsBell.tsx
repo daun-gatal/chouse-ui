@@ -25,12 +25,14 @@ export default function FleetAlertsBell({
   alerts,
   onInvestigate,
   side = "bottom",
+  onboardingId,
 }: {
   alerts: UseFleetAlerts;
   /** Open the node's live queries (so the operator can see what's eating memory). */
   onInvestigate?: (connectionId: string) => void;
   /** Which side the popover opens — "right" when hosted in the left dock. */
   side?: "top" | "right" | "bottom" | "left";
+  onboardingId?: string;
 }) {
   const {
     config,
@@ -50,6 +52,7 @@ export default function FleetAlertsBell({
     <Popover>
       <PopoverTrigger asChild>
         <button
+          data-onboarding-id={onboardingId}
           type="button"
           aria-label={breaching ? `${count} active alert${count === 1 ? "" : "s"}` : "Alerts"}
           className={cn(

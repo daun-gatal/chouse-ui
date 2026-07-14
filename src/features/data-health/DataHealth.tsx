@@ -54,8 +54,11 @@ export function DataHealth({ sub, onSubChange }: DataHealthProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-end justify-between gap-3 border-b border-ink-500 px-6 pt-2">
-        <nav className="flex items-center gap-1" aria-label="Data Health sections">
+      <div className="flex min-w-0 items-end justify-between gap-3 border-b border-ink-500 px-6 pt-2">
+        <nav
+          className="scrollbar-hide flex min-w-0 items-center gap-1 overflow-x-auto"
+          aria-label="Data Health sections"
+        >
           {DATA_HEALTH_SUB_TABS.map((tab) => {
             const Icon = META[tab].icon;
             const active = tab === sub;
@@ -65,8 +68,9 @@ export function DataHealth({ sub, onSubChange }: DataHealthProps) {
                 type="button"
                 onClick={() => onSubChange(tab)}
                 aria-current={active ? "page" : undefined}
+                data-onboarding-id={`dataops-health-${tab}`}
                 className={cn(
-                  "group relative inline-flex h-9 items-center gap-2 px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  "group relative inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                   active ? "text-paper" : "text-paper-muted hover:text-paper",
                 )}
               >
@@ -77,7 +81,7 @@ export function DataHealth({ sub, onSubChange }: DataHealthProps) {
             );
           })}
         </nav>
-        <DataControls className="pb-2" lastUpdated={lastUpdated} isRefreshing={isRefreshing} onRefresh={() => void refresh()} autoRefresh={autoRefresh} onAutoRefreshChange={setAutoRefresh} />
+        <DataControls className="shrink-0 pb-2" lastUpdated={lastUpdated} isRefreshing={isRefreshing} onRefresh={() => void refresh()} autoRefresh={autoRefresh} onAutoRefreshChange={setAutoRefresh} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {sub === "overview" && <OverviewTab onSelectPromise={selectPromise} />}
@@ -87,4 +91,3 @@ export function DataHealth({ sub, onSubChange }: DataHealthProps) {
     </div>
   );
 }
-

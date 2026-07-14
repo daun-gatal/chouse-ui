@@ -61,6 +61,7 @@ interface SettingCardProps {
   children: React.ReactNode;
   delay?: number;
   className?: string;
+  onboardingId?: string;
 }
 
 const SettingCard: React.FC<SettingCardProps> = ({
@@ -70,26 +71,35 @@ const SettingCard: React.FC<SettingCardProps> = ({
   children,
   delay = 0,
   className,
+  onboardingId,
 }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay }}
-    className={cn("h-full", className)}
-  >
-    <div className="flex h-full flex-col overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
-      <div className="flex flex-none items-center gap-3 border-b border-ink-500 px-4 py-3">
-        <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
-          <Icon className="h-4 w-4" aria-hidden />
-        </span>
-        <div className="flex flex-col gap-0.5">
-          <h3 className="text-[13px] font-semibold tracking-tight text-paper">{title}</h3>
-          {description && <p className={MONO_FAINT}>{description}</p>}
+  <div className={cn("relative h-full", className)}>
+    {onboardingId && (
+      <span
+        data-onboarding-id={onboardingId}
+        className="pointer-events-none absolute inset-x-0 top-0 h-[62px]"
+      />
+    )}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: Math.min(delay, 0.1), duration: 0.18 }}
+      className="h-full"
+    >
+      <div className="flex h-full flex-col overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
+        <div className="flex flex-none items-center gap-3 border-b border-ink-500 px-4 py-3">
+          <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
+            <Icon className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-[13px] font-semibold tracking-tight text-paper">{title}</h3>
+            {description && <p className={MONO_FAINT}>{description}</p>}
+          </div>
         </div>
+        <div className="flex-1 overflow-hidden p-4">{children}</div>
       </div>
-      <div className="flex-1 overflow-hidden p-4">{children}</div>
-    </div>
-  </motion.div>
+    </motion.div>
+  </div>
 );
 
 interface InfoRowProps {
@@ -205,6 +215,7 @@ const AppearanceCard: React.FC = () => {
       icon={Palette}
       delay={0.25}
       className="md:col-span-3"
+      onboardingId="preferences-appearance"
     >
       <div className="flex flex-col gap-4">
         {/* Theme selector */}
@@ -213,7 +224,7 @@ const AppearanceCard: React.FC = () => {
             <p className={MONO_LABEL}>Theme</p>
             <p className={cn(MONO_FAINT, "leading-relaxed")}>How the interface looks for you</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:items-center">
             {THEME_OPTIONS.map((opt) => {
               const active = theme === opt.id;
               const Icon = opt.icon;
@@ -225,7 +236,7 @@ const AppearanceCard: React.FC = () => {
                   aria-pressed={active}
                   title={opt.hint}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-xs border px-3 py-1.5 font-mono text-[12px] transition-colors",
+                    "flex items-center justify-center gap-1.5 rounded-xs border px-3 py-1.5 font-mono text-[12px] transition-colors",
                     active
                       ? "border-brand bg-brand/[0.08] text-brand"
                       : "border-ink-500 bg-ink-200 text-paper-muted hover:border-ink-700 hover:text-paper"
@@ -330,6 +341,7 @@ const IdentityCard: React.FC = () => {
       icon={Fingerprint}
       delay={0.1}
       className="md:col-span-1"
+      onboardingId="preferences-identity"
     >
       <div className="flex h-full flex-col gap-2">
         <InfoRow label="Username" icon={User} value={user?.username || "N/A"} />
@@ -392,6 +404,7 @@ const ConnectionDetailsCard: React.FC<{ url: string | null; version: string | nu
       icon={Database}
       delay={0.2}
       className="md:col-span-2"
+      onboardingId="preferences-connection"
     >
       <div className="flex h-full flex-col gap-2">
         <InfoRow
@@ -481,6 +494,7 @@ const DataAccessCard: React.FC<{
       icon={Shield}
       delay={0.3}
       className="md:col-span-2 h-[450px]"
+      onboardingId="preferences-data-access"
     >
       <div className="flex h-full flex-col">
         <div className="min-h-0 flex-1">
@@ -636,6 +650,7 @@ const EffectivePermissionsCard: React.FC<{ permissions: string[] }> = ({ permiss
       icon={Fingerprint}
       delay={0.4}
       className="md:col-span-1 h-[450px]"
+      onboardingId="preferences-functional-access"
     >
       <div className="flex h-full flex-col">
         <div className="custom-scrollbar flex-1 space-y-2 overflow-y-auto pr-1">
@@ -724,7 +739,7 @@ export default function Preferences() {
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden">
+    <div className="relative flex h-full w-full flex-col overflow-hidden" data-onboarding-id="preferences-page">
       <ConfirmationDialog
         isOpen={showLogoutConfirm}
         onClose={() => setShowLogoutConfirm(false)}
@@ -738,28 +753,32 @@ export default function Preferences() {
 
       {/* Header */}
       <div className="flex-none border-b border-ink-500 bg-ink-50">
-        <div className="px-6 pb-4 pt-6">
+        <div
+          data-onboarding-id="preferences-header"
+          className="px-4 pb-4 pt-6 sm:px-6"
+        >
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
-            className="flex items-center justify-between gap-6"
+            className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
                 <UserCog className="h-4 w-4" aria-hidden />
               </span>
-              <div className="flex flex-col gap-0.5">
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <h1 className="text-[18px] font-semibold tracking-tight text-paper">Preferences</h1>
                 <p className={MONO_FAINT}>Manage your identity and workspace environment</p>
               </div>
             </div>
 
             <Button
+              data-onboarding-id="preferences-logout"
               variant="outline"
               size="sm"
               onClick={() => setShowLogoutConfirm(true)}
-              className="h-9 gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:border-red-900/60 hover:bg-red-950/40 hover:text-red-300"
+              className="h-9 w-full justify-center gap-2 rounded-xs border-ink-500 bg-ink-100 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:border-red-900/60 hover:bg-red-950/40 hover:text-red-300 sm:w-auto"
             >
               <LogOut className="h-3.5 w-3.5" />
               Log out

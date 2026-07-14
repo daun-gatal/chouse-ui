@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 type FleetSort = "status" | "memory" | "name";
 type StatusFilter = "all" | "healthy" | "degraded" | "down";
 type FleetView = "cards" | "rows";
+type FleetSectionTarget = "fleet-inventory" | "fleet-trends" | "fleet-exceptions";
 
 const INTERVAL_OPTIONS = [
   { label: "15s", value: 15_000 },
@@ -146,11 +147,11 @@ export default function FleetPage() {
   }, [connections, snapshotsByConnection, pollIntervalSeconds, sortBy, statusFilter, search]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50" data-onboarding-id="fleet-page">
       {/* Header */}
       <header className="flex-none border-b border-ink-500 px-6 pb-4 pt-4">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" data-onboarding-id="fleet-controls">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
               <Globe2 className="h-3.5 w-3.5" aria-hidden />
             </span>
@@ -252,46 +253,98 @@ export default function FleetPage() {
               </div>
             )}
 
-            {/* Fleet inventory — schema census (databases / tables / views /
-                rows) summed across every node, from the snapshot cache. */}
-            <div className="mt-6 mb-3 flex items-center gap-3">
-              <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-                <span className="h-px w-6 bg-ink-700" aria-hidden />
-                Fleet inventory
-              </span>
-            </div>
+          </>
+        )}
+
+        {/* The fixed-height anchors stay mounted across empty, error, and data
+            states. They are exposed only after the initial connection request
+            settles, so a guide cannot lock onto geometry that is still moving. */}
+        <div className="mt-6 mb-3 flex items-center gap-3">
+          <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+            <span className="h-px w-6 bg-ink-700" aria-hidden />
+            Fleet inventory
+          </span>
+        </div>
+        <div className="relative">
+          <FleetSectionOnboardingAnchor
+            enabled={!connectionsQuery.isLoading}
+            target="fleet-inventory"
+          />
+          {connectionsQuery.isLoading || connectionsQuery.isError || connections.length === 0 ? (
+            <FleetSectionFallback
+              label="Fleet inventory"
+              message={connectionsQuery.isLoading
+                ? "Loading fleet data…"
+                : connectionsQuery.isError
+                  ? "Unavailable while connection data cannot be loaded."
+                  : "Add a connection to collect fleet inventory."}
+              loading={connectionsQuery.isLoading}
+            />
+          ) : (
             <FleetInventoryStrip
               snapshots={snapshotsQuery.data?.connections ?? []}
               nodeCount={connections.length}
               isLoading={snapshotsQuery.isLoading}
             />
+          )}
+        </div>
 
-            {/* History window control — drives the panels below (not the live
-                cards). Widen to 24h to investigate a past incident. */}
-            <div className="mt-6 mb-3 flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
-                <span className="h-px w-6 bg-ink-700" aria-hidden />
-                History window
-              </span>
-              <HistoryRangePicker value={historyHours} onChange={setHistoryHours} />
-            </div>
+        <div className="mt-6 mb-3 flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+            <span className="h-px w-6 bg-ink-700" aria-hidden />
+            History window
+          </span>
+          <HistoryRangePicker value={historyHours} onChange={setHistoryHours} />
+        </div>
 
-            {/* Fleet-wide panels — trend + consolidated exceptions feed over the
-                selected window. Trend takes the wider column on desktop. */}
-            <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+          <div className="relative">
+            <FleetSectionOnboardingAnchor
+              enabled={!connectionsQuery.isLoading}
+              target="fleet-trends"
+            />
+            {connectionsQuery.isLoading || connectionsQuery.isError || connections.length === 0 ? (
+              <FleetSectionFallback
+                label="Fleet trends"
+                message={connectionsQuery.isLoading
+                  ? "Loading fleet data…"
+                  : connectionsQuery.isError
+                    ? "Unavailable while connection data cannot be loaded."
+                    : "Add a connection to collect fleet trends."}
+                loading={connectionsQuery.isLoading}
+              />
+            ) : (
               <FleetTrendPanel
                 connections={connections}
                 hoursBack={historyHours}
                 rangeLabel={rangeLabel}
               />
+            )}
+          </div>
+          <div className="relative">
+            <FleetSectionOnboardingAnchor
+              enabled={!connectionsQuery.isLoading}
+              target="fleet-exceptions"
+            />
+            {connectionsQuery.isLoading || connectionsQuery.isError || connections.length === 0 ? (
+              <FleetSectionFallback
+                label="Recent exceptions"
+                message={connectionsQuery.isLoading
+                  ? "Loading fleet data…"
+                  : connectionsQuery.isError
+                    ? "Unavailable while connection data cannot be loaded."
+                    : "Add a connection to collect fleet exceptions."}
+                loading={connectionsQuery.isLoading}
+              />
+            ) : (
               <FleetExceptionsFeed
                 connections={connections}
                 hoursBack={historyHours}
                 rangeLabel={rangeLabel}
               />
-            </div>
-          </>
-        )}
+            )}
+          </div>
+        </div>
       </div>
 
       <InfoDialog
@@ -666,16 +719,14 @@ function IntervalPicker({
   );
 }
 
-function FleetLoadingSkeleton() {
+function FleetLoadingSkeleton(): React.JSX.Element {
   return (
-    <div
-      className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))]"
-      role="status"
-      aria-label="Loading fleet connections"
-    >
-      {Array.from({ length: 3 }).map((_, i) => (
-        <SkeletonCard key={i} />
-      ))}
+    <div role="status" aria-label="Loading fleet connections">
+      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))]">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <SkeletonCard key={i} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -686,7 +737,7 @@ function FleetLoadingSkeleton() {
  * primes the user for what's loading, and the eye doesn't have to re-parse
  * the layout once real data arrives.
  */
-function SkeletonCard() {
+function SkeletonCard(): React.JSX.Element {
   return (
     <div
       className="overflow-hidden rounded-md border border-ink-500 bg-ink-100 motion-safe:animate-pulse"
@@ -717,7 +768,44 @@ function SkeletonCard() {
   );
 }
 
-function FleetEmptyState() {
+function FleetSectionFallback({
+  label,
+  message,
+  loading = false,
+}: {
+  label: string;
+  message: string;
+  loading?: boolean;
+}): React.JSX.Element {
+  const fallbackClass = cn(
+    "flex min-h-20 flex-col justify-center rounded-md border border-ink-500 bg-ink-100 px-4 py-3",
+    loading && "motion-safe:animate-pulse",
+  );
+
+  return (
+    <section aria-label={label} className={fallbackClass}>
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">{label}</span>
+      <span className="mt-2 text-[12px] text-paper-muted">{message}</span>
+    </section>
+  );
+}
+
+function FleetSectionOnboardingAnchor({
+  enabled,
+  target,
+}: {
+  enabled: boolean;
+  target: FleetSectionTarget;
+}): React.JSX.Element {
+  return (
+    <span
+      className="pointer-events-none absolute left-0 top-0 h-16 w-full max-w-[16rem]"
+      data-onboarding-id={enabled ? target : undefined}
+    />
+  );
+}
+
+function FleetEmptyState(): React.JSX.Element {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
       <span className="grid h-12 w-12 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
@@ -772,14 +860,16 @@ function FleetStaleBanner({ pollIntervalSeconds }: { pollIntervalSeconds: number
   );
 }
 
-function FleetErrorState({ message }: { message: string }) {
+function FleetErrorState({ message }: { message: string }): React.JSX.Element {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-      <span className="grid h-12 w-12 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
-        <RefreshCw className="h-5 w-5" aria-hidden />
-      </span>
-      <h2 className="text-[15px] font-semibold text-paper">Could not load connections</h2>
-      <p className="max-w-md text-[12px] text-paper-muted">{message}</p>
+    <div>
+      <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+        <span className="grid h-12 w-12 place-items-center rounded-xs border border-red-900/60 bg-red-950/40 text-red-300">
+          <RefreshCw className="h-5 w-5" aria-hidden />
+        </span>
+        <h2 className="text-[15px] font-semibold text-paper">Could not load connections</h2>
+        <p className="max-w-md text-[12px] text-paper-muted">{message}</p>
+      </div>
     </div>
   );
 }
