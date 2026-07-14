@@ -1,4 +1,5 @@
 export { OnboardingProvider } from "./OnboardingProvider";
+export { useOnboardingGuideActive } from "./store";
 export {
   AUTHENTICATED_ROUTE_INVENTORY,
   NON_GUIDED_ROUTE_INVENTORY,

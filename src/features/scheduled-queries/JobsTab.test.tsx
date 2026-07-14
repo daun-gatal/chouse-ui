@@ -1,7 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { JobsTab } from "./JobsTab";
+
+const guideActiveMock = vi.fn<() => boolean>(() => false);
+
+vi.mock("@/features/onboarding", () => ({
+  useOnboardingGuideActive: () => guideActiveMock(),
+}));
 
 vi.mock("@/stores", () => ({
   RBAC_PERMISSIONS: {
@@ -39,11 +45,31 @@ vi.mock("@/features/scheduled-queries/JobWizard", () => ({
 }));
 
 describe("JobsTab onboarding targets", () => {
-  it("keeps the create target available while a job detail is selected", () => {
+  beforeEach(() => {
+    guideActiveMock.mockReturnValue(false);
+  });
+
+  it("keeps the create target available while a job detail is selected during a guide", () => {
+    guideActiveMock.mockReturnValue(true);
     render(<JobsTab selectedJobId="job-1" onSelectedJobChange={vi.fn()} />);
 
     const target = document.querySelector('[data-onboarding-id="dataops-scheduled-create"]');
     expect(target).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New job" }));
+    expect(screen.getByText("New job wizard")).toBeTruthy();
+  });
+
+  it("hides the detail-view create button when no guide is running", () => {
+    render(<JobsTab selectedJobId="job-1" onSelectedJobChange={vi.fn()} />);
+
+    expect(screen.getByText("Selected job detail")).toBeTruthy();
+    expect(document.querySelector('[data-onboarding-id="dataops-scheduled-create"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "New job" })).toBeNull();
+  });
+
+  it("still offers the create button on the list view without a guide", () => {
+    render(<JobsTab onSelectedJobChange={vi.fn()} />);
+
     fireEvent.click(screen.getByRole("button", { name: "New job" }));
     expect(screen.getByText("New job wizard")).toBeTruthy();
   });
