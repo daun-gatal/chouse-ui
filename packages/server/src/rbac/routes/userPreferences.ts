@@ -19,7 +19,11 @@ import {
   clearUserRecentItems,
   getUserPreferences,
   updateUserPreferences,
+  getUserOnboardingProgress,
+  updateUserOnboardingProgress,
 } from '../services/userPreferences';
+import { getUserById, completeBootstrapOnboarding } from '../services/rbac';
+import { getUserConnections, listConnections } from '../services/connections';
 import { rbacAuthMiddleware, getRbacUser } from '../middleware/rbacAuth';
 import { AppError } from '../../types';
 
@@ -195,6 +199,88 @@ userPreferencesRoutes.put(
     const updated = await updateUserPreferences(user.sub, preferences);
     return c.json({ preferences: updated });
   }
+);
+
+const OnboardingPatchSchema = z.object({
+  welcomeSeen: z.boolean().optional(),
+  completedChapterIds: z.array(z.string().min(1).max(100)).max(128).optional(),
+  dismissedChapterIds: z.array(z.string().min(1).max(100)).max(128).optional(),
+  lastChapterId: z.string().min(1).max(100).nullable().optional(),
+  lastStepId: z.string().min(1).max(100).nullable().optional(),
+  lastStepIndex: z.number().int().min(0).max(1000).optional(),
+  completedAt: z.string().datetime().nullable().optional(),
+  bootstrapComplete: z.boolean().optional(),
+});
+
+/** GET /preferences/onboarding — resumable progress and fresh-install context. */
+userPreferencesRoutes.get('/preferences/onboarding', async (c) => {
+  const user = getRbacUser(c);
+  const [progress, fullUser] = await Promise.all([
+    getUserOnboardingProgress(user.sub),
+    getUserById(user.sub),
+  ]);
+  if (!fullUser) throw AppError.notFound('User not found');
+
+  return c.json({
+    progress,
+    bootstrapOnboardingPending: fullUser.bootstrapOnboardingPending,
+    requiresPasswordChange: fullUser.requiresPasswordChange,
+  });
+});
+
+/** PATCH /preferences/onboarding — merge only the onboarding preference key. */
+userPreferencesRoutes.patch(
+  '/preferences/onboarding',
+  zValidator('json', OnboardingPatchSchema),
+  async (c) => {
+    const user = getRbacUser(c);
+    const { bootstrapComplete, ...progressPatch } = c.req.valid('json');
+    const hasProgressPatch = Object.keys(progressPatch).length > 0;
+
+    if (bootstrapComplete) {
+      const [connections, fullUser] = await Promise.all([
+        user.roles.includes('super_admin')
+          ? listConnections({ activeOnly: true }).then((result) => result.connections)
+          : getUserConnections(user.sub),
+        getUserById(user.sub),
+      ]);
+      if (!fullUser) throw AppError.notFound('User not found');
+      if (connections.length === 0) {
+        throw AppError.badRequest('Add a ClickHouse connection before completing setup');
+      }
+      if (fullUser.requiresPasswordChange) {
+        throw AppError.badRequest('Change the bootstrap administrator password before completing setup');
+      }
+
+      const progress = hasProgressPatch
+        ? await updateUserOnboardingProgress(user.sub, progressPatch)
+        : await getUserOnboardingProgress(user.sub);
+
+      // Commit bootstrap metadata last so a successful commit is never followed by
+      // another fallible database operation that could turn the response into an error.
+      await completeBootstrapOnboarding(user.sub);
+
+      return c.json({
+        progress,
+        bootstrapOnboardingPending: false,
+        requiresPasswordChange: false,
+      });
+    }
+
+    const [progress, fullUser] = await Promise.all([
+      hasProgressPatch
+        ? updateUserOnboardingProgress(user.sub, progressPatch)
+        : getUserOnboardingProgress(user.sub),
+      getUserById(user.sub),
+    ]);
+    if (!fullUser) throw AppError.notFound('User not found');
+
+    return c.json({
+      progress,
+      bootstrapOnboardingPending: fullUser.bootstrapOnboardingPending,
+      requiresPasswordChange: fullUser.requiresPasswordChange,
+    });
+  },
 );
 
 export default userPreferencesRoutes;

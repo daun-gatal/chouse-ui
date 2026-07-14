@@ -257,7 +257,7 @@ function WorkspaceTabs() {
         className="flex h-full flex-col"
       >
         {/* Tab bar */}
-        <div className="flex flex-shrink-0 items-center border-b border-ink-500 bg-ink-100">
+        <div data-onboarding-id="workspace-tabs" className="flex flex-shrink-0 items-center border-b border-ink-500 bg-ink-100">
           <Button
             variant="ghost"
             size="sm"

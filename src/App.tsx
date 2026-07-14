@@ -36,6 +36,7 @@ import { useAuthStore } from "@/stores/auth";
 import { toast } from "sonner";
 import { log } from "@/lib/log";
 import { useAppPreferences } from "@/hooks/useAppPreferences";
+import { OnboardingProvider } from "@/features/onboarding";
 
 // Storage key for dock mode (to sync with FloatingDock).
 const DOCK_MODE_KEY = "chouseui-dock-mode";
@@ -67,6 +68,12 @@ const MainLayout = () => {
     // Cmd/Ctrl+K — toggle the global command palette.
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        // Contextual guidance owns focus while it is visible. Opening another
+        // portaled surface underneath the guide would make the app appear frozen.
+        if (document.querySelector("[data-onboarding-overlay], [data-onboarding-hub]")) {
+          e.preventDefault();
+          return;
+        }
         // Skip when a modifier-K combo means something else (e.g. inside a
         // contenteditable rich editor) — but Monaco doesn't use ⌘K by default,
         // so this is safe across the app.
@@ -86,12 +93,12 @@ const MainLayout = () => {
   }, []);
 
   return (
-    <div className="relative flex h-screen w-full overflow-hidden bg-ink-50">
+    <div className="relative flex h-screen w-full overflow-hidden bg-ink-50" data-onboarding-id="app-shell">
       {/* Spacer for sidebar mode (hidden during fullscreen) */}
       {isSidebarMode && !isFullscreen && <div className="w-14 flex-shrink-0" />}
 
       {/* Main Content - Adjusts for sidebar mode */}
-      <main className="h-full flex-1 overflow-auto z-10 relative transition-all duration-300">
+      <main className="relative z-10 h-full flex-1 overflow-x-hidden overflow-y-auto transition-all duration-300">
         <Outlet />
       </main>
 
@@ -103,6 +110,9 @@ const MainLayout = () => {
 
       {/* Global Cmd/Ctrl+K command palette */}
       <CommandPalette open={isPaletteOpen} onOpenChange={setIsPaletteOpen} />
+
+      {/* Unified first-install and contextual product guidance. */}
+      <OnboardingProvider />
     </div>
   );
 };

@@ -39,6 +39,10 @@ import type {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = any;
 
+// Bootstrap state shares a JSON column with other user metadata. Compare-and-swap
+// retries prevent either workflow from overwriting fields saved by another request.
+const BOOTSTRAP_METADATA_UPDATE_ATTEMPTS = 5;
+
 // ============================================
 // User Management
 // ============================================
@@ -222,14 +226,96 @@ export async function updateUserPassword(
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
   const passwordHash = await hashPassword(newPassword);
+  const now = new Date();
 
-  await db.update(schema.users)
-    .set({
-      passwordHash,
-      passwordChangedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.users.id, id));
+  for (let attempt = 0; attempt < BOOTSTRAP_METADATA_UPDATE_ATTEMPTS; attempt += 1) {
+    const [existing] = await db.select({ metadata: schema.users.metadata })
+      .from(schema.users)
+      .where(eq(schema.users.id, id))
+      .limit(1);
+    if (!existing) return;
+
+    const bootstrap = readBootstrapMetadata(existing.metadata);
+    if (!bootstrap.pending || !isRecord(existing.metadata)) {
+      await db.update(schema.users)
+        .set({
+          passwordHash,
+          passwordChangedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.users.id, id));
+      return;
+    }
+
+    const metadata = {
+      ...existing.metadata,
+      onboardingBootstrap: {
+        ...bootstrap.raw,
+        status: 'pending',
+        requiresPasswordChange: false,
+      },
+    };
+    const updated = await db.update(schema.users)
+      .set({
+        passwordHash,
+        passwordChangedAt: now,
+        metadata,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(schema.users.id, id),
+        eq(schema.users.metadata, existing.metadata),
+      ))
+      .returning({ id: schema.users.id });
+
+    if (updated.length > 0) return;
+  }
+
+  throw AppError.internal('Could not update bootstrap metadata after concurrent changes');
+}
+
+/** Mark the fresh-install checklist complete for the seeded system administrator. */
+export async function completeBootstrapOnboarding(id: string): Promise<void> {
+  const db = getDatabase() as AnyDb;
+  const schema = getSchema();
+  const completedAt = new Date().toISOString();
+
+  for (let attempt = 0; attempt < BOOTSTRAP_METADATA_UPDATE_ATTEMPTS; attempt += 1) {
+    const [existing] = await db.select({ metadata: schema.users.metadata })
+      .from(schema.users)
+      .where(eq(schema.users.id, id))
+      .limit(1);
+    if (!existing) return;
+
+    const bootstrap = readBootstrapMetadata(existing.metadata);
+    if (!bootstrap.pending) return;
+    if (bootstrap.requiresPasswordChange) {
+      throw AppError.badRequest('Change the bootstrap administrator password before completing setup');
+    }
+    if (!isRecord(existing.metadata)) return;
+
+    const metadata = {
+      ...existing.metadata,
+      onboardingBootstrap: {
+        ...bootstrap.raw,
+        status: 'complete',
+        requiresPasswordChange: false,
+        completedAt,
+      },
+    };
+
+    const updated = await db.update(schema.users)
+      .set({ metadata, updatedAt: new Date() })
+      .where(and(
+        eq(schema.users.id, id),
+        eq(schema.users.metadata, existing.metadata),
+      ))
+      .returning({ id: schema.users.id });
+
+    if (updated.length > 0) return;
+  }
+
+  throw AppError.internal('Could not complete bootstrap setup after concurrent changes');
 }
 
 /**
@@ -1222,6 +1308,8 @@ async function expandUserResponse(user: User): Promise<UserResponse> {
     userHasSsoIdentity(user.id),
   ]);
 
+  const bootstrap = readBootstrapMetadata(user.metadata);
+
   return {
     id: user.id,
     email: user.email,
@@ -1230,10 +1318,35 @@ async function expandUserResponse(user: User): Promise<UserResponse> {
     avatarUrl: user.avatarUrl,
     isActive: user.isActive,
     hasSsoIdentity,
+    bootstrapOnboardingPending: bootstrap.pending,
+    requiresPasswordChange: bootstrap.requiresPasswordChange,
     roles,
     permissions,
     lastLoginAt: user.lastLoginAt,
     createdAt: user.createdAt,
+  };
+}
+
+interface BootstrapMetadata {
+  pending: boolean;
+  requiresPasswordChange: boolean;
+  raw: Record<string, unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readBootstrapMetadata(metadata: unknown): BootstrapMetadata {
+  if (!isRecord(metadata) || !isRecord(metadata.onboardingBootstrap)) {
+    return { pending: false, requiresPasswordChange: false, raw: {} };
+  }
+
+  const raw = metadata.onboardingBootstrap;
+  return {
+    pending: raw.status === 'pending',
+    requiresPasswordChange: raw.status === 'pending' && raw.requiresPasswordChange === true,
+    raw,
   };
 }
 

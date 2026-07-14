@@ -46,6 +46,7 @@ const ratioOf = (r: SchemaLintRow) =>
 
 interface SchemaDoctorPageProps {
   embedded?: boolean;
+  onboardingView?: string;
   refreshKey?: number;
   onRefreshChange?: (isRefreshing: boolean) => void;
 }
@@ -120,17 +121,28 @@ const COPY: Record<LintView, { title: string; hint: string; rationale: string }>
   },
 };
 
+function isLintView(value: string | undefined): value is LintView {
+  return Object.keys(COPY).some((view) => view === value);
+}
+
 export default function SchemaDoctorPage({
   embedded = false,
+  onboardingView,
   refreshKey = 0,
   onRefreshChange,
 }: SchemaDoctorPageProps) {
-  const [view, setView] = useState<LintView>("nullable");
+  const [selectedView, setView] = useState<LintView>("nullable");
+  const guidedView = isLintView(onboardingView) ? onboardingView : undefined;
+  const view = guidedView ?? selectedView;
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   // Default order matches the SQL (biggest on-disk first).
   const [sort, setSort] = useState<SortState>({ key: "compressed_bytes", dir: "desc" });
   const pageSize = 100;
+
+  useEffect(() => {
+    if (guidedView) setView(guidedView);
+  }, [guidedView]);
 
   const toggleSort = (key: SortKey) =>
     setSort((cur) =>
@@ -215,7 +227,7 @@ export default function SchemaDoctorPage({
     <div className="h-full overflow-hidden">
       <div className={cn("flex h-full flex-col gap-4", embedded ? "p-4" : "p-6")}>
         {/* Tab strip — nullable vs oversized */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-ink-500">
+        <div className="scrollbar-hide flex min-w-0 shrink-0 items-center gap-2 overflow-x-auto border-b border-ink-500">
           {(Object.keys(COPY) as LintView[]).map((id) => {
             const tab = COPY[id];
             const activeTab = view === id;
@@ -223,9 +235,10 @@ export default function SchemaDoctorPage({
               <button
                 key={id}
                 type="button"
+                data-onboarding-id={`monitoring-schema-${id}`}
                 onClick={() => setView(id)}
                 className={cn(
-                  "group relative flex items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  "group relative flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                   activeTab ? "text-paper" : "text-paper-muted hover:text-paper"
                 )}
               >

@@ -2,8 +2,8 @@
  * Tests for RBAC API — ssoApi
  */
 
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { ssoApi, authConfigApi, rbacAiBaseModelsApi, rbacDataAccessPoliciesApi, rbacUsersApi, rbacSsoAdminApi } from './rbac';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { ssoApi, authConfigApi, rbacAiBaseModelsApi, rbacDataAccessPoliciesApi, rbacUsersApi, rbacSsoAdminApi, rbacUserPreferencesApi } from './rbac';
 import { RBAC_ACCESS_TOKEN_KEY, RBAC_REFRESH_TOKEN_KEY } from './client';
 import { server } from '../test/mocks/server';
 import { http, HttpResponse } from 'msw';
@@ -506,5 +506,183 @@ describe('rbacSsoAdminApi', () => {
     await rbacSsoAdminApi.updateSettings({ enabled: true, baseUrl: 'https://app.example.com', defaultRole: 'viewer', autoLinkByEmail: true });
     expect(capturedMethod).toBe('PUT');
     expect(capturedBody).toMatchObject({ enabled: true, baseUrl: 'https://app.example.com' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rbacUserPreferencesApi onboarding progress
+// ---------------------------------------------------------------------------
+
+describe('rbacUserPreferencesApi onboarding', () => {
+  beforeEach(() => {
+    localStorage.setItem(RBAC_ACCESS_TOKEN_KEY, 'access-token');
+    localStorage.removeItem(RBAC_REFRESH_TOKEN_KEY);
+  });
+
+  it('gets resumable onboarding progress', async () => {
+    server.use(
+      http.get('/api/rbac/user-preferences/preferences/onboarding', () =>
+        HttpResponse.json({
+          progress: {
+            formatRevision: 1,
+            welcomeSeen: true,
+            completedChapterIds: ['shell'],
+            dismissedChapterIds: [],
+            lastStepIndex: 0,
+          },
+          bootstrapOnboardingPending: false,
+          requiresPasswordChange: false,
+        })
+      )
+    );
+
+    const result = await rbacUserPreferencesApi.getOnboarding();
+    expect(result.progress.completedChapterIds).toEqual(['shell']);
+  });
+
+  it('patches only onboarding progress', async () => {
+    let capturedBody: unknown;
+    server.use(
+      http.patch('/api/rbac/user-preferences/preferences/onboarding', async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          progress: {
+            formatRevision: 1,
+            welcomeSeen: true,
+            completedChapterIds: [],
+            dismissedChapterIds: [],
+            lastStepIndex: 0,
+          },
+          bootstrapOnboardingPending: false,
+          requiresPasswordChange: false,
+        });
+      })
+    );
+
+    await rbacUserPreferencesApi.updateOnboarding({ welcomeSeen: true });
+    expect(capturedBody).toEqual({ welcomeSeen: true });
+  });
+
+  it('refreshes an expired token and retries the onboarding update', async () => {
+    localStorage.setItem(RBAC_REFRESH_TOKEN_KEY, 'refresh-token');
+    const authorizationHeaders: Array<string | null> = [];
+    let patchAttempts = 0;
+
+    server.use(
+      http.patch('/api/rbac/user-preferences/preferences/onboarding', ({ request }) => {
+        patchAttempts += 1;
+        authorizationHeaders.push(request.headers.get('Authorization'));
+        if (patchAttempts === 1) {
+          return HttpResponse.json(
+            { error: { message: 'Access token expired', code: 'UNAUTHORIZED' } },
+            { status: 401 },
+          );
+        }
+        return HttpResponse.json({
+          progress: {
+            formatRevision: 1,
+            welcomeSeen: true,
+            completedChapterIds: [],
+            dismissedChapterIds: [],
+            lastStepIndex: 0,
+          },
+          bootstrapOnboardingPending: false,
+          requiresPasswordChange: false,
+        });
+      }),
+      http.post('/api/rbac/auth/refresh', async ({ request }) => {
+        expect(await request.json()).toEqual({ refreshToken: 'refresh-token' });
+        return HttpResponse.json({
+          success: true,
+          data: {
+            tokens: {
+              accessToken: 'refreshed-access-token',
+              refreshToken: 'refreshed-refresh-token',
+              expiresIn: 3600,
+              tokenType: 'Bearer',
+            },
+          },
+        });
+      }),
+    );
+
+    const result = await rbacUserPreferencesApi.updateOnboarding({ welcomeSeen: true });
+
+    expect(result.progress.welcomeSeen).toBe(true);
+    expect(patchAttempts).toBe(2);
+    expect(authorizationHeaders).toEqual([
+      'Bearer access-token',
+      'Bearer refreshed-access-token',
+    ]);
+  });
+
+  it('stops after one refresh when the onboarding retry is still unauthorized', async () => {
+    localStorage.setItem(RBAC_REFRESH_TOKEN_KEY, 'refresh-token');
+    let patchAttempts = 0;
+    let refreshAttempts = 0;
+
+    server.use(
+      http.patch('/api/rbac/user-preferences/preferences/onboarding', () => {
+        patchAttempts += 1;
+        return HttpResponse.json(
+          { error: { message: 'Access token expired', code: 'UNAUTHORIZED' } },
+          { status: 401 },
+        );
+      }),
+      http.post('/api/rbac/auth/refresh', () => {
+        refreshAttempts += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            tokens: {
+              accessToken: 'still-rejected-access-token',
+              refreshToken: 'refresh-token',
+              expiresIn: 3600,
+              tokenType: 'Bearer',
+            },
+          },
+        });
+      }),
+    );
+
+    await expect(
+      rbacUserPreferencesApi.updateOnboarding({ welcomeSeen: true }),
+    ).rejects.toMatchObject({ message: 'Access token expired', statusCode: 401 });
+    expect(patchAttempts).toBe(2);
+    expect(refreshAttempts).toBe(1);
+  });
+
+  it('surfaces validation failures', async () => {
+    server.use(
+      http.patch('/api/rbac/user-preferences/preferences/onboarding', () =>
+        HttpResponse.json({ error: { message: 'Invalid chapter progress' } }, { status: 400 })
+      )
+    );
+
+    await expect(
+      rbacUserPreferencesApi.updateOnboarding({ completedChapterIds: ['invalid'] })
+    ).rejects.toMatchObject({ message: 'Invalid chapter progress', statusCode: 400 });
+  });
+
+  it('aborts a stalled onboarding request instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Request timed out', 'AbortError'));
+        }, { once: true });
+      })
+    );
+
+    try {
+      const request = rbacUserPreferencesApi.updateOnboarding({ welcomeSeen: true });
+      const rejection = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await rejection;
+      expect(fetchSpy).toHaveBeenCalledOnce();
+    } finally {
+      fetchSpy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

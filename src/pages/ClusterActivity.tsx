@@ -44,6 +44,7 @@ type ClusterView = "mutations" | "replication" | "topology" | "distribution" | "
 
 interface ClusterActivityPageProps {
   embedded?: boolean;
+  onboardingView?: string;
   refreshKey?: number;
   autoRefresh?: boolean;
   onRefreshChange?: (isRefreshing: boolean) => void;
@@ -98,16 +99,27 @@ const VIEW_ICON: Record<ClusterView, LucideIcon> = {
   simulator: FlaskConical,
 };
 
+function isClusterView(value: string | undefined): value is ClusterView {
+  return Object.keys(COPY).some((view) => view === value);
+}
+
 export default function ClusterActivityPage({
   embedded = false,
+  onboardingView,
   refreshKey = 0,
   autoRefresh = false,
   onRefreshChange,
 }: ClusterActivityPageProps) {
-  const [view, setView] = useState<ClusterView>("mutations");
+  const [selectedView, setView] = useState<ClusterView>("mutations");
+  const guidedView = isClusterView(onboardingView) ? onboardingView : undefined;
+  const view = guidedView ?? selectedView;
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 50;
+
+  useEffect(() => {
+    if (guidedView) setView(guidedView);
+  }, [guidedView]);
 
   const mutations = useMutations({ enabled: view === "mutations" });
   const replication = useReplicationQueue({ enabled: view === "replication" });
@@ -196,7 +208,7 @@ export default function ClusterActivityPage({
         {/* Sub-tabs — same title · hint underline pattern as the Parts tab, so
             the Monitoring sub-tabs stay consistent. The row scrolls on narrow
             widths instead of cramping (this view has more tabs than Parts). */}
-        <div className="scrollbar-hide flex shrink-0 items-center gap-2 overflow-x-auto border-b border-ink-500">
+        <div className="scrollbar-hide flex min-w-0 shrink-0 items-center gap-2 overflow-x-auto border-b border-ink-500">
           {(Object.keys(COPY) as ClusterView[]).map((id) => {
             const tab = COPY[id];
             const activeTab = view === id;
@@ -210,7 +222,7 @@ export default function ClusterActivityPage({
                   activeTab ? "text-paper" : "text-paper-muted hover:text-paper"
                 )}
               >
-                <span>{tab.title}</span>
+                <span data-onboarding-id={`monitoring-cluster-${id}`}>{tab.title}</span>
                 <span className="font-mono text-[9px] tracking-[0.14em] text-paper-faint">
                   · {tab.hint}
                 </span>

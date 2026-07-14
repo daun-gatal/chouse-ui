@@ -41,6 +41,7 @@ import {
 } from '@/api/ai-chat';
 import { toast } from 'sonner';
 import { log } from '@/lib/log';
+import { useOnboardingSurfaceDismissAction } from '@/lib/onboardingSurfaces';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
 import {
     MessageSquare,
@@ -904,6 +905,50 @@ function useAiChatInvoke({
 // Component
 // ============================================
 
+interface AiChatUnavailableTriggerProps {
+    isLoading: boolean;
+    isMobile: boolean;
+}
+
+function AiChatUnavailableTrigger({ isLoading, isMobile }: AiChatUnavailableTriggerProps): React.JSX.Element {
+    const label = isLoading ? 'AI assistant is loading' : 'AI assistant is unavailable';
+    const icon = isLoading
+        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        : <Sparkles className="h-4 w-4" aria-hidden />;
+
+    if (isMobile) {
+        return (
+            <button
+                data-onboarding-id="ai-assistant"
+                type="button"
+                disabled
+                aria-label={label}
+                title={label}
+                className="ai-chat-fab cursor-not-allowed opacity-60"
+            >
+                {icon}
+            </button>
+        );
+    }
+
+    return (
+        <div
+            className="fixed right-0 top-1/2 z-50 flex h-[110px] w-10 -translate-y-1/2 items-center justify-center"
+        >
+            <button
+                data-onboarding-id="ai-assistant"
+                type="button"
+                disabled
+                aria-label={label}
+                title={label}
+                className="flex h-24 w-9 cursor-not-allowed items-center justify-center rounded-l-md border-y border-l border-ink-500 bg-ink-100 text-paper-faint opacity-60"
+            >
+                {icon}
+            </button>
+        </div>
+    );
+}
+
 export default function AiChatBubble() {
     const hasPermission = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_CHAT));
     const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
@@ -911,6 +956,8 @@ export default function AiChatBubble() {
     const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
     const [selectedModelId, setSelectedModelId] = useState<string>('');
     const [isOpen, setIsOpen] = useState(false);
+    const dismissForOnboarding = useCallback(() => setIsOpen(false), []);
+    useOnboardingSurfaceDismissAction(dismissForOnboarding);
     const [showSidebar, setShowSidebar] = useState(false);
 
     const lastLoadedDeviceRef = useRef<DeviceType | null>(null);
@@ -1391,9 +1438,13 @@ export default function AiChatBubble() {
         await runInvoke(threadId, prompt, [{ role: 'user', content: prompt }]);
     }, [isInvoking, activeThreadId, runInvoke, activeConnectionId, selectedModelId]);
 
-    // Don't render if no permission or AI is not enabled
-    if (!hasPermission || aiEnabled === false) return null;
-    if (aiEnabled === null) return null;
+    // Permission controls whether the guide includes this step. When AI status is
+    // unresolved or disabled, keep a stable shell so the step never points at an
+    // element that appears late or does not exist on a fresh installation.
+    if (!hasPermission) return null;
+    if (aiEnabled !== true) {
+        return <AiChatUnavailableTrigger isLoading={aiEnabled === null} isMobile={isMobile} />;
+    }
 
     return (
         <>
@@ -1401,6 +1452,7 @@ export default function AiChatBubble() {
             {!isOpen && (
                 isMobile ? (
                     <button
+                        data-onboarding-id="ai-assistant"
                         onClick={() => setIsOpen(true)}
                         aria-label="Open AI Chat"
                         className="ai-chat-fab group"
@@ -1424,6 +1476,7 @@ export default function AiChatBubble() {
                         }}
                     >
                         <button
+                            data-onboarding-id="ai-assistant"
                             type="button"
                             onClick={() => setIsOpen(true)}
                             aria-label="Open AI chat"
@@ -1464,6 +1517,8 @@ export default function AiChatBubble() {
                     }}
                 >
                     <motion.div
+                        data-onboarding-id="ai-assistant"
+                        data-onboarding-surface="ai-chat"
                         initial={isMobile ? { opacity: 0 } : { x: '100%' }}
                         animate={isMobile ? { opacity: 1 } : { x: 0 }}
                         exit={isMobile ? { opacity: 0 } : { x: '100%' }}

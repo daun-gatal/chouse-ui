@@ -158,8 +158,9 @@ function SectionTab({ tabKey, isActive, onClick }: SectionTabProps) {
       type="button"
       onClick={onClick}
       aria-current={isActive ? "page" : undefined}
+      data-onboarding-id={`admin-section-${tabKey}`}
       className={cn(
-        "group relative flex shrink-0 items-center gap-2 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+        "group relative flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
         isActive ? "text-paper" : "text-paper-muted hover:text-paper"
       )}
@@ -240,7 +241,7 @@ export default function Admin() {
   }, [tab, availableTabs, navigate]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50" data-onboarding-id="admin-page">
       {/* ─── Header — two tiers: group selector on top, section sub-tabs below ─── */}
       <header className="flex-none border-b border-ink-500 px-6 pt-4">
         {/* Tier 1 — title + group selector + controls */}
@@ -293,7 +294,7 @@ export default function Admin() {
         {activeGroup && (
           <nav
             aria-label={`${activeGroup.label} sections`}
-            className="scrollbar-hide -mb-px flex items-center gap-1 overflow-x-auto"
+            className="scrollbar-hide -mb-px flex w-full min-w-0 items-center gap-1 overflow-x-auto"
           >
             {activeGroup.tabs.map((tabKey) => (
               <SectionTab
@@ -313,7 +314,7 @@ export default function Admin() {
         onValueChange={(v) => navigate(`/admin/${v}`)}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-6">
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-6" data-onboarding-id="admin-content">
           {activeTab === "users" && canViewUsers && (
             <TabsContent value="users" className="mt-0 h-full outline-none">
               <div className="rounded-md border border-ink-500 bg-ink-100">

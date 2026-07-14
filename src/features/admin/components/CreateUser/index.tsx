@@ -190,12 +190,15 @@ const CreateUser: React.FC = () => {
   if (generatedPassword) {
     return (
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         className="container mx-auto p-6 max-w-lg"
       >
         <div className="overflow-hidden rounded-xs border border-ink-500 bg-ink-100">
-          <div className="flex items-center gap-3 border-b border-ink-500 px-5 py-4">
+          <div
+            data-onboarding-id="admin-user-form"
+            className="flex items-center gap-3 border-b border-ink-500 px-5 py-4"
+          >
             <span className="grid h-9 w-9 place-items-center rounded-xs border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
               <Check className="h-4 w-4" aria-hidden />
             </span>
@@ -274,12 +277,12 @@ const CreateUser: React.FC = () => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       className="container mx-auto p-6 space-y-6 max-w-4xl"
     >
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div data-onboarding-id="admin-user-form" className="flex items-center gap-4">
         <Button
           variant="ghost"
           size="icon"

@@ -5,7 +5,8 @@
  * All operations are scoped to the authenticated user.
  */
 
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, isNull, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { getDatabase, getSchema, isSqlite } from '../db';
 
@@ -41,6 +42,41 @@ export interface UserPreferences {
   explorerShowFavoritesOnly?: boolean;
   workspacePreferences?: Record<string, unknown>;
 }
+
+export interface OnboardingProgress {
+  formatRevision: 1;
+  welcomeSeen: boolean;
+  completedChapterIds: string[];
+  dismissedChapterIds: string[];
+  lastChapterId?: string;
+  lastStepId?: string;
+  lastStepIndex: number;
+  completedAt?: string;
+}
+
+export interface OnboardingProgressPatch {
+  welcomeSeen?: boolean;
+  completedChapterIds?: string[];
+  dismissedChapterIds?: string[];
+  lastChapterId?: string | null;
+  lastStepId?: string | null;
+  lastStepIndex?: number;
+  completedAt?: string | null;
+}
+
+const DEFAULT_ONBOARDING_PROGRESS: OnboardingProgress = {
+  formatRevision: 1,
+  welcomeSeen: false,
+  completedChapterIds: [],
+  dismissedChapterIds: [],
+  lastStepIndex: 0,
+};
+
+const ONBOARDING_IDENTIFIER_SCHEMA = z.string().min(1).max(100);
+const ONBOARDING_TIMESTAMP_SCHEMA = z.string().datetime();
+const MAX_ONBOARDING_CHAPTER_IDS = 128;
+const MAX_ONBOARDING_STEP_INDEX = 1000;
+const MAX_ONBOARDING_WRITE_ATTEMPTS = 32;
 
 // ============================================
 // Favorites
@@ -380,46 +416,266 @@ export async function updateUserPreferences(
   userId: string,
   preferences: Partial<UserPreferences>
 ): Promise<UserPreferences> {
+  return writeUserPreferences(userId, preferences);
+}
+
+/**
+ * Atomically merge root workspace keys into the row that exists at write time.
+ * Generic preference clients are never allowed to write the dedicated
+ * onboarding key because they commonly PUT an older full workspace snapshot.
+ */
+async function writeUserPreferences(
+  userId: string,
+  preferences: Partial<UserPreferences>,
+): Promise<UserPreferences> {
   const db = getDatabase() as AnyDb;
   const schema = getSchema();
-  
-  const id = randomUUID();
-  const values: any = {
-    id,
+  const insertedValues: any = {
+    id: randomUUID(),
     userId,
     updatedAt: new Date(),
   };
-  
+  const updatedValues: any = {
+    updatedAt: insertedValues.updatedAt,
+  };
+
   if (preferences.explorerSortBy !== undefined) {
-    values.explorerSortBy = preferences.explorerSortBy;
+    insertedValues.explorerSortBy = preferences.explorerSortBy;
+    updatedValues.explorerSortBy = preferences.explorerSortBy;
   }
   if (preferences.explorerViewMode !== undefined) {
-    values.explorerViewMode = preferences.explorerViewMode;
+    insertedValues.explorerViewMode = preferences.explorerViewMode;
+    updatedValues.explorerViewMode = preferences.explorerViewMode;
   }
   if (preferences.explorerShowFavoritesOnly !== undefined) {
-    values.explorerShowFavoritesOnly = preferences.explorerShowFavoritesOnly;
+    insertedValues.explorerShowFavoritesOnly = preferences.explorerShowFavoritesOnly;
+    updatedValues.explorerShowFavoritesOnly = preferences.explorerShowFavoritesOnly;
   }
+
   if (preferences.workspacePreferences !== undefined) {
-    values.workspacePreferences = preferences.workspacePreferences;
+    const workspacePatch = workspacePreferencesPatch(preferences.workspacePreferences);
+    if (Object.keys(workspacePatch).length > 0) {
+      insertedValues.workspacePreferences = workspacePatch;
+      updatedValues.workspacePreferences = atomicWorkspaceMergeExpression(
+        schema.userPreferences.workspacePreferences,
+        workspacePatch,
+      );
+    }
   }
-  
-  // Check if preferences exist
-  const [existing] = await db
-    .select()
-    .from(schema.userPreferences)
-    .where(eq(schema.userPreferences.userId, userId))
-    .limit(1);
-  
-  if (existing) {
-    // Update existing
-    await db
-      .update(schema.userPreferences)
-      .set(values)
-      .where(eq(schema.userPreferences.userId, userId));
-  } else {
-    // Insert new
-    await db.insert(schema.userPreferences).values(values);
-  }
-  
+
+  await db
+    .insert(schema.userPreferences)
+    .values(insertedValues)
+    .onConflictDoUpdate({
+      target: schema.userPreferences.userId,
+      set: updatedValues,
+    });
+
   return getUserPreferences(userId);
+}
+
+/** Read normalized, bounded onboarding progress for one user. */
+export async function getUserOnboardingProgress(userId: string): Promise<OnboardingProgress> {
+  const preferences = await getUserPreferences(userId);
+  return normalizeOnboardingProgress(preferences.workspacePreferences?.onboarding);
+}
+
+/** Merge onboarding progress without replacing unrelated workspace preferences. */
+export async function updateUserOnboardingProgress(
+  userId: string,
+  patch: OnboardingProgressPatch,
+): Promise<OnboardingProgress> {
+  const db = getDatabase() as AnyDb;
+  const schema = getSchema();
+
+  // A read/modify/write transaction alone is insufficient here: a stale client
+  // can still submit arrays that predate another tab's completion. Optimistic
+  // compare-and-swap retries merge against the row that actually exists at
+  // commit time, while mergeOnboardingProgress keeps chapter outcomes monotonic.
+  for (let attempt = 0; attempt < MAX_ONBOARDING_WRITE_ATTEMPTS; attempt += 1) {
+    const [existing] = await db
+      .select({
+        workspacePreferences: schema.userPreferences.workspacePreferences,
+      })
+      .from(schema.userPreferences)
+      .where(eq(schema.userPreferences.userId, userId))
+      .limit(1);
+
+    if (!existing) {
+      const progress = mergeOnboardingProgress(DEFAULT_ONBOARDING_PROGRESS, patch);
+      const [inserted] = await db
+        .insert(schema.userPreferences)
+        .values({
+          id: randomUUID(),
+          userId,
+          workspacePreferences: { onboarding: progress },
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing({ target: schema.userPreferences.userId })
+        .returning({
+          workspacePreferences: schema.userPreferences.workspacePreferences,
+        });
+
+      if (inserted) {
+        return normalizeOnboardingProgress(inserted.workspacePreferences?.onboarding);
+      }
+      continue;
+    }
+
+    const storedWorkspace = existing.workspacePreferences;
+    const currentWorkspace = isRecord(storedWorkspace) ? storedWorkspace : {};
+    const progress = mergeOnboardingProgress(currentWorkspace.onboarding, patch);
+    const workspacePreferences = {
+      ...currentWorkspace,
+      onboarding: progress,
+    };
+    const unchangedWorkspace = storedWorkspace === null || storedWorkspace === undefined
+      ? isNull(schema.userPreferences.workspacePreferences)
+      : eq(schema.userPreferences.workspacePreferences, storedWorkspace);
+    const [updated] = await db
+      .update(schema.userPreferences)
+      .set({
+        workspacePreferences,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(schema.userPreferences.userId, userId),
+        unchangedWorkspace,
+      ))
+      .returning({
+        workspacePreferences: schema.userPreferences.workspacePreferences,
+      });
+
+    if (updated) {
+      return normalizeOnboardingProgress(updated.workspacePreferences?.onboarding);
+    }
+  }
+
+  throw new Error('Could not save onboarding progress after concurrent updates');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function workspacePreferencesPatch(
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  const { onboarding: _onboarding, ...workspacePatch } = incoming;
+  return workspacePatch;
+}
+
+function atomicWorkspaceMergeExpression(
+  column: unknown,
+  patch: Record<string, unknown>,
+): unknown {
+  if (!isSqlite()) {
+    return sql`COALESCE(${column}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`;
+  }
+
+  // SQLite's json_patch recursively merges and treats null as deletion. Build
+  // json_set calls per root key instead so behavior matches the previous
+  // shallow object merge while still reading the latest row atomically.
+  let expression: unknown = sql`COALESCE(${column}, '{}')`;
+  for (const [key, value] of Object.entries(patch)) {
+    const path = `$.${JSON.stringify(key)}`;
+    expression = sql`json_set(${expression}, ${path}, json(${JSON.stringify(value)}))`;
+  }
+  return expression;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const identifiers: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const parsed = ONBOARDING_IDENTIFIER_SCHEMA.safeParse(entry);
+    if (!parsed.success || seen.has(parsed.data)) continue;
+    seen.add(parsed.data);
+    identifiers.push(parsed.data);
+    if (identifiers.length === MAX_ONBOARDING_CHAPTER_IDS) break;
+  }
+  return identifiers;
+}
+
+function boundedIdentifier(value: unknown): string | undefined {
+  const parsed = ONBOARDING_IDENTIFIER_SCHEMA.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function boundedStepIndex(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return undefined;
+  return value >= 0 && value <= MAX_ONBOARDING_STEP_INDEX ? value : undefined;
+}
+
+function validTimestamp(value: unknown): string | undefined {
+  const parsed = ONBOARDING_TIMESTAMP_SCHEMA.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function unionIdentifiers(current: string[], incoming: string[]): string[] {
+  return stringList([...current, ...incoming]);
+}
+
+/**
+ * Apply a partial client patch to the latest committed progress.
+ * Completion and dismissal are monotonic because the public API has no reset
+ * operation; a completion wins if two tabs complete and dismiss the same guide.
+ */
+export function mergeOnboardingProgress(
+  currentValue: unknown,
+  patch: OnboardingProgressPatch,
+): OnboardingProgress {
+  const current = normalizeOnboardingProgress(currentValue);
+  const completedChapterIds = patch.completedChapterIds === undefined
+    ? current.completedChapterIds
+    : unionIdentifiers(current.completedChapterIds, stringList(patch.completedChapterIds));
+  const dismissedCandidates = patch.dismissedChapterIds === undefined
+    ? current.dismissedChapterIds
+    : unionIdentifiers(current.dismissedChapterIds, stringList(patch.dismissedChapterIds));
+  const completed = new Set(completedChapterIds);
+  const dismissedChapterIds = dismissedCandidates.filter((id) => !completed.has(id));
+  const progress: OnboardingProgress = {
+    formatRevision: 1,
+    welcomeSeen: patch.welcomeSeen ?? current.welcomeSeen,
+    completedChapterIds,
+    dismissedChapterIds,
+    lastStepIndex: boundedStepIndex(patch.lastStepIndex) ?? current.lastStepIndex,
+  };
+
+  const lastChapterId = patch.lastChapterId === null
+    ? undefined
+    : boundedIdentifier(patch.lastChapterId) ?? current.lastChapterId;
+  const lastStepId = patch.lastStepId === null
+    ? undefined
+    : boundedIdentifier(patch.lastStepId) ?? current.lastStepId;
+  const completedAt = patch.completedAt === null
+    ? undefined
+    : validTimestamp(patch.completedAt) ?? current.completedAt;
+  if (lastChapterId) progress.lastChapterId = lastChapterId;
+  if (lastStepId) progress.lastStepId = lastStepId;
+  if (completedAt) progress.completedAt = completedAt;
+  return progress;
+}
+
+export function normalizeOnboardingProgress(value: unknown): OnboardingProgress {
+  if (!isRecord(value)) return { ...DEFAULT_ONBOARDING_PROGRESS };
+
+  const completedChapterIds = stringList(value.completedChapterIds);
+  const completed = new Set(completedChapterIds);
+  const progress: OnboardingProgress = {
+    formatRevision: 1,
+    welcomeSeen: value.welcomeSeen === true,
+    completedChapterIds,
+    dismissedChapterIds: stringList(value.dismissedChapterIds)
+      .filter((id) => !completed.has(id)),
+    lastStepIndex: boundedStepIndex(value.lastStepIndex) ?? 0,
+  };
+  const lastChapterId = boundedIdentifier(value.lastChapterId);
+  const lastStepId = boundedIdentifier(value.lastStepId);
+  if (lastChapterId) progress.lastChapterId = lastChapterId;
+  if (lastStepId) progress.lastStepId = lastStepId;
+  const completedAt = validTimestamp(value.completedAt);
+  if (completedAt) progress.completedAt = completedAt;
+  return progress;
 }

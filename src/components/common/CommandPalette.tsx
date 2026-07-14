@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Database,
+  BookOpen,
   FileCode2,
   Gauge,
   Globe2,
@@ -380,6 +381,17 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
         {/* Help */}
         <CommandSeparator />
         <CommandGroup heading="Help">
+          <CommandItem
+            value="getting started onboarding product tour help"
+            onSelect={() =>
+              runAction(() => {
+                window.dispatchEvent(new CustomEvent("onboarding:open"));
+              })
+            }
+          >
+            <BookOpen className="mr-2 h-3.5 w-3.5 text-paper-dim" />
+            Getting started
+          </CommandItem>
           <CommandItem
             value="keyboard shortcuts"
             onSelect={() =>

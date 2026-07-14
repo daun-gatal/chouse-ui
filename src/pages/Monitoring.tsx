@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   InfoIcon,
   Activity,
@@ -101,6 +101,7 @@ function TabPill({ tabKey, isActive, onClick, disabled }: TabPillProps) {
   return (
     <button
       type="button"
+      data-onboarding-id={`monitoring-section-${tabKey}`}
       onClick={onClick}
       disabled={disabled}
       aria-current={isActive ? "page" : undefined}
@@ -142,6 +143,8 @@ export default function Monitoring() {
   const { hasPermission, hasAnyPermission } = useRbacStore();
   const { tab } = useParams<{ tab: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const onboardingView = searchParams.get("guide") ?? undefined;
   const [isInfoOpen, setIsInfoOpen] = useState(false);
 
   const canViewLiveQueries = hasPermission(RBAC_PERMISSIONS.LIVE_QUERIES_VIEW);
@@ -212,7 +215,7 @@ export default function Monitoring() {
   }, [activeTab]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50" data-onboarding-id="monitoring-page">
       {/* ─── Header — compact: title + tabs + controls share one row ─── */}
       <header className="flex-none border-b border-ink-500 px-6 pt-4">
         <div className="flex flex-wrap items-end justify-between gap-4 pb-0">
@@ -267,7 +270,7 @@ export default function Monitoring() {
       </header>
 
       {/* ─── Content ─── */}
-      <div className="flex-1 overflow-hidden p-4">
+      <div className="flex-1 overflow-hidden p-4" data-onboarding-id="monitoring-content">
         {deniedTab ? (
           <NoPermission inline feature={TAB_CONFIG[tab as TabKey].label} />
         ) : (
@@ -287,6 +290,7 @@ export default function Monitoring() {
           <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <LogsPage
               embedded
+              onboardingView={onboardingView}
               refreshKey={refreshKey}
               autoRefresh={autoRefresh}
               onRefreshChange={setIsRefreshing}
@@ -298,6 +302,7 @@ export default function Monitoring() {
           <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <MetricsPage
               embedded
+              onboardingView={onboardingView}
               refreshKey={refreshKey}
               autoRefresh={autoRefresh}
               onRefreshChange={setIsRefreshing}
@@ -309,6 +314,7 @@ export default function Monitoring() {
           <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <PartsPage
               embedded
+              onboardingView={onboardingView}
               refreshKey={refreshKey}
               autoRefresh={autoRefresh}
               onRefreshChange={setIsRefreshing}
@@ -320,6 +326,7 @@ export default function Monitoring() {
           <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <SchemaDoctorPage
               embedded
+              onboardingView={onboardingView}
               refreshKey={refreshKey}
               onRefreshChange={setIsRefreshing}
             />
@@ -330,6 +337,7 @@ export default function Monitoring() {
           <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <ClusterActivityPage
               embedded
+              onboardingView={onboardingView}
               refreshKey={refreshKey}
               autoRefresh={autoRefresh}
               onRefreshChange={setIsRefreshing}
@@ -341,6 +349,7 @@ export default function Monitoring() {
           <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
             <ErrorsPage
               embedded
+              onboardingView={onboardingView}
               refreshKey={refreshKey}
               autoRefresh={autoRefresh}
               onRefreshChange={setIsRefreshing}

@@ -338,8 +338,38 @@ const getIntervalMinutes = (timeRange: string): number => {
   return config[timeRange] || 60;
 };
 
+type MetricsView =
+  | "overview"
+  | "performance"
+  | "storage"
+  | "merges"
+  | "parts"
+  | "errors"
+  | "memory"
+  | "cpu"
+  | "zookeeper"
+  | "network";
+
+const METRICS_VIEWS: readonly MetricsView[] = [
+  "overview",
+  "performance",
+  "storage",
+  "merges",
+  "parts",
+  "errors",
+  "memory",
+  "cpu",
+  "zookeeper",
+  "network",
+];
+
+function isMetricsView(value: string | undefined): value is MetricsView {
+  return METRICS_VIEWS.some((view) => view === value);
+}
+
 interface MetricsProps {
   embedded?: boolean;
+  onboardingView?: string;
   refreshKey?: number;
   autoRefresh?: boolean;
   onRefreshChange?: (isRefreshing: boolean) => void;
@@ -399,6 +429,7 @@ function MetricsRangeSelect({
 
 export default function Metrics({
   embedded = false,
+  onboardingView,
   refreshKey,
   autoRefresh: externalAutoRefresh = false,
   onRefreshChange
@@ -408,7 +439,12 @@ export default function Metrics({
 
   const [internalRefreshInterval, setInternalRefreshInterval] = useState<number>(0);
   const [internalTimeRange, setInternalTimeRange] = useState<string>("1h");
-  const [activeTab, setActiveTab] = useState("overview");
+  const [selectedTab, setActiveTab] = useState<MetricsView>("overview");
+  const guidedTab = isMetricsView(onboardingView)
+    && (hasAdvancedMetrics || onboardingView === "overview")
+    ? onboardingView
+    : undefined;
+  const activeTab = guidedTab ?? selectedTab;
   const [isRefreshCooldown, setIsRefreshCooldown] = useState(false);
 
   const timeRange = internalTimeRange;
@@ -424,6 +460,10 @@ export default function Metrics({
       setActiveTab("overview");
     }
   }, [hasAdvancedMetrics, activeTab]);
+
+  React.useEffect(() => {
+    if (guidedTab) setActiveTab(guidedTab);
+  }, [guidedTab]);
 
   const intervalMinutes = getIntervalMinutes(timeRange);
 
@@ -965,15 +1005,21 @@ export default function Metrics({
 
 
 
-        {/* Tabs for different metric views - hidden if only Overview is available */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 space-y-4">
+        {/* Keep Overview visible for basic metrics users; advanced tabs share the same scroll strip. */}
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            if (isMetricsView(value)) setActiveTab(value);
+          }}
+          className="flex-1 flex flex-col min-h-0 space-y-4"
+        >
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            {hasAdvancedMetrics ? (
-              <TabsList className="h-9 justify-start gap-0.5 rounded-xs border border-ink-500 bg-ink-100 p-0.5">
+            <TabsList className="scrollbar-hide h-9 min-w-0 max-w-full justify-start gap-0.5 overflow-x-auto rounded-xs border border-ink-500 bg-ink-100 p-0.5">
               <TabsTrigger
                 value="overview"
+                data-onboarding-id="monitoring-metrics-overview"
                 className={cn(
-                  "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                  "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                   "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
                   "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                 )}
@@ -981,33 +1027,37 @@ export default function Metrics({
                 <BarChart3 className="h-4 w-4" />
                 Overview
               </TabsTrigger>
-              <>
-                <TabsTrigger
-                  value="performance"
-                  className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
-                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
-                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
-                  )}
-                >
-                  <Gauge className="h-4 w-4" />
-                  Performance
-                </TabsTrigger>
-                <TabsTrigger
-                  value="storage"
-                  className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
-                    "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
-                    "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
-                  )}
-                >
-                  <HardDrive className="h-4 w-4" />
-                  Storage
-                </TabsTrigger>
+              {hasAdvancedMetrics && (
+                <>
+                  <TabsTrigger
+                    value="performance"
+                    data-onboarding-id="monitoring-metrics-performance"
+                    className={cn(
+                      "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                      "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                      "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
+                    )}
+                  >
+                    <Gauge className="h-4 w-4" />
+                    Performance
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="storage"
+                    data-onboarding-id="monitoring-metrics-storage"
+                    className={cn(
+                      "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                      "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
+                      "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
+                    )}
+                  >
+                    <HardDrive className="h-4 w-4" />
+                    Storage
+                  </TabsTrigger>
                 <TabsTrigger
                   value="merges"
+                  data-onboarding-id="monitoring-metrics-merges"
                   className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                     "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
                     "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
@@ -1017,8 +1067,9 @@ export default function Metrics({
                 </TabsTrigger>
                 <TabsTrigger
                   value="parts"
+                  data-onboarding-id="monitoring-metrics-parts"
                   className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                     "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
                     "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
@@ -1028,8 +1079,9 @@ export default function Metrics({
                 </TabsTrigger>
                 <TabsTrigger
                   value="errors"
+                  data-onboarding-id="monitoring-metrics-errors"
                   className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                     "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
                     "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
@@ -1039,8 +1091,9 @@ export default function Metrics({
                 </TabsTrigger>
                 <TabsTrigger
                   value="memory"
+                  data-onboarding-id="monitoring-metrics-memory"
                   className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                     "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
                     "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
@@ -1051,8 +1104,9 @@ export default function Metrics({
 
                 <TabsTrigger
                   value="cpu"
+                  data-onboarding-id="monitoring-metrics-cpu"
                   className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                     "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
                     "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
@@ -1063,8 +1117,9 @@ export default function Metrics({
 
                 <TabsTrigger
                   value="zookeeper"
+                  data-onboarding-id="monitoring-metrics-zookeeper"
                   className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                     "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
                     "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
@@ -1075,8 +1130,9 @@ export default function Metrics({
 
                 <TabsTrigger
                   value="network"
+                  data-onboarding-id="monitoring-metrics-network"
                   className={cn(
-                    "rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                    "shrink-0 rounded-xs gap-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
                     "data-[state=active]:bg-ink-200 data-[state=active]:text-paper",
                     "data-[state=inactive]:text-paper-dim hover:text-paper hover:bg-ink-200"
                   )}
@@ -1084,9 +1140,9 @@ export default function Metrics({
                   <Network className="h-4 w-4" />
                   Network
                 </TabsTrigger>
-              </>
+                </>
+              )}
             </TabsList>
-            ) : <span />}
 
             {embedded && (
               <MetricsRangeSelect

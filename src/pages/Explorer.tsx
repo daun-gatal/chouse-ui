@@ -180,13 +180,14 @@ const ExplorerPage = () => {
   }, [currentDatabase, currentTable]);
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full flex-col" data-onboarding-id="explorer-page">
       {/* ─── Header bar ─── */}
       <div className="flex h-11 flex-none items-center justify-between border-b border-ink-500 bg-ink-50 px-3">
         {/* Left: sidebar toggle + breadcrumbs */}
         <div className="flex min-w-0 items-center gap-1">
           <button
             type="button"
+            data-onboarding-id={isSidebarCollapsed ? "explorer-sidebar" : undefined}
             onClick={toggleSidebar}
             className="grid h-7 w-7 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
             title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -279,6 +280,7 @@ const ExplorerPage = () => {
           className="h-full"
         >
           <ResizablePanel
+            data-onboarding-id="explorer-sidebar"
             ref={sidebarPanelRef}
             className="overflow-hidden"
             defaultSize={leftPanelSize}
@@ -301,6 +303,7 @@ const ExplorerPage = () => {
           />
 
           <ResizablePanel
+            data-onboarding-id="workspace-content"
             className="overflow-hidden"
             defaultSize={rightPanelSize}
             minSize={50}

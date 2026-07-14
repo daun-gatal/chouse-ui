@@ -31,8 +31,9 @@ function SubTabPill({ tab, isActive, onClick }: { tab: SubTab; isActive: boolean
       type="button"
       onClick={onClick}
       aria-current={isActive ? "page" : undefined}
+      data-onboarding-id={`dataops-scheduled-${tab}`}
       className={cn(
-        "group relative inline-flex h-9 items-center gap-2 px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+        "group relative inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
         isActive ? "text-paper" : "text-paper-muted hover:text-paper",
       )}
@@ -83,14 +84,17 @@ export function ScheduledQueries({ sub, onSubChange }: ScheduledQueriesProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-end justify-between gap-3 border-b border-ink-500 px-6 pt-2">
-        <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-end justify-between gap-3 border-b border-ink-500 px-6 pt-2">
+        <nav
+          className="scrollbar-hide flex min-w-0 items-center gap-1 overflow-x-auto"
+          aria-label="Scheduled Query sections"
+        >
           {SUB_TABS.map((t) => (
             <SubTabPill key={t} tab={t} isActive={sub === t} onClick={() => onSubChange(t)} />
           ))}
-        </div>
+        </nav>
         <DataControls
-          className="pb-2"
+          className="shrink-0 pb-2"
           lastUpdated={lastUpdated}
           isRefreshing={isRefreshing}
           onRefresh={() => void refresh()}
