@@ -30,6 +30,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { useOnboardingGuideActive } from "@/features/onboarding";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import type { ScheduledQuery } from "@/api/scheduledQueries";
 import { useScheduledQueries, useDeleteScheduledQuery, useRunScheduledQuery, useUpdateScheduledQuery, useJobOwners } from "./hooks";
@@ -57,6 +58,7 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
   const canDelete = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_DELETE);
   const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
+  const guideActive = useOnboardingGuideActive();
 
   const { data: jobs, isLoading } = useScheduledQueries();
   const { options: ownerOptions, nameOf: ownerName } = useJobOwners(jobs, canViewAll);
@@ -139,7 +141,9 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
   if (selectedJob) {
     return (
       <div className="space-y-4">
-        {canEdit && (
+        {/* Guide anchor only: the "create" step must resolve even while a job
+            detail replaces the list view. Hidden outside contextual guides. */}
+        {canEdit && guideActive && (
           <div className="flex justify-end">
             <Button
               data-onboarding-id="dataops-scheduled-create"

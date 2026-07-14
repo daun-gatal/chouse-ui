@@ -42,6 +42,7 @@ import {
 import { toast } from 'sonner';
 import { log } from '@/lib/log';
 import { useOnboardingSurfaceDismissAction } from '@/lib/onboardingSurfaces';
+import { useOnboardingGuideActive } from '@/features/onboarding';
 import { AiChartRenderer } from '@/components/common/AiChartRenderer';
 import {
     MessageSquare,
@@ -951,6 +952,7 @@ function AiChatUnavailableTrigger({ isLoading, isMobile }: AiChatUnavailableTrig
 
 export default function AiChatBubble() {
     const hasPermission = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AI_CHAT));
+    const guideActive = useOnboardingGuideActive();
     const activeConnectionId = useAuthStore((s) => s.activeConnectionId);
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
     const [aiModels, setAiModels] = useState<AiModelSimple[]>([]);
@@ -1438,12 +1440,14 @@ export default function AiChatBubble() {
         await runInvoke(threadId, prompt, [{ role: 'user', content: prompt }]);
     }, [isInvoking, activeThreadId, runInvoke, activeConnectionId, selectedModelId]);
 
-    // Permission controls whether the guide includes this step. When AI status is
-    // unresolved or disabled, keep a stable shell so the step never points at an
-    // element that appears late or does not exist on a fresh installation.
     if (!hasPermission) return null;
     if (aiEnabled !== true) {
-        return <AiChatUnavailableTrigger isLoading={aiEnabled === null} isMobile={isMobile} />;
+        // While a guide chapter runs, keep a disabled shell so the AI step never
+        // points at an element that appears late or does not exist on a fresh
+        // installation. Outside guides, an unavailable assistant renders nothing.
+        return guideActive
+            ? <AiChatUnavailableTrigger isLoading={aiEnabled === null} isMobile={isMobile} />
+            : null;
     }
 
     return (

@@ -55,6 +55,18 @@ describe("onboarding store", () => {
     useOnboardingStore.getState().reset();
   });
 
+  it("useOnboardingGuideActive tracks whether a chapter is running", async () => {
+    const { useOnboardingGuideActive, useOnboardingStore } = await import("./store");
+    const { act, renderHook } = await import("@testing-library/react");
+    const { result } = renderHook(() => useOnboardingGuideActive());
+
+    expect(result.current).toBe(false);
+    act(() => useOnboardingStore.setState({ activeChapterId: "explorer" }));
+    expect(result.current).toBe(true);
+    act(() => useOnboardingStore.setState({ activeChapterId: null }));
+    expect(result.current).toBe(false);
+  });
+
   it("loads server progress and opens the hub for a new user", async () => {
     const { useOnboardingStore } = await import("./store");
     await useOnboardingStore.getState().initialize("user-1");

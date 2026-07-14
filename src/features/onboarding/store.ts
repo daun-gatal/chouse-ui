@@ -462,3 +462,12 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
 
   clearPersistenceError: (): void => set({ persistenceError: null }),
 }));
+
+/**
+ * Whether a contextual guide chapter is currently running. UI that exists only
+ * to give a guide step a stable anchor (e.g. duplicate create buttons on detail
+ * views) should render only while this is true.
+ */
+export function useOnboardingGuideActive(): boolean {
+  return useOnboardingStore((state) => state.activeChapterId !== null);
+}

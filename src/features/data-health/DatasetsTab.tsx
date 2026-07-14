@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useOnboardingGuideActive } from "@/features/onboarding";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import type { DataHealthPromise } from "@/api/dataHealth";
 import { useDataHealthPromises, useDeleteDataHealthPromise, useRunDataHealthPromise } from "./hooks";
@@ -19,6 +20,7 @@ export function DatasetsTab({ selectedPromiseId, onSelectedPromiseChange }: { se
   const canEdit = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT));
   const canRun = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_RUN));
   const canDelete = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_DELETE));
+  const guideActive = useOnboardingGuideActive();
   const runMutation = useRunDataHealthPromise();
   const deleteMutation = useDeleteDataHealthPromise();
   const [search, setSearch] = useState("");
@@ -41,7 +43,9 @@ export function DatasetsTab({ selectedPromiseId, onSelectedPromiseChange }: { se
   if (selected) {
     return (
       <div className="space-y-4">
-        {canEdit && (
+        {/* Guide anchor only: the "create" step must resolve even while a
+            promise detail replaces the list view. Hidden outside guides. */}
+        {canEdit && guideActive && (
           <div className="flex justify-end">
             <Button
               data-onboarding-id="dataops-health-create"
