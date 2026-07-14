@@ -48,6 +48,7 @@ import { MultiSelect } from "./MultiSelect";
 import { MacrosHelp } from "./MacrosHelp";
 import { assessScheduledQuery, draftScheduledQuery, type ScheduledQueryAssessment } from "@/api/dataOpsAi";
 import { AssessmentView } from "@/features/dataops-ai";
+import { useDataOpsModelId } from "@/hooks";
 
 // Heavy Monaco editor — lazy so its chunk only loads when the builder opens.
 const MonacoSqlInput = lazy(() => import("./MonacoSqlInput"));
@@ -198,6 +199,7 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
   const { activeConnectionId, activeConnectionName } = useAuthStore();
   const canWrite = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_WRITE);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+  const modelId = useDataOpsModelId();
   const createMut = useCreateScheduledQuery();
   const updateMut = useUpdateScheduledQuery();
 
@@ -254,7 +256,7 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
     if (!form.connectionId || intent.trim().length < 8) return;
     setDrafting(true);
     try {
-      const draft = await draftScheduledQuery({ intent: intent.trim(), connectionId: form.connectionId, timezone: form.timezone });
+      const draft = await draftScheduledQuery({ intent: intent.trim(), connectionId: form.connectionId, timezone: form.timezone }, { modelId });
       update({
         name: draft.name,
         description: draft.description,
@@ -294,7 +296,7 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
         destTable: form.destTable || null,
         timeoutSecs: form.timeoutSecs,
         maxAttempts: form.maxAttempts,
-      }));
+      }, { modelId }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "AI preflight failed");
     } finally {

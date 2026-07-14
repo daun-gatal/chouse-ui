@@ -1,4 +1,4 @@
-import { invokeAI } from "./ai";
+import { invokeAI, type InvokeOptions } from "./ai";
 import { api } from "./client";
 import type { DataHealthCheck, DataHealthCriticality } from "./dataHealth";
 import type { ScheduledQueryInput, SqFrequency, SqOutputMode } from "./scheduledQueries";
@@ -113,44 +113,44 @@ export interface RecoveryAssessment extends ScheduledQueryAssessment {
   estimatedRuns: number;
 }
 
-export function summarizeScheduledQuery(jobId: string): Promise<OperationalBrief> {
-  return invokeAI("summarize-scheduled-query", { jobId });
+export function summarizeScheduledQuery(jobId: string, opts?: InvokeOptions): Promise<OperationalBrief> {
+  return invokeAI("summarize-scheduled-query", { jobId }, opts);
 }
 
-export function summarizeDataHealth(promiseId: string): Promise<OperationalBrief> {
-  return invokeAI("summarize-data-health", { promiseId });
+export function summarizeDataHealth(promiseId: string, opts?: InvokeOptions): Promise<OperationalBrief> {
+  return invokeAI("summarize-data-health", { promiseId }, opts);
 }
 
-export function diagnoseScheduledRun(jobId: string, runId: string): Promise<DataOpsInvestigation> {
-  return invokeAI("diagnose-scheduled-run", { jobId, runId });
+export function diagnoseScheduledRun(jobId: string, runId: string, opts?: InvokeOptions): Promise<DataOpsInvestigation> {
+  return invokeAI("diagnose-scheduled-run", { jobId, runId }, opts);
 }
 
-export function diagnoseHealthIncident(promiseId: string, incidentId?: string): Promise<DataOpsInvestigation> {
-  return invokeAI("diagnose-health-incident", { promiseId, incidentId });
+export function diagnoseHealthIncident(promiseId: string, incidentId?: string, opts?: InvokeOptions): Promise<DataOpsInvestigation> {
+  return invokeAI("diagnose-health-incident", { promiseId, incidentId }, opts);
 }
 
-export function draftScheduledQuery(input: { intent: string; connectionId: string; timezone: string; database?: string }): Promise<ScheduledQueryDraft> {
-  return invokeAI("draft-scheduled-query", input);
+export function draftScheduledQuery(input: { intent: string; connectionId: string; timezone: string; database?: string }, opts?: InvokeOptions): Promise<ScheduledQueryDraft> {
+  return invokeAI("draft-scheduled-query", input, opts);
 }
 
-export function assessScheduledQuery(input: Pick<ScheduledQueryInput, "name" | "connectionId" | "query" | "frequency" | "timezone" | "outputMode" | "destDatabase" | "destTable" | "timeoutSecs" | "maxAttempts">): Promise<ScheduledQueryAssessment> {
-  return invokeAI("assess-scheduled-query", input);
+export function assessScheduledQuery(input: Pick<ScheduledQueryInput, "name" | "connectionId" | "query" | "frequency" | "timezone" | "outputMode" | "destDatabase" | "destTable" | "timeoutSecs" | "maxAttempts">, opts?: InvokeOptions): Promise<ScheduledQueryAssessment> {
+  return invokeAI("assess-scheduled-query", input, opts);
 }
 
-export function recommendHealthPromise(input: { connectionId: string; database: string; table: string; criticality: DataHealthCriticality; existingChecks: DataHealthCheck[] }): Promise<HealthPromiseRecommendation> {
-  return invokeAI("recommend-health-promise", input);
+export function recommendHealthPromise(input: { connectionId: string; database: string; table: string; criticality: DataHealthCriticality; existingChecks: DataHealthCheck[] }, opts?: InvokeOptions): Promise<HealthPromiseRecommendation> {
+  return invokeAI("recommend-health-promise", input, opts);
 }
 
-export function tuneHealthPromise(promiseId: string): Promise<HealthPromiseTuning> {
-  return invokeAI("tune-health-promise", { promiseId });
+export function tuneHealthPromise(promiseId: string, opts?: InvokeOptions): Promise<HealthPromiseTuning> {
+  return invokeAI("tune-health-promise", { promiseId }, opts);
 }
 
-export function correlateHealthIncidents(promiseId: string): Promise<HealthIncidentCorrelation> {
-  return invokeAI("correlate-health-incidents", { promiseId });
+export function correlateHealthIncidents(promiseId: string, opts?: InvokeOptions): Promise<HealthIncidentCorrelation> {
+  return invokeAI("correlate-health-incidents", { promiseId }, opts);
 }
 
-export function planScheduledRecovery(jobId: string, from: number, to: number): Promise<RecoveryAssessment> {
-  return invokeAI("plan-scheduled-recovery", { jobId, from, to });
+export function planScheduledRecovery(jobId: string, from: number, to: number, opts?: InvokeOptions): Promise<RecoveryAssessment> {
+  return invokeAI("plan-scheduled-recovery", { jobId, from, to }, opts);
 }
 
 export async function submitDataOpsAiFeedback(input: { capability: string; objectType: "scheduled_query" | "scheduled_run" | "data_health_promise" | "data_health_incident"; objectId: string; rating: "useful" | "not_useful" | "accepted" | "edited" | "rejected"; comment?: string }): Promise<void> {

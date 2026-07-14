@@ -37,6 +37,7 @@ import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import type { RunQuery, ScheduledQueryRun, SqStatus } from "@/api/scheduledQueries";
 import { diagnoseScheduledRun, type DataOpsInvestigation } from "@/api/dataOpsAi";
 import { AiInsightDialog, InvestigationView } from "@/features/dataops-ai";
+import { useDataOpsModelId } from "@/hooks";
 import { useScheduledQueries, useScheduledQueryRuns, useJobOwners, useDeleteRuns } from "./hooks";
 import { StatusBadge, formatDuration } from "./lib";
 import { TablePagination } from "./TablePagination";
@@ -110,6 +111,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
   const canDelete = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_DELETE);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+  const modelId = useDataOpsModelId();
   const openInLogs = (queryId: string) => navigate(`/monitoring/logs?q=${encodeURIComponent(queryId)}`);
   const { options: ownerOptions } = useJobOwners(jobs, canViewAll);
   const deleteRunsMut = useDeleteRuns();
@@ -184,7 +186,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
     setInvestigationLoading(true);
     setInvestigationError(undefined);
     try {
-      setInvestigation(await diagnoseScheduledRun(jobId, runId));
+      setInvestigation(await diagnoseScheduledRun(jobId, runId, { modelId }));
     } catch (error) {
       setInvestigationError(error instanceof Error ? error.message : "Run investigation failed");
     } finally {

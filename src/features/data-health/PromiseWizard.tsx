@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useDebounce } from "@/hooks";
+import { useDataOpsModelId, useDebounce } from "@/hooks";
 import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { cn } from "@/lib/utils";
 import { useCreateDataHealthPromise, useUpdateDataHealthPromise } from "./hooks";
@@ -129,6 +129,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
   const activeConnectionName = useAuthStore((state) => state.activeConnectionName);
   const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
+  const modelId = useDataOpsModelId();
   const createMutation = useCreateDataHealthPromise();
   const updateMutation = useUpdateDataHealthPromise();
   const [step, setStep] = useState(0);
@@ -286,7 +287,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
     if (!connectionId || form.sourceType !== "table" || !form.databaseName || !form.tableName) return;
     setRecommending(true);
     try {
-      setRecommendation(await recommendHealthPromise({ connectionId, database: form.databaseName, table: form.tableName, criticality: form.criticality, existingChecks: checks }));
+      setRecommendation(await recommendHealthPromise({ connectionId, database: form.databaseName, table: form.tableName, criticality: form.criticality, existingChecks: checks }, { modelId }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not recommend health coverage");
     } finally {

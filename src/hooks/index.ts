@@ -49,6 +49,9 @@ export {
   usePermission,
 } from './useAuth';
 
+// DataOps page-level AI model selection
+export { useDataOpsModelId } from './useDataOpsModelId';
+
 // Utility hooks
 export { useDebounce } from './useDebounce';
 export { useWindowSize } from './useWindowSize';

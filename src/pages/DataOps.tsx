@@ -11,6 +11,7 @@ import { CalendarClock, HeartPulse, Workflow } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { DataOpsModelButton } from "@/features/dataops-ai";
 import { ScheduledQueries, SUB_TABS, type SubTab } from "@/features/scheduled-queries";
 import { DataHealth, DATA_HEALTH_SUB_TABS, type DataHealthSubTab } from "@/features/data-health";
 
@@ -98,6 +99,10 @@ export default function DataOps() {
               <FeaturePill key={f} feature={f} isActive={activeFeature === f} onClick={() => navigate(`/dataops/${f}/overview`)} />
             ))}
           </nav>
+
+          <div className="ml-auto flex items-center gap-2 pb-2">
+            <DataOpsModelButton />
+          </div>
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-hidden">

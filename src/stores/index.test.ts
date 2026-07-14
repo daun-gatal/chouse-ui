@@ -16,6 +16,7 @@ describe('stores/index exports', () => {
         expect(storesModule.useRbacStore).toBeDefined();
         expect(storesModule.useWorkspaceStore).toBeDefined();
         expect(storesModule.useExplorerStore).toBeDefined();
+        expect(storesModule.useDataOpsModelStore).toBeDefined();
         expect(storesModule.genTabId).toBeDefined();
         expect(storesModule.RBAC_PERMISSIONS).toBeDefined();
     });

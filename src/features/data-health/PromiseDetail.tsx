@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AiInsightDialog, CorrelationView, InvestigationView, OperationalBriefCard, TuningView } from "@/features/dataops-ai";
+import { useDataOpsModelId } from "@/hooks";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { useDataHealthPromise, useDataHealthTimeline, useRunDataHealthPromise } from "./hooks";
 import { DH_LABEL, DH_PRIMARY, HealthBadge, formatHealthTime, formatMetric, formatSchedule, isDateOnlyColumnType } from "./lib";
@@ -19,6 +20,7 @@ export function PromiseDetail({ id, onBack, onEdit }: { id: string; onBack: () =
   const canRun = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_RUN));
   const canEdit = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT));
   const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
+  const modelId = useDataOpsModelId();
   const promise = promiseQuery.data;
   const [dialog, setDialog] = useState<"investigate" | "tune" | "correlate" | "backtest" | "diagnostic" | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,11 +48,11 @@ export function PromiseDetail({ id, onBack, onEdit }: { id: string; onBack: () =
     try {
       if (kind === "investigate") {
         const activeIncident = timelineQuery.data?.incidents.find((incident) => incident.status !== "recovered");
-        setInvestigation(await diagnoseHealthIncident(id, activeIncident?.id));
+        setInvestigation(await diagnoseHealthIncident(id, activeIncident?.id, { modelId }));
       } else if (kind === "tune") {
-        setTuning(await tuneHealthPromise(id));
+        setTuning(await tuneHealthPromise(id, { modelId }));
       } else if (kind === "correlate") {
-        setCorrelation(await correlateHealthIncidents(id));
+        setCorrelation(await correlateHealthIncidents(id, { modelId }));
       } else {
         setBacktest(await backtestDataHealthPromise(id, 14));
       }

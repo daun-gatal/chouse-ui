@@ -21,6 +21,7 @@ import { recoverScheduledQuery, type ScheduledQuery, type ScheduledRecoveryResul
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useDataOpsModelId } from "@/hooks";
 import { formatClickHouseSQL } from "@/lib/formatSql";
 import { useAuthStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { AiInsightDialog, AssessmentView, OperationalBriefCard } from "@/features/dataops-ai";
@@ -52,6 +53,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+  const modelId = useDataOpsModelId();
   const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
   const activeConnectionName = useAuthStore((state) => state.activeConnectionName);
   // The list is scoped to the active connection, so a visible job is always on
@@ -113,7 +115,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
         destTable: job.destTable,
         timeoutSecs: job.timeoutSecs,
         maxAttempts: job.maxAttempts,
-      }));
+      }, { modelId }));
     } catch (error) {
       setPreflightError(error instanceof Error ? error.message : "Preflight review failed");
     } finally {
@@ -132,7 +134,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
     setRecoveryError(undefined);
     try {
       const [assessment, preview] = await Promise.all([
-        planScheduledRecovery(job.id, from, to),
+        planScheduledRecovery(job.id, from, to, { modelId }),
         recoverScheduledQuery(job.id, { from, to }),
       ]);
       setRecovery({ assessment, preview });

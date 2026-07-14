@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, HelpCircle, RefreshCw, Sparkles, ThumbsDow
 import { submitDataOpsAiFeedback, summarizeDataHealth, summarizeScheduledQuery } from "@/api/dataOpsAi";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useDataOpsModelId } from "@/hooks";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
 interface OperationalBriefCardProps {
@@ -20,9 +21,10 @@ function HealthIcon({ health }: { health: "healthy" | "attention" | "unknown" })
 
 export function OperationalBriefCard({ kind, id }: OperationalBriefCardProps) {
   const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
+  const modelId = useDataOpsModelId();
   const query = useQuery({
-    queryKey: ["dataops-ai", "brief", kind, id],
-    queryFn: () => kind === "scheduled-query" ? summarizeScheduledQuery(id) : summarizeDataHealth(id),
+    queryKey: ["dataops-ai", "brief", kind, id, modelId ?? "default"],
+    queryFn: () => kind === "scheduled-query" ? summarizeScheduledQuery(id, { modelId }) : summarizeDataHealth(id, { modelId }),
     enabled: canUseAi && Boolean(id),
     staleTime: 5 * 60 * 1000,
     retry: false,
