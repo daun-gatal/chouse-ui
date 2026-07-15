@@ -1,0 +1,4 @@
+type: minor
+
+### Added
+- **Event-triggered Data Health** — a promise can now chain to a materializing scheduled query and evaluate right after each successful run, over exactly the window that run wrote (no cron guesswork, no evaluate-before-write races). The promise wizard gains an "After a scheduled query succeeds" cadence with an upstream job picker (auto-suggesting the producer of the chosen table), the scheduled-query flow offers "Protect output table" after creating a materializing job, and the Data Health overview's coverage gaps open the pre-linked wizard in one click. Upstream pipeline failures mark chained promises `unknown` and open an execution incident on the promise's channels, recovering automatically on the next successful run; deleting or de-materializing a job with chained promises is blocked until they are detached. (ADR 0006)
