@@ -14,6 +14,12 @@ import type { ProviderType } from './aiProviders';
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 export type Verbosity = 'low' | 'medium' | 'high';
+export const STRUCTURED_OUTPUT_POLICIES = ['auto', 'native', 'tool', 'json', 'plain'] as const;
+export type StructuredOutputPolicy = (typeof STRUCTURED_OUTPUT_POLICIES)[number];
+
+export function isStructuredOutputPolicy(value: unknown): value is StructuredOutputPolicy {
+  return typeof value === 'string' && STRUCTURED_OUTPUT_POLICIES.some((policy) => policy === value);
+}
 
 export interface AiSafetySetting {
   category: string;
@@ -71,6 +77,8 @@ export interface AiModelParams {
   recursionLimit?: number;
   /** Wall-clock budget per agent run in ms. Overrides both built-in run timeouts. */
   runTimeoutMs?: number;
+  /** Preferred structured-output strategy. `auto` negotiates with safe fallbacks. */
+  structuredOutputPolicy?: StructuredOutputPolicy;
 
   // — Escape hatch —
   /**
@@ -82,14 +90,19 @@ export interface AiModelParams {
 
 export type AiModelParamKey = keyof AiModelParams;
 
+const ENGINE_KEYS: readonly AiModelParamKey[] = [
+  'recursionLimit',
+  'runTimeoutMs',
+  'structuredOutputPolicy',
+];
+
 const COMMON_KEYS: readonly AiModelParamKey[] = [
   'temperature',
   'topP',
   'maxTokens',
   'stopSequences',
   'maxRetries',
-  'recursionLimit',
-  'runTimeoutMs',
+  ...ENGINE_KEYS,
 ];
 
 const OPENAI_FAMILY_KEYS: readonly AiModelParamKey[] = [
@@ -113,13 +126,13 @@ export const PROVIDER_PARAM_KEYS: Record<ProviderType, readonly AiModelParamKey[
   'google': [...COMMON_KEYS, 'topK', 'thinkingBudgetTokens', 'apiVersion', 'safetySettings'],
   'azure-openai': [...OPENAI_FAMILY_KEYS, 'apiVersion'],
   'groq': [...COMMON_KEYS, 'requestTimeoutMs'],
-  'mistral': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
-  'cohere': ['temperature', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'mistral': ['temperature', 'topP', 'maxTokens', 'maxRetries', ...ENGINE_KEYS],
+  'cohere': ['temperature', 'maxRetries', ...ENGINE_KEYS],
   'ollama': [...COMMON_KEYS, 'topK'],
-  'xai': ['temperature', 'maxTokens', 'stopSequences', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'xai': ['temperature', 'maxTokens', 'stopSequences', 'maxRetries', ...ENGINE_KEYS],
   'deepseek': [...COMMON_KEYS, 'frequencyPenalty', 'presencePenalty', 'requestTimeoutMs', 'extra'],
-  'cerebras': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'requestTimeoutMs', 'recursionLimit', 'runTimeoutMs'],
-  'bedrock': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'recursionLimit', 'runTimeoutMs'],
+  'cerebras': ['temperature', 'topP', 'maxTokens', 'maxRetries', 'requestTimeoutMs', ...ENGINE_KEYS],
+  'bedrock': ['temperature', 'topP', 'maxTokens', 'maxRetries', ...ENGINE_KEYS],
   'fireworks': OPENAI_FAMILY_KEYS,
   'together': OPENAI_FAMILY_KEYS,
   'openrouter': OPENAI_FAMILY_KEYS,
@@ -227,6 +240,11 @@ export function validateAiModelParams(params: AiModelParams, providerType: Provi
     if (value < bounds.min || value > bounds.max) {
       errors.push(`'${key}' must be between ${bounds.min} and ${bounds.max}`);
     }
+  }
+
+  if (params.structuredOutputPolicy !== undefined
+      && !isStructuredOutputPolicy(params.structuredOutputPolicy)) {
+    errors.push(`'structuredOutputPolicy' must be one of: ${STRUCTURED_OUTPUT_POLICIES.join(', ')}`);
   }
 
   // Per-provider tightenings on top of the generic bounds.

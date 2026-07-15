@@ -16,7 +16,11 @@ import {
     updateAiModel,
     deleteAiModel,
 } from '../services/aiModels';
-import { validateAiModelParams, type AiModelParams } from '../constants/aiModelParams';
+import {
+    STRUCTURED_OUTPUT_POLICIES,
+    validateAiModelParams,
+    type AiModelParams,
+} from '../constants/aiModelParams';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
@@ -44,6 +48,7 @@ const aiModelParamsSchema = z.object({
     safetySettings: z.array(z.object({ category: z.string().min(1), threshold: z.string().min(1) }).strict()).max(10).optional(),
     recursionLimit: z.number().int().min(8).max(1000).optional(),
     runTimeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
+    structuredOutputPolicy: z.enum(STRUCTURED_OUTPUT_POLICIES).optional(),
     extra: z.record(z.unknown()).optional(),
 }).strict();
 

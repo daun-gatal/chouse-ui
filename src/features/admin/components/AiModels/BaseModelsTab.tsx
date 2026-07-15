@@ -23,8 +23,10 @@ import {
     NUMBER_PARAM_FIELDS,
     PROVIDER_PARAM_KEYS,
     REASONING_EFFORT_OPTIONS,
+    STRUCTURED_OUTPUT_POLICIES,
     VERBOSITY_OPTIONS,
     hasAnyParams,
+    isStructuredOutputPolicy,
     validateAiModelParams,
     type AiModelParamKey,
     type AiModelParams,
@@ -61,6 +63,7 @@ function draftFromParams(params: AiModelParams | null | undefined): ParamsDraft 
     if (params.reasoningEffort) draft.reasoningEffort = params.reasoningEffort;
     if (params.verbosity) draft.verbosity = params.verbosity;
     if (params.apiVersion) draft.apiVersion = params.apiVersion;
+    if (params.structuredOutputPolicy) draft.structuredOutputPolicy = params.structuredOutputPolicy;
     return draft;
 }
 
@@ -187,6 +190,10 @@ export default function BaseModelsTab() {
         if (apiVersion && isAllowed('apiVersion')) {
             built.apiVersion = apiVersion;
         }
+        const structuredOutputPolicy = paramsDraft.structuredOutputPolicy;
+        if (structuredOutputPolicy && isAllowed('structuredOutputPolicy') && isStructuredOutputPolicy(structuredOutputPolicy)) {
+            built.structuredOutputPolicy = structuredOutputPolicy;
+        }
 
         if (isAllowed('stopSequences')) {
             const sequences = stopSeqText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
@@ -288,6 +295,7 @@ export default function BaseModelsTab() {
         label: string,
         options: readonly string[],
         description: string,
+        unsetLabel = 'Provider default',
     ) => (
         <label className="flex flex-col gap-1" key={key}>
             <span className={fieldLabelClass}>{label}</span>
@@ -296,7 +304,7 @@ export default function BaseModelsTab() {
                     <SelectValue placeholder="Provider default" />
                 </SelectTrigger>
                 <SelectContent className="rounded-xs border-ink-500 bg-ink-100 text-paper">
-                    <SelectItem value={UNSET}>Provider default</SelectItem>
+                    <SelectItem value={UNSET}>{unsetLabel}</SelectItem>
                     {options.map(option => (
                         <SelectItem key={option} value={option}>{option}</SelectItem>
                     ))}
@@ -470,9 +478,12 @@ export default function BaseModelsTab() {
                                                 {PARAM_GROUPS.map(group => {
                                                     const fields = numberFieldsFor(group);
                                                     const showReasoningEnums = group === 'Reasoning';
+                                                    const showReliabilityEnums = group === 'Reliability & agent';
                                                     const reasoningOptions = REASONING_EFFORT_OPTIONS[providerType];
-                                                    const hasEnums = showReasoningEnums && (
+                                                    const hasEnums = (showReasoningEnums && (
                                                         (isAllowed('reasoningEffort') && reasoningOptions.length > 0) || isAllowed('verbosity')
+                                                    )) || (
+                                                        showReliabilityEnums && isAllowed('structuredOutputPolicy')
                                                     );
                                                     if (fields.length === 0 && !hasEnums) return null;
                                                     return (
@@ -499,6 +510,8 @@ export default function BaseModelsTab() {
                                                                     renderEnumSelect('reasoningEffort', 'Reasoning effort', reasoningOptions, 'Reasoning depth for capable models.')}
                                                                 {showReasoningEnums && isAllowed('verbosity') &&
                                                                     renderEnumSelect('verbosity', 'Verbosity', VERBOSITY_OPTIONS, 'Response verbosity (GPT-5 family).')}
+                                                                {showReliabilityEnums && isAllowed('structuredOutputPolicy') &&
+                                                                    renderEnumSelect('structuredOutputPolicy', 'Structured output', STRUCTURED_OUTPUT_POLICIES, 'Auto negotiates native output and tool calling, then uses plain JSON repair. Choose an override only for provider compatibility.', 'Auto (recommended)')}
                                                             </div>
                                                         </div>
                                                     );

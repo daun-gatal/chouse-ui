@@ -4,6 +4,7 @@ import {
   PARAM_BOUNDS,
   PROVIDER_PARAM_KEYS,
   REASONING_EFFORT_OPTIONS,
+  STRUCTURED_OUTPUT_POLICIES,
   hasAnyParams,
   validateAiModelParams,
   type AiModelParams,
@@ -37,6 +38,7 @@ const cases: Case[] = [
       requestTimeoutMs: 60_000,
       recursionLimit: 64,
       runTimeoutMs: 120_000,
+      structuredOutputPolicy: 'auto',
       extra: { seed: 42 },
     },
     expectErrors: false,
@@ -65,6 +67,7 @@ const cases: Case[] = [
   { name: 'bedrock rejects extra', providerType: 'bedrock', params: { extra: { a: 1 } }, expectErrors: true, errorIncludes: "'extra'" },
   { name: 'openrouter mirrors openai keys', providerType: 'openrouter', params: { reasoningEffort: 'minimal', extra: { seed: 2 } }, expectErrors: false },
   { name: 'empty params valid', providerType: 'anthropic', params: {}, expectErrors: false },
+  { name: 'plain structured output works for google', providerType: 'google', params: { structuredOutputPolicy: 'plain' }, expectErrors: false },
 ];
 
 // Guard against the server/frontend mirrors drifting: this hardcoded list must
@@ -112,8 +115,22 @@ describe('UI metadata consistency', () => {
   it('covers every provider type in PROVIDER_PARAM_KEYS and REASONING_EFFORT_OPTIONS', () => {
     for (const providerType of PROVIDER_TYPES) {
       expect(PROVIDER_PARAM_KEYS[providerType].length).toBeGreaterThan(0);
+      expect(PROVIDER_PARAM_KEYS[providerType]).toContain('structuredOutputPolicy');
       expect(REASONING_EFFORT_OPTIONS[providerType]).toBeDefined();
     }
+  });
+
+  it('allows every structured-output policy for every provider', () => {
+    for (const providerType of PROVIDER_TYPES) {
+      for (const structuredOutputPolicy of STRUCTURED_OUTPUT_POLICIES) {
+        expect(validateAiModelParams({ structuredOutputPolicy }, providerType)).toEqual([]);
+      }
+    }
+  });
+
+  it('rejects an invalid structured-output policy defensively', () => {
+    const params: AiModelParams = JSON.parse('{"structuredOutputPolicy":"invalid"}');
+    expect(validateAiModelParams(params, 'openai').join('; ')).toContain('structuredOutputPolicy');
   });
 
   it('keeps number-field bounds in sync with PARAM_BOUNDS', () => {
