@@ -159,6 +159,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       has_code_changes: ${{ steps.code_check.outputs.has_changes }}
       release_branch: ${{ steps.branch.outputs.name }}
+      release_sha: ${{ steps.branch.outputs.sha }}
 
     steps:
       - name: Checkout
@@ -251,7 +252,11 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Commit to release branch (not main)
+      # Committed straight to preview (not a disposable branch cut from it) so
+      # preview always contains the release commit main will be fast-forwarded
+      # to. release/vX is just a pointer at that same commit, kept around only
+      # so the approval-gated push-to-main job has a stable ref to check out.
+      - name: Commit release changes to preview
         id: branch
         if: steps.code_check.outputs.has_changes == 'true'
         run: |
@@ -260,7 +265,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin preview
-          git checkout -b "$BRANCH" origin/preview
+          git checkout -B preview origin/preview
           git add \
             CHANGELOG.md \
             package.json \
@@ -268,9 +273,12 @@ jobs:
             docs/portfolio/package.json \
             changelogs/unreleased/
           git commit -m "chore: release v$VERSION"
+          git push origin HEAD:preview
+          git branch "$BRANCH"
           git push origin "$BRANCH"
           echo "name=$BRANCH" >> $GITHUB_OUTPUT
-          echo "Pushed assembled changes to $BRANCH — awaiting approval before merging to main."
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "Pushed release commit to preview (tagged $BRANCH) — awaiting approval before fast-forwarding main."
 
       - name: Skip — no code changes
         if: steps.code_check.outputs.has_changes == 'false'
@@ -288,8 +296,8 @@ jobs:
           {
             echo "## Release Preview: $VERSION"
             echo ""
-            echo "> Changelog and version bump are staged on \`$BRANCH\`."
-            echo "> **Approve** the \`docker-publish\` deployment below to push to \`main\` and build Docker, or **Reject** to abort (the release branch will be deleted automatically)."
+            echo "> Changelog and version bump have been pushed to \`preview\` as \`$BRANCH\`."
+            echo "> **Approve** the \`docker-publish\` deployment below to push to \`main\` and build Docker, or **Reject** to abort (the release commit will be reverted from \`preview\` automatically)."
             echo ""
             echo "---"
             echo ""
@@ -324,6 +332,8 @@ jobs:
     environment: release-approval
     permissions:
       contents: write
+    outputs:
+      pushed: ${{ steps.ff.outputs.pushed }}
 
     steps:
       - name: Checkout
@@ -333,6 +343,7 @@ jobs:
           token: ${{ secrets.RELEASE_SECRET }}
 
       - name: Fast-forward main to release branch
+        id: ff
         run: |
           BRANCH="${{ needs.assemble.outputs.release_branch }}"
           git config user.name "github-actions[bot]"
@@ -340,32 +351,45 @@ jobs:
           git fetch origin "$BRANCH"
           git checkout "$BRANCH"
           git push origin "HEAD:main"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "main updated to v${{ needs.assemble.outputs.version }}"
 
       - name: Delete release branch
         run: |
           git push origin --delete "${{ needs.assemble.outputs.release_branch }}" || true
 
-  # ── Step 2b: cleanup on rejection — delete the release branch ───────────────
+  # ── Step 2b: cleanup on rejection — revert the release commit on preview ──
+  # Only runs when push-to-main never actually fast-forwarded main (rejected
+  # at the approval gate, or failed before that push). If main already got
+  # the commit, this must NOT run — reverting it from preview at that point
+  # would reintroduce the exact main/preview divergence this workflow exists
+  # to avoid.
   cleanup-on-rejection:
-    name: Cleanup Release Branch
+    name: Revert Release Commit
     needs: [assemble, push-to-main]
-    if: failure() && needs.assemble.outputs.release_branch != ''
+    if: failure() && needs.assemble.outputs.release_branch != '' && needs.push-to-main.outputs.pushed != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout preview
         uses: actions/checkout@v4
         with:
+          ref: preview
+          fetch-depth: 0
           token: ${{ secrets.RELEASE_SECRET }}
 
-      - name: Delete release branch
+      - name: Revert release commit on preview
         run: |
+          SHA="${{ needs.assemble.outputs.release_sha }}"
           BRANCH="${{ needs.assemble.outputs.release_branch }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git revert --no-edit "$SHA"
+          git push origin HEAD:preview
           git push origin --delete "$BRANCH" || echo "Branch $BRANCH already deleted or not found."
-          echo "Release branch $BRANCH deleted after rejection."
+          echo "Reverted release commit $SHA on preview and deleted $BRANCH after rejection."
 
   # ── Step 3: build and push Docker (after main is updated) ─────────────────
   docker:
