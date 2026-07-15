@@ -40,6 +40,7 @@ import {
 } from "../services/scheduledQueries/materialize";
 import { buildExecutableQuery, toDateTime64Param } from "../services/scheduledQueries/validation";
 import { buildLineage, clampWindowDays } from "../services/scheduledQueries/lineage";
+import { listPromisesByUpstreamJobId } from "../services/dataHealth/store";
 
 const scheduledQueries = new Hono();
 
@@ -249,6 +250,21 @@ function runFilterFromQuery(c: Context, queryId: string): store.RunFilter {
   return filter;
 }
 
+/**
+ * Fail closed when a materializing job has event-triggered Data Health promises
+ * chained to it (ADR 0006): deleting it (or removing its output) would silently
+ * strand those monitors, so the user must detach or delete the promises first.
+ */
+async function assertNoChainedPromises(jobId: string, action: string): Promise<void> {
+  const dependents = await listPromisesByUpstreamJobId(jobId);
+  if (dependents.length === 0) return;
+  const names = dependents.map((promise) => promise.name).join(", ");
+  throw AppError.conflict(
+    `Cannot ${action}: ${dependents.length} Data Health promise(s) run after this job (${names}). Delete them or switch them to a scheduled cadence first.`,
+    { promises: dependents.map((promise) => ({ id: promise.id, name: promise.name })) },
+  );
+}
+
 async function toJobResponse(job: ScheduledQueryRow, includeLastRun: boolean): Promise<Record<string, unknown>> {
   const channelIds = await store.getJobChannelIds(job.id);
   const base: Record<string, unknown> = { ...job, channelIds };
@@ -265,7 +281,12 @@ scheduledQueries.get("/", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_VIEW),
   // Optional connection scope: the UI passes the active connection so the list
   // only shows jobs the current session can meaningfully open and edit.
   const connectionId = c.req.query("connectionId");
-  const jobs = (await store.listJobs(ownerScope(c))).filter((j) => !connectionId || j.connectionId === connectionId);
+  // Optional `producesTable=db.table` — materializing jobs writing that table
+  // (authoritative dest match), used to suggest an event-trigger upstream (ADR 0006).
+  const producesTable = c.req.query("producesTable");
+  const jobs = (await store.listJobs(ownerScope(c)))
+    .filter((j) => !connectionId || j.connectionId === connectionId)
+    .filter((j) => !producesTable || (j.outputMode !== "none" && `${j.destDatabase}.${j.destTable}` === producesTable));
   const data = await Promise.all(jobs.map((j) => toJobResponse(j, true)));
   return ok(c, { jobs: data });
 });
@@ -317,6 +338,9 @@ scheduledQueries.patch(
     await assertConnectionAccess(c, body.connectionId);
     const access = await dataAccessCheck(c, body.query, body.connectionId);
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
+    if (previous.outputMode !== "none" && body.outputMode === "none") {
+      await assertNoChainedPromises(id, "remove this job's output");
+    }
     await store.updateJob(id, bodyToInput(body));
     await store.setJobChannels(id, body.channelIds);
     const changedFields = [
@@ -336,6 +360,7 @@ scheduledQueries.patch(
 scheduledQueries.delete("/:id", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_DELETE), async (c) => {
   const id = requireParam(c, "id");
   await loadVisibleJob(c, id);
+  await assertNoChainedPromises(id, "delete this job");
   await store.deleteJob(id);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_DELETE, userId(c), { resourceType: "scheduled_query", resourceId: id });
   return ok(c, { success: true });

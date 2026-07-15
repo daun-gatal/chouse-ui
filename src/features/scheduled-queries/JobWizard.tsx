@@ -189,12 +189,14 @@ interface JobWizardProps {
   job?: ScheduledQuery;
   /** Optional prefill (e.g. "Schedule this query" from the editor). */
   prefill?: { query?: string; connectionId?: string };
+  /** Fires after a NEW job is created (not on edit) — e.g. the Data Health protect-output handoff (ADR 0006). */
+  onCreated?: (job: ScheduledQuery) => void;
 }
 
 const labelCls = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint";
 const sectionCls = "space-y-2";
 
-export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
+export function JobWizard({ isOpen, onClose, job, prefill, onCreated }: JobWizardProps) {
   const { hasPermission } = useRbacStore();
   const { activeConnectionId, activeConnectionName } = useAuthStore();
   const canWrite = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_WRITE);
@@ -349,11 +351,13 @@ export function JobWizard({ isOpen, onClose, job, prefill }: JobWizardProps) {
       if (job) {
         await updateMut.mutateAsync({ id: job.id, input });
         toast.success("Scheduled query updated");
+        onClose();
       } else {
-        await createMut.mutateAsync(input);
+        const created = await createMut.mutateAsync(input);
         toast.success("Scheduled query created");
+        onClose();
+        onCreated?.(created);
       }
-      onClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
     }

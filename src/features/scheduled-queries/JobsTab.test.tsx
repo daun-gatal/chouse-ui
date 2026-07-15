@@ -11,12 +11,17 @@ vi.mock("@/features/onboarding", () => ({
 
 vi.mock("@/stores", () => ({
   RBAC_PERMISSIONS: {
+    DATA_HEALTH_EDIT: "data_health:edit",
     SCHEDULED_QUERIES_DELETE: "scheduled:delete",
     SCHEDULED_QUERIES_EDIT: "scheduled:edit",
     SCHEDULED_QUERIES_RUN: "scheduled:run",
     SCHEDULED_QUERIES_VIEW_ALL: "scheduled:view-all",
   },
   useRbacStore: () => ({ hasPermission: () => true }),
+}));
+
+vi.mock("@/features/data-health", () => ({
+  PromiseWizard: ({ open }: { open: boolean }) => (open ? <div>Protect output table wizard</div> : null),
 }));
 
 vi.mock("@/features/scheduled-queries/hooks", () => ({

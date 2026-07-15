@@ -68,6 +68,7 @@ describe("DataOps AI object authorization", () => {
     const scheduledQueryId = await scheduledStore.createJob(jobInput, "owner-1", "data_health_check");
     const promiseId = await healthStore.createPromiseMetadata({
       scheduledQueryId,
+      upstreamJobId: null,
       name: "Orders promise",
       description: null,
       connectionId: "connection-1",

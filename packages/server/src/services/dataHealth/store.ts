@@ -64,6 +64,7 @@ function promiseRow(row: Record<string, unknown>): DataHealthPromiseRow {
   return {
     id: String(row.id),
     scheduledQueryId: String(row.scheduled_query_id),
+    upstreamJobId: nullableString(row.upstream_job_id),
     name: String(row.name),
     description: nullableString(row.description),
     connectionId: String(row.connection_id),
@@ -99,6 +100,7 @@ function promiseRow(row: Record<string, unknown>): DataHealthPromiseRow {
 
 export interface CreatePromiseMetadataInput {
   scheduledQueryId: string;
+  upstreamJobId: string | null;
   name: string;
   description: string | null;
   connectionId: string;
@@ -165,20 +167,32 @@ export async function getPromiseByJobId(scheduledQueryId: string): Promise<DataH
   return rows[0] ? promiseRow(rows[0]) : null;
 }
 
+/** All promises chained to a materializing upstream job, enabled or not (ADR 0006). */
+export async function listPromisesByUpstreamJobId(upstreamJobId: string): Promise<DataHealthPromiseRow[]> {
+  const rows = await all(sql`
+    SELECT p.*, COALESCE(u.display_name, u.username, u.email) AS owner_display_name
+    FROM data_health_promises p
+    LEFT JOIN rbac_users u ON u.id = p.owner_id
+    WHERE p.upstream_job_id = ${upstreamJobId}
+    ORDER BY p.name
+  `);
+  return rows.map(promiseRow);
+}
+
 export async function createPromiseMetadata(input: CreatePromiseMetadataInput): Promise<string> {
   const id = randomUUID();
   const now = Date.now();
   const schemaSnapshot = input.schemaSnapshot ? JSON.stringify(input.schemaSnapshot) : null;
   await run(sql`
     INSERT INTO data_health_promises (
-      id, scheduled_query_id, name, description, connection_id, source_type,
+      id, scheduled_query_id, upstream_job_id, name, description, connection_id, source_type,
       database_name, table_name, source_query, event_time_column, event_time_type,
       event_time_encoding, event_time_timezone, event_time_format, row_filter,
       owner_id, criticality, timezone, runbook_url, enabled, status,
       grace_secs, breach_after, recover_after, retention_days, schema_snapshot,
       created_by, created_at, updated_at
     ) VALUES (
-      ${id}, ${input.scheduledQueryId}, ${input.name}, ${input.description}, ${input.connectionId}, ${input.sourceType},
+      ${id}, ${input.scheduledQueryId}, ${input.upstreamJobId}, ${input.name}, ${input.description}, ${input.connectionId}, ${input.sourceType},
       ${input.databaseName}, ${input.tableName}, ${input.sourceQuery}, ${input.eventTimeColumn}, ${input.eventTimeType},
       ${input.eventTimeEncoding}, ${input.eventTimeTimezone}, ${input.eventTimeFormat}, ${input.rowFilter},
       ${input.ownerId}, ${input.criticality}, ${input.timezone}, ${input.runbookUrl}, ${input.enabled ? 1 : 0}, 'unknown',
@@ -195,6 +209,7 @@ export async function updatePromiseMetadata(id: string, input: CreatePromiseMeta
   const schemaSnapshot = input.schemaSnapshot ? JSON.stringify(input.schemaSnapshot) : null;
   await run(sql`
     UPDATE data_health_promises SET
+      upstream_job_id = ${input.upstreamJobId},
       name = ${input.name}, description = ${input.description}, connection_id = ${input.connectionId},
       source_type = ${input.sourceType}, database_name = ${input.databaseName}, table_name = ${input.tableName},
       source_query = ${input.sourceQuery}, event_time_column = ${input.eventTimeColumn},

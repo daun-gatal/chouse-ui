@@ -61,6 +61,19 @@ describe("Data Health API", () => {
     expect((await createDataHealthPromise(input)).id).toBe("dh-new");
   });
 
+  it("sends the upstream job link for event-triggered promises", async () => {
+    let sent: { frequency?: string; upstreamJobId?: string | null } = {};
+    server.use(
+      http.post("/api/data-health", async ({ request }) => {
+        sent = await request.json() as typeof sent;
+        return HttpResponse.json({ success: true, data: { promise: { id: "dh-event" }, initialRun: null } }, { status: 201 });
+      }),
+    );
+    const created = await createDataHealthPromise({ ...input, frequency: "event", upstreamJobId: "sq-1" });
+    expect(created.id).toBe("dh-event");
+    expect(sent).toMatchObject({ frequency: "event", upstreamJobId: "sq-1" });
+  });
+
   it("runs and deletes a promise", async () => {
     expect((await runDataHealthPromise("dh-1"))?.conditionValue).toBe("healthy");
     await expect(deleteDataHealthPromise("dh-1")).resolves.toBeUndefined();

@@ -149,6 +149,8 @@ export type DataHealthCriticality = "standard" | "important" | "critical";
 export interface DataHealthPromiseRow {
   id: string;
   scheduledQueryId: string;
+  /** Materializing scheduled query this promise evaluates after; set iff the backing job is `frequency: "event"` (ADR 0006). */
+  upstreamJobId: string | null;
   name: string;
   description: string | null;
   connectionId: string;

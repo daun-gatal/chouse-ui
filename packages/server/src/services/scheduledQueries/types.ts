@@ -11,19 +11,24 @@ import { z } from "zod";
 // --- enums ------------------------------------------------------------------
 
 export type SqKind = "sql_query" | "data_health_check";
-export type SqTrigger = "scheduled" | "manual";
+/** `event` runs are started by a successful upstream materialize run (ADR 0006). */
+export type SqTrigger = "scheduled" | "manual" | "event";
 /**
  * Run status. Alerting is failure-based: a run is `error` when it fails to
  * execute, else `success`. (`failed` is retained only to read any legacy rows.)
  */
 export type SqStatus = "running" | "success" | "failed" | "error";
-export type SqFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual";
+/** `event` never fires from the clock — only Data Health backing jobs use it (ADR 0006). */
+export type SqFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual" | "event";
 export type SqOutputMode = "none" | "append" | "replace" | "upsert";
 /** Outbox delivery kinds — failure alert + its recovery note. */
 export type SqOutboxKind = "alert" | "recovery";
 export type SqOutboxStatus = "pending" | "sending" | "sent";
 
+/** Cadences a user can put on a plain scheduled query — excludes `event`. */
 export const SQ_FREQUENCIES: readonly SqFrequency[] = ["daily", "weekly", "monthly", "cron", "manual"];
+/** Cadences a Data Health promise accepts — adds the upstream-chained `event`. */
+export const DATA_HEALTH_FREQUENCIES: readonly SqFrequency[] = [...SQ_FREQUENCIES, "event"];
 export const SQ_OUTPUT_MODES: readonly SqOutputMode[] = ["none", "append", "replace", "upsert"];
 
 // --- output / materialize (output_config JSON) ------------------------------
@@ -123,7 +128,9 @@ export interface ScheduledQueryOutboxRow {
 // --- type guards ------------------------------------------------------------
 
 export function isFrequency(v: unknown): v is SqFrequency {
-  return typeof v === "string" && (SQ_FREQUENCIES as readonly string[]).includes(v);
+  // Checked against ALL frequencies (incl. `event`) — this guards row READS, and
+  // mapping a stored `event` job to the "daily" fallback would put it on a cron.
+  return typeof v === "string" && (DATA_HEALTH_FREQUENCIES as readonly string[]).includes(v);
 }
 export function isOutputMode(v: unknown): v is SqOutputMode {
   return typeof v === "string" && (SQ_OUTPUT_MODES as readonly string[]).includes(v);

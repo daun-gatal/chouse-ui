@@ -5,10 +5,11 @@
 
 import { api } from "./client";
 
-export type SqFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual";
+/** `event` is only assigned to Data Health backing jobs — never selectable on a plain scheduled query (ADR 0006). */
+export type SqFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual" | "event";
 export type SqOutputMode = "none" | "append" | "replace" | "upsert";
 export type SqStatus = "running" | "success" | "failed" | "error";
-export type SqTrigger = "scheduled" | "manual";
+export type SqTrigger = "scheduled" | "manual" | "event";
 
 export interface OutputConfig {
   partitionExpr?: string;
@@ -135,9 +136,9 @@ export interface PreviewResult {
   };
 }
 
-export async function listScheduledQueries(connectionId?: string): Promise<ScheduledQuery[]> {
+export async function listScheduledQueries(connectionId?: string, producesTable?: string): Promise<ScheduledQuery[]> {
   const res = await api.get<{ jobs: ScheduledQuery[] }>("/scheduled-queries", {
-    params: { connectionId: connectionId || undefined },
+    params: { connectionId: connectionId || undefined, producesTable: producesTable || undefined },
   });
   return res.jobs;
 }

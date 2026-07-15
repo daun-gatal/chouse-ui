@@ -1,9 +1,13 @@
-import { AlertTriangle, CheckCircle2, CircleHelp, PauseCircle, Siren } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, CheckCircle2, CircleHelp, PauseCircle, ShieldCheck, Siren } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { useDataHealthOverview } from "./hooks";
 import { DH_LABEL, HealthBadge, formatHealthTime } from "./lib";
+import { PromiseWizard, type PromiseWizardDraft } from "./PromiseWizard";
 
 function Kpi({ label, value, icon: Icon, tone }: { label: string; value: number; icon: React.ElementType; tone: string }) {
   return (
@@ -16,6 +20,8 @@ function Kpi({ label, value, icon: Icon, tone }: { label: string; value: number;
 
 export function OverviewTab({ onSelectPromise }: { onSelectPromise: (id: string) => void }) {
   const { data, isLoading, isError } = useDataHealthOverview();
+  const canEdit = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT));
+  const [protectDraft, setProtectDraft] = useState<PromiseWizardDraft | undefined>();
   if (isLoading) return <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[0, 1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24 rounded-xs" />)}</div>;
   if (isError || !data) return <Card className="rounded-xs border-red-500/30 bg-red-500/5 p-6 text-[13px] text-red-500">Data Health overview could not be loaded.</Card>;
 
@@ -54,7 +60,8 @@ export function OverviewTab({ onSelectPromise }: { onSelectPromise: (id: string)
           </dl>
         </Card>
       </div>
-      {data.coverageGaps.length > 0 && <Card className="rounded-xs border-brand/25 bg-brand/[0.04] p-4"><div className="flex items-baseline justify-between"><p className={DH_LABEL}>Suggested coverage</p><span className="font-mono text-[9px] uppercase text-paper-faint">Scheduled outputs without a promise</span></div><div className="mt-3 grid gap-2 md:grid-cols-2">{data.coverageGaps.map((gap) => <div key={gap.jobId} className="rounded-xs border border-ink-500 bg-ink-100 p-3"><p className="text-[11px] font-medium text-paper">{gap.databaseName}.{gap.tableName}</p><p className="mt-1 text-[10px] text-paper-muted">Produced by {gap.jobName} · {gap.outputMode}</p><p className="mt-1 text-[10px] text-paper-faint">Protect this dataset from Datasets → New promise, then use AI Coverage Advisor.</p></div>)}</div></Card>}
+      {data.coverageGaps.length > 0 && <Card className="rounded-xs border-brand/25 bg-brand/[0.04] p-4"><div className="flex items-baseline justify-between"><p className={DH_LABEL}>Suggested coverage</p><span className="font-mono text-[9px] uppercase text-paper-faint">Scheduled outputs without a promise</span></div><div className="mt-3 grid gap-2 md:grid-cols-2">{data.coverageGaps.map((gap) => <div key={gap.jobId} className="rounded-xs border border-ink-500 bg-ink-100 p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-medium text-paper">{gap.databaseName}.{gap.tableName}</p><p className="mt-1 text-[10px] text-paper-muted">Produced by {gap.jobName} · {gap.outputMode}</p></div>{canEdit && <Button variant="outline" className="h-7 shrink-0 rounded-xs text-[11px]" onClick={() => setProtectDraft({ databaseName: gap.databaseName, tableName: gap.tableName, upstreamJobId: gap.jobId })}><ShieldCheck className="mr-1.5 h-3 w-3" /> Protect</Button>}</div><p className="mt-1 text-[10px] text-paper-faint">Opens the promise wizard pre-linked to run after each successful pipeline run.</p></div>)}</div></Card>}
+      <PromiseWizard open={Boolean(protectDraft)} onOpenChange={(open) => !open && setProtectDraft(undefined)} initialDraft={protectDraft} />
     </div>
   );
 }

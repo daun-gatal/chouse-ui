@@ -23,6 +23,7 @@ describe("formatSchedule", () => {
     expect(formatSchedule({ ...SCHEDULE, frequency: "weekly", dayOfWeek: 3 }, "UTC")).toBe("weekly · Wed 08:00 UTC");
     expect(formatSchedule({ ...SCHEDULE, frequency: "monthly", dayOfMonth: 15 }, "UTC")).toBe("monthly · day 15 08:00 UTC");
     expect(formatSchedule({ ...SCHEDULE, frequency: "manual" }, "UTC")).toBe("Manual");
+    expect(formatSchedule({ ...SCHEDULE, frequency: "event" }, "UTC")).toBe("After upstream run");
   });
 });
 

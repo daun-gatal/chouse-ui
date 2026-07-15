@@ -23,6 +23,10 @@ describe("cadenceToCron", () => {
     expect(cadenceToCron({ frequency: "manual", hour: 8, dayOfWeek: 1, dayOfMonth: 1, cronExpr: null, timezone: "UTC" })).toBeNull();
     expect(cadenceToCron({ frequency: "cron", hour: 8, dayOfWeek: 1, dayOfMonth: 1, cronExpr: "*/15 * * * *", timezone: "UTC" })).toBe("*/15 * * * *");
   });
+
+  it("returns null for event — chained jobs never fire from the clock (ADR 0006)", () => {
+    expect(cadenceToCron({ frequency: "event", hour: 8, dayOfWeek: 1, dayOfMonth: 1, cronExpr: null, timezone: "UTC" })).toBeNull();
+  });
 });
 
 describe("lastScheduledFireMs", () => {
@@ -40,6 +44,11 @@ describe("lastScheduledFireMs", () => {
 
   it("returns null for manual jobs", () => {
     expect(lastScheduledFireMs(job({ frequency: "manual" }), Date.now())).toBeNull();
+  });
+
+  it("returns null for event jobs, and event jobs preview no fire times", () => {
+    expect(lastScheduledFireMs(job({ frequency: "event" }), Date.now())).toBeNull();
+    expect(nextFireTimes(job({ frequency: "event" }), 5)).toEqual([]);
   });
 
   it("never returns a burst — only the single most recent slot", () => {

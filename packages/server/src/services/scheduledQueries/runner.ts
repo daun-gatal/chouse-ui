@@ -24,7 +24,8 @@ import {
   validateReadOnlySelect,
 } from "./validation";
 import { describeSelectSchema, diffSchema, executeMaterialize } from "./materialize";
-import { currentDataHealthJob, processDataHealthError, processDataHealthSuccess } from "../dataHealth/execution";
+import { currentDataHealthJob, processDataHealthError, processDataHealthSuccess, processUpstreamFailure } from "../dataHealth/execution";
+import { listPromisesByUpstreamJobId } from "../dataHealth/store";
 import type {
   ScheduledQueryRow,
   ScheduledQueryRunRow,
@@ -174,6 +175,12 @@ export interface ExecuteOptions {
   slotAt: number;
   attempt: number;
   suppressNotifications?: boolean;
+  /**
+   * Evaluate over this window instead of deriving one from the job's own cadence.
+   * Event-triggered Data Health runs pass the UPSTREAM run's window so the check
+   * sees exactly the slice the pipeline just wrote (ADR 0006).
+   */
+  window?: WindowParams;
 }
 
 /** Insert the `running` row and return the run id (the ClickHouse query_id). */
@@ -228,7 +235,7 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
   let notified = false;
 
   let client: ClickHouseClient | null = null;
-  const window = await resolveWindow(job, opts.slotAt);
+  const window = opts.window ?? await resolveWindow(job, opts.slotAt);
   const params = buildParamValues(window);
 
   try {
@@ -330,7 +337,61 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
     finishedAt,
   });
 
+  // ADR 0006 — event-triggered Data Health. Only materializing SQL jobs can have
+  // chained promises; recovery backfills (suppressNotifications) stay silent.
+  if (job.kind === "sql_query" && job.outputMode !== "none" && !opts.suppressNotifications) {
+    if (status === "success") {
+      await runChainedDataHealth(job, opts.slotAt, window);
+    } else {
+      try {
+        await processUpstreamFailure(job, runId, message ?? "unknown error");
+      } catch (err) {
+        logger.warn(
+          { module: "DataHealth", jobId: job.id, runId, err: err instanceof Error ? err.message : String(err) },
+          "Failed to propagate upstream failure to chained Data Health promises",
+        );
+      }
+    }
+  }
+
   return store.getRun(runId);
+}
+
+/**
+ * Run every enabled promise chained to a just-succeeded materializing job, over
+ * the SAME window that run wrote (ADR 0006). `claimSlot` on the health job at the
+ * upstream `slotAt` makes a re-fired upstream slot at-most-once, and health jobs
+ * are `outputMode: "none"` by construction so chains cannot recurse. A failed
+ * chained run records on the promise (inside `execute`) and never affects the
+ * upstream run, which is already finalized.
+ */
+async function runChainedDataHealth(upstream: ScheduledQueryRow, slotAt: number, window: WindowParams): Promise<void> {
+  let promises: Awaited<ReturnType<typeof listPromisesByUpstreamJobId>>;
+  try {
+    promises = await listPromisesByUpstreamJobId(upstream.id);
+  } catch (err) {
+    logger.error(
+      { module: "DataHealth", jobId: upstream.id, err: err instanceof Error ? err.message : String(err) },
+      "Failed to list chained Data Health promises",
+    );
+    return;
+  }
+  for (const promise of promises) {
+    if (!promise.enabled) continue;
+    try {
+      const healthJob = await store.getJob(promise.scheduledQueryId);
+      if (!healthJob || healthJob.kind !== "data_health_check" || !healthJob.enabled) continue;
+      const won = await store.claimSlot(healthJob.id, slotAt, Date.now(), RUNNER_ID);
+      if (!won) continue; // this upstream slot already triggered the promise
+      const attempt = (await store.countRunsForSlot(healthJob.id, slotAt)) + 1;
+      await execute(healthJob, { trigger: "event", slotAt, attempt, window });
+    } catch (err) {
+      logger.error(
+        { module: "DataHealth", promiseId: promise.id, upstreamJobId: upstream.id, err: err instanceof Error ? err.message : String(err) },
+        "Chained Data Health run failed",
+      );
+    }
+  }
 }
 
 /**
