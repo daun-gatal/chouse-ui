@@ -114,6 +114,21 @@ describe("initializeDeepAgentModel · openai", () => {
     expect(m.timeout).toBe(60_000);
     expect(m.modelKwargs).toEqual({ seed: 42 });
   });
+
+  it("keeps engine-only runtime params out of the provider client", () => {
+    const model = initializeDeepAgentModel(
+      fakeConfig("openai", {
+        recursionLimit: 64,
+        runTimeoutMs: 120_000,
+        structuredOutputPolicy: "tool",
+      }),
+    );
+    const fields = model as ChatOpenAI & Record<string, unknown>;
+    expect(fields.recursionLimit).toBeUndefined();
+    expect(fields.runTimeoutMs).toBeUndefined();
+    expect(fields.structuredOutputPolicy).toBeUndefined();
+    expect(fields.modelKwargs).toEqual({});
+  });
 });
 
 describe("initializeDeepAgentModel · openai-compatible", () => {

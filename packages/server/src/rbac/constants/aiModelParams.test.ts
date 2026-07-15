@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   EXTRA_MAX_KEYS,
   PROVIDER_PARAM_KEYS,
+  STRUCTURED_OUTPUT_POLICIES,
   hasAnyParams,
   validateAiModelParams,
   type AiModelParams,
@@ -34,6 +35,7 @@ const cases: Case[] = [
       requestTimeoutMs: 60_000,
       recursionLimit: 64,
       runTimeoutMs: 120_000,
+      structuredOutputPolicy: 'auto',
       extra: { seed: 42, logprobs: true },
     },
     expectErrors: false,
@@ -130,6 +132,7 @@ const cases: Case[] = [
 
   // Empty object is valid everywhere
   { name: 'empty params valid', providerType: 'anthropic', params: {}, expectErrors: false },
+  { name: 'plain structured output works for google', providerType: 'google', params: { structuredOutputPolicy: 'plain' }, expectErrors: false },
 ];
 
 describe('validateAiModelParams', () => {
@@ -153,12 +156,26 @@ describe('PROVIDER_PARAM_KEYS', () => {
     for (const [providerType, keys] of Object.entries(PROVIDER_PARAM_KEYS)) {
       expect(keys).toContain('recursionLimit');
       expect(keys).toContain('runTimeoutMs');
+      expect(keys).toContain('structuredOutputPolicy');
       expect(keys).toContain('temperature');
       // ChatCohere's constructor exposes no output-token cap.
       if (providerType !== 'cohere') {
         expect(keys).toContain('maxTokens');
       }
     }
+  });
+
+  it('allows every structured-output policy for every provider', () => {
+    for (const providerType of Object.keys(PROVIDER_PARAM_KEYS) as ProviderType[]) {
+      for (const structuredOutputPolicy of STRUCTURED_OUTPUT_POLICIES) {
+        expect(validateAiModelParams({ structuredOutputPolicy }, providerType)).toEqual([]);
+      }
+    }
+  });
+
+  it('rejects an invalid structured-output policy defensively', () => {
+    const params: AiModelParams = JSON.parse('{"structuredOutputPolicy":"invalid"}');
+    expect(validateAiModelParams(params, 'openai').join('; ')).toContain('structuredOutputPolicy');
   });
 });
 

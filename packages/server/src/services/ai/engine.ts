@@ -14,6 +14,9 @@ import {
   type FilesystemPermission,
 } from "deepagents";
 import { tool } from "@langchain/core/tools";
+import { toJsonSchema } from "@langchain/core/utils/json_schema";
+import type { ZodType, ZodTypeDef } from "zod";
+import { isStructuredOutputPolicy } from "../../rbac/constants/aiModelParams";
 import { AppError } from "../../types";
 import { resolveDeepAgentModel } from "./model";
 import { structuredOutput } from "./structuredOutput";
@@ -85,6 +88,8 @@ function runtimeOverrides(config: AiConfigWithKey): RuntimeOverrides {
 // clock so a stall surfaces as a retryable error instead of an infinite spinner.
 const STRUCTURED_RUN_TIMEOUT_MS = 4 * 60_000;
 const CHAT_RUN_TIMEOUT_MS = 2 * 60_000;
+const INITIAL_SCHEMA_PROMPT_MAX_CHARS = 2_000;
+const INITIAL_SCHEMA_PROMPT_MAX_KEYS = 20;
 
 function runSignal(timeoutMs: number, externalSignal?: AbortSignal): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -186,6 +191,39 @@ function createAgent(
   }) as DeepAgent;
 }
 
+function structuredInstructions<T>(
+  instructions: string,
+  schema: ZodType<T, ZodTypeDef, unknown>,
+): string {
+  const jsonSchema = toJsonSchema(schema);
+  const serialized = JSON.stringify(jsonSchema);
+  if (serialized.length <= INITIAL_SCHEMA_PROMPT_MAX_CHARS) {
+    return `${instructions}\nThe final answer must match this JSON Schema exactly:\n${serialized}`;
+  }
+
+  let properties: string[] = [];
+  if (typeof jsonSchema === "object" && jsonSchema !== null && "properties" in jsonSchema) {
+    const schemaProperties = jsonSchema.properties;
+    if (schemaProperties && typeof schemaProperties === "object" && !Array.isArray(schemaProperties)) {
+      properties = Object.keys(schemaProperties);
+    }
+  }
+  const shape = properties.length > 0
+    ? ` with these top-level keys: ${properties.slice(0, INITIAL_SCHEMA_PROMPT_MAX_KEYS).join(", ")}${properties.length > INITIAL_SCHEMA_PROMPT_MAX_KEYS ? ", …" : ""}`
+    : "";
+  return `${instructions}\nThe final answer must be one JSON object${shape}. The dedicated formatter will enforce the complete schema.`;
+}
+
+function structuredOutputCacheKey(config: AiConfigWithKey): string {
+  return [
+    config.provider.id,
+    String(config.provider.updatedAt),
+    config.model.id,
+    config.model.modelId,
+    String(config.model.updatedAt),
+  ].join(":");
+}
+
 function stableToolInput(input: unknown): string {
   if (!input || typeof input !== "object") return JSON.stringify(input);
   const sorted = Object.fromEntries(
@@ -245,13 +283,14 @@ async function collectStructuredRun(
   agent: DeepAgent,
   messages: AgentMessage[],
   stepLimit: number,
-  overrides: RuntimeOverrides,
+  recursionLimit: number | undefined,
+  signal: AbortSignal,
 ): Promise<string> {
   const result = await agent.invoke(
     { messages: normalizeMessages(messages) },
     {
-      recursionLimit: overrides.recursionLimit ?? recursionLimitFor(stepLimit),
-      signal: runSignal(overrides.runTimeoutMs ?? STRUCTURED_RUN_TIMEOUT_MS),
+      recursionLimit: recursionLimit ?? recursionLimitFor(stepLimit),
+      signal,
     },
   );
   return finalTextFromState(result);
@@ -261,9 +300,9 @@ async function collectStructuredRun(
  * Run a structured (non-streaming) capability end to end.
  *
  * The capability prompt asks for schema-valid JSON. Parse that final response
- * directly, with one forced structured-output call only when parsing fails.
- * Avoiding a response-format tool on every agent step keeps provider behavior
- * consistent and prevents schema-retry loops on compatible endpoints.
+ * directly, then use the model's bounded structured-output policy only when
+ * parsing fails. Avoiding a response-format tool on every agent step keeps
+ * provider behavior consistent and prevents schema-retry loops.
  */
 export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutput>(
   cap: StructuredCapability<TInput, TPrepared, TParsed, TOutput>,
@@ -278,8 +317,13 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
     const { model, config, label } = await resolveDeepAgentModel(ctx.modelId);
     const invokedToolCalls: InvokedToolCall[] = [];
     const tools = guardDuplicateTools(await cap.tools(prepared, ctx), invokedToolCalls);
-    const instructions = await cap.instructions(prepared, ctx);
+    const instructions = structuredInstructions(
+      await cap.instructions(prepared, ctx),
+      cap.outputSchema,
+    );
     const messages = await cap.messages(prepared, ctx);
+    const overrides = runtimeOverrides(config);
+    const signal = runSignal(overrides.runTimeoutMs ?? STRUCTURED_RUN_TIMEOUT_MS);
     registerFastHarnessProfile(config);
     const agent = createAgent(model, tools, instructions);
 
@@ -287,7 +331,8 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       agent,
       messages,
       cap.tuning?.stopAtSteps ?? 10,
-      runtimeOverrides(config),
+      overrides.recursionLimit,
+      signal,
     );
     const steps = invokedToolCalls.map((call) => ({ tool: call.name, input: call.args }));
 
@@ -309,6 +354,11 @@ export async function runStructuredCapability<TInput, TPrepared, TParsed, TOutpu
       raw,
       fallbackMessages,
       maxOutputTokens: cap.tuning?.maxOutputTokens,
+      policy: isStructuredOutputPolicy(config.model.params?.structuredOutputPolicy)
+        ? config.model.params.structuredOutputPolicy
+        : "auto",
+      strategyCacheKey: structuredOutputCacheKey(config),
+      signal,
       module: `AI:${cap.id}`,
     });
 

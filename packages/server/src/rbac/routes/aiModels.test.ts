@@ -102,7 +102,7 @@ describe("RBAC AI Models Routes · params", () => {
 
     describe("POST /", () => {
         it("accepts valid openai params and passes them to the service", async () => {
-            const params = { temperature: 0.7, maxTokens: 4096, recursionLimit: 64, extra: { seed: 42 } };
+            const params = { temperature: 0.7, maxTokens: 4096, recursionLimit: 64, structuredOutputPolicy: "auto", extra: { seed: 42 } };
             const res = await post(app, { providerId: "prov-openai", name: "GPT-4o", modelId: "gpt-4o", params });
             expect(res.status).toBe(201);
             expect(mockCreateAiModel).toHaveBeenCalledWith(expect.objectContaining({ params }));
@@ -117,6 +117,12 @@ describe("RBAC AI Models Routes · params", () => {
 
         it("rejects unknown param keys at the schema layer", async () => {
             const res = await post(app, { providerId: "prov-openai", name: "X", modelId: "x", params: { bogus: 1 } });
+            expect(res.status).toBe(400);
+            expect(mockCreateAiModel).not.toHaveBeenCalled();
+        });
+
+        it("rejects an unknown structured-output policy at the schema layer", async () => {
+            const res = await post(app, { providerId: "prov-openai", name: "X", modelId: "x", params: { structuredOutputPolicy: "magic" } });
             expect(res.status).toBe(400);
             expect(mockCreateAiModel).not.toHaveBeenCalled();
         });

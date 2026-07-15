@@ -23,9 +23,15 @@ mock.module("deepagents", () => ({
 
 // Mutable so individual tests can attach per-model runtime params.
 let modelParams: Record<string, unknown> | null = null;
+let fallbackModelResult: unknown = { content: "still not json" };
+let fallbackWithStructuredOutput: ((...args: unknown[]) => unknown) | undefined;
+const fallbackModelInvokeMock = mock(async () => fallbackModelResult);
 mock.module("./model", () => ({
   resolveDeepAgentModel: mock(async () => ({
-    model: {},
+    model: {
+      invoke: fallbackModelInvokeMock,
+      ...(fallbackWithStructuredOutput ? { withStructuredOutput: fallbackWithStructuredOutput } : {}),
+    },
     config: { model: { modelId: "gpt-4o", params: modelParams }, provider: { providerType: "openai" } },
     label: "test-model",
   })),
@@ -76,9 +82,12 @@ describe("runStructuredCapability", () => {
     const config = createDeepAgentMock.mock.calls.at(-1)?.[0] as {
       responseFormat?: unknown;
       subagents?: unknown[];
+      systemPrompt?: string;
     };
     expect(config.responseFormat).toBeUndefined();
     expect(config.subagents).toEqual([]);
+    expect(config.systemPrompt).toContain("The final answer must match this JSON Schema exactly");
+    expect(config.systemPrompt).toContain('"foo"');
     expect(registerHarnessProfileMock).toHaveBeenCalled();
     const [, profile] = registerHarnessProfileMock.mock.calls[0] as [
       string,
@@ -102,6 +111,26 @@ describe("runStructuredCapability", () => {
 
     expect(onParseFailure).toHaveBeenCalled();
     expect(output).toEqual({ foo: "recovered" });
+    const agentSignal = (invokeMock.mock.calls.at(-1)?.[1] as { signal?: AbortSignal })?.signal;
+    const fallbackSignal = (fallbackModelInvokeMock.mock.calls.at(-1)?.[1] as { signal?: AbortSignal })?.signal;
+    expect(fallbackSignal).toBe(agentSignal);
+  });
+
+  it("keeps large schemas out of the initial agent prompt", async () => {
+    invokeResult = { messages: [{ content: '{"foo":"from-text"}' }] };
+    const largeSchema = OutputSchema.describe("large schema ".repeat(500));
+
+    await runStructuredCapability(
+      fakeStructuredCapability({ outputSchema: largeSchema }),
+      { q: "hi" },
+      CTX,
+    );
+
+    const config = createDeepAgentMock.mock.calls.at(-1)?.[0] as { systemPrompt?: string };
+    expect(config.systemPrompt).toContain("dedicated formatter will enforce the complete schema");
+    expect(config.systemPrompt).toContain("top-level keys: foo");
+    expect(config.systemPrompt).not.toContain("large schema large schema");
+    expect(config.systemPrompt?.length).toBeLessThan(2_500);
   });
 
   it("returns an evidence-keyed cached result before creating an agent", async () => {
@@ -174,6 +203,28 @@ describe("per-model runtime overrides", () => {
       expect(cfg.signal).toBeInstanceOf(AbortSignal);
     } finally {
       modelParams = null;
+    }
+  });
+
+  it("applies the per-model structured-output policy to structured runs", async () => {
+    const methods: Array<string | undefined> = [];
+    modelParams = { structuredOutputPolicy: "tool" };
+    fallbackWithStructuredOutput = ((_schema: unknown, options: unknown) => {
+      const method = (options as { method?: string } | undefined)?.method;
+      methods.push(method);
+      return { invoke: async () => ({ foo: method }) };
+    }) as (...args: unknown[]) => unknown;
+    try {
+      invokeResult = { messages: [{ content: "not json" }] };
+
+      const output = await runStructuredCapability(fakeStructuredCapability(), { q: "hi" }, CTX);
+
+      expect(output).toEqual({ foo: "functionCalling" });
+      expect(methods).toEqual(["functionCalling"]);
+    } finally {
+      modelParams = null;
+      fallbackWithStructuredOutput = undefined;
+      fallbackModelResult = { content: "still not json" };
     }
   });
 });
