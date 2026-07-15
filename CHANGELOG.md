@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.8.0] - 2026-07-15
+
+### Added
+- **Configurable AI model runtime parameters** — admins can now tune per Provider Model: sampling (temperature, top-p, top-k, frequency/presence penalties), output limits (max tokens, stop sequences, verbosity), reasoning (effort level, thinking budgets), reliability (retries, request timeout), and the agent runtime (recursion limit, run timeout), plus an advanced escape hatch for extra provider kwargs. Fields are provider-aware (OpenAI, Anthropic, Google, OpenAI-compatible) with validation on both the form and the API, and take effect on the next AI run without a restart.
+- **Expanded AI providers** — Chouse AI now supports Azure OpenAI, Groq, Mistral, Cohere, Ollama, xAI (Grok), DeepSeek, Cerebras, and AWS Bedrock as first-class provider types, plus preset OpenAI-compatible endpoints for Fireworks AI, Together AI, and OpenRouter. Each provider exposes only the runtime parameters its SDK actually supports, Ollama needs no API key, and Bedrock is configured with dedicated AWS region/access-key fields (stored encrypted).
+- **Explorer query history** — Track SQL editor executions with connection, status, duration, and row metadata, then search, filter, reopen, or delete history entries from Explorer.
+- **Data Health Promises** — protect ClickHouse datasets with scheduled freshness, volume, per-column completeness, composite-key uniqueness, repeatable validity rules, schema, and repeatable custom-metric checks. Evaluations consistently use UTC: native `DateTime` values are compared as instants, local `Date`/`Date32` values map UTC boundaries through a required calendar timezone with day-level freshness and cadence, string timestamps require their stored-value timezone, and integer timestamps require an explicit seconds-to-nanoseconds unit. Table promises automatically add safe pruning predicates for recognized time-based ClickHouse partition keys, including local calendar/date partitions. Choosing a dataset query auto-detects its output columns, turning the event-time, completeness, and uniqueness pickers into dropdowns instead of free-text fields, matching the table-source experience. Investigate evidence — including the actual evaluated schedule window, with an explanation when a passing check has no violating rows — and manage low-noise incidents (dedicated execution-failure incidents, recovery transitions, immutable event timelines, transition-based notifications) from DataOps. Runs on both SQLite and PostgreSQL.
+- **DataOps AI operator assistance** — add evidence-grounded operational briefs, intent-based Scheduled Query drafting, preflight review, failed-run and Data Health incident investigation, health-check recommendations, noise tuning, incident correlation, historical promise backtests, bounded failing-row diagnostics, coverage-gap discovery, and confirmed historical recovery planning across Scheduled Queries and Data Health.
+- **Metadata-backed Explorer history** — Sync each user's bounded query execution history to the metadata database while retaining immediate local access and importing existing browser-local entries.
+- **Unified onboarding** — Adds fresh-install security and connection setup, a permission-aware Getting Started hub, resumable viewport-safe contextual guides for every CHouse product area, and persistent cross-device progress. Guide targets auto-scroll only when needed, explanations and highlights appear as one settled frame without an intermediate opening window, and transient dialogs, sheets, menus, selects, popovers, and AI windows close before every transition. Async Fleet, Doctor, and Preferences controls expose stable anchors before guidance appears; delayed destination rendering keeps the best visible target instead of moving the explanation; and persistence failures remain recoverable in place. Monitoring, DataOps, and Admin steps activate and highlight their exact horizontally revealable nested tab; isolated Doctor guide routes avoid loading an unrelated report; the dock stays available during guidance; background scrolling and focus stay contained; and every chapter, including the last card, remains reachable inside a dedicated short-screen scroll region. Onboarding updates merge atomically with other workspace preferences so dock, theme, and layout saves cannot overwrite guide progress.
+- **DataOps AI model picker** — choose which active AI model powers the AI features on the DataOps page (operational briefs, run diagnoses, query drafts, health-promise recommendations and tuning) from a minimal button in the page header. The selection is stored per user and falls back to the system default model automatically when cleared or when the chosen model is deactivated.
+
+### Changed
+- **Faster Chouse AI runtime** — AI capabilities now use bounded, focused DeepAgents tool loops
+- **Richer AI charts** — chart results now infer and label the correct axes, normalize ClickHouse
+- **Consistent AI windows** — Query Logs, Explorer, Errors, Parts, Schema Advisor, query debugging,
+- **Scheduled Query job journey** — consolidate a formatted read-only query definition, delivery safeguards, runtime lineage, and run investigation into a focused job detail page, reducing Scheduled Queries navigation to Overview and Jobs.
+
+### Fixed
+- **Google provider base URL** — custom base URLs configured on Google providers are now actually passed to the Gemini client.
+- **Recursion-limit errors** — LangGraph "Recursion limit reached" failures now surface a friendly message pointing at the configurable Provider Model recursion limit instead of a generic provider error.
+- **AI chart rendering** — unwrap JSON-serialized LangChain tool results and recover missing or
+- **DataOps active-connection scoping** — Scheduled Queries and Data Health now show only the active connection's jobs, promises, and incidents, so editing, schema browsing, test runs, and AI assistance always operate on the connection a resource was created for. Resources pinned to other connections keep running in the background and reappear when switching connections. Updates can no longer silently move a job or promise to a different connection, and the AI preflight review is refused when the session is on a different connection than the job.
+- **Scheduled Query job detail connection label** — show the connection's name instead of its raw id.
+- **AI structured output on OpenAI-compatible models** — forced tool-calling instead of OpenAI's strict `json_schema` response format when the resolved model is a non-native `ChatOpenAI` instance (covers `openai-compatible` providers like DeepSeek/Qwen proxies). Fixes generic failures on complex-schema capabilities when using third-party OpenAI-compatible endpoints.
+- **Onboarding journey stability** — Keeps Doctor actions fixed while AI and connection controls load, prevents exit/completion races, refreshes expired sessions during progress saves, preserves concurrent progress from multiple tabs or devices, and allows the freshly seeded super administrator to finish setup after adding an active connection.
+
 ## [v3.7.1] - 2026-06-28
 
 ### Changed
@@ -110,15 +137,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - **Legacy ClickHouse user metadata cache** — the `rbac_clickhouse_users_metadata` table is dropped; user/role/grant state is read live from ClickHouse.
-
-## [v3.2.0] - 2026-06-13
-
-### Changed
-- **User management** — replaced hard user deletion on the user card with an Activate/Deactivate action; deactivated users keep their data but cannot sign in until an admin reactivates them.
-- **Audit log coverage** — added audit entries for fleet alert-config updates, AI doctor scans/schedule changes/report deletions, and query EXPLAIN; migrated live-query kill logging to capture full client context.
-
-### Fixed
-- **SSO users** — the "Reset password" action is now hidden for SSO-linked accounts (both on the user card and the edit-user screen), since they have no local password.
-- **Inactive login message** — password sign-in by an inactive account now returns a clear "account is inactive, contact an administrator" message (after password verification, to avoid user enumeration); SSO wording aligned.
-- **Fleet doctor** — the "analyzing…" progress now reflects the selected investigation window instead of always showing "6h".
 
