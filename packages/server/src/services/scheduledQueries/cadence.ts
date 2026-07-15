@@ -6,7 +6,8 @@
  *
  * Fixed presets (daily/weekly/monthly) are compiled to a 5-field cron pattern
  * and evaluated through the same engine as custom `cron` jobs. All evaluation is
- * in the job's IANA timezone; existing jobs default to UTC. `manual` never fires.
+ * in the job's IANA timezone; existing jobs default to UTC. `manual` and `event`
+ * never fire from the clock (`event` runs are chained off upstream successes).
  */
 
 import { Cron } from "croner";
@@ -35,6 +36,7 @@ function clampInt(v: number, min: number, max: number, fallback: number): number
 export function cadenceToCron(spec: CadenceSpec): string | null {
   switch (spec.frequency) {
     case "manual":
+    case "event":
       return null;
     case "cron":
       return spec.cronExpr && spec.cronExpr.trim().length > 0 ? spec.cronExpr.trim() : null;

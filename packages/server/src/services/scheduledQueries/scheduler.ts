@@ -125,7 +125,7 @@ export class ScheduledQueryScheduler {
     const jobs = await store.listEnabledJobs();
     const due: Array<{ job: typeof jobs[number]; fireAt: number }> = [];
     for (const job of jobs) {
-      if (job.frequency === "manual") continue;
+      if (job.frequency === "manual" || job.frequency === "event") continue;
       const fireAt = lastScheduledFireMs(job, now);
       if (fireAt == null) continue;
       if (job.lastRunAt >= fireAt) continue; // slot already ran

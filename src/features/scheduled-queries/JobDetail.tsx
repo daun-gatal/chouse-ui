@@ -25,6 +25,7 @@ import { useDataOpsModelId } from "@/hooks";
 import { formatClickHouseSQL } from "@/lib/formatSql";
 import { useAuthStore, useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { AiInsightDialog, AssessmentView, OperationalBriefCard } from "@/features/dataops-ai";
+import { PromiseWizard, type PromiseWizardDraft } from "@/features/data-health";
 import { useJobOwners, useRunScheduledQuery, useScheduledQueryRuns, useUpdateScheduledQuery } from "./hooks";
 import { JobWizard } from "./JobWizard";
 import { LineageTab } from "./LineageTab";
@@ -53,6 +54,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
+  const canProtect = hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT);
   const modelId = useDataOpsModelId();
   const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
   const activeConnectionName = useAuthStore((state) => state.activeConnectionName);
@@ -64,6 +66,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const { data: runs = [] } = useScheduledQueryRuns(job.id);
   const { nameOf: ownerName } = useJobOwners(jobs, canViewAll);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [protectDraft, setProtectDraft] = useState<PromiseWizardDraft | undefined>();
   const [preflightOpen, setPreflightOpen] = useState(false);
   const [preflight, setPreflight] = useState<ScheduledQueryAssessment>();
   const [preflightError, setPreflightError] = useState<string>();
@@ -184,6 +187,11 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canProtect && job.outputMode !== "none" && job.destDatabase && job.destTable && (
+            <Button variant="outline" className="h-9 rounded-xs" onClick={() => setProtectDraft({ databaseName: job.destDatabase ?? "", tableName: job.destTable ?? "", upstreamJobId: job.id })}>
+              <ShieldCheck className="mr-2 h-3.5 w-3.5" /> Protect output table
+            </Button>
+          )}
           {canUseAi && (
             <Button variant="outline" className="h-9 rounded-xs" onClick={() => void runPreflight()}>
               <Sparkles className="mr-2 h-3.5 w-3.5" /> AI preflight
@@ -279,6 +287,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
       </section>
 
       {wizardOpen && <JobWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} job={job} />}
+      <PromiseWizard open={Boolean(protectDraft)} onOpenChange={(open) => !open && setProtectDraft(undefined)} initialDraft={protectDraft} />
       <AiInsightDialog open={preflightOpen} onOpenChange={setPreflightOpen} title="Scheduled Query preflight" description="Read-only review of correctness, cost, schedule, destination, and recovery risks." loading={preflightLoading} error={preflightError}>{preflight && <AssessmentView result={preflight} />}</AiInsightDialog>
       <AiInsightDialog open={recoveryOpen} onOpenChange={setRecoveryOpen} title="Historical recovery planner" description="Preview missed deterministic slots before any historical runs execute." loading={recoveryLoading} error={recoveryError}>
         <div className="space-y-4">

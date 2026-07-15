@@ -66,6 +66,19 @@ describe("Scheduled Queries API", () => {
     expect(seen).toEqual(["conn-2", "conn-2", null]);
   });
 
+  it("passes the producesTable filter for event-trigger upstream suggestions", async () => {
+    const seen: Array<string | null> = [];
+    server.use(
+      http.get("/api/scheduled-queries", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("producesTable"));
+        return HttpResponse.json({ success: true, data: { jobs: [] } });
+      }),
+    );
+    await listScheduledQueries("conn-1", "analytics.orders");
+    await listScheduledQueries("conn-1");
+    expect(seen).toEqual(["analytics.orders", null]);
+  });
+
   it("fetches the overview aggregation", async () => {
     const overview = await getOverview(14);
     expect(overview.kpis.totalJobs).toBe(2);

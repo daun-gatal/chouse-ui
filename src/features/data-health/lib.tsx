@@ -107,6 +107,8 @@ export function formatSchedule(schedule: DataHealthSchedule, timezone: string): 
   switch (schedule.frequency) {
     case "manual":
       return "Manual";
+    case "event":
+      return "After upstream run";
     case "cron":
       return `cron · ${schedule.cronExpr ?? "—"} ${timezone}`;
     case "daily":

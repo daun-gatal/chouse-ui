@@ -4492,6 +4492,27 @@ export const MIGRATIONS: Migration[] = [
     },
     down: async () => { /* forward-only */ },
   },
+  {
+    version: '1.47.0',
+    name: 'data_health_upstream_job',
+    description: 'Add a nullable upstream_job_id column to data_health_promises linking an event-triggered promise to the materializing scheduled query it evaluates after; NULL keeps cron/manual cadence behavior.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        try {
+          (db as SqliteDb).run(sql.raw(`ALTER TABLE data_health_promises ADD COLUMN upstream_job_id TEXT`));
+        } catch (error) {
+          if (!isDuplicateColumnError(error)) throw error;
+        }
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS data_health_promises_upstream_idx ON data_health_promises (upstream_job_id)`);
+      } else {
+        await (db as PostgresDb).execute(sql.raw(`ALTER TABLE data_health_promises ADD COLUMN IF NOT EXISTS upstream_job_id TEXT`));
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_health_promises_upstream_idx ON data_health_promises (upstream_job_id)`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.47.0] Added upstream_job_id to data_health_promises (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
 ];
 
 // ============================================

@@ -30,6 +30,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0003](0003-data-health-promises.md) | Data Health Promises | Accepted |
 | [0004](0004-dataops-ai-operator-assistance.md) | Evidence-grounded DataOps AI operator assistance | Accepted |
 | [0005](0005-unified-first-install-onboarding.md) | Unified first-install and product onboarding | Accepted |
+| [0006](0006-event-triggered-data-health.md) | Event-triggered Data Health (pipeline-chained promises) | Accepted |
 
 ## Conventions
 

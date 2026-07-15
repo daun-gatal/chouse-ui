@@ -259,6 +259,10 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
   "1.46.0": async () => {
     expect(await h.columnExists("rbac_ai_models", "params")).toBe(true);
   },
+  "1.47.0": async () => {
+    expect(await h.columnExists("data_health_promises", "upstream_job_id")).toBe(true);
+    expect(await h.indexExists("data_health_promises_upstream_idx")).toBe(true);
+  },
 };
 
 // ---------------------------------------------------------------------------

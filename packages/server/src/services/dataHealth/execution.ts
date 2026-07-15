@@ -141,6 +141,36 @@ export async function processDataHealthSuccess(
   };
 }
 
+/**
+ * An event-triggered promise's upstream pipeline failed to deliver: health is
+ * `unknown` (the data was never produced — this is not a data breach), and an
+ * execution incident alerts the promise's channels. The next successful chained
+ * run recovers it through the executionRecovery branch above (ADR 0006).
+ */
+export async function processUpstreamFailure(upstreamJob: ScheduledQueryRow, runId: string, message: string): Promise<void> {
+  const promises = await store.listPromisesByUpstreamJobId(upstreamJob.id);
+  for (const promise of promises) {
+    if (!promise.enabled) continue;
+    await store.updatePromiseEvaluation(promise.id, "unknown", Date.now());
+    const summary = `${promise.name}: upstream pipeline "${upstreamJob.name}" failed: ${message}`;
+    const transition = await store.transitionExecutionIncident(promise, true, runId, summary);
+    if (!transition.incident || transition.type !== "opened") continue;
+    const channelIds = await scheduledStore.getJobChannelIds(promise.scheduledQueryId);
+    if (channelIds.length === 0) continue;
+    await scheduledStore.enqueueOutbox({
+      runId,
+      queryId: promise.scheduledQueryId,
+      kind: "alert",
+      dedupKey: `data-health:${transition.incident.id}:opened`,
+      payload: JSON.stringify({
+        title: `🔴 Data Health upstream failed — ${promise.name}`,
+        text: `${summary}\nThis is a delivery failure; data health is unknown until the pipeline recovers.\nIncident: /dataops/data-health/incidents/${transition.incident.id}`,
+        channelIds,
+      }),
+    });
+  }
+}
+
 export async function processDataHealthError(job: ScheduledQueryRow, runId: string, message: string): Promise<boolean> {
   const promise = await store.getPromiseByJobId(job.id);
   if (!promise) return false;

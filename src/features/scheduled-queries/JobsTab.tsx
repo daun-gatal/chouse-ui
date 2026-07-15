@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useOnboardingGuideActive } from "@/features/onboarding";
+import { PromiseWizard, type PromiseWizardDraft } from "@/features/data-health";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import type { ScheduledQuery } from "@/api/scheduledQueries";
 import { useScheduledQueries, useDeleteScheduledQuery, useRunScheduledQuery, useUpdateScheduledQuery, useJobOwners } from "./hooks";
@@ -69,6 +70,15 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<ScheduledQuery | undefined>();
   const [deleteTarget, setDeleteTarget] = useState<ScheduledQuery | undefined>();
+  const [protectDraft, setProtectDraft] = useState<PromiseWizardDraft | undefined>();
+  const canProtect = hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT);
+
+  // ADR 0006 — after creating a materializing job, offer to protect its output
+  // table with an event-triggered Data Health promise, pre-linked to the job.
+  const offerProtection = (created: ScheduledQuery): void => {
+    if (!canProtect || created.outputMode === "none" || !created.destDatabase || !created.destTable) return;
+    setProtectDraft({ databaseName: created.destDatabase, tableName: created.destTable, upstreamJobId: created.id });
+  };
 
   // Filters.
   const [search, setSearch] = useState("");
@@ -155,7 +165,8 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
           </div>
         )}
         <JobDetail job={selectedJob} jobs={jobs ?? []} onBack={() => onSelectedJobChange(undefined)} />
-        {wizardOpen && <JobWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} />}
+        {wizardOpen && <JobWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} onCreated={offerProtection} />}
+        <PromiseWizard open={Boolean(protectDraft)} onOpenChange={(open) => !open && setProtectDraft(undefined)} initialDraft={protectDraft} />
       </div>
     );
   }
@@ -267,7 +278,8 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
         </>
       )}
 
-      {wizardOpen && <JobWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} job={editing} />}
+      {wizardOpen && <JobWizard isOpen={wizardOpen} onClose={() => setWizardOpen(false)} job={editing} onCreated={offerProtection} />}
+      <PromiseWizard open={Boolean(protectDraft)} onOpenChange={(open) => !open && setProtectDraft(undefined)} initialDraft={protectDraft} />
 
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(undefined)}>
         <AlertDialogContent className="rounded-xs border-ink-500 bg-ink-100">

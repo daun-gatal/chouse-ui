@@ -4,6 +4,7 @@ import { CheckCircle2, ChevronLeft, ChevronRight, Code2, Eye, ShieldCheck, Spark
 
 import { getDatabases, getTableDetails, type DatabaseInfo, type TableDetails } from "@/api/explorer";
 import { listChannels, type NotificationChannel } from "@/api/alerting";
+import { listScheduledQueries, type ScheduledQuery } from "@/api/scheduledQueries";
 import { describeDataHealthColumns, previewDataHealthPromise, type DataHealthCheck, type DataHealthColumn, type DataHealthEventTimeEncoding, type DataHealthFrequency, type DataHealthPreview, type DataHealthPromise, type DataHealthPromiseInput } from "@/api/dataHealth";
 import { recommendHealthPromise, type HealthPromiseRecommendation } from "@/api/dataOpsAi";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ interface FormState {
   runbookUrl: string;
   enabled: boolean;
   frequency: DataHealthFrequency;
+  upstreamJobId: string;
   hour: number;
   dayOfWeek: number;
   dayOfMonth: number;
@@ -69,7 +71,7 @@ function defaultForm(): FormState {
   return {
     name: "", description: "", sourceType: "table", databaseName: "", tableName: "", sourceQuery: "", eventTimeColumn: "", eventTimeEncoding: "native", eventTimeTimezone: "", queryNativeEventTimeType: "DateTime", rowFilter: "",
     criticality: "important", runbookUrl: "", enabled: true,
-    frequency: "daily", hour: 8, dayOfWeek: 1, dayOfMonth: 1, cronExpr: "", graceMinutes: 15, breachAfter: 2, recoverAfter: 2, retentionDays: 90, timeoutSecs: 60, channelIds: [],
+    frequency: "daily", upstreamJobId: "", hour: 8, dayOfWeek: 1, dayOfMonth: 1, cronExpr: "", graceMinutes: 15, breachAfter: 2, recoverAfter: 2, retentionDays: 90, timeoutSecs: 60, channelIds: [],
     freshness: true, freshnessMinutes: 60, rowCount: true, rowCountMin: "1", rowCountMax: "", anomaly: true, anomalyHardMin: "",
     completenessRules: [], uniquenessRules: [], validityRules: [], schemaContract: true, allowAdditionalColumns: true,
     customMetricRules: [],
@@ -99,7 +101,7 @@ function formFromPromise(promise: DataHealthPromise): FormState {
     databaseName: promise.databaseName ?? "", tableName: promise.tableName ?? "", sourceQuery: promise.sourceQuery ?? "",
     eventTimeColumn: promise.eventTimeColumn ?? "", eventTimeEncoding: savedEncoding, eventTimeTimezone: promise.eventTimeTimezone ?? "", queryNativeEventTimeType: isDateOnlyColumnType(promise.eventTimeType) ? "Date" : "DateTime", rowFilter: promise.rowFilter ?? "", criticality: promise.criticality,
     runbookUrl: promise.runbookUrl ?? "", enabled: promise.enabled,
-    frequency: promise.schedule.frequency, hour: promise.schedule.hour, dayOfWeek: promise.schedule.dayOfWeek,
+    frequency: promise.schedule.frequency, upstreamJobId: promise.upstreamJobId ?? "", hour: promise.schedule.hour, dayOfWeek: promise.schedule.dayOfWeek,
     dayOfMonth: promise.schedule.dayOfMonth, cronExpr: promise.schedule.cronExpr ?? "", graceMinutes: Math.round(promise.graceSecs / 60),
     breachAfter: promise.breachAfter, recoverAfter: promise.recoverAfter, retentionDays: promise.retentionDays,
     timeoutSecs: promise.schedule.timeoutSecs, channelIds: promise.channelIds,
@@ -125,7 +127,14 @@ function CheckToggle({ checked, onCheckedChange, title, description, hint, child
   return <div className={cn("rounded-xs border p-3", checked ? "border-brand/50 bg-brand/5" : "border-ink-500 bg-ink-200/30")}><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-1.5"><p className="text-[12px] font-medium text-paper">{title}</p>{hint && <HintIcon label={title} hint={hint} />}</div><p className="mt-0.5 text-[10px] text-paper-muted">{description}</p></div><Switch checked={checked} onCheckedChange={onCheckedChange} /></div>{checked && children && <div className="mt-3 grid gap-3 sm:grid-cols-2">{children}</div>}</div>;
 }
 
-export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; onOpenChange: (open: boolean) => void; promise?: DataHealthPromise }) {
+/** Prefill for the "protect the output table" handoff from the Scheduled Query builder (ADR 0006). */
+export interface PromiseWizardDraft {
+  databaseName: string;
+  tableName: string;
+  upstreamJobId: string;
+}
+
+export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { open: boolean; onOpenChange: (open: boolean) => void; promise?: DataHealthPromise; initialDraft?: PromiseWizardDraft }) {
   const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
   const activeConnectionName = useAuthStore((state) => state.activeConnectionName);
   const canUseAi = useRbacStore((state) => state.hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE));
@@ -139,6 +148,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   const [queryColumns, setQueryColumns] = useState<DataHealthColumn[]>([]);
   const [describingQuery, setDescribingQuery] = useState(false);
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
+  const [upstreamJobs, setUpstreamJobs] = useState<ScheduledQuery[]>([]);
   const [preview, setPreview] = useState<DataHealthPreview>();
   const [previewing, setPreviewing] = useState(false);
   const [recommending, setRecommending] = useState(false);
@@ -164,11 +174,19 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
 
   useEffect(() => {
     if (!open) return;
-    setStep(0); setPreview(undefined); setRecommendation(undefined); setTableDetails(undefined); setQueryColumns([]); setForm(promise ? formFromPromise(promise) : defaultForm());
+    setStep(0); setPreview(undefined); setRecommendation(undefined); setTableDetails(undefined); setQueryColumns([]);
+    setForm(promise
+      ? formFromPromise(promise)
+      : initialDraft
+        ? { ...defaultForm(), name: `${initialDraft.databaseName}.${initialDraft.tableName} is healthy`, databaseName: initialDraft.databaseName, tableName: initialDraft.tableName, frequency: "event", upstreamJobId: initialDraft.upstreamJobId }
+        : defaultForm());
     let active = true;
     void Promise.all([getDatabases(), listChannels()]).then(([databaseRows, channelRows]) => { if (active) { setDatabases(databaseRows); setChannels(channelRows.filter((channel) => channel.enabled)); } }).catch(() => { if (active) toast.error("Could not load dataset metadata"); });
+    // Materializing jobs on this connection are the candidate event-trigger upstreams (ADR 0006).
+    const connectionId = promise?.connectionId ?? activeConnectionId ?? undefined;
+    void listScheduledQueries(connectionId).then((jobs) => { if (active) setUpstreamJobs(jobs.filter((job) => job.outputMode !== "none")); }).catch(() => { if (active) setUpstreamJobs([]); });
     return () => { active = false; };
-  }, [open, promise]);
+  }, [open, promise, initialDraft, activeConnectionId]);
 
   useEffect(() => {
     if (!open || form.sourceType !== "table" || !form.databaseName || !form.tableName) return;
@@ -235,6 +253,12 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   const selectedEventTimeSupport = eventTimeSupport(selectedEventTimeType);
   const dateOnlyEventTime = isDateOnlyColumnType(selectedEventTimeType);
   const tables = databases.find((database) => database.name === form.databaseName)?.children ?? [];
+  // Event-trigger candidates: the job producing the chosen source table is the natural default (ADR 0006).
+  const producerJob = useMemo(() => form.sourceType === "table" && form.databaseName && form.tableName
+    ? upstreamJobs.find((job) => job.destDatabase === form.databaseName && job.destTable === form.tableName)
+    : undefined, [upstreamJobs, form.sourceType, form.databaseName, form.tableName]);
+  const selectedUpstream = upstreamJobs.find((job) => job.id === form.upstreamJobId);
+  const dayGrainedUpstream = selectedUpstream ? ["daily", "weekly", "monthly"].includes(selectedUpstream.frequency) : false;
   const checks = useMemo<DataHealthCheck[]>(() => {
     const result: DataHealthCheck[] = [];
     if (form.freshness && form.eventTimeColumn) result.push({ checkKey: "freshness", name: "Delivery freshness", type: "freshness", severity: "critical", enabled: true, config: { eventTimeColumn: form.eventTimeColumn, maxAgeSeconds: form.freshnessMinutes * 60 } });
@@ -252,7 +276,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
     name: form.name.trim(), description: form.description.trim() || null, connectionId: promise?.connectionId ?? activeConnectionId ?? "",
     source: form.sourceType === "table" ? { sourceType: "table", databaseName: form.databaseName, tableName: form.tableName, eventTimeColumn: form.eventTimeColumn || undefined, eventTimeType: columns.find((column) => column.name === form.eventTimeColumn)?.type ?? promise?.eventTimeType ?? undefined, eventTimeEncoding: form.eventTimeColumn ? form.eventTimeEncoding : undefined, eventTimeTimezone: form.eventTimeEncoding === "string" || dateOnlyEventTime ? form.eventTimeTimezone.trim() || undefined : undefined, rowFilter: form.rowFilter.trim() || null } : { sourceType: "query", sourceQuery: form.sourceQuery.trim(), eventTimeColumn: form.eventTimeColumn || undefined, eventTimeType: form.eventTimeEncoding === "native" ? form.queryNativeEventTimeType : form.eventTimeEncoding === "string" ? "String" : "UInt64", eventTimeEncoding: form.eventTimeColumn ? form.eventTimeEncoding : undefined, eventTimeTimezone: form.eventTimeEncoding === "string" || dateOnlyEventTime ? form.eventTimeTimezone.trim() || undefined : undefined, rowFilter: form.rowFilter.trim() || null },
     ownerId: promise?.ownerId ?? null, criticality: form.criticality, runbookUrl: form.runbookUrl.trim() || null, enabled: form.enabled,
-    frequency: form.frequency, hour: form.hour, dayOfWeek: form.dayOfWeek, dayOfMonth: form.dayOfMonth, cronExpr: form.frequency === "cron" ? form.cronExpr.trim() : null,
+    frequency: form.frequency, upstreamJobId: form.frequency === "event" ? form.upstreamJobId || null : null, hour: form.hour, dayOfWeek: form.dayOfWeek, dayOfMonth: form.dayOfMonth, cronExpr: form.frequency === "cron" ? form.cronExpr.trim() : null,
     graceSecs: form.graceMinutes * 60, breachAfter: form.breachAfter, recoverAfter: form.recoverAfter, retentionDays: form.retentionDays, timeoutSecs: form.timeoutSecs,
     channelIds: form.channelIds, checks, runNow: !promise,
   });
@@ -279,7 +303,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
   const canContinue = step === 0
     ? Boolean((promise?.connectionId || activeConnectionId) && form.name.trim() && (form.sourceType === "table" ? form.databaseName && form.tableName : form.sourceQuery.trim()))
     : step === 1
-      ? checks.length > 0 && ruleDefinitionsValid && (!needsEventTime || Boolean(form.eventTimeColumn)) && (!form.eventTimeColumn || form.eventTimeEncoding !== "auto") && (form.eventTimeEncoding !== "string" || Boolean(form.eventTimeTimezone.trim())) && (!dateOnlyEventTime || Boolean(form.eventTimeTimezone.trim())) && (!dateOnlyEventTime || (form.frequency !== "cron" && form.frequency !== "manual")) && (!dateOnlyEventTime || form.freshnessMinutes >= 1440) && (form.frequency !== "cron" || Boolean(form.cronExpr.trim()))
+      ? checks.length > 0 && ruleDefinitionsValid && (!needsEventTime || Boolean(form.eventTimeColumn)) && (!form.eventTimeColumn || form.eventTimeEncoding !== "auto") && (form.eventTimeEncoding !== "string" || Boolean(form.eventTimeTimezone.trim())) && (!dateOnlyEventTime || Boolean(form.eventTimeTimezone.trim())) && (!dateOnlyEventTime || (form.frequency !== "cron" && form.frequency !== "manual")) && (!dateOnlyEventTime || form.freshnessMinutes >= 1440) && (form.frequency !== "cron" || Boolean(form.cronExpr.trim())) && (form.frequency !== "event" || Boolean(form.upstreamJobId)) && (!dateOnlyEventTime || form.frequency !== "event" || dayGrainedUpstream)
       : true;
   const runPreview = async () => { setPreviewing(true); try { const result = await previewDataHealthPromise(buildInput()); setPreview(result); toast.success("Promise validated"); } catch (error) { toast.error(error instanceof Error ? error.message : "Preview failed"); } finally { setPreviewing(false); } };
   const requestRecommendation = async () => {
@@ -333,9 +357,10 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
             {!form.eventTimeColumn && <div className="rounded-xs border border-amber-500/40 bg-amber-500/10 p-4 text-[11px] text-amber-500"><p className="font-medium">This dataset has no selected event-time column.</p><p className="mt-1">Go back to choose a native Date/DateTime, Unix integer, or parseable string timestamp. Otherwise disable freshness, row volume, learned volume, completeness, uniqueness, and validity checks; schema and custom metric checks can run without event time.</p></div>}
             {canUseAi && form.sourceType === "table" && <div className="rounded-xs border border-brand/25 bg-brand/5 p-4"><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand" /><p className={DH_LABEL}>AI coverage advisor</p></div><p className="mt-1 text-[10px] text-paper-muted">Inspects schema and bounded evidence, then proposes explainable checks. Nothing changes until you apply the draft.</p></div><Button variant="outline" className="h-8 shrink-0 rounded-xs" onClick={() => void requestRecommendation()} disabled={recommending || !form.databaseName || !form.tableName}>{recommending && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}{recommendation ? "Refresh" : "Recommend"}</Button></div>{recommendation && <div className="mt-3 border-t border-brand/20 pt-3"><p className="text-[11px] text-paper">{recommendation.summary}</p><p className="mt-1 text-[10px] text-paper-muted">{recommendation.checks.length} checks · {Math.round(recommendation.confidence * 100)}% confidence</p><ul className="mt-2 space-y-1">{recommendation.rationale.slice(0, 5).map((reason) => <li key={reason} className="text-[10px] text-paper-muted">• {reason}</li>)}</ul><Button className={`${DH_PRIMARY} mt-3`} onClick={applyRecommendation}>Apply editable draft</Button></div>}</div>}
             <div className="grid gap-4 sm:grid-cols-2">
-              <div><HintLabel hint="The cadence defines UTC slot boundaries. Date event time supports daily, weekly, and monthly windows because it has day-only precision.">Evaluation cadence</HintLabel><Select value={form.frequency} onValueChange={(value) => update({ frequency: value as DataHealthFrequency })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="daily">Daily</SelectItem><SelectItem value="weekly">Weekly</SelectItem><SelectItem value="monthly">Monthly</SelectItem>{!dateOnlyEventTime && <><SelectItem value="cron">Custom cron</SelectItem><SelectItem value="manual">Manual only</SelectItem></>}</SelectContent></Select></div>
-              {form.frequency !== "manual" && form.frequency !== "cron" && <div><HintLabel hint="The scheduled evaluation fires at this hour in UTC. A Date calendar timezone affects date boundaries, not the firing timezone.">UTC hour</HintLabel><Input type="number" min={0} max={23} value={form.hour} onChange={(event) => update({ hour: Number(event.target.value) })} className="mt-1 rounded-xs" /></div>}
+              <div><HintLabel hint="The cadence defines UTC slot boundaries. Date event time supports daily, weekly, and monthly windows because it has day-only precision. 'After a scheduled query succeeds' evaluates exactly the window each upstream run writes.">Evaluation cadence</HintLabel><Select value={form.frequency} onValueChange={(value) => update({ frequency: value as DataHealthFrequency, ...(value === "event" && !form.upstreamJobId ? { upstreamJobId: producerJob?.id ?? "" } : {}) })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="daily">Daily</SelectItem><SelectItem value="weekly">Weekly</SelectItem><SelectItem value="monthly">Monthly</SelectItem>{upstreamJobs.length > 0 && <SelectItem value="event">After a scheduled query succeeds</SelectItem>}{!dateOnlyEventTime && <><SelectItem value="cron">Custom cron</SelectItem><SelectItem value="manual">Manual only</SelectItem></>}</SelectContent></Select></div>
+              {form.frequency !== "manual" && form.frequency !== "cron" && form.frequency !== "event" && <div><HintLabel hint="The scheduled evaluation fires at this hour in UTC. A Date calendar timezone affects date boundaries, not the firing timezone.">UTC hour</HintLabel><Input type="number" min={0} max={23} value={form.hour} onChange={(event) => update({ hour: Number(event.target.value) })} className="mt-1 rounded-xs" /></div>}
               {form.frequency === "cron" && <div><HintLabel hint="A five-field cron evaluated in UTC. It is available only for timestamp event time, not day-only Date fields.">Cron expression</HintLabel><Input value={form.cronExpr} onChange={(event) => update({ cronExpr: event.target.value })} placeholder="0 8 * * *" className="mt-1 rounded-xs font-mono" /></div>}
+              {form.frequency === "event" && <div><HintLabel hint="This promise never fires from the clock. It evaluates right after each successful run of the chosen materializing job — scheduled or manual — over the window that run wrote.">Upstream scheduled query</HintLabel><Select value={form.upstreamJobId || "none"} onValueChange={(value) => update({ upstreamJobId: value === "none" ? "" : value })}><SelectTrigger className="mt-1 rounded-xs"><SelectValue placeholder="Select a materializing job" /></SelectTrigger><SelectContent><SelectItem value="none">Select a materializing job</SelectItem>{upstreamJobs.map((job) => <SelectItem key={job.id} value={job.id}>{job.name} · {job.destDatabase}.{job.destTable}</SelectItem>)}</SelectContent></Select>{producerJob && form.upstreamJobId !== producerJob.id && <p className="mt-1 text-[10px] text-paper-faint">“{producerJob.name}” produces {form.databaseName}.{form.tableName} — likely the right upstream.</p>}{dateOnlyEventTime && selectedUpstream && !dayGrainedUpstream && <p className="mt-1 text-[10px] text-red-500">Date event-time columns need an upstream with a daily, weekly, or monthly cadence; “{selectedUpstream.name}” runs {selectedUpstream.frequency}.</p>}{selectedUpstream && !selectedUpstream.enabled && <p className="mt-1 text-[10px] text-amber-500">“{selectedUpstream.name}” is currently disabled — this promise will wait until it is re-enabled.</p>}</div>}
             </div>
             <div>
               <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-brand" /><p className={DH_LABEL}>What must remain true?</p></div>
@@ -367,7 +392,7 @@ export function PromiseWizard({ open, onOpenChange, promise }: { open: boolean; 
             <div><HintLabel hint="Notifications are sent on incident open, escalation, and recovery—not on every scheduled evaluation.">Notify on incident transitions</HintLabel><div className="mt-2 grid gap-2 sm:grid-cols-2">{channels.map((channel) => <label key={channel.id} className="flex items-center gap-2 rounded-xs border border-ink-500 p-2 text-[11px] text-paper-muted"><Checkbox checked={form.channelIds.includes(channel.id)} onCheckedChange={(checked) => update({ channelIds: checked === true ? [...form.channelIds, channel.id] : form.channelIds.filter((id) => id !== channel.id) })} />{channel.name}<span className="ml-auto font-mono text-[9px] uppercase text-paper-faint">{channel.type}</span></label>)}{channels.length === 0 && <p className="text-[11px] text-paper-faint">No enabled notification channels. Configure one under Admin → Alerting.</p>}</div></div>
           </div>
         )}
-        {step === 2 && <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-3"><div className="rounded-xs border border-ink-500 bg-ink-200/30 p-3"><p className={DH_LABEL}>Dataset</p><p className="mt-2 text-[12px] text-paper">{form.sourceType === "table" ? `${form.databaseName}.${form.tableName}` : "Custom query"}</p></div><div className="rounded-xs border border-ink-500 bg-ink-200/30 p-3"><p className={DH_LABEL}>Evaluation</p><p className="mt-2 text-[12px] text-paper">{form.frequency} · UTC</p></div><div className="rounded-xs border border-ink-500 bg-ink-200/30 p-3"><p className={DH_LABEL}>Coverage</p><p className="mt-2 text-[12px] text-paper">{checks.length} checks · {form.channelIds.length} channels</p></div></div><div><p className={DH_LABEL}>Checks to activate</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{checks.map((check) => <div key={check.checkKey} className="flex items-center gap-2 rounded-xs border border-ink-500 p-3"><CheckCircle2 className="h-4 w-4 text-emerald-500" /><div><p className="text-[11px] text-paper">{check.name}</p><p className="font-mono text-[9px] uppercase text-paper-faint">{check.type.replace("_", " ")} · {check.severity}</p></div></div>)}</div></div><div className="rounded-xs border border-brand/30 bg-brand/5 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-[12px] font-medium text-paper">Validate before activation</p><p className="mt-1 text-[10px] text-paper-muted">Checks access, generated SQL, cadence, and upcoming evaluation slots.</p></div><Button variant="outline" className="h-8 rounded-xs" onClick={() => void runPreview()} disabled={previewing}><Eye className="mr-2 h-3.5 w-3.5" /> {previewing ? "Validating…" : "Preview"}</Button></div>{preview && <div className="mt-3 border-t border-brand/20 pt-3"><p className="font-mono text-[10px] text-emerald-500">Valid · {preview.metricCheckKeys.length} metrics · {preview.schemaCheckKeys.length} schema checks</p>{preview.nextFireTimes.length > 0 && <p className="mt-1 text-[10px] text-paper-muted">Next (UTC): {preview.nextFireTimes.slice(0, 3).map((time) => new Date(time).toLocaleString(undefined, { timeZone: "UTC", timeZoneName: "short" })).join(" · ")}</p>}<details className="mt-2"><summary className="cursor-pointer font-mono text-[9px] uppercase text-paper-faint">Generated SQL</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-xs bg-ink-300 p-3 font-mono text-[10px] text-paper-muted">{preview.compiledSql}</pre></details></div>}</div></div>}
+        {step === 2 && <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-3"><div className="rounded-xs border border-ink-500 bg-ink-200/30 p-3"><p className={DH_LABEL}>Dataset</p><p className="mt-2 text-[12px] text-paper">{form.sourceType === "table" ? `${form.databaseName}.${form.tableName}` : "Custom query"}</p></div><div className="rounded-xs border border-ink-500 bg-ink-200/30 p-3"><p className={DH_LABEL}>Evaluation</p><p className="mt-2 text-[12px] text-paper">{form.frequency === "event" ? `after “${selectedUpstream?.name ?? "upstream job"}”` : `${form.frequency} · UTC`}</p></div><div className="rounded-xs border border-ink-500 bg-ink-200/30 p-3"><p className={DH_LABEL}>Coverage</p><p className="mt-2 text-[12px] text-paper">{checks.length} checks · {form.channelIds.length} channels</p></div></div><div><p className={DH_LABEL}>Checks to activate</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{checks.map((check) => <div key={check.checkKey} className="flex items-center gap-2 rounded-xs border border-ink-500 p-3"><CheckCircle2 className="h-4 w-4 text-emerald-500" /><div><p className="text-[11px] text-paper">{check.name}</p><p className="font-mono text-[9px] uppercase text-paper-faint">{check.type.replace("_", " ")} · {check.severity}</p></div></div>)}</div></div><div className="rounded-xs border border-brand/30 bg-brand/5 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-[12px] font-medium text-paper">Validate before activation</p><p className="mt-1 text-[10px] text-paper-muted">Checks access, generated SQL, cadence, and upcoming evaluation slots.</p></div><Button variant="outline" className="h-8 rounded-xs" onClick={() => void runPreview()} disabled={previewing}><Eye className="mr-2 h-3.5 w-3.5" /> {previewing ? "Validating…" : "Preview"}</Button></div>{preview && <div className="mt-3 border-t border-brand/20 pt-3"><p className="font-mono text-[10px] text-emerald-500">Valid · {preview.metricCheckKeys.length} metrics · {preview.schemaCheckKeys.length} schema checks</p>{preview.nextFireTimes.length > 0 && <p className="mt-1 text-[10px] text-paper-muted">Next (UTC): {preview.nextFireTimes.slice(0, 3).map((time) => new Date(time).toLocaleString(undefined, { timeZone: "UTC", timeZoneName: "short" })).join(" · ")}</p>}{preview.upstream && <p className="mt-1 text-[10px] text-paper-muted">Runs after “{preview.upstream.name}” succeeds — no clock schedule.</p>}<details className="mt-2"><summary className="cursor-pointer font-mono text-[9px] uppercase text-paper-faint">Generated SQL</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-xs bg-ink-300 p-3 font-mono text-[10px] text-paper-muted">{preview.compiledSql}</pre></details></div>}</div></div>}
       </div><DialogFooter className="border-t border-ink-500 px-6 py-4"><div className="flex w-full items-center justify-between"><Button variant="ghost" onClick={() => step === 0 ? onOpenChange(false) : setStep((current) => current - 1)}><ChevronLeft className="mr-1 h-4 w-4" />{step === 0 ? "Cancel" : "Back"}</Button>{step < STEPS.length - 1 ? <Button className={DH_PRIMARY} disabled={!canContinue} onClick={() => setStep((current) => current + 1)}>Continue <ChevronRight className="h-4 w-4" /></Button> : <Button className={DH_PRIMARY} onClick={() => void submit()} disabled={createMutation.isPending || updateMutation.isPending || checks.length === 0}>{promise ? "Save changes" : "Activate promise"}</Button>}</div></DialogFooter></DialogContent></Dialog>
   );
 }

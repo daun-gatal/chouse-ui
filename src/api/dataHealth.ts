@@ -4,7 +4,7 @@ export type DataHealthState = "healthy" | "degraded" | "unhealthy" | "unknown" |
 export type DataHealthOutcome = "pass" | "breach" | "learning" | "not_evaluated";
 export type DataHealthSeverity = "warning" | "critical";
 export type DataHealthCriticality = "standard" | "important" | "critical";
-export type DataHealthFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual";
+export type DataHealthFrequency = "daily" | "weekly" | "monthly" | "cron" | "manual" | "event";
 export type DataHealthEventTimeEncoding = "auto" | "native" | "unix_seconds" | "unix_milliseconds" | "unix_microseconds" | "unix_nanoseconds" | "string";
 export type DataHealthEventTimeFormat = "best_effort";
 
@@ -34,9 +34,21 @@ export interface DataHealthSchedule {
   timeoutSecs: number;
 }
 
+/** Compact upstream job summary for event-triggered promises (ADR 0006). */
+export interface DataHealthUpstream {
+  id: string;
+  name: string;
+  frequency: string;
+  enabled: boolean;
+  lastRunAt: number | null;
+  destDatabase: string | null;
+  destTable: string | null;
+}
+
 export interface DataHealthPromise {
   id: string;
   scheduledQueryId: string;
+  upstreamJobId: string | null;
   name: string;
   description: string | null;
   connectionId: string;
@@ -70,6 +82,7 @@ export interface DataHealthPromise {
   checks: DataHealthCheck[];
   schedule: DataHealthSchedule;
   channelIds: string[];
+  upstream: DataHealthUpstream | null;
 }
 
 export interface DataHealthPromiseInput {
@@ -84,6 +97,8 @@ export interface DataHealthPromiseInput {
   runbookUrl?: string | null;
   enabled: boolean;
   frequency: DataHealthFrequency;
+  /** Required when frequency is "event": the materializing job to run after. */
+  upstreamJobId?: string | null;
   hour: number;
   dayOfWeek: number;
   dayOfMonth: number;
@@ -134,7 +149,7 @@ export interface DataHealthSample {
 export interface DataHealthRun {
   id: string;
   queryId: string;
-  trigger: "scheduled" | "manual";
+  trigger: "scheduled" | "manual" | "event";
   status: "running" | "success" | "failed" | "error";
   slotAt: number;
   conditionValue: string | null;
@@ -169,6 +184,7 @@ export interface DataHealthPreview {
   metricCheckKeys: string[];
   schemaCheckKeys: string[];
   nextFireTimes: number[];
+  upstream: DataHealthUpstream | null;
 }
 
 export interface DataHealthColumn {

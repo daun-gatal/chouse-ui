@@ -6,7 +6,7 @@ import { runMigrations } from "../../rbac/db/migrations";
 import { freshDatabase, rawRun } from "../../rbac/db/migrationTestHarness";
 import * as scheduledStore from "../scheduledQueries/store";
 import type { DataHealthCheckDefinition } from "./types";
-import { currentDataHealthJob } from "./execution";
+import { currentDataHealthJob, processUpstreamFailure } from "./execution";
 import * as store from "./store";
 
 const jobInput: scheduledStore.JobInput = {
@@ -37,6 +37,37 @@ const checks: DataHealthCheckDefinition[] = [
   { checkKey: "rows", name: "Rows", type: "row_count", severity: "critical", enabled: true, config: { min: 100 } },
 ];
 
+function promiseInput(scheduledQueryId: string, upstreamJobId: string | null = null): store.CreatePromiseMetadataInput {
+  return {
+    scheduledQueryId,
+    upstreamJobId,
+    name: "Orders promise",
+    description: null,
+    connectionId: "connection-1",
+    sourceType: "table",
+    databaseName: "analytics",
+    tableName: "orders",
+    sourceQuery: null,
+    eventTimeColumn: "created_at",
+    eventTimeType: "DateTime",
+    eventTimeEncoding: "native",
+    eventTimeTimezone: null,
+    eventTimeFormat: "best_effort",
+    rowFilter: null,
+    ownerId: null,
+    criticality: "standard",
+    timezone: "UTC",
+    runbookUrl: null,
+    enabled: true,
+    graceSecs: 0,
+    breachAfter: 1,
+    recoverAfter: 2,
+    retentionDays: 90,
+    schemaSnapshot: null,
+    createdBy: null,
+  };
+}
+
 beforeEach(async () => {
   await freshDatabase("sqlite");
   await runMigrations();
@@ -56,6 +87,7 @@ describe("Data Health store", () => {
     const jobId = await scheduledStore.createJob(jobInput, "owner-1", "data_health_check");
     const promiseId = await store.createPromiseMetadata({
       scheduledQueryId: jobId,
+      upstreamJobId: null,
       name: "Orders promise",
       description: null,
       connectionId: "connection-1",
@@ -121,6 +153,64 @@ describe("Data Health store", () => {
     expect((await store.getPromise(promiseId))?.lastHealthyAt).toBe(1_200);
   });
 
+  it("round-trips upstream_job_id and lists promises chained to an upstream job", async () => {
+    const upstreamId = await scheduledStore.createJob({ ...jobInput, name: "Producer", outputMode: "append", destDatabase: "analytics", destTable: "orders" }, "owner-1");
+    const backingA = await scheduledStore.createJob({ ...jobInput, frequency: "event" }, "owner-1", "data_health_check");
+    const backingB = await scheduledStore.createJob(jobInput, "owner-1", "data_health_check");
+
+    // Regression: `event` must survive the store's read-mapping guard — a "daily"
+    // fallback would silently put the backing job on a cron cadence.
+    expect((await scheduledStore.getJob(backingA))?.frequency).toBe("event");
+
+    const chained = await store.createPromiseMetadata(promiseInput(backingA, upstreamId));
+    await store.createPromiseMetadata(promiseInput(backingB));
+
+    expect((await store.getPromise(chained))?.upstreamJobId).toBe(upstreamId);
+    expect((await store.listPromisesByUpstreamJobId(upstreamId)).map((promise) => promise.id)).toEqual([chained]);
+    expect(await store.listPromisesByUpstreamJobId("missing-job")).toEqual([]);
+
+    // Detaching via update clears the link.
+    await store.updatePromiseMetadata(chained, promiseInput(backingA, null));
+    expect((await store.getPromise(chained))?.upstreamJobId).toBeNull();
+    expect(await store.listPromisesByUpstreamJobId(upstreamId)).toEqual([]);
+  });
+
+  it("marks chained promises unknown and opens one execution incident when the upstream fails", async () => {
+    const now = Date.now();
+    const upstreamId = await scheduledStore.createJob({ ...jobInput, name: "Producer", outputMode: "append", destDatabase: "analytics", destTable: "orders" }, "owner-1");
+    const backingId = await scheduledStore.createJob({ ...jobInput, frequency: "event" }, "owner-1", "data_health_check");
+    const promiseId = await store.createPromiseMetadata(promiseInput(backingId, upstreamId));
+    const disabledBackingId = await scheduledStore.createJob({ ...jobInput, frequency: "event" }, "owner-1", "data_health_check");
+    const disabledPromiseId = await store.createPromiseMetadata({ ...promiseInput(disabledBackingId, upstreamId), enabled: false });
+
+    await rawRun(sql`INSERT INTO notification_channels (id, name, type, enabled, created_at, updated_at) VALUES ('chan-1', 'Chan', 'webhook', 1, ${now}, ${now})`);
+    await scheduledStore.setJobChannels(backingId, ["chan-1"]);
+    const upstream = await scheduledStore.getJob(upstreamId);
+    if (!upstream) throw new Error("Upstream job was not created");
+    await scheduledStore.insertRun({ id: "up-run-1", queryId: upstreamId, trigger: "scheduled", slotAt: now, attempt: 1, runnerId: "test", deadline: now + 1000, startedAt: now });
+
+    await processUpstreamFailure(upstream, "up-run-1", "boom");
+
+    expect((await store.getPromise(promiseId))?.status).toBe("unknown");
+    const incidents = await store.listIncidents(promiseId);
+    expect(incidents.length).toBe(1);
+    expect(incidents[0]).toMatchObject({ kind: "execution", status: "open" });
+    expect(incidents[0].summary).toContain('upstream pipeline "Producer" failed: boom');
+    const outbox = await scheduledStore.listClaimableOutbox(10);
+    expect(outbox.length).toBe(1);
+    expect(JSON.parse(outbox[0].payload) as { title: string }).toMatchObject({ title: expect.stringContaining("upstream failed") });
+
+    // A repeat failure keeps the same incident and does not re-alert.
+    await scheduledStore.insertRun({ id: "up-run-2", queryId: upstreamId, trigger: "scheduled", slotAt: now + 1, attempt: 1, runnerId: "test", deadline: now + 1000, startedAt: now });
+    await processUpstreamFailure(upstream, "up-run-2", "boom again");
+    expect((await store.listIncidents(promiseId)).length).toBe(1);
+    expect((await scheduledStore.listClaimableOutbox(10)).length).toBe(1);
+
+    // Disabled promises are left untouched.
+    expect((await store.getPromise(disabledPromiseId))?.status).toBe("unknown"); // creation default, unchanged
+    expect((await store.listIncidents(disabledPromiseId)).length).toBe(0);
+  });
+
   it("keeps generated health jobs out of normal Scheduled Queries lists and overview", async () => {
     await scheduledStore.createJob({ ...jobInput, name: "Visible SQL" }, "owner-1");
     await scheduledStore.createJob(jobInput, "owner-1", "data_health_check");
@@ -134,6 +224,7 @@ describe("Data Health store", () => {
     const jobId = await scheduledStore.createJob(jobInput, "owner-1", "data_health_check");
     const promiseId = await store.createPromiseMetadata({
       scheduledQueryId: jobId,
+      upstreamJobId: null,
       name: "Orders promise",
       description: null,
       connectionId: "connection-1",

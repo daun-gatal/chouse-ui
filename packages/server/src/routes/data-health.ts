@@ -14,7 +14,7 @@ import { DATA_HEALTH_EVENT_TIME_ENCODINGS, dataHealthCheckDefinitionSchema } fro
 import { isValidTimeZone, nextFireTimes, validateCron } from "../services/scheduledQueries/cadence";
 import * as runner from "../services/scheduledQueries/runner";
 import * as scheduledStore from "../services/scheduledQueries/store";
-import { SQ_FREQUENCIES, type SqFrequency } from "../services/scheduledQueries/types";
+import { DATA_HEALTH_FREQUENCIES, type ScheduledQueryRow, type SqFrequency } from "../services/scheduledQueries/types";
 import { buildExecutableQuery, toDateTime64Param, toParseableSql, validateReadOnlySelect } from "../services/scheduledQueries/validation";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
 import { describeDestination, describeSelectSchema } from "../services/scheduledQueries/materialize";
@@ -91,7 +91,9 @@ const promiseBodySchema = z.object({
   timezone: z.literal("UTC").optional().default("UTC"),
   runbookUrl: z.string().url().max(2000).nullish(),
   enabled: z.boolean().default(true),
-  frequency: z.enum(SQ_FREQUENCIES as [SqFrequency, ...SqFrequency[]]),
+  frequency: z.enum(DATA_HEALTH_FREQUENCIES as [SqFrequency, ...SqFrequency[]]),
+  /** Materializing scheduled query this promise evaluates after; required iff frequency is "event" (ADR 0006). */
+  upstreamJobId: z.string().min(1).nullish(),
   hour: z.number().int().min(0).max(23).default(8),
   dayOfWeek: z.number().int().min(0).max(6).default(1),
   dayOfMonth: z.number().int().min(1).max(28).default(1),
@@ -128,15 +130,41 @@ function validatePromiseBody(body: PromiseBody): void {
     const cron = validateCron(body.cronExpr ?? "", body.timezone);
     if (!cron.valid) throw AppError.badRequest(cron.error ?? "Invalid cron expression");
   }
+  if (body.frequency === "event" && !body.upstreamJobId) {
+    throw AppError.badRequest("Event-triggered promises require the upstream scheduled query");
+  }
+  if (body.frequency !== "event" && body.upstreamJobId) {
+    throw AppError.badRequest("An upstream scheduled query is only valid with the event trigger");
+  }
 }
 
-function validateDateEventTime(body: PromiseBody, eventTimeType: string | undefined): void {
+/**
+ * Resolve and validate the upstream job of an event-triggered promise: it must
+ * exist, be a user SQL job (not another health monitor), materialize into a
+ * table, and live on the promise's connection (ADR 0006).
+ */
+async function resolveUpstreamJob(body: PromiseBody): Promise<ScheduledQueryRow | null> {
+  if (body.frequency !== "event" || !body.upstreamJobId) return null;
+  const upstream = await scheduledStore.getJob(body.upstreamJobId);
+  if (!upstream || upstream.kind !== "sql_query") throw AppError.badRequest("Upstream scheduled query not found");
+  if (upstream.outputMode === "none") throw AppError.badRequest("The upstream scheduled query must write to a destination table");
+  if (upstream.connectionId !== body.connectionId) throw AppError.badRequest("The upstream scheduled query must be on the same connection");
+  return upstream;
+}
+
+function validateDateEventTime(body: PromiseBody, eventTimeType: string | undefined, upstreamJob: ScheduledQueryRow | null): void {
   const dateOnlyEventTime = body.source.eventTimeEncoding === "native" && isDateOnlyEventTimeType(eventTimeType);
   if (dateOnlyEventTime && !body.source.eventTimeTimezone) {
     throw AppError.badRequest("Date event-time columns require their calendar timezone");
   }
   if (dateOnlyEventTime && (body.frequency === "cron" || body.frequency === "manual")) {
     throw AppError.badRequest("Date event-time columns require a daily, weekly, or monthly cadence");
+  }
+  // Day-only values cannot map to sub-day windows — the same reason cron is
+  // rejected above: an event window is the upstream's, so ITS cadence must be
+  // day-grained (ADR 0006).
+  if (dateOnlyEventTime && body.frequency === "event" && upstreamJob && !["daily", "weekly", "monthly"].includes(upstreamJob.frequency)) {
+    throw AppError.badRequest("Date event-time columns require an upstream job with a daily, weekly, or monthly cadence");
   }
   if (dateOnlyEventTime && body.checks.some((check) => check.type === "freshness" && check.config.maxAgeSeconds < 86_400)) {
     throw AppError.badRequest("Date freshness must be at least one day");
@@ -148,7 +176,7 @@ interface PromiseCompilation {
   eventTimeType: string | undefined;
 }
 
-async function compile(c: Context, body: PromiseBody): Promise<PromiseCompilation> {
+async function compile(c: Context, body: PromiseBody, upstreamJob: ScheduledQueryRow | null): Promise<PromiseCompilation> {
   const partitionMetadata = body.source.sourceType === "table"
     ? await describeDestination(
       await clientForConnection(body.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_partition_metadata" })),
@@ -159,7 +187,7 @@ async function compile(c: Context, body: PromiseBody): Promise<PromiseCompilatio
   const eventTimeType = body.source.eventTimeColumn
     ? partitionMetadata?.columns.find((column) => column.name === body.source.eventTimeColumn)?.type ?? body.source.eventTimeType
     : undefined;
-  validateDateEventTime(body, eventTimeType);
+  validateDateEventTime(body, eventTimeType, upstreamJob);
   const compiled = compileDataHealthQuery({
     sourceType: body.source.sourceType,
     databaseName: body.source.sourceType === "table" ? body.source.databaseName : undefined,
@@ -188,6 +216,7 @@ function schemaSnapshotFromBody(body: PromiseBody): Array<{ name: string; type: 
 function metadataInput(body: PromiseBody, scheduledQueryId: string, ownerId: string, createdBy: string, eventTimeType = body.source.eventTimeType): healthStore.CreatePromiseMetadataInput {
   return {
     scheduledQueryId,
+    upstreamJobId: body.frequency === "event" ? body.upstreamJobId ?? null : null,
     name: body.name,
     description: body.description ?? null,
     connectionId: body.connectionId,
@@ -241,11 +270,26 @@ function jobInput(body: PromiseBody, query: string): scheduledStore.JobInput {
   };
 }
 
+/** Compact upstream job summary embedded in promise responses (ADR 0006). */
+function upstreamSummary(upstream: ScheduledQueryRow | null): Record<string, unknown> | null {
+  if (!upstream) return null;
+  return {
+    id: upstream.id,
+    name: upstream.name,
+    frequency: upstream.frequency,
+    enabled: upstream.enabled,
+    lastRunAt: upstream.lastRunAt > 0 ? upstream.lastRunAt : null,
+    destDatabase: upstream.destDatabase,
+    destTable: upstream.destTable,
+  };
+}
+
 async function promiseResponse(promise: NonNullable<Awaited<ReturnType<typeof healthStore.getPromise>>>): Promise<Record<string, unknown>> {
-  const [checks, job, channelIds] = await Promise.all([
+  const [checks, job, channelIds, upstream] = await Promise.all([
     healthStore.getChecks(promise.id),
     scheduledStore.getJob(promise.scheduledQueryId),
     scheduledStore.getJobChannelIds(promise.scheduledQueryId),
+    promise.upstreamJobId ? scheduledStore.getJob(promise.upstreamJobId) : Promise.resolve(null),
   ]);
   if (!job || job.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
   return {
@@ -261,7 +305,24 @@ async function promiseResponse(promise: NonNullable<Awaited<ReturnType<typeof he
       timeoutSecs: job.timeoutSecs,
     },
     channelIds,
+    upstream: upstreamSummary(upstream),
   };
+}
+
+/**
+ * Manual "Run now" options. An event-triggered promise evaluates its upstream's
+ * most recent successful slot window on demand, falling back to the collapsed
+ * now-window when the upstream has never succeeded (ADR 0006).
+ */
+async function manualRunOptions(promise: NonNullable<Awaited<ReturnType<typeof healthStore.getPromise>>>): Promise<runner.ExecuteOptions> {
+  const opts: runner.ExecuteOptions = { trigger: "manual", slotAt: Date.now(), attempt: 1 };
+  if (!promise.upstreamJobId) return opts;
+  const upstream = await scheduledStore.getJob(promise.upstreamJobId);
+  if (!upstream) return opts;
+  const lastSuccess = await scheduledStore.getLastSuccessSlot(upstream.id, Number.MAX_SAFE_INTEGER);
+  if (lastSuccess == null) return opts;
+  opts.window = await runner.resolveWindow(upstream, lastSuccess);
+  return opts;
 }
 
 async function loadVisiblePromise(c: Context, id: string): Promise<NonNullable<Awaited<ReturnType<typeof healthStore.getPromise>>>> {
@@ -353,9 +414,10 @@ dataHealth.post(
     const body = c.req.valid("json");
     validatePromiseBody(body);
     await assertConnectionAccess(c, body.connectionId);
-    const { compiled } = await compile(c, body);
+    const upstreamJob = await resolveUpstreamJob(body);
+    const { compiled } = await compile(c, body, upstreamJob);
     await assertQueryAccess(c, compiled.sql, body.connectionId);
-    const fireTimes = body.frequency === "manual" ? [] : nextFireTimes({
+    const fireTimes = body.frequency === "manual" || body.frequency === "event" ? [] : nextFireTimes({
       frequency: body.frequency,
       hour: body.hour,
       dayOfWeek: body.dayOfWeek,
@@ -363,7 +425,7 @@ dataHealth.post(
       cronExpr: body.frequency === "cron" ? body.cronExpr ?? null : null,
       timezone: body.timezone,
     }, 5);
-    return ok(c, { compiledSql: compiled.sql, metricCheckKeys: compiled.metricCheckKeys, schemaCheckKeys: compiled.schemaCheckKeys, nextFireTimes: fireTimes });
+    return ok(c, { compiledSql: compiled.sql, metricCheckKeys: compiled.metricCheckKeys, schemaCheckKeys: compiled.schemaCheckKeys, nextFireTimes: fireTimes, upstream: upstreamSummary(upstreamJob) });
   },
 );
 
@@ -375,7 +437,8 @@ dataHealth.post(
     const body = c.req.valid("json");
     validatePromiseBody(body);
     await assertConnectionAccess(c, body.connectionId);
-    const { compiled, eventTimeType } = await compile(c, body);
+    const upstreamJob = await resolveUpstreamJob(body);
+    const { compiled, eventTimeType } = await compile(c, body, upstreamJob);
     await assertQueryAccess(c, compiled.sql, body.connectionId);
     const user = currentUser(c);
     const ownerId = canViewAll(c) ? body.ownerId ?? user.sub : user.sub;
@@ -396,7 +459,7 @@ dataHealth.post(
     if (!promise) throw AppError.internal("Created Data Health promise could not be loaded");
     const initialJob = await scheduledStore.getJob(jobId);
     if (!initialJob) throw AppError.internal("Created Data Health execution job could not be loaded");
-    const initialRun = body.runNow ? await runner.execute(initialJob, { trigger: "manual", slotAt: Date.now(), attempt: 1 }) : null;
+    const initialRun = body.runNow ? await runner.execute(initialJob, await manualRunOptions(promise)) : null;
     return ok(c, { promise: await promiseResponse(promise), initialRun }, 201);
   },
 );
@@ -534,7 +597,8 @@ dataHealth.patch(
       throw AppError.badRequest("A Data Health promise cannot be moved to a different connection");
     }
     await assertConnectionAccess(c, body.connectionId);
-    const { compiled, eventTimeType } = await compile(c, body);
+    const upstreamJob = await resolveUpstreamJob(body);
+    const { compiled, eventTimeType } = await compile(c, body, upstreamJob);
     await assertQueryAccess(c, compiled.sql, body.connectionId);
     const existingJob = await scheduledStore.getJob(promise.scheduledQueryId);
     if (!existingJob || existingJob.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
@@ -573,6 +637,7 @@ dataHealth.patch(
       });
       await healthStore.updatePromiseMetadata(promise.id, {
         scheduledQueryId: promise.scheduledQueryId,
+        upstreamJobId: promise.upstreamJobId,
         name: promise.name,
         description: promise.description,
         connectionId: promise.connectionId,
@@ -622,7 +687,7 @@ dataHealth.post("/:id/run", requirePermission(PERMISSIONS.DATA_HEALTH_RUN), asyn
   const promise = await loadVisiblePromise(c, requireParam(c, "id"));
   const job = await scheduledStore.getJob(promise.scheduledQueryId);
   if (!job || job.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
-  const run = await runner.execute(job, { trigger: "manual", slotAt: Date.now(), attempt: 1 });
+  const run = await runner.execute(job, await manualRunOptions(promise));
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_HEALTH_PROMISE_RUN, currentUser(c).sub, { resourceType: "data_health_promise", resourceId: promise.id });
   return ok(c, { run });
 });
