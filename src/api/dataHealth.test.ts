@@ -10,6 +10,8 @@ import {
   listDataHealthIncidents,
   listDataHealthPromises,
   previewDataHealthPromise,
+  recoverDataHealthPromise,
+  rerunDataHealthRun,
   runDataHealthPromise,
   snoozeDataHealthIncident,
   backtestDataHealthPromise,
@@ -90,5 +92,19 @@ describe("Data Health API", () => {
     const diagnostic = await diagnoseDataHealthCheck("dh-1", "row_count");
     expect(diagnostic.supported).toBe(true);
     expect(diagnostic.rows).toEqual([{ id: 1 }]);
+  });
+
+  it("reruns a single historical evaluation", async () => {
+    const run = await rerunDataHealthRun("dh-1", "dh-run-9");
+    expect(run?.status).toBe("success");
+    expect(run?.message).toBe("rerun of dh-run-9");
+  });
+
+  it("previews and executes a clear-and-rerun recovery range", async () => {
+    const preview = await recoverDataHealthPromise("dh-1", { from: 1, to: 2 });
+    expect(preview.plan).toEqual([{ slotAt: 1700000000000, hasSamples: true }]);
+    expect(preview.runs).toBeUndefined();
+    const executed = await recoverDataHealthPromise("dh-1", { from: 1, to: 2, execute: true, confirm: true });
+    expect(executed.runs?.[0].status).toBe("success");
   });
 });

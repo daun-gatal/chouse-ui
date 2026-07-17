@@ -17,6 +17,7 @@ import {
   deleteScheduledQuery,
   getLineage,
   recoverScheduledQuery,
+  rerunScheduledQueryRun,
   type ScheduledQueryInput,
 } from "./scheduledQueries";
 
@@ -132,7 +133,19 @@ describe("Scheduled Queries API", () => {
   it("previews and executes bounded recovery", async () => {
     const preview = await recoverScheduledQuery("sq-1", { from: 1, to: 2 });
     expect(preview.runnable).toBe(1);
+    expect(preview.chainedPromises).toEqual([{ id: "dh-1", name: "Orders ready", enabled: true }]);
     const executed = await recoverScheduledQuery("sq-1", { from: 1, to: 2, execute: true, confirm: true });
     expect(executed.runs?.[0].status).toBe("success");
+  });
+
+  it("passes the chained Data Health opt-in through recovery", async () => {
+    const executed = await recoverScheduledQuery("sq-1", { from: 1, to: 2, execute: true, confirm: true, rerunChainedHealth: true });
+    expect(executed.runs?.[0].message).toBe("chained");
+  });
+
+  it("reruns a single historical run", async () => {
+    const run = await rerunScheduledQueryRun("run-1");
+    expect(run?.status).toBe("success");
+    expect(run?.message).toBe("rerun of run-1");
   });
 });

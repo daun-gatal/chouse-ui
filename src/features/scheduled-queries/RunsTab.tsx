@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { FileSearch, Calendar as CalendarIcon, Trash2, Sparkles } from "lucide-react";
+import { FileSearch, Calendar as CalendarIcon, RotateCcw, Trash2, Sparkles } from "lucide-react";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ import type { RunQuery, ScheduledQueryRun, SqStatus } from "@/api/scheduledQueri
 import { diagnoseScheduledRun, type DataOpsInvestigation } from "@/api/dataOpsAi";
 import { AiInsightDialog, InvestigationView } from "@/features/dataops-ai";
 import { useDataOpsModelId } from "@/hooks";
-import { useScheduledQueries, useScheduledQueryRuns, useJobOwners, useDeleteRuns } from "./hooks";
+import { useScheduledQueries, useScheduledQueryRuns, useJobOwners, useDeleteRuns, useRerunScheduledQueryRun } from "./hooks";
 import { StatusBadge, formatDuration } from "./lib";
 import { TablePagination } from "./TablePagination";
 import { JobCombobox } from "./JobCombobox";
@@ -110,6 +110,7 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
   const canViewLogs = hasPermission(RBAC_PERMISSIONS.LOGS_VIEW);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
   const canDelete = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_DELETE);
+  const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const modelId = useDataOpsModelId();
   const openInLogs = (queryId: string) => navigate(`/monitoring/logs?q=${encodeURIComponent(queryId)}`);
@@ -179,6 +180,19 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
 
   const total = runs?.length ?? 0;
   const pageRuns = (runs ?? []).slice((page - 1) * pageSize, page * pageSize);
+
+  const rerunMut = useRerunScheduledQueryRun();
+  const rerunRun = async (runId: string) => {
+    try {
+      const run = await rerunMut.mutateAsync(runId);
+      const status = run?.status ?? "running";
+      toast[status === "success" ? "success" : status === "failed" || status === "error" ? "error" : "info"](
+        status === "success" ? "Slot re-ran successfully (linked Data Health re-verified)" : `Rerun finished: ${status}${run?.message ? ` — ${run.message}` : ""}`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Rerun failed");
+    }
+  };
 
   const investigate = async (runId: string) => {
     if (!jobId) return;
@@ -296,6 +310,18 @@ export function RunsTab({ selectedJobId, embedded = false }: { selectedJobId?: s
                       <span>{formatDuration(run.durationMs)}</span>
                     </div>
                   </button>
+                  {canRun && run.status !== "running" && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); void rerunRun(run.id); }}
+                      disabled={rerunMut.isPending}
+                      title="Clear & rerun this slot (replays linked Data Health over the same window)"
+                      className="flex shrink-0 items-center gap-1 rounded-xs border border-ink-500 bg-ink-200 px-1.5 py-0.5 font-mono text-[10px] text-paper-muted hover:border-brand hover:text-paper disabled:opacity-50"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Rerun
+                    </button>
+                  )}
                   {canViewLogs ? (
                     <button
                       type="button"

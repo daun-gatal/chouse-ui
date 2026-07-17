@@ -402,6 +402,16 @@ export async function hasSuccessfulRunForSlot(queryId: string, slotAt: number): 
   return rows.length > 0;
 }
 
+/** Distinct successfully-run slots in [fromMs, toMs], ascending (event-promise replays, ADR 0007 D5). */
+export async function listSuccessfulSlotsBetween(queryId: string, fromMs: number, toMs: number, limit = 100): Promise<number[]> {
+  const rows = await all(sql`
+    SELECT DISTINCT slot_at FROM scheduled_query_runs
+    WHERE query_id = ${queryId} AND status = 'success' AND slot_at >= ${fromMs} AND slot_at <= ${toMs}
+    ORDER BY slot_at ASC LIMIT ${limit}
+  `);
+  return rows.map((row) => Number(row.slot_at));
+}
+
 /** The most recent successful run's slot before `beforeSlot` (`{{prev_run_at}}`). */
 export async function getLastSuccessSlot(queryId: string, beforeSlot: number): Promise<number | null> {
   const rows = await all(sql`

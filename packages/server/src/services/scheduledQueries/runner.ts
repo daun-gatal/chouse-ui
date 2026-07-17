@@ -181,6 +181,19 @@ export interface ExecuteOptions {
    * sees exactly the slice the pipeline just wrote (ADR 0006).
    */
   window?: WindowParams;
+  /**
+   * Clear & rerun (ADR 0007): set ONLY by the recovery routes, never on a live
+   * path. Data Health replays replace the slot's samples, and a replay of a
+   * non-newest slot never touches promise status, incidents, or notifications.
+   * A failed replay records its run row without marking the promise unknown.
+   */
+  replay?: boolean;
+  /**
+   * Recovery opt-in (ADR 0007): after a successful suppressed (recovery) run of a
+   * materializing job, replay its chained Data Health promises over this run's
+   * window. Ignored on live runs — those chain through the ADR 0006 path.
+   */
+  chainReplay?: boolean;
 }
 
 /** Insert the `running` row and return the run id (the ClickHouse query_id). */
@@ -261,7 +274,7 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
         window: { slot_start: params.sq_slot_start, slot_end: params.sq_slot_end, prev_run_at: params.sq_prev_run_at },
       });
       if (job.kind === "data_health_check") {
-        const evaluation = await processDataHealthSuccess(job, runId, opts.slotAt, outcome.snapshot[0] ?? {}, client, params);
+        const evaluation = await processDataHealthSuccess(job, runId, opts.slotAt, outcome.snapshot[0] ?? {}, client, params, { replay: opts.replay });
         conditionValue = evaluation.conditionValue;
         conditionMet = evaluation.conditionMet;
         message = evaluation.message;
@@ -307,7 +320,9 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
       }
     }
     logger.warn({ module: "ScheduledQueries", jobId: job.id, runId, err: message }, "Scheduled query run failed");
-    if (job.kind === "data_health_check") {
+    // A failed REPLAY only records its run row — re-checking history must never
+    // mark the promise unknown or open execution incidents (ADR 0007).
+    if (job.kind === "data_health_check" && !opts.replay) {
       try {
         notified = await processDataHealthError(job, runId, message);
       } catch (healthError) {
@@ -337,24 +352,42 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
     finishedAt,
   });
 
-  // ADR 0006 — event-triggered Data Health. Only materializing SQL jobs can have
-  // chained promises; recovery backfills (suppressNotifications) stay silent.
-  if (job.kind === "sql_query" && job.outputMode !== "none" && !opts.suppressNotifications) {
-    if (status === "success") {
-      await runChainedDataHealth(job, opts.slotAt, window);
-    } else {
-      try {
-        await processUpstreamFailure(job, runId, message ?? "unknown error");
-      } catch (err) {
-        logger.warn(
-          { module: "DataHealth", jobId: job.id, runId, err: err instanceof Error ? err.message : String(err) },
-          "Failed to propagate upstream failure to chained Data Health promises",
-        );
-      }
+  const chained = chainActionFor(job, status, opts);
+  if (chained === "live" || chained === "replay") {
+    await runChainedDataHealth(job, opts.slotAt, window, { replay: chained === "replay" });
+  } else if (chained === "upstream-failure") {
+    try {
+      await processUpstreamFailure(job, runId, message ?? "unknown error");
+    } catch (err) {
+      logger.warn(
+        { module: "DataHealth", jobId: job.id, runId, err: err instanceof Error ? err.message : String(err) },
+        "Failed to propagate upstream failure to chained Data Health promises",
+      );
     }
   }
 
   return store.getRun(runId);
+}
+
+export type ChainAction = "live" | "replay" | "upstream-failure" | "none";
+
+/**
+ * Post-finalize Data Health chain decision. Only materializing SQL jobs can have
+ * chained promises. Live runs chain per ADR 0006 (with upstream-failure
+ * propagation); recovery backfills stay silent unless `chainReplay` explicitly
+ * opts a successful slot into a replay chain (ADR 0007).
+ */
+export function chainActionFor(
+  job: Pick<ScheduledQueryRow, "kind" | "outputMode">,
+  status: SqStatus,
+  opts: Pick<ExecuteOptions, "suppressNotifications" | "chainReplay">,
+): ChainAction {
+  if (job.kind !== "sql_query" || job.outputMode === "none") return "none";
+  if (status === "success") {
+    if (!opts.suppressNotifications) return "live";
+    return opts.chainReplay ? "replay" : "none";
+  }
+  return opts.suppressNotifications ? "none" : "upstream-failure";
 }
 
 /**
@@ -365,7 +398,7 @@ export async function execute(job: ScheduledQueryRow, opts: ExecuteOptions): Pro
  * chained run records on the promise (inside `execute`) and never affects the
  * upstream run, which is already finalized.
  */
-async function runChainedDataHealth(upstream: ScheduledQueryRow, slotAt: number, window: WindowParams): Promise<void> {
+async function runChainedDataHealth(upstream: ScheduledQueryRow, slotAt: number, window: WindowParams, chainOpts: { replay?: boolean } = {}): Promise<void> {
   let promises: Awaited<ReturnType<typeof listPromisesByUpstreamJobId>>;
   try {
     promises = await listPromisesByUpstreamJobId(upstream.id);
@@ -381,6 +414,14 @@ async function runChainedDataHealth(upstream: ScheduledQueryRow, slotAt: number,
     try {
       const healthJob = await store.getJob(promise.scheduledQueryId);
       if (!healthJob || healthJob.kind !== "data_health_check" || !healthJob.enabled) continue;
+      if (chainOpts.replay) {
+        // A user-confirmed replay re-runs an already-claimed slot: skip the
+        // at-most-once claim (and never touch last_run_at) — the sample upsert
+        // makes double-execution benign (ADR 0007 D2/D3).
+        const attempt = (await store.countRunsForSlot(healthJob.id, slotAt)) + 1;
+        await execute(healthJob, { trigger: "manual", slotAt, attempt, window, replay: true, suppressNotifications: true });
+        continue;
+      }
       const won = await store.claimSlot(healthJob.id, slotAt, Date.now(), RUNNER_ID);
       if (!won) continue; // this upstream slot already triggered the promise
       const attempt = (await store.countRunsForSlot(healthJob.id, slotAt)) + 1;
