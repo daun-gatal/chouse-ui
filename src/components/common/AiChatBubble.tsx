@@ -140,6 +140,10 @@ interface UIMessage {
     chartSpecs?: ChartSpec[];
 }
 
+function isActiveChatConnection(connectionId: string | null): boolean {
+    return useAuthStore.getState().activeConnectionId === connectionId;
+}
+
 // Suggested prompt chips — only a random subset is shown at a time
 const SUGGESTED_PROMPTS = [
     // Discovery
@@ -787,20 +791,26 @@ function useAiChatInvoke({
     setMessages,
     loadThreads,
     selectedModelId,
+    activeConnectionId,
 }: {
     setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>;
     loadThreads: () => void;
     selectedModelId: string;
+    activeConnectionId: string | null;
 }) {
     const [isInvoking, setIsInvoking] = useState(false);
     const [toolStatus, setToolStatus] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
+    const invocationSequenceRef = useRef(0);
+    const statusTimerRef = useRef<number | null>(null);
 
     const runInvoke = useCallback(async (
         threadId: string,
         prompt: string,
         messageHistory: { role: string; content: string }[],
     ) => {
+        const invocationSequence = ++invocationSequenceRef.current;
+        const invocationConnectionId = activeConnectionId;
         const controller = new AbortController();
         abortRef.current = controller;
         setIsInvoking(true);
@@ -816,6 +826,11 @@ function useAiChatInvoke({
 
         let statusIndex = 0;
         const statusTimer = window.setInterval(() => {
+            if (
+                invocationSequence !== invocationSequenceRef.current ||
+                !isActiveChatConnection(invocationConnectionId)
+            ) return;
+
             statusIndex = (statusIndex + 1) % INVOKE_STATUS_STEPS.length;
             const status = INVOKE_STATUS_STEPS[statusIndex];
             setToolStatus(status);
@@ -828,6 +843,7 @@ function useAiChatInvoke({
                 return updated;
             });
         }, 2500);
+        statusTimerRef.current = statusTimer;
 
         try {
             const result = await invokeChatMessage(
@@ -837,6 +853,11 @@ function useAiChatInvoke({
                 selectedModelId || undefined,
                 controller.signal,
             );
+
+            if (
+                invocationSequence !== invocationSequenceRef.current ||
+                !isActiveChatConnection(invocationConnectionId)
+            ) return;
 
             setMessages((previous) => {
                 const updated = [...previous];
@@ -859,6 +880,11 @@ function useAiChatInvoke({
                 return updated;
             });
         } catch (error: unknown) {
+            if (
+                invocationSequence !== invocationSequenceRef.current ||
+                !isActiveChatConnection(invocationConnectionId)
+            ) return;
+
             const wasStopped = error instanceof Error && error.name === 'AbortError';
             const isNetwork = error instanceof Error &&
                 (error.message.includes('fetch') || error.message.includes('network') || error.name === 'TypeError');
@@ -888,18 +914,34 @@ function useAiChatInvoke({
             });
         } finally {
             window.clearInterval(statusTimer);
-            setToolStatus(null);
-            setIsInvoking(false);
-            abortRef.current = null;
-            loadThreads();
+            if (statusTimerRef.current === statusTimer) statusTimerRef.current = null;
+
+            if (invocationSequence === invocationSequenceRef.current) {
+                setToolStatus(null);
+                setIsInvoking(false);
+                if (abortRef.current === controller) abortRef.current = null;
+                if (isActiveChatConnection(invocationConnectionId)) loadThreads();
+            }
         }
-    }, [loadThreads, selectedModelId, setMessages]);
+    }, [activeConnectionId, loadThreads, selectedModelId, setMessages]);
 
     const handleStop = useCallback(() => {
         abortRef.current?.abort();
     }, []);
 
-    return { runInvoke, isInvoking, toolStatus, handleStop };
+    const cancelInvoke = useCallback(() => {
+        invocationSequenceRef.current += 1;
+        abortRef.current?.abort();
+        abortRef.current = null;
+        if (statusTimerRef.current !== null) {
+            window.clearInterval(statusTimerRef.current);
+            statusTimerRef.current = null;
+        }
+        setToolStatus(null);
+        setIsInvoking(false);
+    }, []);
+
+    return { runInvoke, isInvoking, toolStatus, handleStop, cancelInvoke };
 }
 
 // ============================================
@@ -1179,23 +1221,52 @@ export default function AiChatBubble() {
         }
     }, [messages]);
 
+    const threadLoadSequenceRef = useRef(0);
     const loadThreads = useCallback(async () => {
+        const loadSequence = ++threadLoadSequenceRef.current;
+        const loadConnectionId = activeConnectionId;
         setIsLoadingThreads(true);
         try {
-            const result = await listThreads(activeConnectionId);
+            const result = await listThreads(loadConnectionId);
+            if (
+                loadSequence !== threadLoadSequenceRef.current ||
+                !isActiveChatConnection(loadConnectionId)
+            ) return;
             setThreads(result);
         } catch (err) {
-            log.error('[AiChat] Failed to load threads:', err);
+            if (
+                loadSequence === threadLoadSequenceRef.current &&
+                isActiveChatConnection(loadConnectionId)
+            ) log.error('[AiChat] Failed to load threads:', err);
         } finally {
-            setIsLoadingThreads(false);
+            if (
+                loadSequence === threadLoadSequenceRef.current &&
+                isActiveChatConnection(loadConnectionId)
+            ) setIsLoadingThreads(false);
         }
     }, [activeConnectionId]);
 
-    const { runInvoke, isInvoking, toolStatus, handleStop } = useAiChatInvoke({
+    const { runInvoke, isInvoking, toolStatus, handleStop, cancelInvoke } = useAiChatInvoke({
         setMessages,
         loadThreads,
         selectedModelId,
+        activeConnectionId,
     });
+
+    const previousActiveConnectionIdRef = useRef(activeConnectionId);
+    useEffect(() => {
+        if (previousActiveConnectionIdRef.current === activeConnectionId) return;
+
+        previousActiveConnectionIdRef.current = activeConnectionId;
+        threadLoadSequenceRef.current += 1;
+        cancelInvoke();
+        setThreads([]);
+        setActiveThreadId(null);
+        setEditingThreadId(null);
+        setMessages([]);
+        setInput('');
+        setIsLoadingThreads(false);
+    }, [activeConnectionId, cancelInvoke]);
 
     // Focus input when thread loads
     useEffect(() => {
@@ -1216,13 +1287,15 @@ export default function AiChatBubble() {
 
     const lastClosedAtRef = useRef<number | null>(null);
     const lastConnectionIdRef = useRef<string | null>(null);
+    const wasOpenRef = useRef(isOpen);
 
     // Reload threads and reset state when connection or open status changes
     useEffect(() => {
+        const wasOpen = wasOpenRef.current;
+        wasOpenRef.current = isOpen;
+
         if (!isOpen) {
-            // Track when the window was closed
-            lastClosedAtRef.current = Date.now();
-            lastConnectionIdRef.current = activeConnectionId;
+            if (wasOpen) lastClosedAtRef.current = Date.now();
             return;
         }
 
@@ -1245,12 +1318,18 @@ export default function AiChatBubble() {
                 setActiveThreadId(null);
                 setMessages([]);
             }
+
+            // This marker owns the retained chat state. Updating it while closed
+            // would make an old chat appear to belong to a newly selected connection.
+            lastConnectionIdRef.current = activeConnectionId;
         }
     }, [activeConnectionId, isOpen, hasPermission, aiEnabled, loadThreads]);
 
     const loadThread = useCallback(async (threadId: string) => {
+        const loadConnectionId = activeConnectionId;
         try {
             const data = await getThread(threadId);
+            if (!isActiveChatConnection(loadConnectionId)) return;
             setActiveThreadId(threadId);
             setMessages(
                 data.messages.map((m: ChatMessage) => ({
@@ -1271,18 +1350,20 @@ export default function AiChatBubble() {
         } catch (err) {
             log.error('[AiChat] Failed to load thread:', err);
         }
-    }, []);
+    }, [activeConnectionId]);
 
     const handleNewThread = useCallback(async () => {
+        const createConnectionId = activeConnectionId;
         try {
-            const thread = await createThread(undefined, activeConnectionId ?? undefined);
+            const thread = await createThread(undefined, createConnectionId ?? undefined);
+            if (!isActiveChatConnection(createConnectionId)) return;
             setThreads((prev) => [thread, ...prev]);
             setActiveThreadId(thread.id);
             setMessages([]);
         } catch (err) {
             log.error('[AiChat] Failed to create thread:', err);
         }
-    }, []);
+    }, [activeConnectionId]);
 
     const handleDeleteThread = useCallback(async (threadId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -1408,8 +1489,10 @@ export default function AiChatBubble() {
         if (isInvoking) return;
         let threadId = activeThreadId;
         if (!threadId) {
+            const createConnectionId = activeConnectionId;
             try {
-                const thread = await createThread(undefined, activeConnectionId ?? undefined);
+                const thread = await createThread(undefined, createConnectionId ?? undefined);
+                if (!isActiveChatConnection(createConnectionId)) return;
                 setThreads((prev) => [thread, ...prev]);
                 setActiveThreadId(thread.id);
                 threadId = thread.id;
