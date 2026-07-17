@@ -270,13 +270,20 @@ export async function getChecks(promiseId: string): Promise<DataHealthCheckDefin
   }));
 }
 
+export interface InsertEvaluationsOptions {
+  origin?: "live" | "backtest";
+  /** Replay mode: overwrite an existing sample for the same (check, slot, origin) instead of keeping it. */
+  replace?: boolean;
+}
+
 export async function insertEvaluations(
   promiseId: string,
   runId: string,
   slotAt: number,
   evaluations: DataHealthMetricEvaluation[],
-  origin: "live" | "backtest" = "live",
+  opts: InsertEvaluationsOptions = {},
 ): Promise<void> {
+  const origin = opts.origin ?? "live";
   const checkRows = await all(sql`SELECT id, check_key FROM data_health_promise_checks WHERE promise_id = ${promiseId}`);
   const ids = new Map(checkRows.map((row) => [String(row.check_key), String(row.id)]));
   const now = Date.now();
@@ -284,6 +291,27 @@ export async function insertEvaluations(
     const checkId = ids.get(evaluation.checkKey);
     if (!checkId) continue;
     const evidence = JSON.stringify({ message: evaluation.message });
+    if (opts.replace) {
+      // Same syntax on SQLite (>=3.24) and PostgreSQL; the UNIQUE (check_id,
+      // slot_at, origin) constraint is the conflict target. The row id is stable.
+      await run(sql`
+        INSERT INTO data_health_samples (
+          id, promise_id, check_id, run_id, origin, outcome, observed_value,
+          expected_lower, expected_upper, evidence, slot_at, created_at
+        ) VALUES (
+          ${randomUUID()}, ${promiseId}, ${checkId}, ${runId}, ${origin}, ${evaluation.outcome}, ${evaluation.observedValue},
+          ${evaluation.expectedLower}, ${evaluation.expectedUpper}, ${evidence}, ${slotAt}, ${now}
+        ) ON CONFLICT (check_id, slot_at, origin) DO UPDATE SET
+          run_id = excluded.run_id,
+          outcome = excluded.outcome,
+          observed_value = excluded.observed_value,
+          expected_lower = excluded.expected_lower,
+          expected_upper = excluded.expected_upper,
+          evidence = excluded.evidence,
+          created_at = excluded.created_at
+      `);
+      continue;
+    }
     if (getDatabaseType() === "sqlite") {
       await run(sql`
         INSERT OR IGNORE INTO data_health_samples (
@@ -308,18 +336,40 @@ export async function insertEvaluations(
   }
 }
 
-export async function metricHistory(promiseId: string, limitPerCheck = 100): Promise<Record<string, number[]>> {
+export async function metricHistory(promiseId: string, limitPerCheck = 100, beforeSlot?: number): Promise<Record<string, number[]>> {
   const checks = await all(sql`SELECT id, check_key FROM data_health_promise_checks WHERE promise_id = ${promiseId}`);
   const history: Record<string, number[]> = {};
+  // Replays bound history to slots strictly before the replayed slot so anomaly
+  // baselines never see data a live run at that slot could not have seen (ADR 0007 D4).
+  const slotBound = beforeSlot == null ? sql`` : sql`AND slot_at < ${beforeSlot}`;
   for (const check of checks) {
     const rows = await all(sql`
       SELECT observed_value FROM data_health_samples
-      WHERE check_id = ${String(check.id)} AND observed_value IS NOT NULL AND outcome IN ('pass', 'breach')
+      WHERE check_id = ${String(check.id)} AND observed_value IS NOT NULL AND outcome IN ('pass', 'breach') ${slotBound}
       ORDER BY slot_at DESC LIMIT ${limitPerCheck}
     `);
     history[String(check.check_key)] = rows.map((row) => Number(row.observed_value)).filter(Number.isFinite);
   }
   return history;
+}
+
+/** The newest live-evaluated slot for a promise, or null when it has never evaluated. */
+export async function latestLiveSlotAt(promiseId: string): Promise<number | null> {
+  const rows = await all(sql`
+    SELECT MAX(slot_at) AS latest FROM data_health_samples
+    WHERE promise_id = ${promiseId} AND origin = 'live'
+  `);
+  return rows[0]?.latest == null ? null : Number(rows[0].latest);
+}
+
+/** Distinct live-evaluated slots in [fromMs, toMs], ascending (manual-cadence replays, ADR 0007 D5). */
+export async function listLiveSlotsBetween(promiseId: string, fromMs: number, toMs: number, limit = 100): Promise<number[]> {
+  const rows = await all(sql`
+    SELECT DISTINCT slot_at FROM data_health_samples
+    WHERE promise_id = ${promiseId} AND origin = 'live' AND slot_at >= ${fromMs} AND slot_at <= ${toMs}
+    ORDER BY slot_at ASC LIMIT ${limit}
+  `);
+  return rows.map((row) => Number(row.slot_at));
 }
 
 export async function updatePromiseEvaluation(id: string, state: Exclude<DataHealthPromiseState, "paused">, evaluatedAt: number): Promise<void> {

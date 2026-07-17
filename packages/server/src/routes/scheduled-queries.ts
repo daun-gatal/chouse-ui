@@ -379,6 +379,7 @@ const recoverySchema = z.object({
   execute: z.boolean().default(false),
   confirm: z.boolean().default(false),
   rerunSuccessful: z.boolean().default(false),
+  rerunChainedHealth: z.boolean().default(false),
 }).refine((value) => value.from <= value.to, "Start must precede end");
 
 scheduledQueries.post(
@@ -392,27 +393,66 @@ scheduledQueries.post(
     const existing = await Promise.all(slots.map((slotAt) => store.hasSuccessfulRunForSlot(job.id, slotAt)));
     const plan = slots.map((slotAt, index) => ({ slotAt, alreadySucceeded: existing[index] }));
     const runnable = plan.filter((slot) => body.rerunSuccessful || !slot.alreadySucceeded);
+    const chainedPromises = (await listPromisesByUpstreamJobId(job.id))
+      .map((promise) => ({ id: promise.id, name: promise.name, enabled: promise.enabled }));
     const warnings = [
       ...(slots.length === 100 ? ["Range reached the 100-slot preview limit"] : []),
       ...(job.outputMode === "append" ? ["Append recovery depends on ClickHouse deduplication being enabled for the destination engine"] : []),
       ...(job.outputMode === "upsert" ? ["Upsert recovery deduplicates eventually after merges"] : []),
+      ...(job.query.includes("{{prev_run_at}}") ? ["This query uses {{prev_run_at}}; its window depends on prior successes and a rerun may not reproduce the original range"] : []),
     ];
-    if (!body.execute) return ok(c, { plan, runnable: runnable.length, warnings });
+    if (!body.execute) return ok(c, { plan, runnable: runnable.length, warnings, chainedPromises });
     if (!body.confirm) throw AppError.badRequest("Recovery execution requires explicit confirmation");
     if (runnable.length > 30) throw AppError.badRequest("Execute at most 30 recovery slots per request");
     const runs = [];
     for (const slot of runnable) {
-      const run = await runner.execute(job, { trigger: "manual", slotAt: slot.slotAt, attempt: 1, suppressNotifications: true });
+      const run = await runner.execute(job, {
+        trigger: "manual",
+        slotAt: slot.slotAt,
+        attempt: 1,
+        suppressNotifications: true,
+        replay: true,
+        chainReplay: body.rerunChainedHealth,
+      });
       if (run) runs.push(run);
     }
     await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_RUN, userId(c), {
       resourceType: "scheduled_query",
       resourceId: job.id,
-      details: { recovery: true, from: body.from, to: body.to, slots: runs.length },
+      details: { recovery: true, from: body.from, to: body.to, slots: runs.length, rerunChainedHealth: body.rerunChainedHealth },
     });
-    return ok(c, { plan, runnable: runnable.length, warnings, runs });
+    return ok(c, { plan, runnable: runnable.length, warnings, chainedPromises, runs });
   },
 );
+
+/**
+ * Clear & rerun ONE historical run's slot (ADR 0007) — the per-run analogue of
+ * the range recovery. Re-executes the run's slot over its deterministic window
+ * with replay semantics, and — because a rerun of a materializing slot must
+ * re-verify what it rewrote — always replays chained Data Health promises over
+ * the same window. Notifications stay suppressed.
+ */
+scheduledQueries.post("/runs/:runId/rerun", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_RUN), async (c) => {
+  const original = await store.getRun(requireParam(c, "runId"));
+  if (!original) throw AppError.notFound("Run not found");
+  const job = await loadVisibleJob(c, original.queryId);
+  if (job.kind !== "sql_query") throw AppError.badRequest("Use the Data Health rerun for health check runs");
+  const attempt = (await store.countRunsForSlot(job.id, original.slotAt)) + 1;
+  const run = await runner.execute(job, {
+    trigger: "manual",
+    slotAt: original.slotAt,
+    attempt,
+    suppressNotifications: true,
+    replay: true,
+    chainReplay: true,
+  });
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_RUN, userId(c), {
+    resourceType: "scheduled_query",
+    resourceId: job.id,
+    details: { rerunOf: original.id, slotAt: original.slotAt },
+  });
+  return ok(c, { run });
+});
 
 // --- runs -------------------------------------------------------------------
 

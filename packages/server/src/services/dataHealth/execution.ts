@@ -50,6 +50,17 @@ function evaluationSummary(name: string, result: ReturnType<typeof evaluateDataH
   return `${name}: ${breached.map((check) => `${check.checkKey} (${check.observedValue ?? "no value"})`).join(", ")}`;
 }
 
+export interface ProcessDataHealthOptions {
+  /**
+   * Replay (clear & rerun, ADR 0007): replace the slot's samples instead of
+   * keeping them, bound anomaly history to earlier slots, and — when the slot is
+   * strictly older than the newest evaluated slot — skip status updates, incident
+   * transitions, and notifications entirely. Only the newest slot defines current
+   * health.
+   */
+  replay?: boolean;
+}
+
 export async function processDataHealthSuccess(
   job: ScheduledQueryRow,
   runId: string,
@@ -57,10 +68,17 @@ export async function processDataHealthSuccess(
   observed: Record<string, unknown>,
   client: ClickHouseClient,
   params: Record<string, string>,
+  opts: ProcessDataHealthOptions = {},
 ): Promise<DataHealthRunEvaluation> {
   const promise = await store.getPromiseByJobId(job.id);
   if (!promise) throw new Error("Data Health promise metadata is missing for the scheduled job");
-  const [checks, history] = await Promise.all([store.getChecks(promise.id), store.metricHistory(promise.id)]);
+  // The newest previously-evaluated slot, read BEFORE this run's samples land, so
+  // "older than newest" compares against prior history (a first-ever slot is newest).
+  const latestLiveSlot = opts.replay ? await store.latestLiveSlotAt(promise.id) : null;
+  const [checks, history] = await Promise.all([
+    store.getChecks(promise.id),
+    store.metricHistory(promise.id, 100, opts.replay ? slotAt : undefined),
+  ]);
   const result = evaluateDataHealth(checks, observed, history);
   const schemaChecks = checks.filter((check): check is SchemaContractCheck => check.type === "schema_contract" && check.enabled);
   if (schemaChecks.length > 0) {
@@ -89,9 +107,19 @@ export async function processDataHealthSuccess(
     const breaches = result.checks.filter((check) => check.outcome === "breach");
     result.state = breaches.some((check) => check.severity === "critical") ? "unhealthy" : breaches.length > 0 ? "degraded" : "healthy";
   }
-  await store.insertEvaluations(promise.id, runId, slotAt, result.checks);
-  await store.updatePromiseEvaluation(promise.id, result.state, Date.now());
+  await store.insertEvaluations(promise.id, runId, slotAt, result.checks, { replace: opts.replay });
   const summary = evaluationSummary(promise.name, result);
+  // Replay of a slot older than the newest evaluated slot rewrites its samples
+  // only — current status, incidents, and channels belong to the newest slot.
+  if (opts.replay && latestLiveSlot != null && slotAt < latestLiveSlot) {
+    return {
+      conditionMet: result.state === "degraded" || result.state === "unhealthy",
+      conditionValue: result.state,
+      message: result.state === "healthy" ? null : summary,
+      notified: false,
+    };
+  }
+  await store.updatePromiseEvaluation(promise.id, result.state, Date.now());
   const executionRecovery = await store.transitionExecutionIncident(promise, false, runId, `${promise.name} monitor execution recovered`);
   const transition = await store.transitionDataIncident(promise, result.state, runId, summary);
   let notified = false;

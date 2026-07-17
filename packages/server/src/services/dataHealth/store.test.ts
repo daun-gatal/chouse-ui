@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { sql } from "drizzle-orm";
 
+import type { ClickHouseClient } from "@clickhouse/client";
+
 import { closeDatabase } from "../../rbac/db";
 import { runMigrations } from "../../rbac/db/migrations";
 import { freshDatabase, rawRun } from "../../rbac/db/migrationTestHarness";
 import * as scheduledStore from "../scheduledQueries/store";
-import type { DataHealthCheckDefinition } from "./types";
-import { currentDataHealthJob, processUpstreamFailure } from "./execution";
+import type { DataHealthCheckDefinition, DataHealthMetricEvaluation } from "./types";
+import { currentDataHealthJob, processDataHealthSuccess, processUpstreamFailure } from "./execution";
 import * as store from "./store";
 
 const jobInput: scheduledStore.JobInput = {
@@ -209,6 +211,81 @@ describe("Data Health store", () => {
     // Disabled promises are left untouched.
     expect((await store.getPromise(disabledPromiseId))?.status).toBe("unknown"); // creation default, unchanged
     expect((await store.listIncidents(disabledPromiseId)).length).toBe(0);
+  });
+
+  it("replaces a slot's samples on replay and reports slot helpers", async () => {
+    const jobId = await scheduledStore.createJob(jobInput, "owner-1", "data_health_check");
+    const promiseId = await store.createPromiseMetadata(promiseInput(jobId));
+    await store.replaceChecks(promiseId, checks);
+    expect(await store.latestLiveSlotAt(promiseId)).toBeNull();
+
+    const evaluation = (outcome: "pass" | "breach", value: number): DataHealthMetricEvaluation[] => [{
+      checkKey: "rows", type: "row_count", severity: "critical", outcome, observedValue: value, expectedLower: 100, expectedUpper: null, message: outcome,
+    }];
+
+    await store.insertEvaluations(promiseId, "run-1", 1_000, evaluation("breach", 50));
+    // Default mode keeps the first sample for a slot (dedup, not replace).
+    await store.insertEvaluations(promiseId, "run-dup", 1_000, evaluation("pass", 120));
+    let samples = await store.listSamples(promiseId);
+    expect(samples.length).toBe(1);
+    expect(samples[0]).toMatchObject({ runId: "run-1", outcome: "breach", observedValue: 50 });
+    const originalId = samples[0].id;
+
+    // Replay overwrites in place: same row id, new run/outcome/values.
+    await store.insertEvaluations(promiseId, "run-replay", 1_000, evaluation("pass", 120), { replace: true });
+    samples = await store.listSamples(promiseId);
+    expect(samples.length).toBe(1);
+    expect(samples[0]).toMatchObject({ id: originalId, runId: "run-replay", outcome: "pass", observedValue: 120 });
+
+    await store.insertEvaluations(promiseId, "run-2", 2_000, evaluation("breach", 40));
+    expect(await store.latestLiveSlotAt(promiseId)).toBe(2_000);
+    expect(await store.listLiveSlotsBetween(promiseId, 0, 5_000)).toEqual([1_000, 2_000]);
+    expect(await store.listLiveSlotsBetween(promiseId, 1_500, 5_000)).toEqual([2_000]);
+    // History is newest-slot-first; the replay bound hides the replayed slot and later.
+    expect(await store.metricHistory(promiseId)).toEqual({ rows: [40, 120] });
+    expect(await store.metricHistory(promiseId, 100, 2_000)).toEqual({ rows: [120] });
+
+    // Backtest-origin rows never count as live history or slots.
+    await store.insertEvaluations(promiseId, "run-bt", 9_000, evaluation("pass", 130), { origin: "backtest" });
+    expect(await store.latestLiveSlotAt(promiseId)).toBe(2_000);
+    expect(await store.listLiveSlotsBetween(promiseId, 0, 10_000)).toEqual([1_000, 2_000]);
+  });
+
+  it("replays old slots silently and lets only the newest slot move status and incidents", async () => {
+    const jobId = await scheduledStore.createJob(jobInput, "owner-1", "data_health_check");
+    const promiseId = await store.createPromiseMetadata(promiseInput(jobId));
+    await store.replaceChecks(promiseId, checks);
+    const job = await scheduledStore.getJob(jobId);
+    if (!job) throw new Error("Scheduled job was not created");
+    // No schema_contract checks are configured, so the client is never used.
+    const client = {} as unknown as ClickHouseClient;
+    const params: Record<string, string> = {};
+
+    // Live evaluation of slot 2000 → healthy baseline.
+    const live = await processDataHealthSuccess(job, "run-live", 2_000, { rows: 120 }, client, params);
+    expect(live.conditionValue).toBe("healthy");
+    expect((await store.getPromise(promiseId))?.status).toBe("healthy");
+
+    // Replaying an OLDER slot with breaching data rewrites its samples only.
+    const replayOld = await processDataHealthSuccess(job, "run-replay-old", 1_000, { rows: 10 }, client, params, { replay: true });
+    expect(replayOld.conditionValue).toBe("unhealthy");
+    expect(replayOld.notified).toBe(false);
+    expect((await store.getPromise(promiseId))?.status).toBe("healthy");
+    expect((await store.listIncidents(promiseId)).length).toBe(0);
+    expect((await scheduledStore.listClaimableOutbox(10)).length).toBe(0);
+    const oldSamples = (await store.listSamples(promiseId)).filter((sample) => sample.slotAt === 1_000);
+    expect(oldSamples.length).toBe(1);
+    expect(oldSamples[0]).toMatchObject({ runId: "run-replay-old", outcome: "breach" });
+
+    // Replaying the NEWEST slot takes the full path: status and incidents move.
+    await processDataHealthSuccess(job, "run-replay-new", 2_000, { rows: 20 }, client, params, { replay: true });
+    expect((await store.getPromise(promiseId))?.status).toBe("unhealthy");
+    const incidents = await store.listIncidents(promiseId);
+    expect(incidents.length).toBe(1);
+    expect(incidents[0]).toMatchObject({ kind: "data", status: "open" });
+    const newestSamples = (await store.listSamples(promiseId)).filter((sample) => sample.slotAt === 2_000);
+    expect(newestSamples.length).toBe(1);
+    expect(newestSamples[0]).toMatchObject({ runId: "run-replay-new", outcome: "breach", observedValue: 20 });
   });
 
   it("keeps generated health jobs out of normal Scheduled Queries lists and overview", async () => {

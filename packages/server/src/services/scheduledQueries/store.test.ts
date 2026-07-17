@@ -49,6 +49,24 @@ describe("scheduled queries overview connection scope", () => {
     expect((await store.getJob(id))?.timezone).toBe("UTC");
   });
 
+  it("lists distinct successful slots in a range, ascending and bounded", async () => {
+    const id = await store.createJob(jobInput("producer", "connection-1"), "owner-1");
+    const seed = async (runId: string, slotAt: number, status: "success" | "error"): Promise<void> => {
+      await store.insertRun({ id: runId, queryId: id, trigger: "scheduled", slotAt, attempt: 1, runnerId: "test", deadline: slotAt + 1_000, startedAt: slotAt });
+      await store.finalizeRun(runId, { status, rowCount: null, truncated: false, writtenRows: null, resultJson: null, conditionValue: null, conditionMet: null, durationMs: 1, message: null, notified: false, finishedAt: slotAt + 1 });
+    };
+    await seed("r1", 1_000, "success");
+    await seed("r2", 2_000, "error");
+    await seed("r3", 3_000, "success");
+    await seed("r3-retry", 3_000, "success"); // duplicate slot collapses
+    await seed("r4", 9_000, "success"); // outside the range
+
+    expect(await store.listSuccessfulSlotsBetween(id, 0, 5_000)).toEqual([1_000, 3_000]);
+    expect(await store.listSuccessfulSlotsBetween(id, 3_000, 9_000)).toEqual([3_000, 9_000]);
+    expect(await store.listSuccessfulSlotsBetween(id, 0, 9_000, 2)).toEqual([1_000, 3_000]);
+    expect(await store.listSuccessfulSlotsBetween("missing", 0, 9_000)).toEqual([]);
+  });
+
   it("counts only the requested connection's jobs when a scope is given", async () => {
     await store.createJob(jobInput("job-a", "connection-1"), "owner-1");
     await store.createJob(jobInput("job-b", "connection-2"), "owner-1");

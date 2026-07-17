@@ -16,6 +16,7 @@ import {
   getOverview,
   listRuns,
   listScheduledQueries,
+  rerunScheduledQueryRun,
   runScheduledQuery,
   updateScheduledQuery,
   type RunQuery,
@@ -110,6 +111,15 @@ export function useRunScheduledQuery() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => runScheduledQuery(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: sqKeys.all }),
+  });
+}
+
+/** Clear & rerun one historical run's slot (chained Data Health replays automatically). */
+export function useRerunScheduledQueryRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => rerunScheduledQueryRun(runId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: sqKeys.all }),
   });
 }

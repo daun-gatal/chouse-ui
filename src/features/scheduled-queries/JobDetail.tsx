@@ -20,6 +20,7 @@ import { assessScheduledQuery, planScheduledRecovery, type RecoveryAssessment, t
 import { recoverScheduledQuery, type ScheduledQuery, type ScheduledRecoveryResult } from "@/api/scheduledQueries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useDataOpsModelId } from "@/hooks";
 import { formatClickHouseSQL } from "@/lib/formatSql";
@@ -77,6 +78,8 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const [recovery, setRecovery] = useState<{ assessment: RecoveryAssessment; preview: ScheduledRecoveryResult }>();
   const [recoveryError, setRecoveryError] = useState<string>();
   const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [rerunChainedHealth, setRerunChainedHealth] = useState(true);
+  const [rerunSuccessful, setRerunSuccessful] = useState(false);
 
   const successfulRuns = useMemo(() => runs.filter((run) => run.status === "success").length, [runs]);
   const completedRuns = useMemo(() => runs.filter((run) => run.status !== "running").length, [runs]);
@@ -138,7 +141,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
     try {
       const [assessment, preview] = await Promise.all([
         planScheduledRecovery(job.id, from, to, { modelId }),
-        recoverScheduledQuery(job.id, { from, to }),
+        recoverScheduledQuery(job.id, { from, to, rerunSuccessful }),
       ]);
       setRecovery({ assessment, preview });
     } catch (error) {
@@ -153,7 +156,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
     const to = new Date(recoveryTo).getTime();
     setRecoveryLoading(true);
     try {
-      const result = await recoverScheduledQuery(job.id, { from, to, execute: true, confirm: true });
+      const result = await recoverScheduledQuery(job.id, { from, to, execute: true, confirm: true, rerunSuccessful, rerunChainedHealth });
       setRecovery((current) => current ? { ...current, preview: result } : current);
       toast.success(`Recovery completed ${result.runs?.length ?? 0} run(s)`);
     } catch (error) {
@@ -292,8 +295,25 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
       <AiInsightDialog open={recoveryOpen} onOpenChange={setRecoveryOpen} title="Historical recovery planner" description="Preview missed deterministic slots before any historical runs execute." loading={recoveryLoading} error={recoveryError}>
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2"><div><p className="font-mono text-[9px] uppercase text-paper-faint">From</p><Input type="datetime-local" value={recoveryFrom} onChange={(event) => setRecoveryFrom(event.target.value)} className="mt-1" /></div><div><p className="font-mono text-[9px] uppercase text-paper-faint">To</p><Input type="datetime-local" value={recoveryTo} onChange={(event) => setRecoveryTo(event.target.value)} className="mt-1" /></div></div>
+          <label className="flex items-start gap-2">
+            <Checkbox checked={rerunSuccessful} onCheckedChange={(checked) => { setRerunSuccessful(checked === true); setRecovery(undefined); }} className="mt-0.5" />
+            <span>
+              <span className="block text-[11px] text-paper">Clear &amp; rerun slots that already succeeded</span>
+              <span className="mt-0.5 block text-[10px] text-paper-muted">Re-executes every slot in the range, replacing its output (idempotent per slot). Off = backfill missed slots only.</span>
+            </span>
+          </label>
           <Button variant="outline" className="rounded-xs" onClick={() => void planRecovery()}>Preview recovery</Button>
-          {recovery && <><AssessmentView result={recovery.assessment} /><div className="rounded-xs border border-ink-500 p-3"><p className="text-[11px] text-paper">{recovery.preview.runnable} missing slot(s) ready to run</p><p className="mt-1 text-[10px] text-paper-muted">{recovery.preview.plan.filter((slot) => slot.alreadySucceeded).length} slot(s) already succeeded and will be skipped.</p>{recovery.preview.warnings.map((warning) => <p key={warning} className="mt-1 text-[10px] text-amber-500">{warning}</p>)}</div>{recovery.preview.runnable > 0 && recovery.preview.runnable <= 30 && <Button className={SQ_BTN_PRIMARY} onClick={() => void executeRecovery()}>Confirm and run {recovery.preview.runnable} slot(s)</Button>}</>}
+          {recovery && <><AssessmentView result={recovery.assessment} /><div className="rounded-xs border border-ink-500 p-3"><p className="text-[11px] text-paper">{recovery.preview.runnable} slot(s) ready to run</p><p className="mt-1 text-[10px] text-paper-muted">{recovery.preview.plan.filter((slot) => slot.alreadySucceeded).length} slot(s) already succeeded and will be {rerunSuccessful ? "re-run" : "skipped"}.</p>{recovery.preview.warnings.map((warning) => <p key={warning} className="mt-1 text-[10px] text-amber-500">{warning}</p>)}</div>{(recovery.preview.chainedPromises?.some((promise) => promise.enabled) ?? false) && (
+            <label className="flex items-start gap-2 rounded-xs border border-ink-500 p-3">
+              <Checkbox checked={rerunChainedHealth} onCheckedChange={(checked) => setRerunChainedHealth(checked === true)} className="mt-0.5" />
+              <span>
+                <span className="block text-[11px] text-paper">Also rerun linked Data Health promises over the same windows</span>
+                <span className="mt-1 block text-[10px] text-paper-muted">
+                  {recovery.preview.chainedPromises?.filter((promise) => promise.enabled).map((promise) => promise.name).join(", ")}
+                </span>
+              </span>
+            </label>
+          )}{recovery.preview.runnable > 0 && recovery.preview.runnable <= 30 && <Button className={SQ_BTN_PRIMARY} onClick={() => void executeRecovery()}>Confirm and run {recovery.preview.runnable} slot(s)</Button>}</>}
         </div>
       </AiInsightDialog>
     </div>

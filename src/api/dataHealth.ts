@@ -152,10 +152,13 @@ export interface DataHealthRun {
   trigger: "scheduled" | "manual" | "event";
   status: "running" | "success" | "failed" | "error";
   slotAt: number;
+  attempt?: number;
   conditionValue: string | null;
   conditionMet: boolean | null;
   durationMs: number | null;
   message: string | null;
+  /** Bounded snapshot: `{ columns, rows, window }` — the observed metrics and substituted window params. */
+  resultJson?: string | null;
   startedAt: number;
   finishedAt: number | null;
 }
@@ -237,6 +240,23 @@ export async function runDataHealthPromise(id: string): Promise<DataHealthRun | 
 
 export function getDataHealthTimeline(id: string): Promise<{ samples: DataHealthSample[]; incidents: DataHealthIncident[]; events: DataHealthIncidentEvent[]; runs: DataHealthRun[] }> {
   return api.get(`/data-health/${id}/timeline`);
+}
+
+export interface DataHealthRecoveryResult {
+  plan: Array<{ slotAt: number; hasSamples: boolean }>;
+  runnable: number;
+  warnings: string[];
+  runs?: DataHealthRun[];
+}
+
+export function recoverDataHealthPromise(id: string, input: { from: number; to: number; execute?: boolean; confirm?: boolean }): Promise<DataHealthRecoveryResult> {
+  return api.post<DataHealthRecoveryResult>(`/data-health/${id}/recovery`, input);
+}
+
+/** Clear & rerun one historical evaluation's slot, replacing its samples. */
+export async function rerunDataHealthRun(promiseId: string, runId: string): Promise<DataHealthRun | null> {
+  const response = await api.post<{ run: DataHealthRun | null }>(`/data-health/${promiseId}/runs/${runId}/rerun`);
+  return response.run;
 }
 
 export async function listDataHealthIncidents(connectionId?: string): Promise<DataHealthIncident[]> {

@@ -216,11 +216,18 @@ export interface ScheduledRecoveryResult {
   plan: Array<{ slotAt: number; alreadySucceeded: boolean }>;
   runnable: number;
   warnings: string[];
+  chainedPromises?: Array<{ id: string; name: string; enabled: boolean }>;
   runs?: ScheduledQueryRun[];
 }
 
-export function recoverScheduledQuery(id: string, input: { from: number; to: number; execute?: boolean; confirm?: boolean; rerunSuccessful?: boolean }): Promise<ScheduledRecoveryResult> {
+export function recoverScheduledQuery(id: string, input: { from: number; to: number; execute?: boolean; confirm?: boolean; rerunSuccessful?: boolean; rerunChainedHealth?: boolean }): Promise<ScheduledRecoveryResult> {
   return api.post<ScheduledRecoveryResult>(`/scheduled-queries/${id}/recovery`, input);
+}
+
+/** Clear & rerun one historical run's slot; chained Data Health promises replay over the same window automatically. */
+export async function rerunScheduledQueryRun(runId: string): Promise<ScheduledQueryRun | null> {
+  const response = await api.post<{ run: ScheduledQueryRun | null }>(`/scheduled-queries/runs/${runId}/rerun`);
+  return response.run;
 }
 
 // --- lineage (observed runtime) ---------------------------------------------

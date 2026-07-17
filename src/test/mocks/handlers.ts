@@ -412,8 +412,20 @@ export const handlers = [
     return HttpResponse.json({ success: true, data: { run: { id: 'run-2', status: 'success', startedAt: 1700000100000 } } });
   }),
   http.post(`${API_BASE}/scheduled-queries/:id/recovery`, async ({ request }) => {
-    const body = await request.json() as { execute?: boolean };
-    return HttpResponse.json({ success: true, data: { plan: [{ slotAt: 1700000000000, alreadySucceeded: false }], runnable: 1, warnings: [], runs: body.execute ? [{ id: 'recovery-1', status: 'success' }] : undefined } });
+    const body = await request.json() as { execute?: boolean; rerunChainedHealth?: boolean };
+    return HttpResponse.json({
+      success: true,
+      data: {
+        plan: [{ slotAt: 1700000000000, alreadySucceeded: false }],
+        runnable: 1,
+        warnings: [],
+        chainedPromises: [{ id: 'dh-1', name: 'Orders ready', enabled: true }],
+        runs: body.execute ? [{ id: 'recovery-1', status: 'success', trigger: 'manual', message: body.rerunChainedHealth ? 'chained' : null }] : undefined,
+      },
+    });
+  }),
+  http.post(`${API_BASE}/scheduled-queries/runs/:runId/rerun`, ({ params }) => {
+    return HttpResponse.json({ success: true, data: { run: { id: 'rerun-1', status: 'success', trigger: 'manual', slotAt: 1700000000000, message: `rerun of ${params.runId as string}` } } });
   }),
   http.get(`${API_BASE}/scheduled-queries/:id/runs`, () => {
     return HttpResponse.json({
@@ -473,6 +485,21 @@ export const handlers = [
   http.delete(`${API_BASE}/data-health/:id`, () => HttpResponse.json({ success: true, data: { success: true } })),
   http.post(`${API_BASE}/data-health/:id/run`, () => HttpResponse.json({ success: true, data: { run: { id: 'dh-run-1', status: 'success', conditionValue: 'healthy', startedAt: 1700000000000 } } })),
   http.post(`${API_BASE}/data-health/:id/backtest`, () => HttpResponse.json({ success: true, data: { slots: [{ slotAt: 1700000000000, state: 'healthy', checks: [] }], summary: { evaluated: 1, healthy: 1, breached: 0, unknown: 0, errors: 0 } } })),
+  http.post(`${API_BASE}/data-health/:id/runs/:runId/rerun`, ({ params }) => {
+    return HttpResponse.json({ success: true, data: { run: { id: 'dh-rerun-1', status: 'success', conditionValue: 'healthy', slotAt: 1700000000000, message: `rerun of ${params.runId as string}` } } });
+  }),
+  http.post(`${API_BASE}/data-health/:id/recovery`, async ({ request }) => {
+    const body = await request.json() as { execute?: boolean };
+    return HttpResponse.json({
+      success: true,
+      data: {
+        plan: [{ slotAt: 1700000000000, hasSamples: true }],
+        runnable: 1,
+        warnings: [],
+        runs: body.execute ? [{ id: 'dh-recovery-1', status: 'success', conditionValue: 'healthy', startedAt: 1700000000000 }] : undefined,
+      },
+    });
+  }),
   http.post(`${API_BASE}/data-health/:id/diagnostics`, () => HttpResponse.json({ success: true, data: { supported: true, rows: [{ id: 1 }], columns: [{ name: 'id', type: 'UInt64' }], slotStart: 1699990000000, slotEnd: 1700000000000 } })),
   http.get(`${API_BASE}/data-health/:id/timeline`, () => HttpResponse.json({ success: true, data: { samples: [], incidents: [], events: [], runs: [] } })),
   http.get(`${API_BASE}/data-health/incidents`, () => HttpResponse.json({ success: true, data: { incidents: [{ id: 'incident-1', promiseId: 'dh-1', status: 'open', severity: 'critical', kind: 'data', summary: 'Rows too low', openedAt: 1700000000000, lastEventAt: 1700000000000 }] } })),

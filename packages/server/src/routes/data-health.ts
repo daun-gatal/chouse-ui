@@ -11,7 +11,7 @@ import { compileDataHealthQuery, eventTimeTypeFromSchema, isDateOnlyEventTimeTyp
 import { backtestDataHealth, buildFailingRowsQuery, runFailingRowsDiagnostic } from "../services/dataHealth/diagnostics";
 import * as healthStore from "../services/dataHealth/store";
 import { DATA_HEALTH_EVENT_TIME_ENCODINGS, dataHealthCheckDefinitionSchema } from "../services/dataHealth/types";
-import { isValidTimeZone, nextFireTimes, validateCron } from "../services/scheduledQueries/cadence";
+import { fireTimesBetween, isValidTimeZone, nextFireTimes, validateCron } from "../services/scheduledQueries/cadence";
 import * as runner from "../services/scheduledQueries/runner";
 import * as scheduledStore from "../services/scheduledQueries/store";
 import { DATA_HEALTH_FREQUENCIES, type ScheduledQueryRow, type SqFrequency } from "../services/scheduledQueries/types";
@@ -691,6 +691,115 @@ dataHealth.post("/:id/run", requirePermission(PERMISSIONS.DATA_HEALTH_RUN), asyn
   await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_HEALTH_PROMISE_RUN, currentUser(c).sub, { resourceType: "data_health_promise", resourceId: promise.id });
   return ok(c, { run });
 });
+
+/**
+ * Clear & rerun ONE historical evaluation (ADR 0007) — re-evaluates that run's
+ * slot over the same window (the upstream's window for event promises) and
+ * replaces the slot's samples. Replay semantics apply: only the newest slot can
+ * change current status or incidents.
+ */
+dataHealth.post("/:id/runs/:runId/rerun", requirePermission(PERMISSIONS.DATA_HEALTH_RUN), async (c) => {
+  const promise = await loadVisiblePromise(c, requireParam(c, "id"));
+  const healthJob = await scheduledStore.getJob(promise.scheduledQueryId);
+  if (!healthJob || healthJob.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
+  const original = await scheduledStore.getRun(requireParam(c, "runId"));
+  if (!original || original.queryId !== healthJob.id) throw AppError.notFound("Run not found");
+  let window: runner.WindowParams | undefined;
+  if (promise.upstreamJobId) {
+    const upstream = await scheduledStore.getJob(promise.upstreamJobId);
+    if (upstream) window = await runner.resolveWindow(upstream, original.slotAt);
+  }
+  const attempt = (await scheduledStore.countRunsForSlot(healthJob.id, original.slotAt)) + 1;
+  const run = await runner.execute(healthJob, {
+    trigger: "manual",
+    slotAt: original.slotAt,
+    attempt,
+    window,
+    replay: true,
+    suppressNotifications: true,
+  });
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_HEALTH_PROMISE_RUN, currentUser(c).sub, {
+    resourceType: "data_health_promise",
+    resourceId: promise.id,
+    details: { rerunOf: original.id, slotAt: original.slotAt },
+  });
+  return ok(c, { run });
+});
+
+const healthRecoverySchema = z.object({
+  from: z.number().int(),
+  to: z.number().int(),
+  execute: z.boolean().default(false),
+  confirm: z.boolean().default(false),
+}).refine((value) => value.from <= value.to, "Start must precede end");
+
+/**
+ * Clear & rerun a promise over a time range (ADR 0007). Slots come from the
+ * ground truth for the promise's run mode (D5): an event promise re-verifies the
+ * upstream's successfully delivered slots; a cron-cadence promise re-derives fire
+ * times from its CURRENT schedule; a manual promise re-evaluates its recorded
+ * slots. Every replayed slot replaces its samples; only the newest slot can move
+ * status/incidents (enforced inside the runner's replay path).
+ */
+dataHealth.post(
+  "/:id/recovery",
+  requirePermission(PERMISSIONS.DATA_HEALTH_RUN),
+  zValidator("json", healthRecoverySchema),
+  async (c) => {
+    const promise = await loadVisiblePromise(c, requireParam(c, "id"));
+    const body = c.req.valid("json");
+    const healthJob = await scheduledStore.getJob(promise.scheduledQueryId);
+    if (!healthJob || healthJob.kind !== "data_health_check") throw AppError.internal("Data Health execution job is missing");
+
+    const warnings: string[] = [];
+    let slots: number[] = [];
+    // The job whose cadence defines each slot's window (the upstream for event promises).
+    let windowJob: ScheduledQueryRow = healthJob;
+    if (promise.upstreamJobId) {
+      const upstream = await scheduledStore.getJob(promise.upstreamJobId);
+      if (!upstream) {
+        warnings.push("The linked upstream job no longer exists; nothing to rerun");
+      } else {
+        windowJob = upstream;
+        slots = await scheduledStore.listSuccessfulSlotsBetween(upstream.id, body.from, body.to, 100);
+        if (slots.length === 0) warnings.push("The upstream pipeline has no successful runs in this range");
+      }
+    } else if (healthJob.frequency === "manual") {
+      slots = await healthStore.listLiveSlotsBetween(promise.id, body.from, body.to, 100);
+      if (slots.length === 0) warnings.push("No evaluated slots in this range");
+    } else {
+      slots = fireTimesBetween(healthJob, body.from, body.to, 100);
+      warnings.push("Windows are recomputed from the current schedule; if the schedule changed since, historical ranges may differ");
+    }
+    if (slots.length === 100) warnings.push("Range reached the 100-slot preview limit");
+
+    const evaluated = new Set(await healthStore.listLiveSlotsBetween(promise.id, body.from, body.to, 100));
+    const plan = slots.map((slotAt) => ({ slotAt, hasSamples: evaluated.has(slotAt) }));
+    if (!body.execute) return ok(c, { plan, runnable: plan.length, warnings });
+    if (!body.confirm) throw AppError.badRequest("Recovery execution requires explicit confirmation");
+    if (plan.length > 30) throw AppError.badRequest("Execute at most 30 recovery slots per request");
+
+    const runs = [];
+    for (const slot of plan) {
+      const window = await runner.resolveWindow(windowJob, slot.slotAt);
+      const run = await runner.execute(healthJob, {
+        trigger: "manual",
+        slotAt: slot.slotAt,
+        attempt: 1,
+        window,
+        replay: true,
+        suppressNotifications: true,
+      });
+      if (run) runs.push(run);
+    }
+    await createAuditLogWithContext(c, AUDIT_ACTIONS.DATA_HEALTH_PROMISE_RUN, currentUser(c).sub, {
+      resourceType: "data_health_promise",
+      resourceId: promise.id,
+      details: { recovery: true, from: body.from, to: body.to, slots: runs.length },
+    });
+    return ok(c, { plan, runnable: plan.length, warnings, runs });
+  },
+);
 
 dataHealth.delete("/:id", requirePermission(PERMISSIONS.DATA_HEALTH_DELETE), async (c) => {
   const promise = await loadVisiblePromise(c, requireParam(c, "id"));
