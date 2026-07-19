@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.10.0] - 2026-07-19
+
+### Added
+- **Clear & rerun (ADR 0007)** — every run in a Scheduled Query's history and a Data Health promise's evaluation timeline gains a per-run **Rerun** action that re-executes exactly that slot over its original window; rerunning a materializing slot automatically re-verifies its linked Data Health promises over the same window. The recovery planner additionally supports range reruns — including already-succeeded slots — and Data Health promises gain a "Rerun range" action. Replays are idempotent: samples are replaced in place, and only the newest slot can change current status, incidents, or notifications — historical slots are corrected silently.
+
+### Fixed
+- **AI chat connection switching** — New threads, displayed chat state, and asynchronous history refreshes now follow the currently active ClickHouse connection.
+
 ## [v3.9.0] - 2026-07-15
 
 ### Added
@@ -112,10 +120,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Admin page hidden despite having access** — The Admin page, its nav entry, and the default-landing redirect were gated on an incomplete permission list (only users/roles/audit), so a user holding only another admin permission (SSO, connections, ClickHouse users/roles, data access, or AI models) was bounced from `/admin` even though they had a tab to see. All access checks now derive from a single source of truth, so any one admin-tab permission reveals the page and that tab.
-
-## [v3.3.1] - 2026-06-14
-
-### Fixed
-- **GitHub SSO (and other plain OAuth2 providers)** — userinfo is now fetched directly instead of through the OIDC-only helper, which rejected GitHub's numeric `id`/missing `sub` (`"sub" property must be a string`). GitHub accounts with a private email also now resolve their primary verified address via `/user/emails`, so just-in-time provisioning no longer fails with "did not supply an email address".
-- **SSO attribute-mapping parsing** — claim/role/auth-param mappings now accept either `=` or `:` as the key/value separator, so values entered as `subject=id,...` are parsed correctly instead of silently producing an empty mapping.
 
