@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useDatabases } from '@/hooks';
 import { useWorkspaceStore, genTabId } from '@/stores/workspace';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface ImportWizardProps {
     isOpen: boolean;

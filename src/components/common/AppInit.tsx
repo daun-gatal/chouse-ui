@@ -1,6 +1,6 @@
 import { useEffect, useState, ReactNode } from "react";
 import { MultiStepLoader as Loader } from "@/components/ui/multi-step-loader";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useRbacStore } from "@/stores";
 import { toast } from "sonner";
 import { listenForUserChanges } from "@/utils/sessionCleanup";

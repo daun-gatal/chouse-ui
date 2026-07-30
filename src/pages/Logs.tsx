@@ -61,7 +61,7 @@ import {
 } from "@/hooks/useMonitoringTimeline";
 import { QueryHistogramChart } from "@/components/monitoring/QueryHistogramChart";
 import { useRbacStore, RBAC_PERMISSIONS, useWorkspaceStore, genTabId } from "@/stores";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { cn, formatCompactNumber } from "@/lib/utils";
 import { DataControls } from "@/components/common/DataControls";
 import {

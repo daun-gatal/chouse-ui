@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { calculateCoachmarkPosition, Coachmark, isOnboardingRouteActive } from "./Coachmark";
@@ -21,8 +21,8 @@ vi.mock("@/lib/onboardingSurfaces", () => ({
   waitForOnboardingSurfacesToSettle: surfaceMocks.waitForSettle,
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return {
     ...actual,
     useNavigate: () => {

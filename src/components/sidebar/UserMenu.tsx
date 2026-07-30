@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/tooltip";
 import { LogOut } from "lucide-react";
 import { useRbacStore } from "@/stores";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { getSessionId, clearSession } from "@/api/client";
 import { rbacConnectionsApi } from "@/api/rbac";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";

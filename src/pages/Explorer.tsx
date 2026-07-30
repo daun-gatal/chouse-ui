@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router";
 import { ChevronRight, Database, Layers, PanelLeftClose, PanelLeftOpen, Table2 } from "lucide-react";
 import DatabaseExplorer from "@/features/explorer/components/DataExplorer";
 import WorkspaceTabs from "@/features/workspace/components/WorkspaceTabs";

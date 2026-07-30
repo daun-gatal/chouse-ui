@@ -11,7 +11,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { ArrowUpRight, ChevronDown, Eye, EyeOff, Loader2, Lock, ShieldCheck, User } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { useRbacStore } from "@/stores";
 import { ssoApi, authConfigApi } from "@/api/rbac";
 import { SsoProviderIcon } from "@/features/auth/SsoProviderIcon";

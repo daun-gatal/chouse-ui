@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useLocation, useParams, useNavigate } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Stethoscope, Loader2, Sparkles, AlertCircle, Server, Check, ChevronDown, Trash2, ListChecks, X, CalendarClock, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
