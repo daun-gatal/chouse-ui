@@ -1,0 +1,24 @@
+{{- if and (eq .Values.database.type "sqlite") .Values.database.sqlite.persistence.enabled (not .Values.database.sqlite.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "chouse-ui.fullname" . }}-data
+  labels:
+    {{- include "chouse-ui.labels" . | nindent 4 }}
+  annotations:
+    # Survive `helm uninstall` — this PVC holds every user, connection, and
+    # setting of the install. Delete it manually if you really mean it.
+    helm.sh/resource-policy: keep
+    {{- with .Values.database.sqlite.persistence.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.database.sqlite.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.database.sqlite.persistence.size }}
+  {{- with .Values.database.sqlite.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

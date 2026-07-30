@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chouse-ui.fullname" . }}
+  labels:
+    {{- include "chouse-ui.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  {{- if eq .Values.database.type "sqlite" }}
+  # Two pods must never share the SQLite file, even transiently mid-rollout.
+  strategy:
+    type: Recreate
+  {{- else }}
+  strategy:
+    type: RollingUpdate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chouse-ui.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        {{- include "chouse-ui.labels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config-secret.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "chouse-ui.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: chouse-ui
+          image: {{ include "chouse-ui.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 5521
+              protocol: TCP
+          env:
+            {{- include "chouse-ui.env" . | nindent 12 }}
+            {{- if .Values.dedicatedScheduler.enabled }}
+            - name: SCHEDULED_QUERIES_ENABLED
+              value: "false"
+            {{- else }}
+            - name: SCHEDULED_QUERIES_ENABLED
+              value: {{ .Values.scheduledQueries.enabled | quote }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.probes.startup | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if eq .Values.database.type "sqlite" }}
+            - name: data
+              mountPath: /app/data
+            {{- end }}
+            {{- if .Values.config }}
+            - name: config
+              mountPath: {{ include "chouse-ui.configMountPath" . }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if eq .Values.database.type "sqlite" }}
+        - name: data
+          {{- if .Values.database.sqlite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.database.sqlite.persistence.existingClaim | default (printf "%s-data" (include "chouse-ui.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.config }}
+        - name: config
+          secret:
+            secretName: {{ include "chouse-ui.fullname" . }}-config
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

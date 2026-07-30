@@ -1,0 +1,204 @@
+# Default values for chouse-ui.
+#
+# The app itself is configured through the freeform `config:` block (rendered
+# to a config.yaml the server loads via CHOUSE_CONFIG_PATH). Only values that
+# shape the Kubernetes deployment are first-class here.
+
+# -- Number of web pods. Must be 1 when `database.type` is `sqlite` (the chart
+# refuses to render otherwise). When >1, the chart sets `CHOUSE_HA=true` on the
+# pods automatically.
+replicaCount: 1
+
+image:
+  # -- Container image repository.
+  repository: ghcr.io/daun-gatal/chouse-ui
+  # -- Image tag. Defaults to `v<Chart.appVersion>`.
+  tag: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Secrets for pulling the image from a private registry.
+imagePullSecrets: []
+
+# -- Override the chart name.
+nameOverride: ""
+# -- Override the fully qualified release name.
+fullnameOverride: ""
+
+database:
+  # -- RBAC database backend: `sqlite` (single replica + PVC) or `postgres`
+  # (external PostgreSQL; required for HA / more than one replica).
+  type: sqlite
+
+  sqlite:
+    persistence:
+      # -- Persist the SQLite database (`/app/data`) on a PVC. Disabling this
+      # loses all users, connections, and settings on every pod restart —
+      # only do it for throwaway installs.
+      enabled: true
+      # -- PVC size.
+      size: 1Gi
+      # -- StorageClass. Empty string uses the cluster default.
+      storageClass: ""
+      # -- Use a pre-created PVC instead of chart-managed one.
+      existingClaim: ""
+      # -- PVC access modes.
+      accessModes:
+        - ReadWriteOnce
+      # -- Extra annotations for the PVC (e.g. to keep it on helm uninstall).
+      annotations: {}
+
+  postgres:
+    # -- Full PostgreSQL connection URL
+    # (`postgres://user:pass@host:5432/dbname`). Stored in a chart-managed
+    # Secret. Prefer `existingSecret` so the URL never lands in values files.
+    url: ""
+    # -- Name of an existing Secret holding the connection URL.
+    existingSecret: ""
+    # -- Key inside `existingSecret` that holds the URL.
+    existingSecretKey: RBAC_POSTGRES_URL
+    # -- Connection pool size per pod.
+    poolSize: 10
+
+secrets:
+  # -- Name of an existing Secret with keys `JWT_SECRET`,
+  # `RBAC_ENCRYPTION_KEY`, and `RBAC_ENCRYPTION_SALT` (recommended). When
+  # empty, the three inline values below are required and rendered into a
+  # chart-managed Secret. The chart never auto-generates these: the encryption
+  # key/salt protect stored ClickHouse passwords, and a regenerated key makes
+  # them unrecoverable.
+  existingSecret: ""
+  # -- JWT signing secret, min 32 chars. Generate: `openssl rand -base64 32`.
+  jwtSecret: ""
+  # -- AES-256 key for stored connection passwords, 64 hex chars.
+  # Generate: `openssl rand -hex 32`.
+  encryptionKey: ""
+  # -- Key-derivation salt, exactly 64 hex chars. Generate: `openssl rand -hex 32`.
+  encryptionSalt: ""
+
+# -- Freeform CHouse UI configuration, rendered to a Secret-mounted
+# `config.yaml` (see `.config.example.yaml` in the repo for the full schema:
+# SSO, fleet poller, AI doctor, admin seeding, CORS, log level, ...). Do NOT
+# set keys the chart already manages (`port`, `node_env`, `static_path`,
+# `rbac.db_type`, `rbac.sqlite_path`, `rbac.postgres_url`, `rbac.encryption`,
+# `jwt.secret`, `scheduled_queries`) — the chart refuses to render if you do,
+# because config.yaml values override the pod environment.
+config: {}
+
+# -- Extra environment variables for the web pods (list of EnvVar). Useful for
+# referencing SSO client secrets from Secrets via `valueFrom`.
+extraEnv: []
+
+# -- Extra `envFrom` sources (ConfigMap/Secret refs) for the web pods.
+extraEnvFrom: []
+
+scheduledQueries:
+  # -- Run the in-process scheduled-queries scheduler on the web pods.
+  # Redundant ticks across pods are harmless (per-job atomic lease on
+  # PostgreSQL). Ignored (forced off on web pods) when
+  # `dedicatedScheduler.enabled` is true.
+  enabled: true
+
+dedicatedScheduler:
+  # -- Run the scheduled-queries scheduler on a dedicated single-replica
+  # Deployment instead of the web pods. Requires `database.type: postgres`.
+  enabled: false
+  # -- Resources for the scheduler pod.
+  resources: {}
+
+service:
+  # -- Service type.
+  type: ClusterIP
+  # -- Service port (targets the fixed container port 5521).
+  port: 80
+  # -- Extra annotations for the Service.
+  annotations: {}
+
+serviceAccount:
+  # -- Create a ServiceAccount for the pods.
+  create: true
+  # -- Annotations for the ServiceAccount.
+  annotations: {}
+  # -- ServiceAccount name override.
+  name: ""
+
+# -- Extra annotations for the pods.
+podAnnotations: {}
+# -- Extra labels for the pods.
+podLabels: {}
+# -- Labels added to every rendered resource.
+commonLabels: {}
+
+# -- Pod security context. The image runs as uid/gid 1001; `fsGroup` makes the
+# SQLite PVC writable.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context. The root filesystem is read-only; the chart
+# mounts an emptyDir on `/tmp`.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+probes:
+  # -- Liveness probe — dependency-free endpoint.
+  liveness:
+    httpGet:
+      path: /api/health
+      port: http
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe — 503 until the RBAC database is healthy and
+  # migrations have applied.
+  readiness:
+    httpGet:
+      path: /api/rbac/health
+      port: http
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Startup probe — generous budget (5 min) so long upgrade migrations
+  # don't get the pod killed.
+  startup:
+    httpGet:
+      path: /api/rbac/health
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 60
+
+# -- Grace period so the SIGTERM handler can release poller leases and drain
+# scheduled-query slots.
+terminationGracePeriodSeconds: 60
+
+# -- Node selector for all pods.
+nodeSelector: {}
+# -- Tolerations for all pods.
+tolerations: []
+# -- Affinity for all pods.
+affinity: {}
+# -- Priority class for all pods.
+priorityClassName: ""
+
+# -- Extra init containers for the web pods.
+initContainers: []
+# -- Extra volumes for the web pods.
+extraVolumes: []
+# -- Extra volume mounts for the web container.
+extraVolumeMounts: []
