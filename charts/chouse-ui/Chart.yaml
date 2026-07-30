@@ -6,9 +6,9 @@ description: >-
 type: application
 # Chart version — bump manually in every PR that changes the chart
 # (see .rules/HELM_CHART.md). Breaking values changes bump major.
-version: 1.0.0
+version: 1.0.1
 # App version — owned by auto-release.yml; never edit by hand.
-appVersion: "3.10.0"
+appVersion: "3.11.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/daun-gatal/chouse-ui
 sources:
