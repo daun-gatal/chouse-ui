@@ -220,7 +220,14 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Assembled version: $VERSION"
 
+      # Chart sync is a convenience, never a reason to fail a release: the app
+      # is what's shipping. Every step below is non-fatal — if Helm can't be
+      # installed or the registry is unreachable, the chart keeps its current
+      # appVersion and the chart publish later no-ops on the immutability
+      # guard (or is re-run via the Helm Release workflow).
       - name: Setup Helm
+        id: setup_helm
+        continue-on-error: true
         uses: azure/setup-helm@v4
         with:
           version: v4.2.3
@@ -228,33 +235,77 @@ jobs:
       # Keep the chart shipping the app it was released with. The chart
       # `version` is only auto-bumped (patch) when the current one is already
       # published — a pending manual bump from a chart PR is respected, never
-      # double-bumped. If the registry check fails, the version is kept and
-      # the publish step later no-ops on the immutability guard (safe).
+      # double-bumped.
       - name: Sync chart appVersion
+        id: chart_sync
+        continue-on-error: true
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           CHART=charts/chouse-ui/Chart.yaml
+
+          # `^version:` deliberately excludes the `appVersion:` line.
           CURRENT=$(awk '/^version:/{print $2; exit}' "$CHART")
+
+          # A published version is immutable, so it must be bumped. An
+          # unpublished one came from a chart PR that also wrote its own
+          # release notes — leave both alone.
+          AUTO_BUMPED=false
           if helm show chart "oci://ghcr.io/${{ github.repository_owner }}/charts/chouse-ui" --version "$CURRENT" > /dev/null 2>&1; then
             NEXT=$(echo "$CURRENT" | awk -F. '{printf "%d.%d.%d", $1, $2, $3+1}')
             sed -i "s/^version: .*/version: $NEXT/" "$CHART"
+            AUTO_BUMPED=true
             echo "Chart version bumped: $CURRENT -> $NEXT (previous version already published)"
           else
-            echo "Chart version $CURRENT not published yet — keeping it."
+            echo "Chart version $CURRENT not published yet — keeping it (and its release notes)."
           fi
+
           sed -i "s/^appVersion: .*/appVersion: \"$VERSION\"/" "$CHART"
           # Keep the artifacthub.io/images annotation pointing at the same
           # release the chart installs by default.
           sed -i "s|image: ghcr.io/daun-gatal/chouse-ui:v[0-9][0-9.]*|image: ghcr.io/daun-gatal/chouse-ui:v$VERSION|" "$CHART"
           echo "Chart appVersion set to $VERSION"
 
+          # An auto-bumped version has no human-written notes of its own. Without
+          # this it would inherit the previous chart PR's artifacthub.io/changes
+          # and advertise that feature again under a version that didn't add it.
+          if [ "$AUTO_BUMPED" = "true" ]; then
+            python3 - "$CHART" "$VERSION" <<'PY'
+          import re, sys
+          path, version = sys.argv[1], sys.argv[2]
+          with open(path) as f:
+              content = f.read()
+          replacement = (
+              "  artifacthub.io/changes: |\n"
+              "    - kind: changed\n"
+              f"      description: Updated to CHouse UI v{version}\n"
+          )
+          # Replace the whole block literal, up to the next annotation key or EOF.
+          pattern = re.compile(
+              r"^  artifacthub\.io/changes: \|\n(?:^(?:    .*)?\n)*",
+              re.MULTILINE,
+          )
+          content, count = pattern.subn(replacement, content, count=1)
+          if count != 1:
+              sys.exit("artifacthub.io/changes block not found — refusing to guess")
+          with open(path, "w") as f:
+              f.write(content)
+          print(f"artifacthub.io/changes reset for auto-bumped chart version (app v{version})")
+          PY
+          fi
+
       # The chart README embeds version/appVersion badges — regenerate so the
       # helm-docs drift check on the next chart PR stays green.
       - name: Regenerate chart README
+        continue-on-error: true
         run: |
           curl -fsSL "https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz" \
             | tar -xz -C /usr/local/bin helm-docs
           helm-docs --chart-search-root charts/chouse-ui
+
+      - name: Warn if chart sync was skipped
+        if: steps.setup_helm.outcome != 'success' || steps.chart_sync.outcome != 'success'
+        run: |
+          echo "::warning::Chart sync did not complete (setup-helm=${{ steps.setup_helm.outcome }}, sync=${{ steps.chart_sync.outcome }}). The app release is unaffected; re-run the Helm Release workflow afterwards to publish an updated chart."
 
       - name: Trim CHANGELOG to latest 10 releases
         run: |
