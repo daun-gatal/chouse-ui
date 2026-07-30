@@ -1,0 +1,115 @@
+{{ template "chart.header" . }}
+
+{{ template "chart.deprecationWarning" . }}
+
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+The chart deploys the single CHouse UI container (API + SPA on port 5521) and
+wires the topology rules the app expects — so a broken layout fails at
+`helm install` instead of corrupting data at runtime.
+
+## Quickstart
+
+```bash
+helm install chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui \
+  --set secrets.jwtSecret="$(openssl rand -base64 32)" \
+  --set secrets.encryptionKey="$(openssl rand -hex 32)" \
+  --set secrets.encryptionSalt="$(openssl rand -hex 32)"
+
+kubectl port-forward svc/chouse-ui 5521:80
+```
+
+Log in at http://localhost:5521 with `admin@localhost` / `admin123!` — and
+change that password immediately.
+
+> **Keep those three secrets safe.** `encryptionKey`/`encryptionSalt` protect
+> every stored ClickHouse connection password; if they change, those stored
+> credentials are unrecoverable. For real installs put them in a Secret and
+> pass `secrets.existingSecret` (keys `JWT_SECRET`, `RBAC_ENCRYPTION_KEY`,
+> `RBAC_ENCRYPTION_SALT`).
+
+## Choosing a topology
+
+| | SQLite (default) | PostgreSQL |
+|---|---|---|
+| Replicas | exactly 1 (enforced) | any — the chart sets `CHOUSE_HA=true` when >1 |
+| State | PVC at `/app/data` (kept on uninstall) | external database, stateless pods |
+| Rollouts | `Recreate` (brief downtime) | `RollingUpdate`, HPA, PDB, spread constraints |
+| Good for | single-team installs, evaluation | production, HA |
+
+```yaml
+# HA example
+replicaCount: 3
+database:
+  type: postgres
+  postgres:
+    existingSecret: chouse-postgres      # key RBAC_POSTGRES_URL
+secrets:
+  existingSecret: chouse-secrets
+pdb:
+  enabled: true
+```
+
+The chart deliberately bundles **no** PostgreSQL or ClickHouse — bring your
+own (CloudNativePG or a managed Postgres work well). Migrations run at pod
+start and are safe under concurrent replica boot (Postgres advisory lock).
+
+## App configuration
+
+Everything the app reads from its config file — SSO, fleet poller, AI doctor,
+admin seeding, CORS, log level — goes under the freeform `config:` block,
+which the chart renders into a Secret-mounted `config.yaml` (schema:
+[`.config.example.yaml`](../../.config.example.yaml)):
+
+```yaml
+config:
+  cors_origin: "https://chouse.example.com"
+  fleet:
+    poller_enabled: true
+  auth:
+    sso:
+      enabled: true
+      base_url: https://chouse.example.com
+      providers:
+        okta:
+          type: oidc
+          display_name: "Okta"
+          issuer: https://corp.okta.com
+          client_id: "..."
+          client_secret: "${OKTA_CLIENT_SECRET}"   # via extraEnv from a Secret
+extraEnv:
+  - name: OKTA_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: okta-oidc
+        key: client_secret
+```
+
+Keys the chart already manages (`port`, `rbac.db_type`, `jwt.secret`, …) are
+rejected at render time to avoid silent conflicts — use the chart values for
+those.
+
+## Ingress notes
+
+- AI chat streams over **SSE**: raise the proxy read timeout (nginx:
+  `nginx.ingress.kubernetes.io/proxy-read-timeout: "300"`) and disable
+  response buffering (`nginx.ingress.kubernetes.io/proxy-buffering: "off"`).
+- Login rate limiting keys on **`X-Forwarded-For`** — the ingress must
+  overwrite it with the real client IP (nginx: `use-forwarded-headers`
+  configured correctly), or all users share one rate-limit bucket and
+  spoofed headers bypass it.
+
+## Migrating from docker-compose
+
+Move to PostgreSQL *before* moving to Kubernetes, or copy your existing
+`data/` directory into the release's PVC — the one-time legacy import of
+`alert-config.json` / `doctor-schedule.json` and your SQLite database both
+live there.
+
+{{ template "chart.requirementsSection" . }}
+
+{{ template "chart.valuesSection" . }}
+
+{{ template "helm-docs.versionFooter" . }}

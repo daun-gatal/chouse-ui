@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "chouse-ui.fullname" . }}-test-connection
+  labels:
+    {{- include "chouse-ui.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: probe
+      image: curlimages/curl:8.14.1
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+      command:
+        - sh
+        - -ec
+        # /api/health proves the server is up; /api/rbac/health proves the
+        # RBAC database is reachable and migrated (503 otherwise).
+        # --connect-timeout + --retry: a test run right after an upgrade can
+        # race endpoint propagation — a fresh connection per retry re-rolls
+        # the DNAT instead of hanging on a conntrack entry pinned to a
+        # terminated pod.
+        - |
+          curl -fsS --connect-timeout 5 --retry 8 --retry-delay 2 --retry-all-errors \
+            "http://{{ include "chouse-ui.fullname" . }}:{{ .Values.service.port }}/api/health"
+          curl -fsS --connect-timeout 5 --retry 8 --retry-delay 2 --retry-all-errors \
+            "http://{{ include "chouse-ui.fullname" . }}:{{ .Values.service.port }}/api/rbac/health"

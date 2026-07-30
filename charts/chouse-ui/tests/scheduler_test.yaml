@@ -1,0 +1,39 @@
+suite: dedicated scheduler deployment
+templates:
+  - scheduler-deployment.yaml
+  # referenced by checksum annotations — loaded, not asserted
+  - config-secret.yaml
+  - secret.yaml
+tests:
+  - it: renders nothing by default
+    template: scheduler-deployment.yaml
+    set:
+      secrets.existingSecret: s
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a singleton with the scheduler enabled
+    template: scheduler-deployment.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      database.postgres.existingSecret: pg
+      dedicatedScheduler.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SCHEDULED_QUERIES_ENABLED
+            value: "true"
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: scheduler

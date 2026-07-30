@@ -1,0 +1,8 @@
+# chart-testing: default SQLite topology on kind.
+# CI-only throwaway secrets — never reuse outside ephemeral test clusters.
+secrets:
+  jwtSecret: "ci-only-jwt-secret-0123456789-0123456789"
+  encryptionKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  encryptionSalt: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+config:
+  log_level: debug

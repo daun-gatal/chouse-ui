@@ -1,0 +1,74 @@
+suite: render-time topology guards
+templates:
+  - deployment.yaml
+  # referenced by checksum annotations — loaded, not asserted
+  - config-secret.yaml
+  - secret.yaml
+tests:
+  - it: refuses sqlite with more than one replica
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      replicaCount: 3
+    asserts:
+      - failedTemplate:
+          errorPattern: SQLite cannot span pods
+
+  - it: refuses sqlite with autoscaling
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      autoscaling.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: SQLite cannot span pods
+
+  - it: refuses sqlite with a dedicated scheduler
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      dedicatedScheduler.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: dedicatedScheduler.enabled=true with database.type=sqlite
+
+  - it: refuses an unknown database type (values.schema.json fires first)
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: mysql
+    asserts:
+      - failedTemplate:
+          errorPattern: must be one of 'sqlite', 'postgres'
+
+  - it: refuses chart-managed keys inside config
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      config:
+        rbac:
+          db_type: postgres
+    asserts:
+      - failedTemplate:
+          errorPattern: config\.rbac\.db_type conflicts with chart-managed settings
+
+  - it: refuses a jwt secret inside config
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      config:
+        jwt:
+          secret: something
+    asserts:
+      - failedTemplate:
+          errorPattern: config\.jwt\.secret conflicts
+
+  - it: refuses a short inline salt
+    template: deployment.yaml
+    set:
+      secrets.jwtSecret: "0123456789012345678901234567890123456789"
+      secrets.encryptionKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      secrets.encryptionSalt: "too-short"
+    asserts:
+      - failedTemplate:
+          errorPattern: secrets.encryptionSalt must be exactly 64 characters

@@ -1,0 +1,50 @@
+CHouse UI {{ .Values.image.tag | default (printf "v%s" .Chart.AppVersion) }} deployed.
+
+  Mode:     {{ .Values.database.type }}{{ if gt (int .Values.replicaCount) 1 }} (HA — CHOUSE_HA=true set on {{ .Values.replicaCount }} replicas){{ end }}
+  Service:  {{ include "chouse-ui.fullname" . }}:{{ .Values.service.port }} (namespace {{ .Release.Namespace }})
+
+Reach the UI:
+{{- if .Values.ingress }}
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "chouse-ui.fullname" . }} 5521:{{ .Values.service.port }}
+  open http://localhost:5521
+{{- end }}
+{{- else }}
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "chouse-ui.fullname" . }} 5521:{{ .Values.service.port }}
+  open http://localhost:5521
+{{- end }}
+
+First login (unless overridden via config.rbac.admin):
+
+  email/username: admin@localhost / admin
+  password:       admin123!
+
+  >>> Change this password immediately. <<<
+
+{{- if eq .Values.database.type "sqlite" }}
+{{- if not .Values.database.sqlite.persistence.enabled }}
+
+WARNING: persistence is disabled — all users, connections, and settings are
+lost on every pod restart. Enable database.sqlite.persistence for anything
+beyond a throwaway install.
+{{- end }}
+
+Note: SQLite mode is limited to a single replica. For HA, point the chart at
+PostgreSQL (database.type=postgres) and scale replicaCount.
+{{- end }}
+{{- if .Values.ingress }}{{- if .Values.ingress.enabled }}
+
+Ingress reminders:
+  - AI chat streams over SSE; raise the proxy read timeout (nginx:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300") and disable
+    response buffering for smooth streaming.
+  - Login rate limiting keys on X-Forwarded-For — make sure your ingress
+    overwrites it with the real client IP.
+{{- end }}{{- end }}

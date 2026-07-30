@@ -1,0 +1,204 @@
+name: Helm Chart
+
+on:
+  pull_request:
+    branches:
+      - preview
+    paths:
+      - "charts/**"
+      - ".github/workflows/helm.yml"
+      - ".github/workflows/helm-release.yml"
+      - ".github/actions/helm-publish/**"
+
+# Cancel in-progress runs when a new commit is pushed to the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CHART_DIR: charts/chouse-ui
+  HELM_VERSION: v4.2.3
+  UNITTEST_PLUGIN_VERSION: 1.1.2
+  KUBECONFORM_VERSION: v0.8.0
+  HELM_DOCS_VERSION: 1.14.2
+
+jobs:
+  # Any change under charts/ must bump Chart.yaml `version` — a chart change
+  # without a new version could never be published (released versions are
+  # immutable).
+  version-guard:
+    name: Chart Version Bump Guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a version bump when the chart changes
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          CHANGED=$(git diff --name-only "$BASE"...HEAD -- "$CHART_DIR" || true)
+          if [ -z "$CHANGED" ]; then
+            echo "No chart files changed — guard not applicable."
+            exit 0
+          fi
+          OLD=$(git show "$BASE:$CHART_DIR/Chart.yaml" 2>/dev/null | awk '/^version:/{print $2}' || true)
+          NEW=$(awk '/^version:/{print $2}' "$CHART_DIR/Chart.yaml")
+          if [ -z "$OLD" ]; then
+            echo "Chart.yaml is new in this PR (version $NEW) — guard satisfied."
+            exit 0
+          fi
+          if [ "$OLD" = "$NEW" ]; then
+            echo "::error::Chart files changed but Chart.yaml version is still $OLD. Bump the chart 'version' (semver — breaking values changes bump major) so the change can be published. See .rules/HELM_CHART.md."
+            exit 1
+          fi
+          echo "Chart version bumped: $OLD -> $NEW"
+
+  lint-test:
+    name: Lint, Unit Tests & Schema
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest --version "$UNITTEST_PLUGIN_VERSION"
+
+      - name: Install kubeconform and helm-docs
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kubeconform
+          curl -fsSL "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
+            | tar -xz -C /usr/local/bin helm-docs
+
+      - name: Helm lint (all ci values)
+        run: |
+          for values in "$CHART_DIR"/ci/*-values.yaml; do
+            echo "=== lint with $values"
+            helm lint "$CHART_DIR" --strict --values "$values"
+          done
+
+      - name: Helm unit tests
+        run: helm unittest "$CHART_DIR"
+
+      - name: Kubeconform (rendered manifests, pinned K8s versions)
+        run: |
+          for k8s in 1.29.0 1.31.0 1.33.0; do
+            for values in "$CHART_DIR"/ci/*-values.yaml; do
+              echo "=== kubeconform k8s=$k8s values=$values"
+              helm template chouse-ui "$CHART_DIR" --values "$values" \
+                | kubeconform -strict -summary -kubernetes-version "$k8s"
+            done
+          done
+
+      - name: helm-docs is up to date
+        run: |
+          helm-docs --chart-search-root "$CHART_DIR"
+          if ! git diff --exit-code -- "$CHART_DIR/README.md"; then
+            echo "::error::charts/chouse-ui/README.md is stale. Run helm-docs and commit the result (the README is generated from README.md.gotmpl + values.yaml comments)."
+            exit 1
+          fi
+
+  kind-install:
+    name: Install on kind (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [default, ha-postgres]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: chart-ci
+
+      - name: Deploy throwaway PostgreSQL
+        if: matrix.scenario == 'ha-postgres'
+        run: |
+          kubectl apply -f - <<'EOF'
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: postgres-ci
+          spec:
+            replicas: 1
+            selector:
+              matchLabels: { app: postgres-ci }
+            template:
+              metadata:
+                labels: { app: postgres-ci }
+              spec:
+                containers:
+                  - name: postgres
+                    image: postgres:16-alpine
+                    env:
+                      - { name: POSTGRES_USER, value: chouse }
+                      - { name: POSTGRES_PASSWORD, value: chouse-ci }
+                      - { name: POSTGRES_DB, value: chouse }
+                    ports:
+                      - containerPort: 5432
+                    readinessProbe:
+                      exec:
+                        command: ["pg_isready", "-U", "chouse"]
+                      periodSeconds: 2
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: postgres-ci
+          spec:
+            selector: { app: postgres-ci }
+            ports:
+              - port: 5432
+          EOF
+          kubectl rollout status deployment/postgres-ci --timeout=120s
+
+      - name: Install chart
+        run: |
+          helm install chouse-ui "$CHART_DIR" \
+            --values "$CHART_DIR/ci/${{ matrix.scenario }}-values.yaml" \
+            --wait --timeout 5m
+
+      - name: Helm test
+        run: helm test chouse-ui --logs
+
+      # Release-to-release upgrade coverage starts once a chart version is
+      # published; until then this exercises the upgrade machinery (checksum
+      # rollout + Recreate/RollingUpdate paths) with the PR chart itself.
+      - name: Upgrade in place (config change rolls pods)
+        run: |
+          helm upgrade chouse-ui "$CHART_DIR" \
+            --values "$CHART_DIR/ci/${{ matrix.scenario }}-values.yaml" \
+            --set-string config.log_level=info \
+            --wait --timeout 5m
+          helm test chouse-ui --logs
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl describe pods -l app.kubernetes.io/name=chouse-ui || true
+          kubectl logs -l app.kubernetes.io/name=chouse-ui --all-containers --tail=200 || true

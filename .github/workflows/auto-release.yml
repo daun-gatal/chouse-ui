@@ -220,6 +220,39 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Assembled version: $VERSION"
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.2.3
+
+      # Keep the chart shipping the app it was released with. The chart
+      # `version` is only auto-bumped (patch) when the current one is already
+      # published — a pending manual bump from a chart PR is respected, never
+      # double-bumped. If the registry check fails, the version is kept and
+      # the publish step later no-ops on the immutability guard (safe).
+      - name: Sync chart appVersion
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          CHART=charts/chouse-ui/Chart.yaml
+          CURRENT=$(awk '/^version:/{print $2; exit}' "$CHART")
+          if helm show chart "oci://ghcr.io/${{ github.repository_owner }}/charts/chouse-ui" --version "$CURRENT" > /dev/null 2>&1; then
+            NEXT=$(echo "$CURRENT" | awk -F. '{printf "%d.%d.%d", $1, $2, $3+1}')
+            sed -i "s/^version: .*/version: $NEXT/" "$CHART"
+            echo "Chart version bumped: $CURRENT -> $NEXT (previous version already published)"
+          else
+            echo "Chart version $CURRENT not published yet — keeping it."
+          fi
+          sed -i "s/^appVersion: .*/appVersion: \"$VERSION\"/" "$CHART"
+          echo "Chart appVersion set to $VERSION"
+
+      # The chart README embeds version/appVersion badges — regenerate so the
+      # helm-docs drift check on the next chart PR stays green.
+      - name: Regenerate chart README
+        run: |
+          curl -fsSL "https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz" \
+            | tar -xz -C /usr/local/bin helm-docs
+          helm-docs --chart-search-root charts/chouse-ui
+
       - name: Trim CHANGELOG to latest 10 releases
         run: |
           COUNT_BEFORE=$(grep -c '^## \[v' CHANGELOG.md || true)
@@ -271,6 +304,8 @@ jobs:
             package.json \
             packages/server/package.json \
             docs/portfolio/package.json \
+            charts/chouse-ui/Chart.yaml \
+            charts/chouse-ui/README.md \
             changelogs/unreleased/
           git commit -m "chore: release v$VERSION"
           git push origin HEAD:preview
@@ -445,6 +480,37 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
+  # ── Step 4 (parallel, after Docker succeeds): publish Helm chart ──────────
+  # No environment gate: `needs: docker` already puts this behind the approved
+  # docker-publish gate, and the image the chart references must exist first.
+  # publish/deploy-docs do NOT depend on this job — a chart publish failure
+  # can never block an app release (re-run via helm-release.yml if it does).
+  helm:
+    name: Publish Helm Chart
+    needs: [docker, assemble]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.2.3
+
+      - name: Publish chart
+        uses: ./.github/actions/helm-publish
+        with:
+          oci-repo: ghcr.io/${{ github.repository_owner }}/charts
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   # ── Step 4 (parallel, after Docker succeeds): publish tag + GitHub Release ─
   publish:
     name: Publish Tag & Release
@@ -537,6 +603,13 @@ jobs:
             echo ""
             echo '```bash'
             echo "docker pull ghcr.io/$REPO:$VERSION"
+            echo '```'
+            echo ""
+            echo "Or on Kubernetes with Helm:"
+            echo ""
+            echo '```bash'
+            CHART_VERSION=$(awk '/^version:/{print $2; exit}' charts/chouse-ui/Chart.yaml)
+            echo "helm install chouse-ui oci://ghcr.io/${REPO%%/*}/charts/chouse-ui --version $CHART_VERSION"
             echo '```'
             echo ""
             echo "## 🔗 Resources"
