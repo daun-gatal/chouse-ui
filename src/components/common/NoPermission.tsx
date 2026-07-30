@@ -7,7 +7,7 @@
  */
 
 import { ShieldOff, ArrowLeft } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 interface NoPermissionProps {
   /** Human-readable feature / tab name the user tried to reach. */

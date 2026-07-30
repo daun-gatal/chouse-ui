@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from "react-router";
 import FloatingDock from "@/components/common/FloatingDock";
 import AiChatBubble from "@/components/common/AiChatBubble";
 import CommandPalette from "@/components/common/CommandPalette";

@@ -27,7 +27,7 @@ import {
   Database,
   Unlink,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";

@@ -28,7 +28,7 @@ import {
   CircleX,
   Ban,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useExplorerStore, useWorkspaceStore, genTabId, useAuthStore, RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { useDatabases, useSavedQueries, useSavedQueriesConnectionNames, useDebounce, useDeleteSavedQuery } from "@/hooks";

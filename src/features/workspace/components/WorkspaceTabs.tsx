@@ -43,7 +43,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { cn } from "@/lib/utils";
 
 interface SortableTabProps {

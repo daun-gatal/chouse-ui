@@ -28,7 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRecentQueries, useSavedQueries, useSystemStats, useDatabases } from "@/hooks";
 import { useAuthStore } from "@/stores/auth";

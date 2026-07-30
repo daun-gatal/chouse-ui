@@ -10,7 +10,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { AlertTriangle, Globe2, InfoIcon, Plug, RefreshCw, Search, X } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";

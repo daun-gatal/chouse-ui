@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Navigate } from "react-router";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
 import { ADMIN_ACCESS_PERMISSIONS, EXPLORER_ACCESS_PERMISSIONS } from "@/lib/navAccess";
 import { Loader2 } from "lucide-react";

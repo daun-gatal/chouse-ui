@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Check, ChevronRight, Circle, KeyRound, LockKeyhole, Plug, RotateCcw, ShieldCheck } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 import { rbacAuthApi } from "@/api";

@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { useAuthStore, useRbacStore, usePreferencesStore } from "@/stores";
 import { RESULT_ROWS_MIN, RESULT_ROWS_MAX, RESULT_ROWS_DEFAULT } from "@/stores/preferences";
 import { useAppPreferences } from "@/hooks/useAppPreferences";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
 import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId } from "@/api/client";

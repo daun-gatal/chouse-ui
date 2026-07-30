@@ -7,7 +7,7 @@
  * the app so the page doesn't feel orphaned from the rest of the design.
  */
 
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { ArrowLeft, ArrowUpRight, Globe2, Signpost } from "lucide-react";
 import { cn } from "@/lib/utils";
 

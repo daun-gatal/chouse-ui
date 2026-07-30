@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useRbacStore } from '@/stores';
 import { log } from '@/lib/log';
 

@@ -5,7 +5,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 
 // --- mock the rbac store module ---
 const mockCompleteSamlLogin = vi.fn();

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import UserTable from "@/features/admin/components/UserManagement/index";
 import InfoDialog from "@/components/common/InfoDialog";

@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Loader2 } from "lucide-react";
 import { useRbacStore } from "@/stores";
 import { log } from "@/lib/log";

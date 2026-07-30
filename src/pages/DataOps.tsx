@@ -6,7 +6,7 @@
  */
 
 import { useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import { CalendarClock, HeartPulse, Workflow } from "lucide-react";
 
 import { cn } from "@/lib/utils";

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 
 import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 
