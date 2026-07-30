@@ -114,6 +114,10 @@ split `.env.example` describes.
   (CloudNativePG / managed Postgres; Altinity or ClickHouse operator).
   Bundled-DB subcharts are a maintenance liability and contradict the README's
   own "external HA PostgreSQL" guidance.
+  > **Amended by [ADR 0009](0009-bundled-evaluation-databases.md):** optional,
+  > disabled-by-default PostgreSQL and ClickHouse ship as *in-repo templates*
+  > (never subchart dependencies) for evaluation and CI. Production guidance
+  > is unchanged.
 - No ServiceMonitor — the app exposes no Prometheus endpoint today.
 
 ### CI: validation on PR, publishing on release — one implementation
