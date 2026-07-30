@@ -12,9 +12,11 @@ appVersion: "3.11.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/daun-gatal/chouse-ui
 # Rendered as the package logo on artifacthub.io and by other chart UIs.
-# Must be an absolute URL — served from the project site (GitHub Pages), which
-# is the canonical brand URL and survives repository restructuring.
-icon: https://chouse-ui.com/logo.png
+# Must be a direct image URL — a github.com/.../blob/... link serves the HTML
+# file-viewer page, not the image. Kept in the repo (not the project domain)
+# so the logo doesn't depend on the site staying up; if `main` is renamed or
+# public/logo.png moves, update this.
+icon: https://raw.githubusercontent.com/daun-gatal/chouse-ui/main/public/logo.png
 sources:
   - https://github.com/daun-gatal/chouse-ui
 keywords:
