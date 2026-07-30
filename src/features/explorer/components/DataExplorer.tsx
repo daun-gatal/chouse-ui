@@ -277,16 +277,19 @@ const TabButton: React.FC<TabButtonProps> = ({ active, onClick, icon, label, cou
     type="button"
     onClick={onClick}
     className={cn(
-      "flex items-center gap-1.5 rounded-xs px-2.5 py-1.5 transition-colors",
+      "flex shrink-0 items-center gap-1.5 rounded-xs px-2.5 py-1.5 transition-colors",
       "font-mono text-[10px] uppercase tracking-[0.14em]",
       active
         ? "bg-ink-200 text-paper"
         : "text-paper-dim hover:bg-ink-200 hover:text-paper"
     )}
     aria-pressed={active}
+    aria-label={label}
+    title={label}
   >
     <span className={active ? "text-paper-muted" : "text-paper-faint"}>{icon}</span>
-    <span className="hidden sm:inline">{label}</span>
+    {/* All five labels only fit a wide sidebar; below that keep the active one */}
+    <span className={cn("hidden @[36rem]:inline", active && "inline")}>{label}</span>
     {count !== undefined && count > 0 && (
       <span
         className={cn(
@@ -581,7 +584,7 @@ const DatabaseExplorer: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex h-full flex-col bg-ink-50">
+    <div className="@container flex h-full flex-col bg-ink-50">
       {/* Tab navigation */}
       <div className="flex-shrink-0 border-b border-ink-500">
         <div className="flex items-center gap-0.5 overflow-x-auto px-2 py-2">
@@ -996,7 +999,7 @@ const DatabaseExplorer: React.FC = () => {
                       setHistoryStatusFilter("all");
                     }}
                   >
-                    <SelectTrigger className="h-7 w-[104px] rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper">
+                    <SelectTrigger className="h-7 w-[116px] shrink-0 rounded-xs border-ink-500 bg-ink-200 font-mono text-[11px] text-paper">
                       <SelectValue placeholder="All status" />
                     </SelectTrigger>
                     <SelectContent>
