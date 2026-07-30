@@ -10,6 +10,7 @@ CHouse UI is a web interface for ClickHouse with built-in RBAC, fleet monitoring
 - `src/` — Frontend (React 19 + Vite 7 SPA)
 - `packages/server/` — Backend (Bun + Hono v4 API server)
 - `docs/portfolio/` — Marketing/docs website (separate Vite app)
+- `charts/chouse-ui/` — Production Helm chart (published to `oci://ghcr.io/daun-gatal/charts/chouse-ui`; see [.rules/HELM_CHART.md](.rules/HELM_CHART.md))
 
 ## Quick Reference
 
@@ -174,6 +175,12 @@ When a PR containing a fragment merges to `main`, `auto-release.yml` fires autom
 
 Manual override (emergency use only): `bun run release 2.20.0`
 
+**Helm chart versioning is separate:** `charts/chouse-ui/Chart.yaml` `version`
+is bumped **manually** in every PR that changes the chart (CI enforces this),
+while `appVersion` is synced automatically by `auto-release.yml` — never edit
+`appVersion` or the generated chart `README.md` by hand. Chart-only releases
+ship via the `Helm Release` workflow. See [.rules/HELM_CHART.md](.rules/HELM_CHART.md).
+
 ## Architecture Decision Records (ADR)
 
 For **big, multi-component** changes, capture the proposal as an ADR in
@@ -201,3 +208,4 @@ data flow, deployment topology, anything spanning RBAC + ClickHouse + UI), and
 | Proactively scanning the codebase for cleanup | **[.rules/DEAD_CODE.md](.rules/DEAD_CODE.md)** — full scan process including dependency and barrel-export checks |
 | A change is user-visible (new feature, bug fix, removal) | Drop a fragment in `changelogs/unreleased/<pr-number>-<slug>.md` — never edit `CHANGELOG.md` directly |
 | Touching `rbac/db/migrations.ts` (add or edit a migration) | **MANDATORY** — add/update `migrations.test.ts` (per-version `VERSION_CHECKS` + data-migration cases) and run `./scripts/test-migrations.sh` (SQLite + PostgreSQL/Docker). See [Database Migrations](#database-migrations--testing-is-mandatory). |
+| Changing env vars / config keys, server port or health endpoints, required secrets, the Dockerfile, background services/leases, or anything under `charts/` | **[.rules/HELM_CHART.md](.rules/HELM_CHART.md)** — whether the Helm chart must change in the same PR, how to version it (bump `Chart.yaml` `version`; never `appVersion`), and what to regenerate/test. |
