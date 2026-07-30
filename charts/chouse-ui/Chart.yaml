@@ -6,7 +6,7 @@ description: >-
 type: application
 # Chart version — bump manually in every PR that changes the chart
 # (see .rules/HELM_CHART.md). Breaking values changes bump major.
-version: 1.0.1
+version: 1.0.2
 # App version — owned by auto-release.yml; never edit by hand.
 appVersion: "3.11.0"
 kubeVersion: ">=1.25.0-0"
@@ -23,3 +23,24 @@ keywords:
 maintainers:
   - name: daun-gatal
     url: https://github.com/daun-gatal
+# Rendered by artifacthub.io on the package page. Update `changes` in every
+# chart PR (it is shown per version); the `images` entry is kept in sync with
+# appVersion automatically by auto-release.yml.
+annotations:
+  artifacthub.io/category: database
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Chart documentation
+      url: https://github.com/daun-gatal/chouse-ui/blob/main/charts/chouse-ui/README.md
+    - name: App repository
+      url: https://github.com/daun-gatal/chouse-ui
+    - name: Design (ADR 0008)
+      url: https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0008-helm-chart-and-oci-distribution.md
+  artifacthub.io/images: |
+    - name: chouse-ui
+      image: ghcr.io/daun-gatal/chouse-ui:v3.11.0
+  artifacthub.io/changes: |
+    - kind: added
+      description: ArtifactHub metadata and Verified Publisher automation
+    - kind: fixed
+      description: Packaged chart no longer bundles development files (unit tests, CI values, docs template)

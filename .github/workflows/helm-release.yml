@@ -131,6 +131,7 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           allow-overwrite: ${{ inputs.prerelease && 'true' || 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          artifacthub-metadata: ${{ env.CHART_DIR }}/artifacthub-repo.yml
 
       # Also runs when the publish was skipped (version already existed): an
       # interrupted earlier run may have pushed the chart without reaching

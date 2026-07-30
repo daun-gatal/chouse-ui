@@ -1,0 +1,7 @@
+# ArtifactHub repository metadata — pushed by .github/actions/helm-publish to
+# ghcr.io/daun-gatal/charts/chouse-ui:artifacthub.io (ORAS) on every full
+# publish. Proves ownership for the "Verified Publisher" badge.
+# https://artifacthub.io/docs/topics/repositories/helm-charts/#oci-support
+repositoryID: da9b467d-fe02-4fa8-86a9-364270b6e691
+owners:
+  - name: daun-gatal
