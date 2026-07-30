@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.11.0] - 2026-07-30
+
+### Added
+- **Production Helm chart** — official Kubernetes deployment via `helm install chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui`: SQLite (single replica + PVC) and PostgreSQL/HA topologies with render-time guard rails, automatic `CHOUSE_HA` wiring, optional dedicated scheduled-queries pod, hardened security defaults, and cosign-signed chart releases published automatically alongside app releases (ADR 0008).
+
+### Fixed
+- **Security** — upgraded react-router to v8.3.0, resolving GHSA-qwww-vcr4-c8h2 (High), and bumped dompurify to 3.4.12 (GHSA-c2j3-45gr-mqc4, Low); dependency scans now report no known vulnerabilities.
+- **RBAC version reporting** — servers no longer log a contradictory "current 1.47.0 / target 1.46.0" migration state; the schema version constant now matches the newest migration and is guarded by a test.
+
 ## [v3.10.0] - 2026-07-19
 
 ### Added
@@ -107,17 +116,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SSO role mapping now respects the one-role-per-user model** ([#261](https://github.com/daun-gatal/chouse-ui/issues/261)) — when an IdP claim matched multiple mapped groups, SSO tried to assign several roles at once, which violated the `user_id` unique constraint and made the login fail (leaving the user with no role at all). Role sync now collapses multiple matches to the single highest-privilege role (using the same `ROLE_HIERARCHY` precedence as the rest of RBAC) and writes it via an atomic upsert, so a sync can never strip a user's role mid-update. Affected users self-heal on their next login.
 - **Scheduled health scans no longer double-fire under multiple replicas** — the scheduled Chouse AI scan is now gated by an atomic per-slot claim in the DB, so exactly one instance runs (and delivers) a given scheduled slot instead of every replica firing it.
 - **Fleet memory tile no longer shows `0%` / `0 Bytes` on cgroup-limited nodes** ([#264](https://github.com/daun-gatal/chouse-ui/issues/264)) — containerised ClickHouse nodes that don't expose `OSMemoryTotal` were rendering a phantom `~2 GB / 0 Bytes → 0%`. The fleet `summary` metric now falls back through `OSMemoryTotal` → `CGroupMemoryTotal` (excluding the `~2^63` "no limit" sentinel) → `max_server_memory_usage` for the memory ceiling. When none is available the card shows `X used / —` and `—%` honestly instead of a misleading `0%`. `formatBytes()` was also extended to `PB`/`EB` and clamped so an out-of-range value can never render as `"8 undefined"`.
-
-## [v3.4.0] - 2026-06-14
-
-### Added
-- **Disable password login** — A new `auth.password_login.enabled` setting (env `AUTH_PASSWORD_LOGIN_ENABLED`) lets operators turn off username/password sign-in to require SSO. Enabled by default. Fail-safe: it is ignored unless at least one usable SSO provider is configured, so a misconfiguration can never lock everyone out. The login page hides the password form and `POST /rbac/auth/login` returns `403` when disabled.
-- **SSO setup guide** — New on-page SSO section on the docs site plus a full [`docs/sso.md`](docs/sso.md) reference covering OIDC / OAuth2 / SAML setup, config vs. UI precedence, role mapping, and security notes.
-- **User management card & list views** — The user directory can now switch between a card grid and a dense, scannable table (status, auth method, roles, last login) for quick analysis. The chosen layout is remembered per user.
-
-### Changed
-- **PII hidden from view-only users** — Users who can view but not manage the directory no longer see email or last-login activity in either layout.
-
-### Fixed
-- **Admin page hidden despite having access** — The Admin page, its nav entry, and the default-landing redirect were gated on an incomplete permission list (only users/roles/audit), so a user holding only another admin permission (SSO, connections, ClickHouse users/roles, data access, or AI models) was bounced from `/admin` even though they had a tab to see. All access checks now derive from a single source of truth, so any one admin-tab permission reveals the page and that tab.
 
