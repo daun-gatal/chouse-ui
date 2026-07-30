@@ -178,6 +178,24 @@ Access at http://localhost:5521
 
 For production, we recommend using an external highly-available PostgreSQL database for RBAC storage. See the [Configuration](#configuration) section for details on how to configure `RBAC_POSTGRES_URL`.
 
+### Deployment (Kubernetes / Helm)
+
+The production Helm chart is published to GHCR as a signed OCI artifact:
+
+```bash
+helm install chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui \
+  --set secrets.jwtSecret="$(openssl rand -base64 32)" \
+  --set secrets.encryptionKey="$(openssl rand -hex 32)" \
+  --set secrets.encryptionSalt="$(openssl rand -hex 32)"
+```
+
+The default install is single-replica SQLite on a PersistentVolumeClaim. For
+HA, point the chart at PostgreSQL (`database.type=postgres`) and scale
+`replicaCount` — the chart enforces the topology rules (SQLite cannot span
+pods) at render time and sets `CHOUSE_HA` for you. See
+[`charts/chouse-ui/README.md`](charts/chouse-ui/README.md) for all values,
+the topology guide, SSO/config examples, and ingress notes.
+
 ---
 
 ## Configuration
