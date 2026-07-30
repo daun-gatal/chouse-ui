@@ -118,6 +118,21 @@ scheduled_queries:
 # SSO (OIDC / OAuth2) — optional
 # ============================================
 # Register this redirect URI at your IdP: <base_url>/auth/sso/callback
+#
+# Keeping secrets out of this file
+# --------------------------------
+# Values here are loaded VERBATIM — there is no "${VAR}" expansion. A value
+# like "${GOOGLE_CLIENT_SECRET}" is passed to the IdP as that literal string
+# and authentication fails with a confusing error.
+#
+# To keep a secret out of the file, simply omit its key: the loader only
+# overrides environment variables for keys that appear in this YAML, so
+# anything left out keeps whatever the environment supplies. Each key maps to
+# an upper-snake-case env var (nesting joined by underscores), e.g.
+#   auth.sso.providers.google.client_secret
+#     -> AUTH_SSO_PROVIDERS_GOOGLE_CLIENT_SECRET
+# The reverse is also true: a key set here WINS over the same env var, so
+# don't set a secret in both places and expect the env one to apply.
 auth:
   sso:
     enabled: true
@@ -140,8 +155,10 @@ auth:
         type: oidc                                      # OIDC: auto-discovers endpoints from issuer
         display_name: "Google"
         issuer: https://accounts.google.com
-        client_id: "${GOOGLE_CLIENT_ID}"               # set GOOGLE_CLIENT_ID in env or replace here
-        client_secret: "${GOOGLE_CLIENT_SECRET}"       # set GOOGLE_CLIENT_SECRET in env or replace here
+        client_id: "1234567890-abcdefg.apps.googleusercontent.com"
+        # client_secret is deliberately NOT set here — see the note below on
+        # keeping secrets out of this file. Provide it as an env var:
+        #   AUTH_SSO_PROVIDERS_GOOGLE_CLIENT_SECRET=...
         scopes: "openid profile email"
         # Optional (OIDC): override individual auto-discovered endpoints if the
         # discovery document is wrong or unreachable. Leave unset to use discovery.
