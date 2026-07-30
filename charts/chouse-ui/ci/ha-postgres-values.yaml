@@ -1,0 +1,18 @@
+# chart-testing: HA topology on kind against the throwaway PostgreSQL the
+# workflow deploys as `postgres-ci` in the same namespace.
+# CI-only throwaway secrets — never reuse outside ephemeral test clusters.
+replicaCount: 2
+database:
+  type: postgres
+  postgres:
+    url: "postgres://chouse:chouse-ci@postgres-ci:5432/chouse"
+secrets:
+  jwtSecret: "ci-only-jwt-secret-0123456789-0123456789"
+  encryptionKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  encryptionSalt: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+dedicatedScheduler:
+  enabled: true
+pdb:
+  enabled: true
+config:
+  log_level: debug

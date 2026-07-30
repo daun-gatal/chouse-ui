@@ -1,0 +1,126 @@
+suite: web deployment topology
+templates:
+  - deployment.yaml
+  # referenced by checksum annotations — loaded, not asserted
+  - config-secret.yaml
+  - secret.yaml
+tests:
+  - it: sqlite default uses Recreate, a PVC, and no CHOUSE_HA
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.volumes[1].persistentVolumeClaim.claimName
+          value: RELEASE-NAME-chouse-ui-data
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CHOUSE_HA
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RBAC_DB_TYPE
+            value: sqlite
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SCHEDULED_QUERIES_ENABLED
+            value: "true"
+
+  - it: postgres HA uses RollingUpdate, CHOUSE_HA, and secret-backed URL
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      database.postgres.existingSecret: pg
+      database.postgres.existingSecretKey: DATABASE_URL
+      replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: RollingUpdate
+      - equal:
+          path: spec.replicas
+          value: 3
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CHOUSE_HA
+            value: "true"
+      - equal:
+          path: spec.template.spec.containers[0].env[2].valueFrom.secretKeyRef.name
+          value: pg
+      - equal:
+          path: spec.template.spec.containers[0].env[2].valueFrom.secretKeyRef.key
+          value: DATABASE_URL
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+
+  - it: autoscaling omits replicas and still sets CHOUSE_HA at replicaCount=1
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      database.postgres.existingSecret: pg
+      replicaCount: 1
+      autoscaling.enabled: true
+    asserts:
+      - notExists:
+          path: spec.replicas
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CHOUSE_HA
+            value: "true"
+
+  - it: dedicated scheduler turns the web scheduler off
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      database.postgres.existingSecret: pg
+      dedicatedScheduler.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SCHEDULED_QUERIES_ENABLED
+            value: "false"
+
+  - it: config block mounts config.yaml and sets CHOUSE_CONFIG_PATH
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      config:
+        log_level: debug
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CHOUSE_CONFIG_PATH
+            value: /etc/chouse/config.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config
+            mountPath: /etc/chouse
+            readOnly: true
+
+  - it: image tag defaults to v<appVersion>
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ^ghcr\.io/daun-gatal/chouse-ui:v\d+\.\d+\.\d+$
