@@ -15,7 +15,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { closeDatabase, getDatabaseType } from "./index";
-import { runMigrations, MIGRATIONS } from "./migrations";
+import { runMigrations, MIGRATIONS, APP_VERSION } from "./migrations";
 import * as h from "./migrationTestHarness";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
@@ -337,6 +337,15 @@ async function userRoleIds(userId: string): Promise<string[]> {
 // ---------------------------------------------------------------------------
 // Per-dialect suites.
 // ---------------------------------------------------------------------------
+// APP_VERSION is what "current schema version" reports (logs, /api/rbac/status)
+// and what fresh installs are stamped with — a migration added without bumping
+// it makes every server log a nonsense "current > target" state.
+describe("migrations · version bookkeeping", () => {
+  it("APP_VERSION matches the newest migration", () => {
+    expect(APP_VERSION).toBe(MIGRATIONS[MIGRATIONS.length - 1].version);
+  });
+});
+
 for (const dialect of DIALECTS) {
   describe(`migrations · fresh install [${dialect}]`, () => {
     beforeAll(async () => {
