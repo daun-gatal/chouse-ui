@@ -58,6 +58,16 @@ alter the container's runtime contract.
   and `prerelease`).
 - Publish logic lives once, in `.github/actions/helm-publish/action.yml`.
 
+## Bundled evaluation databases (ADR 0009)
+
+`postgresql.*` and `clickhouse.*` are **in-repo templates, never subchart
+dependencies** — the chart has no `dependencies:` block and must keep it that
+way (a third-party chart's release/licensing changes must not be able to break
+our pipeline). They stay `enabled: false` with persistence off by default, and
+`ci/bundled-databases-values.yaml` exercises them (plus the end-to-end query
+assertion) on every chart PR. If you change how the app reaches ClickHouse or
+PostgreSQL, update those templates and that CI scenario together.
+
 ## Hard don'ts
 
 - **Never auto-generate secrets** in templates (no `lookup`/`randAlphaNum`

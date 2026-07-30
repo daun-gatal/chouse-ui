@@ -1,0 +1,23 @@
+# chart-testing: the bundled evaluation databases (ADR 0009), exercising the
+# full stack the chart can stand up on its own — app + PostgreSQL + ClickHouse.
+# CI-only throwaway secrets — never reuse outside ephemeral test clusters.
+database:
+  type: postgres
+
+postgresql:
+  enabled: true
+  auth:
+    password: "ci-only-postgres-password"
+
+clickhouse:
+  enabled: true
+  auth:
+    password: "ci-only-clickhouse-password"
+
+secrets:
+  jwtSecret: "ci-only-jwt-secret-0123456789-0123456789"
+  encryptionKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  encryptionSalt: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+config:
+  log_level: debug

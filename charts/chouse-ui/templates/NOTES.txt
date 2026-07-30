@@ -39,6 +39,23 @@ beyond a throwaway install.
 Note: SQLite mode is limited to a single replica. For HA, point the chart at
 PostgreSQL (database.type=postgres) and scale replicaCount.
 {{- end }}
+{{- if or .Values.postgresql.enabled .Values.clickhouse.enabled }}
+
+┌─ EVALUATION DATABASES ENABLED ────────────────────────────────────────┐
+{{- if .Values.postgresql.enabled }}
+  PostgreSQL: {{ include "chouse-ui.fullname" . }}-postgresql:5432 (persistence {{ if .Values.postgresql.persistence.enabled }}on{{ else }}OFF — data is lost on restart{{ end }})
+{{- end }}
+{{- if .Values.clickhouse.enabled }}
+  ClickHouse: http://{{ include "chouse-ui.fullname" . }}-clickhouse:8123 (persistence {{ if .Values.clickhouse.persistence.enabled }}on{{ else }}OFF — data is lost on restart{{ end }})
+              The connection form is pre-filled with it; sign in and add it.
+{{- end }}
+
+  These are single pods for evaluation and CI: no backups, no failover, no
+  upgrade path. Do not run production data on them. For production use a
+  managed PostgreSQL (or CloudNativePG) and the Altinity/ClickHouse operator,
+  then disable these and point the chart at them. See ADR 0009.
+└───────────────────────────────────────────────────────────────────────┘
+{{- end }}
 {{- if .Values.ingress }}{{- if .Values.ingress.enabled }}
 
 Ingress reminders:

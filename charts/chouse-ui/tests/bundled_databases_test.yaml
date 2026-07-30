@@ -1,0 +1,202 @@
+suite: bundled evaluation databases
+templates:
+  - postgresql.yaml
+  - clickhouse.yaml
+  - deployment.yaml
+  - secret.yaml
+  - config-secret.yaml
+tests:
+  - it: renders nothing by default
+    template: postgresql.yaml
+    set:
+      secrets.existingSecret: s
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: bundled postgres renders Secret, Service, and StatefulSet
+    template: postgresql.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      postgresql.enabled: true
+      postgresql.auth.password: pw
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: assembles the connection URL from the bundled credentials
+    template: postgresql.yaml
+    documentIndex: 0
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      postgresql.enabled: true
+      postgresql.auth.password: pw
+    asserts:
+      - equal:
+          path: stringData.RBAC_POSTGRES_URL
+          value: postgres://chouse:pw@RELEASE-NAME-chouse-ui-postgresql:5432/chouse
+
+  - it: url-encodes special characters in the postgres password
+    template: postgresql.yaml
+    documentIndex: 0
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      postgresql.enabled: true
+      postgresql.auth.password: "p@ss/w:rd?"
+    asserts:
+      - equal:
+          path: stringData.RBAC_POSTGRES_URL
+          value: postgres://chouse:p%40ss%2Fw%3Ard%3F@RELEASE-NAME-chouse-ui-postgresql:5432/chouse
+
+  - it: persistence off uses an emptyDir and no volumeClaimTemplates
+    template: postgresql.yaml
+    documentIndex: 2
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      postgresql.enabled: true
+      postgresql.auth.password: pw
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            emptyDir: {}
+
+  - it: persistence on uses volumeClaimTemplates
+    template: postgresql.yaml
+    documentIndex: 2
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      postgresql.enabled: true
+      postgresql.auth.password: pw
+      postgresql.persistence.enabled: true
+      postgresql.persistence.size: 5Gi
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 5Gi
+
+  - it: app points at the bundled postgres secret and waits for it
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      postgresql.enabled: true
+      postgresql.auth.password: pw
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[2].valueFrom.secretKeyRef.name
+          value: RELEASE-NAME-chouse-ui-postgresql
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-postgresql
+
+  - it: bundled postgres suppresses the chart-managed external postgres Secret
+    template: secret.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      postgresql.enabled: true
+      postgresql.auth.password: pw
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: bundled clickhouse renders Secret, Service, and StatefulSet
+    template: clickhouse.yaml
+    set:
+      secrets.existingSecret: s
+      clickhouse.enabled: true
+      clickhouse.auth.password: pw
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: bundled clickhouse exposes the HTTP and native ports
+    template: clickhouse.yaml
+    documentIndex: 1
+    set:
+      secrets.existingSecret: s
+      clickhouse.enabled: true
+      clickhouse.auth.password: pw
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 8123
+      - equal:
+          path: spec.ports[1].port
+          value: 9000
+
+  - it: access management is translated to the image's 0/1 flag
+    template: clickhouse.yaml
+    documentIndex: 0
+    set:
+      secrets.existingSecret: s
+      clickhouse.enabled: true
+      clickhouse.auth.password: pw
+      clickhouse.auth.accessManagement: false
+    asserts:
+      - equal:
+          path: stringData.CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+          value: "0"
+
+  - it: bundled clickhouse pre-fills the app connection form
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      clickhouse.enabled: true
+      clickhouse.auth.password: pw
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CLICKHOUSE_DEFAULT_URL
+            value: http://RELEASE-NAME-chouse-ui-clickhouse:8123
+
+  - it: refuses bundled postgres while the app uses sqlite
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      postgresql.enabled: true
+      postgresql.auth.password: pw
+    asserts:
+      - failedTemplate:
+          errorPattern: the bundled PostgreSQL would run unused
+
+  - it: refuses bundled postgres alongside an external connection
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      database.postgres.existingSecret: external
+      postgresql.enabled: true
+      postgresql.auth.password: pw
+    asserts:
+      - failedTemplate:
+          errorPattern: two sources of truth for the same connection
+
+  - it: refuses bundled postgres without a password
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      database.type: postgres
+      postgresql.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: postgresql.auth.password is required
+
+  - it: refuses bundled clickhouse without a password
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      clickhouse.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: clickhouse.auth.password is required

@@ -78,11 +78,15 @@ Name of the Secret holding JWT_SECRET / RBAC_ENCRYPTION_KEY / RBAC_ENCRYPTION_SA
 Name of the Secret holding the PostgreSQL connection URL, and its key.
 */}}
 {{- define "chouse-ui.postgresSecretName" -}}
+{{- if .Values.postgresql.enabled }}
+{{- printf "%s-postgresql" (include "chouse-ui.fullname" .) }}
+{{- else }}
 {{- .Values.database.postgres.existingSecret | default (printf "%s-postgres" (include "chouse-ui.fullname" .)) }}
+{{- end }}
 {{- end }}
 
 {{- define "chouse-ui.postgresSecretKey" -}}
-{{- if .Values.database.postgres.existingSecret }}
+{{- if and .Values.database.postgres.existingSecret (not .Values.postgresql.enabled) }}
 {{- .Values.database.postgres.existingSecretKey }}
 {{- else }}
 {{- "RBAC_POSTGRES_URL" }}
@@ -135,6 +139,15 @@ scheduler). Scheduler enablement is per-workload, so it is NOT set here.
 {{- if or (gt (int .Values.replicaCount) 1) .Values.autoscaling.enabled }}
 - name: CHOUSE_HA
   value: "true"
+{{- end }}
+{{- if .Values.clickhouse.enabled }}
+{{/* Pre-fill the connection form with the bundled node. A user-supplied
+     config.clickhouse.* still wins — config-file values are injected into the
+     environment after these. */}}
+- name: CLICKHOUSE_DEFAULT_URL
+  value: {{ printf "http://%s-clickhouse:8123" (include "chouse-ui.fullname" .) }}
+- name: CLICKHOUSE_DEFAULT_USER
+  value: {{ .Values.clickhouse.auth.username | quote }}
 {{- end }}
 {{- if .Values.config }}
 - name: CHOUSE_CONFIG_PATH

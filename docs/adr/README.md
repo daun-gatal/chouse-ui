@@ -32,7 +32,8 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0005](0005-unified-first-install-onboarding.md) | Unified first-install and product onboarding | Accepted |
 | [0006](0006-event-triggered-data-health.md) | Event-triggered Data Health (pipeline-chained promises) | Accepted |
 | [0007](0007-clear-and-rerun-for-scheduled-jobs-and-data-health.md) | Clear & Rerun for Scheduled Jobs and Data Health | Accepted |
-| [0008](0008-helm-chart-and-oci-distribution.md) | Production Helm Chart and OCI Distribution | Accepted |
+| [0008](0008-helm-chart-and-oci-distribution.md) | Production Helm Chart and OCI Distribution | Accepted (amended by 0009) |
+| [0009](0009-bundled-evaluation-databases.md) | Bundled Evaluation Databases in the Helm Chart | Accepted |
 
 ## Conventions
 

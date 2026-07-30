@@ -37,6 +37,23 @@ instead of becoming silent duplicate jobs or per-pod databases at runtime.
 {{- end }}
 {{- end }}
 
+{{/* Bundled evaluation databases (ADR 0009). Refuse the combinations that
+     silently do nothing or set up two sources of truth. */}}
+{{- if .Values.postgresql.enabled }}
+{{- if ne .Values.database.type "postgres" }}
+{{- fail (printf "postgresql.enabled=true with database.type=%s: the bundled PostgreSQL would run unused because the app would still store its data in SQLite. Set database.type=postgres, or disable postgresql." .Values.database.type) }}
+{{- end }}
+{{- if or .Values.database.postgres.url .Values.database.postgres.existingSecret }}
+{{- fail "postgresql.enabled=true together with database.postgres.url/existingSecret: two sources of truth for the same connection. Use the bundled database for evaluation, or point at your own PostgreSQL — not both." }}
+{{- end }}
+{{- if not .Values.postgresql.auth.password }}
+{{- fail "postgresql.auth.password is required when postgresql.enabled=true — the chart never invents credentials. Generate with: openssl rand -hex 16" }}
+{{- end }}
+{{- end }}
+{{- if and .Values.clickhouse.enabled (not .Values.clickhouse.auth.password) }}
+{{- fail "clickhouse.auth.password is required when clickhouse.enabled=true — the chart never invents credentials. Generate with: openssl rand -hex 16" }}
+{{- end }}
+
 {{/* config.yaml values override the pod environment (the server injects them
      into process.env last), so a config key the chart also manages would
      silently win over the chart's wiring. Refuse the ambiguity. */}}
