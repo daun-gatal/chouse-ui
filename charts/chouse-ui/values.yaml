@@ -60,6 +60,96 @@ database:
     # -- Connection pool size per pod.
     poolSize: 10
 
+# Bundled PostgreSQL — EVALUATION AND CI ONLY.
+# A single pod with no backups, no failover, and no upgrade path. Production
+# installs should point `database.postgres` at a managed PostgreSQL or an
+# operator (CloudNativePG). See ADR 0009.
+postgresql:
+  # -- Deploy a PostgreSQL StatefulSet alongside the app and wire
+  # `RBAC_POSTGRES_URL` to it. Requires `database.type: postgres`, and
+  # conflicts with `database.postgres.url`/`existingSecret`.
+  enabled: false
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    # -- Database name, user, and password. The password is **required** when
+    # enabled — the chart never invents credentials. `openssl rand -hex 16`.
+    database: chouse
+    username: chouse
+    password: ""
+  persistence:
+    # -- Off by default: an evaluation database that loses its data on restart
+    # is honest about what it is. Turn it on for a longer-lived demo.
+    enabled: false
+    size: 8Gi
+    storageClass: ""
+  # -- Pod security context. Defaults suit the official postgres image
+  # (runs as uid/gid 70 on Alpine).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 70
+    runAsGroup: 70
+    fsGroup: 70
+    seccompProfile:
+      type: RuntimeDefault
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  # -- Node selector for the database pod.
+  nodeSelector: {}
+  # -- Tolerations for the database pod.
+  tolerations: []
+
+# Bundled ClickHouse — EVALUATION AND CI ONLY.
+# A single node with no replication, no backups, and no tuning. Production
+# installs should use the Altinity or ClickHouse operator and point CHouse UI
+# at it. See ADR 0009.
+clickhouse:
+  # -- Deploy a single-node ClickHouse StatefulSet and pre-fill the app's
+  # connection form with its in-cluster URL.
+  enabled: false
+  image:
+    repository: clickhouse/clickhouse-server
+    tag: "25.3-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    # -- ClickHouse user and password. The password is **required** when
+    # enabled. `openssl rand -hex 16`.
+    username: default
+    password: ""
+    # -- Grant the user access management rights (needed for CHouse UI's
+    # ClickHouse user/role management features).
+    accessManagement: true
+  persistence:
+    # -- Off by default, same reasoning as the bundled PostgreSQL.
+    enabled: false
+    size: 10Gi
+    storageClass: ""
+  # -- Pod security context. Defaults suit the official ClickHouse image
+  # (runs as uid/gid 101).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    fsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  # -- Node selector for the ClickHouse pod.
+  nodeSelector: {}
+  # -- Tolerations for the ClickHouse pod.
+  tolerations: []
+
 secrets:
   # -- Name of an existing Secret with keys `JWT_SECRET`,
   # `RBAC_ENCRYPTION_KEY`, and `RBAC_ENCRYPTION_SALT` (recommended). When

@@ -48,9 +48,36 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      {{- with .Values.initContainers }}
+      {{- if or .Values.postgresql.enabled .Values.initContainers }}
       initContainers:
+        {{- if .Values.postgresql.enabled }}
+        # The bundled database starts alongside the app, so without this the
+        # first connection attempt races it — the app recovers, but logs a
+        # scary ECONNREFUSED warning and can't auto-create a missing database.
+        - name: wait-for-postgresql
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          command:
+            - sh
+            - -ec
+            - |
+              until pg_isready -h {{ include "chouse-ui.fullname" . }}-postgresql -p 5432 -U {{ .Values.postgresql.auth.username | quote }}; do
+                echo "waiting for postgresql..."
+                sleep 2
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+        {{- end }}
+        {{- with .Values.initContainers }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       containers:
         - name: chouse-ui

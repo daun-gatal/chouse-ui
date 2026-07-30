@@ -56,6 +56,34 @@ The chart deliberately bundles **no** PostgreSQL or ClickHouse — bring your
 own (CloudNativePG or a managed Postgres work well). Migrations run at pod
 start and are safe under concurrent replica boot (Postgres advisory lock).
 
+## Trying it out with everything included
+
+For evaluation, the chart can stand up PostgreSQL and a single-node ClickHouse
+alongside the app, so you get a working install with nothing external:
+
+```bash
+helm install chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui \
+  --set database.type=postgres \
+  --set postgresql.enabled=true \
+  --set postgresql.auth.password="$(openssl rand -hex 16)" \
+  --set clickhouse.enabled=true \
+  --set clickhouse.auth.password="$(openssl rand -hex 16)" \
+  --set secrets.jwtSecret="$(openssl rand -base64 32)" \
+  --set secrets.encryptionKey="$(openssl rand -hex 32)" \
+  --set secrets.encryptionSalt="$(openssl rand -hex 32)"
+```
+
+Sign in and the connection form is already pointed at the bundled ClickHouse —
+add it with the password above and start querying.
+
+> **These are for evaluation and CI only.** Single pods, no backups, no
+> failover, no upgrade path, and **persistence is off by default** (data is
+> lost on restart — set `postgresql.persistence.enabled=true` /
+> `clickhouse.persistence.enabled=true` for a longer-lived demo). For
+> production, leave both disabled and point the chart at a managed PostgreSQL
+> (or CloudNativePG) and the Altinity/ClickHouse operator. See
+> [ADR 0009](../../docs/adr/0009-bundled-evaluation-databases.md).
+
 ## App configuration
 
 Everything the app reads from its config file — SSO, fleet poller, AI doctor,

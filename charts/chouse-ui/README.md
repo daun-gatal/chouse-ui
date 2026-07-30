@@ -1,6 +1,6 @@
 # chouse-ui
 
-![Version: 1.0.2](https://img.shields.io/badge/Version-1.0.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.11.0](https://img.shields.io/badge/AppVersion-3.11.0-informational?style=flat-square)
+![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.11.0](https://img.shields.io/badge/AppVersion-3.11.0-informational?style=flat-square)
 
 A modern web interface for ClickHouse with built-in RBAC, fleet monitoring, scheduled queries, data health checks, and an AI SRE.
 
@@ -53,6 +53,34 @@ pdb:
 The chart deliberately bundles **no** PostgreSQL or ClickHouse — bring your
 own (CloudNativePG or a managed Postgres work well). Migrations run at pod
 start and are safe under concurrent replica boot (Postgres advisory lock).
+
+## Trying it out with everything included
+
+For evaluation, the chart can stand up PostgreSQL and a single-node ClickHouse
+alongside the app, so you get a working install with nothing external:
+
+```bash
+helm install chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui \
+  --set database.type=postgres \
+  --set postgresql.enabled=true \
+  --set postgresql.auth.password="$(openssl rand -hex 16)" \
+  --set clickhouse.enabled=true \
+  --set clickhouse.auth.password="$(openssl rand -hex 16)" \
+  --set secrets.jwtSecret="$(openssl rand -base64 32)" \
+  --set secrets.encryptionKey="$(openssl rand -hex 32)" \
+  --set secrets.encryptionSalt="$(openssl rand -hex 32)"
+```
+
+Sign in and the connection form is already pointed at the bundled ClickHouse —
+add it with the password above and start querying.
+
+> **These are for evaluation and CI only.** Single pods, no backups, no
+> failover, no upgrade path, and **persistence is off by default** (data is
+> lost on restart — set `postgresql.persistence.enabled=true` /
+> `clickhouse.persistence.enabled=true` for a longer-lived demo). For
+> production, leave both disabled and point the chart at a managed PostgreSQL
+> (or CloudNativePG) and the Altinity/ClickHouse operator. See
+> [ADR 0009](../../docs/adr/0009-bundled-evaluation-databases.md).
 
 ## App configuration
 
@@ -120,6 +148,22 @@ Kubernetes: `>=1.25.0-0`
 | autoscaling.minReplicas | int | `2` |  |
 | autoscaling.targetCPUUtilizationPercentage | int | `80` | Target average CPU utilization (percent). |
 | autoscaling.targetMemoryUtilizationPercentage | string | `""` | Target average memory utilization (percent). Empty disables the memory metric. |
+| clickhouse.auth.accessManagement | bool | `true` | Grant the user access management rights (needed for CHouse UI's ClickHouse user/role management features). |
+| clickhouse.auth.password | string | `""` |  |
+| clickhouse.auth.username | string | `"default"` | ClickHouse user and password. The password is **required** when enabled. `openssl rand -hex 16`. |
+| clickhouse.enabled | bool | `false` | Deploy a single-node ClickHouse StatefulSet and pre-fill the app's connection form with its in-cluster URL. |
+| clickhouse.image.pullPolicy | string | `"IfNotPresent"` |  |
+| clickhouse.image.repository | string | `"clickhouse/clickhouse-server"` |  |
+| clickhouse.image.tag | string | `"25.3-alpine"` |  |
+| clickhouse.nodeSelector | object | `{}` | Node selector for the ClickHouse pod. |
+| clickhouse.persistence.enabled | bool | `false` | Off by default, same reasoning as the bundled PostgreSQL. |
+| clickhouse.persistence.size | string | `"10Gi"` |  |
+| clickhouse.persistence.storageClass | string | `""` |  |
+| clickhouse.podSecurityContext | object | `{"fsGroup":101,"runAsGroup":101,"runAsNonRoot":true,"runAsUser":101,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod security context. Defaults suit the official ClickHouse image (runs as uid/gid 101). |
+| clickhouse.resources.limits.memory | string | `"2Gi"` |  |
+| clickhouse.resources.requests.cpu | string | `"250m"` |  |
+| clickhouse.resources.requests.memory | string | `"512Mi"` |  |
+| clickhouse.tolerations | list | `[]` | Tolerations for the ClickHouse pod. |
 | commonLabels | object | `{}` | Labels added to every rendered resource. |
 | config | object | `{}` | Freeform CHouse UI configuration, rendered to a Secret-mounted `config.yaml` (see `.config.example.yaml` in the repo for the full schema: SSO, fleet poller, AI doctor, admin seeding, CORS, log level, ...). Do NOT set keys the chart already manages (`port`, `node_env`, `static_path`, `rbac.db_type`, `rbac.sqlite_path`, `rbac.postgres_url`, `rbac.encryption`, `jwt.secret`, `scheduled_queries`) — the chart refuses to render if you do, because config.yaml values override the pod environment. |
 | containerSecurityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true}` | Container security context. The root filesystem is read-only; the chart mounts an emptyDir on `/tmp`. |
@@ -165,6 +209,22 @@ Kubernetes: `>=1.25.0-0`
 | podAnnotations | object | `{}` | Extra annotations for the pods. |
 | podLabels | object | `{}` | Extra labels for the pods. |
 | podSecurityContext | object | `{"fsGroup":1001,"runAsGroup":1001,"runAsNonRoot":true,"runAsUser":1001,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod security context. The image runs as uid/gid 1001; `fsGroup` makes the SQLite PVC writable. |
+| postgresql.auth.database | string | `"chouse"` | Database name, user, and password. The password is **required** when enabled — the chart never invents credentials. `openssl rand -hex 16`. |
+| postgresql.auth.password | string | `""` |  |
+| postgresql.auth.username | string | `"chouse"` |  |
+| postgresql.enabled | bool | `false` | Deploy a PostgreSQL StatefulSet alongside the app and wire `RBAC_POSTGRES_URL` to it. Requires `database.type: postgres`, and conflicts with `database.postgres.url`/`existingSecret`. |
+| postgresql.image.pullPolicy | string | `"IfNotPresent"` |  |
+| postgresql.image.repository | string | `"postgres"` |  |
+| postgresql.image.tag | string | `"16-alpine"` |  |
+| postgresql.nodeSelector | object | `{}` | Node selector for the database pod. |
+| postgresql.persistence.enabled | bool | `false` | Off by default: an evaluation database that loses its data on restart is honest about what it is. Turn it on for a longer-lived demo. |
+| postgresql.persistence.size | string | `"8Gi"` |  |
+| postgresql.persistence.storageClass | string | `""` |  |
+| postgresql.podSecurityContext | object | `{"fsGroup":70,"runAsGroup":70,"runAsNonRoot":true,"runAsUser":70,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod security context. Defaults suit the official postgres image (runs as uid/gid 70 on Alpine). |
+| postgresql.resources.limits.memory | string | `"1Gi"` |  |
+| postgresql.resources.requests.cpu | string | `"100m"` |  |
+| postgresql.resources.requests.memory | string | `"256Mi"` |  |
+| postgresql.tolerations | list | `[]` | Tolerations for the database pod. |
 | preStopSleepSeconds | int | `5` | Seconds the web container keeps serving after Kubernetes starts terminating it (preStop sleep). Endpoint removal reaches kube-proxy asynchronously; without this, connections routed to a terminating pod during a rolling update can hang. Set to 0 to disable. Applies to web pods only (the scheduler receives no Service traffic). |
 | priorityClassName | string | `""` | Priority class for all pods. |
 | probes.liveness | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"periodSeconds":20,"timeoutSeconds":5}` | Liveness probe — dependency-free endpoint. |

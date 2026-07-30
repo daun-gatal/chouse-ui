@@ -119,7 +119,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [default, ha-postgres]
+        scenario: [default, ha-postgres, bundled-databases]
 
     steps:
       - name: Checkout
@@ -184,6 +184,44 @@ jobs:
 
       - name: Helm test
         run: helm test chouse-ui --logs
+
+      # Health probes never touch ClickHouse, so nothing else in CI proves the
+      # app can actually query it. Drives the real path: log in, register the
+      # bundled node as a connection, run a query, assert the result.
+      - name: End-to-end query against the bundled ClickHouse
+        if: matrix.scenario == 'bundled-databases'
+        run: |
+          kubectl port-forward svc/chouse-ui 15521:80 &
+          for i in $(seq 30); do
+            curl -fsS -o /dev/null "http://localhost:15521/api/health" && break
+            sleep 2
+          done
+
+          API="http://localhost:15521"
+          HDR=(-H "Content-Type: application/json" -H "X-Requested-With: XMLHttpRequest")
+
+          TOKEN=$(curl -fsS -X POST "$API/api/rbac/auth/login" "${HDR[@]}" \
+            -d '{"identifier":"admin@localhost","password":"admin123!"}' \
+            | jq -re '.data.tokens.accessToken')
+          echo "Authenticated."
+
+          # The query route resolves the default (or first active) connection,
+          # so a single connection is registered and used.
+          curl -fsS -X POST "$API/api/rbac/connections" "${HDR[@]}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -d '{"name":"bundled","host":"chouse-ui-clickhouse","port":8123,"username":"default","password":"ci-only-clickhouse-password"}' \
+            | jq -re '.data.id' > /dev/null
+          echo "Connection registered."
+
+          ANSWER=$(curl -fsS -X POST "$API/api/query/execute" "${HDR[@]}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -d '{"query":"SELECT 6*7 AS answer"}' \
+            | jq -re '.data.data[0].answer')
+          if [ "$ANSWER" != "42" ]; then
+            echo "::error::Query through the app returned '$ANSWER', expected 42."
+            exit 1
+          fi
+          echo "End-to-end query returned $ANSWER — the app can read from the bundled ClickHouse."
 
       # Release-to-release upgrade coverage starts once a chart version is
       # published; until then this exercises the upgrade machinery (checksum
