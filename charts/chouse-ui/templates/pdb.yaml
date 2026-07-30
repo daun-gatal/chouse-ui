@@ -1,0 +1,19 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "chouse-ui.fullname" . }}
+  labels:
+    {{- include "chouse-ui.labels" . | nindent 4 }}
+spec:
+  {{- with .Values.pdb.minAvailable }}
+  minAvailable: {{ . }}
+  {{- end }}
+  {{- with .Values.pdb.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chouse-ui.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+{{- end }}

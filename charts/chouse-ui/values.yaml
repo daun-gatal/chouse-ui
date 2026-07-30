@@ -187,6 +187,33 @@ probes:
 # scheduled-query slots.
 terminationGracePeriodSeconds: 60
 
+autoscaling:
+  # -- Horizontal pod autoscaling for the web pods. Requires
+  # `database.type: postgres` (render fails on sqlite). Implies
+  # `CHOUSE_HA=true` regardless of `replicaCount`.
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  # -- Target average CPU utilization (percent).
+  targetCPUUtilizationPercentage: 80
+  # -- Target average memory utilization (percent). Empty disables the
+  # memory metric.
+  targetMemoryUtilizationPercentage: ""
+
+pdb:
+  # -- PodDisruptionBudget for the web pods. Only meaningful with more than
+  # one replica.
+  enabled: false
+  # -- Minimum pods that must stay available. Mutually exclusive with
+  # `maxUnavailable`.
+  minAvailable: 1
+  # -- Maximum pods that may be unavailable. Set `minAvailable` to "" when
+  # using this.
+  maxUnavailable: ""
+
+# -- Topology spread constraints for the web pods (postgres/HA installs).
+topologySpreadConstraints: []
+
 # -- Node selector for all pods.
 nodeSelector: {}
 # -- Tolerations for all pods.

@@ -1,31 +1,31 @@
-{{- include "chouse-ui.validate" . -}}
+{{- if .Values.dedicatedScheduler.enabled }}
+{{/*
+Dedicated scheduled-queries runner: one replica with the scheduler on, while
+the web pods run with SCHEDULED_QUERIES_ENABLED=false. Correctness does not
+depend on this being a singleton (per-job leases in PostgreSQL make redundant
+ticks harmless) — it exists to keep scheduled work off the request-serving
+pods. Recreate keeps the singleton clean across upgrades.
+*/}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "chouse-ui.fullname" . }}
+  name: {{ include "chouse-ui.fullname" . }}-scheduler
   labels:
     {{- include "chouse-ui.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scheduler
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
-  {{- end }}
-  {{- if eq .Values.database.type "sqlite" }}
-  # Two pods must never share the SQLite file, even transiently mid-rollout.
+  replicas: 1
   strategy:
     type: Recreate
-  {{- else }}
-  strategy:
-    type: RollingUpdate
-  {{- end }}
   selector:
     matchLabels:
       {{- include "chouse-ui.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: web
+      app.kubernetes.io/component: scheduler
   template:
     metadata:
       labels:
         {{- include "chouse-ui.labels" . | nindent 8 }}
-        app.kubernetes.io/component: web
+        app.kubernetes.io/component: scheduler
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -48,12 +48,8 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      {{- with .Values.initContainers }}
-      initContainers:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       containers:
-        - name: chouse-ui
+        - name: chouse-ui-scheduler
           image: {{ include "chouse-ui.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
@@ -64,13 +60,8 @@ spec:
               protocol: TCP
           env:
             {{- include "chouse-ui.env" . | nindent 12 }}
-            {{- if .Values.dedicatedScheduler.enabled }}
             - name: SCHEDULED_QUERIES_ENABLED
-              value: "false"
-            {{- else }}
-            - name: SCHEDULED_QUERIES_ENABLED
-              value: {{ .Values.scheduledQueries.enabled | quote }}
-            {{- end }}
+              value: "true"
           {{- with .Values.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
@@ -82,14 +73,14 @@ spec:
           startupProbe:
             {{- toYaml .Values.probes.startup | nindent 12 }}
           resources:
+            {{- if .Values.dedicatedScheduler.resources }}
+            {{- toYaml .Values.dedicatedScheduler.resources | nindent 12 }}
+            {{- else }}
             {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            {{- if eq .Values.database.type "sqlite" }}
-            - name: data
-              mountPath: /app/data
-            {{- end }}
             {{- if .Values.config }}
             - name: config
               mountPath: {{ include "chouse-ui.configMountPath" . }}
@@ -101,15 +92,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if eq .Values.database.type "sqlite" }}
-        - name: data
-          {{- if .Values.database.sqlite.persistence.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ .Values.database.sqlite.persistence.existingClaim | default (printf "%s-data" (include "chouse-ui.fullname" .)) }}
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
-        {{- end }}
         {{- if .Values.config }}
         - name: config
           secret:
@@ -130,7 +112,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.topologySpreadConstraints }}
-      topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+{{- end }}

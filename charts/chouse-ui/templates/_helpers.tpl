@@ -132,7 +132,7 @@ scheduler). Scheduler enablement is per-workload, so it is NOT set here.
     secretKeyRef:
       name: {{ include "chouse-ui.secretName" . }}
       key: RBAC_ENCRYPTION_SALT
-{{- if gt (int .Values.replicaCount) 1 }}
+{{- if or (gt (int .Values.replicaCount) 1) .Values.autoscaling.enabled }}
 - name: CHOUSE_HA
   value: "true"
 {{- end }}
