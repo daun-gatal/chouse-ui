@@ -28,6 +28,12 @@ spec:
         - -ec
         # /api/health proves the server is up; /api/rbac/health proves the
         # RBAC database is reachable and migrated (503 otherwise).
+        # --connect-timeout + --retry: a test run right after an upgrade can
+        # race endpoint propagation — a fresh connection per retry re-rolls
+        # the DNAT instead of hanging on a conntrack entry pinned to a
+        # terminated pod.
         - |
-          curl -fsS "http://{{ include "chouse-ui.fullname" . }}:{{ .Values.service.port }}/api/health"
-          curl -fsS "http://{{ include "chouse-ui.fullname" . }}:{{ .Values.service.port }}/api/rbac/health"
+          curl -fsS --connect-timeout 5 --retry 8 --retry-delay 2 --retry-all-errors \
+            "http://{{ include "chouse-ui.fullname" . }}:{{ .Values.service.port }}/api/health"
+          curl -fsS --connect-timeout 5 --retry 8 --retry-delay 2 --retry-all-errors \
+            "http://{{ include "chouse-ui.fullname" . }}:{{ .Values.service.port }}/api/rbac/health"

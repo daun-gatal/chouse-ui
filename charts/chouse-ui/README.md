@@ -165,6 +165,7 @@ Kubernetes: `>=1.25.0-0`
 | podAnnotations | object | `{}` | Extra annotations for the pods. |
 | podLabels | object | `{}` | Extra labels for the pods. |
 | podSecurityContext | object | `{"fsGroup":1001,"runAsGroup":1001,"runAsNonRoot":true,"runAsUser":1001,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod security context. The image runs as uid/gid 1001; `fsGroup` makes the SQLite PVC writable. |
+| preStopSleepSeconds | int | `5` | Seconds the web container keeps serving after Kubernetes starts terminating it (preStop sleep). Endpoint removal reaches kube-proxy asynchronously; without this, connections routed to a terminating pod during a rolling update can hang. Set to 0 to disable. Applies to web pods only (the scheduler receives no Service traffic). |
 | priorityClassName | string | `""` | Priority class for all pods. |
 | probes.liveness | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"periodSeconds":20,"timeoutSeconds":5}` | Liveness probe — dependency-free endpoint. |
 | probes.readiness | object | `{"failureThreshold":3,"httpGet":{"path":"/api/rbac/health","port":"http"},"periodSeconds":10,"timeoutSeconds":5}` | Readiness probe — 503 until the RBAC database is healthy and migrations have applied. |

@@ -58,6 +58,15 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- if .Values.preStopSleepSeconds }}
+          # Endpoint removal propagates to kube-proxy asynchronously; keep
+          # accepting connections briefly so in-flight DNAT to this pod
+          # doesn't blackhole during rolling updates.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "{{ .Values.preStopSleepSeconds }}"]
+          {{- end }}
           ports:
             - name: http
               containerPort: 5521

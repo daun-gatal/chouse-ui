@@ -222,6 +222,13 @@ probes:
 # scheduled-query slots.
 terminationGracePeriodSeconds: 60
 
+# -- Seconds the web container keeps serving after Kubernetes starts
+# terminating it (preStop sleep). Endpoint removal reaches kube-proxy
+# asynchronously; without this, connections routed to a terminating pod
+# during a rolling update can hang. Set to 0 to disable. Applies to web pods
+# only (the scheduler receives no Service traffic).
+preStopSleepSeconds: 5
+
 autoscaling:
   # -- Horizontal pod autoscaling for the web pods. Requires
   # `database.type: postgres` (render fails on sqlite). Implies

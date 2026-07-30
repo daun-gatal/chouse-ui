@@ -116,6 +116,24 @@ tests:
             mountPath: /etc/chouse
             readOnly: true
 
+  - it: preStop drain sleep is on by default and removable
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value: ["sleep", "5"]
+
+  - it: preStopSleepSeconds 0 removes the lifecycle hook
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      preStopSleepSeconds: 0
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].lifecycle
+
   - it: image tag defaults to v<appVersion>
     template: deployment.yaml
     set:
