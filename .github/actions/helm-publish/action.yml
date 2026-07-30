@@ -1,0 +1,142 @@
+name: Publish Helm chart to GHCR
+description: >-
+  Package, push (OCI), cosign-sign, and smoke-check the chart. Shared by
+  auto-release.yml (app releases) and helm-release.yml (chart-only releases)
+  so the publish logic exists exactly once. Published versions are immutable:
+  when the target version already exists in the registry the action skips the
+  push with a warning instead of overwriting (safe for re-runs of partially
+  failed releases). The calling job needs packages:write (push) and
+  id-token:write (cosign keyless).
+
+inputs:
+  chart-dir:
+    description: Path to the chart
+    default: charts/chouse-ui
+  oci-repo:
+    description: OCI repository to push to, e.g. ghcr.io/<owner>/charts
+    required: true
+  version:
+    description: >-
+      Chart version to publish (e.g. 1.2.0-pre). Empty uses Chart.yaml's
+      version.
+    default: ""
+  allow-overwrite:
+    description: >-
+      Skip the immutability guard (pre-release -pre tags only — the caller
+      deletes the previous tag first).
+    default: "false"
+  token:
+    description: Token with packages:write for the registry login
+    required: true
+
+outputs:
+  version:
+    description: The chart version that was (or would have been) published
+    value: ${{ steps.meta.outputs.version }}
+  digest:
+    description: OCI digest of the pushed chart (empty when skipped)
+    value: ${{ steps.push.outputs.digest }}
+  skipped:
+    description: "true when the version already existed and nothing was pushed"
+    value: ${{ steps.guard.outputs.skipped }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve chart metadata
+      id: meta
+      shell: bash
+      run: |
+        NAME=$(awk '/^name:/{print $2; exit}' "${{ inputs.chart-dir }}/Chart.yaml")
+        VERSION="${{ inputs.version }}"
+        if [ -z "$VERSION" ]; then
+          VERSION=$(awk '/^version:/{print $2; exit}' "${{ inputs.chart-dir }}/Chart.yaml")
+        fi
+        echo "name=$NAME" >> "$GITHUB_OUTPUT"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "Publishing $NAME version $VERSION to ${{ inputs.oci-repo }}"
+
+    - name: Registry login
+      shell: bash
+      run: |
+        echo "${{ inputs.token }}" | helm registry login "$(echo "${{ inputs.oci-repo }}" | cut -d/ -f1)" \
+          --username "$GITHUB_ACTOR" --password-stdin
+
+    - name: Immutability guard
+      id: guard
+      shell: bash
+      run: |
+        if [ "${{ inputs.allow-overwrite }}" = "true" ]; then
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+          echo "Overwrite allowed (pre-release tag) — guard bypassed."
+          exit 0
+        fi
+        if helm show chart "oci://${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }}" \
+             --version "${{ steps.meta.outputs.version }}" > /dev/null 2>&1; then
+          echo "skipped=true" >> "$GITHUB_OUTPUT"
+          echo "::warning::Chart ${{ steps.meta.outputs.name }} ${{ steps.meta.outputs.version }} already exists in ${{ inputs.oci-repo }} — published versions are immutable, skipping push. Bump Chart.yaml version to publish new content."
+        else
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Package chart
+      if: steps.guard.outputs.skipped != 'true'
+      shell: bash
+      run: |
+        helm package "${{ inputs.chart-dir }}" \
+          --version "${{ steps.meta.outputs.version }}" \
+          --destination /tmp/helm-publish
+
+    - name: Push chart
+      id: push
+      if: steps.guard.outputs.skipped != 'true'
+      shell: bash
+      run: |
+        OUT=$(helm push "/tmp/helm-publish/${{ steps.meta.outputs.name }}-${{ steps.meta.outputs.version }}.tgz" \
+          "oci://${{ inputs.oci-repo }}" 2>&1)
+        echo "$OUT"
+        DIGEST=$(echo "$OUT" | awk '/Digest:/{print $2}')
+        if [ -z "$DIGEST" ]; then
+          echo "::error::Could not parse digest from helm push output."
+          exit 1
+        fi
+        echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+    - name: Install cosign
+      if: steps.guard.outputs.skipped != 'true'
+      uses: sigstore/cosign-installer@v3
+
+    - name: Sign chart (cosign keyless via GitHub OIDC)
+      if: steps.guard.outputs.skipped != 'true'
+      shell: bash
+      run: |
+        cosign sign --yes \
+          "${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }}@${{ steps.push.outputs.digest }}"
+
+    - name: Smoke check (pull + render the published chart)
+      if: steps.guard.outputs.skipped != 'true'
+      shell: bash
+      run: |
+        mkdir -p /tmp/helm-smoke
+        helm pull "oci://${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }}" \
+          --version "${{ steps.meta.outputs.version }}" --destination /tmp/helm-smoke
+        helm template smoke "/tmp/helm-smoke/${{ steps.meta.outputs.name }}-${{ steps.meta.outputs.version }}.tgz" \
+          --values "${{ inputs.chart-dir }}/ci/default-values.yaml" > /dev/null
+        echo "Published chart pulls and renders cleanly."
+
+    - name: Publish summary
+      shell: bash
+      run: |
+        {
+          echo "## Helm chart: ${{ steps.meta.outputs.name }} ${{ steps.meta.outputs.version }}"
+          echo ""
+          if [ "${{ steps.guard.outputs.skipped }}" = "true" ]; then
+            echo "> Skipped — this version already exists (immutable)."
+          else
+            echo "Digest: \`${{ steps.push.outputs.digest }}\` (cosign-signed, keyless)"
+            echo ""
+            echo '```bash'
+            echo "helm install chouse-ui oci://${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }} --version ${{ steps.meta.outputs.version }}"
+            echo '```'
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"

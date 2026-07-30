@@ -1,0 +1,147 @@
+name: Helm Release
+
+# Chart-only releases: template fixes and values additions that shouldn't
+# wait for (or trigger) an app release. App releases publish the chart
+# automatically via the helm job in auto-release.yml — use this workflow only
+# when the chart changed and the app didn't.
+#
+# Runs from 'preview' by default (like auto-release): PRs merge to preview,
+# and main only advances when an app release is cut, so a chart-only fix
+# would otherwise be stuck until the next app release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Package and render only — push nothing."
+        type: boolean
+        default: false
+      prerelease:
+        description: "Publish as <version>-pre for cluster testing (replaces the previous -pre tag; no git tag)."
+        type: boolean
+        default: false
+      branch:
+        description: "Branch to release the chart from. Leave empty for 'preview'."
+        required: false
+        default: ""
+
+env:
+  CHART_DIR: charts/chouse-ui
+  HELM_VERSION: v4.2.3
+
+jobs:
+  # ── Step 1: package + render, always. This IS the dry-run; the publish job
+  # below is skipped when dry_run is set. ─────────────────────────────────────
+  plan:
+    name: Package & Render
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      branch: ${{ steps.target.outputs.branch }}
+
+    steps:
+      - name: Resolve target branch
+        id: target
+        run: |
+          BRANCH="${{ inputs.branch }}"
+          if [ -z "$BRANCH" ]; then
+            BRANCH="preview"
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Releasing chart from '$BRANCH'"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.branch }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Compute version
+        id: version
+        run: |
+          VERSION=$(awk '/^version:/{print $2; exit}' "$CHART_DIR/Chart.yaml")
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            VERSION="$VERSION-pre"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Target chart version: $VERSION"
+
+      - name: Package and render
+        run: |
+          helm package "$CHART_DIR" --version "${{ steps.version.outputs.version }}" --destination /tmp/plan
+          helm template plan "/tmp/plan/chouse-ui-${{ steps.version.outputs.version }}.tgz" \
+            --values "$CHART_DIR/ci/default-values.yaml" > /dev/null
+          echo "Chart packages and renders cleanly."
+
+      - name: Dry-run summary
+        if: inputs.dry_run
+        run: |
+          {
+            echo "## Dry run — nothing published"
+            echo ""
+            echo "Would publish \`chouse-ui ${{ steps.version.outputs.version }}\` from \`${{ steps.target.outputs.branch }}\` to \`oci://ghcr.io/${{ github.repository_owner }}/charts\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Step 2: approval-gated publish ─────────────────────────────────────────
+  publish:
+    name: Publish to GHCR
+    needs: plan
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: helm-publish
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.branch }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      # Re-running with the same version overwrites the -pre tag; delete the
+      # previous one first so its bytes don't linger as orphaned versions
+      # (same pattern as the pre-release image in auto-release.yml).
+      - name: Delete previous pre-release chart
+        if: inputs.prerelease
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          package: charts/chouse-ui
+          delete-tags: ${{ needs.plan.outputs.version }}
+
+      - name: Publish chart
+        id: publish
+        uses: ./.github/actions/helm-publish
+        with:
+          chart-dir: ${{ env.CHART_DIR }}
+          oci-repo: ghcr.io/${{ github.repository_owner }}/charts
+          version: ${{ needs.plan.outputs.version }}
+          allow-overwrite: ${{ inputs.prerelease && 'true' || 'false' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag chart release
+        if: ${{ !inputs.prerelease && steps.publish.outputs.skipped != 'true' }}
+        run: |
+          TAG="chart-v${{ needs.plan.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --tags origin "$TAG" | grep -q "refs/tags/$TAG"; then
+            echo "Tag $TAG already exists — skipping."
+            exit 0
+          fi
+          git tag -a "$TAG" -m "Helm chart $TAG"
+          git push origin "$TAG"
+          echo "Tag $TAG created."
