@@ -114,6 +114,41 @@ service:
   # -- Extra annotations for the Service.
   annotations: {}
 
+ingress:
+  # -- Expose the UI through an Ingress.
+  enabled: false
+  # -- IngressClass name.
+  className: ""
+  # -- Ingress annotations. Two matter operationally: AI chat streams over
+  # SSE, so raise the proxy read timeout (nginx:
+  # `nginx.ingress.kubernetes.io/proxy-read-timeout: "300"`) and disable
+  # buffering (`nginx.ingress.kubernetes.io/proxy-buffering: "off"`); and
+  # login rate limiting keys on X-Forwarded-For, so the ingress must
+  # overwrite it with the real client IP.
+  annotations: {}
+  hosts:
+    - host: chouse-ui.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS configuration.
+  tls: []
+
+networkPolicy:
+  # -- Create a NetworkPolicy for the pods.
+  enabled: false
+  # -- Extra `from` peers allowed to reach the pods on the app port (in
+  # addition to same-namespace pods). Use this to admit your ingress
+  # controller's namespace.
+  ingressFrom: []
+  # -- Restrict egress. When true, only DNS plus `egressTo` are allowed —
+  # list your ClickHouse hosts, PostgreSQL, IdP, SMTP, and AI provider
+  # endpoints there. When false, all egress is allowed.
+  restrictEgress: false
+  # -- Extra egress rules (full NetworkPolicyEgressRule objects) applied when
+  # `restrictEgress` is true.
+  egressTo: []
+
 serviceAccount:
   # -- Create a ServiceAccount for the pods.
   create: true
