@@ -31,8 +31,13 @@ RUN bun run build:web
 # ============================================
 FROM oven/bun:1-alpine AS production
 
-# Install CA certificates for HTTPS connections and wget for healthcheck
-RUN apk add --no-cache ca-certificates wget && update-ca-certificates
+# Patch base-image packages (the upstream tag lags Alpine security updates) and
+# install CA certificates for HTTPS connections.
+# The HEALTHCHECK uses busybox's built-in wget, so GNU wget is deliberately not
+# installed — it ships unfixed CVEs and adds nothing busybox doesn't cover.
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates && \
+    update-ca-certificates
 
 # Re-declare build arguments for labels
 ARG VERSION=dev
@@ -49,12 +54,20 @@ COPY --from=build /app/packages/server/package.json ./packages/server/
 COPY --from=build /app/packages/server/src ./packages/server/src
 COPY --from=build /app/packages/server/tsconfig.json ./packages/server/
 
-# Copy root package.json for workspace resolution (if needed)
-COPY --from=build /app/package.json ./
+# The root package.json is deliberately NOT copied. Its presence makes Bun treat
+# /app as a workspace root and also install the *frontend's* runtime dependencies
+# (~735 MB) — which the runtime never loads, because the frontend is served as the
+# pre-built static bundle in /app/dist. Leaving it out keeps the install to the
+# server's own 227 packages and off the vulnerability scanners' radar.
 
-# Install server production dependencies only
+# Install server production dependencies only.
+# Bun's global install cache is populated during resolution and holds the *whole*
+# dependency tree, dev included (~1 GB of prebuilt binaries such as old esbuild
+# releases). It is build-time scratch, so drop it in the same layer — otherwise it
+# ships in the image and gets scanned as if it were part of the runtime.
 WORKDIR /app/packages/server
-RUN bun install --production
+RUN bun install --production && \
+    rm -rf /root/.bun/install/cache
 
 # Back to app root
 WORKDIR /app
@@ -112,8 +125,10 @@ EXPOSE 5521
 USER ch-user
 
 # Health check - verify both API and static serving work
+# Flags are busybox-wget compatible (no --no-verbose/--tries); -T caps the request
+# so a hung server fails the check instead of stalling it.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:5521/api/health || exit 1
+    CMD wget -q -T 5 --spider http://localhost:5521/api/health || exit 1
 
 # Start the server
 CMD ["bun", "run", "packages/server/src/index.ts"]
