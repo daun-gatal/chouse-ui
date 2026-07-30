@@ -34,8 +34,8 @@ outputs:
     description: The chart version that was (or would have been) published
     value: ${{ steps.meta.outputs.version }}
   digest:
-    description: OCI digest of the pushed chart (empty when skipped)
-    value: ${{ steps.push.outputs.digest }}
+    description: OCI digest of the published chart (freshly pushed or resolved from the registry when the version already existed)
+    value: ${{ steps.digest.outputs.digest }}
   skipped:
     description: "true when the version already existed and nothing was pushed"
     value: ${{ steps.guard.outputs.skipped }}
@@ -59,7 +59,13 @@ runs:
     - name: Registry login
       shell: bash
       run: |
-        echo "${{ inputs.token }}" | helm registry login "$(echo "${{ inputs.oci-repo }}" | cut -d/ -f1)" \
+        REGISTRY="$(echo "${{ inputs.oci-repo }}" | cut -d/ -f1)"
+        echo "${{ inputs.token }}" | helm registry login "$REGISTRY" \
+          --username "$GITHUB_ACTOR" --password-stdin
+        # helm stores credentials in its own registry config; cosign reads
+        # Docker's. Without this second login, the signature push is
+        # unauthenticated and rejected by the registry.
+        echo "${{ inputs.token }}" | docker login "$REGISTRY" \
           --username "$GITHUB_ACTOR" --password-stdin
 
     - name: Immutability guard
@@ -74,7 +80,23 @@ runs:
         if helm show chart "oci://${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }}" \
              --version "${{ steps.meta.outputs.version }}" > /dev/null 2>&1; then
           echo "skipped=true" >> "$GITHUB_OUTPUT"
-          echo "::warning::Chart ${{ steps.meta.outputs.name }} ${{ steps.meta.outputs.version }} already exists in ${{ inputs.oci-repo }} — published versions are immutable, skipping push. Bump Chart.yaml version to publish new content."
+          echo "::warning::Chart ${{ steps.meta.outputs.name }} ${{ steps.meta.outputs.version }} already exists in ${{ inputs.oci-repo }} — published versions are immutable, skipping push. Signing and smoke checks still run against the existing digest so an interrupted release can be completed by re-running."
+          # Resolve the existing manifest digest so sign/smoke can proceed.
+          REGISTRY="$(echo "${{ inputs.oci-repo }}" | cut -d/ -f1)"
+          REPO_PATH="$(echo "${{ inputs.oci-repo }}" | cut -d/ -f2-)/${{ steps.meta.outputs.name }}"
+          REG_TOKEN=$(curl -fsS -u "${GITHUB_ACTOR}:${{ inputs.token }}" \
+            "https://${REGISTRY}/token?scope=repository:${REPO_PATH}:pull" \
+            | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+          DIGEST=$(curl -fsS -I -H "Authorization: Bearer ${REG_TOKEN}" \
+            -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+            "https://${REGISTRY}/v2/${REPO_PATH}/manifests/${{ steps.meta.outputs.version }}" \
+            | awk 'tolower($1)=="docker-content-digest:"{print $2}' | tr -d '\r')
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Version exists but its digest could not be resolved — cannot sign/verify it."
+            exit 1
+          fi
+          echo "existing-digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Existing digest: $DIGEST"
         else
           echo "skipped=false" >> "$GITHUB_OUTPUT"
         fi
@@ -102,19 +124,28 @@ runs:
         fi
         echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
+    - name: Resolve final digest
+      id: digest
+      shell: bash
+      run: |
+        DIGEST="${{ steps.push.outputs.digest }}"
+        if [ -z "$DIGEST" ]; then
+          DIGEST="${{ steps.guard.outputs.existing-digest }}"
+        fi
+        echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
     - name: Install cosign
-      if: steps.guard.outputs.skipped != 'true'
       uses: sigstore/cosign-installer@v3
 
+    # Runs on skipped re-runs too: signing is idempotent, and an interrupted
+    # earlier run may have pushed the chart without ever signing it.
     - name: Sign chart (cosign keyless via GitHub OIDC)
-      if: steps.guard.outputs.skipped != 'true'
       shell: bash
       run: |
         cosign sign --yes \
-          "${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }}@${{ steps.push.outputs.digest }}"
+          "${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }}@${{ steps.digest.outputs.digest }}"
 
     - name: Smoke check (pull + render the published chart)
-      if: steps.guard.outputs.skipped != 'true'
       shell: bash
       run: |
         mkdir -p /tmp/helm-smoke
@@ -131,12 +162,12 @@ runs:
           echo "## Helm chart: ${{ steps.meta.outputs.name }} ${{ steps.meta.outputs.version }}"
           echo ""
           if [ "${{ steps.guard.outputs.skipped }}" = "true" ]; then
-            echo "> Skipped — this version already exists (immutable)."
-          else
-            echo "Digest: \`${{ steps.push.outputs.digest }}\` (cosign-signed, keyless)"
+            echo "> Chart push skipped — this version already existed (immutable). Signature and smoke check were refreshed against the existing digest."
             echo ""
-            echo '```bash'
-            echo "helm install chouse-ui oci://${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }} --version ${{ steps.meta.outputs.version }}"
-            echo '```'
           fi
+          echo "Digest: \`${{ steps.digest.outputs.digest }}\` (cosign-signed, keyless)"
+          echo ""
+          echo '```bash'
+          echo "helm install chouse-ui oci://${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }} --version ${{ steps.meta.outputs.version }}"
+          echo '```'
         } >> "$GITHUB_STEP_SUMMARY"

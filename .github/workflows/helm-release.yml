@@ -132,8 +132,11 @@ jobs:
           allow-overwrite: ${{ inputs.prerelease && 'true' || 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Also runs when the publish was skipped (version already existed): an
+      # interrupted earlier run may have pushed the chart without reaching
+      # this step, and the tag-exists check below makes it a no-op otherwise.
       - name: Tag chart release
-        if: ${{ !inputs.prerelease && steps.publish.outputs.skipped != 'true' }}
+        if: ${{ !inputs.prerelease }}
         run: |
           TAG="chart-v${{ needs.plan.outputs.version }}"
           git config user.name "github-actions[bot]"
