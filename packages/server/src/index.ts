@@ -27,7 +27,7 @@ const SESSION_MAX_AGE = 3600000; // 1 hour
 
 /**
  * Validate required environment variables at startup
- * In production, ensures critical security settings are configured
+ * In production, ensures critical security settings are configured.
  */
 function validateEnvironmentVariables(): void {
   const errors: string[] = [];
