@@ -39,6 +39,11 @@ alter the container's runtime contract.
    `helm unittest charts/chouse-ui`.
 6. New topology or mode? Add a `ci/<scenario>-values.yaml` and extend the
    kind matrix in `.github/workflows/helm.yml`.
+7. **Update `artifacthub.io/changes`** in `Chart.yaml`'s annotations — it is
+   rendered per version on artifacthub.io. Don't touch
+   `artifacthub.io/images` (auto-synced with `appVersion` by
+   `auto-release.yml`) or `artifacthub-repo.yml` (the `repositoryID` is the
+   ArtifactHub ownership claim; pushed automatically on publish).
 7. Verify locally before pushing:
    `helm lint charts/chouse-ui --strict --values charts/chouse-ui/ci/default-values.yaml`
    and `helm unittest charts/chouse-ui`.

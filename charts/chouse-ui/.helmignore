@@ -1,0 +1,8 @@
+# Development/CI files that must not ship inside the packaged chart.
+# Note: "tests/" alone would also drop templates/tests/ (the helm test
+# hook), so the unit-test suites are ignored per-file instead.
+tests/*_test.yaml
+ci/
+README.md.gotmpl
+artifacthub-repo.yml
+.helmignore

@@ -243,6 +243,9 @@ jobs:
             echo "Chart version $CURRENT not published yet — keeping it."
           fi
           sed -i "s/^appVersion: .*/appVersion: \"$VERSION\"/" "$CHART"
+          # Keep the artifacthub.io/images annotation pointing at the same
+          # release the chart installs by default.
+          sed -i "s|image: ghcr.io/daun-gatal/chouse-ui:v[0-9][0-9.]*|image: ghcr.io/daun-gatal/chouse-ui:v$VERSION|" "$CHART"
           echo "Chart appVersion set to $VERSION"
 
       # The chart README embeds version/appVersion badges — regenerate so the
@@ -510,6 +513,7 @@ jobs:
         with:
           oci-repo: ghcr.io/${{ github.repository_owner }}/charts
           token: ${{ secrets.GITHUB_TOKEN }}
+          artifacthub-metadata: charts/chouse-ui/artifacthub-repo.yml
 
   # ── Step 4 (parallel, after Docker succeeds): publish tag + GitHub Release ─
   publish:

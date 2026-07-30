@@ -28,6 +28,12 @@ inputs:
   token:
     description: Token with packages:write for the registry login
     required: true
+  artifacthub-metadata:
+    description: >-
+      Path to an artifacthub-repo.yml to push (ORAS) to the chart repo's
+      artifacthub.io tag after publishing. Empty skips the push. Ignored for
+      pre-releases (allow-overwrite).
+    default: ""
 
 outputs:
   version:
@@ -144,6 +150,25 @@ runs:
       run: |
         cosign sign --yes \
           "${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }}@${{ steps.digest.outputs.digest }}"
+
+    - name: Setup ORAS
+      if: inputs.artifacthub-metadata != '' && inputs.allow-overwrite != 'true'
+      uses: oras-project/setup-oras@v1
+
+    # Refreshes the ArtifactHub repository metadata (Verified Publisher badge).
+    # Idempotent — safe to re-push on every full publish.
+    - name: Push ArtifactHub metadata
+      if: inputs.artifacthub-metadata != '' && inputs.allow-overwrite != 'true'
+      shell: bash
+      run: |
+        METADATA_DIR="$(dirname "${{ inputs.artifacthub-metadata }}")"
+        METADATA_FILE="$(basename "${{ inputs.artifacthub-metadata }}")"
+        cd "$METADATA_DIR"
+        oras push \
+          "${{ inputs.oci-repo }}/${{ steps.meta.outputs.name }}:artifacthub.io" \
+          --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+          "$METADATA_FILE:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml"
+        echo "ArtifactHub metadata pushed."
 
     - name: Smoke check (pull + render the published chart)
       shell: bash
