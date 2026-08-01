@@ -33,31 +33,33 @@ const HeavyQuerySchema = z.object({
   node: z.string(),
   query: z.string(),
   peakMemory: z.string(),
-  user: z.string().optional(),
+  // `.nullish()`, never a bare `.optional()`: strict structured-output modes
+  // reject optional fields that cannot be emitted as null.
+  user: z.string().nullish(),
   cause: z.string(),
   tables: z.array(
     z.object({
       name: z.string(),
-      engine: z.string().optional(),
-      rows: z.string().optional(),
+      engine: z.string().nullish(),
+      rows: z.string().nullish(),
       note: z.string(),
     }),
   ),
   suggestions: z.array(z.string()),
-  optimizedQuery: z.string().optional(),
+  optimizedQuery: z.string().nullish(),
   estimate: z
     .object({
-      before: z.object({ rows: z.number(), parts: z.number(), marks: z.number() }).optional(),
-      after: z.object({ rows: z.number(), parts: z.number(), marks: z.number() }).optional(),
+      before: z.object({ rows: z.number(), parts: z.number(), marks: z.number() }).nullish(),
+      after: z.object({ rows: z.number(), parts: z.number(), marks: z.number() }).nullish(),
     })
-    .optional(),
+    .nullish(),
 });
 
 const DoctorReportSchema = z.object({
   verdict: z.object({ status: StatusEnum, summary: z.string() }),
   nodes: z.array(z.object({ name: z.string(), status: StatusEnum, details: z.array(z.string()) })),
   recommendations: z.array(z.string()),
-  heavyQueries: z.array(HeavyQuerySchema).optional(),
+  heavyQueries: z.array(HeavyQuerySchema).nullish(),
 });
 
 export type DoctorAnalysis = z.infer<typeof DoctorReportSchema>;

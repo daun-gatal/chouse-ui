@@ -17,13 +17,13 @@ interface CheckBase {
 
 export type DataHealthCheck =
   | (CheckBase & { type: "freshness"; config: { eventTimeColumn: string; maxAgeSeconds: number } })
-  | (CheckBase & { type: "row_count"; config: { min?: number; max?: number } })
-  | (CheckBase & { type: "volume_anomaly"; config: { minSamples: number; sensitivity: number; minRelativeBand: number; hardMin?: number; hardMax?: number } })
+  | (CheckBase & { type: "row_count"; config: { min?: number | null; max?: number | null } })
+  | (CheckBase & { type: "volume_anomaly"; config: { minSamples: number; sensitivity: number; minRelativeBand: number; hardMin?: number | null; hardMax?: number | null } })
   | (CheckBase & { type: "completeness"; config: { column: string; minRatio: number } })
   | (CheckBase & { type: "uniqueness"; config: { columns: string[]; maxDuplicateRatio: number } })
   | (CheckBase & { type: "validity"; config: { predicate: string; minRatio: number } })
   | (CheckBase & { type: "schema_contract"; config: { expectedColumns: Array<{ name: string; type: string }>; allowAdditionalColumns: boolean } })
-  | (CheckBase & { type: "custom_metric"; config: { expression: string; operator: "gt" | "gte" | "lt" | "lte" | "eq" | "between"; threshold: number; upperThreshold?: number } });
+  | (CheckBase & { type: "custom_metric"; config: { expression: string; operator: "gt" | "gte" | "lt" | "lte" | "eq" | "between"; threshold: number; upperThreshold?: number | null } });
 
 export interface DataHealthSchedule {
   frequency: DataHealthFrequency;

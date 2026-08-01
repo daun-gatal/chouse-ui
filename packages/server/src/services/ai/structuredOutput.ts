@@ -264,12 +264,47 @@ async function invokeStructuredStrategy<T>(
   return opts.schema.parse(object);
 }
 
+/** Compact, model-readable rendering of the schema violations to correct. */
+function validationFeedback(error: unknown): string | null {
+  if (!(error instanceof z.ZodError)) return null;
+  const issues = error.issues
+    .slice(0, 20)
+    .map((issue) => `- ${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join("\n");
+  return issues.length > 0 ? issues.slice(0, 2000) : null;
+}
+
+/**
+ * Plain JSON with a single bounded repair round-trip: weaker models routinely
+ * miss a numeric bound or a discriminated-union config, and re-prompting with
+ * the concrete violations recovers that far more often than failing the run.
+ */
 async function invokePlainStrategy<T>(
   opts: StructuredOutputOptions<T>,
   messages: AgentMessage[],
 ): Promise<T> {
   const response = await opts.model.invoke(messages, { signal: opts.signal });
-  return extractJson(messageText(response), opts.schema);
+  const text = messageText(response);
+
+  try {
+    return extractJson(text, opts.schema);
+  } catch (error) {
+    const feedback = validationFeedback(error);
+    if (!feedback) throw error;
+
+    const repaired = await opts.model.invoke(
+      [
+        ...messages,
+        { role: "assistant", content: text },
+        {
+          role: "user",
+          content: `That JSON failed schema validation:\n${feedback}\n\nReturn the corrected JSON object only — no markdown, no code fences, no commentary. Respect every enum, bound, and required field.`,
+        },
+      ],
+      { signal: opts.signal },
+    );
+    return extractJson(messageText(repaired), opts.schema);
+  }
 }
 
 /**
