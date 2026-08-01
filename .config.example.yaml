@@ -204,3 +204,11 @@ auth:
   # ENABLED to avoid lockout.
   password_login:
     enabled: true
+
+  # How often each replica checks the shared config-generation counter and
+  # rebuilds its in-process SSO / password-login cache when another replica
+  # changed them (ADR 0010). This bounds how long an auth-config change takes
+  # to reach the pods that did not serve the mutation. Floor 1000ms; anything
+  # lower or unparseable falls back to the 15000 default. Irrelevant at a
+  # single replica.
+  config_watch_interval_ms: 15000
