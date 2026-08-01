@@ -1,6 +1,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
-import { ApiClient, setRbacTokens, clearRbacTokens, setSessionId, clearSession, clearConnectionId, connectionIdentityHeaders } from './client';
+import { ApiClient, setRbacTokens, clearRbacTokens, setSessionId, clearSession } from './client';
 import { server } from '../test/mocks/server';
 
 // Stop MSW integration for this test suite as we want to mock fetch directly
@@ -164,59 +164,5 @@ describe('ApiClient', () => {
         // Check logout dispatch
         expect(dispatchEventMock).toHaveBeenCalledWith(expect.any(CustomEvent));
         expect(dispatchEventMock.mock.calls[0][0].type).toBe('auth:unauthorized');
-    });
-});
-
-/**
- * ADR 0010 regression.
- *
- * The server fails closed on a request that names a session but no connection.
- * Several call sites build their own headers (this client, `rbacFetch`, the
- * query streaming fetch, the import upload); when one of them sent only
- * `X-Session-ID`, every request it made returned 409 CONNECTION_CONTEXT_STALE
- * with no way to recover by reloading. They all go through
- * `connectionIdentityHeaders` now — these tests pin its contract.
- */
-describe('connectionIdentityHeaders (ADR 0010)', () => {
-    beforeEach(() => {
-        localStorageMock.getItem.mockReset();
-        sessionStorageMock.getItem.mockReset();
-        clearConnectionId();
-        clearSession();
-        localStorageMock.removeItem.mockReset();
-    });
-
-    it('sends the connection id when one is stored', () => {
-        localStorageMock.getItem.mockImplementation((key: string) =>
-            key === 'ch_connection_id' ? 'conn-1' : null);
-        expect(connectionIdentityHeaders()['X-Connection-Id']).toBe('conn-1');
-    });
-
-    it('never sends a session id without a connection id', () => {
-        // The exact combination the server rejects. If a connection id is
-        // resolvable at all, it must accompany the session id.
-        localStorageMock.getItem.mockImplementation((key: string) =>
-            key === 'ch_connection_id' ? 'conn-1' : null);
-        sessionStorageMock.getItem.mockReturnValue('sess-1');
-        const headers = connectionIdentityHeaders();
-        expect(headers['X-Session-ID']).toBe('sess-1');
-        expect(headers['X-Connection-Id']).toBe('conn-1');
-    });
-
-    it('adopts activeConnectionId from a pre-upgrade persisted store', () => {
-        localStorageMock.getItem.mockImplementation((key: string) => {
-            if (key === 'ch_connection_id') return null;
-            if (key === 'connection-info-storage') {
-                return JSON.stringify({ state: { activeConnectionId: 'conn-legacy' }, version: 0 });
-            }
-            return null;
-        });
-        expect(connectionIdentityHeaders()['X-Connection-Id']).toBe('conn-legacy');
-    });
-
-    it('sends nothing when neither is known (JWT-only consumer)', () => {
-        localStorageMock.getItem.mockReturnValue(null);
-        sessionStorageMock.getItem.mockReturnValue(null);
-        expect(connectionIdentityHeaders()).toEqual({});
     });
 });

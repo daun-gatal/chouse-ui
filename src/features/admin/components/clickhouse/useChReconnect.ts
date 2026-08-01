@@ -1,18 +1,15 @@
 /**
  * useChReconnect
  *
- * The ClickHouse management pages act on the connection the client names
- * (X-Connection-Id). Since ADR 0010 the server holds no session for it — the
- * connection is resolved and authorised from the database on every request — so
- * a backend restart no longer invalidates anything.
+ * The ClickHouse management pages talk to the active ClickHouse session
+ * (X-Session-ID). That session lives in server memory, so it's lost whenever the
+ * backend restarts or the session expires — after which every request fails with
+ * "ClickHouse session not found. Please reconnect." (code NO_SESSION). The stored
+ * session id on the client is now stale, so simply re-fetching (the refresh
+ * button) keeps failing.
  *
- * What can still fail: the stored connection id no longer resolves (the
- * connection was deleted, deactivated, or the user's access to it was revoked),
- * which the server reports as CONNECTION_CONTEXT_STALE rather than silently
- * answering from a different connection.
- *
- * This hook re-activates the last-used connection, which re-validates it and
- * refreshes the client's stored connection id — the real recovery.
+ * This hook re-activates the last-used connection, which mints a fresh server
+ * session and updates the client's X-Session-ID — the real recovery.
  */
 
 import { useCallback } from "react";

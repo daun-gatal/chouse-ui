@@ -2,7 +2,7 @@
  * Query API
  */
 
-import { api, connectionIdentityHeaders, getRbacAccessToken } from './client';
+import { api, getSessionId, getRbacAccessToken } from './client';
 import { invokeAI, type QueryOptimization } from './ai';
 
 // ============================================
@@ -398,7 +398,8 @@ export async function executeQueryStream(
     "X-Requested-With": "XMLHttpRequest",
   };
 
-  Object.assign(headers, connectionIdentityHeaders());
+  const sessionId = getSessionId();
+  if (sessionId) headers["X-Session-ID"] = sessionId;
 
   const token = getRbacAccessToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
