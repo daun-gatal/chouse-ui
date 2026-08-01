@@ -34,8 +34,10 @@ export function unfence(sql: string): string {
 /** Per-table finding shared by both optimizers (and the fleet heavy-query analysis). */
 export const OptimizationTableSchema = z.object({
   name: z.string(),
-  engine: z.string().optional(),
-  rows: z.string().optional(),
+  // `.nullish()`, never a bare `.optional()`: strict structured-output modes
+  // reject optional fields that cannot be emitted as null.
+  engine: z.string().nullish(),
+  rows: z.string().nullish(),
   note: z.string(),
 });
 
@@ -72,7 +74,7 @@ export interface QueryOptimization {
   summary: string;
   explanation: string;
   cause: string;
-  tables: { name: string; engine?: string; rows?: string; note: string }[];
+  tables: { name: string; engine?: string | null; rows?: string | null; note: string }[];
   suggestions: string[];
   /** before→after EXPLAIN ESTIMATE (rows/parts/marks) — computed by the backend. */
   estimate?: { before?: EstimateFigures; after?: EstimateFigures };

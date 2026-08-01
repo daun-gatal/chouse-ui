@@ -97,6 +97,44 @@ describe("structuredOutput", () => {
     expect(repairMessages.at(-1)?.content).toContain('"answer"');
   });
 
+  it("re-prompts once with the violations when plain JSON fails validation", async () => {
+    const model = new ChatOpenAI({ apiKey: "test", model: "basic-model" });
+    const responses = ['{"answer":42}', '{"answer":"corrected"}'];
+    const invoke = mock(async () => ({ content: responses.shift() ?? "{}" }));
+    Object.defineProperty(model, "withStructuredOutput", { value: undefined });
+    Object.defineProperty(model, "invoke", { value: invoke });
+
+    const result = await structuredOutput(baseOptions(model));
+
+    expect(result).toEqual({ answer: "corrected" });
+    expect(invoke).toHaveBeenCalledTimes(2);
+    const repairMessages = invoke.mock.calls[1]?.[0] as Array<{ role: string; content: string }>;
+    expect(repairMessages.at(-2)?.role).toBe("assistant");
+    expect(repairMessages.at(-2)?.content).toBe('{"answer":42}');
+    expect(repairMessages.at(-1)?.content).toContain("failed schema validation");
+    expect(repairMessages.at(-1)?.content).toContain("answer");
+  });
+
+  it("gives up after a single repair round-trip", async () => {
+    const model = new ChatOpenAI({ apiKey: "test", model: "basic-model" });
+    const invoke = mock(async () => ({ content: '{"answer":42}' }));
+    Object.defineProperty(model, "withStructuredOutput", { value: undefined });
+    Object.defineProperty(model, "invoke", { value: invoke });
+
+    expect(await structuredOutput(baseOptions(model))).toBeNull();
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not repair when the response carries no JSON at all", async () => {
+    const model = new ChatOpenAI({ apiKey: "test", model: "basic-model" });
+    const invoke = mock(async () => ({ content: "I cannot help with that." }));
+    Object.defineProperty(model, "withStructuredOutput", { value: undefined });
+    Object.defineProperty(model, "invoke", { value: invoke });
+
+    expect(await structuredOutput(baseOptions(model))).toBeNull();
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it("does not cascade transient provider failures into billed fallback calls", async () => {
     const model = new ChatOpenAI({ apiKey: "test", model: "gateway-model" });
     const withStructuredOutput = mock(() => ({

@@ -39,9 +39,12 @@ const checkBase = {
   enabled: z.boolean().default(true),
 };
 
+// Optional-and-nullable, not bare `.optional()`: strict structured-output modes
+// (OpenAI-compatible providers) reject a schema whose optional field cannot be
+// emitted as null, which makes the AI recommendation path fail before any call.
 const boundedRange = z.object({
-  min: z.number().finite().optional(),
-  max: z.number().finite().optional(),
+  min: z.number().finite().nullish(),
+  max: z.number().finite().nullish(),
 }).refine((value) => value.min != null || value.max != null, "At least one bound is required")
   .refine((value) => value.min == null || value.max == null || value.min <= value.max, "Minimum cannot exceed maximum");
 
@@ -62,8 +65,8 @@ export const dataHealthCheckDefinitionSchema = z.discriminatedUnion("type", [
       minSamples: z.number().int().min(3).max(100).default(7),
       sensitivity: z.number().min(1).max(10).default(3),
       minRelativeBand: z.number().min(0).max(1).default(0.1),
-      hardMin: z.number().finite().optional(),
-      hardMax: z.number().finite().optional(),
+      hardMin: z.number().finite().nullish(),
+      hardMax: z.number().finite().nullish(),
     }).refine((value) => value.hardMin == null || value.hardMax == null || value.hardMin <= value.hardMax, "Hard minimum cannot exceed hard maximum"),
   }),
   z.object({
@@ -99,7 +102,7 @@ export const dataHealthCheckDefinitionSchema = z.discriminatedUnion("type", [
       expression: z.string().trim().min(1).max(2000),
       operator: z.enum(["gt", "gte", "lt", "lte", "eq", "between"]),
       threshold: z.number().finite(),
-      upperThreshold: z.number().finite().optional(),
+      upperThreshold: z.number().finite().nullish(),
     }).refine((value) => value.operator !== "between" || value.upperThreshold != null, "Between requires an upper threshold")
       .refine((value) => value.operator !== "between" || value.upperThreshold == null || value.threshold <= value.upperThreshold, "Lower threshold cannot exceed upper threshold"),
   }),

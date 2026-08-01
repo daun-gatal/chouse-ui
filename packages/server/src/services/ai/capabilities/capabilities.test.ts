@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
+import { z } from "zod";
 import { CAPABILITIES, CAPABILITY_IDS, getCapability } from "./index";
 import { optimizeQueryCapability } from "./optimizeQuery";
 import { optimizeLogCapability } from "./optimizeLog";
@@ -199,6 +200,60 @@ describe("recommend-health-promise output schema", () => {
     expect(
       recommendHealthPromiseCapability.outputSchema.safeParse({ ...validRecommendation, breachAfter: 0 }).success,
     ).toBe(false);
+  });
+});
+
+/**
+ * Strict structured-output modes (OpenAI-compatible providers) reject any schema
+ * whose optional field cannot be emitted as null — the SDK throws locally, so the
+ * adapter strategy fails on every call until the schema is fixed. Optional output
+ * fields must therefore be `.nullish()` (or carry a `.default()`), never a bare
+ * `.optional()`.
+ */
+describe("structured-output schema compatibility", () => {
+  function unsafeOptionalFields(schema: z.ZodTypeAny, path: string, seen: Set<z.ZodTypeAny>): string[] {
+    if (seen.has(schema)) return [];
+    seen.add(schema);
+
+    if (schema instanceof z.ZodObject) {
+      const shape: Record<string, z.ZodTypeAny> = schema.shape;
+      return Object.entries(shape).flatMap(([key, field]) => [
+        ...(field.isOptional() && !field.isNullable() && !(field instanceof z.ZodDefault)
+          ? [`${path}.${key}`]
+          : []),
+        ...unsafeOptionalFields(field, `${path}.${key}`, seen),
+      ]);
+    }
+    if (schema instanceof z.ZodArray) return unsafeOptionalFields(schema.element, `${path}[]`, seen);
+    if (schema instanceof z.ZodDiscriminatedUnion || schema instanceof z.ZodUnion) {
+      const options: z.ZodTypeAny[] = schema.options;
+      return options.flatMap((option, index) => unsafeOptionalFields(option, `${path}|${index}`, seen));
+    }
+    if (schema instanceof z.ZodEffects) return unsafeOptionalFields(schema.innerType(), path, seen);
+    if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
+      return unsafeOptionalFields(schema.unwrap(), path, seen);
+    }
+    if (schema instanceof z.ZodDefault) return unsafeOptionalFields(schema.removeDefault(), path, seen);
+    if (schema instanceof z.ZodRecord) return unsafeOptionalFields(schema.valueSchema, `${path}{}`, seen);
+    return [];
+  }
+
+  it("detects a bare .optional() field", () => {
+    const schema = z.object({ nested: z.object({ note: z.string().optional() }) });
+    expect(unsafeOptionalFields(schema, "root", new Set())).toEqual(["root.nested.note"]);
+  });
+
+  it("accepts .nullish() and .default() fields", () => {
+    const schema = z.object({ a: z.string().nullish(), b: z.string().default("x"), c: z.string().nullable() });
+    expect(unsafeOptionalFields(schema, "root", new Set())).toEqual([]);
+  });
+
+  it("every structured capability output schema is strict-mode safe", () => {
+    for (const cap of Object.values(CAPABILITIES)) {
+      if (cap.delivery !== "structured") continue;
+      expect({ [cap.id]: unsafeOptionalFields(cap.outputSchema, cap.id, new Set()) })
+        .toEqual({ [cap.id]: [] });
+    }
   });
 });
 
