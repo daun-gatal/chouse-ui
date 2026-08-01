@@ -284,24 +284,22 @@ auth:
 
 ---
 
-## Deployment caveat: multi-replica SAML
+## Multi-replica SAML
 
-The SP-initiated SAML flow keeps several short-lived caches **in process**:
+SAML is safe across replicas. The three short-lived stores the flow depends on —
+request ids (for `InResponseTo` validation), seen assertion ids (replay
+protection), and the one-time ACS→login handoff codes — live in the RBAC
+database, not in process memory
+([ADR 0010](adr/0010-pod-local-state-and-multi-replica-correctness.md)). No
+sticky sessions are required.
 
-- request ids (for `InResponseTo` validation),
-- seen assertion ids (replay protection),
-- the one-time ACS→login handoff codes.
+> **Before v3.12.0** these were per-process Maps. On a multi-replica deployment
+> that broke SP-initiated login roughly (N-1)/N of the time, and — more
+> seriously — made replay protection ineffective, since the same assertion could
+> be replayed against a replica that had not seen it. If you ran multi-replica
+> SAML on an older version, upgrading closes that gap.
 
-With more than one replica behind a load balancer, an SP-initiated SAML response
-may land on a different replica than the one that issued the request, breaking
-validation. For multi-replica SAML, either:
-
-- enable **sticky sessions** (session affinity) at the load balancer, or
-- run a single replica for the SAML SP, or
-- track the work to externalize these caches (e.g. shared store).
-
-OIDC/OAuth2 flows do not have this constraint (state travels in a signed cookie).
-See the Helm chart issue for status.
+OIDC/OAuth2 flows never had this constraint (state travels in a signed cookie).
 
 ---
 
@@ -316,7 +314,8 @@ See the Helm chart issue for status.
 - **SAML "Destination/Audience" errors.** The ACS URL at the IdP must be
   `<base_url>/auth/sso/saml/acs`; the SP entity id / audience must equal
   `saml_sp_entity_id`.
-- **SAML works for one user but fails intermittently.** Likely multiple replicas
-  without sticky sessions — see the [deployment caveat](#deployment-caveat-multi-replica-saml).
+- **SAML works for one user but fails intermittently.** On v3.12.0+ this is no
+  longer a replica-count problem — see [Multi-replica SAML](#multi-replica-saml).
+  Check clock skew between the IdP and the server first.
 - **Set `LOG_LEVEL=debug`** to log the non-sensitive SAML envelope fields
   (audience, destination, `InResponseTo`, clock) that cause most failures.

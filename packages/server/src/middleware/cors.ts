@@ -17,7 +17,7 @@ export interface CorsOptions {
 const defaultOptions: CorsOptions = {
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Session-ID"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Session-ID", "X-Connection-Id"],
   exposedHeaders: ["X-Session-ID"],
   credentials: true,
   maxAge: 86400,

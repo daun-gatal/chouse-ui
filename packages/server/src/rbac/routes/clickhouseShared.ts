@@ -5,26 +5,38 @@
 
 import type { Context } from 'hono';
 import { z } from 'zod';
-import { getSession, type ClickHouseService } from '../../services/clickhouse';
+import type { ClickHouseService } from '../../services/clickhouse';
+import { CONNECTION_ID_HEADER, CONNECTION_ID_COOKIE, getCookie } from '../../middleware/connectionContext';
+import {
+  resolveDefaultConnection,
+  resolveRequestedConnection,
+} from '../../services/connectionResolver';
 
-/** Resolve the active ClickHouseService from the X-Session-ID header. */
-export function getClickHouseService(c: Context): ClickHouseService {
-  const sessionId = c.req.header('X-Session-ID');
-  if (!sessionId) {
-    throw new Error('No active ClickHouse session. Please connect to a ClickHouse server first.');
+/**
+ * Resolve the ClickHouseService for this request (ADR 0010).
+ *
+ * Previously this read a pod-local session map, so these admin routes managed
+ * native ClickHouse users and roles on whichever cluster the serving replica
+ * happened to have a session for — a particularly bad thing to get wrong.
+ * Resolution is now per request, from the connection the client names.
+ */
+export async function getClickHouseService(c: Context): Promise<ClickHouseService> {
+  const rbacUserId = c.get('rbacUserId') as string | undefined;
+  if (!rbacUserId) {
+    throw new Error('RBAC authentication is required. Please login first.');
   }
-  const sessionData = getSession(sessionId);
-  if (!sessionData) {
-    throw new Error('ClickHouse session not found. Please reconnect.');
-  }
-  return sessionData.service;
+  const isSuperAdmin = ((c.get('rbacRoles') as string[] | undefined) ?? []).includes('super_admin');
+  const connectionId = getConnectionId(c);
+
+  const resolved = connectionId
+    ? await resolveRequestedConnection(rbacUserId, isSuperAdmin, connectionId)
+    : await resolveDefaultConnection(rbacUserId, isSuperAdmin);
+  return resolved.service;
 }
 
-/** The RBAC connection id backing the active session, if any. */
+/** The RBAC connection id this request names, if any. */
 export function getConnectionId(c: Context): string | undefined {
-  const sessionId = c.req.header('X-Session-ID');
-  if (!sessionId) return undefined;
-  return getSession(sessionId)?.session?.rbacConnectionId;
+  return c.req.header(CONNECTION_ID_HEADER) || getCookie(c, CONNECTION_ID_COOKIE);
 }
 
 function isSessionError(error: unknown): boolean {

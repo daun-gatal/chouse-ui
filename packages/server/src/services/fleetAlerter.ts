@@ -23,6 +23,12 @@
  */
 
 import { logger } from "../utils/logger";
+import {
+  getLastAutoRcaAt,
+  loadLatches,
+  persistLatches,
+  setLastAutoRcaAt,
+} from "./fleetAlertLatchStore";
 import { listRules, getRuleChannelsDecrypted, recordEvent } from "./alerting/store";
 import { ChannelType, AlertSourceType, AlertSeverity } from "./alerting/types";
 import type { DoctorReport } from "./ai/capabilities/fleetScan";
@@ -33,7 +39,6 @@ const AUTO_RCA_COOLDOWN_MS =
   (Number(process.env.DOCTOR_AUTO_RCA_COOLDOWN_MINUTES) > 0
     ? Number(process.env.DOCTOR_AUTO_RCA_COOLDOWN_MINUTES)
     : 15) * 60 * 1000;
-let lastAutoRcaAt = 0;
 
 interface AlertRules {
   memoryPercent: number; // node memory %, 0 = off
@@ -123,7 +128,8 @@ interface Breach {
 }
 
 // Per-(node, rule[, query]) latch — fire only on the healthy → breach edge.
-const armed = new Map<string, boolean>();
+// Persisted in `fleet_alert_latches` (ADR 0010) and loaded per tick, so the
+// edge survives the poller lease moving between replicas.
 
 function num(v: unknown): number {
   const n = Number(v);
@@ -818,6 +824,13 @@ export async function processTick(
     // Latch keys are namespaced by ruleId so independent rules don't share state.
     const seenQueryKeys = new Set<string>();
 
+    // ADR 0010: latches live in the database so lease failover resumes them
+    // instead of re-arming from empty and re-firing every standing breach.
+    // Loaded per tick, written back at the end as a delta.
+    const armed = await loadLatches();
+    const latchChanges = new Map<string, boolean>();
+    const latchRemovals = new Set<string>();
+
     // Evaluate every enabled rule against the snapshots; deliver each rule's
     // breaches to that rule's own channels, and fire per-rule auto-RCA.
     for (const config of configs) {
@@ -832,9 +845,11 @@ export async function processTick(
           const wasArmed = armed.get(key) ?? false;
           if (r.breaching && !wasArmed) {
             armed.set(key, true);
+            latchChanges.set(key, true);
             fires.push({ node, metric: r.metric, summary: r.summary, user: r.user, detail: r.detail });
           } else if (r.clearing && wasArmed) {
             armed.set(key, false);
+            latchChanges.set(key, false);
           }
         }
       }
@@ -857,8 +872,9 @@ export async function processTick(
       // root-cause analysis is delivered to this rule's channels. Cooldown is
       // global (shared lastAutoRcaAt) so a breach storm across rules can't spawn a
       // scan storm; the timestamp is set BEFORE the (slow) scan to prevent re-entry.
+      const lastAutoRcaAt = await getLastAutoRcaAt();
       if (config.aiRcaOnBreach && fires.length > 0 && Date.now() - lastAutoRcaAt >= AUTO_RCA_COOLDOWN_MS) {
-        lastAutoRcaAt = Date.now();
+        await setLastAutoRcaAt(Date.now());
         const triggers = fires.map((b) => `${b.node} — ${b.metric}: ${b.summary}`);
         void runAutoRca(config.channels, config.aiRcaModelId, triggers);
       }
@@ -869,8 +885,12 @@ export async function processTick(
     for (const k of [...armed.keys()]) {
       if (k.split(":").length === 4 && armed.get(k) && !seenQueryKeys.has(k)) {
         armed.delete(k);
+        latchChanges.delete(k);
+        latchRemovals.add(k);
       }
     }
+
+    await persistLatches(latchChanges, latchRemovals);
   } catch (err) {
     logger.error({ module: "FleetAlerter", err: err instanceof Error ? err.message : String(err) }, "processTick failed");
   }

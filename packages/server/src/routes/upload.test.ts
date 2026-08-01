@@ -1,19 +1,30 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { Hono } from "hono";
-import upload from "./upload";
 import { errorHandler } from "../middleware/error";
 
-// Mock dependencies
+// Mock dependencies.
+//
+// ADR 0010: the route no longer looks a session up in a pod-local map — it takes
+// its ClickHouseService from the shared connection-context middleware, so that
+// is what the tests stub.
 const mockInsertStream = mock(() => Promise.resolve({ queryId: "test-id" }));
-const mockGetSession = mock(() => ({
-    service: {
-        insertStream: mockInsertStream
-    }
+let authorized = true;
+
+mock.module("../middleware/connectionContext", () => ({
+    CONNECTION_ID_HEADER: "X-Connection-Id",
+    CONNECTION_ID_COOKIE: "ch_connection",
+    connectionContextMiddleware: async (c: any, next: any) => {
+        if (!authorized) {
+            const { AppError } = await import("../types");
+            throw AppError.unauthorized("RBAC authentication is required.");
+        }
+        c.set("service", { insertStream: mockInsertStream });
+        await next();
+    },
 }));
 
-mock.module("../services/clickhouse", () => ({
-    getSession: mockGetSession
-}));
+// Imported AFTER mock.module so the route picks up the stubbed middleware.
+const upload = (await import("./upload")).default;
 
 describe("Upload Routes", () => {
     // Setup Hono app for testing
@@ -23,7 +34,7 @@ describe("Upload Routes", () => {
 
     beforeEach(() => {
         mockInsertStream.mockClear();
-        mockGetSession.mockClear();
+        authorized = true;
     });
 
     describe("POST /preview", () => {
@@ -64,7 +75,7 @@ describe("Upload Routes", () => {
             const res = await app.request("/upload/create?database=default&table=test", {
                 method: "POST",
                 headers: {
-                    "x-clickhouse-session-id": "valid-session"
+                    "X-Connection-Id": "conn-1"
                 },
                 body: "csv,data\n1,2"
             });
@@ -74,7 +85,6 @@ describe("Upload Routes", () => {
             expect(json.success).toBe(true);
             expect(json.data.queryId).toBe("test-id");
 
-            expect(mockGetSession).toHaveBeenCalledWith("valid-session");
             expect(mockInsertStream).toHaveBeenCalled();
         });
 
@@ -82,7 +92,7 @@ describe("Upload Routes", () => {
             const res = await app.request("/upload/create", { // Missing params
                 method: "POST",
                 headers: {
-                    "x-clickhouse-session-id": "valid-session"
+                    "X-Connection-Id": "conn-1"
                 },
                 body: "data"
             });
@@ -91,12 +101,12 @@ describe("Upload Routes", () => {
         });
 
         it("should return 401 if unauthorized", async () => {
-            mockGetSession.mockImplementationOnce(() => undefined as any); // Invalid session
+            authorized = false;
 
             const res = await app.request("/upload/create?database=default&table=test", {
                 method: "POST",
                 headers: {
-                    "x-clickhouse-session-id": "invalid-session"
+                    "X-Connection-Id": "conn-1"
                 },
                 body: "data"
             });

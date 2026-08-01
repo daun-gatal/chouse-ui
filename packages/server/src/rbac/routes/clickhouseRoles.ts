@@ -50,7 +50,7 @@ const updateRoleSchema = z.object({
 // curated static catalog if the server query fails).
 clickhouseRolesRoutes.get('/privileges', rbacAuthMiddleware, requirePermission('clickhouse:roles:view'), async (c) => {
   try {
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const privileges = await listClickHousePrivileges(service);
     return c.json({ success: true, data: privileges });
   } catch (error) {
@@ -63,7 +63,7 @@ clickhouseRolesRoutes.get('/privileges', rbacAuthMiddleware, requirePermission('
 // List roles.
 clickhouseRolesRoutes.get('/', rbacAuthMiddleware, requirePermission('clickhouse:roles:view'), async (c) => {
   try {
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const roles = await listClickHouseRoles(service, getConnectionId(c));
     return c.json({ success: true, data: roles });
   } catch (error) {
@@ -76,7 +76,7 @@ clickhouseRolesRoutes.get('/', rbacAuthMiddleware, requirePermission('clickhouse
 // Get one role with grants.
 clickhouseRolesRoutes.get('/:name', rbacAuthMiddleware, requirePermission('clickhouse:roles:view'), async (c) => {
   try {
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const name = decodeURIComponent(requireParam(c, 'name'));
     const role = await getClickHouseRole(service, name);
     if (!role) {
@@ -109,7 +109,7 @@ clickhouseRolesRoutes.post('/generate-ddl', rbacAuthMiddleware, requirePermissio
 clickhouseRolesRoutes.post('/', rbacAuthMiddleware, requirePermission('clickhouse:roles:create'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const parsed = createRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
@@ -141,7 +141,7 @@ clickhouseRolesRoutes.post('/:name/generate-ddl', rbacAuthMiddleware, requirePer
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
     }
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const current = await getRoleGrants(service, name);
     const ddl = generateRoleDiffDDL(name, current, parsed.data.grants, parsed.data.cluster);
     return c.json({ success: true, data: { statements: ddl, fullDDL: ddl.map((s) => `${s};`).join('\n') } });
@@ -155,7 +155,7 @@ clickhouseRolesRoutes.post('/:name/generate-ddl', rbacAuthMiddleware, requirePer
 clickhouseRolesRoutes.patch('/:name', rbacAuthMiddleware, requirePermission('clickhouse:roles:update'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const name = decodeURIComponent(requireParam(c, 'name'));
     const parsed = updateRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -183,7 +183,7 @@ clickhouseRolesRoutes.patch('/:name', rbacAuthMiddleware, requirePermission('cli
 clickhouseRolesRoutes.delete('/:name', rbacAuthMiddleware, requirePermission('clickhouse:roles:delete'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const name = decodeURIComponent(requireParam(c, 'name'));
     const cluster = c.req.query('cluster') || undefined;
 
@@ -216,7 +216,7 @@ function requireConnection(c: import('hono').Context): string {
 clickhouseRolesRoutes.post('/:name/disable', rbacAuthMiddleware, requirePermission('clickhouse:roles:update'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const name = decodeURIComponent(requireParam(c, 'name'));
     const cluster = c.req.query('cluster') || undefined;
 
@@ -241,7 +241,7 @@ clickhouseRolesRoutes.post('/:name/disable', rbacAuthMiddleware, requirePermissi
 clickhouseRolesRoutes.post('/:name/enable', rbacAuthMiddleware, requirePermission('clickhouse:roles:update'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const name = decodeURIComponent(requireParam(c, 'name'));
     const cluster = c.req.query('cluster') || undefined;
 

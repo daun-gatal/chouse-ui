@@ -4,7 +4,10 @@
  * Tests for /rbac/auth/sso/providers, /:provider/start, /callback
  */
 
-import { describe, it, expect, mock, beforeEach, afterAll } from "bun:test";
+import { describe, it, expect, mock, beforeEach, afterEach, afterAll } from "bun:test";
+import { closeDatabase } from "../db";
+import { runMigrations } from "../db/migrations";
+import { freshDatabase } from "../db/migrationTestHarness";
 import { Hono } from "hono";
 import { errorHandler } from "../../middleware/error";
 import { signStatePayload, SSO_STATE_COOKIE, SSO_STATE_TTL_SECONDS } from "./state";
@@ -1016,17 +1019,25 @@ function makeSamlConfig(
 describe("SAML routes", () => {
   let app: Hono;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockGetSsoConfig.mockClear();
     mockBuildAuthorizationRedirect.mockClear();
     mockExchangeCodeForIdentity.mockClear();
     mockProvisionSsoUser.mockClear();
     mockCreateAuditLogWithContext.mockClear();
-    // Module-level caches shared across tests; fixtures reuse a fixed assertion
-    // ID + request id, so reset all of them to keep each test independent.
-    resetHandoffState();
-    resetSamlRequestCache();
+    // The handoff/replay/request-id stores are database-backed (ADR 0010), so
+    // each test gets a fresh migrated database. Fixtures reuse a fixed assertion
+    // ID + request id, so the reset helpers still run to keep tests independent
+    // regardless of ordering.
+    await freshDatabase("sqlite");
+    await runMigrations();
+    await resetHandoffState();
+    await resetSamlRequestCache();
     app = buildApp();
+  });
+
+  afterEach(async () => {
+    await closeDatabase();
   });
 
   afterAll(() => {
@@ -1241,7 +1252,7 @@ describe("SAML routes", () => {
 
   it("POST /saml/exchange returns user+tokens+redirect for a fresh code, then 401 on reuse", async () => {
     mockGetSsoConfig.mockReturnValue(makeSamlConfig("placeholder"));
-    const code = stashTokens(
+    const code = await stashTokens(
       {
         user: { id: "user-ex", username: "ex" } as never,
         tokens: { accessToken: "at-ex", refreshToken: "rt-ex" } as never,

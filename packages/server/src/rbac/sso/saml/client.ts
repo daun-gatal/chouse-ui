@@ -4,9 +4,10 @@
  * Signature verification is mandatory (wantAssertionsSigned) and delegated to
  * node-saml's vetted XML-DSig — never bypassed.
  *
- * InResponseTo is enforced via a single module-level request-ID cache shared by
- * the /start build path and the ACS validate path: the request id issued when
- * the AuthnRequest is built is found again at the ACS. node-saml's
+ * InResponseTo is enforced via a database-backed request-ID cache shared by the
+ * /start build path and the ACS validate path — across replicas, not just
+ * across SAML() instances (ADR 0010): the request id issued when the
+ * AuthnRequest is built is found again at the ACS. node-saml's
  * `ValidateInResponseTo.ifPresent` validates InResponseTo against this cache
  * when present (closing assertion-injection / login-CSRF) while allowing it to
  * be absent for genuinely IdP-initiated flows.
@@ -20,7 +21,9 @@ import {
   type CacheProvider,
   type CacheItem,
 } from "@node-saml/node-saml";
+import { sql } from "drizzle-orm";
 import type { SsoIdentity } from "../client";
+import { rawAll, rawRun } from "../../db/raw";
 
 export interface SamlProviderConfig {
   id: string;
@@ -69,36 +72,51 @@ const NO_VERIFY_CERT_PLACEHOLDER =
 // state cookie TTL (600s). node-saml stores `id -> issueInstant` and removes the
 // entry on a successful validate, so a request id is effectively one-time-use.
 const REQUEST_ID_TTL_MS = 10 * 60 * 1000;
-const requestIds = new Map<string, { value: string; ts: number }>();
 
-function sweepRequestIds(now: number): void {
-  for (const [k, v] of requestIds) {
-    if (now - v.ts >= REQUEST_ID_TTL_MS) requestIds.delete(k);
-  }
+async function sweepRequestIds(now: number): Promise<void> {
+  await rawRun(sql`DELETE FROM rbac_saml_request_ids WHERE expires_at <= ${now}`);
 }
 
+/**
+ * Backed by `rbac_saml_request_ids` rather than a Map (ADR 0010): the
+ * AuthnRequest is built at /start on one replica and the matching Response is
+ * validated at the ACS on another, so a process-local cache made SP-initiated
+ * SAML fail roughly (N-1)/N of the time behind multiple replicas.
+ *
+ * node-saml stores `id -> issueInstant` and removes the entry on successful
+ * validation, which makes a request id one-time-use — a property that only
+ * actually holds if the store is shared.
+ */
 const samlRequestCache: CacheProvider = {
   async saveAsync(key: string, value: string): Promise<CacheItem | null> {
     const now = Date.now();
-    sweepRequestIds(now);
-    if (requestIds.has(key)) return null; // node-saml semantics: don't overwrite
-    requestIds.set(key, { value, ts: now });
+    await sweepRequestIds(now);
+    // node-saml semantics: never overwrite an existing entry. ON CONFLICT DO
+    // NOTHING makes that atomic, so two replicas cannot both claim one id.
+    const rows = await rawAll(sql`
+      INSERT INTO rbac_saml_request_ids (request_id, value, expires_at)
+      VALUES (${key}, ${value}, ${now + REQUEST_ID_TTL_MS})
+      ON CONFLICT (request_id) DO NOTHING
+      RETURNING request_id
+    `);
+    if (rows.length === 0) return null;
     return { value, createdAt: now };
   },
   async getAsync(key: string): Promise<string | null> {
-    sweepRequestIds(Date.now());
-    return requestIds.get(key)?.value ?? null;
+    await sweepRequestIds(Date.now());
+    const rows = await rawAll(sql`SELECT value FROM rbac_saml_request_ids WHERE request_id = ${key}`);
+    return rows.length > 0 ? String(rows[0].value) : null;
   },
   async removeAsync(key: string | null): Promise<string | null> {
     if (key == null) return null;
-    requestIds.delete(key);
+    await rawRun(sql`DELETE FROM rbac_saml_request_ids WHERE request_id = ${key}`);
     return key; // contract: return the removed key
   },
 };
 
-/** Test-only: clear the shared request-ID cache between tests. */
-export function resetSamlRequestCache(): void {
-  requestIds.clear();
+/** Test-only: clear the shared request-ID table between tests. */
+export async function resetSamlRequestCache(): Promise<void> {
+  await rawRun(sql`DELETE FROM rbac_saml_request_ids`);
 }
 
 /** Test-only: pre-seed a request id into the shared cache (mirrors /start). */

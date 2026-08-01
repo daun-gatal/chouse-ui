@@ -25,7 +25,12 @@ import { requestLogger } from '../../utils/logger';
 import { rbacAuthMiddleware, requirePermission, getRbacUser, getClientIp } from '../middleware';
 import { createAuditLogWithContext } from '../services/rbac';
 import { AUDIT_ACTIONS, PERMISSIONS } from '../schema/base';
-import { ClickHouseService, createSession, destroySession, getSession } from '../../services/clickhouse';
+import { ClickHouseService } from '../../services/clickhouse';
+import { getConnectionId } from './clickhouseShared';
+import {
+  getConnectionFacts,
+  resolveRequestedConnection,
+} from '../../services/connectionResolver';
 import type { ConnectionConfig } from '../../types';
 
 const connectionsRoutes = new Hono();
@@ -524,17 +529,11 @@ connectionsRoutes.post(
         testService.checkIsAdmin(),
       ]);
 
-      // Create session with RBAC connection ID and user ID
+      // ADR 0010: no server-side session is created. The id below is an opaque
+      // correlation handle for the client's logs/telemetry only — every
+      // subsequent request states its connection via X-Connection-Id and is
+      // resolved and authorised from the database, on any replica.
       const sessionId = randomUUID();
-      createSession(sessionId, config, {
-        createdAt: new Date(),
-        lastUsedAt: new Date(),
-        isAdmin: adminStatus.isAdmin,
-        permissions: adminStatus.permissions,
-        version,
-        rbacConnectionId: connection.id, // Store which RBAC connection this session uses
-        rbacUserId: user.sub, // Store which RBAC user owns this session
-      });
 
       // Log audit event
       await createAuditLogWithContext(c, AUDIT_ACTIONS.CONNECTION_CONNECT, user.sub, {
@@ -583,12 +582,8 @@ connectionsRoutes.post(
   rbacAuthMiddleware,
   async (c) => {
     try {
-      const sessionId = c.req.header('X-Session-ID');
-
-      if (sessionId) {
-        await destroySession(sessionId);
-      }
-
+      // ADR 0010: connections hold no per-pod server state, so disconnecting is
+      // purely a client-side act. Kept so the client contract is unchanged.
       return c.json({
         success: true,
         data: { disconnected: true },
@@ -612,33 +607,29 @@ connectionsRoutes.get(
   rbacAuthMiddleware,
   async (c) => {
     try {
-      const sessionId = c.req.header('X-Session-ID');
-
-      if (!sessionId) {
-        return c.json({
-          success: true,
-          data: { connected: false },
-        });
+      // ADR 0010: "connected" is now a property of the named connection, not of
+      // a session this particular replica happens to hold. Resolve and probe it
+      // the same way any other request would.
+      const user = getRbacUser(c);
+      const connectionId = getConnectionId(c);
+      if (!connectionId) {
+        return c.json({ success: true, data: { connected: false } });
       }
 
-      const sessionData = getSession(sessionId);
-
-      if (!sessionData) {
-        return c.json({
-          success: true,
-          data: { connected: false },
-        });
-      }
+      const isSuperAdmin = (user.roles ?? []).includes('super_admin');
+      const resolved = await resolveRequestedConnection(user.sub, isSuperAdmin, connectionId);
+      const facts = await getConnectionFacts(resolved.service, connectionId, user.sub);
 
       return c.json({
         success: true,
         data: {
           connected: true,
-          sessionId,
-          username: sessionData.session.connectionConfig.username,
-          isAdmin: sessionData.session.isAdmin,
-          permissions: sessionData.session.permissions,
-          version: sessionData.session.version,
+          sessionId: c.req.header('X-Session-ID') ?? null,
+          connectionId,
+          username: resolved.config.username,
+          isAdmin: facts.isAdmin,
+          permissions: facts.permissions,
+          version: facts.version,
         },
       });
     } catch (error) {

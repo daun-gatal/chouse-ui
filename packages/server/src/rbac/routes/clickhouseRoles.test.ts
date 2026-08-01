@@ -36,8 +36,13 @@ mock.module("../services/rbac", () => ({
 }));
 
 const mockCHService = { executeQuery: mock(async () => ({ data: [] })) };
-const mockGetSession = mock();
-mock.module("../../services/clickhouse", () => ({ getSession: mockGetSession }));
+const sharedActual = await import("./clickhouseShared");
+const mockGetClickHouseService = mock(async () => mockCHService);
+// ADR 0010: resolve per request from the named connection, not a session map.
+mock.module("./clickhouseShared", () => ({
+    ...sharedActual,
+    getClickHouseService: mockGetClickHouseService,
+}));
 
 let mockTokenPayload = {
     sub: 'admin-id',
@@ -55,7 +60,8 @@ mock.module("../services/jwt", () => ({
 import clickhouseRolesRoutes from "./clickhouseRoles";
 import { errorHandler } from "../../middleware/error";
 
-const authHeaders = { "Authorization": "Bearer token", "X-Session-ID": "s1" };
+// ADR 0010: clients name the connection they are acting on.
+const authHeaders = { "Authorization": "Bearer token", "X-Connection-Id": "conn1" };
 const jsonHeaders = { ...authHeaders, "Content-Type": "application/json" };
 
 describe("RBAC ClickHouse Roles Routes", () => {
@@ -65,7 +71,7 @@ describe("RBAC ClickHouse Roles Routes", () => {
         app = new Hono();
         app.onError(errorHandler);
         app.route("/ch-roles", clickhouseRolesRoutes);
-        for (const m of [mockListClickHouseRoles, mockGetClickHouseRole, mockGetRoleGrants, mockCreateClickHouseRole, mockUpdateClickHouseRole, mockDeleteClickHouseRole, mockDisableClickHouseRole, mockEnableClickHouseRole, mockCreateAuditLogWithContext, mockGetSession, mockCHService.executeQuery]) {
+        for (const m of [mockListClickHouseRoles, mockGetClickHouseRole, mockGetRoleGrants, mockCreateClickHouseRole, mockUpdateClickHouseRole, mockDeleteClickHouseRole, mockDisableClickHouseRole, mockEnableClickHouseRole, mockCreateAuditLogWithContext, mockGetClickHouseService, mockCHService.executeQuery]) {
             m.mockClear();
         }
         mockTokenPayload = {
@@ -74,7 +80,7 @@ describe("RBAC ClickHouse Roles Routes", () => {
             permissions: ['clickhouse:roles:view', 'clickhouse:roles:create', 'clickhouse:roles:update', 'clickhouse:roles:delete'],
             sessionId: 'sess-1',
         };
-        mockGetSession.mockReturnValue({ service: mockCHService, session: { rbacConnectionId: "conn1" } });
+        mockGetClickHouseService.mockImplementation(async () => mockCHService);
     });
 
     afterAll(() => mock.restore());

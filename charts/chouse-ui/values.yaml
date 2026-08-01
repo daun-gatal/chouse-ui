@@ -203,6 +203,17 @@ service:
   port: 80
   # -- Extra annotations for the Service.
   annotations: {}
+  # -- Service `sessionAffinity` (`ClientIP` or `None`). Since ADR 0010 the app
+  # keeps no request-authoritative state in pod memory, so multi-replica is
+  # correct WITHOUT stickiness and you should not need this. It remains
+  # available for operators who want a client pinned to one pod for other
+  # reasons (e.g. warm per-pod caches). Note that behind an ingress controller
+  # or mesh proxy every request appears to come from the proxy's IP, which
+  # collapses `ClientIP` affinity onto a single pod — prefer cookie affinity at
+  # your ingress if you need stickiness.
+  sessionAffinity: ""
+  # -- Session stickiness timeout when `sessionAffinity: ClientIP`.
+  sessionAffinityTimeoutSeconds: 10800
 
 ingress:
   # -- Expose the UI through an Ingress.

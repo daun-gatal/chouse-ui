@@ -1,6 +1,6 @@
 # chouse-ui
 
-![Version: 1.1.2](https://img.shields.io/badge/Version-1.1.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.11.1](https://img.shields.io/badge/AppVersion-3.11.1-informational?style=flat-square)
+![Version: 1.2.0](https://img.shields.io/badge/Version-1.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.11.1](https://img.shields.io/badge/AppVersion-3.11.1-informational?style=flat-square)
 
 A modern web interface for ClickHouse with built-in RBAC, fleet monitoring, scheduled queries, data health checks, and an AI SRE.
 
@@ -241,6 +241,8 @@ Kubernetes: `>=1.25.0-0`
 | secrets.jwtSecret | string | `""` | JWT signing secret, min 32 chars. Generate: `openssl rand -base64 32`. |
 | service.annotations | object | `{}` | Extra annotations for the Service. |
 | service.port | int | `80` | Service port (targets the fixed container port 5521). |
+| service.sessionAffinity | string | `""` | Service `sessionAffinity` (`ClientIP` or `None`). Since ADR 0010 the app keeps no request-authoritative state in pod memory, so multi-replica is correct WITHOUT stickiness and you should not need this. It remains available for operators who want a client pinned to one pod for other reasons (e.g. warm per-pod caches). Note that behind an ingress controller or mesh proxy every request appears to come from the proxy's IP, which collapses `ClientIP` affinity onto a single pod — prefer cookie affinity at your ingress if you need stickiness. |
+| service.sessionAffinityTimeoutSeconds | int | `10800` | Session stickiness timeout when `sessionAffinity: ClientIP`. |
 | service.type | string | `"ClusterIP"` | Service type. |
 | serviceAccount.annotations | object | `{}` | Annotations for the ServiceAccount. |
 | serviceAccount.create | bool | `true` | Create a ServiceAccount for the pods. |

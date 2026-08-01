@@ -2,11 +2,14 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { InferenceService } from "../services/inference";
-import { getSession } from "../services/clickhouse";
+import {
+    connectionContextMiddleware,
+    type ConnectionContextVariables,
+} from "../middleware/connectionContext";
 import { AppError } from "../types";
 import { Readable, PassThrough } from "stream";
 
-const upload = new Hono();
+const upload = new Hono<{ Variables: ConnectionContextVariables }>();
 const inferenceService = new InferenceService();
 
 // Schema for create table/insert parameters
@@ -66,22 +69,17 @@ upload.post("/preview", async (c) => {
  */
 upload.post(
     "/create",
+    connectionContextMiddleware,
     zValidator("query", createParams),
     async (c) => {
         const { database, table, format, hasHeader, columns } = c.req.valid("query");
-        const sessionId = c.req.header("x-clickhouse-session-id");
         const hasHeaderBool = hasHeader !== "false";
 
         const columnArray = columns ? columns.split(',') : undefined;
 
-        if (!sessionId) {
-            throw AppError.unauthorized("Session ID required");
-        }
-
-        const sessionEntry = getSession(sessionId);
-        if (!sessionEntry) {
-            throw AppError.unauthorized("Invalid or expired session");
-        }
+        // The ClickHouse service comes from the shared per-request connection
+        // context (ADR 0010), not a pod-local session lookup.
+        const service = c.get("service");
 
         const settings: Record<string, string | number> = {};
         if (hasHeaderBool) {
@@ -141,7 +139,7 @@ upload.post(
                 nodeStream = c.req.raw.body as any;
             }
 
-            const result = await sessionEntry.service.insertStream(
+            const result = await service.insertStream(
                 database,
                 table,
                 nodeStream,

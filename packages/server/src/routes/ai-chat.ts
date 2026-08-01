@@ -9,11 +9,12 @@ import { Hono, type Context, type Next } from "hono";
 import { rateLimiter } from "hono-rate-limiter";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { AppError, type Session } from "../types";
+import { AppError } from "../types";
 import { optionalRbacMiddleware } from "../middleware/dataAccess";
-import { getSession } from "../services/clickhouse";
-import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
-import { ClickHouseService } from "../services/clickhouse";
+import {
+  connectionContextMiddleware,
+  type ConnectionContextVariables,
+} from "../middleware/connectionContext";
 import { userHasPermission } from "../rbac/services/rbac";
 import { PERMISSIONS } from "../rbac/schema/base";
 import { isAIEnabled } from "../services/aiConfig";
@@ -35,16 +36,7 @@ import { logger, requestLogger } from "../utils/logger";
 // Types
 // ============================================
 
-type Variables = {
-    sessionId?: string;
-    service: ClickHouseService;
-    session?: Session;
-    rbacUserId?: string;
-    rbacRoles?: string[];
-    rbacPermissions?: string[];
-    isRbacAdmin?: boolean;
-    rbacConnectionId?: string;
-};
+type Variables = ConnectionContextVariables;
 
 const aiChat = new Hono<{ Variables: Variables }>();
 
@@ -112,11 +104,6 @@ function stripScratchpad(text: string): string {
 }
 
 // Helper to get cookie value
-function getCookie(c: Context, name: string): string | undefined {
-    const cookies = c.req.header("Cookie") || "";
-    const match = cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-    return match ? decodeURIComponent(match[1]) : undefined;
-}
 
 // ============================================
 // Auth Middleware (reuses same pattern as query routes)
@@ -145,85 +132,9 @@ async function chatAuthMiddleware(c: Context<{ Variables: Variables }>, next: Ne
         }
     }
 
-    // Try session-based ClickHouse connection first
-    const sessionId = c.req.header("X-Session-ID") || getCookie(c, "ch_session");
-    if (sessionId) {
-        const sessionData = getSession(sessionId);
-        if (sessionData) {
-            // Validate session ownership
-            if (sessionData.session.rbacUserId && sessionData.session.rbacUserId !== rbacUserId) {
-                throw AppError.forbidden("Session does not belong to current user.");
-            }
-            c.set("sessionId", sessionId);
-            c.set("service", sessionData.service);
-            c.set("session", sessionData.session);
-            c.set("rbacConnectionId", sessionData.session.rbacConnectionId);
-            await next();
-            return;
-        }
-    }
-
-    // RBAC-based connection (same logic as query route)
-    const rbacRoles = c.get("rbacRoles");
-    const isSuperAdmin = rbacRoles?.includes('super_admin') || false;
-
-    let connections: Awaited<ReturnType<typeof getUserConnections>>;
-    if (isSuperAdmin) {
-        const { listConnections } = await import("../rbac/services/connections");
-        const result = await listConnections({ activeOnly: true });
-        connections = result.connections;
-    } else {
-        connections = await getUserConnections(rbacUserId);
-    }
-
-    if (connections.length === 0) {
-        throw AppError.unauthorized("No ClickHouse connection available.");
-    }
-
-    const defaultConnection = connections.find((conn) => conn.isDefault && conn.isActive);
-    const activeConnection = defaultConnection || connections.find((conn) => conn.isActive);
-
-    if (!activeConnection) {
-        throw AppError.unauthorized("No active ClickHouse connection found.");
-    }
-
-    const connection = await getConnectionWithPassword(activeConnection.id);
-    if (!connection) {
-        throw AppError.unauthorized("Connection not found.");
-    }
-
-    const protocol = connection.sslEnabled ? 'https' : 'http';
-    const url = `${protocol}://${connection.host}:${connection.port}`;
-
-    const service = new ClickHouseService({
-        url,
-        username: connection.username,
-        password: connection.password || "",
-        database: connection.database || undefined,
-    }, { rbacUserId });
-
-    c.set("service", service);
-    c.set("rbacConnectionId", connection.id);
-
-    // Create minimal session
-    const session: Session = {
-        id: `ai_chat_${rbacUserId}_${Date.now()}`,
-        connectionConfig: {
-            url,
-            username: connection.username,
-            password: connection.password || "",
-            database: connection.database || undefined,
-        },
-        createdAt: new Date(),
-        lastUsedAt: new Date(),
-        isAdmin: false,
-        permissions: [],
-        version: "unknown",
-        rbacConnectionId: connection.id,
-    };
-    c.set("session", session);
-
-    await next();
+    // Connection resolution is shared and per-request (ADR 0010); the AI chat
+    // permission gate above runs first.
+    await connectionContextMiddleware(c, next);
 }
 
 // Apply auth middleware

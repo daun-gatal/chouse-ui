@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.47.0';
+export const APP_VERSION = '1.50.0';
 
 // ============================================
 // Error Helpers
@@ -4510,6 +4510,145 @@ export const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS data_health_promises_upstream_idx ON data_health_promises (upstream_job_id)`);
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.47.0] Added upstream_job_id to data_health_promises (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.48.0',
+    name: 'saml_shared_handoff_state',
+    description: 'ADR 0010 — move the SAML token-handoff codes and the assertion replay cache out of process memory into shared tables, so the ACS POST and the SPA code exchange can land on different replicas and replay protection is global rather than per-pod.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saml_handoff_codes (
+            code       TEXT PRIMARY KEY NOT NULL,
+            payload    TEXT    NOT NULL,
+            expires_at INTEGER NOT NULL
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS saml_handoff_codes_expiry_idx ON rbac_saml_handoff_codes (expires_at)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saml_assertions_seen (
+            assertion_id TEXT PRIMARY KEY NOT NULL,
+            expires_at   INTEGER NOT NULL
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS saml_assertions_seen_expiry_idx ON rbac_saml_assertions_seen (expires_at)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saml_request_ids (
+            request_id TEXT PRIMARY KEY NOT NULL,
+            value      TEXT    NOT NULL,
+            expires_at INTEGER NOT NULL
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS saml_request_ids_expiry_idx ON rbac_saml_request_ids (expires_at)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saml_handoff_codes (
+            code       TEXT PRIMARY KEY NOT NULL,
+            payload    TEXT   NOT NULL,
+            expires_at BIGINT NOT NULL
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS saml_handoff_codes_expiry_idx ON rbac_saml_handoff_codes (expires_at)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saml_assertions_seen (
+            assertion_id TEXT PRIMARY KEY NOT NULL,
+            expires_at   BIGINT NOT NULL
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS saml_assertions_seen_expiry_idx ON rbac_saml_assertions_seen (expires_at)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_saml_request_ids (
+            request_id TEXT PRIMARY KEY NOT NULL,
+            value      TEXT   NOT NULL,
+            expires_at BIGINT NOT NULL
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS saml_request_ids_expiry_idx ON rbac_saml_request_ids (expires_at)`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.48.0] Created shared SAML handoff/replay/request-id tables (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.49.0',
+    name: 'auth_config_generation',
+    description: 'ADR 0010 — single-row monotonic generation counter bumped on every SSO/auth admin mutation. Replicas poll it and rebuild their in-process SSO and password-login caches when it moves, so a config change propagates instead of applying only on the pod that served the mutation.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_config_generation (
+            id         INTEGER PRIMARY KEY,
+            generation INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`
+          INSERT OR IGNORE INTO rbac_config_generation (id, generation, updated_at) VALUES (1, 0, 0)
+        `);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_config_generation (
+            id         INTEGER PRIMARY KEY,
+            generation BIGINT NOT NULL DEFAULT 0,
+            updated_at BIGINT NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          INSERT INTO rbac_config_generation (id, generation, updated_at) VALUES (1, 0, 0)
+          ON CONFLICT (id) DO NOTHING
+        `);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.49.0] Created rbac_config_generation (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.50.0',
+    name: 'fleet_alert_latches',
+    description: 'ADR 0010 — persist the fleet alerter per-(node, rule) breach latches and the autonomous-RCA cooldown, so poller-lease failover resumes the latch state instead of re-arming from empty and re-firing every still-breaching condition after a rollout.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS fleet_alert_latches (
+            latch_key  TEXT PRIMARY KEY NOT NULL,
+            armed      INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS fleet_alert_latches_updated_idx ON fleet_alert_latches (updated_at)`);
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS fleet_alerter_runtime (
+            id                INTEGER PRIMARY KEY,
+            last_auto_rca_at  INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        (db as SqliteDb).run(sql`INSERT OR IGNORE INTO fleet_alerter_runtime (id, last_auto_rca_at) VALUES (1, 0)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS fleet_alert_latches (
+            latch_key  TEXT PRIMARY KEY NOT NULL,
+            armed      INTEGER NOT NULL DEFAULT 0,
+            updated_at BIGINT  NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS fleet_alert_latches_updated_idx ON fleet_alert_latches (updated_at)`);
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS fleet_alerter_runtime (
+            id                INTEGER PRIMARY KEY,
+            last_auto_rca_at  BIGINT NOT NULL DEFAULT 0
+          )
+        `);
+        await (db as PostgresDb).execute(sql`
+          INSERT INTO fleet_alerter_runtime (id, last_auto_rca_at) VALUES (1, 0)
+          ON CONFLICT (id) DO NOTHING
+        `);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.50.0] Created fleet alert latch tables (${dbType})`);
     },
     down: async () => { /* forward-only */ },
   },

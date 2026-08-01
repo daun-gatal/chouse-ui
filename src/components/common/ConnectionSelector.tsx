@@ -41,7 +41,7 @@ import {
   type ClickHouseConnection,
   type ConnectResult,
 } from "@/api/rbac";
-import { setSessionId, clearSession, getSessionId } from "@/api/client";
+import { setSessionId, setConnectionId, clearSession, getSessionId } from "@/api/client";
 import { rbacUserPreferencesApi } from "@/api";
 import { useRbacStore, useAuthStore } from "@/stores";
 
@@ -174,6 +174,9 @@ export default function ConnectionSelector({
     try {
       const result = await rbacConnectionsApi.connect(connection.id);
 
+      // ADR 0010: the connection id is what every subsequent request resolves
+      // on, so it must be set before anything else fetches.
+      setConnectionId(connection.id);
       setSessionId(result.sessionId);
 
       const protocol = connection.sslEnabled ? "https" : "http";

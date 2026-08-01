@@ -205,10 +205,20 @@ export function loadSsoConfig(env: Record<string, string | undefined> = process.
 }
 
 let cache: SsoConfig | null = null;
+/**
+ * Generation this cache was built at (ADR 0010). `watchConfigGeneration` compares
+ * the shared counter against this and rebuilds when another replica bumps it.
+ */
+let cachedGeneration = -1;
 
 /** Sync accessor on the hot path. Falls back to env-only until the first refresh. */
 export function getSsoConfig(): SsoConfig {
   return cache ?? loadSsoConfig();
+}
+
+/** The generation this replica's cache was built at. -1 before the first refresh. */
+export function getCachedConfigGeneration(): number {
+  return cachedGeneration;
 }
 
 /** Merge env (read-only) with the DB layer (editable). */
@@ -305,8 +315,14 @@ export async function buildSsoConfig(
 /** Rebuild the cache (boot + after each admin mutation). Keeps the previous cache on error. */
 export async function refreshSsoConfig(): Promise<void> {
   const { resetProviderConfigurationCache } = await import('./client');
+  // Read the generation BEFORE building, so a bump that lands mid-build is not
+  // mistaken for "already applied" — we would rather rebuild once more than miss
+  // a change entirely.
+  const { readConfigGeneration } = await import('../db/configGeneration');
+  const generationAtBuild = await readConfigGeneration();
   try {
     cache = await buildSsoConfig();
+    cachedGeneration = generationAtBuild;
   } catch (error) {
     logger.error(
       { module: 'SSO', err: error instanceof Error ? error.message : String(error) },
@@ -333,7 +349,25 @@ export async function refreshSsoConfig(): Promise<void> {
   );
 }
 
+/**
+ * Apply an SSO/auth config mutation (ADR 0010).
+ *
+ * Use this — not `refreshSsoConfig()` — from every admin route that changes SSO
+ * providers or settings. It bumps the shared generation counter first so other
+ * replicas notice, then rebuilds this replica's cache immediately (which reads
+ * the just-bumped generation, so the watcher does not rebuild a second time).
+ *
+ * Calling `refreshSsoConfig()` directly only updates the pod that served the
+ * request, which is the bug this exists to prevent.
+ */
+export async function applySsoConfigChange(): Promise<void> {
+  const { bumpConfigGeneration } = await import('../db/configGeneration');
+  await bumpConfigGeneration();
+  await refreshSsoConfig();
+}
+
 /** Test-only: clear the cache. */
 export function resetSsoConfigCache(): void {
   cache = null;
+  cachedGeneration = -1;
 }

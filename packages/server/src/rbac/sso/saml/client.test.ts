@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { closeDatabase } from "../../db";
+import { runMigrations } from "../../db/migrations";
+import { freshDatabase } from "../../db/migrationTestHarness";
 import { makeSignedSamlResponse } from "../testFixtures/samlFixtures";
 import {
   validateSamlResponse,
@@ -11,8 +14,16 @@ import {
   type SamlProviderConfig,
 } from "./client";
 
-beforeEach(() => {
-  resetSamlRequestCache();
+// The request-ID cache is database-backed (ADR 0010), so each test needs a
+// migrated database rather than just a cleared Map.
+beforeEach(async () => {
+  await freshDatabase("sqlite");
+  await runMigrations();
+  await resetSamlRequestCache();
+});
+
+afterEach(async () => {
+  await closeDatabase();
 });
 
 function provider(overrides: Partial<SamlProviderConfig> = {}): SamlProviderConfig {

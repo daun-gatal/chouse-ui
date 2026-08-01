@@ -10,6 +10,14 @@ metadata:
   {{- end }}
 spec:
   type: {{ .Values.service.type }}
+  {{- if .Values.service.sessionAffinity }}
+  sessionAffinity: {{ .Values.service.sessionAffinity }}
+  {{- if and (eq .Values.service.sessionAffinity "ClientIP") .Values.service.sessionAffinityTimeoutSeconds }}
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ .Values.service.sessionAffinityTimeoutSeconds }}
+  {{- end }}
+  {{- end }}
   ports:
     - port: {{ .Values.service.port }}
       targetPort: http
