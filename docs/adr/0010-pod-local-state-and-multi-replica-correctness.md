@@ -1,6 +1,6 @@
 # 0010 — Pod-local State and Multi-Replica Correctness
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-01
 - **Implementation:** same PR as this ADR (deliberate deviation from the usual
   two-PR flow — the ADR documents a contract that the accompanying fixes are the
