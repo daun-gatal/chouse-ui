@@ -1,4 +1,4 @@
-import { getSessionId, api } from '@/api/client';
+import { connectionIdentityHeaders, api } from '@/api/client';
 import React, { useState, useEffect } from 'react';
 import { DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { ResponsiveDraggableDialog } from '@/components/common/ResponsiveDraggableDialog';
@@ -289,17 +289,14 @@ export function ImportWizard({ isOpen, onClose, database }: ImportWizardProps) {
                 }
             }
 
-            const session = getSessionId();
             const rbacToken = localStorage.getItem('rbac_access_token');
 
+            // ADR 0010: /api/upload/create resolves its connection from these
+            // headers now; the old x-clickhouse-session-id header is gone.
             const uploadHeaders: Record<string, string> = {
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                ...connectionIdentityHeaders(),
             };
-
-            if (session) {
-                uploadHeaders['x-clickhouse-session-id'] = session;
-                uploadHeaders['X-Session-ID'] = session;
-            }
 
             if (rbacToken) {
                 uploadHeaders['Authorization'] = `Bearer ${rbacToken}`;
