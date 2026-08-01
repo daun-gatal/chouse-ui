@@ -134,6 +134,24 @@ export function setConnectionId(id: string): void {
   }
 }
 
+/**
+ * The identity headers every request to a connection-scoped route must carry.
+ *
+ * There are several HTTP call sites in this app (this client, `rbacFetch`, the
+ * query streaming fetch, the import upload). They must agree, because the server
+ * fails closed on a request that names a session but no connection — so a call
+ * site that sets only `X-Session-ID` gets a 409 on every request. Build the
+ * headers here rather than hand-rolling them per call site.
+ */
+export function connectionIdentityHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const currentConnectionId = getConnectionId();
+  if (currentConnectionId) headers['X-Connection-Id'] = currentConnectionId;
+  const currentSessionId = getSessionId();
+  if (currentSessionId) headers['X-Session-ID'] = currentSessionId;
+  return headers;
+}
+
 export function clearConnectionId(): void {
   connectionId = null;
   try {
@@ -264,18 +282,9 @@ class ApiClient {
         ...customHeaders,
       };
 
-      // Add session ID if available
-      const currentSessionId = getSessionId();
-      if (currentSessionId) {
-        (headers as Record<string, string>)['X-Session-ID'] = currentSessionId;
-      }
-
-      // Which ClickHouse connection this request is for (ADR 0010). The server
-      // resolves and authorises it per request, so any replica can serve it.
-      const currentConnectionId = getConnectionId();
-      if (currentConnectionId) {
-        (headers as Record<string, string>)['X-Connection-Id'] = currentConnectionId;
-      }
+      // Which ClickHouse connection this request is for, plus the legacy
+      // session id (ADR 0010). Shared with every other call site.
+      Object.assign(headers as Record<string, string>, connectionIdentityHeaders());
 
       // Add RBAC access token if available
       const rbacToken = getRbacAccessToken();

@@ -7,6 +7,7 @@
 import {
   ApiError,
   getSessionId,
+  connectionIdentityHeaders,
   clearSession,
   setRbacTokens,
   getRbacAccessToken,
@@ -344,8 +345,10 @@ async function rbacFetch<T>(
 
   // Add session ID if available (for ClickHouse operations)
   // Only add if not already provided in options.headers
-  if (sessionId && !headers['X-Session-ID']) {
-    headers['X-Session-ID'] = sessionId;
+  // ADR 0010: name the connection as well as the session, or connection-scoped
+  // routes fail closed with 409 CONNECTION_CONTEXT_STALE.
+  for (const [key, value] of Object.entries(connectionIdentityHeaders())) {
+    if (!headers[key]) headers[key] = value;
   }
 
   const fetchOptions: RequestInit = {
