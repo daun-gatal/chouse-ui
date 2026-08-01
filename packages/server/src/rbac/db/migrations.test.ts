@@ -263,6 +263,33 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.columnExists("data_health_promises", "upstream_job_id")).toBe(true);
     expect(await h.indexExists("data_health_promises_upstream_idx")).toBe(true);
   },
+  "1.48.0": async () => {
+    expect(await h.tableExists("rbac_saml_handoff_codes")).toBe(true);
+    expect(await h.columnExists("rbac_saml_handoff_codes", "payload")).toBe(true);
+    expect(await h.columnExists("rbac_saml_handoff_codes", "expires_at")).toBe(true);
+    expect(await h.indexExists("saml_handoff_codes_expiry_idx")).toBe(true);
+    expect(await h.tableExists("rbac_saml_assertions_seen")).toBe(true);
+    expect(await h.columnExists("rbac_saml_assertions_seen", "expires_at")).toBe(true);
+    expect(await h.indexExists("saml_assertions_seen_expiry_idx")).toBe(true);
+    expect(await h.tableExists("rbac_saml_request_ids")).toBe(true);
+    expect(await h.columnExists("rbac_saml_request_ids", "value")).toBe(true);
+    expect(await h.indexExists("saml_request_ids_expiry_idx")).toBe(true);
+  },
+  "1.49.0": async () => {
+    expect(await h.tableExists("rbac_config_generation")).toBe(true);
+    expect(await h.columnExists("rbac_config_generation", "generation")).toBe(true);
+    // The single contended row must be seeded, or the bump UPDATE has nothing to hit.
+    const rows = await h.rawAll(sql`SELECT generation FROM rbac_config_generation WHERE id = 1`);
+    expect(rows.length).toBe(1);
+  },
+  "1.50.0": async () => {
+    expect(await h.tableExists("fleet_alert_latches")).toBe(true);
+    expect(await h.columnExists("fleet_alert_latches", "armed")).toBe(true);
+    expect(await h.indexExists("fleet_alert_latches_updated_idx")).toBe(true);
+    expect(await h.tableExists("fleet_alerter_runtime")).toBe(true);
+    const runtime = await h.rawAll(sql`SELECT last_auto_rca_at FROM fleet_alerter_runtime WHERE id = 1`);
+    expect(runtime.length).toBe(1);
+  },
 };
 
 // ---------------------------------------------------------------------------

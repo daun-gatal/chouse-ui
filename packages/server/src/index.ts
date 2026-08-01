@@ -8,7 +8,6 @@ import { samlAcsHandler, SAML_ACS_PATH } from "./rbac/sso/routes";
 import { rateLimiter } from "hono-rate-limiter";
 import { DbRateLimitStore, cleanupExpiredRateLimits } from "./middleware/rateLimitStore";
 import { errorHandler, notFoundHandler } from "./middleware/error";
-import { cleanupExpiredSessions, getSessionCount } from "./services/clickhouse";
 import { initializeRbac, shutdownRbac } from "./rbac";
 import { requestId } from "./middleware/requestId";
 import { logger, requestLogger } from "./utils/logger";
@@ -345,6 +344,11 @@ initializeRbac().then(async () => {
     if (!getSsoConfig().enabled) {
       logger.info({ module: "SSO" }, "SSO disabled");
     }
+    // ADR 0010: pick up SSO/auth config changes made on another replica. The
+    // caches above have no TTL, so without this a provider or password-login
+    // change applies only to the pod that served the mutation.
+    const { startConfigGenerationWatcher } = await import("./rbac/sso/configWatcher");
+    startConfigGenerationWatcher();
   } catch (error) {
     logger.error(
       { module: "SSO", err: error instanceof Error ? error.message : String(error) },
@@ -356,13 +360,10 @@ initializeRbac().then(async () => {
   // Continue without RBAC - it's optional for backward compatibility
 });
 
-// Start session cleanup interval
+// ADR 0010 removed the pod-local ClickHouse session map, so there are no
+// sessions left to expire — the ClickHouse client pool manages its own idle
+// eviction. This interval now only trims the shared rate-limit table.
 const cleanupInterval = setInterval(async () => {
-  const cleaned = await cleanupExpiredSessions(SESSION_MAX_AGE);
-  if (cleaned > 0) {
-    logger.info({ phase: "cleanup", cleaned, activeSessions: getSessionCount() }, "Cleaned up expired sessions");
-  }
-  // Drop expired rate-limit counters so the shared table stays bounded.
   await cleanupExpiredRateLimits();
 }, SESSION_CLEANUP_INTERVAL);
 
@@ -402,11 +403,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
       logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Scheduled-query scheduler stop failed");
     }
 
-    const { getSessionCount, cleanupExpiredSessions } = await import('./services/clickhouse');
-    const sessionCount = getSessionCount();
-    if (sessionCount > 0) {
-      await cleanupExpiredSessions(0);
-      logger.info({ phase: "shutdown", sessionCount }, "Closed ClickHouse sessions");
+    try {
+      const { stopConfigGenerationWatcher } = await import("./rbac/sso/configWatcher");
+      stopConfigGenerationWatcher();
+    } catch (error) {
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Config watcher stop failed");
     }
 
     await shutdownRbac();

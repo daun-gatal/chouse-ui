@@ -62,9 +62,16 @@ app image. One one-time manual step after the first publish: set the
 | | `database.type: sqlite` (default) | `database.type: postgres` |
 |---|---|---|
 | Replicas | exactly 1 (render **fails** if >1) | any; `CHOUSE_HA=true` injected when >1 |
-| Storage | PVC at `/app/data`, `fsGroup: 1001` | none (stateless pods) |
+| Storage | PVC at `/app/data`, `fsGroup: 1001` | none (no pod-local volumes) |
 | Strategy | `Recreate` | `RollingUpdate` |
 | HPA / topologySpread | render fails / n.a. | allowed |
+
+> **Amended by [ADR 0010](0010-pod-local-state-and-multi-replica-correctness.md).**
+> The "no pod-local volumes" row above originally read "stateless pods", which
+> overstated the case: the pods held no *disk* state but several subsystems kept
+> request-authoritative state in process memory, so `replicaCount > 1` was not
+> actually correct. ADR 0010 defines the pod-local state contract and fixes the
+> subsystems that violated it.
 
 Failing the render is deliberate: the server's own runtime warning for
 SQLite-multi-replica is easy to miss, and the resulting duplicate scheduled-job

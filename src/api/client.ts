@@ -80,6 +80,67 @@ export function setSessionId(id: string): void {
 export function clearSession(): void {
   sessionId = null;
   sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  clearConnectionId();
+}
+
+// ============================================
+// Connection Identity (ADR 0010)
+// ============================================
+//
+// The server no longer keeps a per-pod session for the selected ClickHouse
+// connection: every request states which connection it is for, and the server
+// authorises and resolves it from the database. This is stored in localStorage
+// rather than sessionStorage so it survives new tabs and browser restarts the
+// same way the auth store's copy of it does.
+
+const CONNECTION_STORAGE_KEY = 'ch_connection_id';
+
+let connectionId: string | null = null;
+
+export function getConnectionId(): string | null {
+  if (connectionId) return connectionId;
+  try {
+    connectionId = localStorage.getItem(CONNECTION_STORAGE_KEY);
+    if (!connectionId) {
+      // Upgrade path: a browser that last used a pre-ADR-0010 build has no
+      // dedicated key, but the persisted auth store already knows which
+      // connection was selected. Adopt it so the first request after upgrade
+      // resolves instead of failing closed.
+      const persisted = localStorage.getItem('connection-info-storage');
+      if (persisted) {
+        const parsed: unknown = JSON.parse(persisted);
+        const candidate =
+          typeof parsed === 'object' && parsed !== null
+            ? (parsed as { state?: { activeConnectionId?: unknown } }).state?.activeConnectionId
+            : undefined;
+        if (typeof candidate === 'string' && candidate) {
+          connectionId = candidate;
+          localStorage.setItem(CONNECTION_STORAGE_KEY, candidate);
+        }
+      }
+    }
+  } catch {
+    /* storage unavailable or unparseable — fall back to in-memory only */
+  }
+  return connectionId;
+}
+
+export function setConnectionId(id: string): void {
+  connectionId = id;
+  try {
+    localStorage.setItem(CONNECTION_STORAGE_KEY, id);
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+export function clearConnectionId(): void {
+  connectionId = null;
+  try {
+    localStorage.removeItem(CONNECTION_STORAGE_KEY);
+  } catch {
+    /* ignore storage errors */
+  }
 }
 
 // ============================================
@@ -209,6 +270,13 @@ class ApiClient {
         (headers as Record<string, string>)['X-Session-ID'] = currentSessionId;
       }
 
+      // Which ClickHouse connection this request is for (ADR 0010). The server
+      // resolves and authorises it per request, so any replica can serve it.
+      const currentConnectionId = getConnectionId();
+      if (currentConnectionId) {
+        (headers as Record<string, string>)['X-Connection-Id'] = currentConnectionId;
+      }
+
       // Add RBAC access token if available
       const rbacToken = getRbacAccessToken();
       if (rbacToken) {
@@ -278,6 +346,38 @@ class ApiClient {
               window.dispatchEvent(new CustomEvent('auth:unauthorized'));
               throw new ApiError('Session expired', 401, 'UNAUTHORIZED', 'authentication');
             }
+          }
+
+          // Handle a stale connection context (409 CONNECTION_CONTEXT_STALE).
+          //
+          // ADR 0010: the server no longer guesses which connection an
+          // unresolvable request meant — it says so, and we re-activate the
+          // stored connection and retry once. Before this, the server silently
+          // answered from the user's *default* connection, so a browser holding
+          // a stale identifier quietly received another cluster's data.
+          if (
+            response.status === 409 &&
+            data?.error?.code === 'CONNECTION_CONTEXT_STALE' &&
+            attempt < maxRetries
+          ) {
+            // A stale session id is exactly what triggers this. Drop it, so the
+            // retry is resolved from the connection id alone — which needs no
+            // server round-trip to re-establish, because there is no longer any
+            // server-side session to re-establish.
+            sessionId = null;
+            sessionStorage.removeItem(SESSION_STORAGE_KEY);
+            if (getConnectionId()) {
+              attempt++;
+              continue;
+            }
+            // No connection id to fall back on: ask the app to re-activate.
+            this.sessionExpiredHandler?.();
+            throw new ApiError(
+              data?.error?.message || 'Connection context is stale',
+              409,
+              'CONNECTION_CONTEXT_STALE',
+              'authentication',
+            );
           }
 
           // Handle Session Not Found (400 NO_SESSION)

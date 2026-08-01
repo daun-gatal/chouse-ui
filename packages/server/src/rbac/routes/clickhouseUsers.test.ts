@@ -35,10 +35,14 @@ mock.module("../services/password", () => ({
 }));
 
 const mockCHService = { executeQuery: mock(async () => ({ data: [] })) };
-const mockGetSession = mock();
+const sharedActual = await import("./clickhouseShared");
+const mockGetClickHouseService = mock(async () => mockCHService);
 
-mock.module("../../services/clickhouse", () => ({
-    getSession: mockGetSession,
+// ADR 0010: these routes resolve their ClickHouseService per request from the
+// named connection instead of a pod-local session map.
+mock.module("./clickhouseShared", () => ({
+    ...sharedActual,
+    getClickHouseService: mockGetClickHouseService,
 }));
 
 let mockTokenPayload = {
@@ -57,7 +61,8 @@ mock.module("../services/jwt", () => ({
 import clickhouseUsersRoutes from "./clickhouseUsers";
 import { errorHandler } from "../../middleware/error";
 
-const authHeaders = { "Authorization": "Bearer token", "X-Session-ID": "s1" };
+// ADR 0010: clients name the connection they are acting on.
+const authHeaders = { "Authorization": "Bearer token", "X-Connection-Id": "conn1" };
 const jsonHeaders = { ...authHeaders, "Content-Type": "application/json" };
 
 describe("RBAC ClickHouse Users Routes", () => {
@@ -68,7 +73,7 @@ describe("RBAC ClickHouse Users Routes", () => {
         app.onError(errorHandler);
         app.route("/ch-users", clickhouseUsersRoutes);
 
-        for (const m of [mockListClickHouseUsers, mockGetClickHouseUser, mockGetCurrentUserState, mockCreateClickHouseUser, mockUpdateClickHouseUser, mockDeleteClickHouseUser, mockExtractRoleFromUser, mockCreateAuditLogWithContext, mockGetSession, mockCHService.executeQuery, mockValidatePasswordStrength]) {
+        for (const m of [mockListClickHouseUsers, mockGetClickHouseUser, mockGetCurrentUserState, mockCreateClickHouseUser, mockUpdateClickHouseUser, mockDeleteClickHouseUser, mockExtractRoleFromUser, mockCreateAuditLogWithContext, mockGetClickHouseService, mockCHService.executeQuery, mockValidatePasswordStrength]) {
             m.mockClear();
         }
 
@@ -78,7 +83,7 @@ describe("RBAC ClickHouse Users Routes", () => {
             permissions: ['clickhouse:users:view', 'clickhouse:users:create', 'clickhouse:users:update', 'clickhouse:users:delete', 'clickhouse:roles:create'],
             sessionId: 'sess-1',
         };
-        mockGetSession.mockReturnValue({ service: mockCHService, session: { rbacConnectionId: "conn1" } });
+        mockGetClickHouseService.mockImplementation(async () => mockCHService);
         mockValidatePasswordStrength.mockReturnValue({ valid: true });
     });
 
@@ -91,8 +96,10 @@ describe("RBAC ClickHouse Users Routes", () => {
         expect(mockListClickHouseUsers).toHaveBeenCalled();
     });
 
-    it("fails without session", async () => {
-        mockGetSession.mockReturnValue(null);
+    it("fails when no connection can be resolved", async () => {
+        mockGetClickHouseService.mockImplementation(async () => {
+            throw new Error("No active ClickHouse session. Please connect to a ClickHouse server first.");
+        });
         const res = await app.request("/ch-users", { headers: authHeaders });
         expect(res.status).toBe(400);
     });

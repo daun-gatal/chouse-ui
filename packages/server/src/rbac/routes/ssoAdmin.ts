@@ -14,7 +14,7 @@ import { PERMISSIONS, AUDIT_ACTIONS } from "../schema/base";
 import { requirePermission, getRbacUser, getClientIp } from "../middleware/rbacAuth";
 import { createAuditLogWithContext } from "../services/rbac";
 import { AppError, requireParam } from "../../types";
-import { getSsoConfig, refreshSsoConfig, loadSsoConfig } from "../sso/config";
+import { getSsoConfig, applySsoConfigChange, loadSsoConfig } from "../sso/config";
 import * as store from "../sso/store";
 import { testProviderConfig } from "../sso/test";
 
@@ -147,7 +147,7 @@ ssoAdminRoutes.put(
       );
     }
     await store.upsertDbSettings(input, user.sub);
-    await refreshSsoConfig();
+    await applySsoConfigChange();
     await createAuditLogWithContext(c, AUDIT_ACTIONS.SSO_SETTINGS_UPDATE, user.sub, {
       resourceType: "sso",
       resourceId: "settings",
@@ -201,7 +201,7 @@ ssoAdminRoutes.post(
       throw AppError.badRequest("A provider with this id already exists");
     }
     await store.createDbProvider({ ...input, createdBy: user.sub });
-    await refreshSsoConfig();
+    await applySsoConfigChange();
     await createAuditLogWithContext(c, AUDIT_ACTIONS.SSO_PROVIDER_CREATE, user.sub, {
       resourceType: "sso",
       resourceId: input.id,
@@ -225,7 +225,7 @@ ssoAdminRoutes.patch(
     }
     const patch = c.req.valid("json");
     await store.updateDbProvider(id, patch);
-    await refreshSsoConfig();
+    await applySsoConfigChange();
     const { clientSecret: _cs, ...safeChanges } = patch;
     await createAuditLogWithContext(c, AUDIT_ACTIONS.SSO_PROVIDER_UPDATE, user.sub, {
       resourceType: "sso",
@@ -250,7 +250,7 @@ ssoAdminRoutes.delete("/providers/:id", requirePermission(PERMISSIONS.SSO_DELETE
   }
   const userIds = await store.deleteIdentitiesByProvider(id);
   await store.deleteDbProvider(id);
-  await refreshSsoConfig();
+  await applySsoConfigChange();
   await createAuditLogWithContext(c, AUDIT_ACTIONS.SSO_PROVIDER_DELETE, user.sub, {
     resourceType: "sso",
     resourceId: id,

@@ -29,6 +29,7 @@ import {
   requirePermission
 } from '../middleware/rbacAuth';
 import { getPasswordLoginEnabled } from '../authConfig';
+import { dropUserConnectionFacts } from '../../services/connectionResolver';
 import { requestLogger } from '../../utils/logger';
 import { AppError } from '../../types';
 
@@ -168,17 +169,10 @@ authRoutes.post('/logout', rbacAuthMiddleware, async (c) => {
 
   await logoutUser(user.sessionId);
 
-  // Destroy all ClickHouse sessions owned by this user
-  try {
-    const { destroyUserSessions } = await import('../../services/clickhouse');
-    const destroyed = await destroyUserSessions(user.sub);
-    if (destroyed > 0) {
-      requestLogger(c.get('requestId')).info({ module: 'Auth', userId: user.sub, destroyed }, 'Destroyed ClickHouse sessions on logout');
-    }
-  } catch (error) {
-    requestLogger(c.get('requestId')).error({ module: 'Auth', userId: user.sub, err: error instanceof Error ? error.message : String(error) }, 'Failed to destroy ClickHouse sessions on logout');
-    // Continue with logout even if session cleanup fails
-  }
+  // ADR 0010: there are no server-side ClickHouse sessions to destroy. Access
+  // is re-authorised from the database on every request, so revoking the RBAC
+  // session above is sufficient — on every replica, immediately.
+  dropUserConnectionFacts(user.sub);
 
   // Log logout
   await createAuditLogWithContext(c, AUDIT_ACTIONS.LOGOUT, user.sub, {
@@ -202,17 +196,8 @@ authRoutes.post('/logout-all', rbacAuthMiddleware, async (c) => {
 
   await logoutAllSessions(user.sub);
 
-  // Destroy all ClickHouse sessions owned by this user
-  try {
-    const { destroyUserSessions } = await import('../../services/clickhouse');
-    const destroyed = await destroyUserSessions(user.sub);
-    if (destroyed > 0) {
-      requestLogger(c.get('requestId')).info({ module: 'Auth', userId: user.sub, destroyed }, 'Destroyed ClickHouse sessions on logout-all');
-    }
-  } catch (error) {
-    requestLogger(c.get('requestId')).error({ module: 'Auth', userId: user.sub, err: error instanceof Error ? error.message : String(error) }, 'Failed to destroy ClickHouse sessions on logout-all');
-    // Continue with logout even if session cleanup fails
-  }
+  // ADR 0010: no server-side ClickHouse sessions exist to destroy.
+  dropUserConnectionFacts(user.sub);
 
   // Log logout all
   await createAuditLogWithContext(c, AUDIT_ACTIONS.LOGOUT, user.sub, {
@@ -330,13 +315,8 @@ authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', Chang
   // Logout all other sessions for security
   await logoutAllSessions(user.sub);
 
-  // Destroy all ClickHouse sessions owned by this user
-  try {
-    const { destroyUserSessions } = await import('../../services/clickhouse');
-    await destroyUserSessions(user.sub);
-  } catch (error) {
-    requestLogger(c.get('requestId')).error({ module: 'Auth', userId: user.sub, err: error instanceof Error ? error.message : String(error) }, 'Failed to destroy ClickHouse sessions on password change');
-  }
+  // ADR 0010: no server-side ClickHouse sessions exist to destroy.
+  dropUserConnectionFacts(user.sub);
 
   return c.json({
     success: true,

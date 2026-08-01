@@ -49,15 +49,10 @@ const mockCHInstance = {
     checkIsAdmin: mock()
 };
 const mockClickHouseService = mock().mockImplementation(() => mockCHInstance);
-const mockCreateSession = mock();
-const mockDestroySession = mock();
-const mockGetSession = mock();
 
+// ADR 0010: there is no session map to mock any more.
 mock.module("../../services/clickhouse", () => ({
     ClickHouseService: mockClickHouseService,
-    createSession: mockCreateSession,
-    destroySession: mockDestroySession,
-    getSession: mockGetSession
 }));
 
 // Mock JWT Service
@@ -96,7 +91,6 @@ describe("RBAC Connections Routes", () => {
         mockCreateAuditLog.mockClear();
         mockCHInstance.ping.mockClear();
         mockCHInstance.close.mockClear();
-        mockCreateSession.mockClear();
         mockClickHouseService.mockClear();
         mockUserHasPermission.mockClear();
         mockUserHasAnyPermission.mockClear();
@@ -189,7 +183,7 @@ describe("RBAC Connections Routes", () => {
     });
 
     describe("POST /connections/:id/connect", () => {
-        it("should connect and create session", async () => {
+        it("validates the connection and returns a correlation id (no server-side session)", async () => {
             // Setup access
             // Super admin has access by default
             mockGetConnectionWithPassword.mockResolvedValue({
@@ -209,9 +203,12 @@ describe("RBAC Connections Routes", () => {
             expect(res.status).toBe(200);
             expect(mockClickHouseService).toHaveBeenCalled(); // Constructor called
             expect(mockCHInstance.ping).toHaveBeenCalled();
-            expect(mockCreateSession).toHaveBeenCalled();
+            // ADR 0010: connecting no longer mints pod-local state. It validates
+            // the connection and returns an id the client correlates on; every
+            // later request re-resolves from the database on any replica.
             const body = await res.json();
             expect(body.data.sessionId).toBeDefined();
+            expect(body.data.connectionId).toBe("c1");
         });
 
         it("should deny access if not assigned (non-superadmin)", async () => {

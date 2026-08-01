@@ -17,15 +17,19 @@ class MockClickHouseService {
 
 mock.module("../services/clickhouse", () => ({
     ClickHouseService: MockClickHouseService,
-    getSession: mock((id: string) => {
-        if (id === "valid-session") {
-            return {
-                session: { id: "valid-session", rbacUserId: "user1", rbacConnectionId: "conn1" },
-                service: new MockClickHouseService(),
-            };
-        }
-        return null;
-    }),
+}));
+
+// ADR 0010: connection resolution is shared middleware, not a pod-local session
+// lookup. The permission gate in liveQueriesAuthMiddleware still runs for real;
+// only the resolution step is stubbed.
+mock.module("../middleware/connectionContext", () => ({
+    CONNECTION_ID_HEADER: "X-Connection-Id",
+    CONNECTION_ID_COOKIE: "ch_connection",
+    connectionContextMiddleware: async (c: any, next: any) => {
+        c.set("service", new MockClickHouseService());
+        c.set("rbacConnectionId", "conn1");
+        await next();
+    },
 }));
 
 const mockGetUserConnections = mock();
@@ -128,7 +132,7 @@ describe("Live Queries Routes", () => {
                 method: "GET",
                 headers: {
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
             });
@@ -152,7 +156,7 @@ describe("Live Queries Routes", () => {
                 method: "GET",
                 headers: {
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
             });
@@ -200,7 +204,7 @@ describe("Live Queries Routes", () => {
                 method: "GET",
                 headers: {
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
             });
@@ -257,7 +261,7 @@ describe("Live Queries Routes", () => {
                 method: "GET",
                 headers: {
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
             });
@@ -296,7 +300,7 @@ describe("Live Queries Routes", () => {
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
                 body: JSON.stringify({ queryId: "query-456" }),
@@ -316,7 +320,7 @@ describe("Live Queries Routes", () => {
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
                 body: JSON.stringify({}),
@@ -355,7 +359,7 @@ describe("Live Queries Routes", () => {
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
                 body: JSON.stringify({ queryId: "query-789" }),
@@ -390,7 +394,7 @@ describe("Live Queries Routes", () => {
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
                 body: JSON.stringify({ queryId: "query-789" }),
@@ -434,7 +438,7 @@ describe("Live Queries Routes", () => {
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: "Bearer token",
-                    "X-Session-ID": "valid-session",
+                    "X-Connection-Id": "conn1",
                     "X-Requested-With": "XMLHttpRequest",
                 },
                 body: JSON.stringify({ queryId: "query-own" }),

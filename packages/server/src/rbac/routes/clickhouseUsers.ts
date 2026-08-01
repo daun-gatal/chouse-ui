@@ -82,7 +82,7 @@ const extractRoleSchema = z.object({
 // Available clusters (used by both users + roles UIs).
 clickhouseUsersRoutes.get('/clusters', rbacAuthMiddleware, requirePermission('clickhouse:users:view'), async (c) => {
   try {
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const result = await service.executeQuery<{ cluster: string }>(
       `SELECT DISTINCT cluster FROM system.clusters ORDER BY cluster`,
     );
@@ -97,7 +97,7 @@ clickhouseUsersRoutes.get('/clusters', rbacAuthMiddleware, requirePermission('cl
 // List users.
 clickhouseUsersRoutes.get('/', rbacAuthMiddleware, requirePermission('clickhouse:users:view'), async (c) => {
   try {
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const users = await listClickHouseUsers(service);
     return c.json({ success: true, data: users });
   } catch (error) {
@@ -110,7 +110,7 @@ clickhouseUsersRoutes.get('/', rbacAuthMiddleware, requirePermission('clickhouse
 // Get one user (roles + default roles + direct grants).
 clickhouseUsersRoutes.get('/:username', rbacAuthMiddleware, requirePermission('clickhouse:users:view'), async (c) => {
   try {
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const username = decodeURIComponent(requireParam(c, 'username'));
     const user = await getClickHouseUser(service, username);
     if (!user) {
@@ -142,7 +142,7 @@ clickhouseUsersRoutes.post('/generate-ddl', rbacAuthMiddleware, requirePermissio
 clickhouseUsersRoutes.post('/', rbacAuthMiddleware, requirePermission('clickhouse:users:create'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const parsed = createUserSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
@@ -186,7 +186,7 @@ clickhouseUsersRoutes.post('/:username/generate-ddl', rbacAuthMiddleware, requir
     if (!parsed.success) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: parsed.error.errors } }, 400);
     }
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const current = await getCurrentUserState(service, username);
     return c.json({ success: true, data: generateUpdateUserDDL(username, parsed.data, current) });
   } catch (error) {
@@ -199,7 +199,7 @@ clickhouseUsersRoutes.post('/:username/generate-ddl', rbacAuthMiddleware, requir
 clickhouseUsersRoutes.patch('/:username', rbacAuthMiddleware, requirePermission('clickhouse:users:update'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const username = decodeURIComponent(requireParam(c, 'username'));
     const parsed = updateUserSchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -236,7 +236,7 @@ clickhouseUsersRoutes.patch('/:username', rbacAuthMiddleware, requirePermission(
 clickhouseUsersRoutes.post('/:username/extract-role', rbacAuthMiddleware, requirePermission('clickhouse:roles:create'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const username = decodeURIComponent(requireParam(c, 'username'));
     const parsed = extractRoleSchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -264,7 +264,7 @@ clickhouseUsersRoutes.post('/:username/extract-role', rbacAuthMiddleware, requir
 clickhouseUsersRoutes.delete('/:username', rbacAuthMiddleware, requirePermission('clickhouse:users:delete'), async (c) => {
   try {
     const user = getRbacUser(c);
-    const service = getClickHouseService(c);
+    const service = await getClickHouseService(c);
     const username = decodeURIComponent(requireParam(c, 'username'));
     const cluster = c.req.query('cluster') || undefined;
 

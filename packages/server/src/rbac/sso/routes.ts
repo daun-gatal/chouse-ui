@@ -422,7 +422,7 @@ export const samlAcsHandler = async (c: Context): Promise<Response> => {
     // Replay protection (post-validation) using the VALIDATED assertion id. Fail
     // CLOSED if the validated assertion id is absent — never silently skip.
     if (assertionId && notOnOrAfter) {
-      if (!markAssertionSeen(assertionId, notOnOrAfter)) {
+      if (!(await markAssertionSeen(assertionId, notOnOrAfter))) {
         throw AppError.unauthorized("This sign-in response was already used.");
       }
     } else {
@@ -458,7 +458,7 @@ export const samlAcsHandler = async (c: Context): Promise<Response> => {
       ipAddress,
     );
 
-    const code = stashTokens(
+    const code = await stashTokens(
       { user: result.user, tokens: result.tokens, redirect },
       60_000
     );
@@ -495,7 +495,7 @@ ssoRoutes.post(
   zValidator("json", z.object({ code: z.string().min(1) })),
   async (c) => {
     const { code } = c.req.valid("json");
-    const payload = claimTokens(code);
+    const payload = await claimTokens(code);
     if (!payload) throw AppError.unauthorized("Sign-in handoff expired. Please try again.");
     return c.json({
       success: true,

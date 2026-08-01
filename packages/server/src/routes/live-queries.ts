@@ -11,9 +11,10 @@ import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { AppError } from "../types";
 import { optionalRbacMiddleware } from "../middleware/dataAccess";
-import { getSession } from "../services/clickhouse";
-import { getUserConnections, getConnectionWithPassword } from "../rbac/services/connections";
-import { ClickHouseService } from "../services/clickhouse";
+import {
+  connectionContextMiddleware,
+  type ConnectionContextVariables,
+} from "../middleware/connectionContext";
 import { createAuditLogWithContext, userHasPermission, getUserById } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
@@ -40,15 +41,7 @@ interface LiveQuery {
     rbac_user_display_name?: string; // Resolved from rbac_user_id
 }
 
-type Variables = {
-    sessionId?: string;
-    service: ClickHouseService;
-    rbacUserId?: string;
-    rbacRoles?: string[];
-    rbacPermissions?: string[];
-    isRbacAdmin?: boolean;
-    rbacConnectionId?: string;
-};
+type Variables = ConnectionContextVariables;
 
 const liveQueries = new Hono<{ Variables: Variables }>();
 
@@ -56,11 +49,6 @@ const liveQueries = new Hono<{ Variables: Variables }>();
 // Helper Functions
 // ============================================
 
-function getCookie(c: Context, name: string): string | undefined {
-    const cookies = c.req.header("Cookie") || "";
-    const match = cookies.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-    return match ? decodeURIComponent(match[1]) : undefined;
-}
 
 /**
  * Check if user is super_admin
@@ -101,88 +89,10 @@ async function liveQueriesAuthMiddleware(c: Context<{ Variables: Variables }>, n
         }
     }
 
-    // Try to get active ClickHouse session first
-    const sessionId = c.req.header("X-Session-ID") || getCookie(c, "ch_session");
-
-    if (sessionId) {
-        const sessionData = getSession(sessionId);
-        if (sessionData) {
-            // Validate session ownership
-            if (sessionData.session.rbacUserId && sessionData.session.rbacUserId !== rbacUserId) {
-                throw AppError.forbidden("Session does not belong to current user.");
-            }
-
-            c.set("sessionId", sessionId);
-            c.set("service", sessionData.service);
-            c.set("rbacConnectionId", sessionData.session.rbacConnectionId);
-            await next();
-            return;
-        }
-    }
-
-    // No active session - create temporary connection from RBAC
-    let service: ClickHouseService | null = null;
-
-    try {
-        const isSuperAdminUser = isSuperAdmin(rbacRoles);
-
-        // Get user's connections
-        let connections: Awaited<ReturnType<typeof getUserConnections>>;
-        if (isSuperAdminUser) {
-            const { listConnections } = await import("../rbac/services/connections");
-            const result = await listConnections({ activeOnly: true });
-            connections = result.connections;
-        } else {
-            connections = await getUserConnections(rbacUserId);
-        }
-
-        if (connections.length === 0) {
-            throw AppError.badRequest("No ClickHouse connections available. Please connect to a ClickHouse server first.");
-        }
-
-        // Find active connection
-        const defaultConnection = connections.find((conn) => conn.isDefault && conn.isActive);
-        const activeConnection = defaultConnection || connections.find((conn) => conn.isActive);
-
-        if (!activeConnection) {
-            throw AppError.badRequest("No active ClickHouse connection found. Please activate a connection.");
-        }
-
-        // Get connection with password
-        const connection = await getConnectionWithPassword(activeConnection.id);
-
-        if (!connection) {
-            throw AppError.unauthorized("Connection not found or access denied.");
-        }
-
-        // Build connection URL
-        const protocol = connection.sslEnabled ? 'https' : 'http';
-        const url = `${protocol}://${connection.host}:${connection.port}`;
-
-        // Create ClickHouse service
-        // Create ClickHouse service
-        service = new ClickHouseService({
-            url,
-            username: connection.username,
-            password: connection.password || "",
-            database: connection.database || undefined,
-        }, { rbacUserId });
-
-        // Validating connection via ping is skipped for performance.
-        // If the connection is invalid, subsequent queries will fail properly.
-
-        c.set("service", service);
-        c.set("rbacConnectionId", connection.id);
-
-        await next();
-        return;
-    } catch (error) {
-        // Service close is handled by ClientManager, no manual close needed here
-        if (error instanceof AppError) {
-            throw error;
-        }
-        throw AppError.internal("Failed to establish ClickHouse connection.");
-    }
+    // Connection resolution is shared and per-request (ADR 0010). The
+    // permission gate above runs first so an unauthorised caller is rejected
+    // before we pay for it.
+    await connectionContextMiddleware(c, next);
 }
 
 // Apply auth middleware to all routes

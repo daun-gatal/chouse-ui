@@ -19,7 +19,7 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import { rbacConnectionsApi, type ConnectResult } from "@/api/rbac";
 import { rbacUserPreferencesApi } from "@/api";
-import { setSessionId } from "@/api/client";
+import { setConnectionId, setSessionId } from "@/api/client";
 import { useAuthStore } from "@/stores";
 import { log } from "@/lib/log";
 
@@ -52,7 +52,10 @@ export async function activateConnection(opts: {
   }
 
   // Critical: route the API client (and thus every ClickHouse query) at the
-  // new node. Updating only the auth store leaves queries on the old session.
+  // new node. Updating only the auth store leaves queries on the old connection.
+  // The connection id is what the server actually resolves on (ADR 0010); the
+  // session id is kept only as a correlation handle.
+  setConnectionId(opts.connectionId);
   setSessionId(result.sessionId);
 
   useAuthStore.getState().setConnectionInfo({
