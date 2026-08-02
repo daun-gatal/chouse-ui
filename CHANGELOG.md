@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.12.0] - 2026-08-02
+
+### Added
+- **`service.sessionAffinity` in the Helm chart** (default off). Not required for correctness any more — multi-replica is correct without stickiness — but available for operators who want it.
+- **[ADR 0010](../../docs/adr/0010-pod-local-state-and-multi-replica-correctness.md)** defining the pod-local state contract: a cache may hold state that is derivable and self-healing; nothing may hold state that is authoritative for answering a request.
+
+### Changed
+- **Unresolvable connection context now fails closed** — routes return `409 CONNECTION_CONTEXT_STALE` instead of quietly substituting a different connection; the client re-activates and retries once. Browsers holding a pre-upgrade bundle recover on reload.
+- **Five near-identical hybrid auth middlewares collapsed into one** shared per-request connection context used by explorer, query, metrics, live-queries, ai-chat and upload.
+
+### Fixed
+- **AI structured output on strict providers** — schemas for the Data Health promise recommendation, both query optimizers, and the fleet scan used optional fields that OpenAI-compatible providers reject in strict structured-output mode, so that fallback strategy failed on every call before a request was even sent. Optional output fields are now nullable.
+- **Schema-invalid AI responses** — when a model returns JSON that violates the output schema, Chouse AI now re-prompts once with the specific validation errors instead of failing the run outright.
+- **Wrong ClickHouse cluster served behind multiple replicas** — the selected connection was held in a per-pod in-memory session map, so a request routed to a pod that had never seen the session silently answered from the user's *default* connection with a 200. This showed up as the Data Health promise editor "losing" database and table names until you reloaded a few times. Connection identity now travels with each request (`X-Connection-Id`) and is authorised against the RBAC database on every call, so any replica can serve it.
+- **SAML login broken and replay protection ineffective across replicas** — the handoff codes, `InResponseTo` request ids, and the assertion replay cache were per-process Maps. SP-initiated login failed roughly (N-1)/N of the time, and the same assertion could be replayed successfully against a replica that had not seen it. All three now live in shared tables with atomic single-use claims.
+- **Auth config changes applied to only one pod** — disabling password login or changing SSO providers rebuilt the cache only on the replica that served the mutation, leaving every other pod serving the old answer indefinitely (there was no TTL). A shared generation counter now propagates changes within seconds.
+- **Alert storm after every rollout** — fleet breach latches were in memory, so poller-lease failover re-fired every still-breaching condition. Latches and the auto-RCA cooldown are now persisted.
+
 ## [v3.11.1] - 2026-07-30
 
 ### Changed
@@ -103,11 +121,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Only one fleet rule can be enabled at a time** — enabling a second fleet-threshold rule is blocked (server-side 409 + an up-front notice in the rule editor) naming the rule that's already active. Fleet alerting is driven purely by which rule is enabled in Settings → Alerting; the fleet alerter delivers to every channel linked to the enabled rule, including the new Webhook type.
 - **Alerts bell is browser-notifications only** — the bell popover (renamed "Notifications") holds just the per-device browser desktop/toast alerting (enable + thresholds + desktop-banner permission). Slack/email delivery and rule enablement live in Admin → Settings → Alerting; the old in-bell delivery editor was removed.
 - **Notification channel secrets are now encrypted at rest** — Slack/Google Chat webhook URLs and SMTP passwords are stored with AES-256-GCM instead of plaintext, and are never returned to the browser.
-
-## [v3.5.1] - 2026-06-16
-
-### Fixed
-- **Migrations no longer race across replicas at startup (multi-replica PostgreSQL only)** — every replica runs RBAC migrations on boot, so when running **more than one replica** on PostgreSQL, a rolling deploy or scale-up could have several pods migrate the same database concurrently and the loser would crash on a duplicate version-table insert (or a non-idempotent step). `runMigrations()` now takes a PostgreSQL session-level advisory lock on a dedicated reserved connection, so exactly one replica migrates at a time and the others wait, then observe the work as already applied. Single-replica and SQLite deployments are unaffected (the lock is a no-op there).
-- **Login page no longer flashes the password form when password sign-in is disabled** — on refresh the login page optimistically rendered the email/password form and then yanked it away once the auth config loaded and reported password login disabled, leaving a visible flicker before the SSO-only view settled. The sign-in-method area now waits for both the SSO provider list and the auth config to resolve (showing a brief spinner) and renders once, so the correct set of options appears in a single paint. A failed config fetch still falls back to showing the password form, so a config error can't lock everyone out.
-- **Login & SSO rate limits now hold across replicas (multi-replica deployments only)** — the brute-force limiter used an in-process counter, so when running **more than one replica** the effective limit was N× the configured value: the load balancer spreads an attacker's attempts across pods and each pod counted separately, silently weakening a security control proportional to replica count. The login and SSO start/callback limiters now share a fixed-window counter in the RBAC database (atomic per-attempt upsert, expired rows swept periodically), enforcing the 10-attempts-per-15-minutes budget across all pods with no new infrastructure (no Redis). The counter now also survives pod restarts, so a deploy/crash no longer resets an attacker's budget. Single-replica deployments are functionally unchanged. The high-volume *resource* limiters (query/AI/general API) intentionally stay in-memory — per-pod throttling is fine there since capacity scales with replicas.
 

@@ -6,9 +6,9 @@ description: >-
 type: application
 # Chart version — bump manually in every PR that changes the chart
 # (see .rules/HELM_CHART.md). Breaking values changes bump major.
-version: 1.2.0
+version: 1.2.1
 # App version — owned by auto-release.yml; never edit by hand.
-appVersion: "3.11.1"
+appVersion: "3.12.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/daun-gatal/chouse-ui
 # Rendered as the package logo on artifacthub.io and by other chart UIs.
@@ -46,15 +46,7 @@ annotations:
       url: https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0010-pod-local-state-and-multi-replica-correctness.md
   artifacthub.io/images: |
     - name: chouse-ui
-      image: ghcr.io/daun-gatal/chouse-ui:v3.11.1
+      image: ghcr.io/daun-gatal/chouse-ui:v3.12.0
   artifacthub.io/changes: |
-    - kind: security
-      description: "Multi-replica installs: SAML assertion replay protection is now enforced across all replicas (it was per-pod, so an assertion could be replayed against a replica that had not seen it)"
-    - kind: fixed
-      description: "Multi-replica installs: requests are no longer served from the wrong ClickHouse connection when they land on a pod that did not mint the session"
-    - kind: fixed
-      description: "Multi-replica installs: SP-initiated SAML login, and SSO/password-login config changes, now work on every replica instead of only the one that handled them"
     - kind: changed
-      description: replicaCount > 1 no longer requires sticky sessions at the ingress or Service — pods keep no request-authoritative state (ADR 0010)
-    - kind: added
-      description: service.sessionAffinity and service.sessionAffinityTimeoutSeconds (optional, default off — no longer needed for correctness)
+      description: Updated to CHouse UI v3.12.0
