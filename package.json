@@ -126,6 +126,15 @@
     "dompurify": "^3.4.12",
     "picomatch": "^4.0.4",
     "ws": "^8.21.0",
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "@node-saml/node-saml": {
+      "@xmldom/xmldom": "^0.8.15"
+    },
+    "xml-crypto": {
+      "@xmldom/xmldom": "^0.8.15"
+    },
+    "xml-encryption": {
+      "@xmldom/xmldom": "^0.8.15"
+    }
   }
 }
