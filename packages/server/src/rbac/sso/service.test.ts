@@ -753,4 +753,82 @@ describe("provisionSsoUser", () => {
     // the unverified email; the catch must not call it either).
     expect(mockFns.getUserByEmail).not.toHaveBeenCalled();
   });
+
+  // ----------------------------------------------------------------
+  // Test 15: email collision surfaces as 409 CONFLICT (not raw DB error)
+  // ----------------------------------------------------------------
+  it("15. JIT email collision (the Gmail→GitHub bug) → AppError 409 with actionable message, no session", async () => {
+    mockGetUserByEmailResult = existingUserRow;
+    mockGetUserByUsernameResults.set("alice", null);
+    mockFns.createUser.mockImplementation(async () => {
+      throw new Error("UNIQUE constraint failed: rbac_users.email");
+    });
+    mockFns.getUserIdentity.mockImplementation(async () => null);
+
+    const identity = makeIdentity({ emailVerified: false });
+    let caught: unknown = null;
+    try {
+      await provisionSsoUser(makeProvider(), identity);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).not.toBeNull();
+    const err = caught as { statusCode?: number; code?: string; message?: string };
+    expect(err.statusCode).toBe(409);
+    expect(err.code).toBe("CONFLICT");
+    expect(err.message).toMatch(/already exists/i);
+    // Must not leak the raw constraint text to the user.
+    expect(err.message).not.toMatch(/UNIQUE|duplicate key/i);
+    expect(mockFns.createSessionAndTokens).not.toHaveBeenCalled();
+  });
+
+  // ----------------------------------------------------------------
+  // Test 16: cross-provider email race (both verified, loser collides)
+  // ----------------------------------------------------------------
+  it("16. cross-provider email race: verified email collides with no identity → 409, no session", async () => {
+    // Step 2 skipped because the winner is being created concurrently:
+    // getUserByEmail sees nothing yet at check time.
+    mockGetUserByEmailResult = null;
+    mockGetUserByUsernameResults.set("alice", null);
+    mockFns.createUser.mockImplementation(async () => {
+      const e = new Error('duplicate key value violates constraint "rbac_users_email_key"') as Error & { code?: string };
+      e.code = "23505";
+      throw e;
+    });
+    mockFns.getUserIdentity.mockImplementation(async () => null);
+
+    let caught: unknown = null;
+    try {
+      await provisionSsoUser(makeProvider(), makeIdentity({ emailVerified: true }));
+    } catch (err) {
+      caught = err;
+    }
+    expect((caught as { statusCode?: number }).statusCode).toBe(409);
+    expect(mockFns.createSessionAndTokens).not.toHaveBeenCalled();
+  });
+
+  // ----------------------------------------------------------------
+  // Test 17: concurrent auto-link race on the same provider+subject
+  // ----------------------------------------------------------------
+  it("17. link race: createUserIdentity collides, winner identity re-resolved → linked, session created", async () => {
+    mockGetUserIdentityResult = null;
+    mockGetUserByEmailResult = existingUserRow;
+    const winnerIdentity = { ...existingIdentityRow, userId: existingUserRow.id };
+    let identityCalls = 0;
+    mockFns.getUserIdentity.mockImplementation(async () => {
+      identityCalls++;
+      if (identityCalls === 1) return null;
+      return winnerIdentity;
+    });
+    mockFns.createUserIdentity.mockImplementation(async () => {
+      throw new Error("UNIQUE constraint failed: rbac_user_identities.provider, subject");
+    });
+    mockDbUserRow = { ...existingUserRow };
+
+    const result = await provisionSsoUser(makeProvider(), makeIdentity({ emailVerified: true }));
+
+    expect(result.outcome).toBe("linked");
+    expect(mockFns.createUser).not.toHaveBeenCalled();
+    expect(mockFns.createSessionAndTokens).toHaveBeenCalled();
+  });
 });

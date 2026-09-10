@@ -10,6 +10,7 @@ import { runMigrations } from "../db/migrations";
 import { freshDatabase } from "../db/migrationTestHarness";
 import { Hono } from "hono";
 import { errorHandler } from "../../middleware/error";
+import { AppError } from "../../types";
 import { signStatePayload, SSO_STATE_COOKIE, SSO_STATE_TTL_SECONDS } from "./state";
 import type { SsoConfig, SsoProviderConfig } from "./config";
 import { makeSignedSamlResponse } from "./testFixtures/samlFixtures";
@@ -670,6 +671,48 @@ describe("SSO Routes", () => {
         "sso.identity_link",
         "user-link",
         expect.objectContaining({ status: "success" })
+      );
+    });
+
+    it("returns 409 with an actionable message when the email collides (fail closed, no raw DB error)", async () => {
+      mockGetSsoConfig.mockReturnValue(makeEnabledConfig());
+
+      const stateCookieValue = await buildStateCookie({ state: "state-collision" });
+      mockExchangeCodeForIdentity.mockResolvedValue({
+        provider: PROVIDER_ID,
+        subject: "sub-collision",
+        email: "taken@example.com",
+        emailVerified: false,
+        username: "collisionuser",
+        displayName: "Collision User",
+        claims: {},
+      });
+      mockProvisionSsoUser.mockRejectedValue(
+        AppError.conflict(
+          "An account with this email already exists. Sign in with your original provider, then link the new provider from account settings."
+        )
+      );
+
+      const res = await app.request(`/sso/callback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${SSO_STATE_COOKIE}=${stateCookieValue}`,
+        },
+        body: JSON.stringify({ params: "code=code-collision&state=state-collision" }),
+      });
+
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(JSON.stringify(body)).toMatch(/already exists/i);
+      expect(JSON.stringify(body)).not.toMatch(/UNIQUE|duplicate key/i);
+      // Failure is audited; no session tokens are returned.
+      expect(mockCreateAuditLogWithContext).toHaveBeenCalledWith(
+        expect.anything(),
+        "auth.sso_login_failed",
+        undefined,
+        expect.objectContaining({ status: "failure" })
       );
     });
 

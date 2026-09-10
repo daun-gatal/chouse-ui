@@ -242,6 +242,20 @@ role_mapping: "ch-admins:admin,ch-readers:viewer"
 asserted email matches an existing user is linked to that user rather than
 creating a duplicate account. See the caveat in [Security notes](#security-notes).
 
+Linking additionally requires verification proof from the second provider:
+
+- **OIDC** — `email_verified: true` in the ID token.
+- **GitHub (OAuth2)** — the address comes from `/user/emails` as `verified`.
+  A public `/user` email alone is not proof and will not auto-link.
+- **SAML** — `saml_trust_email_verified: true` on that provider.
+- **Generic OAuth2 / unverified OIDC email** — never auto-links.
+
+When the email is already taken but the second provider offers no proof (or
+`auto_link_by_email` is off, or two first-logins race), sign-in fails closed
+with `409 Conflict` — “An account with this email already exists. Sign in
+with your original provider, then link the new provider from account
+settings.” No session is minted and no raw database error is exposed.
+
 Once a user has any linked SSO identity, password login is rejected for that
 account (admins keep a break-glass exception) — they must sign in through the IdP.
 

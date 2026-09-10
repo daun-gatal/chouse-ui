@@ -59,6 +59,26 @@ describe("applyClaimMapping", () => {
       applyClaimMapping("github", { subject: "id" }, { login: "x" })
     ).toThrow(/subject/);
   });
+
+  it("stays unverified without out-of-band proof, even if userinfo carries a verified-looking field", () => {
+    const id = applyClaimMapping(
+      "github",
+      { subject: "id", email: "email", username: "login" },
+      { id: 1, email: "a@b.co", login: "u", verified: true, email_verified: true }
+    );
+    expect(id.emailVerified).toBe(false);
+  });
+
+  it("marks verified only via the explicit out-of-band proof (GitHub /user/emails path)", () => {
+    const id = applyClaimMapping(
+      "github",
+      { subject: "id", email: "email", username: "login" },
+      { id: 42, email: "primary@github.com", login: "PrivUser" },
+      { emailVerified: true }
+    );
+    expect(id.email).toBe("primary@github.com");
+    expect(id.emailVerified).toBe(true);
+  });
 });
 
 describe("buildAuthorizationRedirect auth_params", () => {
@@ -447,6 +467,63 @@ describe("exchangeCodeForIdentity checks wiring", () => {
       expect(identity.subject).toBe("42");
       expect(identity.email).toBe("primary@github.com");
       expect(identity.username).toBe("privuser");
+      // /user/emails verified pick is verification proof → auto-link eligible
+      expect(identity.emailVerified).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("oauth2 (github): unverified-only /user/emails yields no verified proof", async () => {
+    mockAccessToken = "gh-access-token";
+
+    setupMock();
+
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      if (url === "https://api.github.com/user") {
+        return new Response(
+          JSON.stringify({ id: 43, email: null, login: "UnverifiedUser", name: "Unverified User" }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (url === "https://api.github.com/user/emails") {
+        return new Response(
+          JSON.stringify([
+            { email: "unverified@github.com", primary: true, verified: false },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const { exchangeCodeForIdentity, resetProviderConfigurationCache: reset } =
+        await import("./client");
+      reset();
+
+      const identity = await exchangeCodeForIdentity(
+        {
+          id: "github",
+          type: "oauth2" as const,
+          displayName: "GitHub",
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          scopes: "read:user user:email",
+          authorizationEndpoint: "https://github.com/login/oauth/authorize",
+          tokenEndpoint: "https://github.com/login/oauth/access_token",
+          userinfoEndpoint: "https://api.github.com/user",
+          claimMapping: { subject: "id", email: "email", username: "login" },
+        },
+        new URL("https://app.example.com/callback?code=c&state=st"),
+        { codeVerifier: "cv", state: "st", nonce: "" }
+      );
+
+      expect(identity.subject).toBe("43");
+      expect(identity.email).toBeNull();
+      expect(identity.emailVerified).toBe(false);
     } finally {
       globalThis.fetch = realFetch;
     }
