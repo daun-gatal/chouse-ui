@@ -1,0 +1,123 @@
+# Keeper overlay for ON CLUSTER DDL e2e (issue #336).
+#
+# The base testbed (docker-compose.yml) has no ZooKeeper/Keeper, and
+# ClickHouse refuses `... ON CLUSTER ...` DDL without one
+# ("There is no Zookeeper configuration in server config").
+#
+# Usage (always together with the base file):
+#
+#   docker compose -f testbed/docker-compose.yml \
+#                  -f testbed/docker-compose.oncluster.yml up -d
+#   docker compose -f testbed/docker-compose.yml \
+#                  -f testbed/docker-compose.oncluster.yml down
+#
+# or simply: ./scripts/e2e-oncluster-ddl.sh
+#
+# What it adds:
+# - a single-node `keeper` (clickhouse-keeper) on the testbed network
+# - a `zz-keeper.xml` drop-in for all three nodes pointing at it
+#
+# NOTE: service-level `configs` lists are REPLACED (not merged) by override
+# files, so each node repeats the base file's two config sources plus the
+# new keeper one.
+
+name: chouse-fleet-testbed
+
+x-node-configs: &node-configs
+  - source: low_mem_and_cluster
+    target: /etc/clickhouse-server/config.d/zz-fleet-testbed.xml
+  - source: per_query_limits
+    target: /etc/clickhouse-server/users.d/zz-fleet-testbed.xml
+  - source: keeper_config
+    target: /etc/clickhouse-server/config.d/zz-keeper.xml
+
+services:
+  clickhouse-1:
+    configs: *node-configs
+
+  clickhouse-2:
+    configs: *node-configs
+
+  clickhouse-3:
+    configs: *node-configs
+
+  keeper:
+    image: clickhouse/clickhouse-keeper:${CH_VERSION:-25.3}
+    container_name: ch-fleet-keeper
+    hostname: keeper
+    # Keeper (unlike clickhouse-server) does not scan config.d, so the full
+    # config file is replaced instead of patched via drop-in.
+    configs:
+      - source: keeper_main
+        target: /etc/clickhouse-keeper/keeper_config.xml
+    ports:
+      - "9211:9181" # Keeper client protocol (host access if reachable)
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "clickhouse-keeper-client", "--host", "localhost", "--query", "ls /"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+configs:
+  keeper_config:
+    content: |
+      <clickhouse>
+          <!-- Single-node Keeper for ON CLUSTER DDL e2e. `keeper` resolves
+               via compose DNS on the testbed network. -->
+          <zookeeper>
+              <node>
+                  <host>keeper</host>
+                  <port>9181</port>
+              </node>
+          </zookeeper>
+      </clickhouse>
+
+  # Full replacement for the stock keeper_config.xml: identical except
+  # <listen_host>0.0.0.0</listen_host> (stock image listens on localhost
+  # only, but the ClickHouse nodes reach Keeper over the compose network).
+  keeper_main:
+    content: |
+      <clickhouse>
+          <logger>
+              <level>information</level>
+              <log>/var/log/clickhouse-keeper/clickhouse-keeper.log</log>
+              <errorlog>/var/log/clickhouse-keeper/clickhouse-keeper.err.log</errorlog>
+              <size>100M</size>
+              <count>3</count>
+          </logger>
+
+          <!-- Reachable from the ClickHouse nodes on the compose network
+               (stock default is localhost-only). -->
+          <listen_host>0.0.0.0</listen_host>
+
+          <max_connections>4096</max_connections>
+
+          <keeper_server>
+              <tcp_port>9181</tcp_port>
+              <server_id>1</server_id>
+              <log_storage_path>/var/lib/clickhouse/coordination/logs</log_storage_path>
+              <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+              <coordination_settings>
+                  <operation_timeout_ms>10000</operation_timeout_ms>
+                  <min_session_timeout_ms>10000</min_session_timeout_ms>
+                  <session_timeout_ms>100000</session_timeout_ms>
+                  <raft_logs_level>information</raft_logs_level>
+                  <compress_logs>false</compress_logs>
+              </coordination_settings>
+              <hostname_checks_enabled>true</hostname_checks_enabled>
+              <raft_configuration>
+                  <server>
+                      <id>1</id>
+                      <hostname>localhost</hostname>
+                      <port>9234</port>
+                  </server>
+              </raft_configuration>
+          </keeper_server>
+      </clickhouse>
