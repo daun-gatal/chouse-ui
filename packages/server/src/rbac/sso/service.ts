@@ -85,18 +85,46 @@ export async function provisionSsoUser(
       if (!byEmail.isActive) {
         throw AppError.unauthorized('This account is inactive. Contact an administrator to reactivate it.');
       }
-      await createUserIdentity({
-        userId: byEmail.id,
-        provider: provider.id,
-        subject: identity.subject,
-        email: identity.email,
-      });
-      user = byEmail;
-      outcome = 'linked';
-      logger.info(
-        { module: 'SSO', provider: provider.id, userId: byEmail.id },
-        'Linked SSO identity to existing user by email'
-      );
+      try {
+        await createUserIdentity({
+          userId: byEmail.id,
+          provider: provider.id,
+          subject: identity.subject,
+          email: identity.email,
+        });
+      } catch (err) {
+        if (!isUniqueError(err)) throw err;
+        // Concurrent link race: another request linked this same
+        // provider+subject first. Re-resolve and continue as that user
+        // instead of surfacing a raw unique-constraint error.
+        const linked = await getUserIdentity(provider.id, identity.subject);
+        if (!linked) throw err;
+        const rows = await db
+          .select()
+          .from(schema.users)
+          .where(eq(schema.users.id, linked.userId))
+          .limit(1);
+        const winner: User | null = rows[0] || null;
+        if (!winner) throw err;
+        if (!winner.isActive) {
+          throw AppError.unauthorized('This account is inactive. Contact an administrator to reactivate it.');
+        }
+        await touchUserIdentity(linked.id);
+        user = winner;
+        outcome = 'linked';
+        logger.info(
+          { module: 'SSO', provider: provider.id, userId: winner.id },
+          'SSO link race resolved: using winner row from concurrent auto-link'
+        );
+      }
+      if (!user) {
+        user = byEmail;
+        outcome = 'linked';
+        logger.info(
+          { module: 'SSO', provider: provider.id, userId: byEmail.id },
+          'Linked SSO identity to existing user by email'
+        );
+      }
     }
   }
 
@@ -122,16 +150,28 @@ export async function provisionSsoUser(
         displayName: identity.displayName || username,
         roleIds: defaultRole ? [defaultRole.id] : [],
       });
-      await createUserIdentity({
-        userId: created.id,
-        provider: provider.id,
-        subject: identity.subject,
-        email: identity.email,
-      });
+      try {
+        await createUserIdentity({
+          userId: created.id,
+          provider: provider.id,
+          subject: identity.subject,
+          email: identity.email,
+        });
+      } catch (identityErr) {
+        if (!isUniqueError(identityErr)) throw identityErr;
+        // Identity link raced (same provider+subject linked first elsewhere).
+        // Fall through to the re-resolve below, which loads the winner.
+        logger.info(
+          { module: 'SSO', provider: provider.id },
+          'JIT identity link raced; re-resolving winner'
+        );
+      }
+      const raceWinner = await getUserIdentity(provider.id, identity.subject);
+      const targetUserId = raceWinner ? raceWinner.userId : created.id;
       const rows = await db
         .select()
         .from(schema.users)
-        .where(eq(schema.users.id, created.id))
+        .where(eq(schema.users.id, targetUserId))
         .limit(1);
       user = rows[0] || null;
       outcome = 'created';
@@ -144,10 +184,20 @@ export async function provisionSsoUser(
       // A genuine concurrent first-login race for this provider+subject will have
       // created the identity link on the winning request, so re-resolve via that.
       // A unique violation WITHOUT a matching identity means the email collided
-      // with a pre-existing foreign account — fail closed, never re-resolve by
-      // email (that would hand the caller the existing account's session).
+      // with a pre-existing foreign account (unverified second provider,
+      // auto-link off, or a cross-provider email race) — fail closed with an
+      // actionable 409, never re-resolve by email (that would hand the caller
+      // the existing account's session) and never leak the raw DB error.
       const raceIdentity = await getUserIdentity(provider.id, identity.subject);
-      if (!raceIdentity) throw err;
+      if (!raceIdentity) {
+        logger.warn(
+          { module: 'SSO', provider: provider.id },
+          'SSO JIT email collision: failing closed with 409'
+        );
+        throw AppError.conflict(
+          'An account with this email already exists. Sign in with your original provider, then link the new provider from account settings.'
+        );
+      }
       const rows = await db
         .select()
         .from(schema.users)
