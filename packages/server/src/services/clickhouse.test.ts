@@ -73,6 +73,128 @@ describe("ClickHouse Service", () => {
         });
     });
 
+    describe("streamQueryRows ON CLUSTER (issue #336)", () => {
+        async function collectLines(gen: AsyncGenerator<string>): Promise<unknown[]> {
+            const lines: unknown[] = [];
+            for await (const line of gen) {
+                lines.push(JSON.parse(line));
+            }
+            return lines;
+        }
+
+        function callsOf(fn: unknown): Array<{ args: unknown[] }> {
+            const calls = (fn as { mock: { calls: unknown[][] } }).mock.calls;
+            return calls.map((args) => ({ args }));
+        }
+
+        it("streams per-host rows for ON CLUSTER DDL instead of erroring", async () => {
+            mockQueryFn.mockImplementation(async () => ({
+                query_id: "qid-oncluster",
+                json: async () => ({
+                    meta: [
+                        { name: "host", type: "String" },
+                        { name: "status", type: "UInt8" },
+                    ],
+                    data: [
+                        { host: "chi-cluster-0-0", status: 0 },
+                        { host: "chi-cluster-0-1", status: 0 },
+                    ],
+                }),
+            }));
+
+            const lines = await collectLines(
+                service.streamQueryRows("CREATE TABLE db.t ON CLUSTER c (x UInt8) ENGINE Memory")
+            );
+
+            expect(lines).toHaveLength(4);
+            expect(lines[0]).toMatchObject({ t: "m", names: ["host", "status"] });
+            expect(lines[1]).toEqual(["chi-cluster-0-0", 0]);
+            expect(lines[2]).toEqual(["chi-cluster-0-1", 0]);
+            expect(lines[3]).toMatchObject({ t: "e", rows: 2 });
+            expect(JSON.stringify(lines)).not.toContain('"t":"err"');
+
+            // ON CLUSTER DDL must go through query(), exactly once, with
+            // default_format=JSON (the appended FORMAT clause alone is
+            // ignored over HTTP for ON CLUSTER DDL — issue #336).
+            const queryCalls = callsOf(mockQueryFn);
+            expect(queryCalls).toHaveLength(1);
+            expect(queryCalls[0]?.args[0]).toMatchObject({ format: "JSON" });
+            const params = queryCalls[0]?.args[0] as
+              | { clickhouse_settings?: { default_format?: string } }
+              | undefined;
+            expect(params?.clickhouse_settings?.default_format).toBe("JSON");
+        });
+
+        it("routes plain DDL through command with clean 0-row success", async () => {
+            mockCommandFn.mockResolvedValue({ query_id: "qid-cmd" });
+
+            const lines = await collectLines(
+                service.streamQueryRows("CREATE TABLE db.t (x UInt8) ENGINE Memory")
+            );
+
+            expect(mockCommandFn).toHaveBeenCalled();
+            expect(callsOf(mockQueryFn)).toHaveLength(0);
+            expect(lines).toHaveLength(1);
+            expect(lines[0]).toMatchObject({ t: "e", rows: 0 });
+        });
+
+        it("reports success-with-evidence (no re-execution) when ON CLUSTER body is non-JSON", async () => {
+            mockQueryFn.mockImplementation(async () => ({
+                query_id: "qid-plain",
+                // Some builds/forks return plain text starting with the
+                // hostname, so result.json() throws a Bun-style parse error
+                // even though the DDL committed (issue #336).
+                json: async () => {
+                    throw new Error('JSON Parse error: Unexpected identifier "chi"');
+                },
+            }));
+            mockCommandFn.mockClear();
+
+            const lines = await collectLines(
+                service.streamQueryRows("CREATE TABLE db.t ON CLUSTER c (x UInt8) ENGINE Memory")
+            );
+
+            expect(JSON.stringify(lines)).not.toContain('"t":"err"');
+            expect(lines[lines.length - 1]).toMatchObject({ t: "e" });
+            // Single execution: the DDL must not be re-run via command()
+            expect(mockCommandFn).not.toHaveBeenCalled();
+            expect(callsOf(mockQueryFn)).toHaveLength(1);
+        });
+
+        it("still fails closed on malformed SELECT rows", async () => {
+            async function* badStream(): AsyncGenerator<Array<{ json: () => unknown[] }>> {
+                yield [{ json: () => { throw new Error("Unexpected token X in JSON"); } }];
+            }
+            mockQueryFn.mockImplementation(async () => ({
+                query_id: "qid-bad",
+                stream: () => badStream(),
+            }));
+
+            // NOTE: consumed via manual .next() rather than for-await: in this
+            // test file (hoisted mock.module) for-await drops values yielded
+            // before a throw, while manual iteration observes them correctly.
+            const gen = service.streamQueryRows("SELECT 1");
+            const lines: unknown[] = [];
+            let thrown: unknown = null;
+            let done = false;
+            while (!done) {
+                try {
+                    const next = await gen.next();
+                    done = next.done ?? false;
+                    if (!next.done) {
+                        lines.push(JSON.parse(next.value));
+                    }
+                } catch (error) {
+                    thrown = error;
+                    done = true;
+                }
+            }
+
+            expect(thrown).not.toBeNull();
+            expect(JSON.stringify(lines)).toContain('"t":"err"');
+        });
+    });
+
     describe("getSystemStats", () => {
         it("should fetch system stats", async () => {
             // Mock responses in .json() CONSUMPTION order. The CPU-load query is

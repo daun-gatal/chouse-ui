@@ -29,6 +29,57 @@ function extractData<T>(response: JsonResponse<T>): T[] {
   return response.data;
 }
 
+// Matches client-side JSON parse failures across runtimes: Bun/JavaScriptCore
+// reports `JSON Parse error: Unexpected identifier "chi"...` while V8 reports
+// `Unexpected token ...`. Either shape means the body was not JSON at all.
+function isJsonParseErrorMessage(message: string): boolean {
+  return /JSON Parse error|Unexpected identifier|Unexpected token/i.test(message);
+}
+
+interface HostTableShape {
+  names: string[];
+  types: string[];
+  rows: unknown[][];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+// Normalize a `FORMAT JSON` envelope `{meta, data}` into the compact row
+// arrays the NDJSON stream protocol expects. Unknown shapes degrade to an
+// empty table rather than throwing, so a weird-but-successful DDL never
+// surfaces as a false query error.
+function toHostRows(envelope: unknown, maxResultRows?: number): HostTableShape {
+  if (!isRecord(envelope)) {
+    return { names: [], types: [], rows: [] };
+  }
+  const metaRaw = envelope["meta"];
+  const dataRaw = envelope["data"];
+  const names: string[] = [];
+  const types: string[] = [];
+  if (Array.isArray(metaRaw)) {
+    for (const entry of metaRaw) {
+      if (isRecord(entry) && typeof entry["name"] === "string") {
+        names.push(entry["name"]);
+        types.push(typeof entry["type"] === "string" ? (entry["type"] as string) : "String");
+      }
+    }
+  }
+  const rows: unknown[][] = [];
+  if (Array.isArray(dataRaw)) {
+    for (const entry of dataRaw) {
+      if (maxResultRows !== undefined && rows.length >= maxResultRows) {
+        break;
+      }
+      if (isRecord(entry)) {
+        rows.push(names.map((name) => entry[name] ?? null));
+      }
+    }
+  }
+  return { names, types, rows };
+}
+
 // ============================================
 // ClickHouse Service
 // ============================================
@@ -203,11 +254,13 @@ export class ClickHouseService {
   }
 
   /**
-   * Stream a SELECT query as NDJSON lines to avoid server-side buffering.
+   * Stream a query as NDJSON lines to avoid server-side buffering.
    *
-   * Uses ClickHouse's `JSONCompactEachRowWithNamesAndTypes` format so column
-   * names and types arrive in the first two lines; subsequent lines are compact
-   * row arrays.  The generator yields ready-to-write JSON strings:
+   * SELECT-like queries use ClickHouse's `JSONCompactEachRowWithNamesAndTypes`
+   * format so column names and types arrive in the first two lines; subsequent
+   * lines are compact row arrays.  DDL is handled separately (see below)
+   * because it has no stable row shape.  The generator yields ready-to-write
+   * JSON strings:
    *
    *   {"t":"m","names":[...],"types":[...],"qid":"..."}  ← meta (line 0)
    *   [value, value, ...]                                 ← data row (lines 1‥N)
@@ -237,12 +290,52 @@ export class ClickHouseService {
     }
 
     const startMs = performance.now();
+    const trimmedQuery = query.trim();
+
+    // DDL without ON CLUSTER returns no result set: run it once via `command`
+    // (same as executeQuery) and report clean 0-row success instead of
+    // streaming an empty body through the row parser.
+    if (this.isCommand(trimmedQuery) && !this.isOnClusterDdl(trimmedQuery)) {
+      try {
+        const commandResult = await this.client.command({
+          query: trimmedQuery,
+          query_id: queryId,
+          clickhouse_settings,
+        });
+        void commandResult;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        yield JSON.stringify({ t: "err", message: msg });
+        throw error;
+      }
+      const elapsed = (performance.now() - startMs) / 1000;
+      yield JSON.stringify({
+        t: "e",
+        stats: { elapsed, rows_read: 0, bytes_read: 0 },
+        rows: 0,
+        capped: false,
+      });
+      return;
+    }
+
+    // DDL with ON CLUSTER returns one row per host
+    // (host, port, status, error, ...).  It executes exactly once via `query`
+    // with the stable JSON envelope — never re-executed, so non-idempotent
+    // DDL cannot double-apply.  The compact-stream format is deliberately
+    // avoided here: several ClickHouse builds/forks return ON CLUSTER DDL
+    // results as plain text, which makes row.json() throw
+    // `JSON Parse error: Unexpected identifier "chi"...` (issue #336) even
+    // though the DDL committed.
+    if (this.isOnClusterDdl(trimmedQuery)) {
+      yield* this.streamOnClusterDdl(trimmedQuery, queryId, clickhouse_settings, startMs, maxResultRows);
+      return;
+    }
 
     // JSONCompactEachRowWithNamesAndTypes: line 0 = names[], line 1 = types[],
     // lines 2+ = compact value arrays.  The ClickHouse client exposes these as
     // regular rows in the stream — we track lineIndex to distinguish them.
     const result = await this.client.query({
-      query: query.trim(),
+      query: trimmedQuery,
       format: "JSONCompactEachRowWithNamesAndTypes" as any,
       clickhouse_settings,
       query_id: queryId,
@@ -257,7 +350,16 @@ export class ClickHouseService {
     try {
       outer: for await (const rowBatch of rowStream) {
         for (const row of rowBatch) {
-          const values = row.json<unknown[]>();
+          let values: unknown[];
+          try {
+            values = row.json<unknown[]>();
+          } catch (error) {
+            // Fail closed for SELECT-like queries: a malformed row is a real
+            // error, not a committed-DDL case (DDL is branched above).
+            const msg = error instanceof Error ? error.message : String(error);
+            yield JSON.stringify({ t: "err", message: msg });
+            throw error;
+          }
 
           if (lineIndex === 0) {
             // First header line: column names
@@ -294,6 +396,87 @@ export class ClickHouseService {
       stats: { elapsed, rows_read: rowCount, bytes_read: 0 },
       rows: rowCount,
       capped: capReached,
+    });
+  }
+
+  /**
+   * Stream one `... ON CLUSTER ...` DDL statement exactly once and yield its
+   * per-host result rows.  HTTP 200 plus a JSON-parse-shaped failure means the
+   * server accepted the DDL but returned a non-JSON body (plain text on some
+   * builds/forks) — report success-with-evidence instead of a false error,
+   * without re-executing the DDL.  Anything else fails closed with `t:err`.
+   */
+  private async *streamOnClusterDdl(
+    trimmedQuery: string,
+    queryId: string | undefined,
+    clickhouse_settings: Record<string, string | number>,
+    startMs: number,
+    maxResultRows?: number
+  ): AsyncGenerator<string> {
+    // The trailing `FORMAT JSON` the client appends to the SQL text is
+    // ignored by ClickHouse's HTTP interface for ON CLUSTER DDL (the
+    // coordinator replies in the connection default, TabSeparated). Setting
+    // `default_format` is honored instead — verified against ClickHouse
+    // 25.3 (issue #336).
+    const ddlSettings: Record<string, string | number> = {
+      ...clickhouse_settings,
+      default_format: "JSON",
+    };
+    let result: { json: () => Promise<unknown>; query_id: string };
+    try {
+      result = await this.client.query({
+        query: trimmedQuery,
+        format: "JSON",
+        clickhouse_settings: ddlSettings,
+        query_id: queryId,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      yield JSON.stringify({ t: "err", message: msg });
+      throw error;
+    }
+
+    let envelope: unknown;
+    try {
+      envelope = await result.json();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (isJsonParseErrorMessage(msg)) {
+        // Server accepted the statement (HTTP 200) but the body is not JSON.
+        // The DDL committed — never re-run it.  Surface success with the raw
+        // shape noted, and keep the evidence server-side for fleet debugging.
+        logger.error(
+          { module: "ClickHouse", qid: result.query_id, err: msg },
+          "ON CLUSTER DDL returned non-JSON body; reporting success-with-evidence"
+        );
+        const noteNames = ["note"];
+        const noteTypes = ["String"];
+        yield JSON.stringify({ t: "m", names: noteNames, types: noteTypes, qid: result.query_id });
+        yield JSON.stringify(["DDL executed successfully (non-JSON response from server)"]);
+        const elapsed = (performance.now() - startMs) / 1000;
+        yield JSON.stringify({
+          t: "e",
+          stats: { elapsed, rows_read: 1, bytes_read: 0 },
+          rows: 1,
+          capped: false,
+        });
+        return;
+      }
+      yield JSON.stringify({ t: "err", message: msg });
+      throw error;
+    }
+
+    const { names, types, rows } = toHostRows(envelope, maxResultRows);
+    yield JSON.stringify({ t: "m", names, types, qid: result.query_id });
+    for (const row of rows) {
+      yield JSON.stringify(row);
+    }
+    const elapsed = (performance.now() - startMs) / 1000;
+    yield JSON.stringify({
+      t: "e",
+      stats: { elapsed, rows_read: rows.length, bytes_read: 0 },
+      rows: rows.length,
+      capped: false,
     });
   }
 
@@ -367,6 +550,14 @@ export class ClickHouseService {
       /^\s*SET\s+/i,
     ];
     return commandPatterns.some(pattern => pattern.test(query));
+  }
+
+  /**
+   * Detect `... ON CLUSTER ...` DDL. These statements return one row per
+   * host, unlike plain DDL which returns no result set.
+   */
+  private isOnClusterDdl(query: string): boolean {
+    return this.isCommand(query) && /\bON\s+CLUSTER\b/i.test(query);
   }
 
   // ============================================
