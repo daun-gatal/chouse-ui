@@ -124,6 +124,49 @@ describe('loadSsoConfig', () => {
     }
   });
 
+  it('parses an optional issuer for oauth2 providers (strict RFC 9207 iss validation)', () => {
+    const env = {
+      ...baseEnv(),
+      AUTH_SSO_PROVIDERS_GITHUB_TYPE: 'oauth2',
+      AUTH_SSO_PROVIDERS_GITHUB_DISPLAY_NAME: 'GitHub',
+      AUTH_SSO_PROVIDERS_GITHUB_AUTHORIZATION_ENDPOINT: 'https://github.com/login/oauth/authorize',
+      AUTH_SSO_PROVIDERS_GITHUB_TOKEN_ENDPOINT: 'https://github.com/login/oauth/access_token',
+      AUTH_SSO_PROVIDERS_GITHUB_USERINFO_ENDPOINT: 'https://api.github.com/user',
+      AUTH_SSO_PROVIDERS_GITHUB_CLIENT_ID: 'gid',
+      AUTH_SSO_PROVIDERS_GITHUB_CLIENT_SECRET: 'gsecret',
+      AUTH_SSO_PROVIDERS_GITHUB_SCOPES: 'read:user user:email',
+      AUTH_SSO_PROVIDERS_GITHUB_CLAIM_MAPPING: 'subject:id,email:email,username:login',
+      AUTH_SSO_PROVIDERS_GITHUB_ISSUER: 'https://github.com/login/oauth',
+    };
+    const gh = loadSsoConfig(env).providers.get('github');
+    expect(gh).toBeDefined();
+    expect(gh!.type).toBe('oauth2');
+    if (gh!.type === 'oauth2') {
+      expect(gh!.issuer).toBe('https://github.com/login/oauth');
+    }
+  });
+
+  it('oauth2 providers work without an issuer (synthetic URN + iss stripped at callback)', () => {
+    const env = {
+      ...baseEnv(),
+      AUTH_SSO_PROVIDERS_GITHUB_TYPE: 'oauth2',
+      AUTH_SSO_PROVIDERS_GITHUB_DISPLAY_NAME: 'GitHub',
+      AUTH_SSO_PROVIDERS_GITHUB_AUTHORIZATION_ENDPOINT: 'https://github.com/login/oauth/authorize',
+      AUTH_SSO_PROVIDERS_GITHUB_TOKEN_ENDPOINT: 'https://github.com/login/oauth/access_token',
+      AUTH_SSO_PROVIDERS_GITHUB_USERINFO_ENDPOINT: 'https://api.github.com/user',
+      AUTH_SSO_PROVIDERS_GITHUB_CLIENT_ID: 'gid',
+      AUTH_SSO_PROVIDERS_GITHUB_CLIENT_SECRET: 'gsecret',
+      AUTH_SSO_PROVIDERS_GITHUB_SCOPES: 'read:user user:email',
+      AUTH_SSO_PROVIDERS_GITHUB_CLAIM_MAPPING: 'subject:id,email:email,username:login',
+    };
+    const gh = loadSsoConfig(env).providers.get('github');
+    expect(gh).toBeDefined();
+    expect(gh!.type).toBe('oauth2');
+    if (gh!.type === 'oauth2') {
+      expect(gh!.issuer).toBeUndefined();
+    }
+  });
+
   it('accepts "=" as the claim-mapping separator (alongside ":")', () => {
     const env = {
       ...baseEnv(),

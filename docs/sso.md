@@ -150,6 +150,12 @@ auth:
         client_secret: "..."
         scopes: "read:user user:email"
         claim_mapping: "subject:id,email:email,username:login"
+        # Optional: strict RFC 9207 `iss` validation. GitHub now sends
+        # `iss=https://github.com/login/oauth` in the authorization response.
+        # Without `issuer`, CHouse UI accepts the response anyway (the plain-
+        # OAuth2 issuer is synthetic, so `iss` cannot match and is ignored).
+        # Set it to validate `iss` strictly instead.
+        issuer: "https://github.com/login/oauth"
 ```
 
 **GitHub private emails:** if a user's primary email is private, the `/user`
@@ -311,6 +317,11 @@ OIDC/OAuth2 flows never had this constraint (state travels in a signed cookie).
 - **`redirect_uri` mismatch (OIDC/OAuth2).** The URI registered at the IdP must
   be exactly `<base_url>/auth/sso/callback`, and `base_url` must match the public
   URL the browser uses.
+- **GitHub login fails with `unexpected "iss" (issuer) response parameter value`.**
+  GitHub now sends an RFC 9207 `iss` parameter (`https://github.com/login/oauth`)
+  that cannot match the synthetic plain-OAuth2 issuer. Upgrade to a version with
+  the fix (OAuth2 callbacks ignore `iss` unless `issuer` is set); optionally set
+  `issuer: "https://github.com/login/oauth"` for strict validation.
 - **SAML "Destination/Audience" errors.** The ACS URL at the IdP must be
   `<base_url>/auth/sso/saml/acs`; the SP entity id / audience must equal
   `saml_sp_entity_id`.

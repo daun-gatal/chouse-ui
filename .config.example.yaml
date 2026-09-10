@@ -181,6 +181,11 @@ auth:
       #         scopes: "profile email"
       #         # Required for OAuth2: map userinfo fields -> subject/email/username.
       #         claim_mapping: "subject:id,email:email,username:login"
+      #         # Optional: strict RFC 9207 `iss` validation. Without `issuer`,
+      #         # an `iss` response parameter is ignored (the plain-OAuth2 issuer
+      #         # is synthetic and could never match). Set it when the IdP sends
+      #         # a stable `iss` (GitHub: https://github.com/login/oauth).
+      #         # issuer: https://acme.example.com
       #         # auth_params: "audience:https://api.acme.example.com"
       #       corp-saml:                               # SAML 2.0 (enterprise IdP: Okta, Entra ID, ADFS, ...)
       #         type: saml

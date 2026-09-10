@@ -63,7 +63,10 @@ export async function getProviderConfiguration(
     // Configuration 3rd param accepts a bare string as shorthand for client_secret
     cfg = new oidc.Configuration(
       {
-        issuer: `urn:chouse:sso:${p.id}`,
+        // Explicit issuer (when the admin set one) enables strict RFC 9207
+        // `iss` validation. Otherwise a synthetic URN is used and `iss` is
+        // stripped at the callback — it could never match.
+        issuer: p.issuer ?? `urn:chouse:sso:${p.id}`,
         authorization_endpoint: p.authorizationEndpoint,
         token_endpoint: p.tokenEndpoint,
         userinfo_endpoint: p.userinfoEndpoint,
@@ -139,7 +142,19 @@ export async function exchangeCodeForIdentity(
   }
   const cfg = await getProviderConfiguration(p);
 
-  const tokens = await oidc.authorizationCodeGrant(cfg, callbackUrl, {
+  // Plain-OAuth2 providers use a synthetic URN issuer (no discovery document),
+  // so an RFC 9207 `iss` response parameter — which GitHub and other
+  // BCP-compliant IdPs now send — can never match and would always fail
+  // validation. Strip it before the grant, unless the admin pinned an explicit
+  // issuer (which then validates strictly). OIDC keeps `iss` (real issuer from
+  // discovery). Provider binding is still enforced by the signed state cookie.
+  let grantUrl = callbackUrl;
+  if (p.type === "oauth2" && !p.issuer) {
+    grantUrl = new URL(callbackUrl.href);
+    grantUrl.searchParams.delete("iss");
+  }
+
+  const tokens = await oidc.authorizationCodeGrant(cfg, grantUrl, {
     pkceCodeVerifier: checks.codeVerifier,
     expectedState: checks.state,
     ...(p.type === "oidc"
