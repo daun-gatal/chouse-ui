@@ -5,22 +5,25 @@
 #   docker compose down         # stop  (add -v to wipe the data volumes)
 #
 # Register these as three nodes in chouse-fleet (HTTP interface):
-#   ch-1  ->  http://localhost:8200   user: default   password: fleet
-#   ch-2  ->  http://localhost:8201   user: default   password: fleet
-#   ch-3  ->  http://localhost:8202   user: default   password: fleet
+#   ch-1  ->  http://localhost:8200   user: default   password: default
+#   ch-2  ->  http://localhost:8201   user: default   password: default
+#   ch-3  ->  http://localhost:8202   user: default   password: default
 #
 # Why the tuning: a stock ClickHouse grabs multiple GB of cache per instance,
 # so 3 of them would OOM an 8 GB box instantly. The inline config below caps
 # each node hard. This is a LOCAL test rig — the default user's password is a
-# throwaway ("fleet"); do not expose these ports off your machine.
+# throwaway ("default"); do not expose these ports off your machine.
 #
-# Override the image tag if you want a newer 25.x:  CH_VERSION=25.8 docker compose up -d
+# Override the image tag if you want a different version:  CH_VERSION=25.8 docker compose up -d
 
 name: chouse-fleet-testbed
 
 x-clickhouse: &clickhouse
-  image: clickhouse/clickhouse-server:${CH_VERSION:-25.3}
+  image: clickhouse/clickhouse-server:${CH_VERSION:-26.5-alpine}
   restart: unless-stopped
+  environment:
+    # Allow SQL-based user/role management (CREATE USER, GRANT, ...).
+    CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
   # Cap container logs. These nodes log to console (<console>1</console>), so the
   # default json-file driver grows UNBOUNDED — a crash/merge loop can fill the
   # Docker VM disk in minutes. 10m x 3 = 30 MB hard ceiling per node.
@@ -40,7 +43,7 @@ x-clickhouse: &clickhouse
       soft: 262144
       hard: 262144
   healthcheck:
-    test: ["CMD", "clickhouse-client", "--password", "fleet", "--query", "SELECT 1"]
+    test: ["CMD", "clickhouse-client", "--password", "default", "--query", "SELECT 1"]
     interval: 10s
     timeout: 5s
     retries: 12
@@ -132,11 +135,11 @@ configs:
     content: |
       <clickhouse>
           <!-- Give the default user a throwaway password so the fleet connects
-               with credentials (user: default, password: fleet). Plaintext is
+               with credentials (user: default, password: default). Plaintext is
                fine for a local test rig. -->
           <users>
               <default>
-                  <password>fleet</password>
+                  <password>default</password>
               </default>
           </users>
           <profiles>

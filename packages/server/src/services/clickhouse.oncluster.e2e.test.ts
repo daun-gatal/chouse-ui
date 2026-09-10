@@ -19,7 +19,7 @@ import { ClickHouseService } from "./clickhouse";
 
 const E2E_URL = process.env["CH_E2E_URL"] ?? "";
 const E2E_USER = process.env["CH_E2E_USER"] ?? "default";
-const E2E_PASSWORD = process.env["CH_E2E_PASSWORD"] ?? "";
+const E2E_PASSWORD = process.env["CH_E2E_PASSWORD"] ?? "default";
 
 async function collectLines(gen: AsyncGenerator<string>): Promise<unknown[]> {
   const lines: unknown[] = [];

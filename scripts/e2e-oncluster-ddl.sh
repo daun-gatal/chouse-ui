@@ -27,7 +27,7 @@ $COMPOSE up -d
 echo "Waiting for ClickHouse testbed (http://localhost:8200)..."
 READY=0
 for _ in $(seq 1 60); do
-  if curl -fsS -u "default:fleet" "http://localhost:8200/?query=SELECT%201" >/dev/null 2>&1; then
+  if curl -fsS -u "default:default" "http://localhost:8200/?query=SELECT%201" >/dev/null 2>&1; then
     READY=1
     break
   fi
@@ -38,11 +38,11 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
-CH_E2E_URL=http://localhost:8200 CH_E2E_USER=default CH_E2E_PASSWORD=fleet \
+CH_E2E_URL=http://localhost:8200 CH_E2E_USER=default CH_E2E_PASSWORD=default \
   bun test packages/server/src/services/clickhouse.oncluster.e2e.test.ts
 
 echo "Verifying cleanup (no e2e tables left)..."
-LEFT=$(curl -fsS -u "default:fleet" --data-binary \
+LEFT=$(curl -fsS -u "default:default" --data-binary \
   "SELECT count() FROM system.tables WHERE name LIKE 'e2e\\_oc\\_%' FORMAT TabSeparated" \
   http://localhost:8200/ 2>/dev/null || echo "unknown")
 echo "Remaining e2e tables: $LEFT"

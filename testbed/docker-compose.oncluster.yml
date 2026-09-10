@@ -42,7 +42,7 @@ services:
     configs: *node-configs
 
   keeper:
-    image: clickhouse/clickhouse-keeper:${CH_VERSION:-25.3}
+    image: clickhouse/clickhouse-keeper:${CH_VERSION:-26.5-alpine}
     container_name: ch-fleet-keeper
     hostname: keeper
     # Keeper (unlike clickhouse-server) does not scan config.d, so the full
