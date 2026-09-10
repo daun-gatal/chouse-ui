@@ -181,19 +181,28 @@ export async function exchangeCodeForIdentity(
     p.userinfoEndpoint,
     tokens.access_token
   );
-  return applyClaimMapping(p.id, p.claimMapping, userinfo);
+  return applyClaimMapping(p.id, p.claimMapping, userinfo.userinfo, {
+    emailVerified: userinfo.emailVerified,
+  });
 }
 
 /**
  * Fetch a plain-OAuth2 provider's userinfo endpoint and return the raw JSON
- * object. Sends a User-Agent because some providers (notably GitHub's API)
+ * object plus whether the resolved email carries IdP verification proof.
+ * Sends a User-Agent because some providers (notably GitHub's API)
  * reject requests without one.
+ *
+ * Only GitHub's /user/emails fallback asserts verification (it returns only
+ * verified addresses, and we pick primary-verified first). Every other
+ * plain-OAuth2 userinfo email is untrusted — the caller must not auto-link
+ * on it. The flag travels out-of-band (not inside `userinfo`) so a crafted
+ * userinfo field can never spoof it via claim_mapping.
  */
 async function fetchOauth2UserInfo(
   providerId: string,
   userinfoEndpoint: string,
   accessToken: string
-): Promise<Record<string, unknown>> {
+): Promise<{ userinfo: Record<string, unknown>; emailVerified: boolean }> {
   const res = await fetch(userinfoEndpoint, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -215,12 +224,18 @@ async function fetchOauth2UserInfo(
   // GitHub keeps a user's email private by default, so /user returns
   // email:null. Fall back to /user/emails (granted by the user:email scope)
   // and use the primary verified address so JIT provisioning still has an email.
+  // A direct /user email stays unverified: only the /user/emails verified pick
+  // counts as proof (fail closed).
+  let emailVerified = false;
   const url = new URL(userinfoEndpoint);
   if (url.hostname === "api.github.com" && userinfo.email == null) {
-    const email = await fetchGithubPrimaryEmail(url.origin, accessToken);
-    if (email) userinfo.email = email;
+    const resolved = await fetchGithubPrimaryEmail(url.origin, accessToken);
+    if (resolved) {
+      userinfo.email = resolved.email;
+      emailVerified = resolved.verified;
+    }
   }
-  return userinfo;
+  return { userinfo, emailVerified };
 }
 
 interface GithubEmail {
@@ -233,7 +248,7 @@ interface GithubEmail {
 async function fetchGithubPrimaryEmail(
   apiOrigin: string,
   accessToken: string
-): Promise<string | null> {
+): Promise<{ email: string; verified: boolean } | null> {
   const res = await fetch(new URL("/user/emails", apiOrigin), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -256,7 +271,10 @@ async function fetchGithubPrimaryEmail(
   );
   const chosen =
     emails.find((e) => e.primary && e.verified) ?? emails.find((e) => e.verified);
-  return chosen ? chosen.email : null;
+  // The pick only ever selects a verified address, so returning verified:true
+  // is what lets provisionSsoUser auto-link it. Unverified addresses are
+  // dropped (fail closed) — they fall through to the no-email path.
+  return chosen ? { email: chosen.email, verified: true } : null;
 }
 
 export function normalizeOidcClaims(
@@ -291,7 +309,8 @@ export function normalizeOidcClaims(
 export function applyClaimMapping(
   providerId: string,
   mapping: Record<string, string>,
-  userinfo: Record<string, unknown>
+  userinfo: Record<string, unknown>,
+  options?: { emailVerified?: boolean }
 ): SsoIdentity {
   const pick = (field: string | undefined): string | null => {
     if (!field) return null;
@@ -313,7 +332,11 @@ export function applyClaimMapping(
     provider: providerId,
     subject,
     email: email ? email.toLowerCase() : null,
-    emailVerified: false, // plain OAuth2 cannot assert verification
+    // Plain OAuth2 cannot assert verification in general — only an explicit
+    // out-of-band proof (currently GitHub /user/emails verified pick, passed
+    // via options by exchangeCodeForIdentity) sets this to true. A crafted
+    // userinfo field can never enable it through claim_mapping.
+    emailVerified: options?.emailVerified === true,
     username: username ? username.toLowerCase() : null,
     displayName:
       typeof userinfo.name === "string" ? userinfo.name : null,
