@@ -87,6 +87,12 @@ const Oauth2ProviderSchema = CommonProviderSchema.extend({
   authorizationEndpoint: z.string().url(),
   tokenEndpoint: z.string().url(),
   userinfoEndpoint: z.string().url(),
+  // Optional issuer identifier for RFC 9207 `iss` validation. Plain-OAuth2
+  // providers have no discovery document; without this a synthetic URN is
+  // used and `iss` is stripped at the callback (see client.ts). Set it when
+  // the IdP sends a stable `iss` (GitHub: https://github.com/login/oauth)
+  // to validate it strictly instead.
+  issuer: z.string().url().optional(),
   claimMapping: z.record(z.string()).default({ subject: 'sub', email: 'email', username: 'username' }),
 });
 

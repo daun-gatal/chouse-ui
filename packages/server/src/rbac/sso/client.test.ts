@@ -451,4 +451,104 @@ describe("exchangeCodeForIdentity checks wiring", () => {
       globalThis.fetch = realFetch;
     }
   });
+
+  it("oauth2 without issuer: strips RFC 9207 iss from the callback URL before the grant (GitHub sends iss; the synthetic URN can never match)", async () => {
+    setupMock();
+
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ id: 7, email: "Iss@GitHub.com", login: "IssUser", name: "Iss User" }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )) as typeof fetch;
+
+    try {
+      const { exchangeCodeForIdentity, resetProviderConfigurationCache: reset } =
+        await import("./client");
+      reset();
+
+      const oauth2Provider = {
+        id: "github",
+        type: "oauth2" as const,
+        displayName: "GitHub",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        scopes: "read:user user:email",
+        authorizationEndpoint: "https://github.com/login/oauth/authorize",
+        tokenEndpoint: "https://github.com/login/oauth/access_token",
+        userinfoEndpoint: "https://api.github.com/user",
+        claimMapping: { subject: "id", email: "email", username: "login" },
+      };
+
+      const original = new URL(
+        "https://app.example.com/callback?code=c&state=st&iss=https://github.com/login/oauth"
+      );
+      const identity = await exchangeCodeForIdentity(oauth2Provider, original, {
+        codeVerifier: "cv",
+        state: "st",
+        nonce: "",
+      });
+
+      // iss stripped from the URL handed to the grant; code/state intact.
+      const grantUrl = capturedGrantArgs[1] as URL;
+      expect(grantUrl.searchParams.get("iss")).toBeNull();
+      expect(grantUrl.searchParams.get("code")).toBe("c");
+      expect(grantUrl.searchParams.get("state")).toBe("st");
+      // Caller's URL is not mutated.
+      expect(original.searchParams.get("iss")).toBe("https://github.com/login/oauth");
+      expect(identity.subject).toBe("7");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("oauth2 with explicit issuer: keeps iss and uses it as the Configuration issuer (strict RFC 9207 validation)", async () => {
+    setupMock();
+
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ id: 8, email: "Strict@GitHub.com", login: "StrictUser", name: "Strict User" }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )) as typeof fetch;
+
+    try {
+      const { exchangeCodeForIdentity, resetProviderConfigurationCache: reset } =
+        await import("./client");
+      reset();
+
+      const oauth2Provider = {
+        id: "github",
+        type: "oauth2" as const,
+        displayName: "GitHub",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        scopes: "read:user user:email",
+        issuer: "https://github.com/login/oauth",
+        authorizationEndpoint: "https://github.com/login/oauth/authorize",
+        tokenEndpoint: "https://github.com/login/oauth/access_token",
+        userinfoEndpoint: "https://api.github.com/user",
+        claimMapping: { subject: "id", email: "email", username: "login" },
+      };
+
+      const original = new URL(
+        "https://app.example.com/callback?code=c&state=st&iss=https://github.com/login/oauth"
+      );
+      const identity = await exchangeCodeForIdentity(oauth2Provider, original, {
+        codeVerifier: "cv",
+        state: "st",
+        nonce: "",
+      });
+
+      const grantUrl = capturedGrantArgs[1] as URL;
+      expect(grantUrl.searchParams.get("iss")).toBe("https://github.com/login/oauth");
+      const cfg = capturedGrantArgs[0] as {
+        serverMetadata: () => { issuer: string };
+      };
+      expect(cfg.serverMetadata().issuer).toBe("https://github.com/login/oauth");
+      expect(identity.subject).toBe("8");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
 });

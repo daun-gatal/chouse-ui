@@ -1,0 +1,57 @@
+name: Renovate
+
+# Keeps dependencies and the digest-pinned base images current so the image
+# scan gate in ci.yml (and ArtifactHub's report) stays green. Runs from the
+# default branch only.
+on:
+  schedule:
+    # Daily at 03:00 UTC.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      log_level:
+        description: "Renovate log level."
+        type: choice
+        options: [debug, info, warn]
+        default: info
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Prefer the RENOVATE_TOKEN secret (a fine-grained PAT) over the automatic
+      # GITHUB_TOKEN: PRs opened with GITHUB_TOKEN do not trigger the CI
+      # workflows they need to pass.
+      #
+      # To create it: GitHub Settings > Developer settings > Personal access
+      # tokens > Fine-grained tokens > Generate new token, owned by daun-gatal,
+      # repository access limited to chouse-ui, with:
+      #   - Contents: Read and write       (push update branches)
+      #   - Pull requests: Read and write  (open/update PRs)
+      #   - Workflows: Read and write      (Renovate also bumps the pinned
+      #     actions under .github/workflows)
+      #   - Metadata: Read-only            (mandatory, auto-selected)
+      # Optional: Checks: Read-only (read check runs), Dependabot alerts:
+      # Read-only (GitHub-native vulnerability alerts).
+      # Then add it as a repository secret named RENOVATE_TOKEN
+      # (Settings > Secrets and variables > Actions). Note the expiry date —
+      # rotate it before then, or Renovate runs will start failing.
+      - name: Run Renovate
+        uses: renovatebot/github-action@v46.2.6
+        with:
+          configurationFile: renovate.json
+          token: ${{ secrets.RENOVATE_TOKEN || secrets.GITHUB_TOKEN }}
+        env:
+          LOG_LEVEL: ${{ inputs.log_level || 'info' }}

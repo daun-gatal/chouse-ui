@@ -195,6 +195,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
           tags: chouseui:test
           build-args: |
             VERSION=test
@@ -202,6 +203,20 @@ jobs:
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ArtifactHub scans the published image with Trivy, so gate the PR on the
+      # same scanner. This is the check the old source-only Grype run missed:
+      # it never saw the base-image OS packages or the freshly-resolved server
+      # dependencies (the production stage installs without a lockfile).
+      - name: Install Trivy
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Scan image for HIGH/CRITICAL vulnerabilities
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          trivy image --no-progress --severity HIGH,CRITICAL --exit-code 1 chouseui:test
 
   validate-changelog:
     name: Validate Changelog Fragment

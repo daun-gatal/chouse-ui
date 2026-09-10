@@ -4,7 +4,8 @@
 # ============================================
 # Build Stage
 # ============================================
-FROM oven/bun:1 AS build
+# Base images are digest-pinned for reproducible scans; Renovate bumps them.
+FROM oven/bun:1@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895 AS build
 
 # Build arguments
 ARG VERSION=dev
@@ -29,14 +30,17 @@ RUN bun run build:web
 # ============================================
 # Production Stage
 # ============================================
-FROM oven/bun:1-alpine AS production
+# Base images are digest-pinned for reproducible scans; Renovate bumps them.
+FROM oven/bun:1-alpine@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f AS production
 
 # Patch base-image packages (the upstream tag lags Alpine security updates) and
 # install CA certificates for HTTPS connections.
 # The HEALTHCHECK uses busybox's built-in wget, so GNU wget is deliberately not
 # installed — it ships unfixed CVEs and adds nothing busybox doesn't cover.
+# libcrypto3/libssl3 carry an explicit floor so a base that predates the OpenSSL
+# security bump fails the build instead of silently shipping known CVEs.
 RUN apk upgrade --no-cache && \
-    apk add --no-cache ca-certificates && \
+    apk add --no-cache ca-certificates 'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' && \
     update-ca-certificates
 
 # Re-declare build arguments for labels
