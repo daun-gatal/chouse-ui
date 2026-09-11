@@ -66,6 +66,7 @@ export type {
 // RBAC (Role-Based Access Control)
 export {
   rbacAuthApi,
+  rbacPatApi,
   rbacUsersApi,
   rbacRolesApi,
   rbacAuditApi,
@@ -80,6 +81,9 @@ export type {
   RbacPermission,
   RbacLoginResponse,
   RbacAuditLog,
+  PatToken,
+  CreatePatInput,
+  CreatedPatResponse,
   UserFavorite,
   UserRecentItem,
   UserPreferences,

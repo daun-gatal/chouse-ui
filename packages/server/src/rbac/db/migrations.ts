@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.50.0';
+export const APP_VERSION = '1.51.0';
 
 // ============================================
 // Error Helpers
@@ -4649,6 +4649,53 @@ export const MIGRATIONS: Migration[] = [
         `);
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.50.0] Created fleet alert latch tables (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.51.0',
+    name: 'pat_api_keys_backfill',
+    description: 'ADR 0011 — backfill the rbac_api_keys table (personal access tokens) on upgraded databases. The table previously existed only in the fresh-install Drizzle snapshot, so long-lived installs lack it. Idempotent: safe no-op where the table already exists.',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        (db as SqliteDb).run(sql`
+          CREATE TABLE IF NOT EXISTS rbac_api_keys (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            key_hash TEXT NOT NULL UNIQUE,
+            key_prefix TEXT NOT NULL,
+            scopes TEXT NOT NULL DEFAULT '[]',
+            expires_at INTEGER,
+            last_used_at INTEGER,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            revoked_at INTEGER
+          )
+        `);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS api_keys_user_idx ON rbac_api_keys(user_id)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS api_keys_hash_idx ON rbac_api_keys(key_hash)`);
+        (db as SqliteDb).run(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
+      } else {
+        await (db as PostgresDb).execute(sql`
+          CREATE TABLE IF NOT EXISTS rbac_api_keys (
+            id TEXT PRIMARY KEY NOT NULL,
+            user_id TEXT NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            key_hash VARCHAR(255) NOT NULL UNIQUE,
+            key_prefix VARCHAR(20) NOT NULL,
+            scopes TEXT[] NOT NULL DEFAULT '{}',
+            expires_at TIMESTAMP WITH TIME ZONE,
+            last_used_at TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            revoked_at TIMESTAMP WITH TIME ZONE
+          )
+        `);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS api_keys_user_idx ON rbac_api_keys(user_id)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS api_keys_hash_idx ON rbac_api_keys(key_hash)`);
+        await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
+      }
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.51.0] Ensured rbac_api_keys table (${dbType})`);
     },
     down: async () => { /* forward-only */ },
   },

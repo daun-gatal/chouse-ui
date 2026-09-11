@@ -5,11 +5,15 @@
  */
 
 import { Context, Next } from 'hono';
-import { 
-  verifyAccessToken, 
+import {
   extractTokenFromHeader,
-  type TokenPayload 
+  type TokenPayload,
 } from '../services/jwt';
+import {
+  verifyBearer,
+  toTokenPayload,
+  type AuthMethod,
+} from '../services/patAuth';
 import { 
   userHasPermission, 
   userHasAnyPermission, 
@@ -28,6 +32,10 @@ export interface RbacContext {
   rbacUserId: string;
   rbacRoles: string[];
   rbacPermissions: string[];
+  /** How the request authenticated. Absent only when no auth ran yet. */
+  authMethod?: AuthMethod;
+  /** PAT row id for PAT-authenticated requests (prefix only, never the secret). */
+  patId?: string;
 }
 
 // Extend Hono context with RBAC data
@@ -52,13 +60,17 @@ export async function rbacAuthMiddleware(c: Context, next: Next) {
   }
 
   try {
-    const payload = await verifyAccessToken(token);
+    const identity = await verifyBearer(token);
 
     // Attach user info to context
-    c.set('rbacUser', payload);
-    c.set('rbacUserId', payload.sub);
-    c.set('rbacRoles', payload.roles);
-    c.set('rbacPermissions', payload.permissions);
+    c.set('rbacUser', toTokenPayload(identity));
+    c.set('rbacUserId', identity.userId);
+    c.set('rbacRoles', identity.roles);
+    c.set('rbacPermissions', identity.permissions);
+    c.set('authMethod', identity.authMethod);
+    if (identity.patId) {
+      c.set('patId', identity.patId);
+    }
 
     await next();
   } catch (error) {
@@ -89,11 +101,15 @@ export async function optionalRbacAuthMiddleware(c: Context, next: Next) {
 
   if (token) {
     try {
-      const payload = await verifyAccessToken(token);
-      c.set('rbacUser', payload);
-      c.set('rbacUserId', payload.sub);
-      c.set('rbacRoles', payload.roles);
-      c.set('rbacPermissions', payload.permissions);
+      const identity = await verifyBearer(token);
+      c.set('rbacUser', toTokenPayload(identity));
+      c.set('rbacUserId', identity.userId);
+      c.set('rbacRoles', identity.roles);
+      c.set('rbacPermissions', identity.permissions);
+      c.set('authMethod', identity.authMethod);
+      if (identity.patId) {
+        c.set('patId', identity.patId);
+      }
     } catch {
       // Token invalid/expired, but we don't fail - just continue without auth
     }
@@ -284,6 +300,22 @@ export function getRbacUser(c: Context): TokenPayload {
  */
 export function getRbacUserOptional(c: Context): TokenPayload | null {
   return c.get('rbacUser') || null;
+}
+
+/**
+ * Reject PAT-authenticated requests (ADR 0011 privilege fence).
+ *
+ * Token lifecycle and account-takeover operations (PAT CRUD, password change,
+ * session logout) require an interactive browser JWT session. Call after
+ * `rbacAuthMiddleware` in route handlers. Requests that never set an auth
+ * method predate PATs and are always JWT sessions, so they pass.
+ */
+export function requireJwtSession(c: Context): void {
+  if (c.get('authMethod') === 'pat') {
+    throw AppError.forbidden(
+      'This action requires a browser session and cannot be performed with a personal access token'
+    );
+  }
 }
 
 /**

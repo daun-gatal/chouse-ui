@@ -1,0 +1,18 @@
+# DinD E2E override for docker-compose.local.yml (used by scripts/e2e-pat.sh).
+#
+# The base file bind-mounts ./.config.yaml from the working tree. Under DinD
+# that source path is resolved on the DOCKER HOST — where this tree does not
+# exist — so the daemon substitutes an empty directory and the server fails
+# with EISDIR on /app/config.yaml. This override drops all host bind mounts
+# (keeping only the named data volume) and disables the YAML config path so
+# the server boots from environment + defaults.
+services:
+  chouse-ui:
+    volumes: !reset
+      - chouse-ui-local-data:/app/data
+    environment:
+      CHOUSE_CONFIG_PATH: ""
+      # Passed through from the shell (scripts/e2e-pat.sh exports test-only
+      # defaults); the production image refuses to boot without them.
+      RBAC_ENCRYPTION_KEY: ${RBAC_ENCRYPTION_KEY}
+      RBAC_ENCRYPTION_SALT: ${RBAC_ENCRYPTION_SALT}

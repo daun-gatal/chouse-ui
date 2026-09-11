@@ -6,6 +6,7 @@
 
 import { Hono } from 'hono';
 import authRoutes from './auth';
+import patRoutes from './personalAccessTokens';
 import userRoutes from './users';
 import roleRoutes from './roles';
 import auditRoutes from './audit';
@@ -25,6 +26,7 @@ const rbacRoutes = new Hono();
 
 // Mount routes
 rbacRoutes.route('/auth', authRoutes);
+rbacRoutes.route('/pats', patRoutes);
 rbacRoutes.route('/auth/sso', ssoRoutes);
 rbacRoutes.route('/users', userRoutes);
 rbacRoutes.route('/roles', roleRoutes);

@@ -387,6 +387,11 @@ export const AUDIT_ACTIONS = {
   SSO_LOGIN: 'auth.sso_login',
   SSO_LOGIN_FAILED: 'auth.sso_login_failed',
 
+  // Personal Access Tokens (machine auth for CLI / MCP server)
+  PAT_CREATE: 'pat.create',
+  PAT_REVOKE: 'pat.revoke',
+  PAT_ROTATE: 'pat.rotate',
+
   // User Management
   USER_CREATE: 'user.create',
   USER_UPDATE: 'user.update',

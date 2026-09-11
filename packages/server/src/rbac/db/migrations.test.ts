@@ -290,6 +290,15 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     const runtime = await h.rawAll(sql`SELECT last_auto_rca_at FROM fleet_alerter_runtime WHERE id = 1`);
     expect(runtime.length).toBe(1);
   },
+  "1.51.0": async () => {
+    // ADR 0011: backfills rbac_api_keys on upgraded installs; no-op on fresh.
+    expect(await h.tableExists("rbac_api_keys")).toBe(true);
+    expect(await h.columnExists("rbac_api_keys", "key_hash")).toBe(true);
+    expect(await h.columnExists("rbac_api_keys", "revoked_at")).toBe(true);
+    expect(await h.indexExists("api_keys_user_idx")).toBe(true);
+    expect(await h.indexExists("api_keys_hash_idx")).toBe(true);
+    expect(await h.indexExists("api_keys_prefix_idx")).toBe(true);
+  },
 };
 
 // ---------------------------------------------------------------------------
