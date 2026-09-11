@@ -6,7 +6,8 @@
  */
 
 import { Context, Next } from 'hono';
-import { verifyAccessToken, extractTokenFromHeader, type TokenPayload } from '../rbac/services/jwt';
+import { extractTokenFromHeader } from '../rbac/services/jwt';
+import { verifyBearer } from '../rbac/services/patAuth';
 import {
   checkUserAccess,
   filterDatabasesForUser,
@@ -144,11 +145,11 @@ export async function optionalRbacMiddleware(c: Context, next: Next) {
 
   if (token) {
     try {
-      const payload = await verifyAccessToken(token);
-      c.set('rbacUserId', payload.sub);
-      c.set('rbacRoles', payload.roles);
-      c.set('rbacPermissions', payload.permissions);
-      c.set('isRbacAdmin', payload.roles.includes('super_admin') || payload.roles.includes('admin'));
+      const identity = await verifyBearer(token);
+      c.set('rbacUserId', identity.userId);
+      c.set('rbacRoles', identity.roles);
+      c.set('rbacPermissions', identity.permissions);
+      c.set('isRbacAdmin', identity.roles.includes('super_admin') || identity.roles.includes('admin'));
     } catch {
       // Token invalid, continue without RBAC context
     }

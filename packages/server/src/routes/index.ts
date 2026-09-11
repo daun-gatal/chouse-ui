@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { Context, Next } from "hono";
+import { PAT_PREFIX } from "../rbac/services/personalAccessTokens";
 import query from "./query";
 import explorer from "./explorer";
 import metrics from "./metrics";
@@ -54,7 +55,17 @@ const apiProtectionMiddleware = async (c: Context, next: Next) => {
   // Check for X-Requested-With header (set by frontend JavaScript)
   const requestedWith = c.req.header("X-Requested-With");
 
-  if (requestedWith !== "XMLHttpRequest") {
+  // Machine clients (CLI, MCP server) authenticate with a personal access
+  // token and never send X-Requested-With (ADR 0011). Prefix check only —
+  // no DB I/O in this layer; validity is enforced by auth middleware.
+  const authHeader = c.req.header("Authorization") || "";
+  const bearerToken = authHeader.split(" ");
+  const isPatRequest =
+    bearerToken.length === 2 &&
+    bearerToken[0].toLowerCase() === "bearer" &&
+    bearerToken[1].startsWith(PAT_PREFIX);
+
+  if (requestedWith !== "XMLHttpRequest" && !isPatRequest) {
     return c.json({
       success: false,
       error: "Direct API access is not allowed. Please use the application UI.",

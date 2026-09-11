@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId } from "@/api/client";
 import ConfirmationDialog from "@/components/common/ConfirmationDialog";
+import { PersonalAccessTokensCard } from "@/features/rbac/components/PersonalAccessTokensCard";
 import { useTheme } from "@/components/common/theme-provider";
 import { log } from "@/lib/log";
 
@@ -42,6 +43,9 @@ import { log } from "@/lib/log";
 const EYEBROW = "inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper-dim";
 const MONO_LABEL = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-dim";
 const MONO_FAINT = "font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint";
+
+// Shared with PersonalAccessTokensCard (same grid, same recipes).
+export { MONO_LABEL, MONO_FAINT };
 
 // Resolve a role's human-readable display name from the user's role metadata,
 // falling back to the raw role name when metadata is unavailable.
@@ -64,7 +68,7 @@ interface SettingCardProps {
   onboardingId?: string;
 }
 
-const SettingCard: React.FC<SettingCardProps> = ({
+export const SettingCard: React.FC<SettingCardProps> = ({
   title,
   description,
   icon: Icon,
@@ -128,7 +132,7 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon: Icon, className }
 // Status footer (uniform editorial pill for card bottom)
 // ============================================
 
-const StatusFooter: React.FC<{
+export const StatusFooter: React.FC<{
   label: string;
   meta: string;
   tone?: "brand" | "emerald";
@@ -865,7 +869,9 @@ export default function Preferences() {
             {/* Row 2: Data access + Permissions */}
             <DataAccessCard rules={allRules} connections={connections} isAdmin={isAdmin()} />
             <EffectivePermissionsCard permissions={user?.permissions || []} />
-            {/* Row 3: Appearance + query settings — full row */}
+            {/* Row 3: Personal access tokens — full row */}
+            <PersonalAccessTokensCard />
+            {/* Row 4: Appearance + query settings — full row */}
             <AppearanceCard />
           </div>
         </div>

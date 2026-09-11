@@ -26,7 +26,8 @@ import {
   rbacAuthMiddleware,
   getClientIp,
   getRbacUser,
-  requirePermission
+  requirePermission,
+  requireJwtSession
 } from '../middleware/rbacAuth';
 import { getPasswordLoginEnabled } from '../authConfig';
 import { dropUserConnectionFacts } from '../../services/connectionResolver';
@@ -165,6 +166,8 @@ authRoutes.post('/refresh', zValidator('json', RefreshTokenSchema), async (c) =>
  */
 authRoutes.post('/logout', rbacAuthMiddleware, async (c) => {
   const user = getRbacUser(c);
+  // PATs hold no server session; only browser sessions can log out (ADR 0011).
+  requireJwtSession(c);
   const ipAddress = getClientIp(c);
 
   await logoutUser(user.sessionId);
@@ -192,6 +195,8 @@ authRoutes.post('/logout', rbacAuthMiddleware, async (c) => {
  */
 authRoutes.post('/logout-all', rbacAuthMiddleware, async (c) => {
   const user = getRbacUser(c);
+  // PATs cannot revoke other sessions on behalf of the account (ADR 0011).
+  requireJwtSession(c);
   const ipAddress = getClientIp(c);
 
   await logoutAllSessions(user.sub);
@@ -279,6 +284,8 @@ authRoutes.get('/profile', rbacAuthMiddleware, async (c) => {
  */
 authRoutes.post('/change-password', rbacAuthMiddleware, zValidator('json', ChangePasswordSchema), async (c) => {
   const user = getRbacUser(c);
+  // PATs cannot change the account password (ADR 0011 privilege fence).
+  requireJwtSession(c);
   const { currentPassword, newPassword } = c.req.valid('json');
   const ipAddress = getClientIp(c);
 

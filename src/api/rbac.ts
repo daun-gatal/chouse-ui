@@ -506,6 +506,77 @@ export const rbacAuthApi = {
 };
 
 // ============================================
+// Personal Access Tokens API (ADR 0011)
+// Self-service machine credentials for the future CLI / MCP server.
+// The UI always uses the browser JWT session here — PAT secrets created
+// through this API are shown once and never stored client-side.
+// ============================================
+
+export interface PatToken {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  scopes: string[];
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export interface CreatePatInput {
+  name: string;
+  expiresAt?: string | null;
+  scopes?: string[];
+}
+
+export interface CreatedPatResponse {
+  token: PatToken;
+  /** Raw secret — displayed once, never retrievable again. */
+  rawToken: string;
+}
+
+export const rbacPatApi = {
+  /**
+   * List the current user's tokens (metadata only).
+   */
+  async list(): Promise<PatToken[]> {
+    const response = await rbacFetch<{ tokens: PatToken[] }>('/pats');
+    return response.tokens;
+  },
+
+  /**
+   * Create a token. The raw secret is returned exactly once.
+   */
+  async create(input: CreatePatInput): Promise<CreatedPatResponse> {
+    return rbacFetch<CreatedPatResponse>('/pats', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  /**
+   * Revoke one of the current user's tokens (idempotent).
+   * Revoked tokens disappear from the list; the audit log keeps the trail.
+   */
+  async revoke(id: string): Promise<PatToken> {
+    const response = await rbacFetch<{ token: PatToken }>(`/pats/${id}`, {
+      method: 'DELETE',
+    });
+    return response.token;
+  },
+
+  /**
+   * Rotate a token: invalidate the secret and mint a replacement with
+   * identical name, scopes, and expiry. The new secret is returned once.
+   */
+  async rotate(id: string): Promise<CreatedPatResponse> {
+    return rbacFetch<CreatedPatResponse>(`/pats/${id}/rotate`, {
+      method: 'POST',
+    });
+  },
+};
+
+// ============================================
 // Users API
 // ============================================
 
