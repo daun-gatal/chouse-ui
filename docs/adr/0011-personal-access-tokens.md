@@ -1,6 +1,6 @@
 # 0011 — Personal Access Tokens for CLI and MCP Machine Auth
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-11
 - **Implementation:** follow-up PR(s) referencing this ADR (backend, then frontend, then E2E). Acceptance is separate from shipping.
 
