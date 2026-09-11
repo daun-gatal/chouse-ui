@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.12.1] - 2026-09-11
+
+### Changed
+- **CI now scans the built image** with Trivy and fails on HIGH/CRITICAL findings, matching ArtifactHub's scanner. Base images are digest-pinned and kept current by Renovate.
+
+### Fixed
+- **ON CLUSTER DDL** — `CREATE/DROP/ALTER ... ON CLUSTER` in the SQL editor no longer shows a false `JSON Parse error` on success; per-host results render as a table and plain DDL returns a clean success
+- **GitHub SSO login** — GitHub now sends an RFC 9207 `iss` parameter (`https://github.com/login/oauth`) that could never match the synthetic plain-OAuth2 issuer, rejecting every login. OAuth2 callbacks now ignore `iss` unless an explicit `issuer` is configured (which validates it strictly instead).
+- **SSO email auto-link** — GitHub logins using a verified `/user/emails` address now auto-link to the existing account when `auto_link_by_email` is enabled (previously failed with a duplicate-email error); email collisions without verification proof now return `409 Conflict` with an actionable message instead of a raw database error
+- **Container image vulnerabilities** — the published image no longer carries known CVEs from the server runtime or the Alpine base. Bumped `hono`, `nodemailer`, and `@xmldom/xmldom`, forced patched transitive `@xmldom/xmldom` and `uuid` through overrides that the production install honours, and pinned a minimum OpenSSL (`libcrypto3`/`libssl3`) version in the base image.
+
 ## [v3.12.0] - 2026-08-02
 
 ### Added
@@ -110,15 +121,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Alert channel "Send test" now matches real delivery** — a Google Chat webhook saved under a *Slack* channel passed "Send test" but no real breach alert ever arrived (only the in-app feed showed it). The test sent a bare `{text}` body that both providers accept, while production delivery sends provider-specific payloads (Slack Block Kit `attachments` / Google Chat `cardsV2`), which Google Chat rejects with `400` for a Slack-shaped body. The test now sends the same payload shape as real delivery, so a mismatched channel fails the test instead of giving false confidence.
-
-## [v3.6.0] - 2026-06-17
-
-### Added
-- **Admin → Settings → Alerting** — a new single-section settings area to manage reusable **notification channels** (Slack, Google Chat, Email, Webhook) with per-type forms and a "Send test" action, **alert rules** (add / edit / delete) with thresholds, severity, AI auto-RCA and the channels they deliver to, and a **recent alerts** feed that records every breach and can be cleared by time range (older than 24h / 7d / 30d / all). Multiple fleet rules are supported — each evaluates independently and delivers its breaches to its own attached channels. Gated by new permissions: `alerting:view` and `alerting:edit` (Super Admin + Admin), and a separate `alerting:delete` for removing channels/rules and clearing alerts (Super Admin only).
-
-### Changed
-- **Alerting config is now normalized** — the fleet alert delivery config (rules/thresholds + Slack/Google Chat/email) moved out of a single JSON blob into reusable metadata tables (`notification_channels`, `alert_rules`, `alert_rule_channels`, `alert_events`). Existing settings are migrated automatically on upgrade, with secrets encrypted in the process.
-- **Only one fleet rule can be enabled at a time** — enabling a second fleet-threshold rule is blocked (server-side 409 + an up-front notice in the rule editor) naming the rule that's already active. Fleet alerting is driven purely by which rule is enabled in Settings → Alerting; the fleet alerter delivers to every channel linked to the enabled rule, including the new Webhook type.
-- **Alerts bell is browser-notifications only** — the bell popover (renamed "Notifications") holds just the per-device browser desktop/toast alerting (enable + thresholds + desktop-banner permission). Slack/email delivery and rule enablement live in Admin → Settings → Alerting; the old in-bell delivery editor was removed.
-- **Notification channel secrets are now encrypted at rest** — Slack/Google Chat webhook URLs and SMTP passwords are stored with AES-256-GCM instead of plaintext, and are never returned to the browser.
 
