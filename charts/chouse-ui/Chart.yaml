@@ -6,9 +6,9 @@ description: >-
 type: application
 # Chart version — bump manually in every PR that changes the chart
 # (see .rules/HELM_CHART.md). Breaking values changes bump major.
-version: 1.2.1
+version: 1.2.2
 # App version — owned by auto-release.yml; never edit by hand.
-appVersion: "3.12.0"
+appVersion: "3.12.1"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/daun-gatal/chouse-ui
 # Rendered as the package logo on artifacthub.io and by other chart UIs.
@@ -46,7 +46,7 @@ annotations:
       url: https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0010-pod-local-state-and-multi-replica-correctness.md
   artifacthub.io/images: |
     - name: chouse-ui
-      image: ghcr.io/daun-gatal/chouse-ui:v3.12.0
+      image: ghcr.io/daun-gatal/chouse-ui:v3.12.1
   artifacthub.io/changes: |
     - kind: changed
-      description: Updated to CHouse UI v3.12.0
+      description: Updated to CHouse UI v3.12.1
