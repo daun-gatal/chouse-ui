@@ -54,7 +54,7 @@ offer --dry-run previews.`,
 	root.PersistentFlags().StringVar(&flagToken, "token", "", "PAT ch_pat_… (env CH_HOUSE_PAT)")
 	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "config profile (env CHOUSE_PROFILE)")
 	root.PersistentFlags().StringVarP(&flagConnection, "connection", "c", "", "ClickHouse connection ID (env CHOUSE_CONNECTION)")
-	root.PersistentFlags().StringVarP(&flagOutput, "output", "o", "", "table|json|yaml|csv (env CHOUSE_OUTPUT)")
+	root.PersistentFlags().StringVarP(&flagOutput, "output", "o", "", "json|yaml (default json) (env CHOUSE_OUTPUT)")
 	root.PersistentFlags().BoolVarP(&flagQuiet, "quiet", "q", false, "minimal output for scripts")
 	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 60, "request timeout in seconds")
 	root.PersistentFlags().BoolVar(&flagYes, "yes", false, "approve destructive actions (required in non-TTY)")
@@ -141,13 +141,11 @@ func mustConfig() config.Resolved {
 	return resolved
 }
 
-// render prints a decoded payload honoring --output/--quiet.
+// render prints a decoded payload honoring --output. JSON is the only
+// default; --quiet suppresses stderr diagnostics so stdout pipes cleanly.
 func render(resolved config.Resolved, value any) {
 	format := resolved.Output
 	if format == "" {
-		format = output.Table
-	}
-	if flagQuiet && format == output.Table {
 		format = output.JSON
 	}
 	if err := output.Print(os.Stdout, format, value); err != nil {

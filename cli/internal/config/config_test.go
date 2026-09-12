@@ -179,3 +179,37 @@ func TestRequireToken(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestResolveOutputDefaultJSON(t *testing.T) {
+	t.Setenv(EnvOutput, "")
+
+	// Isolate HOME so we never touch the real user config.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// No flag/env/file value: output must default to json (table/csv removed).
+	got, err := Resolve(Flags{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.Output != "json" {
+		t.Fatalf("expected json default output, got %q", got.Output)
+	}
+
+	// Profile default wins over the built-in default, flag wins over all.
+	t.Setenv(EnvOutput, "yaml")
+	got, err = Resolve(Flags{})
+	if err != nil {
+		t.Fatalf("Resolve env: %v", err)
+	}
+	if got.Output != "yaml" {
+		t.Fatalf("env output precedence broken: %q", got.Output)
+	}
+	got, err = Resolve(Flags{Output: "json"})
+	if err != nil {
+		t.Fatalf("Resolve flag: %v", err)
+	}
+	if got.Output != "json" {
+		t.Fatalf("flag output precedence broken: %q", got.Output)
+	}
+}
