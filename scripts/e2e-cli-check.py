@@ -370,9 +370,10 @@ def t_login_persists_server():
     # server AND token both come from disk.
     import tempfile as _tf  # noqa: E402
     home = _tf.mkdtemp(prefix="chouse-e2e-login-")
-    out = need(cli_scrubbed("auth", "login", "--server", BASE,
-                            "--token", STATE["pat"], home=home))
-    assert "stored PAT" in out, out[-300:]
+    p = cli_scrubbed("auth", "login", "--server", BASE,
+                     "--token", STATE["pat"], home=home)
+    need(p)
+    assert "stored PAT" in p.stderr, p.stderr[-300:]
     out = need(cli_scrubbed("auth", "status", "--output", "json", home=home))
     data = json.loads(out)
     assert data["server"] == BASE, out[-300:]
