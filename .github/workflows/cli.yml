@@ -85,10 +85,21 @@ jobs:
 
   installer-smoke:
     name: Installer Smoke
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     needs: test
     permissions:
       contents: read
+    strategy:
+      # macOS runners have no sha256sum (shasum only); pinning SHELL per OS
+      # covers both the zsh and bash rc-wiring paths deterministically.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            test_shell: /bin/bash
+          - os: macos-latest
+            test_shell: /bin/zsh
+      fail-fast: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -104,3 +115,52 @@ jobs:
           go build -o /tmp/chouse ./cmd/chouse
           /tmp/chouse version --output json || true
           /tmp/chouse --help | grep -q "Safe-by-default"
+
+      # Sandboxed HOME so the PATH-wiring assertions never touch the runner's
+      # real rc files. Installs the latest cli-v* prebuilt release.
+      - name: Installer PATH wiring
+        env:
+          TEST_SHELL: ${{ matrix.test_shell }}
+          # Authenticated API quota (5000/hr) for `latest` cli-v* resolution;
+          # shared runner egress IPs exhaust the 60/hr anonymous quota.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SANDBOX="$(mktemp -d)"
+          export HOME="$SANDBOX/home"
+          mkdir -p "$HOME"
+          export SHELL="$TEST_SHELL"
+          export INSTALL_DIR="$HOME/.local/bin"
+          sh scripts/install-cli.sh
+          test -x "$INSTALL_DIR/chouse"
+          "$INSTALL_DIR/chouse" version --output json || true
+          # Second run must not duplicate the marker (idempotency).
+          # Mirror the installer's shell detection to know which rc files
+          # should carry the marker.
+          sh scripts/install-cli.sh >/dev/null 2>&1
+          SHELL_NAME="$(basename "${SHELL:-sh}")"
+          case "$SHELL_NAME" in
+            fish) FILES="$HOME/.config/fish/config.fish" ;;
+            zsh) FILES="$HOME/.zshrc" ;;
+            bash)
+              if [ -e "$HOME/.bash_profile" ]; then FILES="$HOME/.bashrc $HOME/.bash_profile";
+              else FILES="$HOME/.bashrc $HOME/.profile"; fi ;;
+            *) FILES="$HOME/.profile" ;;
+          esac
+          for f in $FILES; do
+            test "$(grep -cF '# chouse CLI (added by install-cli.sh)' "$f")" = "1"
+          done
+          # Every appended sh-syntax line must actually put chouse on PATH.
+          # (Sandbox HOME means these files contain only our block.)
+          for f in $FILES; do
+            case "$f" in
+              *.fish) continue ;;
+              *) env -i HOME="$HOME" PATH="/usr/bin:/bin" bash -c 'source "$0" && command -v chouse' "$f" | grep -q "chouse" ;;
+            esac
+          done
+          # Opt-out must leave rc files alone.
+          SANDBOX2="$(mktemp -d)"
+          HOME="$SANDBOX2/home" INSTALL_DIR="$SANDBOX2/home/.local/bin" CHOUSE_NO_MODIFY_PATH=1 sh scripts/install-cli.sh >/dev/null 2>&1
+          test ! -e "$SANDBOX2/home/.bashrc"
+          test ! -e "$SANDBOX2/home/.zshrc"
+          test ! -e "$SANDBOX2/home/.profile"
+          rm -rf "$SANDBOX" "$SANDBOX2"
