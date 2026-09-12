@@ -73,8 +73,8 @@ instead of becoming silent duplicate jobs or per-pod databases at runtime.
 {{- if not .Values.mcp.enabled }}
 {{- fail "mcp.ingress.enabled=true requires mcp.enabled=true (the /mcp path targets the dedicated MCP Service and would 503 without it)" }}
 {{- end }}
-{{- if and (not .Values.ingress.enabled) (not .Values.mcp.ingress.host) }}
-{{- fail "mcp.ingress.enabled=true requires either ingress.enabled=true (to reuse its host) or an explicit mcp.ingress.host" }}
+{{- if not .Values.mcp.ingress.hosts }}
+{{- fail "mcp.ingress.enabled=true requires at least one mcp.ingress.hosts entry (declare the hosts that carry /mcp)" }}
 {{- end }}
 {{- end }}
 

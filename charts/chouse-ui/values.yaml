@@ -222,21 +222,31 @@ mcp:
   # -- Per-request tool timeout in seconds (1..600).
   timeoutSeconds: 60
   service:
-    # -- Service port for the dedicated MCP Service (`<release>-mcp`).
+    # -- Service type for the dedicated MCP Service (`<release>-mcp`).
+    # `LoadBalancer`/`NodePort` expose MCP directly without an Ingress.
+    type: ClusterIP
+    # -- Service port (targets the fixed container port 8752).
     port: 8752
+    # -- Extra annotations for the MCP Service.
+    annotations: {}
   ingress:
-    # -- Expose MCP at `<host>/mcp` through the ingress (TLS-terminated on
-    # port 80/443), so agents can use `https://<host>/mcp` without a port.
-    # Requires `mcp.enabled` (the path targets the dedicated MCP Service and
-    # 503s without it). Note: MCP streams over SSE, so the ingress needs the
-    # same annotations as AI chat — raise the proxy read timeout (nginx:
-    # `nginx.ingress.kubernetes.io/proxy-read-timeout: "300"`) and disable
-    # buffering (`nginx.ingress.kubernetes.io/proxy-buffering: "off"`).
+    # -- Expose MCP at `https://<host>/mcp` through the ingress. Rendered as
+    # its own Ingress, mirroring the UI ingress: `className`, `annotations`,
+    # and `tls` are rendered verbatim — no inheritance, no merging. Requires
+    # `mcp.enabled` and at least one host. TLS-terminating controllers
+    # (e.g. Tailscale Funnel) need no `tls`.
     enabled: false
-    # -- Host for the `/mcp` path. Empty uses the first `ingress.hosts[0].host`.
-    # Set to a dedicated hostname (e.g. `mcp.example.com`) to separate MCP from
-    # the UI origin — add a matching `ingress.tls` entry for it.
-    host: ""
+    # -- Hosts carrying the `/mcp` path (same shape as `ingress.hosts` minus
+    # `paths` — the path is fixed at `/mcp`).
+    hosts: []
+    # -- Rendered verbatim, exactly like `ingress.className`.
+    className: ""
+    # -- Rendered verbatim, exactly like `ingress.annotations`. For SSE:
+    #   nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    #   nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    annotations: {}
+    # -- Rendered verbatim, exactly like `ingress.tls`.
+    tls: []
 
 service:
   # -- Service type.

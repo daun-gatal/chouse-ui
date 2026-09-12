@@ -108,16 +108,41 @@ tests:
           content:
             port: 8752
 
-  - it: honors the configured service port
+  - it: honors the configured service port and type
     template: mcp-service.yaml
     set:
       secrets.existingSecret: s
       mcp.enabled: true
       mcp.service.port: 9443
+      mcp.service.type: NodePort
     asserts:
       - equal:
           path: spec.ports[0].port
           value: 9443
+      - equal:
+          path: spec.type
+          value: NodePort
+
+  - it: renders service annotations verbatim
+    template: mcp-service.yaml
+    set:
+      secrets.existingSecret: s
+      mcp.enabled: true
+      mcp.service.annotations:
+        example.com/agent-traffic: "mcp"
+    asserts:
+      - equal:
+          path: metadata.annotations["example.com/agent-traffic"]
+          value: mcp
+
+  - it: renders no service annotations when unset
+    template: mcp-service.yaml
+    set:
+      secrets.existingSecret: s
+      mcp.enabled: true
+    asserts:
+      - notExists:
+          path: metadata.annotations
 
   - it: fails to render when writes are enabled without the MCP listener
     template: deployment.yaml
@@ -169,18 +194,14 @@ tests:
             name: MCP_TIMEOUT_SECONDS
             value: "120"
 
-  - it: renders the MCP ingress path on the main host when enabled with the main ingress
+  - it: renders the MCP ingress verbatim for the declared host
     template: mcp-ingress.yaml
     set:
       secrets.existingSecret: s
-      ingress.enabled: true
-      ingress.hosts:
-        - host: chouse.example.com
-          paths:
-            - path: /
-              pathType: Prefix
       mcp.enabled: true
       mcp.ingress.enabled: true
+      mcp.ingress.hosts:
+        - host: chouse.example.com
     asserts:
       - hasDocuments:
           count: 1
@@ -191,36 +212,85 @@ tests:
           path: spec.rules[0].http.paths[0].path
           value: /mcp
       - equal:
+          path: spec.rules[0].http.paths[0].pathType
+          value: Prefix
+      - equal:
           path: spec.rules[0].http.paths[0].backend.service.name
           value: RELEASE-NAME-chouse-ui-mcp
       - equal:
           path: spec.rules[0].http.paths[0].backend.service.port.name
           value: mcp
 
-  - it: uses a dedicated host and its tls entry when set
+  - it: renders every declared host with the fixed /mcp path
     template: mcp-ingress.yaml
     set:
       secrets.existingSecret: s
-      ingress.enabled: true
-      ingress.hosts:
-        - host: chouse.example.com
-          paths:
-            - path: /
-              pathType: Prefix
-      ingress.tls:
-        - hosts:
-            - mcp.example.com
-          secretName: mcp-tls
       mcp.enabled: true
       mcp.ingress.enabled: true
-      mcp.ingress.host: mcp.example.com
+      mcp.ingress.hosts:
+        - host: chouse.example.com
+        - host: mcp.example.com
     asserts:
       - equal:
           path: spec.rules[0].host
+          value: chouse.example.com
+      - equal:
+          path: spec.rules[1].host
           value: mcp.example.com
+      - equal:
+          path: spec.rules[1].http.paths[0].path
+          value: /mcp
+
+  - it: renders className, annotations, and tls verbatim
+    template: mcp-ingress.yaml
+    set:
+      secrets.existingSecret: s
+      mcp.enabled: true
+      mcp.ingress.enabled: true
+      mcp.ingress.hosts:
+        - host: mcp.example.com
+      mcp.ingress.className: nginx-mcp
+      mcp.ingress.annotations:
+        nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+        nginx.ingress.kubernetes.io/proxy-buffering: "off"
+      mcp.ingress.tls:
+        - hosts:
+            - mcp.example.com
+          secretName: mcp-tls
+    asserts:
+      - equal:
+          path: spec.ingressClassName
+          value: nginx-mcp
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"]
+          value: "300"
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/proxy-buffering"]
+          value: "off"
       - equal:
           path: spec.tls[0].secretName
           value: mcp-tls
+
+  - it: renders no annotations or className when unset
+    template: mcp-ingress.yaml
+    set:
+      secrets.existingSecret: s
+      # Deliberately also set the UI's className/annotations to prove no
+      # inheritance happens (strict verbatim rendering).
+      ingress.className: nginx
+      ingress.annotations:
+        nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+      mcp.enabled: true
+      mcp.ingress.enabled: true
+      mcp.ingress.hosts:
+        - host: chouse.example.com
+    asserts:
+      - notExists:
+          path: spec.ingressClassName
+      - notExists:
+          path: metadata.annotations
+      - notExists:
+          path: spec.tls
 
   - it: renders nothing by default
     template: mcp-ingress.yaml
@@ -234,18 +304,14 @@ tests:
     template: deployment.yaml
     set:
       secrets.existingSecret: s
-      ingress.enabled: true
-      ingress.hosts:
-        - host: chouse.example.com
-          paths:
-            - path: /
-              pathType: Prefix
       mcp.ingress.enabled: true
+      mcp.ingress.hosts:
+        - host: chouse.example.com
     asserts:
       - failedTemplate:
           errorMessage: "mcp.ingress.enabled=true requires mcp.enabled=true (the /mcp path targets the dedicated MCP Service and would 503 without it)"
 
-  - it: fails to render without a main ingress and without a dedicated host
+  - it: fails to render without any declared host
     template: deployment.yaml
     set:
       secrets.existingSecret: s
@@ -253,4 +319,4 @@ tests:
       mcp.ingress.enabled: true
     asserts:
       - failedTemplate:
-          errorMessage: "mcp.ingress.enabled=true requires either ingress.enabled=true (to reuse its host) or an explicit mcp.ingress.host"
+          errorMessage: "mcp.ingress.enabled=true requires at least one mcp.ingress.hosts entry (declare the hosts that carry /mcp)"

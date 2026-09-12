@@ -36,25 +36,38 @@ mcp:
   # allowDestructive: false
   # toolsets: [core, explore, query, observe, ops]
   # allowedOrigins: []
+  service:
+    type: ClusterIP      # NodePort/LoadBalancer expose MCP directly (no Ingress)
   ingress:
-    # Optional: expose the endpoint at https://<host>/mcp through the
-    # ingress (TLS on 80/443) instead of a non-standard client-facing port.
-    # host: ""             # defaults to the main ingress host
+    # Optional: expose the endpoint at https://<host>/mcp through the ingress.
+    # Mirrors the UI ingress — className/annotations/tls rendered verbatim.
     enabled: true
+    hosts:
+      - host: chouse.corp
+    annotations:         # MCP streams over SSE: raise the read timeout, disable buffering
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # tls:                # same shape as ingress.tls; not needed on
+    #   - hosts: [chouse.corp]     # TLS-terminating controllers
+    #     secretName: chouse-tls     # (e.g. Tailscale Funnel)
 ```
+
+Three exposure options for the MCP endpoint: the dedicated **Service**
+(in-cluster; `type: LoadBalancer`/`NodePort` for direct access), the
+**ingress path** (`https://<host>/mcp` — TLS on 80/443, no non-standard
+port), or both.
 
 MCP is **disabled by default** everywhere. In development it is on, bound to
 `localhost`. The chart renders the `mcp:` block into the pod environment and
-creates a dedicated ClusterIP Service (`<release>-mcp`) plus a NetworkPolicy
-port rule, so agent traffic can be scoped separately from the public UI
-origin. `helm` refuses renders where `allowWrites`/`allowDestructive` are set
-without `enabled`, or where `mcp.ingress.enabled` is set without the
-listener. With `mcp.ingress.enabled`, agents use `https://<host>/mcp`
-(no port); the container keeps listening on 8752 and the ingress routes the
-path to the dedicated Service. Because MCP streams over SSE, the ingress
-needs the same annotations as AI chat (raise the proxy read timeout and
-disable buffering — nginx: `proxy-read-timeout: "300"`,
-`proxy-buffering: "off"`).
+creates the dedicated Service plus a NetworkPolicy port rule, so agent
+traffic can be scoped separately from the public UI origin. `helm` refuses
+renders where `allowWrites`/`allowDestructive` are set without `enabled`,
+or where `mcp.ingress.enabled` is set without the listener or any host.
+The MCP ingress follows the UI ingress pattern exactly: `className`,
+`annotations`, and `tls` are rendered verbatim from `mcp.ingress.*` — no
+inheritance, no merging (copy what the UI ingress has when you want the
+same certificate or issuer). The container keeps listening on 8752 and the
+ingress routes the path to the dedicated Service.
 
 ## Mint a token
 

@@ -13,3 +13,8 @@ mcp:
   enabled: true
   ingress:
     enabled: true
+    hosts:
+      - host: chouse-ui.local
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-buffering: "off"

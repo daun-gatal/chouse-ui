@@ -49,4 +49,4 @@ annotations:
       image: ghcr.io/daun-gatal/chouse-ui:v3.12.1
   artifacthub.io/changes: |
     - kind: added
-      description: Optional MCP endpoint (`mcp.enabled`) on a dedicated port for PAT-authenticated AI agents (ADR 0013), exposed either via the dedicated Service or at `https://<host>/mcp` through the ingress (`mcp.ingress.enabled`)
+      description: Optional MCP endpoint (`mcp.enabled`) on a dedicated port for PAT-authenticated AI agents (ADR 0013), exposed via a dedicated Service (ClusterIP/NodePort/LoadBalancer) or at `https://<host>/mcp` through an Ingress that mirrors the UI ingress (verbatim className/annotations/tls)
