@@ -11,6 +11,7 @@ import { errorHandler, notFoundHandler } from "./middleware/error";
 import { initializeRbac, shutdownRbac } from "./rbac";
 import { requestId } from "./middleware/requestId";
 import { logger, requestLogger } from "./utils/logger";
+import { loadMcpConfig } from "./mcp/config";
 
 // Configuration
 const PORT = parseInt(process.env.PORT || "5521", 10);
@@ -374,11 +375,59 @@ const server = serve({
   idleTimeout: 120, // 120s — SSE streams for AI chat can be idle during long tool calls
 });
 
+// ============================================
+// MCP Server (ADR 0013)
+// ============================================
+// A second listener on a dedicated port so the chart can expose MCP through
+// its own Service/NetworkPolicy while the public origin is untouched.
+// Disabled by default in production; enabled on localhost in development.
+// The MCP app subrequests the main Hono app in-process with the caller's PAT,
+// so every tool inherits the same authn/authz as the UI and CLI.
+
+let mcpServer: { stop(closeActiveConnections?: boolean): Promise<void> } | undefined;
+
+const mcpConfigResult = loadMcpConfig();
+if (mcpConfigResult.errors.length > 0) {
+  for (const error of mcpConfigResult.errors) {
+    logger.error({ phase: "env_validation", module: "Mcp", error }, error);
+  }
+  logger.error({ phase: "env_validation", module: "Mcp" }, "Server startup aborted. Please fix the MCP configuration.");
+  process.exit(1);
+}
+
+const mcpConfig = mcpConfigResult.config;
+if (mcpConfig?.enabled) {
+  const { createMcpApp } = await import("./mcp");
+  const { buildMcpDeps } = await import("./mcp/server");
+  const mcpDeps = buildMcpDeps(app, mcpConfig.timeoutSeconds * 1000);
+  const mcpApp = createMcpApp(mcpConfig, mcpDeps);
+  mcpServer = serve({
+    hostname: mcpConfig.host,
+    port: mcpConfig.port,
+    fetch: mcpApp.app.fetch.bind(mcpApp.app),
+    idleTimeout: 120, // matches the web server: SSE streams during tool calls
+  });
+  logger.info(
+    { phase: "startup", module: "Mcp", host: mcpConfig.host, port: mcpConfig.port, toolsets: mcpConfig.toolsets },
+    "MCP server listening (Streamable HTTP, PAT-only)"
+  );
+} else {
+  logger.info({ phase: "startup", module: "Mcp" }, "MCP server disabled (MCP_ENABLED not set)");
+}
+
 // Graceful shutdown handler
 async function gracefulShutdown(signal: string): Promise<void> {
   logger.info({ phase: "shutdown", signal }, "Shutting down gracefully");
 
   try {
+    if (mcpServer) {
+      try {
+        await mcpServer.stop(true);
+        logger.info({ phase: "shutdown", module: "Mcp" }, "MCP server stopped");
+      } catch (error) {
+        logger.warn({ phase: "shutdown", module: "Mcp", err: error instanceof Error ? error.message : String(error) }, "MCP server stop failed");
+      }
+    }
     server.stop();
     logger.info({ phase: "shutdown" }, "Server stopped accepting new connections");
 
