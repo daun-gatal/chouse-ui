@@ -43,7 +43,7 @@ data/*
 # Claude config
 .claude
 
-# Go CLI build outputs (GoReleaser dist is never committed)
+# Go CLI build outputs (scripts/build-cli.sh dist is never committed)
 cli/dist/
 chouse
 *.exe

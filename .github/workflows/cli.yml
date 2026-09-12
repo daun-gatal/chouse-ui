@@ -1,16 +1,18 @@
 name: CLI
 
+# PR validation for the Go CLI. Release publishing lives in auto-release.yml
+# (same version, same vX tags, same approval gates as the app) — this
+# workflow only proves the tree builds, tests green, and packages cleanly.
 on:
   pull_request:
     branches:
       - preview
     paths:
       - cli/**
+      - scripts/build-cli.sh
       - scripts/install-cli.sh
-      - .github/workflows/cli*.yml
-  push:
-    tags:
-      - cli-v*
+      - .github/workflows/cli.yml
+      - .github/workflows/auto-release.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -47,11 +49,10 @@ jobs:
           /tmp/chouse --help | head -n 20
           /tmp/chouse query --help | head -n 10
 
-  snapshot:
-    name: GoReleaser Snapshot
+  package:
+    name: Package Snapshot
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'pull_request'
     permissions:
       contents: read
     steps:
@@ -66,23 +67,23 @@ jobs:
           go-version: "1.23"
           cache-dependency-path: cli/go.sum
 
-      - name: Snapshot build (no publish)
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          args: release --snapshot --clean --config cli/.goreleaser.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Same script the release uses — proves all five platforms compile and
+      # the archives + checksums verify, without publishing anything.
+      - name: Snapshot archives
+        run: |
+          ./scripts/build-cli.sh "0.0.0-snapshot"
+          (cd cli/dist && sha256sum -c checksums.txt --status)
+          test "$(ls cli/dist/chouse-cli_* | wc -l)" = "5"
 
       - name: Installer lint
         run: |
-          shellcheck scripts/install-cli.sh || echo "shellcheck not available, skipping"
+          shellcheck scripts/install-cli.sh scripts/build-cli.sh \
+            || echo "shellcheck not available, skipping"
 
   installer-smoke:
-    name: Installer Smoke (sidecar, not localhost)
+    name: Installer Smoke
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'pull_request'
     permissions:
       contents: read
     steps:

@@ -10,13 +10,14 @@ default: destructive commands need `--yes` and offer `--dry-run` previews
 
 ```bash
 curl -sSL https://github.com/daun-gatal/chouse-ui/releases/latest/download/install-cli.sh | bash
-# pin a version:
-CHOUSE_VERSION=cli-v3.13.0 curl -sSL …/install-cli.sh | bash
+# pin a version (same version as the app release):
+CHOUSE_VERSION=v3.13.0 curl -sSL …/install-cli.sh | bash
 ```
 
-Or download `chouse-cli_<os>_<arch>.tar.gz` + `checksums.txt` from the
-`cli-v*` GitHub Release, verify (`sha256sum -c checksums.txt`), and put
-`chouse` on `PATH`. Shell completions: `chouse completion bash|zsh|fish|powershell`.
+Or download `chouse-cli_<os>_<arch>.tar.gz` (+`.sig`/`.pem` cosign
+signature) + `checksums.txt` from the `vX` GitHub Release — every app
+release ships fresh binaries — verify (`sha256sum -c checksums.txt`), and
+put `chouse` on `PATH`. Shell completions: `chouse completion bash|zsh|fish|powershell`.
 
 Requires Go 1.23+ to build from source (`cd cli && go build ./cmd/chouse`).
 The server must be ≥ the 1.51.0 PAT backfill or PAT calls fail closed (401).

@@ -127,6 +127,25 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
+      # CLI snapshot for the same manual-testing window: versioned -pre
+      # binaries as a workflow artifact (never a GitHub Release). Stable
+      # binaries ship from the `cli` job once the release is approved.
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: cli/go.sum
+
+      - name: Build CLI snapshot
+        run: ./scripts/build-cli.sh "v${{ steps.version.outputs.version }}-pre"
+
+      - name: Upload CLI snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: chouse-cli-v${{ steps.version.outputs.version }}-pre
+          path: cli/dist/
+          retention-days: 7
+
       - name: Write pre-release summary
         run: |
           IMAGE="ghcr.io/${{ github.repository }}"
@@ -140,6 +159,9 @@ jobs:
             echo "docker pull $IMAGE:v$VERSION-pre"
             echo "# or: docker pull $IMAGE:preview"
             echo '```'
+            echo ""
+            echo "CLI snapshot for this pre-release is attached to the workflow"
+            echo "run as the \`chouse-cli-v$VERSION-pre\` artifact."
             echo ""
             echo "If it works, **approve** the \`prerelease-approval\` gate on the"
             echo "*Assemble Changelog* job to continue the release. Reject to abort"
@@ -328,8 +350,9 @@ jobs:
             exit 0
           fi
           echo "Comparing against last tag: $LAST_TAG"
+          # The CLI is product code: cli-only changes must also cut a release.
           CODE=$(git diff --name-only "$LAST_TAG" HEAD \
-            | grep -E '^(src/|packages/server/src/)' || true)
+            | grep -E '^(src/|packages/server/src/|cli/)' || true)
           if [ -n "$CODE" ]; then
             echo "Code changes detected:"
             echo "$CODE"
@@ -372,7 +395,7 @@ jobs:
       - name: Skip — no code changes
         if: steps.code_check.outputs.has_changes == 'false'
         run: |
-          echo "No changes in src/ or packages/server/src/ since last release."
+          echo "No changes in src/, packages/server/src/, or cli/ since last release."
           echo "Skipping push, Docker build, and publish."
           echo "Fragments remain in changelogs/unreleased/ for the next real release."
 
@@ -667,6 +690,12 @@ jobs:
             echo "helm install chouse-ui oci://ghcr.io/${REPO%%/*}/charts/chouse-ui --version $CHART_VERSION"
             echo '```'
             echo ""
+            echo "Or grab the CLI (same version, checksummed + signed):"
+            echo ""
+            echo '```bash'
+            echo "curl -sSL https://github.com/$REPO/releases/latest/download/install-cli.sh | bash"
+            echo '```'
+            echo ""
             echo "## 🔗 Resources"
             echo ""
             echo "- **Release Notes**: https://github.com/$REPO/releases/tag/$VERSION"
@@ -675,6 +704,59 @@ jobs:
           cat ANNOUNCEMENT.md | gh api graphql \
             --field query="mutation(\$body: String!) { createDiscussion(input: { repositoryId: \"$REPO_ID\", categoryId: \"$CATEGORY_ID\", title: \"CHouse UI $VERSION Released!\", body: \$body }) { discussion { id url } } }" \
             --field body=@-
+
+  # ── Step 4 (parallel, after the release exists): attach CLI binaries ────
+  # Needs `publish` because `gh release upload` targets the vX release it
+  # created. Nothing depends on this job — a CLI build failure can never
+  # block an app release (re-run this workflow's cli job manually), same
+  # posture as `helm`. Every app release ships fresh binaries (the Go build
+  # is minutes, not tens of minutes), so `releases/latest` always carries
+  # CLI assets for the installer.
+  cli:
+    name: Build & Attach CLI Binaries
+    needs: [publish, assemble]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.assemble.outputs.version }}
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: cli/go.sum
+
+      - name: Cosign installer
+        uses: sigstore/cosign-installer@v3
+
+      # Rebuild from the tag so ldflags carry the real release version
+      # (the pre-release snapshot carries v<version>-pre). COMMIT_SHA is
+      # intentionally unset: the script defaults to the checked-out tag.
+      - name: Build CLI archives
+        run: ./scripts/build-cli.sh "v${{ needs.assemble.outputs.version }}"
+
+      - name: Sign archives (keyless)
+        run: |
+          for f in cli/dist/chouse-cli_*; do
+            cosign sign-blob --yes "$f" \
+              --output-signature "$f.sig" \
+              --output-certificate "$f.pem"
+          done
+
+      - name: Attach to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ needs.assemble.outputs.version }}"
+          gh release upload "$TAG" cli/dist/* scripts/install-cli.sh --clobber
+          echo "Attached CLI binaries + installer to $TAG"
 
   # ── Step 4 (parallel, after Docker succeeds): deploy docs ─────────────────
   deploy-docs:

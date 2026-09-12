@@ -10,7 +10,7 @@ CHouse UI is operated through the browser today. ADR 0011 reserved a machine
 credential (`ch_pat_…`, env `CH_HOUSE_PAT`) and made every data-plane and RBAC
 route PAT-capable through a single `verifyBearer()` choke point, with a
 privilege fence (PAT cannot mint/rotate tokens, change passwords, or touch
-sessions). No CLI exists yet (`cli/` absent, no `bin` field, no GoReleaser, no
+sessions). No CLI exists yet (`cli/` absent, no `bin` field, no binary
 installer; releases are manual `workflow_dispatch` → Docker + Helm OCI only).
 
 Forces shaping this decision:
@@ -76,19 +76,30 @@ connection create/delete, fleet `alert-config` writes, `audit` prune.
   (`-f -`), no spinners when piped, exit codes `0 ok / 2 usage / 3 auth /
   4 RBAC / 5 server / 6 network`, `429` backoff honoring `Retry-After`.
 
-### 4. Distribution: `cli-v*` tags + GoReleaser + curl installer
+### 4. Distribution: same version, same `vX` tags, same gates as the app
 
-- Tag scheme **`cli-vX`** (separate from app `vX`) carrying the same version
-  number. New `cli-release.yml` workflow on `cli-v*` (does not touch the app
-  `auto-release.yml` flow): `setup-go` → `goreleaser release
-  --config cli/.goreleaser.yml` → `linux/darwin/windows × amd64/arm64`
-  archives + `checksums.txt` → `softprops/action-gh-release` + cosign
-  `sign-blob` + SBOM, matching image/chart posture.
-- PR validation in new `cli.yml` (vet, `go test -race`, `goreleaser
-  --snapshot`, installer smoke). No `-pre` CLI binaries.
-- Installer `scripts/install-cli.sh` (`set -euo pipefail`): detects
-  `OS/ARCH`, honors `CHOUSE_VERSION`, verifies sha256, installs to
-  `/usr/local/bin` with `~/.local/bin` fallback, installs completions.
+- The CLI rides the app release: version from fragments via `release.ts`,
+  same `vX` tags, no separate namespace. Every app release ships fresh CLI
+  assets (the Go matrix build is minutes), so `releases/latest` always
+  carries binaries for the installer. `cli/` counts as product code in the
+  assemble code-change gate, so CLI-only changes cut a release too.
+- `auto-release.yml` gains three small additions in its own style:
+  `prerelease` uploads a `vX-pre` CLI snapshot as a workflow artifact (mirrors
+  the `-pre` image for manual testing); a `cli` job after `publish` runs
+  `scripts/build-cli.sh vX` (matrix `linux/darwin/windows × amd64/arm64`,
+  ldflags version/commit/date), cosign `sign-blob`s each archive keyless, and
+  `gh release upload --clobber`s archives + `checksums.txt` + signatures +
+  `install-cli.sh` onto the `vX` release. Nothing depends on the `cli` job —
+  a CLI failure can never block an app release (same posture as `helm`).
+- The single build definition is `scripts/build-cli.sh` (explicit `go build`
+  matrix + tar/zip + sha256, no release-manager magic — auditable like the
+  rest of the release scripts). PR validation in `cli.yml` runs vet,
+  `go test -race`, the same script as a snapshot, and installer lint/smoke.
+- Installer `scripts/install-cli.sh` (`set -eu`): detects `OS/ARCH`, honors
+  `CHOUSE_VERSION` (default `latest`), verifies sha256, installs to
+  `/usr/local/bin` with `~/.local/bin` fallback, warns when off `PATH`.
+- The `publish` announcement gains a static CLI install block next to the
+  Docker/Helm blocks.
 - DinD note (verified 2026-09-12): `DOCKER_HOST=tcp://opencode-dind:2375`
   works, but `opencode-dind-apps:5432/5521/5173` refuses from the agent pod —
   published ports live on the DinD host. CLI e2e must use a sidecar
@@ -104,8 +115,9 @@ connection create/delete, fleet `alert-config` writes, `audit` prune.
   demotion/deactivation/revoke on the next request — no TTL lag.
 - Break-glass admin (SSO keys, AI keys, grants, connection secrets, audit
   prune) stays in the browser, shrinking the CLI blast radius.
-- New maintenance: Go module + Renovate `gomod`, GoReleaser pins, installer
-  e2e on ubuntu/macos runners. App Docker/Helm flows are untouched.
+- New maintenance: Go module + Renovate `gomod`, `scripts/build-cli.sh`
+  matrix, installer e2e on ubuntu/macos runners. App Docker/Helm flows keep
+  their gates; the CLI only adds jobs that can never block them.
 
 ## Alternatives considered
 
@@ -118,9 +130,11 @@ connection create/delete, fleet `alert-config` writes, `audit` prune.
 - **Read-only v1** — rejected: too weak; operators still need the browser for
   routine `run-now`, `kill`, `ack`, and `upload` tasks this ADR includes
   behind guards.
-- **Extending `auto-release.yml` for binaries** — rejected for v1 to keep the
-  app release flow untouched (minimal diff); a dedicated `cli-v*` workflow
-  ships binaries independently. Coupling can be revisited later.
+- **Separate `cli-v*` tag namespace + GoReleaser-managed releases** —
+  rejected: a second version line, tag namespace, and approval path drifts
+  from the app flow and breaks the `releases/latest` installer invariant.
+  The CLI follows `auto-release.yml` instead (same version/tags/gates);
+  `scripts/build-cli.sh` replaces the release-manager with explicit steps.
 - **npm `bin` / Docker-only distribution** — rejected as primary: npm still
   needs a runtime and Docker is heavy for shell/CI agents; kept as Phase 2
   options alongside brew tap and deb/rpm.
