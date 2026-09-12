@@ -8,6 +8,12 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Server health, version, and migration status",
+		Long: `Probe the configured server: public health plus, when logged in,
+version and migration state. This is the command that answers "is the server
+OK and current" — use it before debugging anything else.`,
+		Example: `  chouse status
+  chouse status -o json
+  chouse status --server https://chouse.corp:5521`,
 		Run: func(_ *cobra.Command, _ []string) {
 			c, resolved := mustClient(false)
 			ctx, cancel := ctxWithTimeout()

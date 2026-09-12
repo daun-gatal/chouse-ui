@@ -140,3 +140,34 @@ func TestHelpMentionsSafety(t *testing.T) {
 		t.Error("root Long must document safe-by-default")
 	}
 }
+
+func TestHelpCompleteness(t *testing.T) {
+	// Every helpable command must carry guidance (Long) and runnable
+	// examples (Example). Only cobra-generated help/completion are exempt —
+	// walking the tree (not a roster) forces future commands to comply too.
+	root := NewRoot("test", "", "")
+	exempt := map[string]bool{"help": true, "completion": true, "bash": true, "fish": true, "powershell": true, "zsh": true}
+	count := 0
+	var walk func(c *cobra.Command, path string)
+	walk = func(c *cobra.Command, path string) {
+		name := path + " " + c.Name()
+		if !exempt[c.Name()] {
+			count++
+			if strings.TrimSpace(c.Long) == "" {
+				t.Errorf("%s: missing Long guidance", strings.TrimSpace(name))
+			}
+			if strings.TrimSpace(c.Example) == "" {
+				t.Errorf("%s: missing Example", strings.TrimSpace(name))
+			} else if !strings.Contains(c.Example, "chouse ") {
+				t.Errorf("%s: Example must show real invocations", strings.TrimSpace(name))
+			}
+		}
+		for _, sub := range c.Commands() {
+			walk(sub, name)
+		}
+	}
+	walk(root, "")
+	if count < 80 {
+		t.Errorf("walked only %d commands, tree shrank unexpectedly", count)
+	}
+}

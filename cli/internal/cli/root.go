@@ -37,6 +37,16 @@ func NewRoot(version, commit, date string) *cobra.Command {
 run the AI doctor, and manage scheduled work — authenticated with a personal
 access token (ch_pat_…). Safe-by-default: destructive commands need --yes and
 offer --dry-run previews.`,
+		Example: `  # First run: point at a server and store a token (server is remembered)
+  chouse auth login --server https://chouse.corp:5521 --token ch_pat_…
+
+  # Everyday reads (never prompt, never mutate)
+  chouse status
+  chouse query "SELECT number FROM system.numbers LIMIT 5" -o json
+
+  # Guarded writes: preview first, then approve explicitly
+  chouse query --raw --dry-run "ALTER TABLE t UPDATE x = 1 WHERE id = 2"
+  chouse live kill q_abc123 --yes`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

@@ -12,7 +12,21 @@ import (
 )
 
 func newQueryCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "query", Short: "Run read-only queries safely; writes need --yes"}
+	cmd := &cobra.Command{
+		Use:   "query [sql]",
+		Short: "Run read-only queries safely; writes need --yes",
+		Long: `Run SQL against the scoped connection. Plain SELECT/SHOW go
+straight through; anything else needs --raw plus --yes, and --dry-run
+previews the classified plan without executing. Feed SQL as args, -f file,
+or --stdin (pick one). --format picks the server result format while -o
+controls how this CLI presents it.`,
+		Example: `  chouse query "SELECT number FROM system.numbers LIMIT 5"
+  chouse query "SELECT number FROM system.numbers LIMIT 5" --limit 2 -o json
+  chouse query --explain plan "SELECT * FROM big WHERE day = today()"
+  echo "SELECT 1" | chouse query --stdin -o json
+  chouse query --raw --dry-run "ALTER TABLE t UPDATE x = 1 WHERE id = 2"
+  chouse query --raw --yes "ALTER TABLE t UPDATE x = 1 WHERE id = 2"`,
+	}
 	var file, format string
 	var limit int
 	var stdin bool
