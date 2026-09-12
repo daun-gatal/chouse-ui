@@ -173,4 +173,12 @@ jobs:
             *) F3="$SANDBOX3/home/.bashrc" ;;
           esac
           grep -qF '# chouse CLI (added by install-cli.sh)' "$F3"
-          rm -rf "$SANDBOX" "$SANDBOX2" "$SANDBOX3"
+          # Stale shadow: another chouse earlier on PATH warns, deletes nothing.
+          SANDBOX4="$(mktemp -d)"
+          mkdir -p "$SANDBOX4/home" "$SANDBOX4/stale"
+          printf '#!/bin/sh\necho STALE\n' > "$SANDBOX4/stale/chouse"
+          chmod +x "$SANDBOX4/stale/chouse"
+          OUT4="$(HOME="$SANDBOX4/home" INSTALL_DIR="$SANDBOX4/home/.chouse/bin" PATH="$SANDBOX4/stale:$PATH" SHELL="$TEST_SHELL" sh scripts/install-cli.sh 2>&1)"
+          echo "$OUT4" | grep -q "shadows this install"
+          grep -q "STALE" "$SANDBOX4/stale/chouse"
+          rm -rf "$SANDBOX" "$SANDBOX2" "$SANDBOX3" "$SANDBOX4"

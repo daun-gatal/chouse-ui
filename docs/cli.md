@@ -15,8 +15,9 @@ CHOUSE_VERSION=cli-v0.2.0 curl -sSL …/install-cli.sh | bash
 ```
 
 The installer verifies `sha256sum` (or `shasum` on stock macOS),
-installs to `/usr/local/bin` (or `~/.local/bin` fallback), and wires
-`~/.local/bin` into your `PATH` via your shell rc file
+installs to `/usr/local/bin` (or `~/.chouse/bin` fallback — a dedicated
+dir, predictable on Linux and macOS, never needs root), and wires the
+fallback into your `PATH` via your shell rc file
 (`~/.bashrc`+`~/.profile`, `~/.zshrc`, or fish `config.fish`) —
 restart the shell or `source` the file afterwards. Opt out with
 `CHOUSE_NO_MODIFY_PATH=1`, override the destination with `INSTALL_DIR`.

@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # chouse CLI installer: curl -sSL <release>/install-cli.sh | bash
-# Env: CHOUSE_VERSION (default: latest), INSTALL_DIR (default: /usr/local/bin or ~/.local/bin),
+# Env: CHOUSE_VERSION (default: latest), INSTALL_DIR (default: /usr/local/bin or ~/.chouse/bin),
 #      CHOUSE_NO_MODIFY_PATH=1 (default: unset — installer appends DEST to PATH in your shell rc files)
 set -eu
 
@@ -202,7 +202,9 @@ main() {
     if [ -w /usr/local/bin ]; then
       DEST="/usr/local/bin"
     else
-      DEST="$HOME/.local/bin"
+      # Dedicated dir (like ~/.cargo/bin, ~/.bun/bin): predictable on both
+      # Linux and macOS, never needs root, never collides with other tools.
+      DEST="$HOME/.chouse/bin"
       mkdir -p "$DEST"
     fi
   fi
@@ -210,6 +212,14 @@ main() {
   install -m 0755 "$BIN_SRC" "$DEST/chouse"
   echo "Installed $( "$DEST/chouse" version --output json 2>/dev/null || echo chouse ) to $DEST/chouse"
   ensure_path
+  # A stale copy earlier on PATH (e.g. ~/.local/bin/chouse from a previous
+  # install) would shadow the fresh binary — warn, never delete user files.
+  if command -v chouse >/dev/null 2>&1; then
+    ACTIVE="$(command -v chouse)"
+    if [ "$ACTIVE" != "$DEST/chouse" ]; then
+      echo "Warning: another chouse shadows this install: $ACTIVE (new: $DEST/chouse). Remove the stale copy or reorder PATH." >&2
+    fi
+  fi
 }
 
 main "$@"
