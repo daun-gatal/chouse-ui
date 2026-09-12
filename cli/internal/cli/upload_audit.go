@@ -30,7 +30,7 @@ func newUploadCmd() *cobra.Command {
 		},
 	}
 	preview.Flags().StringVar(&file, "file", "", "path (required)")
-	preview.Flags().StringVar(&format, "format", "CSV", "CSV|TSV|JSON")
+	preview.Flags().StringVar(&format, "format", "CSV", "upload file format CSV|TSV|JSON")
 	preview.Flags().BoolVar(&hasHeader, "header", true, "first row is header")
 	_ = preview.MarkFlagRequired("file")
 
@@ -39,7 +39,8 @@ func newUploadCmd() *cobra.Command {
 		Short: "Stream a file into database.table (destructive INSERT)",
 		Run: func(_ *cobra.Command, _ []string) {
 			target := database + "." + table
-			confirmDestructive("upload.into", target)
+			// Preview first: --dry-run never needs --yes (file parsing is
+			// server-side but never stores anything).
 			if flagDryRun {
 				c, resolved := mustClient(true)
 				ctx, cancel := ctxWithTimeout()
@@ -51,11 +52,12 @@ func newUploadCmd() *cobra.Command {
 				render(resolved, map[string]any{"dry_run": true, "target": target, "preview": got})
 				return
 			}
+			confirmDestructive("upload.into", target)
 			uiOnly("upload into "+target, "Explorer → Upload (CLI streaming lands in a follow-up; preview above is the safe plan)")
 		},
 	}
 	into.Flags().StringVar(&file, "file", "", "path (required)")
-	into.Flags().StringVar(&format, "format", "CSV", "CSV|TSV|JSON")
+	into.Flags().StringVar(&format, "format", "CSV", "upload file format CSV|TSV|JSON")
 	into.Flags().StringVar(&database, "db", "", "database (required)")
 	into.Flags().StringVar(&table, "table", "", "table (required)")
 	into.Flags().StringVar(&columns, "columns", "", "optional column list")

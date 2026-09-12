@@ -74,7 +74,7 @@ func RequireConfirm(opts ConfirmOptions) error {
 	if !isTTY(opts.In) {
 		return fmt.Errorf("refusing %s on %q without --yes in non-interactive mode (pass --yes to approve, --dry-run to preview)", opts.Action, opts.Target)
 	}
-	fmt.Printf("%s %q? This may mutate data. Type 'yes' to continue: ", opts.Action, opts.Target)
+	fmt.Fprintf(os.Stderr, "%s %q? This may mutate data. Type 'yes' to continue: ", opts.Action, opts.Target)
 	reader := bufio.NewReader(stdin(opts.In))
 	line, err := reader.ReadString('\n')
 	if err != nil {

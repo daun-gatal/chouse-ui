@@ -8,7 +8,7 @@ import (
 
 func newSavedCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "saved", Short: "Saved queries (metadata only, safe)"}
-	var connection, name, query, desc string
+	var name, query, desc string
 	var public bool
 	var limit int
 
@@ -20,8 +20,8 @@ func newSavedCmd() *cobra.Command {
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()
 			q := url.Values{}
-			if connection != "" {
-				q.Set("connectionId", connection)
+			if resolved.Connection != "" {
+				q.Set("connectionId", resolved.Connection)
 			}
 			got, err := c.Get(ctx, "/api/saved-queries", q)
 			if err != nil {
@@ -30,7 +30,6 @@ func newSavedCmd() *cobra.Command {
 			render(resolved, got)
 		},
 	}
-	list.Flags().StringVar(&connection, "connection", "", "filter by connection ID")
 	list.Flags().IntVar(&limit, "limit", 50, "max rows (client-side)")
 
 	get := &cobra.Command{
@@ -57,8 +56,8 @@ func newSavedCmd() *cobra.Command {
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()
 			body := map[string]any{"name": name, "query": query, "description": desc, "isPublic": public}
-			if connection != "" {
-				body["connectionId"] = connection
+			if resolved.Connection != "" {
+				body["connectionId"] = resolved.Connection
 			}
 			got, err := c.Post(ctx, "/api/saved-queries", body)
 			if err != nil {
@@ -104,6 +103,7 @@ func newSavedCmd() *cobra.Command {
 		Short: "Delete a saved query",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("saved delete")
 			confirmDestructive("saved.delete", args[0])
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()

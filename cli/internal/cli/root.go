@@ -23,7 +23,6 @@ var (
 	flagConnection string
 	flagOutput     string
 	flagQuiet      bool
-	flagNoColor    bool
 	flagTimeout    int
 	flagYes        bool
 	flagDryRun     bool
@@ -47,7 +46,6 @@ offer --dry-run previews.`,
 	root.PersistentFlags().StringVarP(&flagConnection, "connection", "c", "", "ClickHouse connection ID (env CHOUSE_CONNECTION)")
 	root.PersistentFlags().StringVarP(&flagOutput, "output", "o", "", "table|json|yaml|csv (env CHOUSE_OUTPUT)")
 	root.PersistentFlags().BoolVarP(&flagQuiet, "quiet", "q", false, "minimal output for scripts")
-	root.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "disable colors")
 	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 60, "request timeout in seconds")
 	root.PersistentFlags().BoolVar(&flagYes, "yes", false, "approve destructive actions (required in non-TTY)")
 	root.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "preview without executing where supported")
@@ -77,12 +75,18 @@ offer --dry-run previews.`,
 }
 
 // ctxWithTimeout bounds every request.
-func ctxWithTimeout() (context.Context, context.CancelFunc) {
-	secs := flagTimeout
-	if secs <= 0 || secs > 600 {
-		secs = 60
+// timeoutSecs normalizes --timeout with the same clamp everywhere so the
+// context deadline and the HTTP client cap never disagree (an uncapped
+// --timeout above 60 used to be silently cut by the client).
+func timeoutSecs() int {
+	if flagTimeout <= 0 || flagTimeout > 600 {
+		return 60
 	}
-	return context.WithTimeout(context.Background(), time.Duration(secs)*time.Second)
+	return flagTimeout
+}
+
+func ctxWithTimeout() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), time.Duration(timeoutSecs())*time.Second)
 }
 
 // mustClient resolves config and builds an authenticated client. Every
@@ -101,6 +105,7 @@ func mustClient(requireAuth bool) (*api.Client, config.Resolved) {
 	}
 	c := api.New(resolved.Server, resolved.Token, resolved.Connection)
 	c.UserAgent = "chouse-cli/1"
+	c.HTTP.Timeout = time.Duration(timeoutSecs()) * time.Second
 	if flagOutput != "" {
 		resolved.Output = flagOutput
 	}
@@ -152,6 +157,14 @@ func failErr(err error) {
 		fail(apiErr.ExitCode(), apiErr.Error())
 	}
 	fail(api.ExitServer, err.Error())
+}
+
+// rejectDryRun fails fast for mutations with no preview support. Without it,
+// --dry-run --yes would silently execute. Call before confirmDestructive.
+func rejectDryRun(what string) {
+	if flagDryRun {
+		fail(api.ExitUsage, fmt.Sprintf("--dry-run is not supported for %s (it always executes; omit --dry-run or use a preview command)", what))
+	}
 }
 
 // confirmDestructive enforces safe-by-default gating.

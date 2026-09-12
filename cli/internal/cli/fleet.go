@@ -89,6 +89,7 @@ func newDoctorCmd() *cobra.Command {
 			if !flagQuiet {
 				printlnStderr("warning: doctor scan consumes LLM budget and writes a report row")
 			}
+			rejectDryRun("doctor scan")
 			confirmDestructive("doctor.scan", "fleet")
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()

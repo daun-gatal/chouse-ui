@@ -122,6 +122,7 @@ func newLiveCmd() *cobra.Command {
 		Short: "KILL a running query (destructive)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("live kill")
 			confirmDestructive("live.kill", args[0])
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()

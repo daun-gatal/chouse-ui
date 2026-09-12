@@ -382,6 +382,49 @@ def t_login_persists_server():
     assert "admin" in out, out[-300:]
 
 
+def t_dry_run_standalone():
+    # --dry-run previews without --yes (the refusal message promises this).
+    p = cli("query", "--raw", "--dry-run",
+            "CREATE TABLE dryrun_t (id UInt32) ENGINE = MergeTree() ORDER BY id",
+            "--output", "json")
+    assert p.returncode == 0, f"dry-run without --yes must work, got {p.returncode}: {p.stderr[-300:]}"
+    assert "dry_run" in p.stdout, p.stdout[-500:]
+
+
+def t_dry_run_unsupported():
+    # Mutations with no preview support must fail fast, never execute.
+    for args in (["live", "kill", "nope"], ["saved", "delete", "nope"]):
+        p = cli(*args, "--dry-run", "--yes")
+        assert p.returncode == 2, f"{args} must exit 2, got {p.returncode}"
+        assert "not supported" in p.stderr, p.stderr[-300:]
+
+
+def t_connection_spelling():
+    # --connection and -c are one flag: identical results either way.
+    a = need(cli("saved", "list", "--connection", STATE["connection_id"], "--output", "json"))
+    b = need(cli("saved", "list", "-c", STATE["connection_id"], "--output", "json"))
+    assert a == b, f"spelling divergence:\n{a[-300:]}\n{b[-300:]}"
+
+
+def t_login_output_json():
+    # login honors -o: machine result on stdout, human note on stderr.
+    import tempfile as _tf  # noqa: E402
+    home = _tf.mkdtemp(prefix="chouse-e2e-login-json-")
+    p = cli_scrubbed("auth", "login", "--server", BASE, "--token",
+                     STATE["pat"], "-o", "json", home=home)
+    assert p.returncode == 0, f"login exit={p.returncode}: {p.stderr[-300:]}"
+    data = json.loads(p.stdout)
+    assert data["server"] == BASE, p.stdout[-300:]
+    assert STATE["pat"] not in p.stdout, "raw PAT must never render"
+
+
+def t_ai_optimize_guarded():
+    # LLM spend needs --yes even though nothing mutates: refusal costs nothing.
+    p = cli("ai", "optimize", "SELECT 1")
+    assert p.returncode == 2, f"optimize without --yes must refuse, got {p.returncode}"
+    assert "ai.optimize" in p.stderr, p.stderr[-300:]
+
+
 def t_cleanup_writes():
     need(cli("query", "--raw", "--yes", f"DROP TABLE IF EXISTS {DB}.t"))
     need(cli("query", "--raw", "--yes", f"DROP DATABASE IF EXISTS {DB}"))
@@ -435,6 +478,11 @@ def main():
         ("cli-no-server-fail-fast", t_no_server_fail_fast),
         ("cli-auth-status-unconfigured", t_auth_status_unconfigured),
         ("cli-login-persists-server", t_login_persists_server),
+        ("cli-dry-run-standalone", t_dry_run_standalone),
+        ("cli-dry-run-unsupported", t_dry_run_unsupported),
+        ("cli-connection-spelling", t_connection_spelling),
+        ("cli-login-output-json", t_login_output_json),
+        ("cli-ai-optimize-guarded", t_ai_optimize_guarded),
         ("cli-cleanup-writes", t_cleanup_writes),
         ("cli-cleanup-identity", t_cleanup_identity),
     ]:

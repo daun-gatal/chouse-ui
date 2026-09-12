@@ -9,8 +9,7 @@ import (
 
 func newScheduledCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "scheduled", Short: "Scheduled queries (preview before create/run)"}
-	var connection string
-	var previewConnection, previewQuery string
+	var previewQuery string
 	var limit int
 
 	list := &cobra.Command{
@@ -21,8 +20,8 @@ func newScheduledCmd() *cobra.Command {
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()
 			q := url.Values{}
-			if connection != "" {
-				q.Set("connectionId", connection)
+			if resolved.Connection != "" {
+				q.Set("connectionId", resolved.Connection)
 			}
 			got, err := c.Get(ctx, "/api/scheduled-queries", q)
 			if err != nil {
@@ -31,7 +30,6 @@ func newScheduledCmd() *cobra.Command {
 			render(resolved, got)
 		},
 	}
-	list.Flags().StringVar(&connection, "connection", "", "filter by connection ID")
 
 	get := &cobra.Command{
 		Use:   "get <id>",
@@ -74,11 +72,7 @@ func newScheduledCmd() *cobra.Command {
 		Short: "Validate a job body without creating (dry-run)",
 		Run: func(_ *cobra.Command, _ []string) {
 			c, resolved := mustClient(true)
-			conn := previewConnection
-			if conn == "" {
-				conn = resolved.Connection
-			}
-			if conn == "" {
+			if resolved.Connection == "" {
 				fail(2, "preview needs a connection: pass --connection <id> (or -c / CHOUSE_CONNECTION)")
 			}
 			ctx, cancel := ctxWithTimeout()
@@ -86,7 +80,7 @@ func newScheduledCmd() *cobra.Command {
 			got, err := c.Post(ctx, "/api/scheduled-queries/preview", map[string]any{
 				"query":        previewQuery,
 				"frequency":    "manual",
-				"connectionId": conn,
+				"connectionId": resolved.Connection,
 			})
 			if err != nil {
 				failErr(err)
@@ -94,13 +88,13 @@ func newScheduledCmd() *cobra.Command {
 			render(resolved, got)
 		},
 	}
-	preview.Flags().StringVar(&previewConnection, "connection", "", "connection ID (default: configured connection)")
 	preview.Flags().StringVar(&previewQuery, "query", "SELECT 1", "SELECT to validate")
 	runNow := &cobra.Command{
 		Use:   "run <id>",
 		Short: "Execute a job now (action)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("scheduled run")
 			confirmDestructive("scheduled.run", args[0])
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()
@@ -118,6 +112,7 @@ func newScheduledCmd() *cobra.Command {
 		Short: "Delete a job (destructive)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("scheduled delete")
 			confirmDestructive("scheduled.delete", args[0])
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()
@@ -136,7 +131,6 @@ func newScheduledCmd() *cobra.Command {
 
 func newHealthCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "health", Short: "Data-health promises and incidents"}
-	var connection string
 	var limit int
 	list := &cobra.Command{
 		Use:   "list",
@@ -146,8 +140,8 @@ func newHealthCmd() *cobra.Command {
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()
 			q := url.Values{}
-			if connection != "" {
-				q.Set("connectionId", connection)
+			if resolved.Connection != "" {
+				q.Set("connectionId", resolved.Connection)
 			}
 			got, err := c.Get(ctx, "/api/data-health", q)
 			if err != nil {
@@ -156,7 +150,6 @@ func newHealthCmd() *cobra.Command {
 			render(resolved, got)
 		},
 	}
-	list.Flags().StringVar(&connection, "connection", "", "filter by connection ID")
 	incidents := &cobra.Command{
 		Use:   "incidents",
 		Short: "List incidents",
@@ -165,17 +158,26 @@ func newHealthCmd() *cobra.Command {
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()
 			q := url.Values{}
-			if connection != "" {
-				q.Set("connectionId", connection)
+			if resolved.Connection != "" {
+				q.Set("connectionId", resolved.Connection)
 			}
 			got, err := c.Get(ctx, "/api/data-health/incidents", q)
 			if err != nil {
 				failErr(err)
 			}
+			// The endpoint takes no limit param: truncate client-side so
+			// --limit is honest (same pattern as saved list).
+			if limit > 0 {
+				if m, ok := got.(map[string]any); ok {
+					if arr, ok := m["incidents"].([]any); ok && len(arr) > limit {
+						m["incidents"] = arr[:limit]
+					}
+				}
+			}
 			render(resolved, got)
 		},
 	}
-	incidents.Flags().StringVar(&connection, "connection", "", "filter by connection ID")
+	incidents.Flags().IntVar(&limit, "limit", 50, "max rows (client-side)")
 	timeline := &cobra.Command{
 		Use:   "timeline <promiseId>",
 		Short: "Show promise timeline",
@@ -201,6 +203,7 @@ func newHealthCmd() *cobra.Command {
 		Short: "Execute checks now (action)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("health run")
 			confirmDestructive("health.run", args[0])
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()
@@ -218,6 +221,7 @@ func newHealthCmd() *cobra.Command {
 		Short: "Acknowledge an incident",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("health ack")
 			confirmDestructive("health.ack", args[0])
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()

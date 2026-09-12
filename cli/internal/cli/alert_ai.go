@@ -62,6 +62,7 @@ func newAlertCmd() *cobra.Command {
 		Short: "Send a test delivery (side-effect)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("alert test")
 			confirmDestructive("alert.test", args[0])
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()
@@ -85,8 +86,10 @@ func newAICmd() *cobra.Command {
 
 	optimize := &cobra.Command{
 		Use:   "optimize",
-		Short: "Optimize or diagnose SQL (advisory only)",
+		Short: "Optimize or diagnose SQL (advisory only, LLM cost applies)",
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("ai optimize")
+			confirmDestructive("ai.optimize", "sql")
 			c, resolved := mustClient(true)
 			sql := readSQLInput(file, stdin, args)
 			ctx, cancel := ctxWithTimeout()

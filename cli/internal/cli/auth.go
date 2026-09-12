@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -30,6 +31,7 @@ func newAuthCmd() *cobra.Command {
 				fail(api.ExitUsage, "pass --token ch_pat_… or set CH_HOUSE_PAT (mint once in the UI: Preferences → Personal access tokens)")
 			}
 			c := api.New(resolved.Server, token, resolved.Connection)
+			c.HTTP.Timeout = time.Duration(timeoutSecs()) * time.Second
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()
 			if _, err := c.Validate(ctx); err != nil {
@@ -44,7 +46,10 @@ func newAuthCmd() *cobra.Command {
 			if err := config.SaveProfile(resolved.Profile, flagServer, flagProfile != ""); err != nil {
 				fail(api.ExitUsage, err.Error())
 			}
-			fmt.Fprintf(os.Stderr, "stored PAT for profile %q (masked %s)\n", resolved.Profile, config.MaskToken(token))
+			if !flagQuiet {
+				fmt.Fprintf(os.Stderr, "stored PAT for profile %q (masked %s)\n", resolved.Profile, config.MaskToken(token))
+			}
+			render(resolved, map[string]any{"profile": resolved.Profile, "server": resolved.Server})
 		},
 	}
 	login.Flags().StringVar(&tokenFlag, "token", "", "PAT value (or CH_HOUSE_PAT)")
@@ -93,7 +98,10 @@ func newAuthCmd() *cobra.Command {
 			if err := config.DeleteCredentials(resolved.Profile); err != nil {
 				fail(api.ExitServer, err.Error())
 			}
-			fmt.Fprintf(os.Stderr, "removed PAT for profile %q\n", resolved.Profile)
+			if !flagQuiet {
+				fmt.Fprintf(os.Stderr, "removed PAT for profile %q\n", resolved.Profile)
+			}
+			render(resolved, map[string]any{"profile": resolved.Profile, "removed": true})
 		},
 	}
 

@@ -65,6 +65,8 @@ func newConnectionCmd() *cobra.Command {
 		Short: "Verify access to a connection (prints correlation session)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
+			rejectDryRun("connection use")
+			confirmDestructive("connection.use", args[0])
 			c, resolved := mustClient(true)
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()

@@ -58,7 +58,6 @@ func newTableCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create database/table (guarded; prefer UI for schema design)",
 		Run: func(_ *cobra.Command, _ []string) {
-			confirmDestructive("ddl-create", "database/table")
 			uiOnly("interactive DDL builder", "Explorer → New database/table (CLI accepts explicit SQL via: chouse query --raw --yes)")
 		},
 	}
@@ -71,12 +70,13 @@ func newTableCmd() *cobra.Command {
 			if len(args) == 2 {
 				target += "." + args[1]
 			}
-			confirmDestructive("drop", target)
+			// Preview first: fully offline plan, never needs --yes.
 			if flagDryRun {
-				_, resolved := mustClient(true)
+				resolved := mustConfig()
 				render(resolved, map[string]any{"dry_run": true, "action": "drop", "target": target})
 				return
 			}
+			confirmDestructive("drop", target)
 			uiOnly("drop "+target, "Explorer → Drop (CLI executes explicit SQL via: chouse query --raw --yes \"DROP TABLE "+target+"\")")
 		},
 	}
