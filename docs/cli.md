@@ -14,6 +14,13 @@ curl -sSL https://github.com/daun-gatal/chouse-ui/releases/latest/download/insta
 CHOUSE_VERSION=cli-v0.2.0 curl -sSL …/install-cli.sh | bash
 ```
 
+The installer verifies `sha256sum` (or `shasum` on stock macOS),
+installs to `/usr/local/bin` (or `~/.local/bin` fallback), and wires
+`~/.local/bin` into your `PATH` via your shell rc file
+(`~/.bashrc`+`~/.profile`, `~/.zshrc`, or fish `config.fish`) —
+restart the shell or `source` the file afterwards. Opt out with
+`CHOUSE_NO_MODIFY_PATH=1`, override the destination with `INSTALL_DIR`.
+
 Or download `chouse-cli_<os>_<arch>.tar.gz` (+`.sig`/`.pem` cosign
 signature) + `checksums.txt` from a `cli-v*` GitHub Release — cut only when
 `cli/` changes, via `cli-release.yml` — verify
