@@ -45,7 +45,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.51.0';
+export const APP_VERSION = '1.52.0';
 
 // ============================================
 // Error Helpers
@@ -4684,7 +4684,7 @@ export const MIGRATIONS: Migration[] = [
             name VARCHAR(100) NOT NULL,
             key_hash VARCHAR(255) NOT NULL UNIQUE,
             key_prefix VARCHAR(20) NOT NULL,
-            scopes TEXT[] NOT NULL DEFAULT '{}',
+            scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
             expires_at TIMESTAMP WITH TIME ZONE,
             last_used_at TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -4696,6 +4696,32 @@ export const MIGRATIONS: Migration[] = [
         await (db as PostgresDb).execute(sql`CREATE INDEX IF NOT EXISTS api_keys_prefix_idx ON rbac_api_keys(key_prefix)`);
       }
       logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.51.0] Ensured rbac_api_keys table (${dbType})`);
+    },
+    down: async () => { /* forward-only */ },
+  },
+  {
+    version: '1.52.0',
+    name: 'pat_api_keys_scopes_jsonb',
+    description: 'ADR 0011 hotfix — align the PostgreSQL rbac_api_keys.scopes column with the Drizzle schema (JSONB). The snapshot and 1.51.0 created it as TEXT[], so every PAT insert failed on PostgreSQL with a malformed-array error. No-op on SQLite (TEXT already matches the json-mode mapping).',
+    up: async (db) => {
+      const dbType = getDatabaseType();
+      if (dbType === 'sqlite') {
+        logger.info({ module: 'RBAC', phase: 'migration' }, '[Migration 1.52.0] SQLite scopes column already matches (no-op)');
+        return;
+      }
+      // The table can only contain the TEXT[] default ('{}') — PAT inserts never
+      // succeeded on PostgreSQL before this fix, so no real array data can exist.
+      await (db as PostgresDb).execute(sql`
+        ALTER TABLE rbac_api_keys ALTER COLUMN scopes DROP DEFAULT
+      `);
+      await (db as PostgresDb).execute(sql`
+        ALTER TABLE rbac_api_keys ALTER COLUMN scopes TYPE JSONB
+        USING (CASE WHEN scopes::text = '{}' THEN '[]'::jsonb ELSE scopes::text::jsonb END)
+      `);
+      await (db as PostgresDb).execute(sql`
+        ALTER TABLE rbac_api_keys ALTER COLUMN scopes SET DEFAULT '[]'::jsonb
+      `);
+      logger.info({ module: 'RBAC', phase: 'migration' }, `[Migration 1.52.0] Converted rbac_api_keys.scopes to JSONB (${dbType})`);
     },
     down: async () => { /* forward-only */ },
   },
@@ -5257,7 +5283,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
     )
   `);
 
-  // API Keys table
+  // API Keys table (scopes is JSONB to match the Drizzle schema mapping)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rbac_api_keys (
       id TEXT PRIMARY KEY NOT NULL,
@@ -5265,7 +5291,7 @@ async function createPostgresSchemaFromDrizzle(db: PostgresDb): Promise<void> {
       name VARCHAR(100) NOT NULL,
       key_hash VARCHAR(255) NOT NULL UNIQUE,
       key_prefix VARCHAR(20) NOT NULL,
-      scopes TEXT[] NOT NULL DEFAULT '{}',
+      scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
       expires_at TIMESTAMP WITH TIME ZONE,
       last_used_at TIMESTAMP WITH TIME ZONE,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),

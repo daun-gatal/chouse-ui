@@ -299,6 +299,25 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
     expect(await h.indexExists("api_keys_hash_idx")).toBe(true);
     expect(await h.indexExists("api_keys_prefix_idx")).toBe(true);
   },
+  "1.52.0": async () => {
+    // PAT hotfix: scopes must store a JSON array on both dialects (PostgreSQL
+    // regressed to TEXT[] and rejected every insert). Functional round-trip
+    // with a probe row, cleaned up afterwards.
+    const userId = await insertUser(`pat-scopes-probe-${randomUUID().slice(0, 8)}`);
+    const probeId = randomUUID();
+    await h.rawRun(sql`INSERT INTO rbac_api_keys (id, user_id, name, key_hash, key_prefix, scopes)
+      VALUES (${probeId}, ${userId}, 'probe', ${`probe-hash-${probeId}`}, 'probe', ${'["table:select"]'})`);
+    try {
+      const rows = await h.rawAll(sql`SELECT scopes FROM rbac_api_keys WHERE id = ${probeId}`);
+      expect(rows.length).toBe(1);
+      // postgres-js parses jsonb to an array, sqlite returns the raw text.
+      const scopes = rows[0].scopes;
+      const text = Array.isArray(scopes) ? JSON.stringify(scopes) : String(scopes);
+      expect(text).toContain("table:select");
+    } finally {
+      await h.rawRun(sql`DELETE FROM rbac_api_keys WHERE id = ${probeId}`);
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------
