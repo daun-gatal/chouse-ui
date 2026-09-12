@@ -79,3 +79,11 @@ In this repo's DinD CI the `opencode-dind-apps` published ports live on the
 DinD host, not the agent pod — e2e must use a sidecar
 (`docker run --network <compose>_default http://chouse-ui:5521`), never
 `localhost` from the pod. See `scripts/e2e-pat.sh` and ADR 0012 §4.
+
+## End-to-end
+
+`./scripts/e2e-cli.sh` builds the server + CLI from the working tree, brings
+up the compose stack on DinD, and runs `scripts/e2e-cli-check.py` (provision
+→ 14 live checks: reads, guarded writes, real `KILL`, exit codes) from inside
+the compose network. Sequential runs only; the login route is rate-limited,
+so don't loop it tightly.
