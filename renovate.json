@@ -31,6 +31,12 @@
       "pinDigests": true
     },
     {
+      "description": "Group Go module bumps for the chouse CLI.",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "go non-major dependencies"
+    },
+    {
       "description": "Security fixes bypass grouping and the schedule.",
       "matchCategories": ["security"],
       "groupName": null,
