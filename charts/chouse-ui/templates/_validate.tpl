@@ -54,10 +54,26 @@ instead of becoming silent duplicate jobs or per-pod databases at runtime.
 {{- fail "clickhouse.auth.password is required when clickhouse.enabled=true — the chart never invents credentials. Generate with: openssl rand -hex 16" }}
 {{- end }}
 
+{{/* MCP (ADR 0013): mirrors the server's own startup validation so a bad
+     combination fails at render time instead of in the pod. */}}
+{{- if .Values.mcp.allowWrites }}
+{{- if not .Values.mcp.enabled }}
+{{- fail "mcp.allowWrites=true requires mcp.enabled=true" }}
+{{- end }}
+{{- end }}
+{{- if .Values.mcp.allowDestructive }}
+{{- if not .Values.mcp.enabled }}
+{{- fail "mcp.allowDestructive=true requires mcp.enabled=true" }}
+{{- end }}
+{{- if not .Values.mcp.allowWrites }}
+{{- fail "mcp.allowDestructive=true requires mcp.allowWrites=true (the server refuses this combination at startup too)" }}
+{{- end }}
+{{- end }}
+
 {{/* config.yaml values override the pod environment (the server injects them
      into process.env last), so a config key the chart also manages would
      silently win over the chart's wiring. Refuse the ambiguity. */}}
-{{- range $key := list "port" "node_env" "static_path" "chouse" "scheduled_queries" }}
+{{- range $key := list "port" "node_env" "static_path" "chouse" "scheduled_queries" "mcp" }}
 {{- if hasKey $.Values.config $key }}
 {{- fail (printf "config.%s conflicts with chart-managed settings — remove it from `config` and use the chart values instead (config.yaml overrides the pod environment)" $key) }}
 {{- end }}

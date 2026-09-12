@@ -6,7 +6,7 @@ description: >-
 type: application
 # Chart version — bump manually in every PR that changes the chart
 # (see .rules/HELM_CHART.md). Breaking values changes bump major.
-version: 1.2.2
+version: 1.3.0
 # App version — owned by auto-release.yml; never edit by hand.
 appVersion: "3.12.1"
 kubeVersion: ">=1.25.0-0"
@@ -48,5 +48,5 @@ annotations:
     - name: chouse-ui
       image: ghcr.io/daun-gatal/chouse-ui:v3.12.1
   artifacthub.io/changes: |
-    - kind: changed
-      description: Updated to CHouse UI v3.12.1
+    - kind: added
+      description: Optional MCP endpoint (`mcp.enabled`) on a dedicated port for PAT-authenticated AI agents (ADR 0013)
