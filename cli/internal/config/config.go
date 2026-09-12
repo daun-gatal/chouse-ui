@@ -157,6 +157,37 @@ func SaveCredentials(profile, token string) error {
 	return os.WriteFile(filepath.Join(dir, "credentials.yaml"), raw, 0o600)
 }
 
+// SaveProfile merges non-secret profile settings into config.yaml without
+// touching stored tokens (those live in credentials.yaml). Empty server
+// leaves any existing value alone — it never clears. makeCurrent switches
+// CurrentProfile (used when --profile was explicitly passed at login).
+func SaveProfile(profile, server string, makeCurrent bool) error {
+	if strings.TrimSpace(profile) == "" {
+		return errors.New("profile must not be empty")
+	}
+	dir, err := Dir(true)
+	if err != nil {
+		return err
+	}
+	cfg, err := LoadFile()
+	if err != nil {
+		return err
+	}
+	p := cfg.Profiles[profile]
+	if strings.TrimSpace(server) != "" {
+		p.Server = strings.TrimRight(strings.TrimSpace(server), "/")
+	}
+	cfg.Profiles[profile] = p
+	if makeCurrent {
+		cfg.CurrentProfile = profile
+	}
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "config.yaml"), raw, 0o600)
+}
+
 // DeleteCredentials removes the stored token for a profile.
 func DeleteCredentials(profile string) error {
 	creds, err := LoadCredentials()

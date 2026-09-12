@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -99,6 +100,72 @@ func TestRequireServer(t *testing.T) {
 	r.Server = "http://host:5521"
 	if err := r.RequireServer(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSaveProfile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Set with makeCurrent: creates entry, switches current, 0600 file.
+	if err := SaveProfile("default", "https://host:5521/", true); err != nil {
+		t.Fatalf("SaveProfile: %v", err)
+	}
+	cfg, err := LoadFile()
+	if err != nil {
+		t.Fatalf("LoadFile: %v", err)
+	}
+	if cfg.Profiles["default"].Server != "https://host:5521" {
+		t.Fatalf("server not persisted (trailing slash must be trimmed): %+v", cfg.Profiles["default"])
+	}
+	if cfg.CurrentProfile != "default" {
+		t.Fatalf("current profile not switched: %q", cfg.CurrentProfile)
+	}
+	info, err := os.Stat(filepath.Join(home, ".config", "chouse", "config.yaml"))
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("config file must be 0600, got %o", info.Mode().Perm())
+	}
+
+	// Merge: empty server preserves, other profiles and current untouched,
+	// tokens file untouched (secrets never land in config.yaml).
+	if err := SaveCredentials("default", "ch_pat_secret"); err != nil {
+		t.Fatalf("SaveCredentials: %v", err)
+	}
+	if err := SaveProfile("other", "https://other:5521", false); err != nil {
+		t.Fatalf("SaveProfile other: %v", err)
+	}
+	if err := SaveProfile("default", "", false); err != nil {
+		t.Fatalf("SaveProfile empty: %v", err)
+	}
+	cfg, err = LoadFile()
+	if err != nil {
+		t.Fatalf("LoadFile: %v", err)
+	}
+	if cfg.Profiles["default"].Server != "https://host:5521" {
+		t.Fatalf("empty save must preserve server: %+v", cfg.Profiles["default"])
+	}
+	if cfg.Profiles["other"].Server != "https://other:5521" {
+		t.Fatalf("other profile lost: %+v", cfg.Profiles)
+	}
+	if cfg.CurrentProfile != "default" {
+		t.Fatalf("current profile must be preserved: %q", cfg.CurrentProfile)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, ".config", "chouse", "config.yaml"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if strings.Contains(string(raw), "ch_pat_secret") {
+		t.Fatal("token must never be written to config.yaml")
+	}
+	creds, err := LoadCredentials()
+	if err != nil {
+		t.Fatalf("LoadCredentials: %v", err)
+	}
+	if creds.Tokens["default"] != "ch_pat_secret" {
+		t.Fatal("SaveProfile must not disturb credentials.yaml")
 	}
 }
 

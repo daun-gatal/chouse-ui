@@ -74,12 +74,15 @@ def cli(*args, pat=True, env_extra=None, stdin_text=None):
     return proc
 
 
-def cli_scrubbed(*args, stdin_text=None):
-    """Run with no server/PAT/config: fresh HOME, empty server (empty string
-    resolves as unset), no token. Proves nothing talks to a phantom default.
+def cli_scrubbed(*args, home=None, stdin_text=None):
+    """Run with no server/PAT/config: fresh (or given) HOME, empty server
+    (empty string resolves as unset), no token. Proves nothing talks to a
+    phantom default. Pass home= to share state across calls (e.g. login
+    persistence); otherwise each call gets an isolated HOME.
     """
     import tempfile as _tf  # noqa: E402
-    home = _tf.mkdtemp(prefix="chouse-e2e-nohome-")
+    if home is None:
+        home = _tf.mkdtemp(prefix="chouse-e2e-nohome-")
     env = dict(os.environ)
     env["HOME"] = home
     env["CHOUSE_SERVER"] = ""
@@ -362,6 +365,22 @@ def t_auth_status_unconfigured():
     assert "(not configured)" in p.stdout, p.stdout[-300:]
 
 
+def t_login_persists_server():
+    # login --server/--token once, then everything works with zero env:
+    # server AND token both come from disk.
+    import tempfile as _tf  # noqa: E402
+    home = _tf.mkdtemp(prefix="chouse-e2e-login-")
+    out = need(cli_scrubbed("auth", "login", "--server", BASE,
+                            "--token", STATE["pat"], home=home))
+    assert "stored PAT" in out, out[-300:]
+    out = need(cli_scrubbed("auth", "status", "--output", "json", home=home))
+    data = json.loads(out)
+    assert data["server"] == BASE, out[-300:]
+    assert STATE["pat"] not in out, "raw PAT must never render"
+    out = need(cli_scrubbed("auth", "whoami", "--output", "json", home=home))
+    assert "admin" in out, out[-300:]
+
+
 def t_cleanup_writes():
     need(cli("query", "--raw", "--yes", f"DROP TABLE IF EXISTS {DB}.t"))
     need(cli("query", "--raw", "--yes", f"DROP DATABASE IF EXISTS {DB}"))
@@ -414,6 +433,7 @@ def main():
         ("cli-version-offline", t_version_offline),
         ("cli-no-server-fail-fast", t_no_server_fail_fast),
         ("cli-auth-status-unconfigured", t_auth_status_unconfigured),
+        ("cli-login-persists-server", t_login_persists_server),
         ("cli-cleanup-writes", t_cleanup_writes),
         ("cli-cleanup-identity", t_cleanup_identity),
     ]:
