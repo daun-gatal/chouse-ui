@@ -72,6 +72,71 @@ func TestEnvelopeErrorExitCodes(t *testing.T) {
 	}
 }
 
+func TestGuardErrorShape(t *testing.T) {
+	// apiProtectionMiddleware emits error-as-string with a top-level code.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"success":false,"error":"Direct API access is not allowed. Please use the application UI.","code":"DIRECT_ACCESS_DENIED"}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "", "")
+	_, err := c.RbacStatus(context.Background())
+	apiErr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("expected *Error, got %T (%v)", err, err)
+	}
+	if apiErr.Code != "DIRECT_ACCESS_DENIED" {
+		t.Fatalf("code lost: %+v", apiErr)
+	}
+	if !strings.Contains(apiErr.Message, "Direct API access") {
+		t.Fatalf("message lost: %+v", apiErr)
+	}
+	if apiErr.ExitCode() != ExitRBAC {
+		t.Fatalf("403 must map to ExitRBAC, got %d", apiErr.ExitCode())
+	}
+}
+
+func TestValidationErrorShape(t *testing.T) {
+	// Zod validator emits error-as-object without code/message.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"success":false,"error":{"issues":[{"code":"invalid_type","path":["connectionId"],"message":"Required"}],"name":"ZodError"}}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "ch_pat_x", "")
+	_, err := c.Post(context.Background(), "/api/scheduled-queries/preview", map[string]any{})
+	apiErr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("expected *Error, got %T (%v)", err, err)
+	}
+	if apiErr.Code == "" || apiErr.Message == "" {
+		t.Fatalf("code/message must never be empty: %+v", apiErr)
+	}
+	if !strings.Contains(apiErr.Message, "connectionId") {
+		t.Fatalf("validation detail lost: %v", apiErr)
+	}
+	if apiErr.ExitCode() != ExitUsage {
+		t.Fatalf("400 must map to ExitUsage, got %d", apiErr.ExitCode())
+	}
+}
+
+func TestRateLimitedPlainText(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`Too many requests, please try again later.`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "ch_pat_x", "")
+	_, err := c.Health(context.Background())
+	apiErr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("expected *Error, got %T (%v)", err, err)
+	}
+	if apiErr.Code != "RATE_LIMIT_EXCEEDED" {
+		t.Fatalf("429 must map to RATE_LIMIT_EXCEEDED, got %+v", apiErr)
+	}
+}
+
 func TestNonEnvelopeDecodes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`not json`))

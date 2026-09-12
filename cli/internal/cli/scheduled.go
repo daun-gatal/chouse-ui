@@ -10,6 +10,7 @@ import (
 func newScheduledCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "scheduled", Short: "Scheduled queries (preview before create/run)"}
 	var connection string
+	var previewConnection, previewQuery string
 	var limit int
 
 	list := &cobra.Command{
@@ -73,16 +74,28 @@ func newScheduledCmd() *cobra.Command {
 		Short: "Validate a job body without creating (dry-run)",
 		Run: func(_ *cobra.Command, _ []string) {
 			c, resolved := mustClient(true)
+			conn := previewConnection
+			if conn == "" {
+				conn = resolved.Connection
+			}
+			if conn == "" {
+				fail(2, "preview needs a connection: pass --connection <id> (or -c / CHOUSE_CONNECTION)")
+			}
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()
-			// Minimal safe preview: read-only SELECT shape is validated server-side.
-			got, err := c.Post(ctx, "/api/scheduled-queries/preview", map[string]any{"query": "SELECT 1", "frequency": "manual"})
+			got, err := c.Post(ctx, "/api/scheduled-queries/preview", map[string]any{
+				"query":        previewQuery,
+				"frequency":    "manual",
+				"connectionId": conn,
+			})
 			if err != nil {
 				failErr(err)
 			}
 			render(resolved, got)
 		},
 	}
+	preview.Flags().StringVar(&previewConnection, "connection", "", "connection ID (default: configured connection)")
+	preview.Flags().StringVar(&previewQuery, "query", "SELECT 1", "SELECT to validate")
 	runNow := &cobra.Command{
 		Use:   "run <id>",
 		Short: "Execute a job now (action)",

@@ -60,14 +60,79 @@ func (e *Error) ExitCode() int {
 	}
 }
 
+// The server emits three failure shapes, all with success:false:
+//  1. standard:  {"error":{"code","message","id?"}}
+//  2. guard:     {"error":"<string>","code":"<top-level>"} (apiProtectionMiddleware)
+//  3. validation: {"error":{arbitrary object, e.g. Zod issues},"code"?:...}
+//
+// decodeError normalizes all three; it never returns empty code/message.
+func decodeError(status int, raw []byte) *Error {
+	var wire struct {
+		Error json.RawMessage `json:"error"`
+		Code  string          `json:"code"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil || len(wire.Error) == 0 {
+		return &Error{StatusCode: status, Code: orElse(wire.Code, "REQUEST_FAILED"), Message: truncate(string(raw), 300)}
+	}
+	code, message, id := wire.Code, "", ""
+	// String form: {"error":"…","code":"X"}.
+	var asString string
+	if err := json.Unmarshal(wire.Error, &asString); err == nil {
+		message = asString
+	} else {
+		var asObject struct {
+			ID      string `json:"id"`
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(wire.Error, &asObject); err == nil {
+			code, message, id = orElse(asObject.Code, code), asObject.Message, asObject.ID
+		}
+		if message == "" {
+			// Arbitrary object (e.g. Zod {issues,name}): compact it.
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, wire.Error); err == nil {
+				message = truncate(compact.String(), 500)
+			} else {
+				message = truncate(string(wire.Error), 500)
+			}
+		}
+	}
+	if message == "" {
+		message = truncate(string(raw), 300)
+	}
+	code = orElse(code, "REQUEST_FAILED")
+	if status == http.StatusTooManyRequests && code == "REQUEST_FAILED" {
+		// Rate limiters (e.g. login) answer plain text with Retry-After.
+		code = "RATE_LIMIT_EXCEEDED"
+		message = "rate limited by the server — back off and retry: " + message
+	}
+	return &Error{StatusCode: status, Code: code, Message: message, RequestID: id}
+}
+
+// plainError builds an Error from a non-JSON body (rate limiters and
+// proxies answer plain text, not the envelope).
+func plainError(status int, raw []byte) *Error {
+	msg := truncate(strings.TrimSpace(string(raw)), 300)
+	if msg == "" {
+		msg = "request failed"
+	}
+	if status == http.StatusTooManyRequests {
+		return &Error{StatusCode: status, Code: "RATE_LIMIT_EXCEEDED", Message: "rate limited by the server — back off and retry: " + msg}
+	}
+	return &Error{StatusCode: status, Code: "DECODE_ERROR", Message: "non-envelope response: " + msg}
+}
+
+func orElse(v, fallback string) string {
+	if strings.TrimSpace(v) != "" {
+		return v
+	}
+	return fallback
+}
+
 type envelope struct {
 	Success bool            `json:"success"`
 	Data    json.RawMessage `json:"data"`
-	Error   *struct {
-		ID      string `json:"id"`
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
 }
 
 // Client talks to one CHouse UI server as one profile.
@@ -141,14 +206,13 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, query url.Valu
 	}
 	var env envelope
 	if err := json.Unmarshal(raw, &env); err != nil {
+		if resp.StatusCode >= 400 {
+			return plainError(resp.StatusCode, raw)
+		}
 		return &Error{StatusCode: resp.StatusCode, Code: "DECODE_ERROR", Message: fmt.Sprintf("non-envelope response: %s", truncate(string(raw), 300))}
 	}
 	if !env.Success {
-		code, msg, id := "REQUEST_FAILED", "request failed", ""
-		if env.Error != nil {
-			code, msg, id = env.Error.Code, env.Error.Message, env.Error.ID
-		}
-		return &Error{StatusCode: resp.StatusCode, Code: code, Message: msg, RequestID: id}
+		return decodeError(resp.StatusCode, raw)
 	}
 	if out != nil && len(env.Data) > 0 && string(env.Data) != "null" {
 		if err := json.Unmarshal(env.Data, out); err != nil {
@@ -175,8 +239,8 @@ func (c *Client) GetRaw(ctx context.Context, path string, query url.Values) ([]b
 	}
 	if resp.StatusCode >= 400 {
 		var env envelope
-		if json.Unmarshal(raw, &env) == nil && !env.Success && env.Error != nil {
-			return nil, "", &Error{StatusCode: resp.StatusCode, Code: env.Error.Code, Message: env.Error.Message}
+		if json.Unmarshal(raw, &env) == nil && !env.Success {
+			return nil, "", decodeError(resp.StatusCode, raw)
 		}
 		return nil, "", &Error{StatusCode: resp.StatusCode, Code: "REQUEST_FAILED", Message: truncate(string(raw), 300)}
 	}
@@ -191,7 +255,9 @@ func (c *Client) Health(ctx context.Context) (map[string]any, error) {
 	return out, c.DoJSON(ctx, http.MethodGet, "/api/health", nil, nil, &out)
 }
 
-// RbacStatus is GET /api/rbac/status (version + migrations, public).
+// RbacStatus is GET /api/rbac/status (version + migrations). It is NOT in
+// the apiProtectionMiddleware public list, so callers need the PAT exemption
+// (Authorization: Bearer ch_pat_…) — without a token it 403s.
 func (c *Client) RbacStatus(ctx context.Context) (map[string]any, error) {
 	var out map[string]any
 	return out, c.DoJSON(ctx, http.MethodGet, "/api/rbac/status", nil, nil, &out)
@@ -392,12 +458,7 @@ func (c *Client) UploadPreview(ctx context.Context, filePath, format string, has
 		return nil, &Error{StatusCode: resp.StatusCode, Code: "DECODE_ERROR", Message: truncate(string(raw), 300)}
 	}
 	if !env.Success {
-		msg := "request failed"
-		code := "REQUEST_FAILED"
-		if env.Error != nil {
-			msg, code = env.Error.Message, env.Error.Code
-		}
-		return nil, &Error{StatusCode: resp.StatusCode, Code: code, Message: msg}
+		return nil, decodeError(resp.StatusCode, raw)
 	}
 	var out map[string]any
 	if len(env.Data) > 0 {

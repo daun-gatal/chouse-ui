@@ -59,6 +59,19 @@ func TestTokenFlagSingleCanonicalName(t *testing.T) {
 	}
 }
 
+func TestScheduledPreviewNeedsConnectionFlag(t *testing.T) {
+	root := NewRoot("test", "", "")
+	sched, _, err := root.Find([]string{"scheduled", "preview"})
+	if err != nil || sched == nil || sched.Name() != "preview" {
+		t.Fatalf("scheduled preview not found: %v", err)
+	}
+	for _, f := range []string{"connection", "query"} {
+		if sched.Flags().Lookup(f) == nil {
+			t.Errorf("scheduled preview must accept --%s (server requires connectionId)", f)
+		}
+	}
+}
+
 func TestHelpMentionsSafety(t *testing.T) {
 	root := NewRoot("test", "", "")
 	var sb strings.Builder
