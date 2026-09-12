@@ -269,8 +269,8 @@ const QueryRequestSchemaWithType = z.object({
   format: z.enum(["JSON", "JSONEachRow", "CSV", "TabSeparated"]).optional().default("JSON"),
   queryId: z.string().optional(),
   /**
-   * User-configured row cap.  0 = unlimited.  Absent = use server default.
-   * Validated server-side: must be 0 (unlimited) or in [100, 100_000].
+   * User-configured row cap. 0 = unlimited. Absent = use server default.
+   * Small values are honored (truncation + ClickHouse max_result_rows).
    */
   maxResultRows: z.number().int().min(0).max(100_000).optional(),
 });
@@ -514,7 +514,7 @@ const databaseRouter = new Hono<{ Variables: Variables }>();
  * Permission: QUERY_EXECUTE or TABLE_SELECT
  */
 tableRouter.post("/select", zValidator("json", QueryRequestSchemaWithType), async (c) => {
-  const { query: sql, format, queryId } = c.req.valid("json");
+  const { query: sql, format, queryId, maxResultRows } = c.req.valid("json");
   const rbacUserId = c.get("rbacUserId");
   const rbacPermissions = c.get("rbacPermissions");
   const isRbacAdmin = c.get("isRbacAdmin");
@@ -538,7 +538,7 @@ tableRouter.post("/select", zValidator("json", QueryRequestSchemaWithType), asyn
     }
   }
 
-  return executeQueryWithValidation(c, sql, format, 'SELECT', queryId);
+  return executeQueryWithValidation(c, sql, format, 'SELECT', queryId, maxResultRows);
 });
 
 /**

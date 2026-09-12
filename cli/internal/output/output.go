@@ -119,15 +119,26 @@ func toRows(value any) []map[string]string {
 	if value == nil {
 		return nil
 	}
-	// Unwrap {data: …} and QueryResult {meta,data}.
+	// Unwrap {data: …} envelopes — but only when data is itself a container.
+	// A scalar "data" field (or a map without its own "data" key) is a
+	// regular payload field: unwrapping it would silently drop siblings and
+	// rename the column (JSON output renders the raw map, so table/CSV must
+	// not reshape it either). Single-key {"data": X} wrappers keep their
+	// legacy unwrap since nothing is lost.
 	if m, ok := value.(map[string]any); ok {
 		if d, ok := m["data"]; ok {
 			if dm, ok := d.(map[string]any); ok {
 				if rows, ok := dm["data"]; ok {
 					return rowsFrom(rows, dm["meta"])
 				}
+				if len(m) == 1 {
+					return toRows(d)
+				}
+			} else if _, isSlice := d.([]any); isSlice {
+				return toRows(d)
+			} else if len(m) == 1 {
+				return toRows(d)
 			}
-			return toRows(d)
 		}
 		return []map[string]string{stringifyMap(m)}
 	}

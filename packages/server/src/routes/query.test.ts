@@ -155,6 +155,19 @@ describe("Query Routes", () => {
             const body = await res.json();
             expect(body.error.message).toBe("Restricted table");
         });
+
+        it("should pass maxResultRows through to the query service", async () => {
+            mockExecuteQuery.mockResolvedValue({ data: [] });
+
+            const res = await app.request("/query/table/select", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+                body: JSON.stringify({ query: "SELECT * FROM t1", maxResultRows: 25 })
+            });
+
+            expect(res.status).toBe(200);
+            expect(mockExecuteQuery).toHaveBeenCalledWith("SELECT * FROM t1", "JSON", undefined, 25);
+        });
     });
 
     describe("POST /query/table/create", () => {

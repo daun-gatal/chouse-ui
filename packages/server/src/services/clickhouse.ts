@@ -240,11 +240,22 @@ export class ClickHouseService {
         rows?: number;
       };
 
+      // Enforce an explicit caller cap here instead of trusting ClickHouse
+      // alone: recent server builds ignore small max_result_rows values, so
+      // the API contract (0 = unlimited, otherwise truncate) holds regardless
+      // of engine behavior. Uncapped paths are untouched.
+      let data = jsonResult.data || [];
+      let rows = jsonResult.rows || (jsonResult.data?.length ?? 0);
+      if (maxResultRows !== undefined && maxResultRows > 0 && data.length > maxResultRows) {
+        data = data.slice(0, maxResultRows);
+        rows = data.length;
+      }
+
       return {
         meta: jsonResult.meta || [],
-        data: jsonResult.data || [],
+        data,
         statistics: jsonResult.statistics || { elapsed: 0, rows_read: 0, bytes_read: 0 },
-        rows: jsonResult.rows || (jsonResult.data?.length ?? 0),
+        rows,
         queryId: result.query_id,
         error: null,
       };

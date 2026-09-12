@@ -71,6 +71,33 @@ describe("ClickHouse Service", () => {
             // The service wraps the error but preserves the message if available
             expect(service.executeQuery("SELECT *")).rejects.toThrow("DB Error");
         });
+
+        it("should truncate to maxResultRows regardless of engine behavior", async () => {
+            const ten = Array.from({ length: 10 }, (_, i) => ({ n: i }));
+            mockJsonFn.mockResolvedValueOnce({
+                data: ten,
+                meta: [{ name: "n", type: "UInt64" }],
+                statistics: { elapsed: 0.1, rows_read: 10, bytes_read: 80 }
+            });
+
+            const result = await service.executeQuery("SELECT n FROM t", "JSON", undefined, 2);
+
+            expect(result.data).toHaveLength(2);
+            expect(result.rows).toBe(2);
+        });
+
+        it("should leave data untouched without a cap (or cap 0)", async () => {
+            const ten = Array.from({ length: 10 }, (_, i) => ({ n: i }));
+            for (const cap of [undefined, 0] as const) {
+                mockJsonFn.mockResolvedValueOnce({
+                    data: ten,
+                    meta: [{ name: "n", type: "UInt64" }],
+                    statistics: { elapsed: 0.1, rows_read: 10, bytes_read: 80 }
+                });
+                const result = await service.executeQuery("SELECT n FROM t", "JSON", undefined, cap);
+                expect(result.data).toHaveLength(10);
+            }
+        });
     });
 
     describe("streamQueryRows ON CLUSTER (issue #336)", () => {
