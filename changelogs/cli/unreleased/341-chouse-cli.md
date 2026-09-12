@@ -1,18 +1,12 @@
-type: major
+type: minor
 
 ### Added
-- **chouse CLI** — safe browserless operations for CHouse UI as independently versioned Go binaries (`cli-vX` releases cut only on `cli/` changes, `curl | bash` installer). PAT-only auth (`CH_HOUSE_PAT`), operator-complete commands (query, explorer, metrics/logs, live, fleet/doctor, scheduled, data health, alerting, AI optimize, upload preview, audit), safe-by-default guards (`--yes` + `--dry-run`, exit codes `0/2/3/4/5/6`). Break-glass admin stays UI-only. See `docs/cli.md` and ADR 0012.
-- **CLI `--help` guidance everywhere** — all 83 commands carry a Long description plus runnable real-world examples (`system.numbers` queries, proven flag combos, fake ids that 404 instead of destroying). A completeness test fails the build if any future command ships without them.
+- **chouse CLI (`chouse`)** — new command-line companion for CHouse UI: safe browserless operations as an independently versioned Go binary (`cli-vX` releases cut only on `cli/` changes, `curl | bash` installer to `~/.chouse/bin` with automatic shell PATH wiring).
+  - **Machine-first output** — every command prints JSON by default (`-o yaml` for YAML, `--output json|yaml` only); `table`/`csv` formats do not exist, and unknown values fail fast with a usage error (exit 2). `-q/--quiet` suppresses human diagnostics on stderr so stdout pipes cleanly.
+  - **Operator-complete commands** — query, explorer, metrics/logs, live, fleet/doctor, scheduled, data health, alerting, AI optimize, upload preview, audit. Break-glass admin stays UI-only.
+  - **Safe-by-default** — reads never prompt; mutations need TTY confirm or `--yes`, destructive actions support `--dry-run` previews; exit codes `0/2/3/4/5/6`; every mutation prints `action/target/permission`.
+  - **PAT-only auth** — `CH_HOUSE_PAT` or `chouse auth login` (`--server` is remembered per profile in `~/.config/chouse/config.yaml`, tokens stay in 0600 `credentials.yaml`); no silent `localhost` server default — missing config fails fast with setup guidance.
+  - **81+ guided commands** — every command carries a Long description and runnable examples; a completeness test fails the build if any future command ships without them.
+- **`chouse version`** — offline install-verification command (instant, never contacts a server).
 
-### Changed
-- **Machine-parseable output by default** — every command prints JSON with no flags (`--output json|yaml`, JSON is the only default). Unknown or legacy formats (`table`, `csv`) fail fast with `unknown --output "table" (want json|yaml)` and exit code 2. `-q/--quiet` suppresses human diagnostics on stderr so stdout pipes cleanly.
-- **CLI `auth login` prints machine-readable `{profile, server}`** on stdout honoring `-o` (human note stays on stderr).
-- **CLI `ai optimize` and `connection use` now need `--yes`** outside a TTY (LLM spend and server-side state change, matching every other mutation).
-
-### Fixed
-- **CLI explicit server config** — no silent `http://localhost:5521` default; commands needing a server fail fast with setup guidance (`--server`, `CHOUSE_SERVER`, or `chouse auth login --server …`), mirroring the missing-PAT error.
-- **CLI `version` is offline** — prints the binary version instantly without contacting any server; use `chouse status` for server version and migrations.
-- **CLI installer PATH setup** — `install-cli.sh` installs to a dedicated `~/.chouse/bin` (predictable on Linux and macOS, never needs root) and appends it to your shell rc file automatically (`~/.bashrc`+`~/.profile`, `~/.zshrc`, or fish `config.fish`; opt out with `CHOUSE_NO_MODIFY_PATH=1`), even when `PATH` is injected by containers/IDEs rather than shell init, falls back to `shasum` on stock macOS, creates an explicit `INSTALL_DIR` when missing, and warns when a stale copy elsewhere on `PATH` shadows the fresh binary.
-- **CLI installer `latest` resolution** — scan the 100 newest releases for `cli-v*` tags so frequent app releases can no longer push the CLI off the lookup page.
-- **CLI `auth login` remembers the server** — `--server` is now saved to your profile (`~/.config/chouse/config.yaml`), so `auth status` and all commands work in fresh shells with no environment set. Env-provided values stay session-scoped and are never written to disk; `--profile` also switches the current profile.
-- **CLI flags work as advertised everywhere** — `--dry-run` previews standalone and fails fast where unsupported (it can no longer silently execute with `--yes`); `-c`/`--connection` is one flag on all commands; `auth login`/`logout` honor `-o`; `--timeout` applies above 60s; confirm prompts go to stderr.
+See `docs/cli.md` and ADR 0012 for the full contract.
