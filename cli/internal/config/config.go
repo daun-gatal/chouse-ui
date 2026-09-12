@@ -206,7 +206,9 @@ func Resolve(f Flags) (Resolved, error) {
 	}
 
 	fileProfile := fileCfg.Profiles[profile]
-	server := firstNonEmpty(f.Server, os.Getenv(EnvServer), fileProfile.Server, "http://localhost:5521")
+	// No silent default: an unconfigured server resolves to "" and callers
+	// that need one fail fast via RequireServer with setup guidance.
+	server := firstNonEmpty(f.Server, os.Getenv(EnvServer), fileProfile.Server)
 	connection := firstNonEmpty(f.Connection, os.Getenv(EnvConnection), fileProfile.Connection, "")
 	output := firstNonEmpty(f.Output, os.Getenv(EnvOutput), fileProfile.Output, "table")
 
@@ -217,6 +219,17 @@ func Resolve(f Flags) (Resolved, error) {
 		Profile:    profile,
 		Output:     strings.ToLower(strings.TrimSpace(output)),
 	}, nil
+}
+
+// RequireServer fails with an actionable message when no server is
+// configured. There is deliberately no localhost default: silently aiming
+// at a phantom server masks misconfiguration (and leaks PATs to whatever
+// listens there). Mirrors RequireToken.
+func (r Resolved) RequireServer() error {
+	if strings.TrimSpace(r.Server) == "" {
+		return fmt.Errorf("no server configured (profile %q): pass --server, set %s, or run: chouse auth login --server https://host:5521 --token ch_pat_…", r.Profile, EnvServer)
+	}
+	return nil
 }
 
 // RequireToken fails with an actionable message when no PAT is configured.

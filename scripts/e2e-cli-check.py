@@ -74,6 +74,24 @@ def cli(*args, pat=True, env_extra=None, stdin_text=None):
     return proc
 
 
+def cli_scrubbed(*args, stdin_text=None):
+    """Run with no server/PAT/config: fresh HOME, empty server (empty string
+    resolves as unset), no token. Proves nothing talks to a phantom default.
+    """
+    import tempfile as _tf  # noqa: E402
+    home = _tf.mkdtemp(prefix="chouse-e2e-nohome-")
+    env = dict(os.environ)
+    env["HOME"] = home
+    env["CHOUSE_SERVER"] = ""
+    env["CHOUSE_PROFILE"] = ""
+    env.pop("CH_HOUSE_PAT", None)
+    proc = subprocess.run(
+        [CHOUSE, *args], capture_output=True, text=True,
+        input=stdin_text, timeout=60, env=env,
+    )
+    return proc
+
+
 def need(proc, what="command"):
     assert proc.returncode == 0, f"{what} exit={proc.returncode}: {proc.stderr[-500:]}"
     return proc.stdout
@@ -112,9 +130,18 @@ def wait_for_stack():
 
 def provision():
     xhr = {"X-Requested-With": "XMLHttpRequest"}
-    status, payload = api("POST", "/api/rbac/auth/login",
-        body={"identifier": "admin@localhost", "password": "admin123!"},
-        extra_headers=xhr)
+    # /api/health is static (200 the moment the server listens) and does not
+    # gate on DB seeding — the seeded admin may not exist yet when
+    # wait-for-stack passes (argon2 hashing is slow on shared CI CPUs).
+    # Poll login briefly rather than failing the whole matrix on the race.
+    status, payload = 0, {}
+    for _ in range(15):
+        status, payload = api("POST", "/api/rbac/auth/login",
+            body={"identifier": "admin@localhost", "password": "admin123!"},
+            extra_headers=xhr)
+        if status == 200:
+            break
+        time.sleep(2)
     assert status == 200, f"login {status}: {payload}"
     jwt = payload["data"]["tokens"]["accessToken"]
     STATE["admin_jwt"] = jwt
@@ -308,6 +335,33 @@ def t_exit_codes_and_fence():
     assert p.returncode == 2, f"bad --output must exit 2, got {p.returncode}"
 
 
+def t_version_offline():
+    # No server/PAT/config: version must be instant, local-only output.
+    start = time.time()
+    p = cli_scrubbed("version", "--output", "json")
+    elapsed = time.time() - start
+    assert p.returncode == 0, f"version exit={p.returncode}: {p.stderr[-300:]}"
+    assert elapsed < 5, f"version took {elapsed:.1f}s without a server (network wait?)"
+    data = json.loads(p.stdout)
+    assert "cli" in data, data.keys()
+    assert "server" not in data and "unreachable" not in p.stdout, p.stdout[-300:]
+
+
+def t_no_server_fail_fast():
+    # Commands needing a server fail fast (exit 2) with setup guidance,
+    # never a phantom-localhost NETWORK_ERROR.
+    for args in (["status", "--output", "json"], ["query", "SELECT 1"]):
+        p = cli_scrubbed(*args)
+        assert p.returncode == 2, f"{args} exit={p.returncode}: {p.stderr[-300:]}"
+        assert "no server configured" in p.stderr, p.stderr[-300:]
+
+
+def t_auth_status_unconfigured():
+    p = cli_scrubbed("auth", "status", "--output", "json")
+    assert p.returncode == 0, f"auth status exit={p.returncode}: {p.stderr[-300:]}"
+    assert "(not configured)" in p.stdout, p.stdout[-300:]
+
+
 def t_cleanup_writes():
     need(cli("query", "--raw", "--yes", f"DROP TABLE IF EXISTS {DB}.t"))
     need(cli("query", "--raw", "--yes", f"DROP DATABASE IF EXISTS {DB}"))
@@ -357,6 +411,9 @@ def main():
         ("cli-ops-domains", t_ops_domains),
         ("cli-upload-preview", t_upload_preview),
         ("cli-exit-codes-fence", t_exit_codes_and_fence),
+        ("cli-version-offline", t_version_offline),
+        ("cli-no-server-fail-fast", t_no_server_fail_fast),
+        ("cli-auth-status-unconfigured", t_auth_status_unconfigured),
         ("cli-cleanup-writes", t_cleanup_writes),
         ("cli-cleanup-identity", t_cleanup_identity),
     ]:

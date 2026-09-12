@@ -42,6 +42,11 @@ chouse auth whoami        # live user, roles, permissions
 chouse auth logout
 ```
 
+There is no implicit server default: without `--server`, `CHOUSE_SERVER`,
+or a profile server, server-bound commands fail fast telling you how to
+configure one. `chouse version` is always offline (binary version only);
+`chouse status` reports the server version.
+
 Precedence: `--token > CH_HOUSE_PAT > credentials file (0600) > --profile`.
 `--server`: flag > `CHOUSE_SERVER` > profile. `--connection/-c`: flag >
 `CHOUSE_CONNECTION` > server default. The CLI never calls PAT-fenced routes
