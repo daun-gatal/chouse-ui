@@ -222,7 +222,7 @@ func Resolve(f Flags) (Resolved, error) {
 // RequireToken fails with an actionable message when no PAT is configured.
 func (r Resolved) RequireToken() error {
 	if strings.TrimSpace(r.Token) == "" {
-		return fmt.Errorf("no PAT configured (profile %q): set %s, pass --token, or run: chouse auth login --pat ch_pat_…", r.Profile, EnvToken)
+		return fmt.Errorf("no PAT configured (profile %q): set %s, pass --token, or run: chouse auth login --token ch_pat_…", r.Profile, EnvToken)
 	}
 	return nil
 }

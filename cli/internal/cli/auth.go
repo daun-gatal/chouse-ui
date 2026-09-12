@@ -12,19 +12,22 @@ import (
 
 func newAuthCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "auth", Short: "Authenticate with a personal access token"}
-	var pat string
+	var tokenFlag, patAlias string
 
 	login := &cobra.Command{
 		Use:   "login",
 		Short: "Store a PAT locally (0600)",
 		Run: func(_ *cobra.Command, _ []string) {
 			_, resolved := mustClient(false)
-			token := pat
+			token := tokenFlag
+			if token == "" {
+				token = patAlias
+			}
 			if token == "" {
 				token = os.Getenv(config.EnvToken)
 			}
 			if token == "" {
-				fail(api.ExitUsage, "pass --pat ch_pat_… or set CH_HOUSE_PAT (mint once in the UI: Preferences → Personal access tokens)")
+				fail(api.ExitUsage, "pass --token ch_pat_… or set CH_HOUSE_PAT (mint once in the UI: Preferences → Personal access tokens)")
 			}
 			c := api.New(resolved.Server, token, resolved.Connection)
 			ctx, cancel := ctxWithTimeout()
@@ -38,7 +41,9 @@ func newAuthCmd() *cobra.Command {
 			fmt.Fprintf(os.Stderr, "stored PAT for profile %q (masked %s)\n", resolved.Profile, config.MaskToken(token))
 		},
 	}
-	login.Flags().StringVar(&pat, "pat", "", "PAT value (or CH_HOUSE_PAT)")
+	login.Flags().StringVar(&tokenFlag, "token", "", "PAT value (or CH_HOUSE_PAT)")
+	login.Flags().StringVar(&patAlias, "pat", "", "deprecated alias for --token")
+	_ = login.Flags().MarkDeprecated("pat", "use --token instead")
 
 	status := &cobra.Command{
 		Use:   "status",

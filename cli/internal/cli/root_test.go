@@ -42,6 +42,23 @@ func TestGlobalSafetyFlagsExist(t *testing.T) {
 	}
 }
 
+func TestTokenFlagSingleCanonicalName(t *testing.T) {
+	root := NewRoot("test", "", "")
+	auth, _, err := root.Find([]string{"auth", "login"})
+	if err != nil || auth == nil || auth.Name() != "login" {
+		t.Fatalf("auth login not found: %v", err)
+	}
+	if auth.Flags().Lookup("token") == nil {
+		t.Error("auth login must accept --token (single canonical PAT flag)")
+	}
+	pat := auth.Flags().Lookup("pat")
+	if pat == nil {
+		t.Error("auth login must keep --pat as a deprecated alias")
+	} else if pat.Deprecated == "" {
+		t.Error("--pat must be marked deprecated in favor of --token")
+	}
+}
+
 func TestHelpMentionsSafety(t *testing.T) {
 	root := NewRoot("test", "", "")
 	var sb strings.Builder

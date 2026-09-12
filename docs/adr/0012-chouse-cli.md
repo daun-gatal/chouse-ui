@@ -41,7 +41,7 @@ Forces shaping this decision:
   `--token > CH_HOUSE_PAT > ~/.config/chouse/credentials.yaml (0600) >
   --profile`. `--server`: flag > `CHOUSE_SERVER` > profile. `--connection`:
   flag > `CHOUSE_CONNECTION` > server default via `X-Connection-Id`.
-- Initial PAT is minted once in the UI, then `chouse auth login --pat …`
+- Initial PAT is minted once in the UI, then `chouse auth login --token …`
   stores it locally. The CLI never calls PAT-fenced endpoints
   (`/rbac/pats*`, `change-password`, `login/refresh`, `logout*`).
 - No `X-Requested-With`, never send legacy `X-Session-ID` (always `409`).

@@ -26,7 +26,7 @@ The server must be ≥ the 1.51.0 PAT backfill or PAT calls fail closed (401).
 Mint one PAT in the UI (Preferences → Personal access tokens), then:
 
 ```bash
-chouse auth login --server https://chouse.corp:5521 --pat ch_pat_…
+chouse auth login --server https://chouse.corp:5521 --token ch_pat_…
 chouse auth status        # masked token, profile, server
 chouse auth whoami        # live user, roles, permissions
 chouse auth logout
