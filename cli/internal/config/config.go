@@ -241,7 +241,7 @@ func Resolve(f Flags) (Resolved, error) {
 	// that need one fail fast via RequireServer with setup guidance.
 	server := firstNonEmpty(f.Server, os.Getenv(EnvServer), fileProfile.Server)
 	connection := firstNonEmpty(f.Connection, os.Getenv(EnvConnection), fileProfile.Connection, "")
-	output := firstNonEmpty(f.Output, os.Getenv(EnvOutput), fileProfile.Output, "table")
+	output := firstNonEmpty(f.Output, os.Getenv(EnvOutput), fileProfile.Output, "json")
 
 	return Resolved{
 		Server:     strings.TrimRight(strings.TrimSpace(server), "/"),

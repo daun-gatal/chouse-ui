@@ -52,6 +52,24 @@ func TestNoColorFlagRemoved(t *testing.T) {
 	}
 }
 
+func TestOutputFormatsJSONYAMLOnly(t *testing.T) {
+	// table/csv were removed from the output contract: help must offer
+	// json|yaml only and never re-advertise the dropped formats.
+	root := NewRoot("test", "", "")
+	f := root.PersistentFlags().Lookup("output")
+	if f == nil {
+		t.Fatal("--output flag missing")
+	}
+	if !strings.Contains(f.Usage, "json|yaml") {
+		t.Errorf("--output help must advertise json|yaml: %s", f.Usage)
+	}
+	for _, gone := range []string{"table", "csv"} {
+		if strings.Contains(f.Usage, gone) {
+			t.Errorf("--output help must not mention removed format %q: %s", gone, f.Usage)
+		}
+	}
+}
+
 func TestNoShorthandCollisions(t *testing.T) {
 	// A local shorthand must never shadow a persistent one: on commands
 	// declaring their own --connection, `-c` errored instead of working.

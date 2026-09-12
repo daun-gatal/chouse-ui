@@ -72,7 +72,8 @@ connection create/delete, fleet `alert-config` writes, `audit` prune.
 - `doctor scan` warns about LLM cost. Every mutation prints action, target,
   required permission, and audit correlation. PAT display is `keyPrefix`
   only; `--debug` masks secrets.
-- Machine contract: `--output table|json|yaml|csv`, `--quiet`, stdin
+- Machine contract: `--output json|yaml` (default `json`; `table`/`csv`
+  removed — unknown values fail fast with a usage error), `--quiet`, stdin
   (`-f -`), no spinners when piped, exit codes `0 ok / 2 usage / 3 auth /
   4 RBAC / 5 server / 6 network`, `429` backoff honoring `Retry-After`.
 

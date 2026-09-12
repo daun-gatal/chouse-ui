@@ -70,7 +70,7 @@ chouse alert rules && chouse audit list --limit 20
 chouse ai optimize -f slow.sql
 ```
 
-Machine use: `--output json|yaml|csv|table`, `--quiet`, `--stdin`/`-f -`,
+Machine use: `--output json|yaml` (default `json`), `--quiet`, `--stdin`/`-f -`,
 exit codes `0/2/3/4/5/6`, no spinners when piped.
 
 ## Global flags
@@ -79,11 +79,12 @@ Available on every command: `--server`, `--token`, `--profile`,
 `-c/--connection`, `-o/--output`, `-q/--quiet`, `--timeout`,
 `--yes`, `--dry-run`.
 
-- `-o/--output` selects presentation (`table|json|yaml|csv`); `query --format`
+- `-o/--output` selects presentation (`json|yaml`, default `json`); `query --format`
   instead selects the *server* result format, and `upload --format` the upload
-  file format — independent knobs.
-- `-q/--quiet` means machine mode: table output becomes JSON, and human
-  diagnostics stay on stderr so stdout pipes cleanly.
+  file format — independent knobs. Removed formats (`table`, `csv`) fail fast
+  with a usage error.
+- `-q/--quiet` means machine mode: human diagnostics stay on stderr so stdout
+  pipes cleanly (stdout is always JSON/YAML).
 - `-c/--connection` scopes the invocation to one connection (header +
   filter); it is the same flag everywhere, including list commands.
 - `--timeout` bounds every request (context deadline and client cap alike).
@@ -93,10 +94,10 @@ Available on every command: `--server`, `--token`, `--profile`,
 
 ## Output contract
 
-`-o table` always renders the table: nested values appear as compact JSON in
-their cell (same bytes, RFC-quoted, in CSV). `audit export` streams raw bytes
-and bypasses `-o`. `auth login`/`logout` print a machine result honoring `-o`
-with the human note on stderr.
+Output is always machine-parseable: `json` (default) or `yaml` via
+`-o/--output`. `audit export` streams raw bytes and bypasses `-o`.
+`auth login`/`logout` print a machine result honoring `-o` with the human note
+on stderr.
 
 ## Safety
 
