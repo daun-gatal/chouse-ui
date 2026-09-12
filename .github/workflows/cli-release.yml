@@ -1,0 +1,227 @@
+name: CLI Release
+
+# Independent CLI releases: own version line (cli/VERSION), own fragments
+# (changelogs/cli/unreleased), own tags (cli-vX). The app release
+# (auto-release.yml) never touches these paths, and this workflow never
+# touches the app version, CHANGELOG.md, Docker, or Helm. A release is cut
+# only when cli/ itself changed since the last cli-v tag.
+#
+# Runs from 'preview' by default (like auto-release): PRs merge to preview,
+# and a CLI-only fix would otherwise wait for the next app release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version override (e.g. 0.2.0). Leave empty to auto-compute from CLI fragments."
+        required: false
+        default: ""
+      prerelease:
+        description: "Publish as cli-vX-pre prerelease for testing (replaces the previous -pre; no git tag)."
+        type: boolean
+        default: false
+      dry_run:
+        description: "Compute version and build only — publish nothing."
+        type: boolean
+        default: false
+      branch:
+        description: "Branch to release from. Leave empty for 'preview'. Any other branch only plans (throwaway). 'main' is not allowed."
+        required: false
+        default: ""
+
+jobs:
+  # ── Step 1: resolve version + change gate, always. This IS the dry-run;
+  # the publish job below is skipped when dry_run is set. ────────────────────
+  plan:
+    name: Plan CLI Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      branch: ${{ steps.target.outputs.branch }}
+      full_release: ${{ steps.target.outputs.full_release }}
+      has_changes: ${{ steps.changes.outputs.has_changes }}
+
+    steps:
+      - name: Resolve target branch
+        id: target
+        run: |
+          BRANCH="${{ inputs.branch }}"
+          if [ -z "$BRANCH" ]; then
+            BRANCH="preview"
+          fi
+          if [ "$BRANCH" = "main" ]; then
+            echo "::error::Releasing the CLI from 'main' is not allowed. Use 'preview' (or leave the branch input empty), or a feature branch for a throwaway plan."
+            exit 1
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          if [ "$BRANCH" = "preview" ]; then
+            FULL_RELEASE="true"
+          else
+            FULL_RELEASE="false"
+          fi
+          echo "full_release=$FULL_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "Planning CLI release from '$BRANCH' (full_release=$FULL_RELEASE)"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Check CLI fragments exist
+        run: |
+          count=$(find changelogs/cli/unreleased -name "*.md" ! -name "README.md" | wc -l | tr -d ' ')
+          if [ "$count" = "0" ]; then
+            echo "No CLI changelog fragments found. Nothing to release."
+            exit 1
+          fi
+          echo "Found $count CLI fragment(s)."
+
+      - name: Compute target version
+        id: version
+        run: |
+          VERSION=$(bun run scripts/release-cli.ts ${{ inputs.version }} --dry-run | tail -n1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Target CLI version: cli-v$VERSION"
+
+      # Releases cut only on cli/ changes: docs-only or app-only stretches of
+      # preview must not mint empty CLI versions.
+      - name: Check for CLI changes since last release
+        id: changes
+        run: |
+          LAST_TAG=$(git tag --list 'cli-v[0-9]*' | sort -V | tail -1 || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous cli-v tag found — treating as first CLI release."
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Comparing against last CLI tag: $LAST_TAG"
+          CODE=$(git diff --name-only "$LAST_TAG" HEAD -- cli/ scripts/build-cli.sh scripts/install-cli.sh || true)
+          if [ -n "$CODE" ]; then
+            echo "CLI changes detected:"
+            echo "$CODE"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CLI changes since $LAST_TAG — release will be skipped."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dry-run summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          {
+            echo "## CLI release plan: cli-v$VERSION"
+            echo ""
+            echo "- Branch: \`${{ steps.target.outputs.branch }}\` (full: ${{ steps.target.outputs.full_release }})"
+            echo "- CLI changes since last tag: ${{ steps.changes.outputs.has_changes }}"
+            echo "- Pre-release: ${{ inputs.prerelease }}, dry run: ${{ inputs.dry_run }}"
+            echo "- Tag: \`cli-v$VERSION\`$([ "${{ inputs.prerelease }}" = "true" ] && echo "-pre (no git tag)")"
+            echo "- Assets: chouse-cli_{linux,darwin,windows}_{amd64,arm64} + checksums.txt + cosign signatures + install-cli.sh"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Step 2: approval-gated publish ─────────────────────────────────────────
+  publish:
+    name: Publish CLI Release
+    needs: plan
+    if: ${{ !inputs.dry_run && needs.plan.outputs.full_release == 'true' && needs.plan.outputs.has_changes == 'true' }}
+    runs-on: ubuntu-latest
+    environment: cli-publish
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.branch }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_SECRET }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: cli/go.sum
+
+      - name: Cosign installer
+        uses: sigstore/cosign-installer@v3
+
+      # Build first so a red tree never gets a version commit: the plain
+      # version is already known from plan (tags carry the cli-v prefix).
+      - name: Build CLI archives
+        run: ./scripts/build-cli.sh "${{ needs.plan.outputs.version }}"
+
+      - name: Assemble CLI release (bump + notes)
+        run: |
+          bun run scripts/release-cli.ts ${{ inputs.version }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cli/VERSION changelogs/cli/unreleased/
+          git commit -m "chore: release cli cli-v${{ needs.plan.outputs.version }}"
+          git push origin "HEAD:${{ needs.plan.outputs.branch }}"
+
+      - name: Sign archives (keyless)
+        run: |
+          for f in cli/dist/chouse-cli_*; do
+            cosign sign-blob --yes "$f" \
+              --output-signature "$f.sig" \
+              --output-certificate "$f.pem"
+          done
+
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.plan.outputs.version }}"
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            TAG="cli-v$VERSION-pre"
+            # Re-running overwrites the -pre tag: delete the previous
+            # pre-release first so its bytes don't linger (same pattern as
+            # the -pre image/chart cleanup).
+            gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+            gh release create "$TAG" --prerelease \
+              --title "chouse CLI $TAG" \
+              --notes-file CLI_RELEASE_NOTES.md \
+              cli/dist/* scripts/install-cli.sh
+          else
+            TAG="cli-v$VERSION"
+            if git ls-remote --tags origin "$TAG" | grep -q "refs/tags/$TAG"; then
+              echo "Tag $TAG already exists — uploading assets to the existing release."
+            else
+              git tag -a "$TAG" -m "chouse CLI $TAG"
+              git push origin "$TAG"
+            fi
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" cli/dist/* scripts/install-cli.sh --clobber
+            else
+              gh release create "$TAG" \
+                --title "chouse CLI $TAG" \
+                --notes-file CLI_RELEASE_NOTES.md \
+                cli/dist/* scripts/install-cli.sh
+            fi
+          fi
+          rm -f CLI_RELEASE_NOTES.md
+          echo "Published $TAG"
+
+  # ── No-op note when the gate found nothing to ship ─────────────────────────
+  skip:
+    name: Nothing To Release
+    needs: plan
+    if: ${{ needs.plan.outputs.has_changes != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "No CLI changes since the last cli-v tag — fragments stay in changelogs/cli/unreleased/ for the next CLI release."

@@ -270,9 +270,11 @@ jobs:
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.sha }}"
 
-          # Find fragment files added or modified in this PR
+          # Find fragment files added or modified in this PR, in both the app
+          # line (changelogs/unreleased) and the independent CLI line
+          # (changelogs/cli/unreleased). Same format rules for both.
           FRAGMENTS=$(git diff --name-only --diff-filter=AM "$BASE_SHA" "$HEAD_SHA" \
-            | grep '^changelogs/unreleased/.*\.md$' \
+            | grep -E '^changelogs/(cli/)?unreleased/.*\.md$' \
             | grep -v 'README\.md' || true)
 
           if [ -z "$FRAGMENTS" ]; then

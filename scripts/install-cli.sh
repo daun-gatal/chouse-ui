@@ -27,15 +27,20 @@ detect_os_arch() {
 }
 
 resolve_version() {
-  # CLI binaries ride the app release: same version, same vX tags (see
-  # auto-release.yml `cli` job). Every app release ships fresh assets, so
-  # `releases/latest` always carries them.
+  # The CLI versions independently (tags cli-vX, see cli-release.yml) while
+  # the app ships vX tags with no CLI assets — so resolve against cli-v*
+  # releases, never `releases/latest` (which follows the app).
   if [ "$VERSION" = "latest" ]; then
-    TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" | sed 's#.*/tag/##')"
+    TAG="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=20" 2>/dev/null | grep -o '"tag_name": *"cli-v[^"]*"' | head -n1 | cut -d'"' -f4 || true)"
+    if [ -z "${TAG:-}" ]; then
+      echo "no cli-v* release found for $REPO" >&2
+      exit 1
+    fi
   else
     case "$VERSION" in
-      v*) TAG="$VERSION" ;;
-      *) TAG="v$VERSION" ;;
+      cli-v*) TAG="$VERSION" ;;
+      v*) TAG="cli-$VERSION" ;;
+      *) TAG="cli-v$VERSION" ;;
     esac
   fi
 }
