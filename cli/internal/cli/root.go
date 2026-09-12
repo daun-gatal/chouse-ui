@@ -4,9 +4,7 @@ package cli
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -157,10 +155,4 @@ func auditLine(action, target, permission string) {
 // uiOnly errors for v1-excluded admin surfaces with a UI hint.
 func uiOnly(what, where string) {
 	fail(api.ExitUsage, fmt.Sprintf("%s is UI-only in CLI v1 (use the browser: %s). Reason: %s", what, where, "break-glass admin stays behind UI review"))
-}
-
-func intQuery(q url.Values, key string, v int) {
-	if v > 0 {
-		q.Set(key, strconv.Itoa(v))
-	}
 }

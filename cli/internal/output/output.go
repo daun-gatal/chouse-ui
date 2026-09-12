@@ -124,20 +124,10 @@ func toRows(value any) []map[string]string {
 		if d, ok := m["data"]; ok {
 			if dm, ok := d.(map[string]any); ok {
 				if rows, ok := dm["data"]; ok {
-					return toRows(map[string]any{"rows": rows, "meta": dm["meta"]})
+					return rowsFrom(rows, dm["meta"])
 				}
 			}
 			return toRows(d)
-		}
-		if rows, ok := m["rows"]; ok {
-			_ = rows
-		}
-		if data, ok := m["data"]; ok {
-			_ = data
-		}
-		// QueryResult: data=[{…}] with meta=[{name}].
-		if data, ok := m["data"]; ok {
-			return rowsFrom(data, m["meta"])
 		}
 		return []map[string]string{stringifyMap(m)}
 	}

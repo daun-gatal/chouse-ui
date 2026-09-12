@@ -61,9 +61,8 @@ type ConfirmOptions struct {
 	// Action and Target describe the mutation for the prompt/audit line.
 	Action string
 	Target string
-	// In renders the prompt; Out receives the audit line. Tests inject buffers.
-	In  *os.File
-	Out interface{ Write([]byte) (int, error) }
+	// In overrides stdin (tests inject /dev/null).
+	In *os.File
 }
 
 // RequireConfirm enforces TTY confirm or --yes. Non-TTY without --yes fails
