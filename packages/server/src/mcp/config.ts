@@ -109,7 +109,11 @@ export function loadMcpConfig(
     errors,
     config: {
       enabled,
-      host: env.MCP_HOST?.trim() || "localhost",
+      // Production binds all interfaces like the web port does (an operator
+      // who sets MCP_ENABLED=true intends the endpoint to be reachable —
+      // exposure is the Service/ingress's job). Development stays on
+      // localhost for the dev-only convenience default.
+      host: env.MCP_HOST?.trim() || (env.NODE_ENV === "production" ? "0.0.0.0" : "localhost"),
       port,
       allowWrites,
       allowDestructive,

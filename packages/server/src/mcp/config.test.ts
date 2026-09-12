@@ -18,10 +18,15 @@ describe("loadMcpConfig", () => {
     expect(loadMcpConfig({ ...DEV, MCP_ENABLED: "false" }).config?.enabled).toBe(false);
   });
 
-  it("defaults host to localhost and port to 8752", () => {
-    const config = loadMcpConfig(PROD).config;
-    expect(config?.host).toBe("localhost");
-    expect(config?.port).toBe(8752);
+  it("defaults host to localhost in development and 0.0.0.0 in production", () => {
+    expect(loadMcpConfig(DEV).config?.host).toBe("localhost");
+    expect(loadMcpConfig({ ...PROD, MCP_ENABLED: "true" }).config?.host).toBe("0.0.0.0");
+    expect(loadMcpConfig(PROD).config?.host).toBe("0.0.0.0");
+  });
+
+  it("respects an explicit MCP_HOST over the environment default", () => {
+    expect(loadMcpConfig({ ...PROD, MCP_ENABLED: "true", MCP_HOST: "127.0.0.1" }).config?.host).toBe("127.0.0.1");
+    expect(loadMcpConfig({ ...DEV, MCP_HOST: "mcp.internal" }).config?.host).toBe("mcp.internal");
   });
 
   it("reads MCP_PORT", () => {
