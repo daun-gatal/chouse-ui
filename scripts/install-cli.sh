@@ -33,7 +33,9 @@ resolve_version() {
   # the app ships vX tags with no CLI assets — so resolve against cli-v*
   # releases, never `releases/latest` (which follows the app).
   if [ "$VERSION" = "latest" ]; then
-    TAG="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=20" 2>/dev/null | grep -o '"tag_name": *"cli-v[^"]*"' | head -n1 | cut -d'"' -f4 || true)"
+    # per_page=100 (API max): app vX releases are frequent and would push
+    # cli-v* tags off a smaller first page, breaking `latest` resolution.
+    TAG="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=100" 2>/dev/null | grep -o '"tag_name": *"cli-v[^"]*"' | head -n1 | cut -d'"' -f4 || true)"
     if [ -z "${TAG:-}" ]; then
       echo "no cli-v* release found for $REPO" >&2
       exit 1
