@@ -6,85 +6,91 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import type { McpDeps } from "../types";
-import { runApiTool, toolContext } from "./helpers";
+import { runApiTool, toolContext, argString, argOptionalString, registerChouseTool } from "./helpers";
+
+// Schemas hoisted as plain zod v3 records (see helpers.ts note on TS2589).
+const createSavedQuerySchema: Record<string, z.ZodTypeAny> = {
+  name: z.string().min(1).describe("Display name"),
+  query: z.string().min(1).describe("The SQL to save"),
+  description: z.string().optional().describe("Optional description"),
+};
+
+const idSchema: Record<string, z.ZodTypeAny> = {
+  id: z.string().min(1).describe("Resource id"),
+};
 
 export function registerWriteTools(mcp: McpServer, deps: McpDeps): void {
-  mcp.registerTool(
-    "create_saved_query",
-    {
-      description: "Save a query definition for reuse.",
-      inputSchema: {
-        name: z.string().min(1).describe("Display name"),
-        query: z.string().min(1).describe("The SQL to save"),
-        description: z.string().optional().describe("Optional description"),
-      },
-    },
-    async (args: { name: string; query: string; description?: string }, extra) => {
+  registerChouseTool(mcp, {
+    name: "create_saved_query",
+    description: "Save a query definition for reuse.",
+    inputSchema: createSavedQuerySchema,
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      return runApiTool(ctx, deps.clientFor(ctx), "create_saved_query", args.name, () =>
+      const name = argString(args, "name");
+      return runApiTool(ctx, deps.clientFor(ctx), "create_saved_query", name, () =>
         deps.clientFor(ctx).request("POST", "/api/saved-queries", {
-          body: { name: args.name, query: args.query, description: args.description },
+          body: {
+            name,
+            query: argString(args, "query"),
+            description: argOptionalString(args, "description"),
+          },
         })
       );
-    }
-  );
-
-  mcp.registerTool(
-    "run_scheduled_job",
-    {
-      description: "Trigger a scheduled query to run now.",
-      inputSchema: { id: z.string().min(1).describe("Scheduled query id") },
     },
-    async (args: { id: string }, extra) => {
+  });
+
+  registerChouseTool(mcp, {
+    name: "run_scheduled_job",
+    description: "Trigger a scheduled query to run now.",
+    inputSchema: idSchema,
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      return runApiTool(ctx, deps.clientFor(ctx), "run_scheduled_job", args.id, () =>
-        deps.clientFor(ctx).request("POST", `/api/scheduled-queries/${encodeURIComponent(args.id)}/run`)
+      const id = argString(args, "id");
+      return runApiTool(ctx, deps.clientFor(ctx), "run_scheduled_job", id, () =>
+        deps.clientFor(ctx).request("POST", `/api/scheduled-queries/${encodeURIComponent(id)}/run`)
       );
-    }
-  );
-
-  mcp.registerTool(
-    "run_health_check",
-    {
-      description: "Evaluate a data-health check now.",
-      inputSchema: { id: z.string().min(1).describe("Data-health check id") },
     },
-    async (args: { id: string }, extra) => {
+  });
+
+  registerChouseTool(mcp, {
+    name: "run_health_check",
+    description: "Evaluate a data-health check now.",
+    inputSchema: idSchema,
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      return runApiTool(ctx, deps.clientFor(ctx), "run_health_check", args.id, () =>
-        deps.clientFor(ctx).request("POST", `/api/data-health/${encodeURIComponent(args.id)}/run`)
+      const id = argString(args, "id");
+      return runApiTool(ctx, deps.clientFor(ctx), "run_health_check", id, () =>
+        deps.clientFor(ctx).request("POST", `/api/data-health/${encodeURIComponent(id)}/run`)
       );
-    }
-  );
-
-  mcp.registerTool(
-    "acknowledge_incident",
-    {
-      description: "Acknowledge an open data-health incident.",
-      inputSchema: { id: z.string().min(1).describe("Incident id") },
     },
-    async (args: { id: string }, extra) => {
+  });
+
+  registerChouseTool(mcp, {
+    name: "acknowledge_incident",
+    description: "Acknowledge an open data-health incident.",
+    inputSchema: idSchema,
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      return runApiTool(ctx, deps.clientFor(ctx), "acknowledge_incident", args.id, () =>
+      const id = argString(args, "id");
+      return runApiTool(ctx, deps.clientFor(ctx), "acknowledge_incident", id, () =>
         deps.clientFor(ctx).request(
           "POST",
-          `/api/data-health/incidents/${encodeURIComponent(args.id)}/acknowledge`
+          `/api/data-health/incidents/${encodeURIComponent(id)}/acknowledge`
         )
       );
-    }
-  );
-
-  mcp.registerTool(
-    "test_alert_channel",
-    {
-      description: "Send a test notification through an alert channel (this pages people).",
-      inputSchema: { id: z.string().min(1).describe("Alert channel id") },
     },
-    async (args: { id: string }, extra) => {
+  });
+
+  registerChouseTool(mcp, {
+    name: "test_alert_channel",
+    description: "Send a test notification through an alert channel (this pages people).",
+    inputSchema: idSchema,
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      return runApiTool(ctx, deps.clientFor(ctx), "test_alert_channel", args.id, () =>
-        deps.clientFor(ctx).request("POST", `/api/alerting/channels/${encodeURIComponent(args.id)}/test`)
+      const id = argString(args, "id");
+      return runApiTool(ctx, deps.clientFor(ctx), "test_alert_channel", id, () =>
+        deps.clientFor(ctx).request("POST", `/api/alerting/channels/${encodeURIComponent(id)}/test`)
       );
-    }
-  );
+    },
+  });
 }

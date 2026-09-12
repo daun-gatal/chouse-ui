@@ -10,12 +10,42 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import type { McpDeps } from "../types";
-import { runApiTool, apiFor, textResult, toolContext } from "./helpers";
+import {
+  runApiTool,
+  apiFor,
+  textResult,
+  toolContext,
+  argString,
+  argNumber,
+  argOptionalString,
+  registerChouseTool,
+} from "./helpers";
 import { auditMcpToolCall } from "../audit";
 import {
   splitSqlStatements,
   parseStatement,
 } from "../../middleware/sqlParser";
+
+// Schemas hoisted as plain zod v3 records (see helpers.ts note on TS2589).
+const querySchema: Record<string, z.ZodTypeAny> = {
+  sql: z.string().min(1).describe("The SELECT/WITH/SHOW/DESCRIBE/EXPLAIN statement"),
+  limit: z.number().int().min(1).max(500).default(100).describe("Maximum rows to return"),
+  connection_id: z.string().optional().describe("Connection id (defaults to the request/header connection)"),
+};
+
+const explainQuerySchema: Record<string, z.ZodTypeAny> = {
+  sql: z.string().min(1).describe("The SELECT/WITH statement to explain"),
+  connection_id: z.string().optional().describe("Connection id (defaults to the request/header connection)"),
+};
+
+const getSavedQuerySchema: Record<string, z.ZodTypeAny> = {
+  id: z.string().min(1).describe("Saved query id"),
+};
+
+const runSavedQuerySchema: Record<string, z.ZodTypeAny> = {
+  id: z.string().min(1).describe("Saved query id"),
+  connection_id: z.string().optional().describe("Connection id (defaults to the request/header connection)"),
+};
 
 const READ_STATEMENT_TYPES = new Set(["select", "show", "describe", "explain"]);
 
@@ -52,21 +82,17 @@ export function classifyReadSql(sql: string): SqlClassification {
 }
 
 export function registerQueryTools(mcp: McpServer, deps: McpDeps): void {
-  mcp.registerTool(
-    "query",
-    {
-      description:
-        "Run a single read-only SELECT/WITH/SHOW/DESCRIBE/EXPLAIN query against ClickHouse. Writes and multi-statement input are rejected. Results are capped (100 rows default, max 500).",
-      inputSchema: {
-        sql: z.string().min(1).describe("The SELECT/WITH/SHOW/DESCRIBE/EXPLAIN statement"),
-        limit: z.number().int().min(1).max(500).default(100).describe("Maximum rows to return"),
-        connection_id: z.string().optional().describe("Connection id (defaults to the request/header connection)"),
-      },
-      annotations: { readOnlyHint: true },
-    },
-    async (args: { sql: string; limit: number; connection_id?: string }, extra) => {
+  registerChouseTool(mcp, {
+    name: "query",
+    description:
+      "Run a single read-only SELECT/WITH/SHOW/DESCRIBE/EXPLAIN query against ClickHouse. Writes and multi-statement input are rejected. Results are capped (100 rows default, max 500).",
+    inputSchema: querySchema,
+    annotations: { readOnlyHint: true },
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      const classification = classifyReadSql(args.sql);
+      const sql = argString(args, "sql");
+      const limit = Math.min(500, Math.max(1, argNumber(args, "limit", 100)));
+      const classification = classifyReadSql(sql);
       if (!classification.allowed) {
         await auditMcpToolCall(ctx.identity, {
           tool: "query",
@@ -76,88 +102,76 @@ export function registerQueryTools(mcp: McpServer, deps: McpDeps): void {
         });
         return textResult(`Refused: ${classification.reason}`, true);
       }
-      const client = apiFor(ctx, deps.clientFor(ctx), args.connection_id);
+      const client = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
       return runApiTool(ctx, client, "query", undefined, () =>
         client.request("POST", "/api/query/table/select", {
-          body: { query: args.sql, format: "JSON", maxResultRows: args.limit },
+          body: { query: sql, format: "JSON", maxResultRows: limit },
         })
       );
-    }
-  );
-
-  mcp.registerTool(
-    "explain_query",
-    {
-      description: "Return the EXPLAIN plan for a SELECT/WITH query without executing it.",
-      inputSchema: {
-        sql: z.string().min(1).describe("The SELECT/WITH statement to explain"),
-        connection_id: z.string().optional().describe("Connection id (defaults to the request/header connection)"),
-      },
-      annotations: { readOnlyHint: true },
     },
-    async (args: { sql: string; connection_id?: string }, extra) => {
+  });
+
+  registerChouseTool(mcp, {
+    name: "explain_query",
+    description: "Return the EXPLAIN plan for a SELECT/WITH query without executing it.",
+    inputSchema: explainQuerySchema,
+    annotations: { readOnlyHint: true },
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      const client = apiFor(ctx, deps.clientFor(ctx), args.connection_id);
+      const client = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
       return runApiTool(ctx, client, "explain_query", undefined, () =>
-        client.request("POST", "/api/query/explain", { body: { query: args.sql } })
+        client.request("POST", "/api/query/explain", { body: { query: argString(args, "sql") } })
       );
-    }
-  );
-
-  mcp.registerTool(
-    "list_saved_queries",
-    {
-      description: "List saved queries visible to this token.",
-      annotations: { readOnlyHint: true },
     },
-    async (extra) => {
+  });
+
+  registerChouseTool(mcp, {
+    name: "list_saved_queries",
+    description: "List saved queries visible to this token.",
+    annotations: { readOnlyHint: true },
+    handler: async (_args, extra) => {
       const ctx = toolContext(extra);
       return runApiTool(ctx, deps.clientFor(ctx), "list_saved_queries", undefined, () =>
         deps.clientFor(ctx).request("GET", "/api/saved-queries")
       );
-    }
-  );
-
-  mcp.registerTool(
-    "get_saved_query",
-    {
-      description: "Get one saved query definition by id.",
-      inputSchema: { id: z.string().min(1).describe("Saved query id") },
-      annotations: { readOnlyHint: true },
     },
-    async (args: { id: string }, extra) => {
+  });
+
+  registerChouseTool(mcp, {
+    name: "get_saved_query",
+    description: "Get one saved query definition by id.",
+    inputSchema: getSavedQuerySchema,
+    annotations: { readOnlyHint: true },
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      return runApiTool(ctx, deps.clientFor(ctx), "get_saved_query", args.id, () =>
-        deps.clientFor(ctx).request("GET", `/api/saved-queries/${encodeURIComponent(args.id)}`)
+      const id = argString(args, "id");
+      return runApiTool(ctx, deps.clientFor(ctx), "get_saved_query", id, () =>
+        deps.clientFor(ctx).request("GET", `/api/saved-queries/${encodeURIComponent(id)}`)
       );
-    }
-  );
-
-  mcp.registerTool(
-    "run_saved_query",
-    {
-      description:
-        "Execute a saved query through the safe SELECT-only path. Saved queries that write are refused — use the UI for those.",
-      inputSchema: {
-        id: z.string().min(1).describe("Saved query id"),
-        connection_id: z.string().optional().describe("Connection id (defaults to the request/header connection)"),
-      },
-      annotations: { readOnlyHint: true },
     },
-    async (args: { id: string; connection_id?: string }, extra) => {
+  });
+
+  registerChouseTool(mcp, {
+    name: "run_saved_query",
+    description:
+      "Execute a saved query through the safe SELECT-only path. Saved queries that write are refused — use the UI for those.",
+    inputSchema: runSavedQuerySchema,
+    annotations: { readOnlyHint: true },
+    handler: async (args, extra) => {
       const ctx = toolContext(extra);
-      const client = apiFor(ctx, deps.clientFor(ctx), args.connection_id);
+      const id = argString(args, "id");
+      const client = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
       let definition: { query?: string };
       try {
         definition = await client.request<{ query?: string }>(
           "GET",
-          `/api/saved-queries/${encodeURIComponent(args.id)}`
+          `/api/saved-queries/${encodeURIComponent(id)}`
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         await auditMcpToolCall(ctx.identity, {
           tool: "run_saved_query",
-          target: args.id,
+          target: id,
           connectionId: ctx.connectionId,
           status: "failed",
           error: message,
@@ -169,21 +183,21 @@ export function registerQueryTools(mcp: McpServer, deps: McpDeps): void {
       if (!classification.allowed) {
         await auditMcpToolCall(ctx.identity, {
           tool: "run_saved_query",
-          target: args.id,
+          target: id,
           connectionId: ctx.connectionId,
           status: "failed",
           error: classification.reason,
         });
         return textResult(
-          `Refused: saved query ${args.id} is not a read-only query (${classification.reason}). Run it from the UI.`,
+          `Refused: saved query ${id} is not a read-only query (${classification.reason}). Run it from the UI.`,
           true
         );
       }
-      return runApiTool(ctx, client, "run_saved_query", args.id, () =>
+      return runApiTool(ctx, client, "run_saved_query", id, () =>
         client.request("POST", "/api/query/table/select", {
           body: { query: sql, format: "JSON", maxResultRows: 100 },
         })
       );
-    }
-  );
+    },
+  });
 }

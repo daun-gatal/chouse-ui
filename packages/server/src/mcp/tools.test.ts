@@ -402,7 +402,7 @@ describe("privilege fence (source contract)", () => {
     "auth/login",
     "auth/refresh",
     "auth/logout",
-    "sso",
+    "/sso",
     "ai-providers",
     "ai-base-models",
     "ai-models",
