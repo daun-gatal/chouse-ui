@@ -17,7 +17,7 @@ require human approval in the agent host.
 services:
   chouse-ui:
     ports:
-      - "8752:8752"
+      - "8752:8752"   # or "80:8752" / "443:8752" for https://<host>/mcp
     environment:
       MCP_ENABLED: "true"
       # Optional, default off:
@@ -36,6 +36,11 @@ mcp:
   # allowDestructive: false
   # toolsets: [core, explore, query, observe, ops]
   # allowedOrigins: []
+  ingress:
+    # Optional: expose the endpoint at https://<host>/mcp through the
+    # ingress (TLS on 80/443) instead of a non-standard client-facing port.
+    # host: ""             # defaults to the main ingress host
+    enabled: true
 ```
 
 MCP is **disabled by default** everywhere. In development it is on, bound to
@@ -43,7 +48,13 @@ MCP is **disabled by default** everywhere. In development it is on, bound to
 creates a dedicated ClusterIP Service (`<release>-mcp`) plus a NetworkPolicy
 port rule, so agent traffic can be scoped separately from the public UI
 origin. `helm` refuses renders where `allowWrites`/`allowDestructive` are set
-without `enabled`.
+without `enabled`, or where `mcp.ingress.enabled` is set without the
+listener. With `mcp.ingress.enabled`, agents use `https://<host>/mcp`
+(no port); the container keeps listening on 8752 and the ingress routes the
+path to the dedicated Service. Because MCP streams over SSE, the ingress
+needs the same annotations as AI chat (raise the proxy read timeout and
+disable buffering — nginx: `proxy-read-timeout: "300"`,
+`proxy-buffering: "off"`).
 
 ## Mint a token
 
@@ -62,7 +73,7 @@ demotion, or deactivation take effect on the **next** tool call.
   "mcp": {
     "chouse": {
       "type": "remote",
-      "url": "https://mcp.chouse.corp:8752/mcp",
+      "url": "https://chouse.corp/mcp",
       "enabled": true,
       "oauth": false,
       "headers": {
@@ -82,7 +93,7 @@ never lands on disk):
   "servers": {
     "chouse": {
       "type": "http",
-      "url": "https://mcp.chouse.corp:8752/mcp",
+      "url": "https://chouse.corp/mcp",
       "headers": { "Authorization": "Bearer ${input:chouse_pat}" }
     }
   },

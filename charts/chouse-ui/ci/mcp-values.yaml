@@ -1,10 +1,15 @@
 # chart-testing: MCP endpoint enabled (ADR 0013) on the default SQLite topology.
-# Read-only MCP surface: PAT-authenticated agent access on a dedicated port.
+# Read-only MCP surface: PAT-authenticated agent access on a dedicated port,
+# plus the /mcp ingress path for https://<host>/mcp clients.
 secrets:
   jwtSecret: "ci-only-jwt-secret-0123456789-0123456789"
   encryptionKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   encryptionSalt: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 config:
   log_level: debug
+ingress:
+  enabled: true
 mcp:
   enabled: true
+  ingress:
+    enabled: true

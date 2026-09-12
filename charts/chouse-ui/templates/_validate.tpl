@@ -69,6 +69,14 @@ instead of becoming silent duplicate jobs or per-pod databases at runtime.
 {{- fail "mcp.allowDestructive=true requires mcp.allowWrites=true (the server refuses this combination at startup too)" }}
 {{- end }}
 {{- end }}
+{{- if .Values.mcp.ingress.enabled }}
+{{- if not .Values.mcp.enabled }}
+{{- fail "mcp.ingress.enabled=true requires mcp.enabled=true (the /mcp path targets the dedicated MCP Service and would 503 without it)" }}
+{{- end }}
+{{- if and (not .Values.ingress.enabled) (not .Values.mcp.ingress.host) }}
+{{- fail "mcp.ingress.enabled=true requires either ingress.enabled=true (to reuse its host) or an explicit mcp.ingress.host" }}
+{{- end }}
+{{- end }}
 
 {{/* config.yaml values override the pod environment (the server injects them
      into process.env last), so a config key the chart also manages would

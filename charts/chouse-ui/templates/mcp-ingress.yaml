@@ -1,0 +1,49 @@
+{{- if .Values.mcp.ingress.enabled }}
+{{/*
+Dedicated MCP ingress path (ADR 0013): routes `<host>/mcp` to the dedicated
+`<release>-mcp` Service (port name `mcp`) so agents can use
+`https://<host>/mcp` without exposing a non-standard port. Rendered as its
+own Ingress object — controllers merge same-host paths across Ingress
+resources, which keeps the main `ingress.yaml` template untouched. TLS is
+reused from `ingress.tls` entries that cover the resolved host.
+*/}}
+{{- $mcpHost := .Values.mcp.ingress.host | default (index .Values.ingress.hosts 0).host }}
+{{- $tlsSecret := "" }}
+{{- range .Values.ingress.tls }}
+{{- if and (has $mcpHost .hosts) .secretName }}
+{{- $tlsSecret = .secretName }}
+{{- end }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "chouse-ui.fullname" . }}-mcp
+  labels:
+    {{- include "chouse-ui.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if $tlsSecret }}
+  tls:
+    - hosts:
+        - {{ $mcpHost | quote }}
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: {{ $mcpHost | quote }}
+      http:
+        paths:
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "chouse-ui.fullname" . }}-mcp
+                port:
+                  name: mcp
+{{- end }}

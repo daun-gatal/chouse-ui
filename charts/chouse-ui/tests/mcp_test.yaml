@@ -2,6 +2,7 @@ suite: MCP endpoint
 templates:
   - deployment.yaml
   - mcp-service.yaml
+  - mcp-ingress.yaml
   - networkpolicy.yaml
   # referenced by checksum annotations — loaded, not asserted
   - config-secret.yaml
@@ -167,3 +168,89 @@ tests:
           content:
             name: MCP_TIMEOUT_SECONDS
             value: "120"
+
+  - it: renders the MCP ingress path on the main host when enabled with the main ingress
+    template: mcp-ingress.yaml
+    set:
+      secrets.existingSecret: s
+      ingress.enabled: true
+      ingress.hosts:
+        - host: chouse.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      mcp.enabled: true
+      mcp.ingress.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.rules[0].host
+          value: chouse.example.com
+      - equal:
+          path: spec.rules[0].http.paths[0].path
+          value: /mcp
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: RELEASE-NAME-chouse-ui-mcp
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.name
+          value: mcp
+
+  - it: uses a dedicated host and its tls entry when set
+    template: mcp-ingress.yaml
+    set:
+      secrets.existingSecret: s
+      ingress.enabled: true
+      ingress.hosts:
+        - host: chouse.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      ingress.tls:
+        - hosts:
+            - mcp.example.com
+          secretName: mcp-tls
+      mcp.enabled: true
+      mcp.ingress.enabled: true
+      mcp.ingress.host: mcp.example.com
+    asserts:
+      - equal:
+          path: spec.rules[0].host
+          value: mcp.example.com
+      - equal:
+          path: spec.tls[0].secretName
+          value: mcp-tls
+
+  - it: renders nothing by default
+    template: mcp-ingress.yaml
+    set:
+      secrets.existingSecret: s
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: fails to render when the MCP listener is disabled
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      ingress.enabled: true
+      ingress.hosts:
+        - host: chouse.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      mcp.ingress.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "mcp.ingress.enabled=true requires mcp.enabled=true (the /mcp path targets the dedicated MCP Service and would 503 without it)"
+
+  - it: fails to render without a main ingress and without a dedicated host
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: s
+      mcp.enabled: true
+      mcp.ingress.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "mcp.ingress.enabled=true requires either ingress.enabled=true (to reuse its host) or an explicit mcp.ingress.host"
