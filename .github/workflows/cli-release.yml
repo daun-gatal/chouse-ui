@@ -1,0 +1,56 @@
+name: CLI Release
+
+# Dedicated binary flow on cli-v* tags. The app release (auto-release.yml)
+# is deliberately untouched: app v* tags ship Docker/Helm, cli-v* tags ship
+# Go binaries + checksums + installer asset.
+on:
+  push:
+    tags:
+      - cli-v*
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: GoReleaser Publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: cli/go.sum
+
+      - name: Cosign installer
+        uses: sigstore/cosign-installer@v3
+
+      - name: Publish binaries
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean --config cli/.goreleaser.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach installer script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release upload "$TAG" scripts/install-cli.sh --clobber
+          {
+            echo "## chouse CLI $TAG"
+            echo ""
+            echo '```bash'
+            echo "curl -sSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/install-cli.sh | bash"
+            echo '```'
+            echo ""
+            echo "Verify: \`sha256sum -c checksums.txt\`. Binaries are cosign-signed (see .sig/.pem assets)."
+          } >> "$GITHUB_STEP_SUMMARY"

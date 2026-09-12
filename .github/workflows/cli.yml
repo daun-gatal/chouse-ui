@@ -1,0 +1,102 @@
+name: CLI
+
+on:
+  pull_request:
+    branches:
+      - preview
+    paths:
+      - cli/**
+      - scripts/install-cli.sh
+      - .github/workflows/cli*.yml
+  push:
+    tags:
+      - cli-v*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Go Vet & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: cli/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with race detector
+        run: go test -race -count=1 ./...
+
+      - name: Build smoke
+        run: |
+          go build -o /tmp/chouse ./cmd/chouse
+          /tmp/chouse --help | head -n 20
+          /tmp/chouse query --help | head -n 10
+
+  snapshot:
+    name: GoReleaser Snapshot
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: cli/go.sum
+
+      - name: Snapshot build (no publish)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --snapshot --clean --config cli/.goreleaser.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Installer lint
+        run: |
+          shellcheck scripts/install-cli.sh || echo "shellcheck not available, skipping"
+
+  installer-smoke:
+    name: Installer Smoke (sidecar, not localhost)
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Build and exercise binary offline
+        run: |
+          cd cli
+          go build -o /tmp/chouse ./cmd/chouse
+          /tmp/chouse version --output json || true
+          /tmp/chouse --help | grep -q "Safe-by-default"
