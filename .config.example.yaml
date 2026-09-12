@@ -107,6 +107,38 @@ scheduled_queries:
   # from a per-job atomic lease, so redundant ticks across pods are harmless; set
   # false to disable it here and run a dedicated scheduler Deployment instead.
   enabled: true
+
+# ============================================
+# MCP server (Model Context Protocol) — optional, read-only by default
+# ============================================
+# A dedicated endpoint on port 8752 (ADR 0013) that lets AI agents (Cursor,
+# VS Code, OpenCode, Claude Desktop, CI pipelines) operate CHouse UI without
+# the browser. Agents authenticate with a personal access token
+# (`Authorization: Bearer ch_pat_…`, minted once in Preferences → Personal
+# access tokens); every call is verified live against RBAC, the same as the
+# UI and CLI.
+mcp:
+  # Off by default in production; on localhost in development. Set true (and
+  # expose the port in Docker/Helm) to serve agents.
+  enabled: false
+  # Server-side write policy — agents can never opt in themselves:
+  #   allowWrites:        create/run/ack operational actions
+  #   allowDestructive:   KILL, raw SQL, deletes (requires allowWrites, and
+  #                       every call additionally requires in-host human
+  #                       approval via MCP elicitation)
+  allow_writes: false
+  allow_destructive: false
+  # Toolsets to register. Default is reads only:
+  #   core, explore, query, observe, ops
+  # Opt-in extras: writes, destructive (with the flags above), ai (LLM spend).
+  toolsets: "core,explore,query,observe,ops"
+  # Origins allowed on the MCP endpoint. Empty rejects any request that
+  # carries an Origin header (DNS-rebinding protection); headerless clients
+  # (curl, CI agents) always pass.
+  allowed_origins: ""
+  # Per-request tool timeout in seconds (1..600).
+  timeout_seconds: 60
+
 # High-availability signal — when SQLite is the backend and this is true (the
 # Helm chart sets it when replicas > 1), the server warns at boot that the
 # scheduler lease cannot span pods (multi-replica HA requires PostgreSQL). Maps

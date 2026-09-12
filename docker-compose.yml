@@ -6,6 +6,8 @@ services:
     container_name: chouse-ui
     ports:
       - "5521:5521"
+      # MCP endpoint for AI agents (ADR 0013) — enable the env below first.
+      # - "8752:8752"
     environment:
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-min-32-characters-long}
@@ -14,6 +16,14 @@ services:
       # Fleet snapshot poller (alerts + fleet cards depend on it)
       FLEET_POLLER_ENABLED: "true"
       FLEET_POLL_INTERVAL_SECONDS: "30"
+      # MCP endpoint (read-only by default; PAT-authenticated). Uncomment to
+      # enable, and uncomment the 8752 port mapping above. Agents connect to
+      # http://<host>:8752/mcp with Authorization: Bearer ch_pat_…
+      # MCP_ENABLED: "true"
+      # Uncomment to let the write/destructive toolsets register (still gated
+      # per call by PAT scopes and elicitation):
+      # MCP_ALLOW_WRITES: "true"
+      # MCP_ALLOW_DESTRUCTIVE: "true"
       # Uncomment and provide a config.yaml to use hierarchical configuration
       # CHOUSE_CONFIG_PATH: /app/config.yaml
     volumes:
