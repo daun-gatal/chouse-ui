@@ -45,7 +45,9 @@ chouse auth logout
 There is no implicit server default: without `--server`, `CHOUSE_SERVER`,
 or a profile server, server-bound commands fail fast telling you how to
 configure one. `chouse version` is always offline (binary version only);
-`chouse status` reports the server version.
+`chouse status` reports the server version. `auth login --server …` remembers
+the server in your profile, so you only pass it once (env stays
+session-scoped and is never written to disk).
 
 Precedence: `--token > CH_HOUSE_PAT > credentials file (0600) > --profile`.
 `--server`: flag > `CHOUSE_SERVER` > profile. `--connection/-c`: flag >

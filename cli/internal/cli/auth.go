@@ -38,6 +38,12 @@ func newAuthCmd() *cobra.Command {
 			if err := config.SaveCredentials(resolved.Profile, token); err != nil {
 				fail(api.ExitServer, err.Error())
 			}
+			// Remember explicitly-passed setup: the server for this profile, and
+			// the profile itself as current. Env-derived values stay
+			// session-scoped and are never written to disk.
+			if err := config.SaveProfile(resolved.Profile, flagServer, flagProfile != ""); err != nil {
+				fail(api.ExitUsage, err.Error())
+			}
 			fmt.Fprintf(os.Stderr, "stored PAT for profile %q (masked %s)\n", resolved.Profile, config.MaskToken(token))
 		},
 	}
