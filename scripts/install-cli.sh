@@ -35,7 +35,22 @@ resolve_version() {
   if [ "$VERSION" = "latest" ]; then
     # per_page=100 (API max): app vX releases are frequent and would push
     # cli-v* tags off a smaller first page, breaking `latest` resolution.
-    TAG="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=100" 2>/dev/null | grep -o '"tag_name": *"cli-v[^"]*"' | head -n1 | cut -d'"' -f4 || true)"
+    # Token auth (GH_TOKEN/GITHUB_TOKEN, e.g. in CI) gets a 5000/hr quota
+    # instead of the shared 60/hr unauthenticated one; --retry rides out
+    # transient egress flakes. curl errors stay visible (no 2>/dev/null)
+    # so the next failure is diagnosable.
+    if [ -n "${GH_TOKEN:-}" ]; then
+      API_AUTH="Authorization: Bearer $GH_TOKEN"
+    elif [ -n "${GITHUB_TOKEN:-}" ]; then
+      API_AUTH="Authorization: Bearer $GITHUB_TOKEN"
+    else
+      API_AUTH=""
+    fi
+    if [ -n "$API_AUTH" ]; then
+      TAG="$(curl -fsSL --retry 3 --retry-all-errors -H "$API_AUTH" "https://api.github.com/repos/$REPO/releases?per_page=100" | grep -o '"tag_name": *"cli-v[^"]*"' | head -n1 | cut -d'"' -f4 || true)"
+    else
+      TAG="$(curl -fsSL --retry 3 --retry-all-errors "https://api.github.com/repos/$REPO/releases?per_page=100" | grep -o '"tag_name": *"cli-v[^"]*"' | head -n1 | cut -d'"' -f4 || true)"
+    fi
     if [ -z "${TAG:-}" ]; then
       echo "no cli-v* release found for $REPO" >&2
       exit 1

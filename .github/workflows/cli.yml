@@ -121,6 +121,9 @@ jobs:
       - name: Installer PATH wiring
         env:
           TEST_SHELL: ${{ matrix.test_shell }}
+          # Authenticated API quota (5000/hr) for `latest` cli-v* resolution;
+          # shared runner egress IPs exhaust the 60/hr anonymous quota.
+          GH_TOKEN: ${{ github.token }}
         run: |
           SANDBOX="$(mktemp -d)"
           export HOME="$SANDBOX/home"
