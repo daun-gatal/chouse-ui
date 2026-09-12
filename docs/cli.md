@@ -15,8 +15,9 @@ CHOUSE_VERSION=cli-v0.2.0 curl -sSL …/install-cli.sh | bash
 ```
 
 The installer verifies `sha256sum` (or `shasum` on stock macOS),
-installs to `/usr/local/bin` (or `~/.local/bin` fallback), and wires
-`~/.local/bin` into your `PATH` via your shell rc file
+installs to `/usr/local/bin` (or `~/.chouse/bin` fallback — a dedicated
+dir, predictable on Linux and macOS, never needs root), and wires the
+fallback into your `PATH` via your shell rc file
 (`~/.bashrc`+`~/.profile`, `~/.zshrc`, or fish `config.fish`) —
 restart the shell or `source` the file afterwards. Opt out with
 `CHOUSE_NO_MODIFY_PATH=1`, override the destination with `INSTALL_DIR`.
@@ -40,6 +41,11 @@ chouse auth status        # masked token, profile, server
 chouse auth whoami        # live user, roles, permissions
 chouse auth logout
 ```
+
+There is no implicit server default: without `--server`, `CHOUSE_SERVER`,
+or a profile server, server-bound commands fail fast telling you how to
+configure one. `chouse version` is always offline (binary version only);
+`chouse status` reports the server version.
 
 Precedence: `--token > CH_HOUSE_PAT > credentials file (0600) > --profile`.
 `--server`: flag > `CHOUSE_SERVER` > profile. `--connection/-c`: flag >

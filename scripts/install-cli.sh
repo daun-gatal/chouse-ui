@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # chouse CLI installer: curl -sSL <release>/install-cli.sh | bash
-# Env: CHOUSE_VERSION (default: latest), INSTALL_DIR (default: /usr/local/bin or ~/.local/bin),
+# Env: CHOUSE_VERSION (default: latest), INSTALL_DIR (default: /usr/local/bin or ~/.chouse/bin),
 #      CHOUSE_NO_MODIFY_PATH=1 (default: unset — installer appends DEST to PATH in your shell rc files)
 set -eu
 
@@ -97,40 +97,79 @@ add_path_block() {
   echo "Added $DEST to PATH in $file"
 }
 
-ensure_path() {
-  # DEST already visible — nothing to do.
-  case ":$PATH:" in
-    *":$DEST:"*) return 0 ;;
+rc_files_for_shell() {
+  # Prints the candidate rc files for the current $SHELL, one per line.
+  SHELL_NAME="$(basename "${SHELL:-sh}" 2>/dev/null || echo sh)"
+  case "$SHELL_NAME" in
+    fish)
+      printf '%s\n' "$HOME/.config/fish/config.fish"
+      ;;
+    zsh)
+      printf '%s\n' "$HOME/.zshrc"
+      ;;
+    bash)
+      printf '%s\n' "$HOME/.bashrc"
+      if [ -e "$HOME/.bash_profile" ]; then
+        printf '%s\n' "$HOME/.bash_profile"
+      else
+        printf '%s\n' "$HOME/.profile"
+      fi
+      ;;
+    *)
+      printf '%s\n' "$HOME/.profile"
+      ;;
   esac
+}
+
+rc_references_dest() {
+  # True when any candidate rc file already mentions $DEST (our marker or a
+  # hand-written export) — meaning fresh shells pick it up without our help.
+  while IFS= read -r _rcf; do
+    if [ -e "$_rcf" ] && grep -qF "$DEST" "$_rcf" 2>/dev/null; then
+      return 0
+    fi
+  done <<EOF
+$(rc_files_for_shell)
+EOF
+  return 1
+}
+
+ensure_path() {
+  # Decide whether shell init needs our help. Being on PATH in *this* shell
+  # is not enough: containers/IDEs often inject PATH entries that fresh
+  # login shells never see. System dirs are on the default PATH everywhere.
+  NEED_RC=1
+  case ":$PATH:" in
+    *":$DEST:"*)
+      case "$DEST" in
+        /usr/local/bin|/usr/bin|/bin|/sbin|/usr/sbin) NEED_RC=0 ;;
+        *) if rc_references_dest; then NEED_RC=0; fi ;;
+      esac
+      ;;
+  esac
+  if [ "$NEED_RC" = "0" ]; then
+    return 0
+  fi
   if [ "${CHOUSE_NO_MODIFY_PATH:-}" = "1" ]; then
     echo "Note: $DEST is not on PATH. Add: export PATH=\"$DEST:\$PATH\"" >&2
     echo "      (automatic PATH setup skipped via CHOUSE_NO_MODIFY_PATH=1)" >&2
     return 0
   fi
-  SH_LINE="case \":\$PATH:\" in *\":$DEST:\"*) ;; *) export PATH=\"$DEST:\$PATH\" ;; esac"
   SHELL_NAME="$(basename "${SHELL:-sh}" 2>/dev/null || echo sh)"
-  case "$SHELL_NAME" in
-    fish)
-      FISH_CFG="$HOME/.config/fish/config.fish"
-      mkdir -p "$HOME/.config/fish"
-      FISH_LINE="if not contains $DEST \$PATH; set -gx PATH $DEST \$PATH; end"
-      add_path_block "$FISH_CFG" "$FISH_LINE"
-      ;;
-    zsh)
-      add_path_block "$HOME/.zshrc" "$SH_LINE"
-      ;;
-    bash)
-      add_path_block "$HOME/.bashrc" "$SH_LINE"
-      if [ -e "$HOME/.bash_profile" ]; then
-        add_path_block "$HOME/.bash_profile" "$SH_LINE"
-      else
-        add_path_block "$HOME/.profile" "$SH_LINE"
-      fi
-      ;;
-    *)
-      add_path_block "$HOME/.profile" "$SH_LINE"
-      ;;
-  esac
+  SH_LINE="case \":\$PATH:\" in *\":$DEST:\"*) ;; *) export PATH=\"$DEST:\$PATH\" ;; esac"
+  if [ "$SHELL_NAME" = "fish" ]; then
+    mkdir -p "$HOME/.config/fish"
+    FISH_LINE="if not contains $DEST \$PATH; set -gx PATH $DEST \$PATH; end"
+  fi
+  while IFS= read -r _rcf; do
+    if [ "$SHELL_NAME" = "fish" ]; then
+      add_path_block "$_rcf" "$FISH_LINE"
+    else
+      add_path_block "$_rcf" "$SH_LINE"
+    fi
+  done <<EOF
+$(rc_files_for_shell)
+EOF
   echo "Restart your shell or run: export PATH=\"$DEST:\$PATH\"" >&2
 }
 
@@ -163,7 +202,9 @@ main() {
     if [ -w /usr/local/bin ]; then
       DEST="/usr/local/bin"
     else
-      DEST="$HOME/.local/bin"
+      # Dedicated dir (like ~/.cargo/bin, ~/.bun/bin): predictable on both
+      # Linux and macOS, never needs root, never collides with other tools.
+      DEST="$HOME/.chouse/bin"
       mkdir -p "$DEST"
     fi
   fi
@@ -171,6 +212,14 @@ main() {
   install -m 0755 "$BIN_SRC" "$DEST/chouse"
   echo "Installed $( "$DEST/chouse" version --output json 2>/dev/null || echo chouse ) to $DEST/chouse"
   ensure_path
+  # A stale copy earlier on PATH (e.g. ~/.local/bin/chouse from a previous
+  # install) would shadow the fresh binary — warn, never delete user files.
+  if command -v chouse >/dev/null 2>&1; then
+    ACTIVE="$(command -v chouse)"
+    if [ "$ACTIVE" != "$DEST/chouse" ]; then
+      echo "Warning: another chouse shadows this install: $ACTIVE (new: $DEST/chouse). Remove the stale copy or reorder PATH." >&2
+    fi
+  fi
 }
 
 main "$@"

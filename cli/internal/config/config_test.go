@@ -69,6 +69,39 @@ func TestMaskToken(t *testing.T) {
 	}
 }
 
+func TestResolveNoSilentDefault(t *testing.T) {
+	t.Setenv(EnvToken, "")
+	t.Setenv(EnvServer, "")
+	t.Setenv(EnvConnection, "")
+	t.Setenv(EnvProfile, "")
+	t.Setenv(EnvOutput, "")
+
+	// Isolate HOME so we never touch the real user config.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// No flag/env/file value: server must stay empty, never a phantom
+	// localhost default. Callers that need one fail via RequireServer.
+	got, err := Resolve(Flags{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.Server != "" {
+		t.Fatalf("expected empty server without configuration, got %q", got.Server)
+	}
+}
+
+func TestRequireServer(t *testing.T) {
+	r := Resolved{Profile: "default"}
+	if err := r.RequireServer(); err == nil {
+		t.Fatal("expected error without server")
+	}
+	r.Server = "http://host:5521"
+	if err := r.RequireServer(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRequireToken(t *testing.T) {
 	r := Resolved{Profile: "default"}
 	if err := r.RequireToken(); err == nil {

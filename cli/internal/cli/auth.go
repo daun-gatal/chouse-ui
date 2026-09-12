@@ -49,10 +49,14 @@ func newAuthCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show effective profile without printing secrets",
 		Run: func(_ *cobra.Command, _ []string) {
-			_, resolved := mustClient(false)
+			resolved := mustConfig()
+			server := resolved.Server
+			if server == "" {
+				server = "(not configured)"
+			}
 			render(resolved, map[string]any{
 				"profile":    resolved.Profile,
-				"server":     resolved.Server,
+				"server":     server,
 				"connection": resolved.Connection,
 				"token":      config.MaskToken(resolved.Token),
 				"output":     resolved.Output,
@@ -79,7 +83,7 @@ func newAuthCmd() *cobra.Command {
 		Use:   "logout",
 		Short: "Remove the locally stored PAT",
 		Run: func(_ *cobra.Command, _ []string) {
-			_, resolved := mustClient(false)
+			resolved := mustConfig()
 			if err := config.DeleteCredentials(resolved.Profile); err != nil {
 				fail(api.ExitServer, err.Error())
 			}

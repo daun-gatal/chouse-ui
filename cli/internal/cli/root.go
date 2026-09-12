@@ -85,16 +85,13 @@ func ctxWithTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Duration(secs)*time.Second)
 }
 
-// mustClient resolves config and builds an authenticated client.
+// mustClient resolves config and builds an authenticated client. Every
+// caller needs a server (use mustConfig for serverless local commands),
+// so a missing server fails fast with setup guidance (exit 2) instead of
+// silently aiming at a phantom default.
 func mustClient(requireAuth bool) (*api.Client, config.Resolved) {
-	resolved, err := config.Resolve(config.Flags{
-		Server:     flagServer,
-		Token:      flagToken,
-		Connection: flagConnection,
-		Profile:    flagProfile,
-		Output:     flagOutput,
-	})
-	if err != nil {
+	resolved := mustConfig()
+	if err := resolved.RequireServer(); err != nil {
 		fail(api.ExitUsage, err.Error())
 	}
 	if requireAuth {
@@ -108,6 +105,25 @@ func mustClient(requireAuth bool) (*api.Client, config.Resolved) {
 		resolved.Output = flagOutput
 	}
 	return c, resolved
+}
+
+// mustConfig resolves config for serverless local commands (auth status,
+// logout, version). It never requires a server or a token.
+func mustConfig() config.Resolved {
+	resolved, err := config.Resolve(config.Flags{
+		Server:     flagServer,
+		Token:      flagToken,
+		Connection: flagConnection,
+		Profile:    flagProfile,
+		Output:     flagOutput,
+	})
+	if err != nil {
+		fail(api.ExitUsage, err.Error())
+	}
+	if flagOutput != "" {
+		resolved.Output = flagOutput
+	}
+	return resolved
 }
 
 // render prints a decoded payload honoring --output/--quiet.
