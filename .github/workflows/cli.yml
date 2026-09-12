@@ -163,4 +163,14 @@ jobs:
           test ! -e "$SANDBOX2/home/.bashrc"
           test ! -e "$SANDBOX2/home/.zshrc"
           test ! -e "$SANDBOX2/home/.profile"
-          rm -rf "$SANDBOX" "$SANDBOX2"
+          # Injected PATH (containers/IDEs): DEST on PATH but missing from
+          # shell init — rc files must still be wired for fresh shells.
+          SANDBOX3="$(mktemp -d)"
+          mkdir -p "$SANDBOX3/home"
+          HOME="$SANDBOX3/home" INSTALL_DIR="$SANDBOX3/home/.local/bin" PATH="$SANDBOX3/home/.local/bin:$PATH" SHELL="$TEST_SHELL" sh scripts/install-cli.sh >/dev/null 2>&1
+          case "$(basename "$TEST_SHELL")" in
+            zsh) F3="$SANDBOX3/home/.zshrc" ;;
+            *) F3="$SANDBOX3/home/.bashrc" ;;
+          esac
+          grep -qF '# chouse CLI (added by install-cli.sh)' "$F3"
+          rm -rf "$SANDBOX" "$SANDBOX2" "$SANDBOX3"
