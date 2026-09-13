@@ -173,6 +173,8 @@ When a PR containing a fragment merges to `main`, `auto-release.yml` fires autom
 2. Bumps `version` in all three `package.json` files (root, server, portfolio) in sync
 3. Commits and pushes — triggering the existing `release.yml` which creates the git tag, GitHub Release, and Docker image
 
+The **CLI** releases independently: run the `CLI Release` workflow (`cli-release.yml`, manual dispatch, from `preview`) when `changelogs/cli/unreleased/` has fragments — it builds/signs/publishes `cli-vX` archives, then fast-forwards `main` to the CLI release commit so preview and main stay aligned (skipped for `-pre` prereleases).
+
 Manual override (emergency use only): `bun run release 2.20.0`
 
 **Helm chart versioning is separate:** `charts/chouse-ui/Chart.yaml` `version`
