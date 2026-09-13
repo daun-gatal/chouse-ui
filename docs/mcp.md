@@ -78,7 +78,13 @@ demotion, or deactivation take effect on the **next** tool call.
 
 ## Client configuration
 
-**OpenCode** (`opencode.json`; `oauth: false` disables auto-OAuth):
+### OpenCode (TUI + Web)
+
+OpenCode loads MCP servers from one config for both surfaces — the TUI
+(`opencode`) and the browser app (`opencode web`, attachable from the TUI
+with `opencode attach http://localhost:<port>`). Put the server in the
+global config (`~/.config/opencode/opencode.json`) for all projects, or in
+a project-level `opencode.json`:
 
 ```jsonc
 {
@@ -88,12 +94,37 @@ demotion, or deactivation take effect on the **next** tool call.
       "type": "remote",
       "url": "https://chouse.corp/mcp",
       "enabled": true,
-      "oauth": false,
+      "oauth": false,   // PAT auth — prevents OpenCode's auto-OAuth flow on 401
       "headers": {
         "Authorization": "Bearer {env:CH_HOUSE_PAT}",
         "X-Connection-Id": "{env:CHOUSE_CONNECTION}"
-      }
+      },
+      "timeout": 60000  // default 5000 ms is tight for the initial tools/list
     }
+  }
+}
+```
+
+Then export the token and start either surface — both pick up the same
+server:
+
+```bash
+export CH_HOUSE_PAT="ch_pat_…"    # {env:...} substitutes; unset → empty
+opencode                          # TUI
+opencode web                      # browser (same config, same tools)
+```
+
+Tools appear as `chouse_<name>` (`chouse_whoami`, `chouse_query`, …). Verify
+with `opencode mcp list` / `opencode mcp debug chouse`; note that prompts use
+the server name ("use chouse to investigate the slow query"). To gate the
+tools per agent instead of globally, disable the prefix globally and enable
+it in an agent block:
+
+```jsonc
+{
+  "tools": { "chouse*": false },
+  "agent": {
+    "dba": { "tools": { "chouse*": true } }
   }
 }
 ```
