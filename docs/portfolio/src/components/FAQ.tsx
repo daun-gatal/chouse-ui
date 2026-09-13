@@ -65,6 +65,10 @@ const FAQS: FaqItem[] = [
     question: "How does the AI Optimizer work?",
     answer: "The optimizer and debugger run as DeepAgents/LangChain tool-using agents — they call shared ClickHouse tools (list databases, get DDL, run EXPLAIN, validate SQL) under RBAC, then return structured suggestions. Supports OpenAI, Anthropic, Google, and OpenAI-compatible providers.",
   },
+  {
+    question: "Can AI agents or scripts query my cluster?",
+    answer: "Yes — mint a personal access token in Preferences and the same cluster works beyond the browser. The chouse CLI covers scripts and CI (query, explore, monitor the fleet, manage scheduled work — destructive commands need --yes and offer --dry-run). The MCP server covers AI agents like Claude, Codex, and Cursor: read-only by default, every call re-checks live roles and token scopes, and revoking the token fails the very next call. A hosted lab at mcp.chouse-ui.com lets you try the MCP endpoint without deploying anything.",
+  },
 ];
 
 export default function FAQ() {

@@ -76,6 +76,23 @@ token with only `table:select, metrics:view` caps the agent regardless of the
 server toolsets. Every call re-checks live roles ∩ token scopes — revoke,
 demotion, or deactivation take effect on the **next** tool call.
 
+## Try the hosted lab
+
+**https://mcp.chouse-ui.com/mcp** is a live, hosted instance of this server.
+Mint a personal access token in the lab UI (same Preferences flow, same
+`ch_pat_…` format), point any MCP client below at the endpoint, and evaluate
+the toolset without deploying anything. The lab runs the default-safe policy
+(read-only; writes and destructive tools off), so it is safe to experiment
+with — self-host when you need the write/ops toolsets. Smoke test:
+
+```bash
+curl -s https://mcp.chouse-ui.com/mcp \
+  -H "Authorization: Bearer ch_pat_…" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
 ## Client configuration
 
 ### OpenCode (TUI + Web)
@@ -166,6 +183,50 @@ never lands on disk):
   }
 }
 ```
+
+**Claude Code** — one command, static Bearer header (chouse advertises no
+OAuth, so the header is honored cleanly; add `--scope user` to register it
+once for all projects):
+
+```bash
+claude mcp add --transport http chouse https://mcp.chouse-ui.com/mcp \
+  --header "Authorization: Bearer ch_pat_…"
+```
+
+Or the `.mcp.json` equivalent (project scope, `streamable-http` also
+accepted as the type alias):
+
+```jsonc
+{
+  "mcpServers": {
+    "chouse": {
+      "type": "http",
+      "url": "https://mcp.chouse-ui.com/mcp",
+      "headers": { "Authorization": "Bearer ch_pat_…" }
+    }
+  }
+}
+```
+
+**Codex CLI** — `~/.codex/config.toml` uses snake_case `mcp_servers` (not
+`mcpServers`); keep the PAT in an environment variable, not on disk:
+
+```bash
+codex mcp add chouse --url https://mcp.chouse-ui.com/mcp \
+  --bearer-token-env-var CH_HOUSE_PAT
+```
+
+Or edit `~/.codex/config.toml` directly:
+
+```toml
+[mcp_servers.chouse]
+url = "https://mcp.chouse-ui.com/mcp"
+bearer_token_env_var = "CH_HOUSE_PAT"
+```
+
+Then `export CH_HOUSE_PAT="ch_pat_…"` before starting Codex. For a static
+header instead of the env var, use `http_headers = { Authorization =
+"Bearer ch_pat_…" }` in the same table.
 
 **CI / scripts** — plain JSON-RPC POSTs:
 

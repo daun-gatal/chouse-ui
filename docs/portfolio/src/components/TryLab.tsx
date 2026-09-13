@@ -60,6 +60,13 @@ export default function TryLab() {
                   <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
                   Account-less guest session — provisioned on first sign-in.
                 </p>
+                <a
+                  href="#automate"
+                  className="group inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint transition-colors hover:text-accent"
+                >
+                  Prefer letting an agent drive it? The MCP lab takes the same session
+                  <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                </a>
               </div>
             </div>
           </div>

@@ -6,7 +6,9 @@ const NAV = [
   { label: "Highlights", href: "#highlights" },
   { label: "Try Lab", href: "#try-lab" },
   { label: "Quick Start", href: "#quick-start" },
+  { label: "Automate", href: "#automate" },
   { label: "Production", href: "#docker-deploy" },
+  { label: "SSO", href: "#sso" },
   { label: "FAQ", href: "#faq" },
 ];
 
@@ -100,17 +102,6 @@ export default function Footer() {
         <div className="flex flex-col gap-3 border-t border-ink-500 py-6 md:flex-row md:items-center md:justify-between">
           <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
             © {year} CHouse UI · Apache 2.0
-          </p>
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
-            Inspired by{" "}
-            <a
-              href="https://github.com/caioricciuti/ch-ui"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-paper-muted hover:text-paper"
-            >
-              CH-UI
-            </a>
           </p>
         </div>
       </Container>

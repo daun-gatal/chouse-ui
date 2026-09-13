@@ -87,7 +87,7 @@ export default function QuickStart() {
       <Container>
         <SectionHeader
           eyebrow="Quick start"
-          eyebrowIndex={6}
+          eyebrowIndex={5}
           title="Local in under five minutes."
           description="Three commands. No registration. Works on any machine with Docker."
         />

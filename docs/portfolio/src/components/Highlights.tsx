@@ -68,7 +68,7 @@ export default function Highlights() {
       <Container>
         <SectionHeader
           eyebrow="Why teams pick it"
-          eyebrowIndex={5}
+          eyebrowIndex={3}
           title="Built for the parts your DBA actually cares about."
           description="Plenty of ClickHouse tools nail one of these — CHouse UI is the combination. The things that matter when money or compliance is on the line."
         />

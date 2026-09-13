@@ -3,12 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, Database, BarChart3, Palette, Lock, Users, FileText, Zap, Search,
   Download, Settings, Eye, Plus, Minus, Activity, Star, Sparkles, Bot, MessageSquare,
+  Terminal, KeyRound,
   Gauge, MemoryStick, Layers, Stethoscope, Network, SunMoon,
   LayoutGrid, BellRing, TableProperties, Radar,
   CalendarClock, Clock, GitBranch, RefreshCw, ListChecks, HeartPulse,
   type LucideIcon,
 } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
+import { cn } from "@/lib/utils";
 
 interface FeatureItem {
   icon: LucideIcon;
@@ -42,6 +44,9 @@ const GROUPS: FeatureGroup[] = [
       { icon: Zap, title: "Optimize from logs", desc: "Optimize any logged query with Chouse AI — a rewrite with the same result, a before→after EXPLAIN estimate, and one click to open it in the Explorer" },
       { icon: Bot, title: "Diagnose errors & parts", desc: "One-click Chouse AI on a system.errors row or a part-log entry → cause, impact, and ordered fixes (merge pressure, too many parts, partition key)" },
       { icon: MessageSquare, title: "Chat copilot", desc: "Conversational data exploration and chart building against a connection" },
+      { icon: KeyRound, title: "Personal access tokens", desc: "Self-service machine credentials (ch_pat_…) scoped to your roles — revocation takes effect on the very next call, with every action attributed in the audit log" },
+      { icon: Terminal, title: "chouse CLI", desc: "Query, explore, monitor the fleet, and manage scheduled work from scripts and CI — safe by default, with --yes gates and --dry-run previews" },
+      { icon: Bot, title: "MCP server", desc: "A Model Context Protocol endpoint for Cursor, Claude, Codex, and OpenCode — read-only by default, destructive tools need human approval" },
     ],
   },
   {
@@ -120,6 +125,8 @@ const GROUPS: FeatureGroup[] = [
 export default function Features() {
   const [openIndex, setOpenIndex] = useState<number>(0);
 
+  const activeGroup = GROUPS[openIndex] ?? GROUPS[0];
+
   return (
     <Section id="features" aria-label="Features">
       <Container>
@@ -127,10 +134,103 @@ export default function Features() {
           eyebrow="What's inside"
           eyebrowIndex={2}
           title="Everything you need to give ClickHouse to a team."
-          description="Eight domains, one consistent UI. Click a category to expand its items."
+          description="Eight domains, one consistent UI. Pick a category to browse its items."
         />
 
-        <div className="mt-16 grid grid-cols-12 gap-x-6 gap-y-4">
+        {/* Desktop: category rail + detail panel */}
+        <div className="mt-16 hidden grid-cols-12 gap-x-6 lg:grid">
+          <div className="col-span-4">
+            <div className="sticky top-24 flex flex-col border-t border-ink-500">
+              {GROUPS.map((group, idx) => {
+                const Icon = group.icon;
+                const isActive = openIndex === idx;
+                const number = String(idx + 1).padStart(2, "0");
+                return (
+                  <button
+                    key={group.category}
+                    type="button"
+                    onClick={() => setOpenIndex(idx)}
+                    aria-selected={isActive}
+                    role="tab"
+                    className="relative flex items-center gap-3 border-b border-ink-500 px-2 py-4 text-left transition-colors hover:bg-ink-50/40"
+                  >
+                    <span className="w-6 shrink-0 font-mono text-[11px] uppercase tracking-[0.18em] text-paper-faint">
+                      {number}
+                    </span>
+                    <span
+                      className={cn(
+                        "grid h-8 w-8 shrink-0 place-items-center rounded-xs border transition-colors",
+                        isActive
+                          ? "border-ink-700 bg-ink-200 text-paper"
+                          : "border-ink-500 bg-ink-100 text-paper-muted"
+                      )}
+                    >
+                      <Icon className="h-4 w-4" aria-hidden />
+                    </span>
+                    <span className="flex flex-1 items-baseline justify-between gap-2">
+                      <span
+                        className={cn(
+                          "text-[15px] font-semibold leading-tight transition-colors",
+                          isActive ? "text-paper" : "text-paper-dim"
+                        )}
+                      >
+                        {group.category}
+                      </span>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">
+                        {group.items.length}
+                      </span>
+                    </span>
+                    {isActive && (
+                      <motion.span
+                        layoutId="featuresRailActive"
+                        className="absolute inset-y-0 left-0 w-px bg-accent"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="col-span-8">
+            <motion.div
+              key={activeGroup.category}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="border-t border-ink-500 pt-8"
+            >
+              <h3 className="text-display-md font-semibold text-paper">
+                {activeGroup.category}
+              </h3>
+              <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                {activeGroup.items.length} {activeGroup.items.length === 1 ? "feature" : "features"}
+              </p>
+              <div className="mt-8 grid grid-cols-1 gap-x-8 gap-y-6 xl:grid-cols-2">
+                {activeGroup.items.map((item) => {
+                  const ItemIcon = item.icon;
+                  return (
+                    <div key={item.title} className="flex items-start gap-3">
+                      <ItemIcon className="mt-1 h-4 w-4 shrink-0 text-paper-dim" aria-hidden />
+                      <div className="flex flex-col gap-1">
+                        <h4 className="text-[15px] font-semibold leading-tight text-paper">
+                          {item.title}
+                        </h4>
+                        <p className="text-sm leading-relaxed text-paper-muted">
+                          {item.desc}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </div>
+        </div>
+
+        {/* Mobile: accordion (same behavior as before) */}
+        <div className="mt-16 grid grid-cols-12 gap-x-6 gap-y-4 lg:hidden">
           {GROUPS.map((group, idx) => {
             const Icon = group.icon;
             const isOpen = openIndex === idx;
@@ -172,7 +272,7 @@ export default function Features() {
                       transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
                       className="overflow-hidden"
                     >
-                      <div className="grid grid-cols-1 gap-x-8 gap-y-6 pb-10 pl-16 pr-4 md:pl-20 md:grid-cols-2 lg:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-6 pb-10 pl-16 pr-4 md:pl-20 md:grid-cols-2">
                         {group.items.map((item) => {
                           const ItemIcon = item.icon;
                           return (
