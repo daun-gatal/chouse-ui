@@ -1,4 +1,4 @@
-// Command chouse is the safe browserless operator for CHouse UI.
+// Command chouse is the safe browserless operator for CHouse UI
 package main
 
 import (
