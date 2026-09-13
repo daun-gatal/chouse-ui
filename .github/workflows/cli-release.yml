@@ -6,6 +6,11 @@ name: CLI Release
 # touches the app version, CHANGELOG.md, Docker, or Helm. A release is cut
 # only when cli/ itself changed since the last cli-v tag.
 #
+# After a successful full release, sync-main fast-forwards main to the CLI
+# release commit so preview and main stay aligned. If publish fails after
+# committing, cleanup-on-failure reverts the commit on preview, restoring
+# cli/VERSION and the fragments for the next run.
+#
 # Runs from 'preview' by default (like auto-release): PRs merge to preview,
 # and a CLI-only fix would otherwise wait for the next app release.
 
@@ -133,6 +138,8 @@ jobs:
     if: ${{ !inputs.dry_run && needs.plan.outputs.full_release == 'true' && needs.plan.outputs.has_changes == 'true' }}
     runs-on: ubuntu-latest
     environment: cli-publish
+    outputs:
+      release_sha: ${{ steps.assemble.outputs.sha }}
     permissions:
       contents: write
       id-token: write
@@ -165,6 +172,7 @@ jobs:
         run: ./scripts/build-cli.sh "${{ needs.plan.outputs.version }}"
 
       - name: Assemble CLI release (bump + notes)
+        id: assemble
         run: |
           bun run scripts/release-cli.ts ${{ inputs.version }}
           git config user.name "github-actions[bot]"
@@ -172,6 +180,7 @@ jobs:
           git add cli/VERSION changelogs/cli/unreleased/
           git commit -m "chore: release cli cli-v${{ needs.plan.outputs.version }}"
           git push origin "HEAD:${{ needs.plan.outputs.branch }}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Sign archives (keyless)
         run: |
@@ -215,6 +224,73 @@ jobs:
           fi
           rm -f CLI_RELEASE_NOTES.md
           echo "Published $TAG"
+
+  # ── Step 3: align main with the CLI release commit ──────────────────────────
+  # Fast-forwards main to the exact release commit — not preview HEAD, which
+  # may already carry later merges. Plain push only (no --force): if main ever
+  # diverged, this fails loudly instead of clobbering. Skipped for -pre,
+  # dry runs, feature-branch plans, and no-op releases.
+  sync-main:
+    name: Sync Main
+    needs: [plan, publish]
+    if: ${{ needs.publish.result == 'success' && needs.plan.outputs.full_release == 'true' && needs.publish.outputs.release_sha != '' && !inputs.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_SECRET }}
+
+      - name: Fast-forward main to CLI release commit
+        run: |
+          SHA="${{ needs.publish.outputs.release_sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git cat-file -e "$SHA^{commit}" 2>/dev/null; then
+            echo "::error::Release commit $SHA not found in fetched history."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor origin/main "$SHA"; then
+            echo "::error::main is not an ancestor of $SHA — refusing a non-fast-forward push."
+            exit 1
+          fi
+          git push origin "$SHA:main"
+          echo "main fast-forwarded to $SHA (cli-v${{ needs.plan.outputs.version }})"
+
+  # ── Failure cleanup: revert the release commit on preview ──────────────────
+  # If publish failed after committing (build/sign/release steps), preview is
+  # left with the version bump and consumed fragments, which wedges re-runs.
+  # Reverting restores both so the next run plans and commits cleanly.
+  # Does NOT depend on sync-main: a sync failure must never revert a shipped
+  # release.
+  cleanup-on-failure:
+    name: Revert CLI Release Commit
+    needs: [plan, publish]
+    if: ${{ needs.publish.result == 'failure' && needs.publish.outputs.release_sha != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout preview
+        uses: actions/checkout@v4
+        with:
+          ref: preview
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_SECRET }}
+
+      - name: Revert release commit on preview
+        run: |
+          SHA="${{ needs.publish.outputs.release_sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git revert --no-edit "$SHA"
+          git push origin HEAD:preview
+          echo "Reverted CLI release commit $SHA on preview (fragments restored for the next run)."
 
   # ── No-op note when the gate found nothing to ship ─────────────────────────
   skip:
