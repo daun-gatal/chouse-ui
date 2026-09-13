@@ -61,4 +61,27 @@ describe("Config Route", () => {
         expect(body.data.app.version).toBe("1.0.0");
         expect(body.data.features.aiOptimizer).toBe(true);
     });
+
+    it("should report mcpEnabled true when MCP_ENABLED is truthy", async () => {
+        process.env.MCP_ENABLED = "true";
+
+        const res = await app.request("/config");
+        expect(res.status).toBe(200);
+        const body = await res.json();
+
+        expect(body.data.features.mcpEnabled).toBe(true);
+    });
+
+    it("should report mcpEnabled false when MCP_ENABLED is false", async () => {
+        // loadMcpConfig defaults enabled to true whenever NODE_ENV is not
+        // "production" (bun test runs with NODE_ENV=test), so the disabled
+        // state has to be asserted through an explicit value, not by unsetting.
+        process.env.MCP_ENABLED = "false";
+
+        const res = await app.request("/config");
+        expect(res.status).toBe(200);
+        const body = await res.json();
+
+        expect(body.data.features.mcpEnabled).toBe(false);
+    });
 });

@@ -16,6 +16,8 @@ export interface AppConfig {
   };
   features?: {
     aiOptimizer: boolean;
+    /** MCP server (ADR 0013) — enabled state; absent on older backends. */
+    mcpEnabled?: boolean;
   };
 }
 

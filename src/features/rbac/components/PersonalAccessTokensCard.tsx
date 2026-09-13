@@ -24,6 +24,7 @@ import ConfirmationDialog from "@/components/common/ConfirmationDialog";
 import { MONO_FAINT, MONO_LABEL, SettingCard, StatusFooter } from "@/pages/Preferences";
 import { rbacPatApi } from "@/api/rbac";
 import type { PatToken } from "@/api/rbac";
+import { useConfig } from "@/hooks";
 import { useRbacStore } from "@/stores";
 import { log } from "@/lib/log";
 import { cn } from "@/lib/utils";
@@ -361,6 +362,9 @@ const OneTimeSecretDialog: React.FC<SecretDialogProps> = ({ rawToken, name, onCl
 export const PersonalAccessTokensCard: React.FC<{ className?: string }> = ({ className }) => {
   const queryClient = useQueryClient();
   const { user } = useRbacStore();
+  // MCP agents authenticate with these tokens, so the server's status belongs here.
+  const { data: config } = useConfig();
+  const mcpEnabled = config?.features?.mcpEnabled;
   const [showCreate, setShowCreate] = useState(false);
   const [secret, setSecret] = useState<{ rawToken: string; name: string } | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<PatToken | null>(null);
@@ -484,6 +488,14 @@ export const PersonalAccessTokensCard: React.FC<{ className?: string }> = ({ cla
 
         <div className="mt-auto">
           <StatusFooter label="Machine auth" meta={`${tokens.length} active`} tone="emerald" />
+          {typeof mcpEnabled === "boolean" && (
+            <StatusFooter
+              className="mt-1.5"
+              label="MCP server"
+              meta={mcpEnabled ? "Enabled" : "Disabled"}
+              tone={mcpEnabled ? "emerald" : "muted"}
+            />
+          )}
         </div>
       </div>
 

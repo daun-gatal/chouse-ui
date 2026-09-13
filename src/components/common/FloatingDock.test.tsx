@@ -64,6 +64,10 @@ vi.mock("@/features/fleet/components/FleetAlertsDockItem", () => ({
   default: () => <button type="button">Fleet alerts</button>,
 }));
 
+vi.mock("@/components/common/McpStatusDockItem", () => ({
+  McpStatusDockItem: () => null,
+}));
+
 describe("FloatingDock mobile layout", () => {
   beforeEach(() => {
     localStorage.clear();

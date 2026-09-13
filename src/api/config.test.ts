@@ -29,4 +29,10 @@ describe('Config API', () => {
         expect(config.app.version).toBe('2.7.5');
         expect(config.features?.aiOptimizer).toBe(true);
     });
+
+    it('should return the MCP server feature flag', async () => {
+        const config = await getConfig();
+
+        expect(config.features?.mcpEnabled).toBe(true);
+    });
 });

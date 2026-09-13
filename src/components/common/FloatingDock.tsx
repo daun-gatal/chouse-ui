@@ -45,6 +45,7 @@ import {
 import { motion, useDragControls, PanInfo, AnimatePresence } from "framer-motion";
 import { withBasePath } from "@/lib/basePath";
 import ConnectionSelector from "./ConnectionSelector";
+import { McpStatusDockItem } from "./McpStatusDockItem";
 import UserMenu from "@/components/sidebar/UserMenu";
 import FleetAlertsDockItem from "@/features/fleet/components/FleetAlertsDockItem";
 import { useOnboardingStore } from "@/features/onboarding/store";
@@ -377,12 +378,12 @@ export default function FloatingDock() {
   const canViewDoctor = hasAnyPermission([RBAC_PERMISSIONS.DOCTOR_VIEW]);
 
   const navItems = [
-    ...(canViewFleet ? [{ icon: Globe2, label: "Fleet", to: "/fleet" }] : []),
-    ...(canViewDoctor ? [{ icon: Stethoscope, label: "Doctor", to: "/doctor" }] : []),
     { icon: LayoutDashboard, label: "Home", to: "/overview" },
     ...(canViewExplorer ? [{ icon: Database, label: "Explorer", to: "/explorer" }] : []),
     ...(canViewMonitoring ? [{ icon: Activity, label: "Monitoring", to: "/monitoring" }] : []),
     ...(canViewDataOps ? [{ icon: Workflow, label: "DataOps", to: "/dataops" }] : []),
+    ...(canViewFleet ? [{ icon: Globe2, label: "Fleet", to: "/fleet" }] : []),
+    ...(canViewDoctor ? [{ icon: Stethoscope, label: "Doctor", to: "/doctor" }] : []),
     ...(canViewAdmin ? [{ icon: Shield, label: "Admin", to: "/admin" }] : []),
     { icon: UserCog, label: "Preferences", to: "/preferences" },
   ];
@@ -579,20 +580,24 @@ export default function FloatingDock() {
 
           <DockSeparator isVertical />
 
-          {/* Connection & User */}
+          {/* Session: guide (mobile), alerts, connection, MCP status, account */}
           <div
             data-mobile-dock-essentials={isMobile ? "sidebar" : undefined}
             className="flex shrink-0 flex-col items-center gap-1"
           >
-            <GettingStartedDockButton side="right" />
+            {isMobile && <GettingStartedDockButton side="right" />}
             {!isMobile && canViewFleet && <FleetAlertsDockItem side="right" />}
             <TooltipProvider>
               <ConnectionSelector isCollapsed={true} />
             </TooltipProvider>
+            <McpStatusDockItem side="right" />
             <UserMenu isCollapsed={true} />
           </div>
 
           <DockSeparator isVertical />
+
+          {/* Controls: help, view, dock mode */}
+          {!isMobile && <GettingStartedDockButton side="right" />}
 
           {/* Fullscreen is collapsed out of the short mobile sidebar. */}
           {!isMobile && (
@@ -839,7 +844,7 @@ export default function FloatingDock() {
 
           <DockSeparator isVertical={isVertical} />
 
-          {/* Connection & User */}
+          {/* Session: alerts, connection, MCP status, account */}
           <div
             data-mobile-dock-essentials={isMobile ? "account" : undefined}
             className={cn(
@@ -851,6 +856,7 @@ export default function FloatingDock() {
             <TooltipProvider>
               <ConnectionSelector isCollapsed={true} />
             </TooltipProvider>
+            <McpStatusDockItem side={isVertical ? "right" : "top"} />
             <UserMenu isCollapsed={true} />
           </div>
 

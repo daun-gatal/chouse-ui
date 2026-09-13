@@ -135,10 +135,10 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, icon: Icon, className }
 export const StatusFooter: React.FC<{
   label: string;
   meta: string;
-  tone?: "brand" | "emerald";
+  tone?: "brand" | "emerald" | "muted";
   className?: string;
 }> = ({ label, meta, tone = "brand", className }) => {
-  const dot = tone === "emerald" ? "bg-emerald-400" : "bg-brand";
+  const dot = tone === "emerald" ? "bg-emerald-400" : tone === "muted" ? "bg-paper-faint" : "bg-brand";
   return (
     <div
       className={cn(
