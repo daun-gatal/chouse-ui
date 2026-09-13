@@ -66,6 +66,7 @@ const DOCK_PLACEMENT_KEY = "chouseui-dock-placement";
 const DOCK_ORIENTATION_KEY = "chouseui-dock-orientation";
 const DOCK_AUTOHIDE_KEY = "chouseui-dock-autohide";
 const DOCK_MODE_KEY = "chouseui-dock-mode";
+const DOCK_SESSION_EXPANDED_KEY = "chouseui-dock-session-expanded";
 
 type DockPlacement = "bottom" | "top" | "left" | "right";
 type DockOrientation = "horizontal" | "vertical";
@@ -78,6 +79,7 @@ interface ResolvedDockPreferences {
   orientation: DockOrientation;
   autoHide: boolean;
   mode: DockMode;
+  sessionExpanded: boolean;
 }
 
 function GettingStartedDockButton({ side }: { side: "top" | "right" }): React.JSX.Element {
@@ -117,6 +119,7 @@ export function loadDockPreferencesFromLocal(
     orientation: defaults.orientation ?? "horizontal",
     autoHide: defaults.autoHide ?? true,
     mode: defaults.mode ?? "floating",
+    sessionExpanded: defaults.sessionExpanded ?? false,
   };
 
   try {
@@ -124,6 +127,7 @@ export function loadDockPreferencesFromLocal(
     const orientation = storage.getItem(DOCK_ORIENTATION_KEY);
     const autoHide = storage.getItem(DOCK_AUTOHIDE_KEY);
     const mode = storage.getItem(DOCK_MODE_KEY);
+    const sessionExpanded = storage.getItem(DOCK_SESSION_EXPANDED_KEY);
     return {
       placement: placement === "bottom" || placement === "top" || placement === "left" || placement === "right"
         ? placement
@@ -133,6 +137,7 @@ export function loadDockPreferencesFromLocal(
         : fallback.orientation,
       autoHide: autoHide === "true" ? true : autoHide === "false" ? false : fallback.autoHide,
       mode: mode === "floating" || mode === "sidebar" ? mode : fallback.mode,
+      sessionExpanded: sessionExpanded === "true" ? true : sessionExpanded === "false" ? false : fallback.sessionExpanded,
     };
   } catch {
     return fallback;
@@ -166,6 +171,14 @@ function saveAutoHideToLocal(autoHide: boolean): void {
 function saveDockModeToLocal(mode: DockMode): void {
   try {
     localStorage.setItem(DOCK_MODE_KEY, mode);
+  } catch {
+    // Ignore errors
+  }
+}
+
+function saveSessionExpandedToLocal(sessionExpanded: boolean): void {
+  try {
+    localStorage.setItem(DOCK_SESSION_EXPANDED_KEY, String(sessionExpanded));
   } catch {
     // Ignore errors
   }
@@ -275,6 +288,7 @@ export default function FloatingDock() {
   const [isVisible, setIsVisible] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [dockMode, setDockMode] = useState<DockMode>(initialPreferences.mode);
+  const [sessionExpanded, setSessionExpanded] = useState(initialPreferences.sessionExpanded);
   const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
 
   useEffect(() => {
@@ -333,6 +347,10 @@ export default function FloatingDock() {
         if (dbPrefs.placement !== undefined && dbPrefs.placement !== placement) {
           setPlacement(dbPrefs.placement);
           saveDockPlacementToLocal(dbPrefs.placement);
+        }
+        if (dbPrefs.sessionExpanded !== undefined && dbPrefs.sessionExpanded !== sessionExpanded) {
+          setSessionExpanded(dbPrefs.sessionExpanded);
+          saveSessionExpandedToLocal(dbPrefs.sessionExpanded);
         }
       } catch (error) {
         log.error("[FloatingDock] Failed to load preferences from database:", error);
@@ -443,21 +461,28 @@ export default function FloatingDock() {
     setOrientation(newOrientation);
     saveDockPlacementToLocal(newPlacement);
     saveDockOrientationToLocal(newOrientation);
-    saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, placement: newPlacement });
+    saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, placement: newPlacement, sessionExpanded });
   };
 
   const toggleOrientation = () => {
     const newOrientation = orientation === "horizontal" ? "vertical" : "horizontal";
     setOrientation(newOrientation);
     saveDockOrientationToLocal(newOrientation);
-    saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, placement });
+    saveToDatabaseDebounced({ mode: dockMode, orientation: newOrientation, autoHide, placement, sessionExpanded });
   };
 
   const toggleAutoHide = () => {
     const newAutoHide = !autoHide;
     setAutoHide(newAutoHide);
     saveAutoHideToLocal(newAutoHide);
-    saveToDatabaseDebounced({ mode: dockMode, orientation, autoHide: newAutoHide, placement });
+    saveToDatabaseDebounced({ mode: dockMode, orientation, autoHide: newAutoHide, placement, sessionExpanded });
+  };
+
+  const toggleSessionExpanded = () => {
+    const next = !sessionExpanded;
+    setSessionExpanded(next);
+    saveSessionExpandedToLocal(next);
+    saveToDatabaseDebounced({ mode: dockMode, orientation, autoHide, placement, sessionExpanded: next });
   };
 
   const resetPosition = () => {
@@ -465,14 +490,14 @@ export default function FloatingDock() {
     setOrientation("horizontal");
     saveDockPlacementToLocal("bottom");
     saveDockOrientationToLocal("horizontal");
-    saveToDatabaseDebounced({ mode: dockMode, orientation: "horizontal", autoHide, placement: "bottom" });
+    saveToDatabaseDebounced({ mode: dockMode, orientation: "horizontal", autoHide, placement: "bottom", sessionExpanded });
   };
 
   const toggleDockMode = () => {
     const newMode = dockMode === "floating" ? "sidebar" : "floating";
     setDockMode(newMode);
     saveDockModeToLocal(newMode);
-    saveToDatabaseDebounced({ mode: newMode, orientation, autoHide, placement });
+    saveToDatabaseDebounced({ mode: newMode, orientation, autoHide, placement, sessionExpanded });
     window.dispatchEvent(new CustomEvent("dock:mode-change", { detail: { mode: newMode } }));
   };
 
@@ -504,6 +529,9 @@ export default function FloatingDock() {
 
   const isVertical = orientation === "vertical";
   const isSidebar = dockMode === "sidebar";
+  // The rail's session/controls stack collapses to alerts+connection+account
+  // on desktop; the onboarding guide force-expands so its launcher stays reachable.
+  const isSessionExpanded = isMobile || sessionExpanded || isOnboardingGuideActive;
 
   const getVisibleAnimation = () => {
     switch (placement) {
@@ -580,7 +608,7 @@ export default function FloatingDock() {
 
           <DockSeparator isVertical />
 
-          {/* Session: guide (mobile), alerts, connection, MCP status, account */}
+          {/* Session + controls — collapses to alerts, connection, and account on desktop */}
           <div
             data-mobile-dock-essentials={isMobile ? "sidebar" : undefined}
             className="flex shrink-0 flex-col items-center gap-1"
@@ -590,31 +618,52 @@ export default function FloatingDock() {
             <TooltipProvider>
               <ConnectionSelector isCollapsed={true} />
             </TooltipProvider>
-            <McpStatusDockItem side="right" />
+            {isSessionExpanded && <McpStatusDockItem side="right" />}
             <UserMenu isCollapsed={true} />
+
+            {isSessionExpanded && !isMobile && <GettingStartedDockButton side="right" />}
+
+            {isSessionExpanded && (
+              <TooltipProvider delayDuration={0}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={toggleDockMode}
+                      className="grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-brand"
+                      aria-label="Switch to floating dock"
+                    >
+                      <Dock className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className={TOOLTIP_CLASS}>
+                    Switch to floating
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {!isMobile && (
+              <TooltipProvider delayDuration={0}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={toggleSessionExpanded}
+                      aria-expanded={isSessionExpanded}
+                      className="grid h-6 w-6 place-items-center rounded-xs text-paper-faint transition-colors hover:bg-ink-200 hover:text-paper"
+                      aria-label={isSessionExpanded ? "Hide session controls" : "Show session controls"}
+                    >
+                      {isSessionExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className={TOOLTIP_CLASS}>
+                    {isSessionExpanded ? "Hide session" : "Show session"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
-
-          {/* Controls: help, dock mode */}
-          {!isMobile && <GettingStartedDockButton side="right" />}
-
-          {/* Switch to floating */}
-          <TooltipProvider delayDuration={0}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={toggleDockMode}
-                  className="grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-brand"
-                  aria-label="Switch to floating dock"
-                >
-                  <Dock className="h-4 w-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right" className={TOOLTIP_CLASS}>
-                Switch to floating
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </div>
       </motion.div>
     );
