@@ -77,10 +77,10 @@ export default function UserMenu({ isCollapsed }: UserMenuProps) {
               type="button"
               onClick={() => setShowLogoutConfirm(true)}
               className={cn(
-                "group flex w-full items-center rounded-xs border border-transparent p-1.5 transition-colors",
+                "group flex items-center rounded-xs border border-transparent p-1.5 transition-colors",
                 isCollapsed
                   ? "justify-center hover:bg-ink-200"
-                  : "justify-start gap-3 hover:border-ink-500 hover:bg-ink-200"
+                  : "w-full justify-start gap-3 hover:border-ink-500 hover:bg-ink-200"
               )}
               aria-label="User menu"
             >
