@@ -5,6 +5,7 @@ import ClosedLoop from './components/ClosedLoop';
 import TryLab from './components/TryLab';
 import Highlights from './components/Highlights';
 import QuickStart from './components/QuickStart';
+import Automate from './components/Automate';
 import DockerDeploy from './components/DockerDeploy';
 import Sso from './components/Sso';
 import FAQ from './components/FAQ';
@@ -16,11 +17,12 @@ function App() {
     <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar />
       <Hero />
-      <Features />
       <ClosedLoop />
-      <TryLab />
+      <Features />
       <Highlights />
+      <TryLab />
       <QuickStart />
+      <Automate />
       <DockerDeploy />
       <Sso />
       <FAQ />

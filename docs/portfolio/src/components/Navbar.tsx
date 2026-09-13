@@ -8,6 +8,8 @@ const NAV_ITEMS = [
   { label: "Highlights", href: "#highlights" },
   { label: "Try Lab", href: "#try-lab" },
   { label: "Quick Start", href: "#quick-start" },
+  { label: "Automate", href: "#automate" },
+  { label: "Production", href: "#docker-deploy" },
   { label: "SSO", href: "#sso" },
   { label: "FAQ", href: "#faq" },
   { label: "Changelog", href: "#changelog" },
@@ -16,12 +18,39 @@ const NAV_ITEMS = [
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [activeHref, setActiveHref] = useState<string | null>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Scrollspy — highlight the section currently in view.
+  useEffect(() => {
+    const sections = NAV_ITEMS
+      .map((item) => document.querySelector(item.href))
+      .filter((el): el is Element => el !== null);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) {
+          const match = NAV_ITEMS.find(
+            (item) => document.querySelector(item.href) === visible.target
+          );
+          if (match) setActiveHref(match.href);
+        }
+      },
+      // Narrow band around the top of the viewport — matches navbar-aware scroll.
+      { rootMargin: "-15% 0px -70% 0px", threshold: 0 }
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
   }, []);
 
   const handleScrollTo = (href: string) => {
@@ -63,16 +92,30 @@ export default function Navbar() {
         </a>
 
         {/* Desktop nav */}
-        <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.href}
-              onClick={() => handleScrollTo(item.href)}
-              className="rounded-xs px-3 py-1.5 text-[13px] font-medium text-paper-muted transition-colors hover:text-paper"
-            >
-              {item.label}
-            </button>
-          ))}
+        <nav className="hidden items-center gap-0.5 md:flex" aria-label="Primary">
+          {NAV_ITEMS.map((item) => {
+            const isActive = activeHref === item.href;
+            return (
+              <button
+                key={item.href}
+                onClick={() => handleScrollTo(item.href)}
+                className={cn(
+                  "relative rounded-xs px-2.5 py-1.5 text-[13px] font-medium transition-colors hover:text-paper",
+                  isActive ? "text-paper" : "text-paper-muted"
+                )}
+                aria-current={isActive ? "true" : undefined}
+              >
+                {item.label}
+                {isActive && (
+                  <motion.span
+                    layoutId="navActiveUnderline"
+                    className="absolute inset-x-2.5 -bottom-0.5 h-px bg-accent"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+              </button>
+            );
+          })}
         </nav>
 
         {/* Right actions */}
@@ -121,15 +164,21 @@ export default function Navbar() {
             className="border-t border-ink-500 bg-ink-50/95 backdrop-blur-md md:hidden"
           >
             <div className="container-editorial flex flex-col py-4">
-              {NAV_ITEMS.map((item) => (
-                <button
-                  key={item.href}
-                  onClick={() => handleScrollTo(item.href)}
-                  className="border-b border-ink-500 py-3 text-left text-sm text-paper-muted last:border-b-0 hover:text-paper"
-                >
-                  {item.label}
-                </button>
-              ))}
+              {NAV_ITEMS.map((item) => {
+                const isActive = activeHref === item.href;
+                return (
+                  <button
+                    key={item.href}
+                    onClick={() => handleScrollTo(item.href)}
+                    className={cn(
+                      "border-b border-ink-500 py-3 text-left text-sm last:border-b-0 hover:text-paper",
+                      isActive ? "text-paper" : "text-paper-muted"
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
               <div className="mt-4 flex items-center gap-2">
                 <a
                   href="https://github.com/daun-gatal/chouse-ui"
