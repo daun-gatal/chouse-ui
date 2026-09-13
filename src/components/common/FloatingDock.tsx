@@ -848,7 +848,7 @@ export default function FloatingDock() {
           <div
             data-mobile-dock-essentials={isMobile ? "account" : undefined}
             className={cn(
-              "flex shrink-0 items-center gap-0.5",
+              "flex shrink-0 items-center gap-1.5",
               isVertical ? "flex-col" : "flex-row"
             )}
           >
@@ -866,7 +866,7 @@ export default function FloatingDock() {
           <div
             data-mobile-dock-essentials={isMobile ? "guide" : undefined}
             className={cn(
-              "flex shrink-0 items-center gap-0.5",
+              "flex shrink-0 items-center gap-1.5",
               isVertical ? "flex-col" : "flex-row"
             )}
           >
