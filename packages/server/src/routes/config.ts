@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { isAIEnabled } from "../services/aiConfig";
+import { loadMcpConfig } from "../mcp/config";
 
 const config = new Hono();
 
@@ -34,9 +35,13 @@ config.get("/", async (c) => {
         name: "CHouse UI",
         version: process.env.VERSION || "dev",
       },
-      // Feature flags — aiOptimizer is enabled whenever an active AI model is configured
+      // Feature flags — aiOptimizer is enabled whenever an active AI model is configured.
+      // mcpEnabled reflects the MCP server's startup env (ADR 0013): a broken
+      // MCP config aborts startup before this route can serve, so errors here
+      // degrade to false rather than failing the request.
       features: {
         aiOptimizer: await isAIEnabled().catch(() => false),
+        mcpEnabled: loadMcpConfig().config?.enabled ?? false,
       },
     },
   });

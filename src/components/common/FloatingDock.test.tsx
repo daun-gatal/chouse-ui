@@ -64,6 +64,10 @@ vi.mock("@/features/fleet/components/FleetAlertsDockItem", () => ({
   default: () => <button type="button">Fleet alerts</button>,
 }));
 
+vi.mock("@/components/common/McpStatusDockItem", () => ({
+  McpStatusDockItem: () => null,
+}));
+
 describe("FloatingDock mobile layout", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -82,12 +86,14 @@ describe("FloatingDock mobile layout", () => {
       orientation: "horizontal",
       autoHide: true,
       mode: "floating",
+      sessionExpanded: false,
     });
     expect(loadDockPreferencesFromLocal("laptop", emptyStorage)).toEqual({
       placement: "bottom",
       orientation: "horizontal",
       autoHide: true,
       mode: "sidebar",
+      sessionExpanded: false,
     });
   });
 
@@ -114,6 +120,7 @@ describe("FloatingDock mobile layout", () => {
       "chouseui-dock-orientation": "invalid",
       "chouseui-dock-autohide": "false",
       "chouseui-dock-mode": "sidebar",
+      "chouseui-dock-session-expanded": "true",
     };
 
     expect(loadDockPreferencesFromLocal("mobile", {
@@ -123,6 +130,7 @@ describe("FloatingDock mobile layout", () => {
       orientation: "horizontal",
       autoHide: false,
       mode: "sidebar",
+      sessionExpanded: true,
     });
   });
 

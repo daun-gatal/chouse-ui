@@ -10,6 +10,8 @@ export interface DockPreferences {
   orientation?: "horizontal" | "vertical";
   autoHide?: boolean;
   placement?: "top" | "bottom" | "left" | "right";
+  /** Sidebar rail only: session/controls stack collapsed to alerts+connection+account. */
+  sessionExpanded?: boolean;
 }
 
 export interface ChatPreferences {
@@ -48,10 +50,10 @@ export function getDeviceType(width: number): DeviceType {
 
 /** Default dock preferences per device type (placement, mode, autoHide). */
 export const DOCK_DEFAULT_PREFERENCES_BY_DEVICE: Record<DeviceType, DockPreferences> = {
-  mobile: { placement: "bottom", mode: "floating", orientation: "horizontal", autoHide: true },
-  tablet: { placement: "bottom", mode: "floating", orientation: "horizontal", autoHide: true },
-  laptop: { placement: "bottom", mode: "sidebar", orientation: "horizontal", autoHide: true },
-  pc: { placement: "bottom", mode: "sidebar", orientation: "horizontal", autoHide: true },
+  mobile: { placement: "bottom", mode: "floating", orientation: "horizontal", autoHide: true, sessionExpanded: false },
+  tablet: { placement: "bottom", mode: "floating", orientation: "horizontal", autoHide: true, sessionExpanded: false },
+  laptop: { placement: "bottom", mode: "sidebar", orientation: "horizontal", autoHide: true, sessionExpanded: false },
+  pc: { placement: "bottom", mode: "sidebar", orientation: "horizontal", autoHide: true, sessionExpanded: false },
 };
 
 /** Default chat position and size per device type. */

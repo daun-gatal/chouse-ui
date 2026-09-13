@@ -40,16 +40,16 @@ describe("devicePreferences", () => {
   describe("DOCK_DEFAULT_PREFERENCES_BY_DEVICE", () => {
     it("has defaults for all device types", () => {
       expect(DOCK_DEFAULT_PREFERENCES_BY_DEVICE.mobile).toEqual(
-        expect.objectContaining({ placement: "bottom", mode: "floating", autoHide: true })
+        expect.objectContaining({ placement: "bottom", mode: "floating", autoHide: true, sessionExpanded: false })
       );
       expect(DOCK_DEFAULT_PREFERENCES_BY_DEVICE.tablet).toEqual(
-        expect.objectContaining({ placement: "bottom", mode: "floating", autoHide: true })
+        expect.objectContaining({ placement: "bottom", mode: "floating", autoHide: true, sessionExpanded: false })
       );
       expect(DOCK_DEFAULT_PREFERENCES_BY_DEVICE.laptop).toEqual(
-        expect.objectContaining({ placement: "bottom", mode: "sidebar", autoHide: true })
+        expect.objectContaining({ placement: "bottom", mode: "sidebar", autoHide: true, sessionExpanded: false })
       );
       expect(DOCK_DEFAULT_PREFERENCES_BY_DEVICE.pc).toEqual(
-        expect.objectContaining({ placement: "bottom", mode: "sidebar", autoHide: true })
+        expect.objectContaining({ placement: "bottom", mode: "sidebar", autoHide: true, sessionExpanded: false })
       );
     });
   });

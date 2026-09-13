@@ -14,7 +14,7 @@ export const handlers = [
       data: {
         clickhouse: { defaultUrl: 'http://localhost:8123', defaultUser: 'default', presetUrls: ['http://localhost:8123'] },
         app: { name: 'CHouse UI', version: '2.7.5' },
-        features: { aiOptimizer: true }
+        features: { aiOptimizer: true, mcpEnabled: true }
       }
     });
   }),

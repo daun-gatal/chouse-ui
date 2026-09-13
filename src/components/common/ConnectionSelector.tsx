@@ -281,7 +281,7 @@ export default function ConnectionSelector({
         data-onboarding-id="connection-selector"
         className={cn(
           "flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-200 px-2.5 py-1.5",
-          isCollapsed && "h-9 w-9 justify-center px-0 py-0"
+          isCollapsed && "h-8 w-8 justify-center px-0 py-0"
         )}
       >
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-paper-dim" aria-hidden />
@@ -303,7 +303,7 @@ export default function ConnectionSelector({
             data-onboarding-id="connection-selector"
             className={cn(
               "flex items-center gap-2 rounded-xs border border-brand/30 bg-brand/[0.04] px-2.5 py-1.5",
-              isCollapsed && "h-9 w-9 justify-center px-0 py-0"
+              isCollapsed && "h-8 w-8 justify-center px-0 py-0"
             )}
           >
             <AlertCircle className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />
@@ -340,7 +340,7 @@ export default function ConnectionSelector({
             className={cn(
               "group flex items-center gap-2 rounded-xs border border-ink-500 bg-ink-100 transition-colors",
               !isConnected && "cursor-pointer hover:border-ink-700 hover:bg-ink-200",
-              isCollapsed ? "h-9 w-9 justify-center" : "w-full px-2.5 py-1.5"
+              isCollapsed ? "h-8 w-8 justify-center" : "w-full px-2.5 py-1.5"
             )}
             aria-label={`Connection: ${conn.name}`}
           >
@@ -382,7 +382,7 @@ export default function ConnectionSelector({
           variant="ghost"
           className={cn(
             "h-auto justify-between rounded-xs border border-ink-500 bg-ink-100 px-2.5 py-1.5 transition-colors hover:border-ink-700 hover:bg-ink-200",
-            isCollapsed ? "h-9 w-9 justify-center px-0 py-0" : "w-full"
+            isCollapsed ? "h-8 w-8 justify-center px-0 py-0" : "w-full"
           )}
           aria-label="Switch connection"
         >
