@@ -192,7 +192,7 @@ export default function Automate() {
       <Container>
         <SectionHeader
           eyebrow="Programmatic access"
-          eyebrowIndex={6}
+          eyebrowIndex={5}
           title="Take CHouse UI beyond the browser."
           description="One credential, three surfaces. Mint a personal access token and the same cluster works from scripts, CI pipelines, and AI agents — with the same RBAC, audit trail, and safe-by-default gates as the UI."
         />

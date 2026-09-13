@@ -4,15 +4,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
+  { label: "Docs", href: "/docs/overview/" },
   { label: "Features", href: "#features" },
-  { label: "Highlights", href: "#highlights" },
   { label: "Try Lab", href: "#try-lab" },
-  { label: "Quick Start", href: "#quick-start" },
-  { label: "Automate", href: "#automate" },
-  { label: "Production", href: "#docker-deploy" },
-  { label: "SSO", href: "#sso" },
   { label: "FAQ", href: "#faq" },
-  { label: "Changelog", href: "#changelog" },
 ] as const;
 
 export default function Navbar() {
@@ -30,7 +25,7 @@ export default function Navbar() {
   // Scrollspy — highlight the section currently in view.
   useEffect(() => {
     const sections = NAV_ITEMS
-      .map((item) => document.querySelector(item.href))
+      .map((item) => (item.href.startsWith("#") ? document.querySelector(item.href) : null))
       .filter((el): el is Element => el !== null);
 
     const observer = new IntersectionObserver(
@@ -40,7 +35,7 @@ export default function Navbar() {
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
         if (visible) {
           const match = NAV_ITEMS.find(
-            (item) => document.querySelector(item.href) === visible.target
+            (item) => item.href.startsWith("#") && document.querySelector(item.href) === visible.target
           );
           if (match) setActiveHref(match.href);
         }
@@ -54,6 +49,12 @@ export default function Navbar() {
   }, []);
 
   const handleScrollTo = (href: string) => {
+    // Route links (e.g. /docs/…) navigate away; only anchors scroll in-page.
+    if (!href.startsWith("#")) {
+      window.location.href = href;
+      setMobileOpen(false);
+      return;
+    }
     const el = document.querySelector(href);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });

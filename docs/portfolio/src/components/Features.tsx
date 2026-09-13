@@ -122,6 +122,58 @@ const GROUPS: FeatureGroup[] = [
   },
 ];
 
+// Pillars — the "why teams pick it" view (merged from the former Highlights section).
+const HIGHLIGHTS: Array<FeatureItem & { meta: string }> = [
+  {
+    icon: Shield,
+    title: "Encrypted credentials",
+    desc: "AES-256-GCM connection passwords, Argon2id user passwords, JWT with refresh — secrets live server-side, so the browser never sees a ClickHouse password.",
+    meta: "Server-side only",
+  },
+  {
+    icon: Users,
+    title: "Role-based access",
+    desc: "Six predefined roles, ~40 permissions, and granular data-access rules per user, database, and table.",
+    meta: "RBAC built-in",
+  },
+  {
+    icon: FileText,
+    title: "Audit logging",
+    desc: "Every action and query recorded with the real session context — user, user-agent, and geo.",
+    meta: "Full trail",
+  },
+  {
+    icon: LayoutGrid,
+    title: "Multi-cluster fleet",
+    desc: "Every connected cluster in one pane — status, memory, exceptions, trends — each card polling independently.",
+    meta: "One pane",
+  },
+  {
+    icon: Stethoscope,
+    title: "Autonomous AI SRE",
+    desc: "Chouse AI runs read-only root-cause scans, writes fixes with before→after EXPLAIN proof, and delivers RCA to Slack on a breach.",
+    meta: "Read-only",
+  },
+  {
+    icon: Activity,
+    title: "Deep observability",
+    desc: "ClickHouse-native monitoring — query logs, memory breakdown, top-resource queries, replica lag, schema lints. No exporter to install.",
+    meta: "No exporter",
+  },
+  {
+    icon: CalendarClock,
+    title: "Scheduled queries & Data Health",
+    desc: "Cron-scheduled read-only SELECTs with deterministic time windows and idempotent materialize write-back, plus scheduled freshness, volume, and validity promises with low-noise incidents — DataOps without a separate orchestrator.",
+    meta: "Built-in DataOps",
+  },
+  {
+    icon: KeyRound,
+    title: "SSO / OIDC",
+    desc: "Sign in with any OIDC or OAuth2 provider — JIT user provisioning, email-based account linking, and optional IdP group → role sync.",
+    meta: "Any provider",
+  },
+];
+
 export default function Features() {
   const [openIndex, setOpenIndex] = useState<number>(0);
 
@@ -296,6 +348,56 @@ export default function Features() {
               </div>
             );
           })}
+        </div>
+
+        {/* Why teams pick it — pillars block (former Highlights section, kept under the same anchor) */}
+        <div id="highlights" className="mt-20 border-t border-ink-500 pt-16" aria-label="Why teams pick it">
+          <div className="flex flex-col gap-4">
+            <span className="label-mono inline-flex items-center gap-3">
+              <span className="h-px w-6 bg-ink-700" aria-hidden />
+              <span>Why teams pick it</span>
+            </span>
+            <h3 className="max-w-2xl text-display-md font-semibold tracking-tight text-paper text-balance">
+              Built for the parts your DBA actually cares about.
+            </h3>
+            <p className="max-w-2xl text-lg leading-relaxed text-paper-muted">
+              Plenty of ClickHouse tools nail one of these — CHouse UI is the combination. The things that matter
+              when money or compliance is on the line.
+            </p>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-ink-500 bg-ink-500 sm:grid-cols-2 lg:grid-cols-4">
+            {HIGHLIGHTS.map((h, idx) => {
+              const Icon = h.icon;
+              return (
+                <motion.div
+                  key={h.title}
+                  initial={{ opacity: 0, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-80px" }}
+                  transition={{ duration: 0.5, delay: (idx % 4) * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                  className="group flex flex-col gap-6 bg-ink-100 p-6 transition-colors hover:bg-ink-200 md:p-8"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="grid h-10 w-10 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper transition-colors group-hover:border-accent group-hover:text-accent">
+                      <Icon className="h-4 w-4" aria-hidden />
+                    </span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+                      {h.meta}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <h4 className="text-display-md font-semibold leading-tight text-paper">
+                      {h.title}
+                    </h4>
+                    <p className="text-sm leading-relaxed text-paper-muted">
+                      {h.desc}
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
         </div>
       </Container>
     </Section>

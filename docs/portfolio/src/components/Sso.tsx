@@ -49,7 +49,7 @@ export default function Sso() {
       <Container>
         <SectionHeader
           eyebrow="Single sign-on"
-          eyebrowIndex={8}
+          eyebrowIndex={7}
           title="Bring your own identity provider."
           description="Wire up OIDC, OAuth2, or SAML in a few lines of config — or manage providers live from the admin UI. Optionally disable password login to require SSO."
           action={

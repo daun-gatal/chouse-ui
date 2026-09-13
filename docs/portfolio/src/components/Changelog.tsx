@@ -123,7 +123,7 @@ export default function Changelog() {
       <Container>
         <SectionHeader
           eyebrow="Recent releases"
-          eyebrowIndex={10}
+          eyebrowIndex={9}
           title="What shipped lately."
           description="Three latest from CHANGELOG.md. Full history on GitHub."
           action={
