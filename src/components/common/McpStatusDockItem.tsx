@@ -47,12 +47,12 @@ export const McpStatusDockItem = memo(function McpStatusDockItem({
           <button
             type="button"
             aria-label={`MCP server: ${mcpEnabled ? "enabled" : "disabled"}`}
-            className="relative grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand hover:bg-ink-200 hover:text-paper"
+            className="relative grid h-8 w-8 place-items-center rounded-xs border border-ink-500 bg-ink-200 transition-colors hover:border-ink-700"
           >
-            <Puzzle className="h-3.5 w-3.5" aria-hidden />
+            <Puzzle className="h-3.5 w-3.5 text-paper-muted" aria-hidden />
             <span
               className={cn(
-                "absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-2 ring-ink-100",
+                "absolute -bottom-px -right-px h-2 w-2 rounded-full ring-2 ring-ink-100",
                 dotClass
               )}
               aria-hidden
