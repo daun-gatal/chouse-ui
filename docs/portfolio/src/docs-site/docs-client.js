@@ -96,7 +96,7 @@
           selection.addRange(range);
           try {
             document.execCommand("copy");
-          } catch (e) {
+          } catch {
             /* no-op */
           }
           selection.removeAllRanges();

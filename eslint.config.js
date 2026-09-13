@@ -17,6 +17,8 @@ export default [
             globals: {
                 window: 'readonly',
                 document: 'readonly',
+                navigator: 'readonly',
+                IntersectionObserver: 'readonly',
                 console: 'readonly',
                 setTimeout: 'readonly',
                 clearTimeout: 'readonly',
