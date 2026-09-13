@@ -1,6 +1,6 @@
 # 0013 — CHouse MCP Server: In-Process Streamable HTTP with PAT Auth
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0014](0014-mcp-destructive-client-approval.md) — destructive-tool approval is client-side, not elicitation)
 - **Date:** 2026-09-12
 - **Builds on:** [0011](0011-personal-access-tokens.md) (PAT machine auth), [0012](0012-chouse-cli.md) (browserless operations), [0010](0010-pod-local-state-and-multi-replica-correctness.md) (fail-closed, no silent substitution), [0008](0008-helm-chart-and-oci-distribution.md) (Helm/OCI delivery)
 

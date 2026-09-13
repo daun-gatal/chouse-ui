@@ -5,8 +5,9 @@ operate CHouse UI without the browser through a **Model Context Protocol**
 endpoint on a dedicated port. Authentication is a personal access token
 (`ch_pat_…`, [ADR 0011](adr/0011-personal-access-tokens.md)); the transport is
 **Streamable HTTP** ([ADR 0013](adr/0013-chouse-mcp.md)). Safe by default:
-read-only unless the operator enables writes, and destructive tools always
-require human approval in the agent host.
+read-only unless the operator enables writes, and destructive tools are
+approved by a human through your client's permission prompt before they run
+(see [Human approval per client](#human-approval-per-client)).
 
 ## Enable
 
@@ -134,14 +135,15 @@ opencode web                      # browser (same config, same tools)
 Tools appear as `chouse_<name>` (`chouse_whoami`, `chouse_query`, …). Verify
 with `opencode mcp list` / `opencode mcp debug chouse`; note that prompts use
 the server name ("use chouse to investigate the slow query"). To gate the
-tools per agent instead of globally, disable the prefix globally and enable
-it in an agent block:
+tools per agent instead of globally, deny the prefix globally and allow it in
+an agent block (OpenCode v1.1.1+ `permission` syntax — the legacy `tools`
+boolean map is deprecated):
 
 ```jsonc
 {
-  "tools": { "chouse*": false },
+  "permission": { "chouse*": "deny" },
   "agent": {
-    "dba": { "tools": { "chouse*": true } }
+    "dba": { "permission": { "chouse*": "allow" } }
   }
 }
 ```
@@ -253,7 +255,7 @@ Toolsets (default: `core,explore,query,observe,ops`):
 | query | `query` (SELECT-only), `explain_query`, `list_saved_queries`, `get_saved_query`, `run_saved_query` (write definitions refused) |
 | observe | `metrics_overview`, `live_queries`, `fleet_snapshots`, `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `health_timeline`, `list_alerts`, `audit_list` |
 | writes (needs `MCP_ALLOW_WRITES`) | `create_saved_query`, `run_scheduled_job`, `run_health_check`, `acknowledge_incident`, `test_alert_channel` |
-| destructive (needs `MCP_ALLOW_DESTRUCTIVE` + elicitation) | `kill_query`, `query_raw`, `delete_saved_query`, `delete_scheduled_job` |
+| destructive (needs `MCP_ALLOW_DESTRUCTIVE`) | `kill_query`, `query_raw`, `delete_saved_query`, `delete_scheduled_job` |
 | ai (opt-in, LLM spend) | `ai_optimize`, `doctor_scan`, `doctor_reports`, `get_doctor_report` |
 
 Resources: `chouse://connection/{id}`, `chouse://database/{name}`,
@@ -267,6 +269,70 @@ Prompts: `investigate-slow-query`, `diagnose-incident`, `review-schema`,
 Every tool call is attributed in the audit log (`mcp.tool_call`) to the PAT's
 user, alongside the route-level audit entries the projected API already writes.
 
+## Human approval per client
+
+Destructive tools run under the operator's flags and the token's scopes —
+approval by a human happens in the **client**, via each host's native
+permission system. Tool names below assume the server is configured under the
+name `chouse`; adjust the prefix if you named it differently.
+
+| Client | Default behavior | Make the destructive tools ask |
+|---|---|---|
+| OpenCode | allowed | `permission` ask rules (below) |
+| Claude Code | prompts on first use (Manual mode) | `permissions.ask: ["mcp__chouse__*"]` |
+| Codex CLI | per approval policy | `default_tools_approval_mode = "prompt"` (or `"writes"`) |
+| VS Code Copilot | confirms each invocation | keep per-tool auto-approve toggles off |
+| Cursor | asks per tool call | leave "Always allow" off for these tools |
+| Claude Desktop | asks per tool call | don't choose "Always allow" for these tools |
+| CI / headless | no human present | none — flags + scoped PATs are the only layer |
+
+**OpenCode** (v1.1.1+; the legacy `tools` boolean map is deprecated):
+
+```jsonc
+{
+  "permission": {
+    "chouse_kill_query": "ask",
+    "chouse_query_raw": "ask",
+    "chouse_delete_saved_query": "ask",
+    "chouse_delete_scheduled_job": "ask"
+  }
+}
+```
+
+Keys are the tool ids OpenCode sees (`<server-key>_<tool>`); adjust the
+prefix if you named the server something else.
+
+**Claude Code** — Manual mode already prompts on first use of each MCP tool;
+to make it explicit, add an ask rule (rules evaluate deny → ask → allow):
+
+```jsonc
+{
+  "permissions": {
+    "ask": ["mcp__chouse__*"]
+  }
+}
+```
+
+**Codex CLI** — set the approval policy per server or per tool
+(`writes` prompts any tool not marked read-only, which covers all four):
+
+```toml
+[mcp_servers.chouse]
+default_tools_approval_mode = "prompt"   # or "writes"
+
+[mcp_servers.chouse.tools.kill_query]
+approval_mode = "prompt"
+```
+
+**VS Code Copilot / Cursor / Claude Desktop** — tool calls are confirmed per
+invocation by default; keep the per-tool "always allow" toggles off for
+`kill_query`, `query_raw`, `delete_saved_query`, and `delete_scheduled_job`.
+
+**CI / headless agents** (OpenCode `--auto`, `claude -p`, `codex exec`, CI
+pipelines) have no human to ask — the operator's flags and a narrowly scoped
+PAT are the only guardrails there. Never mint a destructive-capable PAT for
+unattended use unless the operator explicitly accepts that trade-off.
+
 ## Safety model
 
 1. **Read-only by default.** Write/destructive tools are not registered unless
@@ -274,9 +340,10 @@ user, alongside the route-level audit entries the projected API already writes.
 2. **SQL classification** reuses the AST-based parser that guards the API:
    `query` accepts a single SELECT/WITH/SHOW/DESCRIBE/EXPLAIN; anything else
    (including multi-statement input) fails closed.
-3. **Destructive tools need a human:** every call runs an MCP elicitation
-   prompt in the agent host; hosts without elicitation support get a
-   fail-closed refusal pointing at the UI/CLI.
+3. **Human approval happens in the client** ([ADR 0014](adr/0014-mcp-destructive-client-approval.md)):
+   destructive tools execute under the operator's flags and the PAT's scopes,
+   and the human approves them through the host's permission prompt —
+   configured per client above.
 4. **Result caps:** 100 rows / 200 KB / 2 KB per cell, plus secret redaction
    (`ch_pat_…`, password-shaped fields) before anything reaches the model.
 5. **Live authorization:** every call verifies the PAT against the RBAC

@@ -21,7 +21,8 @@ services:
       # http://<host>:8752/mcp with Authorization: Bearer ch_pat_…
       # MCP_ENABLED: "true"
       # Uncomment to let the write/destructive toolsets register (still gated
-      # per call by PAT scopes and elicitation):
+      # per call by PAT scopes; approve destructive calls in your client's
+      # permission prompt — docs/mcp.md "Human approval per client"):
       # MCP_ALLOW_WRITES: "true"
       # MCP_ALLOW_DESTRUCTIVE: "true"
       # Uncomment and provide a config.yaml to use hierarchical configuration

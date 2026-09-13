@@ -83,18 +83,9 @@ interface Harness {
 /**
  * Minimal JSON-RPC harness over InMemoryTransport: sends requests with an
  * authInfo payload (like the Streamable HTTP transport does) and resolves
- * responses by id. `onClientRequest` can answer server-to-client requests
- * (elicitation) — e.g. replying with an error to simulate a client without
- * elicitation support.
+ * responses by id.
  */
-async function createHarness(
-  mcp: McpServer,
-  onClientRequest?: (
-    request: { id: number; method: string },
-    replyError: (id: number) => Promise<void>,
-    replyResult: (id: number, result: Record<string, unknown>) => Promise<void>
-  ) => void
-): Promise<Harness> {
+async function createHarness(mcp: McpServer): Promise<Harness> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const pending = new Map<number, (message: { id: number; result?: unknown; error?: unknown }) => void>();
 
@@ -105,23 +96,6 @@ async function createHarness(
         pending.delete(message.id);
         resolve(message);
       }
-      return;
-    }
-    if (onClientRequest && "method" in message && "id" in message && typeof message.id === "number") {
-      const requestId = message.id;
-      void onClientRequest(
-        { id: requestId, method: message.method },
-        async (id) => {
-          await clientTransport.send({
-            jsonrpc: "2.0",
-            id,
-            error: { code: -32601, message: "Method not found" },
-          } as JSONRPCMessage);
-        },
-        async (id, result) => {
-          await clientTransport.send({ jsonrpc: "2.0", id, result } as JSONRPCMessage);
-        }
-      );
     }
   };
 
@@ -353,35 +327,13 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
     await harness.close();
   });
 
-  it("destructive tools refuse when the client cannot elicit (fail closed)", async () => {
-    const { proxy, calls } = makeProxy({});
-    const mcp = buildMcpServer(
-      makeConfig({ allowWrites: true, allowDestructive: true, toolsets: ["core", "destructive"] }),
-      buildMcpDeps(proxy, 5000)
-    );
-    const harness = await createHarness(mcp, (_request, replyError) => replyError(_request.id));
-    const { result } = await harness.request(
-      "tools/call",
-      { name: "kill_query", arguments: { query_id: "q-1" } },
-      CTX
-    );
-    expect(result?.isError).toBe(true);
-    expect(resultText(result)).toContain("Refused");
-    expect(calls).toEqual([]);
-    await harness.close();
-  });
-
-  it("destructive tools execute only after an elicitation 'yes'", async () => {
+  it("destructive tools execute under the operator's flags", async () => {
     const { proxy, calls } = makeProxy({ killed: true });
     const mcp = buildMcpServer(
       makeConfig({ allowWrites: true, allowDestructive: true, toolsets: ["core", "destructive"] }),
       buildMcpDeps(proxy, 5000)
     );
-    // Simulate an elicitation-capable client: answer the server request with accept + "yes".
-    const harness = await createHarness(mcp, async (request, replyError, replyAccept) => {
-      expect(request.method).toBe("elicitation/create");
-      await replyAccept(request.id, { action: "accept", content: { approve: "yes" } });
-    });
+    const harness = await createHarness(mcp);
     const { result } = await harness.request(
       "tools/call",
       { name: "kill_query", arguments: { query_id: "q-1" } },
@@ -391,6 +343,24 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.method).toBe("POST");
     expect(calls[0]?.path).toBe("/api/live-queries/kill");
+    await harness.close();
+  });
+
+  it("destructive tools surface the API's authorization error when the PAT lacks the route permission", async () => {
+    const proxy = new Hono();
+    proxy.all("*", (c) => c.json({ success: false, error: { code: "FORBIDDEN", message: "missing live_queries:kill" } }, 403));
+    const mcp = buildMcpServer(
+      makeConfig({ allowWrites: true, allowDestructive: true, toolsets: ["core", "destructive"] }),
+      buildMcpDeps(proxy, 5000)
+    );
+    const harness = await createHarness(mcp);
+    const { result } = await harness.request(
+      "tools/call",
+      { name: "kill_query", arguments: { query_id: "q-1" } },
+      CTX
+    );
+    expect(result?.isError).toBe(true);
+    expect(resultText(result)).toContain("FORBIDDEN");
     await harness.close();
   });
 });

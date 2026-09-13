@@ -208,8 +208,8 @@ mcp:
   # server-side policy — agents cannot opt in; read-only is the default.
   allowWrites: false
   # -- Enable destructive tools (KILL, raw SQL, deletes). Requires
-  # `allowWrites`, and every invocation additionally requires in-host human
-  # approval (MCP elicitation).
+  # `allowWrites`; the human approves via the client's permission prompt
+  # (ADR 0014, docs/mcp.md "Human approval per client").
   allowDestructive: false
   # -- Toolsets to register. Default: reads only. `writes`/`destructive`
   # additionally require the flags above; `ai` spends LLM budget.

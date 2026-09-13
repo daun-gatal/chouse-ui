@@ -197,7 +197,7 @@ Kubernetes: `>=1.25.0-0`
 | ingress.hosts[0].paths[0].pathType | string | `"Prefix"` |  |
 | ingress.tls | list | `[]` | TLS configuration. |
 | initContainers | list | `[]` | Extra init containers for the web pods. |
-| mcp.allowDestructive | bool | `false` | Enable destructive tools (KILL, raw SQL, deletes). Requires `allowWrites`, and every invocation additionally requires in-host human approval (MCP elicitation). |
+| mcp.allowDestructive | bool | `false` | Enable destructive tools (KILL, raw SQL, deletes). Requires `allowWrites`; the human approves via the client's permission prompt (ADR 0014, docs/mcp.md "Human approval per client"). |
 | mcp.allowWrites | bool | `false` | Allow the write-gated toolset (create/run/ack actions). This is a server-side policy — agents cannot opt in; read-only is the default. |
 | mcp.allowedOrigins | list | `[]` | Origins allowed on the MCP endpoint. Empty rejects any request that carries an Origin header (DNS-rebinding protection); headerless clients (CLI agents, curl) always pass. Browser-embedded MCP hosts must be listed here explicitly. |
 | mcp.enabled | bool | `false` | Serve the MCP (Model Context Protocol) endpoint on a dedicated port (8752) so AI agents can operate CHouse UI safely without the browser (ADR 0013). Authentication is PAT-only (`Authorization: Bearer ch_pat_…`, minted once in the UI); requests are verified live against RBAC on every call, exactly like the UI and CLI. Disabled by default: no Service, no port, unreachable. |

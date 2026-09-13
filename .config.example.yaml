@@ -123,9 +123,9 @@ mcp:
   enabled: false
   # Server-side write policy — agents can never opt in themselves:
   #   allowWrites:        create/run/ack operational actions
-  #   allowDestructive:   KILL, raw SQL, deletes (requires allowWrites, and
-  #                       every call additionally requires in-host human
-  #                       approval via MCP elicitation)
+  #   allowDestructive:   KILL, raw SQL, deletes (requires allowWrites; the
+  #                       human approves via the client's permission prompt,
+  #                       see docs/mcp.md "Human approval per client")
   allow_writes: false
   allow_destructive: false
   # Toolsets to register. Default is reads only:

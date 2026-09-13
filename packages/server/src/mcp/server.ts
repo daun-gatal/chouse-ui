@@ -39,7 +39,8 @@ export function buildMcpServer(config: McpConfig, deps: McpDeps): McpServer {
   const mcp = new McpServer(MCP_IMPLEMENTATION, {
     instructions:
       "CHouse UI operations over MCP (ADR 0013). Tools are read-only unless the operator enabled writes; " +
-      "destructive tools require human approval (elicitation) in this host. Never send personal access " +
+      "destructive tools run under the operator's flags and the token's scopes — ask the human to approve " +
+      "them via your client's permission prompt before calling. Never send personal access " +
       "tokens or secrets into tool arguments or prompts.",
   });
 
