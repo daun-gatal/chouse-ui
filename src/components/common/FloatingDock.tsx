@@ -542,7 +542,7 @@ export default function FloatingDock() {
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className="fixed left-0 top-0 z-[70] flex h-full w-14 flex-col border-r border-ink-500 bg-ink-50"
       >
-        <div className="flex h-full flex-col items-center gap-2 overflow-hidden px-2 py-4">
+        <div className="flex h-full flex-col items-center gap-2 overflow-hidden px-2 py-3">
           {!isMobile && (
             <>
               <Link
@@ -594,31 +594,8 @@ export default function FloatingDock() {
             <UserMenu isCollapsed={true} />
           </div>
 
-          <DockSeparator isVertical />
-
-          {/* Controls: help, view, dock mode */}
+          {/* Controls: help, dock mode */}
           {!isMobile && <GettingStartedDockButton side="right" />}
-
-          {/* Fullscreen is collapsed out of the short mobile sidebar. */}
-          {!isMobile && (
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={toggleFullscreen}
-                    className="grid h-8 w-8 place-items-center rounded-xs text-paper-dim transition-colors hover:bg-ink-200 hover:text-paper"
-                    aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-                  >
-                    {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right" className={TOOLTIP_CLASS}>
-                  {isFullscreen ? "Exit full screen" : "Enter full screen"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
 
           {/* Switch to floating */}
           <TooltipProvider delayDuration={0}>
