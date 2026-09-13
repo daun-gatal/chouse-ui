@@ -23,6 +23,10 @@ spec:
       ports:
         - port: 5521
           protocol: TCP
+        {{- if .Values.mcp.enabled }}
+        - port: 8752
+          protocol: TCP
+        {{- end }}
   {{- if .Values.networkPolicy.restrictEgress }}
   egress:
     # DNS

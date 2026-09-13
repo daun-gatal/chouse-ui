@@ -196,6 +196,58 @@ dedicatedScheduler:
   # -- Resources for the scheduler pod.
   resources: {}
 
+mcp:
+  # -- Serve the MCP (Model Context Protocol) endpoint on a dedicated port
+  # (8752) so AI agents can operate CHouse UI safely without the browser
+  # (ADR 0013). Authentication is PAT-only (`Authorization: Bearer ch_pat_…`,
+  # minted once in the UI); requests are verified live against RBAC on every
+  # call, exactly like the UI and CLI. Disabled by default: no Service, no
+  # port, unreachable.
+  enabled: false
+  # -- Allow the write-gated toolset (create/run/ack actions). This is a
+  # server-side policy — agents cannot opt in; read-only is the default.
+  allowWrites: false
+  # -- Enable destructive tools (KILL, raw SQL, deletes). Requires
+  # `allowWrites`, and every invocation additionally requires in-host human
+  # approval (MCP elicitation).
+  allowDestructive: false
+  # -- Toolsets to register. Default: reads only. `writes`/`destructive`
+  # additionally require the flags above; `ai` spends LLM budget.
+  toolsets: [core, explore, query, observe, ops]
+  # -- Origins allowed on the MCP endpoint. Empty rejects any request that
+  # carries an Origin header (DNS-rebinding protection); headerless clients
+  # (CLI agents, curl) always pass. Browser-embedded MCP hosts must be
+  # listed here explicitly.
+  allowedOrigins: []
+  # -- Per-request tool timeout in seconds (1..600).
+  timeoutSeconds: 60
+  service:
+    # -- Service type for the dedicated MCP Service (`<release>-mcp`).
+    # `LoadBalancer`/`NodePort` expose MCP directly without an Ingress.
+    type: ClusterIP
+    # -- Service port (targets the fixed container port 8752).
+    port: 8752
+    # -- Extra annotations for the MCP Service.
+    annotations: {}
+  ingress:
+    # -- Expose MCP at `https://<host>/mcp` through the ingress. Rendered as
+    # its own Ingress, mirroring the UI ingress: `className`, `annotations`,
+    # and `tls` are rendered verbatim — no inheritance, no merging. Requires
+    # `mcp.enabled` and at least one host. TLS-terminating controllers
+    # (e.g. Tailscale Funnel) need no `tls`.
+    enabled: false
+    # -- Hosts carrying the `/mcp` path (same shape as `ingress.hosts` minus
+    # `paths` — the path is fixed at `/mcp`).
+    hosts: []
+    # -- Rendered verbatim, exactly like `ingress.className`.
+    className: ""
+    # -- Rendered verbatim, exactly like `ingress.annotations`. For SSE:
+    #   nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    #   nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    annotations: {}
+    # -- Rendered verbatim, exactly like `ingress.tls`.
+    tls: []
+
 service:
   # -- Service type.
   type: ClusterIP

@@ -1,0 +1,26 @@
+# DinD E2E override for docker-compose.local.yml (used by scripts/e2e-mcp.sh).
+#
+# Same rationale as scripts/e2e-pat.override.yml: under DinD the base file's
+# ./.config.yaml bind mount resolves on the DOCKER HOST — where this tree does
+# not exist — so all host bind mounts are dropped and the server boots from
+# environment + defaults. This run additionally enables the MCP endpoint
+# (ADR 0013) and maps its port.
+services:
+  chouse-ui:
+    volumes: !reset
+      - chouse-ui-local-data:/app/data
+    ports:
+      - "5521:5521"
+      - "8752:8752"
+    environment:
+      CHOUSE_CONFIG_PATH: ""
+      MCP_ENABLED: "true"
+      # Read-only surface for E2E: write/destructive gates stay off, so the
+      # checker can prove the gates hold. Destructive-path coverage is unit-
+      # level (tools.test.ts); turning them on here would need a second run.
+      MCP_ALLOW_WRITES: "false"
+      MCP_ALLOW_DESTRUCTIVE: "false"
+      # Passed through from the shell (scripts/e2e-mcp.sh exports test-only
+      # defaults); the production image refuses to boot without them.
+      RBAC_ENCRYPTION_KEY: ${RBAC_ENCRYPTION_KEY}
+      RBAC_ENCRYPTION_SALT: ${RBAC_ENCRYPTION_SALT}

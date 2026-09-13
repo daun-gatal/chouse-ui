@@ -146,6 +146,68 @@
       },
       "additionalProperties": false
     },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "allowWrites": { "type": "boolean" },
+        "allowDestructive": { "type": "boolean" },
+        "toolsets": {
+          "type": "array",
+          "items": {
+            "enum": ["core", "explore", "query", "observe", "ops", "writes", "destructive", "ai"]
+          }
+        },
+        "allowedOrigins": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 600 },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "annotations": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
+        "ingress": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "hosts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "host": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "className": { "type": "string" },
+            "annotations": { "type": "object" },
+            "tls": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "hosts": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "secretName": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "service": {
       "type": "object",
       "properties": {

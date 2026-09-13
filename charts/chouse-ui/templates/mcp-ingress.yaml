@@ -1,0 +1,39 @@
+{{- if .Values.mcp.ingress.enabled }}
+{{/*
+Dedicated MCP ingress (ADR 0013): a structural copy of the UI ingress
+(`ingress.yaml`) pointed at the dedicated `<release>-mcp` Service. Everything
+is rendered verbatim from `mcp.ingress.*` — no inheritance, no merging. Each
+declared host serves the fixed path `/mcp` (the endpoint's only route).
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "chouse-ui.fullname" . }}-mcp
+  labels:
+    {{- include "chouse-ui.labels" . | nindent 4 }}
+  {{- with .Values.mcp.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.mcp.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.mcp.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.mcp.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "chouse-ui.fullname" $ }}-mcp
+                port:
+                  name: mcp
+    {{- end }}
+{{- end }}
