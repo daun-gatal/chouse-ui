@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.13.0] - 2026-09-13
+
+### Added
+- **Personal access tokens** — self-service machine credentials (`ch_pat_…`) in Preferences for connecting external apps. Tokens inherit your live permissions with optional scope narrowing and expiry presets, work on all API routes via `Authorization: Bearer`, support one-click rotate, and are individually revocable. Creation, rotation, and revocation are recorded in the audit log.
+- **MCP server status toggle** — the dock now shows whether the MCP server (ADR 0013) is enabled or disabled, with a hover tooltip explaining the state; the same status appears in the Personal access tokens settings card.
+- **MCP server for AI agents (ADR 0013)** — a Model Context Protocol endpoint on a dedicated port (8752) that lets agents (Cursor, VS Code Copilot, OpenCode, Claude Desktop, CI pipelines) query ClickHouse, explore schema, monitor the fleet, and manage scheduled work without the browser. PAT-only auth (`Authorization: Bearer ch_pat_…`) verified live against RBAC on every call, so scopes, data-access policies, rate limits, and `patId`-attributed audit apply exactly as for the UI and CLI.
+  - **Safe by default** — the read-only toolset registers by default (`whoami`, connections, schema explorer, SELECT-only `query` with AST classification and result caps, metrics, live queries, scheduled jobs, data health, alerting, audit). Write and destructive toolsets exist only when the operator enables `MCP_ALLOW_WRITES` / `MCP_ALLOW_DESTRUCTIVE` (chart `mcp.allowWrites` / `mcp.allowDestructive`); destructive calls are approved by a human through the client's permission prompt, configured per client in [docs/mcp.md](../../docs/mcp.md) (ADR 0014).
+  - **Operator-controlled surface** — `mcp.enabled` (off by default: no port, no Service, unreachable), toolset selection, per-request timeout, and an Origin allowlist (DNS-rebinding protection; headerless clients always pass). The dedicated `<release>-mcp` Service mirrors the UI Service (ClusterIP/NodePort/LoadBalancer, annotations) and a NetworkPolicy rule scopes agent traffic separately from the public UI origin; `mcp.ingress.enabled` additionally exposes the endpoint at `https://<host>/mcp` through an Ingress that mirrors the UI ingress verbatim (className/annotations/tls — no inheritance), so agents need no non-standard port.
+  - **Bounded context** — results are capped (100 rows / 200 KB / 2 KB per cell) with secret redaction before they reach the model; resources (`chouse://table/…`, …) and prompts (investigate-slow-query, diagnose-incident, review-schema, plan-schema-migration) give agents context without tool proliferation. Break-glass admin (PAT CRUD, user/role grants, SSO/AI secrets, connection writes, audit prune) stays UI-only.
+
+### Changed
+- **Dock regroup** — the sidebar and floating docks use consistent session/controls grouping with a Home-first nav order, a slimmer sidebar rail (collapsible session stack disclosing MCP, getting started, and the mode switch), and evenly sized status tiles in the floating bar.
+
+### Fixed
+- **Query row cap honored everywhere** — `POST /query/table/select` dropped the validated `maxResultRows` field, so `--limit` had no effect on the default read path. The cap is now passed through and additionally enforced server-side (truncation), since recent ClickHouse builds ignore small `max_result_rows` values.
+- **Personal access tokens on PostgreSQL** — token creation failed with a 500 because `rbac_api_keys.scopes` was created as `TEXT[]` while the server maps it as JSONB. Migration `1.52.0` converts the column to JSONB (existing installs) and the snapshot now creates it correctly (fresh installs).
+
 ## [v3.12.1] - 2026-09-11
 
 ### Changed
@@ -113,12 +130,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **SSO no longer silently escalates privileges** (#270) — when an IdP claim resolved to more than one mapped role, the previous behaviour collapsed to the *highest-privilege* match, so a user in multiple groups could land in an unexpectedly powerful role. Role sync now fails closed: an ambiguous claim assigns no role and keeps the user's existing one, logging a warning so the misconfiguration can be fixed. Multi-group role mappings remain supported — only genuine overlap (one user resolving to several roles) is rejected.
-
-## [v3.6.1] - 2026-06-18
-
-### Changed
-- **Notification channel type is now editable, with a webhook URL/type guard** — a channel's type can be changed while editing (the webhook URL is preserved when switching between Slack and Google Chat), so a mis-typed channel can be corrected in place instead of being deleted and recreated. Saving is blocked with a clear warning when the webhook URL's domain clearly belongs to a different provider than the selected type (a `chat.googleapis.com` URL on a Slack channel, or a `hooks.slack.com` URL on a Google Chat channel).
-
-### Fixed
-- **Alert channel "Send test" now matches real delivery** — a Google Chat webhook saved under a *Slack* channel passed "Send test" but no real breach alert ever arrived (only the in-app feed showed it). The test sent a bare `{text}` body that both providers accept, while production delivery sends provider-specific payloads (Slack Block Kit `attachments` / Google Chat `cardsV2`), which Google Chat rejects with `400` for a Slack-shaped body. The test now sends the same payload shape as real delivery, so a mismatched channel fails the test instead of giving false confidence.
 
