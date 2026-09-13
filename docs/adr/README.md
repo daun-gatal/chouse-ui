@@ -37,6 +37,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0010](0010-pod-local-state-and-multi-replica-correctness.md) | Pod-local State and Multi-Replica Correctness | Proposed |
 | [0011](0011-personal-access-tokens.md) | Personal Access Tokens for CLI and MCP Machine Auth | Proposed |
 | [0012](0012-chouse-cli.md) | CHouse CLI: Safe Browserless Operations with Go Binary Distribution | Proposed |
+| [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Proposed |
 
 ## Conventions
 

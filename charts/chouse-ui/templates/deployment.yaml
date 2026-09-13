@@ -98,6 +98,11 @@ spec:
             - name: http
               containerPort: 5521
               protocol: TCP
+            {{- if .Values.mcp.enabled }}
+            - name: mcp
+              containerPort: 8752
+              protocol: TCP
+            {{- end }}
           env:
             {{- include "chouse-ui.env" . | nindent 12 }}
             {{- if .Values.dedicatedScheduler.enabled }}
@@ -106,6 +111,31 @@ spec:
             {{- else }}
             - name: SCHEDULED_QUERIES_ENABLED
               value: {{ .Values.scheduledQueries.enabled | quote }}
+            {{- end }}
+            {{- if .Values.mcp.enabled }}
+            # MCP endpoint (ADR 0013): dedicated port, PAT-only auth. The host
+            # is 0.0.0.0 so the Service can reach it; exposure is controlled
+            # by the Service/NetworkPolicy, not the listener.
+            - name: MCP_ENABLED
+              value: "true"
+            - name: MCP_HOST
+              value: "0.0.0.0"
+            - name: MCP_PORT
+              value: "8752"
+            - name: MCP_ALLOW_WRITES
+              value: {{ .Values.mcp.allowWrites | quote }}
+            - name: MCP_ALLOW_DESTRUCTIVE
+              value: {{ .Values.mcp.allowDestructive | quote }}
+            - name: MCP_TOOLSETS
+              value: {{ join "," .Values.mcp.toolsets | quote }}
+            {{- with .Values.mcp.allowedOrigins }}
+            - name: MCP_ALLOWED_ORIGINS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- if .Values.mcp.timeoutSeconds }}
+            - name: MCP_TIMEOUT_SECONDS
+              value: {{ .Values.mcp.timeoutSeconds | quote }}
+            {{- end }}
             {{- end }}
           {{- with .Values.extraEnvFrom }}
           envFrom:

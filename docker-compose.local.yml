@@ -22,6 +22,9 @@ services:
     container_name: chouse-ui-local
     ports:
       - "5521:5521"
+      # MCP endpoint for AI agents (ADR 0013): add mcp.enabled: true to
+      # .config.yaml (or MCP_ENABLED here) and uncomment the mapping.
+      # - "8752:8752"
     environment:
       # All configuration (RBAC, fleet poller, SSO providers) lives in
       # .config.yaml (gitignored), loaded via the hierarchical YAML loader.

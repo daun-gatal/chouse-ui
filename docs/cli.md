@@ -4,7 +4,8 @@ Safe browserless operations for CHouse UI — query, explore, monitor the fleet,
 run the AI doctor, and manage scheduled work without opening the browser.
 Authenticated with a personal access token (`ch_pat_…`, ADR 0011). Safe by
 default: destructive commands need `--yes` and offer `--dry-run` previews
-(ADR 0012).
+(ADR 0012). For AI agents, prefer the MCP server instead — see
+[`docs/mcp.md`](mcp.md) (ADR 0013); the CLI remains the script/CI surface.
 
 ## Install
 

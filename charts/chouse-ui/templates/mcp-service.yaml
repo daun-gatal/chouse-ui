@@ -1,0 +1,31 @@
+{{- if .Values.mcp.enabled }}
+{{/*
+Dedicated MCP Service (ADR 0013): mirrors the UI Service (`service.yaml`),
+targets the `mcp` container port only, so NetworkPolicy can scope agent
+traffic separately from the public origin and MCP is unreachable at the
+network layer when disabled. No sessionAffinity: the MCP protocol is
+stateless and every request is independently verified (ADR 0010), so
+client pinning gains nothing.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chouse-ui.fullname" . }}-mcp
+  labels:
+    {{- include "chouse-ui.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+  {{- with .Values.mcp.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.mcp.service.type }}
+  ports:
+    - name: mcp
+      port: {{ .Values.mcp.service.port }}
+      targetPort: mcp
+      protocol: TCP
+  selector:
+    {{- include "chouse-ui.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+{{- end }}

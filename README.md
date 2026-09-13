@@ -196,6 +196,15 @@ pods) at render time and sets `CHOUSE_HA` for you. See
 [`charts/chouse-ui/README.md`](charts/chouse-ui/README.md) for all values,
 the topology guide, SSO/config examples, and ingress notes.
 
+### Deployment (MCP for AI agents)
+
+AI agents can operate CHouse UI without the browser through an MCP endpoint on
+a dedicated port (8752), authenticated with a personal access token. Disabled
+by default; enable with `MCP_ENABLED=true` (Docker) or `mcp.enabled: true`
+(Helm). Read-only unless the operator opts into writes; destructive tools
+require in-host human approval. See [`docs/mcp.md`](docs/mcp.md) and
+[ADR 0013](docs/adr/0013-chouse-mcp.md).
+
 ---
 
 ## Configuration
