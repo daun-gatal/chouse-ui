@@ -12,7 +12,7 @@ RUN bun install --frozen-lockfile
 # Copy source files
 COPY . .
 
-# Build the application (outputs to ../dist relative to /app, which is /dist)
+# Build the application (outputs to /app/dist)
 RUN bun run build
 
 # Production stage - simple static file server with Bun
@@ -21,7 +21,7 @@ FROM oven/bun:1-alpine
 WORKDIR /app
 
 # Copy built files from builder
-COPY --from=builder /dist ./public
+COPY --from=builder /app/dist ./public
 
 # Copy server script
 COPY server.js ./server.js

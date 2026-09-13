@@ -1,21 +1,27 @@
 import { Github } from "lucide-react";
 import { Container } from "./Section";
 
+// Mirrors the primary navbar (Docs · Features · Try Lab · FAQ).
 const NAV = [
+  { label: "Docs", href: "/docs/overview/" },
   { label: "Features", href: "#features" },
-  { label: "Highlights", href: "#highlights" },
   { label: "Try Lab", href: "#try-lab" },
+  { label: "FAQ", href: "#faq" },
+];
+
+// Deep sections of the page — the footer's sitemap role.
+const EXPLORE = [
+  { label: "Highlights", href: "#highlights" },
   { label: "Quick Start", href: "#quick-start" },
   { label: "Automate", href: "#automate" },
   { label: "Production", href: "#docker-deploy" },
   { label: "SSO", href: "#sso" },
-  { label: "FAQ", href: "#faq" },
+  { label: "Changelog", href: "#changelog" },
 ];
 
 const RESOURCES = [
   { label: "GitHub", href: "https://github.com/daun-gatal/chouse-ui", external: true },
   { label: "Issues", href: "https://github.com/daun-gatal/chouse-ui/issues", external: true },
-  { label: "Changelog", href: "#changelog" },
   { label: "License", href: "https://www.apache.org/licenses/LICENSE-2.0", external: true },
 ];
 
@@ -26,7 +32,7 @@ export default function Footer() {
       <Container>
         <div className="grid grid-cols-12 gap-x-6 gap-y-12 py-20">
           {/* Identity */}
-          <div className="col-span-12 flex flex-col gap-5 md:col-span-5">
+          <div className="col-span-12 flex flex-col gap-5 md:col-span-4">
             <div className="flex items-center gap-2.5">
               <img
                 src={`${import.meta.env.BASE_URL}logo.svg`}
@@ -56,8 +62,8 @@ export default function Footer() {
             </a>
           </div>
 
-          {/* Nav */}
-          <nav className="col-span-6 flex flex-col gap-4 md:col-span-3" aria-label="Footer navigation">
+          {/* Nav — mirrors the primary navbar */}
+          <nav className="col-span-6 flex flex-col gap-4 md:col-span-2" aria-label="Footer navigation">
             <h4 className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
               Navigate
             </h4>
@@ -75,8 +81,27 @@ export default function Footer() {
             </ul>
           </nav>
 
+          {/* Deep sections — the sitemap column */}
+          <nav className="col-span-6 flex flex-col gap-4 md:col-span-3" aria-label="Page sections">
+            <h4 className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
+              Explore
+            </h4>
+            <ul className="flex flex-col gap-2">
+              {EXPLORE.map((item) => (
+                <li key={item.href}>
+                  <a
+                    href={item.href}
+                    className="text-[13px] text-paper-muted transition-colors hover:text-paper"
+                  >
+                    {item.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
           {/* Resources */}
-          <nav className="col-span-6 flex flex-col gap-4 md:col-span-4" aria-label="Resources">
+          <nav className="col-span-12 flex flex-col gap-4 md:col-span-3" aria-label="Resources">
             <h4 className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper-faint">
               Resources
             </h4>

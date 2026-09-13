@@ -150,7 +150,7 @@ export default function DockerDeploy() {
       <Container>
         <SectionHeader
           eyebrow="Production"
-          eyebrowIndex={7}
+          eyebrowIndex={6}
           title="Deploy properly. No surprises."
           description="Production checklist, YAML config reference, and minimal Docker / Kubernetes manifests."
         />

@@ -1,4 +1,4 @@
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowUpRight } from "lucide-react";
 import { Section, Container, SectionHeader, CodeBlock, SecondaryAction } from "./Section";
 
 interface Step {
@@ -87,7 +87,7 @@ export default function QuickStart() {
       <Container>
         <SectionHeader
           eyebrow="Quick start"
-          eyebrowIndex={5}
+          eyebrowIndex={4}
           title="Local in under five minutes."
           description="Three commands. No registration. Works on any machine with Docker."
         />
@@ -124,10 +124,16 @@ export default function QuickStart() {
           <p className="text-sm text-paper-muted">
             Going to production? Read the deployment guide below — JWT secret, encryption key, PostgreSQL, reverse proxy.
           </p>
-          <SecondaryAction href="#docker-deploy">
-            <ArrowDown className="h-4 w-4" />
-            Production deployment
-          </SecondaryAction>
+          <div className="flex flex-wrap items-center gap-3">
+            <SecondaryAction href="#docker-deploy">
+              <ArrowDown className="h-4 w-4" />
+              Production deployment
+            </SecondaryAction>
+            <SecondaryAction href="/docs/overview/">
+              <ArrowUpRight className="h-4 w-4" />
+              Full documentation
+            </SecondaryAction>
+          </div>
         </div>
       </Container>
     </Section>
