@@ -36,8 +36,17 @@ import {
   describeDestination,
   checkEngineFit,
   diffSchema,
-  buildCreateTableDDL,
+  buildCreateStatements,
+  resolveWriteTarget,
 } from "../services/scheduledQueries/materialize";
+import {
+  inspectClusterJob,
+  inspectionError,
+  listClusters,
+  localTableName,
+  type ClusterInspection,
+} from "../services/scheduledQueries/cluster";
+import { plainSession, type ChSession } from "../services/scheduledQueries/session";
 import { buildExecutableQuery, toDateTime64Param } from "../services/scheduledQueries/validation";
 import { buildLineage, clampWindowDays } from "../services/scheduledQueries/lineage";
 import { listPromisesByUpstreamJobId } from "../services/dataHealth/store";
@@ -199,6 +208,49 @@ function validateBody(body: JobBody, canWrite: boolean): void {
   }
 }
 
+/** Cluster precondition report for a draft/saved body (ADR 0015 §2). */
+async function inspectBodyCluster(s: ChSession, body: JobBody): Promise<ClusterInspection | null> {
+  const cluster = body.outputConfig?.cluster;
+  if (!cluster || body.outputMode === "none" || !body.destDatabase || !body.destTable) return null;
+  return inspectClusterJob(s, {
+    cluster,
+    outputMode: body.outputMode as ScheduledQueryRow["outputMode"],
+    destDatabase: body.destDatabase,
+    destTable: body.destTable,
+    createIfMissing: Boolean(body.outputConfig?.createIfMissing),
+    engine: body.outputConfig?.engine,
+    orderBy: body.outputConfig?.orderBy,
+  }, (db, tbl) => describeDestination(s, db, tbl));
+}
+
+/**
+ * Validate a cluster destination against the job's connection and pin the derived
+ * topology (+ resolved local table) into the stored config. Fails closed: any
+ * unmet precondition rejects the save.
+ */
+async function withVerifiedCluster(body: JobBody): Promise<JobBody> {
+  const cluster = body.outputConfig?.cluster;
+  if (!cluster || body.outputMode === "none") return body;
+  const client = await clientForConnection(body.connectionId);
+  const inspection = await inspectBodyCluster(plainSession(client), body);
+  if (!inspection?.ok || !inspection.topology) {
+    throw AppError.badRequest(`Cluster destination is not ready: ${inspection ? inspectionError(inspection) : "missing destination"}`);
+  }
+  const sharded = inspection.topology === "sharded";
+  return {
+    ...body,
+    outputConfig: {
+      ...body.outputConfig,
+      cluster: {
+        name: cluster.name,
+        topology: inspection.topology,
+        shardingKey: sharded ? cluster.shardingKey?.trim() : undefined,
+        localTable: sharded ? localTableName(body.destTable!, cluster) : undefined,
+      },
+    },
+  };
+}
+
 function bodyToInput(body: JobBody): store.JobInput {
   return {
     name: body.name,
@@ -298,16 +350,31 @@ scheduledQueries.get("/overview", requirePermission(PERMISSIONS.SCHEDULED_QUERIE
   return ok(c, overview);
 });
 
+// --- clusters (builder helper) ----------------------------------------------
+
+scheduledQueries.get("/clusters", requirePermission(PERMISSIONS.SCHEDULED_QUERIES_EDIT), async (c) => {
+  if (!hasWritePerm(c)) throw AppError.forbidden("Cluster destinations require scheduled_queries:write");
+  const connectionId = c.req.query("connectionId");
+  if (!connectionId) throw AppError.badRequest("connectionId is required");
+  await assertConnectionAccess(c, connectionId);
+  const client = await clientForConnection(
+    connectionId,
+    JSON.stringify({ rbac_user_id: userId(c) ?? null, source: "scheduled_query_preview" }),
+  );
+  return ok(c, { clusters: await listClusters(plainSession(client)) });
+});
+
 scheduledQueries.post(
   "/",
   requirePermission(PERMISSIONS.SCHEDULED_QUERIES_EDIT),
   zValidator("json", jobBodySchema),
   async (c) => {
-    const body = c.req.valid("json");
-    validateBody(body, hasWritePerm(c));
-    await assertConnectionAccess(c, body.connectionId);
-    const access = await dataAccessCheck(c, body.query, body.connectionId);
+    const raw = c.req.valid("json");
+    validateBody(raw, hasWritePerm(c));
+    await assertConnectionAccess(c, raw.connectionId);
+    const access = await dataAccessCheck(c, raw.query, raw.connectionId);
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
+    const body = await withVerifiedCluster(raw);
     const id = await store.createJob(bodyToInput(body), userId(c) ?? null);
     await store.setJobChannels(id, body.channelIds);
     await createAuditLogWithContext(c, AUDIT_ACTIONS.SCHEDULED_QUERY_CREATE, userId(c), { resourceType: "scheduled_query", resourceId: id, details: { name: body.name } });
@@ -328,16 +395,17 @@ scheduledQueries.patch(
   async (c) => {
     const id = requireParam(c, "id");
     const previous = await loadVisibleJob(c, id);
-    const body = c.req.valid("json");
-    validateBody(body, hasWritePerm(c));
+    const raw = c.req.valid("json");
+    validateBody(raw, hasWritePerm(c));
     // The connection is the data-access boundary and is fixed at creation — an
     // edit must never silently re-point a job at a different cluster.
-    if (body.connectionId !== previous.connectionId) {
+    if (raw.connectionId !== previous.connectionId) {
       throw AppError.badRequest("A scheduled query cannot be moved to a different connection");
     }
-    await assertConnectionAccess(c, body.connectionId);
-    const access = await dataAccessCheck(c, body.query, body.connectionId);
+    await assertConnectionAccess(c, raw.connectionId);
+    const access = await dataAccessCheck(c, raw.query, raw.connectionId);
     if (!access.allowed) throw AppError.forbidden(access.reason || "Access denied to one or more tables in the query");
+    const body = await withVerifiedCluster(raw);
     if (previous.outputMode !== "none" && body.outputMode === "none") {
       await assertNoChainedPromises(id, "remove this job's output");
     }
@@ -558,24 +626,41 @@ scheduledQueries.post(
           sq_prev_run_at: toDateTime64Param(now - 86_400_000),
         };
         const columns = await describeSelectSchema(client, execSql, params);
-        const draftJob = { ...body, outputConfig: body.outputConfig ?? {} } as unknown as ScheduledQueryRow;
-        const dest = await describeDestination(client, body.destDatabase, body.destTable);
+        const session = plainSession(client);
+        const inspection = await inspectBodyCluster(session, body);
+        const cluster = body.outputConfig?.cluster && inspection?.topology
+          ? { ...body.outputConfig.cluster, topology: inspection.topology }
+          : body.outputConfig?.cluster;
+        const draftJob = { ...body, outputConfig: { ...(body.outputConfig ?? {}), cluster } } as unknown as ScheduledQueryRow;
+        const dest = await describeDestination(session, body.destDatabase, body.destTable);
         if (dest.exists) {
-          const engineError = checkEngineFit(body.outputMode as ScheduledQueryRow["outputMode"], dest);
+          const target = await resolveWriteTarget(session, body.destDatabase, dest);
+          const engineError = checkEngineFit(body.outputMode as ScheduledQueryRow["outputMode"], target);
           const schemaDiff = diffSchema(dest.columns, columns);
           result.destination = {
             exists: true,
-            engine: dest.engine,
+            engine: dest.engine === target.engine ? dest.engine : `${dest.engine} → ${target.engine}`,
             engineError,
             compatible: engineError == null && columns.every((col) => dest.columns.some((d) => d.name === col.name)),
             missingInDest: columns.filter((col) => !dest.columns.some((d) => d.name === col.name)),
             schemaDiff,
           };
         } else {
+          const canBuild = !cluster || (inspection?.topology != null && (cluster.topology !== "sharded" || Boolean(cluster.shardingKey?.trim())));
           result.destination = {
             exists: false,
-            createDDL: buildCreateTableDDL(draftJob, columns),
+            createStatements: canBuild ? buildCreateStatements(draftJob, columns) : [],
             willCreate: Boolean(body.outputConfig?.createIfMissing),
+          };
+        }
+        if (inspection) {
+          result.cluster = {
+            ok: inspection.ok,
+            topology: inspection.topology,
+            shards: inspection.shards,
+            hosts: inspection.hosts,
+            maxReplicasPerShard: inspection.maxReplicasPerShard,
+            checks: inspection.checks,
           };
         }
         result.outputColumns = columns;

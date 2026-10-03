@@ -2,6 +2,7 @@ import type { ClickHouseClient } from "@clickhouse/client";
 
 import { escapeQualifiedIdentifier } from "../../utils/sqlIdentifier";
 import { describeDestination, describeSelectSchema, diffSchema } from "../scheduledQueries/materialize";
+import { plainSession } from "../scheduledQueries/session";
 import type { ScheduledQueryRow } from "../scheduledQueries/types";
 import * as scheduledStore from "../scheduledQueries/store";
 import { buildExecutableQuery } from "../scheduledQueries/validation";
@@ -25,7 +26,7 @@ export async function currentDataHealthJob(job: ScheduledQueryRow, client?: Clic
   if (!promise) throw new Error("Data Health promise metadata is missing for the scheduled job");
   const checks = await store.getChecks(promise.id);
   const partitionMetadata = client && promise.sourceType === "table" && promise.databaseName && promise.tableName
-    ? await describeDestination(client, promise.databaseName, promise.tableName)
+    ? await describeDestination(plainSession(client), promise.databaseName, promise.tableName)
     : null;
   const compiled = compileDataHealthQuery({
     sourceType: promise.sourceType,

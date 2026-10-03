@@ -9,11 +9,25 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 
 import { logger } from "../../utils/logger";
+import {
+  CLUSTER_DDL_SETTINGS,
+  destinationChecks,
+  inspectClusterJob,
+  inspectionError,
+  localTableName,
+  parseDistributedEngine,
+} from "./cluster";
+import { pinnedSession, type ChSession } from "./session";
 import type { ExpectedColumn, OutputConfig, ScheduledQueryRow, SqOutputMode } from "./types";
 
 /** Backtick-quote a ClickHouse identifier. */
 function ident(name: string): string {
   return "`" + name.replace(/`/g, "``") + "`";
+}
+
+/** Single-quoted ClickHouse string literal. */
+function lit(value: string): string {
+  return "'" + value.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
 }
 
 function qualified(database: string, table: string): string {
@@ -22,14 +36,6 @@ function qualified(database: string, table: string): string {
 
 function stagingName(job: ScheduledQueryRow): string {
   return job.outputConfig?.staging?.trim() || `${job.destTable}__sq_staging`;
-}
-
-interface ExecArgs {
-  query: string;
-  params: Record<string, unknown>;
-  queryId: string;
-  signal: AbortSignal;
-  settings?: Record<string, string | number>;
 }
 
 /** Best-effort `written_rows` from a command's `x-clickhouse-summary` header. */
@@ -71,37 +77,46 @@ export interface DestColumn {
 export interface DestInfo {
   exists: boolean;
   engine: string | null;
+  engineFull: string | null;
   partitionKey: string | null;
+  sortingKey: string | null;
+  primaryKey: string | null;
   columns: DestColumn[];
 }
 
-/** Introspect the destination table via system.tables / system.columns. */
-export async function describeDestination(
-  client: ClickHouseClient,
-  database: string,
-  table: string,
-): Promise<DestInfo> {
-  const tblRs = await client.query({
-    query: `SELECT engine, partition_key FROM system.tables WHERE database = {db:String} AND name = {tbl:String} LIMIT 1`,
-    format: "JSON",
-    query_params: { db: database, tbl: table },
-  });
-  const tblJson = (await tblRs.json()) as { data?: Array<{ engine: string; partition_key: string }> };
-  if (!tblJson.data || tblJson.data.length === 0) {
-    return { exists: false, engine: null, partitionKey: null, columns: [] };
-  }
-  const colRs = await client.query({
-    query: `SELECT name, type FROM system.columns WHERE database = {db:String} AND table = {tbl:String} ORDER BY position`,
-    format: "JSON",
-    query_params: { db: database, tbl: table },
-  });
-  const colJson = (await colRs.json()) as { data?: Array<{ name: string; type: string }> };
+const MISSING: DestInfo = { exists: false, engine: null, engineFull: null, partitionKey: null, sortingKey: null, primaryKey: null, columns: [] };
+
+/** Introspect a table via system.tables / system.columns on the session's node. */
+export async function describeDestination(s: ChSession, database: string, table: string): Promise<DestInfo> {
+  const [tbl] = await s.rows<{ engine: string; engine_full: string; partition_key: string; sorting_key: string; primary_key: string }>(
+    `SELECT engine, engine_full, partition_key, sorting_key, primary_key FROM system.tables WHERE database = {db:String} AND name = {tbl:String} LIMIT 1`,
+    { db: database, tbl: table },
+  );
+  if (!tbl) return MISSING;
+  const columns = await s.rows<DestColumn>(
+    `SELECT name, type FROM system.columns WHERE database = {db:String} AND table = {tbl:String} ORDER BY position`,
+    { db: database, tbl: table },
+  );
   return {
     exists: true,
-    engine: tblJson.data[0].engine,
-    partitionKey: tblJson.data[0].partition_key || null,
-    columns: (colJson.data ?? []).map((c) => ({ name: c.name, type: c.type })),
+    engine: tbl.engine,
+    engineFull: tbl.engine_full || null,
+    partitionKey: tbl.partition_key || null,
+    sortingKey: tbl.sorting_key || null,
+    primaryKey: tbl.primary_key || null,
+    columns: columns.map((c) => ({ name: c.name, type: c.type })),
   };
+}
+
+/**
+ * The table rows physically land in: a `Distributed` destination resolves to its
+ * underlying local table (engine-fit rules apply to that engine, ADR 0015).
+ */
+export async function resolveWriteTarget(s: ChSession, database: string, dest: DestInfo): Promise<DestInfo> {
+  if (dest.engine !== "Distributed") return dest;
+  const spec = parseDistributedEngine(dest.engineFull);
+  if (!spec) return dest;
+  return describeDestination(s, spec.database, spec.table);
 }
 
 export interface SchemaDiff {
@@ -149,9 +164,15 @@ export function checkEngineFit(mode: SqOutputMode, dest: DestInfo): string | nul
   }
 }
 
-/** Generated CREATE TABLE DDL for create-if-missing / copy-paste preview (D4b). */
-export function buildCreateTableDDL(job: ScheduledQueryRow, columns: ExpectedColumn[]): string {
+/**
+ * Generated CREATE statements for create-if-missing / copy-paste preview (D4b,
+ * ADR 0015 §3): one table without a cluster; one `ON CLUSTER` table for a
+ * replicated cluster; a per-shard local table plus a Distributed table when sharded.
+ */
+export function buildCreateStatements(job: ScheduledQueryRow, columns: ExpectedColumn[]): string[] {
   const cfg = job.outputConfig ?? {};
+  const database = job.destDatabase!;
+  const table = job.destTable!;
   const cols = columns.map((c) => `  ${ident(c.name)} ${c.type}`).join(",\n");
   const engine = cfg.engine?.trim() || "MergeTree";
   // `replace` collects the partition key as `partitionExpr`; `createIfMissing`
@@ -160,17 +181,31 @@ export function buildCreateTableDDL(job: ScheduledQueryRow, columns: ExpectedCol
   const partition = cfg.partitionBy?.trim() || cfg.partitionExpr?.trim();
   const partitionBy = partition ? `\nPARTITION BY ${partition}` : "";
   const orderBy = cfg.orderBy?.trim() || "tuple()";
-  return `CREATE TABLE IF NOT EXISTS ${qualified(job.destDatabase!, job.destTable!)} (\n${cols}\n) ENGINE = ${engine}${partitionBy}\nORDER BY ${orderBy}`;
+  const cluster = cfg.cluster;
+  const onCluster = cluster ? ` ON CLUSTER ${ident(cluster.name)}` : "";
+  const body = (target: string): string =>
+    `CREATE TABLE IF NOT EXISTS ${qualified(database, target)}${onCluster} (\n${cols}\n) ENGINE = ${engine}${partitionBy}\nORDER BY ${orderBy}`;
+  if (!cluster || cluster.topology !== "sharded") return [body(table)];
+  const local = localTableName(table, cluster);
+  return [
+    body(local),
+    `CREATE TABLE IF NOT EXISTS ${qualified(database, table)}${onCluster} AS ${qualified(database, local)}\n` +
+      `ENGINE = Distributed(${lit(cluster.name)}, ${lit(database)}, ${lit(local)}, ${cluster.shardingKey!.trim()})`,
+  ];
 }
 
-async function exec(client: ClickHouseClient, args: ExecArgs): Promise<unknown> {
-  return client.command({
-    query: args.query,
-    query_id: args.queryId,
-    abort_signal: args.signal,
-    query_params: args.params,
-    clickhouse_settings: args.settings as never,
-  });
+/**
+ * Staging for `replace`. A Replicated* destination must NOT be cloned with
+ * `AS dest` — that copies its Keeper path and collides (REPLICA_ALREADY_EXISTS).
+ * Staging is then a local plain MergeTree with dest's exact keys, which
+ * REPLACE PARTITION accepts into the replicated destination (ADR 0015 §5).
+ */
+export function buildStagingDDL(stagingQ: string, destQ: string, dest: DestInfo): string {
+  if (!dest.engine?.startsWith("Replicated")) return `CREATE TABLE IF NOT EXISTS ${stagingQ} AS ${destQ}`;
+  const partitionBy = dest.partitionKey ? ` PARTITION BY ${dest.partitionKey}` : "";
+  const orderBy = ` ORDER BY ${dest.sortingKey || "tuple()"}`;
+  const primaryKey = dest.primaryKey && dest.primaryKey !== dest.sortingKey ? ` PRIMARY KEY ${dest.primaryKey}` : "";
+  return `CREATE TABLE IF NOT EXISTS ${stagingQ} AS ${destQ} ENGINE = MergeTree${partitionBy}${orderBy}${primaryKey}`;
 }
 
 export interface MaterializeArgs {
@@ -195,22 +230,60 @@ export async function executeMaterialize(args: MaterializeArgs): Promise<number 
   const database = job.destDatabase!;
   const table = job.destTable!;
   const cfg: OutputConfig = job.outputConfig ?? {};
+  const cluster = cfg.cluster;
   const colList = columns.map((c) => ident(c.name)).join(", ");
-  const dest = qualified(database, table);
+  const destQ = qualified(database, table);
   const dedupToken = `${job.id}:${slotAt}`;
+  // Every statement of this run on ONE node (staging, swap, system.parts reads).
+  const s = pinnedSession(client, `sq_${queryId}`, signal);
+  const describe = (db: string, tbl: string): Promise<DestInfo> => describeDestination(s, db, tbl);
 
-  // Create-if-missing (idempotent; no-op once the table exists).
-  if (cfg.createIfMissing) {
-    await client.command({ query: buildCreateTableDDL(job, columns), query_id: `${queryId}_ddl`, abort_signal: signal });
+  if (cluster) {
+    // Re-verify membership, topology, database and the destination's shape every run.
+    const inspection = await inspectClusterJob(s, {
+      cluster,
+      outputMode: job.outputMode,
+      destDatabase: database,
+      destTable: table,
+      createIfMissing: Boolean(cfg.createIfMissing),
+      engine: cfg.engine,
+      orderBy: cfg.orderBy,
+      expectedTopology: cluster.topology,
+    }, describe);
+    if (!inspection.ok) throw new Error(`cluster destination check failed: ${inspectionError(inspection)}`);
+  }
+
+  let dest = await describe(database, table);
+  const localTable = cluster?.topology === "sharded" ? localTableName(table, cluster) : null;
+  const localMissing = localTable !== null && !(await describe(database, localTable)).exists;
+
+  // Create-if-missing — issued ONLY when something is absent, so a healthy cluster
+  // job enqueues no distributed-DDL task per run. `IF NOT EXISTS` keeps racing pods safe.
+  if (cfg.createIfMissing && (!dest.exists || localMissing)) {
+    const statements = buildCreateStatements(job, columns);
+    for (const [i, query] of statements.entries()) {
+      await s.command(query, { queryId: `${queryId}_ddl${i}`, settings: cluster ? { ...CLUSTER_DDL_SETTINGS } : undefined });
+    }
+    dest = await describe(database, table);
+    if (cluster) {
+      const local = localTable ? await describe(database, localTable) : null;
+      const bad = destinationChecks(cluster.name, cluster.topology ?? "replicated", database, localTable ?? "", dest, local).filter((c) => !c.ok);
+      if (!dest.exists || (local !== null && !local.exists) || bad.length > 0) {
+        throw new Error(`cluster destination not ready after DDL: ${bad.map((c) => c.message).join("; ") || "table missing"}`);
+      }
+    }
   }
 
   if (job.outputMode === "append" || job.outputMode === "upsert") {
-    const result = await exec(client, {
-      query: `INSERT INTO ${dest} (${colList}) ${selectSql}`,
+    const result = await s.command(`INSERT INTO ${destQ} (${colList}) ${selectSql}`, {
       params,
       queryId,
-      signal,
-      settings: { insert_deduplication_token: dedupToken },
+      settings: {
+        insert_deduplication_token: dedupToken,
+        // Synchronous fan-out through Distributed: every shard's write (and its
+        // error) is part of this statement, and the slot token reaches each shard.
+        ...(localTable ? { distributed_foreground_insert: 1 } : {}),
+      },
     });
     return readWrittenRows(result);
   }
@@ -218,29 +291,19 @@ export async function executeMaterialize(args: MaterializeArgs): Promise<number 
   if (job.outputMode === "replace") {
     const staging = stagingName(job);
     const stagingQ = qualified(database, staging);
-    // Staging clones dest's exact structure (incl. partition key) → can't diverge.
-    await client.command({ query: `CREATE TABLE IF NOT EXISTS ${stagingQ} AS ${dest}`, query_id: `${queryId}_stg_create`, abort_signal: signal });
-    await client.command({ query: `TRUNCATE TABLE ${stagingQ}`, query_id: `${queryId}_stg_trunc`, abort_signal: signal });
-    const result = await exec(client, {
-      query: `INSERT INTO ${stagingQ} (${colList}) ${selectSql}`,
-      params,
-      queryId,
-      signal,
-    });
+    await s.command(buildStagingDDL(stagingQ, destQ, dest), { queryId: `${queryId}_stg_create` });
+    await s.command(`TRUNCATE TABLE ${stagingQ}`, { queryId: `${queryId}_stg_trunc` });
+    const result = await s.command(`INSERT INTO ${stagingQ} (${colList}) ${selectSql}`, { params, queryId });
     const written = readWrittenRows(result);
     // Discover the partitions staging produced and atomically swap each into dest.
-    const partsRs = await client.query({
-      query: `SELECT DISTINCT partition_id FROM system.parts WHERE database = {db:String} AND table = {tbl:String} AND active`,
-      format: "JSON",
-      query_params: { db: database, tbl: staging },
-    });
-    const partsJson = (await partsRs.json()) as { data?: Array<{ partition_id: string }> };
-    for (const p of partsJson.data ?? []) {
-      await client.command({
-        query: `ALTER TABLE ${dest} REPLACE PARTITION ID {pid:String} FROM ${stagingQ}`,
-        query_id: `${queryId}_replace_${p.partition_id}`,
-        abort_signal: signal,
-        query_params: { pid: p.partition_id },
+    const parts = await s.rows<{ partition_id: string }>(
+      `SELECT DISTINCT partition_id FROM system.parts WHERE database = {db:String} AND table = {tbl:String} AND active`,
+      { db: database, tbl: staging },
+    );
+    for (const p of parts) {
+      await s.command(`ALTER TABLE ${destQ} REPLACE PARTITION ID {pid:String} FROM ${stagingQ}`, {
+        queryId: `${queryId}_replace_${p.partition_id}`,
+        params: { pid: p.partition_id },
       });
     }
     // Swap done — staging now holds a redundant full copy of the run's output.
@@ -248,7 +311,7 @@ export async function executeMaterialize(args: MaterializeArgs): Promise<number 
     // run), but free its storage now so we don't retain a run's worth of data
     // between runs. Best-effort: the next run truncates again, so this is safe.
     try {
-      await client.command({ query: `TRUNCATE TABLE ${stagingQ}`, query_id: `${queryId}_stg_cleanup`, abort_signal: signal });
+      await s.command(`TRUNCATE TABLE ${stagingQ}`, { queryId: `${queryId}_stg_cleanup` });
     } catch (err) {
       logger.warn({ module: "ScheduledQueries", jobId: job.id, err }, "post-replace staging truncate failed (non-fatal)");
     }

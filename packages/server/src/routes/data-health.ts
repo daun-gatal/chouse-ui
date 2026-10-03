@@ -18,6 +18,7 @@ import { DATA_HEALTH_FREQUENCIES, type ScheduledQueryRow, type SqFrequency } fro
 import { buildExecutableQuery, toDateTime64Param, toParseableSql, validateReadOnlySelect } from "../services/scheduledQueries/validation";
 import { clientForConnection } from "../services/scheduledQueries/chClient";
 import { describeDestination, describeSelectSchema } from "../services/scheduledQueries/materialize";
+import { plainSession } from "../services/scheduledQueries/session";
 import { AppError, requireParam } from "../types";
 
 const dataHealth = new Hono();
@@ -179,7 +180,7 @@ interface PromiseCompilation {
 async function compile(c: Context, body: PromiseBody, upstreamJob: ScheduledQueryRow | null): Promise<PromiseCompilation> {
   const partitionMetadata = body.source.sourceType === "table"
     ? await describeDestination(
-      await clientForConnection(body.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_partition_metadata" })),
+      plainSession(await clientForConnection(body.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_partition_metadata" }))),
       body.source.databaseName,
       body.source.tableName,
     )
@@ -491,7 +492,7 @@ dataHealth.post(
     await assertConnectionAccess(c, promise.connectionId);
     const client = await clientForConnection(promise.connectionId, JSON.stringify({ rbac_user_id: currentUser(c).sub, source: "data_health_backtest", promise_id: promise.id }));
     const partitionMetadata = promise.sourceType === "table" && promise.databaseName && promise.tableName
-      ? await describeDestination(client, promise.databaseName, promise.tableName)
+      ? await describeDestination(plainSession(client), promise.databaseName, promise.tableName)
       : null;
     const compiled = compileDataHealthQuery({
       sourceType: promise.sourceType,

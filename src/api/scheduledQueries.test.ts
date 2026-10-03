@@ -18,6 +18,7 @@ import {
   getLineage,
   recoverScheduledQuery,
   rerunScheduledQueryRun,
+  listClusters,
   type ScheduledQueryInput,
 } from "./scheduledQueries";
 
@@ -96,6 +97,40 @@ describe("Scheduled Queries API", () => {
 
     const bad = await previewScheduledQuery({ query: "INSERT INTO t VALUES (1)" });
     expect(bad.readOnly.ok).toBe(false);
+  });
+
+  it("lists clusters for a connection", async () => {
+    let seen: string | null = null;
+    server.use(
+      http.get("/api/scheduled-queries/clusters", ({ request }) => {
+        seen = new URL(request.url).searchParams.get("connectionId");
+        return HttpResponse.json({
+          success: true,
+          data: { clusters: [{ name: "prod", shards: 2, maxReplicasPerShard: 2, hosts: 4, isLocal: true }] },
+        });
+      }),
+    );
+    const clusters = await listClusters("conn-1");
+    expect(seen).toBe("conn-1");
+    expect(clusters).toEqual([{ name: "prod", shards: 2, maxReplicasPerShard: 2, hosts: 4, isLocal: true }]);
+  });
+
+  it("sends a cluster destination in outputConfig", async () => {
+    let body: unknown = null;
+    server.use(
+      http.post("/api/scheduled-queries", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, data: { id: "sq-2" } }, { status: 201 });
+      }),
+    );
+    await createScheduledQuery({
+      ...baseInput,
+      outputMode: "append",
+      destDatabase: "analytics",
+      destTable: "daily",
+      outputConfig: { createIfMissing: true, engine: "ReplicatedMergeTree", cluster: { name: "prod", shardingKey: "cityHash64(id)" } },
+    });
+    expect(body).toMatchObject({ outputConfig: { cluster: { name: "prod", shardingKey: "cityHash64(id)" } } });
   });
 
   it("triggers a manual run", async () => {

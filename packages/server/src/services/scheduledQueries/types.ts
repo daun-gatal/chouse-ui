@@ -36,6 +36,24 @@ export const SQ_OUTPUT_MODES: readonly SqOutputMode[] = ["none", "append", "repl
 export const expectedColumnSchema = z.object({ name: z.string(), type: z.string() });
 export type ExpectedColumn = z.infer<typeof expectedColumnSchema>;
 
+export type SqClusterTopology = "replicated" | "sharded";
+
+/**
+ * Cluster-aware destination (ADR 0015). `topology` is derived server-side from
+ * `system.clusters` at save time (1 shard ⇒ replicated, >1 ⇒ sharded) and
+ * re-verified every run; a client-supplied value is ignored.
+ */
+export const clusterConfigSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  topology: z.enum(["replicated", "sharded"]).optional(),
+  /** Sharded only — required; must be deterministic so retries route identically. */
+  shardingKey: z.string().trim().max(1000).optional(),
+  /** Sharded only — per-shard table behind the Distributed one; defaults to `<destTable>_local`. */
+  localTable: z.string().trim().max(255).optional(),
+});
+
+export type ClusterConfig = z.infer<typeof clusterConfigSchema>;
+
 export const outputConfigSchema = z.object({
   /** Partition expression for `replace`, e.g. `toYYYYMMDD({{slot_end}})`. */
   partitionExpr: z.string().optional(),
@@ -49,6 +67,8 @@ export const outputConfigSchema = z.object({
   partitionBy: z.string().optional(),
   /** Staging table name (replace mode); defaults to `<dest>__sq_staging`. */
   staging: z.string().optional(),
+  /** Create/write the destination across a ClickHouse cluster (ADR 0015). */
+  cluster: clusterConfigSchema.optional(),
   /** Pinned source-SELECT schema captured at create/edit (D4c). */
   expectedSchema: z.array(expectedColumnSchema).optional(),
 });

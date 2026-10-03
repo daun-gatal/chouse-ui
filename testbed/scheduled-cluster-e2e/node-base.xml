@@ -1,0 +1,36 @@
+<clickhouse>
+    <!-- Log to the container's stdout so `docker compose logs` shows the
+         REAL server log (errors + "Ready for connections"), not just the
+         entrypoint preamble. The stock image logs only to files inside
+         the container, which is why `docker logs` looked empty/looping. -->
+    <logger>
+        <console>1</console>
+        <level>information</level>
+    </logger>
+
+    <!-- Use at most 70% of THIS container's limit. ClickHouse reads the
+         cgroup limit set by mem_limit, NOT the host's 8 GB. -->
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+
+    <!-- Stock caches are multiple GB each — far too big for 3 shared
+         nodes. A test rig needs almost nothing here. -->
+    <mark_cache_size>268435456</mark_cache_size>                  <!-- 256 MiB -->
+    <uncompressed_cache_size>134217728</uncompressed_cache_size>  <!-- 128 MiB -->
+
+    <!-- Don't lock pages into RAM on a tiny box. -->
+    <mlock_executable>false</mlock_executable>
+
+    <!-- NOTE: background pool sizes are left at their defaults on purpose.
+         Shrinking background_pool_size trips ClickHouse 25.x's mutation-pool
+         sanity check (pool_size * ratio must exceed the default reserve of
+         20) and the server refuses to start. Memory is already bounded by
+         the cache caps above + max_server_memory_usage_to_ram_ratio, so the
+         background threads cost little. -->
+
+    <!-- Cap concurrency so one query can't blow the budget. -->
+    <max_concurrent_queries>16</max_concurrent_queries>
+
+    <!-- Bonus: a logical 3-node cluster so the Cluster -> Topology view
+         isn't empty. Sharded, no replication => no Keeper needed. -->
+    
+</clickhouse>

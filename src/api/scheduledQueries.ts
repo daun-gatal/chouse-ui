@@ -11,6 +11,30 @@ export type SqOutputMode = "none" | "append" | "replace" | "upsert";
 export type SqStatus = "running" | "success" | "failed" | "error";
 export type SqTrigger = "scheduled" | "manual" | "event";
 
+export type ClusterTopology = "replicated" | "sharded";
+
+/** Cluster-aware destination (ADR 0015). `topology` is derived by the server. */
+export interface ClusterConfig {
+  name: string;
+  topology?: ClusterTopology;
+  shardingKey?: string;
+  localTable?: string;
+}
+
+export interface ClusterSummary {
+  name: string;
+  shards: number;
+  maxReplicasPerShard: number;
+  hosts: number;
+  isLocal: boolean;
+}
+
+export interface ClusterCheck {
+  id: string;
+  ok: boolean;
+  message: string;
+}
+
 export interface OutputConfig {
   partitionExpr?: string;
   createIfMissing?: boolean;
@@ -18,6 +42,7 @@ export interface OutputConfig {
   orderBy?: string;
   partitionBy?: string;
   staging?: string;
+  cluster?: ClusterConfig;
   expectedSchema?: Array<{ name: string; type: string }>;
 }
 
@@ -130,10 +155,23 @@ export interface PreviewResult {
     engineError?: string | null;
     compatible?: boolean;
     missingInDest?: Array<{ name: string; type: string }>;
-    createDDL?: string;
+    createStatements?: string[];
     willCreate?: boolean;
     error?: string;
   };
+  cluster?: {
+    ok: boolean;
+    topology: ClusterTopology | null;
+    shards: number;
+    hosts: number;
+    maxReplicasPerShard: number;
+    checks: ClusterCheck[];
+  };
+}
+
+export async function listClusters(connectionId: string): Promise<ClusterSummary[]> {
+  const res = await api.get<{ clusters: ClusterSummary[] }>("/scheduled-queries/clusters", { params: { connectionId } });
+  return res.clusters;
 }
 
 export async function listScheduledQueries(connectionId?: string, producesTable?: string): Promise<ScheduledQuery[]> {
