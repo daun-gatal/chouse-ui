@@ -26,6 +26,8 @@ IMG_CH="clickhouse/clickhouse-server:$CH_VERSION"
 IMG_KEEPER="clickhouse/clickhouse-keeper:$CH_VERSION"
 IMG_BUN="oven/bun:$BUN_VERSION-alpine"
 NET=sqe2e-net
+# Throwaway password of the isolated nodes (testbed/scheduled-cluster-e2e/users.xml).
+CH_PASSWORD=default
 CONF=testbed/scheduled-cluster-e2e
 NODES=(sqe2e-ch1 sqe2e-ch2 sqe2e-ch3)
 WORK=""
@@ -67,7 +69,7 @@ for node in "${NODES[@]}"; do
   echo "Waiting for $node (with Keeper)..."
   READY=0
   for _ in $(seq 1 60); do
-    if [ "$(docker exec "$node" clickhouse-client --password default -q 'SELECT count() FROM system.zookeeper_connection' 2>/dev/null)" = "1" ]; then
+    if [ "$(docker exec "$node" clickhouse-client --password "$CH_PASSWORD" -q 'SELECT count() FROM system.zookeeper_connection' 2>/dev/null)" = "1" ]; then
       READY=1
       break
     fi
@@ -83,7 +85,7 @@ done
 URLS="$(printf 'http://%s:8123,' "${NODES[@]}")"
 docker create --name sqe2e-runner --network "$NET" -w /e2e \
   -e NODE_ENV=production \
-  -e CH_E2E_URLS="${URLS%,}" -e CH_E2E_USER=default -e CH_E2E_PASSWORD=default \
+  -e CH_E2E_URLS="${URLS%,}" -e CH_E2E_USER=default -e CH_E2E_PASSWORD="$CH_PASSWORD" \
   "$IMG_BUN" bun test ./cluster.e2e.test.js >/dev/null
 docker cp "$WORK/bundle/." sqe2e-runner:/e2e
 docker start -a sqe2e-runner
