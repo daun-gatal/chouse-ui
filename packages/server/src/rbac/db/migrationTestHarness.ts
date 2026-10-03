@@ -139,6 +139,35 @@ function runDocker(args: string[], opts: { allowFail?: boolean } = {}): string {
   return stdout;
 }
 
+/**
+ * Host where published container ports are reachable. Override with
+ * MIGRATION_TEST_PG_HOST when the Docker host exposes containers through a
+ * different address (e.g. a Tailscale service). Otherwise follow a remote
+ * DOCKER_HOST (tcp://host:port), since the container runs there, not here.
+ */
+export function dockerHostname(): string {
+  const override = process.env.MIGRATION_TEST_PG_HOST;
+  if (override) return override;
+  const raw = process.env.DOCKER_HOST;
+  if (raw && raw.startsWith("tcp://")) {
+    try {
+      return new URL(raw).hostname;
+    } catch {
+      return "127.0.0.1";
+    }
+  }
+  return "127.0.0.1";
+}
+
+/**
+ * Host port to publish PostgreSQL on. Random by default; set
+ * MIGRATION_TEST_PG_PORT when only specific ports are reachable (e.g. 5432).
+ */
+function postgresPort(): number {
+  const fixed = Number(process.env.MIGRATION_TEST_PG_PORT);
+  return Number.isInteger(fixed) && fixed > 0 ? fixed : 20000 + Math.floor(Math.random() * 20000);
+}
+
 export function assertDockerAvailable(): void {
   const proc = Bun.spawnSync(["docker", "info"]);
   if (proc.exitCode !== 0) {
@@ -157,7 +186,7 @@ export function assertDockerAvailable(): void {
 export async function startPostgresContainer(): Promise<PostgresContainer> {
   assertDockerAvailable();
 
-  const port = 20000 + Math.floor(Math.random() * 20000);
+  const port = postgresPort();
   const password = "testpass";
   const user = "testuser";
 
@@ -191,9 +220,10 @@ export async function startPostgresContainer(): Promise<PostgresContainer> {
     throw new Error("PostgreSQL container did not become ready within 60s");
   }
 
+  const host = dockerHostname();
   return {
     containerId,
-    url: (database: string) => `postgres://${user}:${password}@127.0.0.1:${port}/${database}`,
+    url: (database: string) => `postgres://${user}:${password}@${host}:${port}/${database}`,
     stop,
   };
 }
