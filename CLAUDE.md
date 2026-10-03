@@ -139,6 +139,8 @@ editing an existing one) **MUST** be accompanied by tests, and they must pass on
 
 ## Pull Request Creation
 
+**Every new PR must target the `preview` branch** (`gh pr create --base preview`). Never open a PR against `main` — the owner promotes `preview` to `main` manually.
+
 When creating a PR via `gh pr create`, always read `.github/pull_request_template.md` and use its structure as the `--body` content, filling in each section based on the actual changes. Never write a free-form body that skips the template sections.
 
 ## Versioning & Releases
