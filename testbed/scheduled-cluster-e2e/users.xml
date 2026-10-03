@@ -1,0 +1,17 @@
+<clickhouse>
+    <!-- Give the default user a throwaway password so the fleet connects
+         with credentials (user: default, password: default). Plaintext is
+         fine for a local test rig. -->
+    <users>
+        <default>
+            <password>default</password>
+        </default>
+    </users>
+    <profiles>
+        <default>
+            <max_memory_usage>1073741824</max_memory_usage>                       <!-- 1 GiB -->
+            <max_bytes_before_external_group_by>536870912</max_bytes_before_external_group_by>
+            <max_bytes_before_external_sort>536870912</max_bytes_before_external_sort>
+        </default>
+    </profiles>
+</clickhouse>

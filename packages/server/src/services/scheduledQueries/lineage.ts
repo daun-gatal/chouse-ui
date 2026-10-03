@@ -19,6 +19,7 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import { logger } from "../../utils/logger";
 import { clientForConnection } from "./chClient";
 import { describeDestination } from "./materialize";
+import { plainSession } from "./session";
 import type { ScheduledQueryRow, SqOutputMode } from "./types";
 
 // --- response shapes (camelCase; mirrored in src/api/scheduledQueries.ts) ----
@@ -282,7 +283,7 @@ async function enrichProducedColumns(client: ClickHouseClient, nodes: LineageNod
   await Promise.all(
     produced.map(async (node) => {
       try {
-        const dest = await describeDestination(client, node.database, node.table);
+        const dest = await describeDestination(plainSession(client), node.database, node.table);
         if (!dest.exists || dest.columns.length === 0) return;
         const cols = dest.columns.map((c) => c.name).sort();
         node.columns = cols;

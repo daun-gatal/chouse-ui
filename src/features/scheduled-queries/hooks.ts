@@ -14,6 +14,7 @@ import {
   deleteScheduledQuery,
   getLineage,
   getOverview,
+  listClusters,
   listRuns,
   listScheduledQueries,
   rerunScheduledQueryRun,
@@ -32,7 +33,18 @@ export const sqKeys = {
   runs: (id: string, status?: SqStatus, from?: number, to?: number) =>
     [...sqKeys.all, "runs", id, status ?? "all", from ?? 0, to ?? 0] as const,
   lineage: (id: string, windowDays: number) => [...sqKeys.all, "lineage", id, windowDays] as const,
+  clusters: (connectionId: string) => [...sqKeys.all, "clusters", connectionId] as const,
 };
+
+/** Clusters visible from a connection's node, for cluster-aware destinations (ADR 0015). */
+export function useClusters(connectionId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: sqKeys.clusters(connectionId),
+    queryFn: () => listClusters(connectionId),
+    enabled: enabled && connectionId.length > 0,
+    staleTime: 60_000,
+  });
+}
 
 /**
  * Scheduled queries are scoped to the active connection: the list only shows

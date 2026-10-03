@@ -36,13 +36,15 @@ import { useRbacStore, useAuthStore, RBAC_PERMISSIONS } from "@/stores";
 import { listChannels, type NotificationChannel } from "@/api/alerting";
 import {
   previewScheduledQuery,
+  type ClusterSummary,
+  type OutputConfig,
   type PreviewResult,
   type ScheduledQuery,
   type ScheduledQueryInput,
   type SqFrequency,
   type SqOutputMode,
 } from "@/api/scheduledQueries";
-import { useCreateScheduledQuery, useUpdateScheduledQuery } from "./hooks";
+import { useClusters, useCreateScheduledQuery, useUpdateScheduledQuery } from "./hooks";
 import { SQ_BTN_GHOST, SQ_BTN_PRIMARY } from "./lib";
 import { MultiSelect } from "./MultiSelect";
 import { MacrosHelp } from "./MacrosHelp";
@@ -76,6 +78,10 @@ interface FormState {
   orderBy: string;
   partitionBy: string;
   createIfMissing: boolean;
+  clusterEnabled: boolean;
+  clusterName: string;
+  shardingKey: string;
+  localTable: string;
   maxRows: number;
   timeoutSecs: number;
   useFinal: boolean;
@@ -106,6 +112,10 @@ function emptyForm(connectionId: string): FormState {
     orderBy: "",
     partitionBy: "",
     createIfMissing: false,
+    clusterEnabled: false,
+    clusterName: "",
+    shardingKey: "",
+    localTable: "",
     maxRows: 100,
     timeoutSecs: 60,
     useFinal: false,
@@ -137,12 +147,25 @@ function formFromJob(job: ScheduledQuery): FormState {
     orderBy: job.outputConfig?.orderBy ?? "",
     partitionBy: job.outputConfig?.partitionBy ?? "",
     createIfMissing: job.outputConfig?.createIfMissing ?? false,
+    clusterEnabled: Boolean(job.outputConfig?.cluster),
+    clusterName: job.outputConfig?.cluster?.name ?? "",
+    shardingKey: job.outputConfig?.cluster?.shardingKey ?? "",
+    localTable: job.outputConfig?.cluster?.localTable ?? "",
     maxRows: job.maxRows,
     timeoutSecs: job.timeoutSecs,
     useFinal: job.useFinal,
     seqConsistency: job.seqConsistency,
     maxAttempts: job.maxAttempts,
     retentionDays: job.retentionDays,
+  };
+}
+
+function buildCluster(form: FormState): OutputConfig["cluster"] {
+  if (!form.clusterEnabled || form.clusterName.length === 0) return undefined;
+  return {
+    name: form.clusterName,
+    shardingKey: form.shardingKey.trim() || undefined,
+    localTable: form.localTable.trim() || undefined,
   };
 }
 
@@ -171,6 +194,7 @@ function buildInput(form: FormState): ScheduledQueryInput {
             orderBy: form.orderBy.trim() || undefined,
             partitionBy: form.partitionBy.trim() || undefined,
             createIfMissing: form.createIfMissing,
+            cluster: buildCluster(form),
           },
     maxRows: form.maxRows,
     timeoutSecs: form.timeoutSecs,
@@ -318,6 +342,7 @@ export function JobWizard({ isOpen, onClose, job, prefill, onCreated }: JobWizar
         if (form.destDatabase.trim().length === 0 || form.destTable.trim().length === 0) return false;
         // Replace creates a partitioned table — the partition expression is required when creating it.
         if (form.outputMode === "replace" && form.createIfMissing && form.partitionExpr.trim().length === 0) return false;
+        if (form.clusterEnabled && form.clusterName.length === 0) return false;
         return true;
       default:
         return true;
@@ -340,6 +365,11 @@ export function JobWizard({ isOpen, onClose, job, prefill, onCreated }: JobWizar
           toast.error(result.dataAccess.reason ?? "Your role can't access one or more tables in this query");
           return;
         }
+      }
+      // Cluster destinations fail closed: every precondition must pass to continue.
+      if (result?.cluster && !result.cluster.ok && stepName === "Output") {
+        toast.error(result.cluster.checks.find((check) => !check.ok)?.message ?? "Cluster destination is not ready");
+        return;
       }
     }
     setStep((s) => Math.min(s + 1, steps.length - 1));
@@ -618,6 +648,10 @@ const OUTPUT_MODE_HELP: Record<SqOutputMode, { title: string; what: string; when
 
 function OutputStep({ form, update, preview, onPreview, previewing }: StepProps & { preview: PreviewResult | null; onPreview: () => Promise<unknown>; previewing: boolean }) {
   const modeHelp = OUTPUT_MODE_HELP[form.outputMode];
+  const clustersQuery = useClusters(form.connectionId, form.clusterEnabled);
+  const clusters = clustersQuery.data ?? [];
+  const selectedCluster = clusters.find((c) => c.name === form.clusterName);
+  const sharded = form.clusterEnabled && (selectedCluster?.shards ?? 0) > 1;
   return (
     <>
       <div className={sectionCls}>
@@ -628,7 +662,7 @@ function OutputStep({ form, update, preview, onPreview, previewing }: StepProps 
             <SelectContent>
               <SelectItem value="none">None (read-only)</SelectItem>
               <SelectItem value="append">Append</SelectItem>
-              <SelectItem value="replace">Replace partition</SelectItem>
+              <SelectItem value="replace" disabled={sharded}>Replace partition{sharded ? " (not on sharded clusters)" : ""}</SelectItem>
               <SelectItem value="upsert">Upsert (ReplacingMergeTree)</SelectItem>
             </SelectContent>
           </Select>
@@ -658,6 +692,7 @@ function OutputStep({ form, update, preview, onPreview, previewing }: StepProps 
               <Input value={form.destTable} onChange={(e) => update({ destTable: e.target.value })} />
             </div>
           </div>
+          <ClusterSection form={form} update={update} clusters={clusters} loading={clustersQuery.isLoading} error={clustersQuery.error} selected={selectedCluster} />
           <ToggleRow label="Create destination table if missing" checked={form.createIfMissing} onChange={(v) => update({ createIfMissing: v })} />
           <div className="space-y-3 border-t border-ink-500 pt-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">Read semantics</p>
@@ -715,14 +750,101 @@ function OutputStep({ form, update, preview, onPreview, previewing }: StepProps 
               {preview.destination.exists === false && (
                 <div className="space-y-1">
                   <p className="text-amber-600">Destination does not exist{preview.destination.willCreate ? " — will be created on first run" : ""}.</p>
-                  {preview.destination.createDDL && <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-[10px] text-paper-muted">{preview.destination.createDDL}</pre>}
+                  {preview.destination.createStatements?.map((ddl) => (
+                    <pre key={ddl} className="overflow-x-auto whitespace-pre-wrap font-mono text-[10px] text-paper-muted">{ddl};</pre>
+                  ))}
                 </div>
               )}
+            </div>
+          )}
+          {preview?.cluster && (
+            <div className="space-y-1 rounded-xs border border-ink-500 bg-ink-50 p-3 text-[11px]">
+              <p className={labelCls}>Cluster checks · {preview.cluster.topology ?? "unknown"}</p>
+              {preview.cluster.checks.map((check) => (
+                <p key={`${check.id}:${check.message}`} className={cn("flex items-start gap-1.5", check.ok ? "text-emerald-600" : "text-red-600")}>
+                  {check.ok ? <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" /> : <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />}
+                  {check.message}
+                </p>
+              ))}
             </div>
           )}
         </>
       )}
     </>
+  );
+}
+
+function clusterLabel(c: ClusterSummary): string {
+  return `${c.name} · ${c.shards} shard${c.shards === 1 ? "" : "s"} × ${c.maxReplicasPerShard} replica${c.maxReplicasPerShard === 1 ? "" : "s"}`;
+}
+
+function ClusterSection({ form, update, clusters, loading, error, selected }: StepProps & { clusters: ClusterSummary[]; loading: boolean; error: Error | null; selected: ClusterSummary | undefined }) {
+  const sharded = (selected?.shards ?? 0) > 1;
+  const toggle = (enabled: boolean): void => {
+    // A cluster destination needs a Replicated* engine — nudge the default.
+    const engine = enabled && form.engine.trim() === "MergeTree" ? "ReplicatedMergeTree" : form.engine;
+    update({ clusterEnabled: enabled, engine });
+  };
+  const pick = (name: string): void => {
+    const next = clusters.find((c) => c.name === name);
+    const toSharded = (next?.shards ?? 0) > 1;
+    update({
+      clusterName: name,
+      localTable: toSharded && form.localTable.trim().length === 0 && form.destTable.trim() ? `${form.destTable.trim()}_local` : form.localTable,
+    });
+  };
+  return (
+    <div className="space-y-3">
+      <ToggleRow
+        label="Destination is on a cluster"
+        hint="Creates the destination ON CLUSTER and verifies it every run. One shard → a Replicated*MergeTree table on every replica. Several shards → a Replicated*MergeTree local table per shard plus a Distributed table that routes rows by the sharding key. Requires Keeper, {shard}/{replica} macros, and the CLUSTER grant; the connection must point at a cluster node."
+        checked={form.clusterEnabled}
+        onChange={toggle}
+      />
+      {form.clusterEnabled && (
+        <div className="space-y-3 border-l border-ink-500 pl-3">
+          <div className={sectionCls}>
+            <Label className={labelCls}>Cluster</Label>
+            {loading ? (
+              <p className="flex items-center gap-1.5 text-[11px] text-paper-muted"><Loader2 className="h-3 w-3 animate-spin" />Loading clusters…</p>
+            ) : error ? (
+              <p className="text-[11px] text-red-600">{error.message}</p>
+            ) : clusters.length === 0 ? (
+              <p className="text-[11px] text-amber-600">No clusters are defined on this connection's node (system.clusters).</p>
+            ) : (
+              <Select value={form.clusterName} onValueChange={pick}>
+                <SelectTrigger><SelectValue placeholder="Select cluster" /></SelectTrigger>
+                <SelectContent>
+                  {clusters.map((c) => (
+                    <SelectItem key={c.name} value={c.name} disabled={!c.isLocal}>
+                      {clusterLabel(c)}{c.isLocal ? "" : " — connection is not a member"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {selected && (
+              <p className="text-[11px] text-paper-muted">
+                Topology: <span className="font-mono text-paper">{sharded ? "sharded" : "replicated"}</span> · {selected.hosts} host{selected.hosts === 1 ? "" : "s"}
+              </p>
+            )}
+          </div>
+          {sharded && (
+            <div className="flex gap-2">
+              <div className={cn(sectionCls, "flex-1")}>
+                <Label className={labelCls}>Sharding key</Label>
+                <Input value={form.shardingKey} onChange={(e) => update({ shardingKey: e.target.value })} placeholder="cityHash64(user_id)" className="font-mono" />
+                <p className="text-[11px] text-paper-muted">Must be deterministic. For upsert, use only ORDER BY columns.</p>
+              </div>
+              <div className={cn(sectionCls, "flex-1")}>
+                <Label className={labelCls}>Local table</Label>
+                <Input value={form.localTable} onChange={(e) => update({ localTable: e.target.value })} placeholder={`${form.destTable || "table"}_local`} className="font-mono" />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -736,6 +858,9 @@ function ReviewStep({ form, channels, connectionName }: { form: FormState; chann
     ["Output", form.outputMode === "none" ? "read-only" : `${form.outputMode} → ${form.destDatabase}.${form.destTable}`],
     ["Enabled", form.enabled ? "yes" : "no"],
   ];
+  if (form.outputMode !== "none" && form.clusterEnabled) {
+    rows.splice(5, 0, ["Cluster", form.shardingKey.trim() ? `${form.clusterName} · sharded by ${form.shardingKey.trim()}` : form.clusterName]);
+  }
   return (
     <div className="space-y-3">
       <ToggleRow label="Enabled" checked={form.enabled} onChange={() => undefined} disabled />

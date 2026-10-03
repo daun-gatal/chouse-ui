@@ -39,6 +39,7 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0012](0012-chouse-cli.md) | CHouse CLI: Safe Browserless Operations with Go Binary Distribution | Accepted |
 | [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Accepted (amended by 0014) |
 | [0014](0014-mcp-destructive-client-approval.md) | MCP Destructive-Tool Approval Moves to the Client | Accepted |
+| [0015](0015-cluster-aware-materialize-destinations.md) | Cluster-Aware Materialize Destinations for Scheduled Queries | Accepted |
 
 ## Conventions
 

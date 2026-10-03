@@ -1,0 +1,27 @@
+<clickhouse>
+    <!-- Isolated e2e cluster for cluster-aware scheduled-query destinations
+         (ADR 0015). Hostnames are the sqe2e-* containers that
+         scripts/e2e-scheduled-cluster.sh starts on its own Docker network.
+         Credentials are required: Distributed writes open node-to-node
+         connections and the default user has a password. -->
+    <zookeeper>
+        <node><host>sqe2e-keeper</host><port>9181</port></node>
+    </zookeeper>
+    <remote_servers replace="true">
+        <!-- 3 shards x 1 replica: the sharded topology. -->
+        <fleet_cluster>
+            <shard><replica><host>sqe2e-ch1</host><port>9000</port><user>default</user><password>default</password></replica></shard>
+            <shard><replica><host>sqe2e-ch2</host><port>9000</port><user>default</user><password>default</password></replica></shard>
+            <shard><replica><host>sqe2e-ch3</host><port>9000</port><user>default</user><password>default</password></replica></shard>
+        </fleet_cluster>
+        <!-- 1 shard x 3 replicas: the replicated topology. -->
+        <fleet_replicated>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica><host>sqe2e-ch1</host><port>9000</port><user>default</user><password>default</password></replica>
+                <replica><host>sqe2e-ch2</host><port>9000</port><user>default</user><password>default</password></replica>
+                <replica><host>sqe2e-ch3</host><port>9000</port><user>default</user><password>default</password></replica>
+            </shard>
+        </fleet_replicated>
+    </remote_servers>
+</clickhouse>
