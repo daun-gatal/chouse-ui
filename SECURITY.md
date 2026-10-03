@@ -54,6 +54,16 @@ When using CHouse UI in production:
 - Keep dependencies up to date
 - Follow the security checklist in the [README.md](README.md)
 
+## Known Accepted Vulnerabilities
+
+Dependency scanners (Grype on source, Trivy on the container image) gate every PR. When a finding has **no upstream fix** and cannot be removed, it is recorded as an exception in [`.trivyignore`](.trivyignore) and [`.grype.yaml`](.grype.yaml) with a reason and an expiry, instead of leaving the gate permanently red.
+
+| Package | Advisory | Severity | Why it is accepted | Review by |
+| ------- | -------- | :------: | ------------------ | --------- |
+| `braces` 3.0.3 | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) / CVE-2026-93687 | High | Stack-exhaustion DoS on deeply nested brace patterns. No patched version exists; 3.0.3 is the latest release and `deepagents`, `fast-glob` and `micromatch` are already at their latest versions, all of which depend on it. It is only reached through the AI agent's filesystem glob/grep tools, whose patterns are model-generated. `braces` rejects inputs over 65,536 characters, and in a manual check under Bun, nested patterns up to that limit did not crash the process. | 2027-01-31 |
+
+Each exception must be removed as soon as a fixed release is available. The Trivy entry carries an expiry date, after which it stops applying and the scan fails again, forcing a re-review.
+
 ## Scope
 
 ### In Scope

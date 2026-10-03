@@ -1,0 +1,20 @@
+# Accepted-risk vulnerability exceptions for the Trivy image scan
+# (Docker Build Test job in .github/workflows/ci.yml). Mirrors .grype.yaml.
+# Every entry needs a reason, an owner action and an expiry. See SECURITY.md,
+# "Known accepted vulnerabilities".
+#
+# braces 3.0.3 - GHSA-vfj7-8cjw-p6xm / CVE-2026-93687 (High)
+#   Stack-exhaustion denial of service via deeply nested brace patterns.
+#   Why ignored: no fixed release exists. 3.0.3 is the latest published version
+#   and the advisory lists no patched version. Dependency chain (every link is
+#   already at its latest release): deepagents -> fast-glob / micromatch 4.0.8
+#   -> braces ^3.0.3. Nothing we can bump or override cleanly.
+#   Exposure: only reached through the AI agent's filesystem glob/grep tools,
+#   whose patterns are model-generated (so a user prompt could influence them).
+#   Impact is limited to a failed tool call: braces rejects inputs over 65,536
+#   chars, and nested patterns up to that cap did not crash the process in a
+#   manual check under Bun (micromatch 4.0.8).
+#   Expiry: the exp: date makes this entry stop applying, so the scan goes red
+#   again and forces a re-review. On expiry, check whether braces, micromatch or
+#   deepagents shipped a fix, then remove this entry or renew with a new date.
+CVE-2026-93687 exp:2027-01-31

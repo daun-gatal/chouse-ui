@@ -1,0 +1,20 @@
+# Accepted-risk vulnerability exceptions for the Grype source scan
+# (Security Scan job in .github/workflows/ci.yml: `grype dir:. --fail-on high`).
+# Mirrors .trivyignore, which holds the full rationale. See SECURITY.md,
+# "Known accepted vulnerabilities".
+#
+# Grype has no expiry field. Review this entry on the same date as the
+# .trivyignore expiry (2027-01-31) and remove it as soon as a patched braces,
+# micromatch or deepagents release is available.
+ignore:
+  # braces 3.0.3 - High - stack-exhaustion DoS via deeply nested brace patterns.
+  # No patched release exists upstream. Only reachable through the AI agent's
+  # model-generated glob patterns.
+  - vulnerability: GHSA-vfj7-8cjw-p6xm
+    package:
+      name: braces
+      type: npm
+  - vulnerability: CVE-2026-93687
+    package:
+      name: braces
+      type: npm
