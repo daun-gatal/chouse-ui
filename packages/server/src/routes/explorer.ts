@@ -1,3 +1,4 @@
+import { enforceSchemaPreflight } from "../middleware/schemaPreflight";
 import { Hono, Context } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -341,7 +342,10 @@ explorer.delete(
       }, 400);
     }
 
-    await service.executeQuery(`DROP DATABASE IF EXISTS ${escapedName}`);
+    const dropDatabaseSql = `DROP DATABASE IF EXISTS ${escapedName}`;
+    const blocked = await enforceSchemaPreflight(c, c.get("rbacConnectionId") ?? c.get("session")?.rbacConnectionId, dropDatabaseSql, c.get("session")?.connectionConfig?.database);
+    if (blocked) return blocked;
+    await service.executeQuery(dropDatabaseSql);
 
     // Audit log
     try {
@@ -561,7 +565,10 @@ explorer.delete(
       }, 400);
     }
 
-    await service.executeQuery(`DROP TABLE IF EXISTS ${escapedDatabase}.${escapedTable}`);
+    const dropTableSql = `DROP TABLE IF EXISTS ${escapedDatabase}.${escapedTable}`;
+    const blocked = await enforceSchemaPreflight(c, c.get("rbacConnectionId") ?? c.get("session")?.rbacConnectionId, dropTableSql, c.get("session")?.connectionConfig?.database);
+    if (blocked) return blocked;
+    await service.executeQuery(dropTableSql);
 
     // Audit log
     try {

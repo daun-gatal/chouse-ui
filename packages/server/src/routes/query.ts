@@ -13,6 +13,8 @@ import { userHasPermission } from "../rbac/services/rbac";
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { requestLogger } from "../utils/logger";
+import { enforceSchemaPreflight } from "../middleware/schemaPreflight";
+import { governAgentQuery, recordAgentQuery, type AgentContext, type GovernanceResult } from "../services/agents/governance";
 
 export type Variables = ConnectionContextVariables;
 
@@ -177,6 +179,31 @@ async function checkQueryPermission(
   }
 }
 
+/** Agent identity for PAT-authenticated (CLI / MCP) requests; null for browser sessions. */
+function agentContext(c: Context<{ Variables: Variables }>, connectionId: string | undefined): AgentContext | null {
+  if (c.get("authMethod") !== "pat" || !connectionId) return null;
+  return {
+    patId: c.get("patId") ?? null,
+    userId: c.get("rbacUserId") ?? "",
+    roles: c.get("rbacRoles") ?? [],
+    source: c.req.header("X-Chouse-Agent-Source") === "mcp" ? "mcp" : "pat",
+    clientName: c.req.header("User-Agent") ?? null,
+    tool: c.req.header("X-Chouse-Agent-Tool") ?? "query",
+    connectionId,
+  };
+}
+
+function agentBlocked(c: Context<{ Variables: Variables }>, governance: GovernanceResult) {
+  return c.json({
+    success: false,
+    error: {
+      code: "AGENT_POLICY_BLOCKED",
+      message: governance.decision.reasons.join("; ") || "Blocked by agent policy",
+      details: { reasons: governance.decision.reasons, estimatedBytes: governance.decision.estimatedBytes, dataHealth: governance.decision.notices },
+    },
+  }, 403);
+}
+
 /**
  * Execute query with validation and audit logging
  */
@@ -221,7 +248,23 @@ async function executeQueryWithValidation(
     }, 403);
   }
 
-  const result = await service.executeQuery(sql, format, queryId, maxResultRows);
+  // ADR 0016 §11: schema changes that break dependents need schema:override + confirmation.
+  const preflight = await enforceSchemaPreflight(c, connectionId, sql, defaultDatabase);
+  if (preflight) return preflight;
+
+  // ADR 0016 §10: agents (PAT / MCP) pass the pause switch, budget preflight and health notices.
+  const agent = agentContext(c, connectionId);
+  const governance = agent ? await governAgentQuery(agent, sql, service) : null;
+  if (agent && governance?.decision.decision === "block") return agentBlocked(c, governance);
+
+  let result;
+  try {
+    result = await service.executeQuery(sql, format, queryId, maxResultRows);
+  } catch (error) {
+    if (agent && governance) await recordAgentQuery(agent, governance, sql, "error", 0, error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+  if (agent && governance) await recordAgentQuery(agent, governance, sql, "ok", Number(result.statistics?.bytes_read ?? 0));
 
   // Create audit log for query execution
   if (rbacUserId) {
@@ -256,7 +299,8 @@ async function executeQueryWithValidation(
 
   return c.json({
     success: true,
-    data: result,
+    // Agents receive health notices with the data so answers can say "may be incomplete".
+    data: governance && governance.decision.notices.length > 0 ? { ...result, dataHealth: governance.decision.notices } : result,
   });
 }
 
@@ -346,6 +390,11 @@ query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), as
       },
     }, 403);
   }
+
+  const agent = agentContext(c, connectionId);
+  const governance = agent ? await governAgentQuery(agent, sql, service) : null;
+  if (agent && governance?.decision.decision === "block") return agentBlocked(c, governance);
+  if (agent && governance) await recordAgentQuery(agent, governance, sql, "ok", 0);
 
   // Audit log (best-effort, mirrors /execute)
   const logQueryId = queryId || `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
