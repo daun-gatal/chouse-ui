@@ -182,6 +182,47 @@ extraEnv: []
 # -- Extra `envFrom` sources (ConfigMap/Secret refs) for the web pods.
 extraEnvFrom: []
 
+# Data Observability Platform (ADR 0016). Every value is optional: empty keeps
+# the app default. Rendered as environment variables on every pod (the
+# collector runs everywhere and takes per-connection leases, so pods never
+# duplicate work). Do not also set the matching keys under `config:`.
+observability:
+  # -- Fleet snapshot interval in seconds (`OBSERVE_FLEET_INTERVAL`, app
+  # default 30). Replaces `FLEET_POLL_INTERVAL_SECONDS`, which is still read.
+  fleetIntervalSeconds: ""
+  # -- Days of lineage, pipeline and query-shape evidence to keep
+  # (`OBSERVE_RETENTION_DAYS`, app default 90).
+  retentionDays: ""
+  # -- Query shapes tracked per connection for regression detection
+  # (`OBSERVE_MAX_FINGERPRINTS`, app default 5000).
+  maxFingerprints: ""
+  # -- ClickHouse database where codec trials copy samples
+  # (`OBSERVE_SCRATCH_DATABASE`, app default `chouse_scratch`).
+  scratchDatabase: ""
+
+remediation:
+  # -- UTC window `HH:MM-HH:MM` for window-only fixes such as codec or TTL
+  # changes (`REMEDIATION_MAINTENANCE_WINDOW`, app default `02:00-04:00`).
+  maintenanceWindow: ""
+  # -- Slack channel id that receives approval requests
+  # (`REMEDIATION_SLACK_CHANNEL`). Needs `slack.*`.
+  slackChannel: ""
+
+# -- External URL of CHouse UI (`PUBLIC_BASE_URL`), used in Slack messages to
+# link back to incidents and fixes. Empty: links are omitted.
+publicBaseUrl: ""
+
+slack:
+  # -- Name of an existing Secret with keys `SLACK_SIGNING_SECRET` and
+  # `SLACK_BOT_TOKEN` (either may be absent). Slack reaches
+  # `/api/integrations/slack/interactions` through your Ingress; with
+  # `networkPolicy.restrictEgress`, add an `egressTo` rule for slack.com.
+  existingSecret: ""
+  # -- Slack app signing secret: verifies approve/reject button clicks.
+  signingSecret: ""
+  # -- Slack bot token (`xoxb-…`): posts approval requests.
+  botToken: ""
+
 scheduledQueries:
   # -- Run the in-process scheduled-queries scheduler on the web pods.
   # Redundant ticks across pods are harmless (per-job atomic lease on

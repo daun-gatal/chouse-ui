@@ -1,6 +1,6 @@
 # chouse-ui
 
-![Version: 1.3.1](https://img.shields.io/badge/Version-1.3.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.13.0](https://img.shields.io/badge/AppVersion-3.13.0-informational?style=flat-square)
+![Version: 1.4.0](https://img.shields.io/badge/Version-1.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.13.0](https://img.shields.io/badge/AppVersion-3.13.0-informational?style=flat-square)
 
 A modern web interface for ClickHouse with built-in RBAC, fleet monitoring, scheduled queries, data health checks, and an AI SRE.
 
@@ -84,7 +84,7 @@ add it with the password above and start querying.
 
 ## App configuration
 
-Everything the app reads from its config file — SSO, fleet poller, AI doctor,
+Everything the app reads from its config file — SSO, fleet settings, AI doctor,
 admin seeding, CORS, log level — goes under the freeform `config:` block,
 which the chart renders into a Secret-mounted `config.yaml` (schema:
 [`.config.example.yaml`](../../.config.example.yaml)):
@@ -92,8 +92,6 @@ which the chart renders into a Secret-mounted `config.yaml` (schema:
 ```yaml
 config:
   cors_origin: "https://chouse.example.com"
-  fleet:
-    poller_enabled: true
   auth:
     sso:
       enabled: true
@@ -116,6 +114,20 @@ extraEnv:
 Keys the chart already manages (`port`, `rbac.db_type`, `jwt.secret`, …) are
 rejected at render time to avoid silent conflicts — use the chart values for
 those.
+
+## Data observability
+
+The collector behind the Data, Monitoring and Agents pages
+([ADR 0016](../../docs/adr/0016-data-observability-platform.md)) runs on every
+pod and takes a per-connection lease, so pods never duplicate work. Its
+settings are optional chart values (`observability.*`, `remediation.*`,
+`publicBaseUrl`, `slack.*`); empty values keep the app defaults. Slack
+approvals need `slack.signingSecret` and `slack.botToken`, or
+`slack.existingSecret` with `SLACK_SIGNING_SECRET` / `SLACK_BOT_TOKEN` keys.
+
+> **Deprecated:** `FLEET_POLLER_ENABLED` and `config.fleet.poller_enabled` are
+> still accepted but ignored — fleet collection is always on. They will be
+> removed in a future major release.
 
 ## Ingress notes
 
@@ -217,6 +229,10 @@ Kubernetes: `>=1.25.0-0`
 | networkPolicy.ingressFrom | list | `[]` | Extra `from` peers allowed to reach the pods on the app port (in addition to same-namespace pods). Use this to admit your ingress controller's namespace. |
 | networkPolicy.restrictEgress | bool | `false` | Restrict egress. When true, only DNS plus `egressTo` are allowed — list your ClickHouse hosts, PostgreSQL, IdP, SMTP, and AI provider endpoints there. When false, all egress is allowed. |
 | nodeSelector | object | `{}` | Node selector for all pods. |
+| observability.fleetIntervalSeconds | string | `""` | Fleet snapshot interval in seconds (`OBSERVE_FLEET_INTERVAL`, app default 30). Replaces `FLEET_POLL_INTERVAL_SECONDS`, which is still read. |
+| observability.maxFingerprints | string | `""` | Query shapes tracked per connection for regression detection (`OBSERVE_MAX_FINGERPRINTS`, app default 5000). |
+| observability.retentionDays | string | `""` | Days of lineage, pipeline and query-shape evidence to keep (`OBSERVE_RETENTION_DAYS`, app default 90). |
+| observability.scratchDatabase | string | `""` | ClickHouse database where codec trials copy samples (`OBSERVE_SCRATCH_DATABASE`, app default `chouse_scratch`). |
 | pdb.enabled | bool | `false` | PodDisruptionBudget for the web pods. Only meaningful with more than one replica. |
 | pdb.maxUnavailable | string | `""` | Maximum pods that may be unavailable. Set `minAvailable` to "" when using this. |
 | pdb.minAvailable | int | `1` | Minimum pods that must stay available. Mutually exclusive with `maxUnavailable`. |
@@ -244,6 +260,9 @@ Kubernetes: `>=1.25.0-0`
 | probes.liveness | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"periodSeconds":20,"timeoutSeconds":5}` | Liveness probe — dependency-free endpoint. |
 | probes.readiness | object | `{"failureThreshold":3,"httpGet":{"path":"/api/rbac/health","port":"http"},"periodSeconds":10,"timeoutSeconds":5}` | Readiness probe — 503 until the RBAC database is healthy and migrations have applied. |
 | probes.startup | object | `{"failureThreshold":60,"httpGet":{"path":"/api/rbac/health","port":"http"},"periodSeconds":5,"timeoutSeconds":5}` | Startup probe — generous budget (5 min) so long upgrade migrations don't get the pod killed. |
+| publicBaseUrl | string | `""` | External URL of CHouse UI (`PUBLIC_BASE_URL`), used in Slack messages to link back to incidents and fixes. Empty: links are omitted. |
+| remediation.maintenanceWindow | string | `""` | UTC window `HH:MM-HH:MM` for window-only fixes such as codec or TTL changes (`REMEDIATION_MAINTENANCE_WINDOW`, app default `02:00-04:00`). |
+| remediation.slackChannel | string | `""` | Slack channel id that receives approval requests (`REMEDIATION_SLACK_CHANNEL`). Needs `slack.*`. |
 | replicaCount | int | `1` | Number of web pods. Must be 1 when `database.type` is `sqlite` (the chart refuses to render otherwise). When >1, the chart sets `CHOUSE_HA=true` on the pods automatically. |
 | resources.limits.memory | string | `"1Gi"` |  |
 | resources.requests.cpu | string | `"250m"` |  |
@@ -261,6 +280,9 @@ Kubernetes: `>=1.25.0-0`
 | serviceAccount.annotations | object | `{}` | Annotations for the ServiceAccount. |
 | serviceAccount.create | bool | `true` | Create a ServiceAccount for the pods. |
 | serviceAccount.name | string | `""` | ServiceAccount name override. |
+| slack.botToken | string | `""` | Slack bot token (`xoxb-…`): posts approval requests. |
+| slack.existingSecret | string | `""` | Name of an existing Secret with keys `SLACK_SIGNING_SECRET` and `SLACK_BOT_TOKEN` (either may be absent). Slack reaches `/api/integrations/slack/interactions` through your Ingress; with `networkPolicy.restrictEgress`, add an `egressTo` rule for slack.com. |
+| slack.signingSecret | string | `""` | Slack app signing secret: verifies approve/reject button clicks. |
 | terminationGracePeriodSeconds | int | `60` | Grace period so the SIGTERM handler can release poller leases and drain scheduled-query slots. |
 | tolerations | list | `[]` | Tolerations for all pods. |
 | topologySpreadConstraints | list | `[]` | Topology spread constraints for the web pods (postgres/HA installs). |

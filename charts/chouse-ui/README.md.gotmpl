@@ -86,7 +86,7 @@ add it with the password above and start querying.
 
 ## App configuration
 
-Everything the app reads from its config file — SSO, fleet poller, AI doctor,
+Everything the app reads from its config file — SSO, fleet settings, AI doctor,
 admin seeding, CORS, log level — goes under the freeform `config:` block,
 which the chart renders into a Secret-mounted `config.yaml` (schema:
 [`.config.example.yaml`](../../.config.example.yaml)):
@@ -94,8 +94,6 @@ which the chart renders into a Secret-mounted `config.yaml` (schema:
 ```yaml
 config:
   cors_origin: "https://chouse.example.com"
-  fleet:
-    poller_enabled: true
   auth:
     sso:
       enabled: true
@@ -118,6 +116,20 @@ extraEnv:
 Keys the chart already manages (`port`, `rbac.db_type`, `jwt.secret`, …) are
 rejected at render time to avoid silent conflicts — use the chart values for
 those.
+
+## Data observability
+
+The collector behind the Data, Monitoring and Agents pages
+([ADR 0016](../../docs/adr/0016-data-observability-platform.md)) runs on every
+pod and takes a per-connection lease, so pods never duplicate work. Its
+settings are optional chart values (`observability.*`, `remediation.*`,
+`publicBaseUrl`, `slack.*`); empty values keep the app defaults. Slack
+approvals need `slack.signingSecret` and `slack.botToken`, or
+`slack.existingSecret` with `SLACK_SIGNING_SECRET` / `SLACK_BOT_TOKEN` keys.
+
+> **Deprecated:** `FLEET_POLLER_ENABLED` and `config.fleet.poller_enabled` are
+> still accepted but ignored — fleet collection is always on. They will be
+> removed in a future major release.
 
 ## Ingress notes
 

@@ -13,9 +13,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-min-32-characters-long}
       RBAC_ENCRYPTION_KEY: ${RBAC_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
       RBAC_ENCRYPTION_SALT: ${RBAC_ENCRYPTION_SALT:-fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210}
-      # Fleet snapshot poller (alerts + fleet cards depend on it)
-      FLEET_POLLER_ENABLED: "true"
-      FLEET_POLL_INTERVAL_SECONDS: "30"
+      # Fleet snapshots for alerts and fleet cards (collection is always on)
+      OBSERVE_FLEET_INTERVAL: "30"
       # MCP endpoint (read-only by default; PAT-authenticated). Uncomment to
       # enable, and uncomment the 8752 port mapping above. Agents connect to
       # http://<host>:8752/mcp with Authorization: Bearer ch_pat_…
