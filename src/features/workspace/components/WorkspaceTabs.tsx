@@ -44,6 +44,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useSearchParams } from "react-router";
+import { readExplorerTarget } from "@/lib/explorerPath";
 import { cn } from "@/lib/utils";
 
 interface SortableTabProps {
@@ -199,9 +200,9 @@ function WorkspaceTabs() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
-    const database = searchParams.get("database") || "";
-    const table = searchParams.get("table") || "";
-    if (database || table) {
+    const target = readExplorerTarget(searchParams);
+    if (target) {
+      const { database, table } = target;
       const existingTab = tabs.find(
         (tab) =>
           tab.type === "information" &&

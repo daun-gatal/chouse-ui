@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PromiseHealthOverview, PromisesTab, PromiseWizard, type PromiseWizardDraft } from "@/features/data-health";
 import { useChartColors } from "@/hooks/useChartColors";
+import { explorerPath } from "@/lib/explorerPath";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import { toast } from "sonner";
 import { useDataset, useDatasets, usePinCriticality } from "./hooks";
@@ -112,7 +113,7 @@ function DatasetPage({ database, table }: { database: string; table: string }): 
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="h-9 rounded-xs" onClick={() => navigate(`/explorer?db=${encodeURIComponent(database)}&table=${encodeURIComponent(table)}`)}><Database className="mr-1.5 h-3.5 w-3.5" /> Explorer</Button>
+          <Button variant="outline" className="h-9 rounded-xs" onClick={() => navigate(explorerPath(database, table))}><Database className="mr-1.5 h-3.5 w-3.5" /> Explorer</Button>
           <Button variant="outline" className="h-9 rounded-xs" onClick={() => navigate(dataPaths.lineage(`table:${database}.${table}`))}><GitBranch className="mr-1.5 h-3.5 w-3.5" /> Lineage</Button>
           <Button variant="outline" className="h-9 rounded-xs" onClick={() => navigate(dataPaths.context(database, table))}><BookOpen className="mr-1.5 h-3.5 w-3.5" /> Context</Button>
         </div>
