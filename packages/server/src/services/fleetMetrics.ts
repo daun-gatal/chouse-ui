@@ -2,7 +2,7 @@
  * Fleet metrics — shared SQL catalogue + executor.
  *
  * Used by BOTH the live HTTP route (routes/fleet.ts) and the background
- * snapshot poller (services/fleetPoller.ts). Centralising the SQL here means
+ * fleet collector (services/observe/collectors/fleet.ts). Centralising the SQL here means
  * the on-demand and the scheduled paths can never drift apart — operators
  * see the same numbers whether the snapshot is fresh or the page just fell
  * back to a live fetch.
@@ -277,7 +277,7 @@ export async function buildFleetConfig(
 /**
  * Run a single fleet metric SQL against a connection. Used by:
  *   - routes/fleet.ts (live, on-demand)
- *   - services/fleetPoller.ts (scheduled, persisted to fleet_snapshots)
+ *   - services/observe/collectors/fleet.ts (scheduled, persisted to fleet_snapshots)
  *
  * Returns the same shape as routes/query.ts's QueryResult so frontend hooks
  * don't need to know which path the data came from.

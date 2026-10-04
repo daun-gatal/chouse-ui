@@ -3,11 +3,13 @@ import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from "react-
 import FloatingDock from "@/components/common/FloatingDock";
 import AiChatBubble from "@/components/common/AiChatBubble";
 import CommandPalette from "@/components/common/CommandPalette";
+import { SchemaPreflightDialog } from "@/components/common/SchemaPreflightDialog";
 import HomePage from "@/pages/Home";
 import FleetPage from "@/pages/Fleet";
 import DoctorPage from "@/pages/Doctor";
 import MonitoringPage from "@/pages/Monitoring";
-import DataOpsPage from "@/pages/DataOps";
+import DataPage, { LegacyDataOpsRedirect } from "@/pages/Data";
+import AgentsPage from "@/pages/Agents";
 import PreferencesPage from "@/pages/Preferences";
 import { DefaultRedirect } from "@/components/common/DefaultRedirect";
 import { ThemeProvider } from "@/components/common/theme-provider";
@@ -28,7 +30,8 @@ import {
   ADMIN_ACCESS_PERMISSIONS,
   MONITORING_ACCESS_PERMISSIONS,
   EXPLORER_ACCESS_PERMISSIONS,
-  DATAOPS_ACCESS_PERMISSIONS,
+  DATA_ACCESS_PERMISSIONS,
+  AGENTS_ACCESS_PERMISSIONS,
 } from "@/lib/navAccess";
 import { PageTitleUpdater } from "@/components/common/PageTitleUpdater";
 import { api, rbacConnectionsApi } from "@/api";
@@ -110,6 +113,7 @@ const MainLayout = () => {
 
       {/* Global Cmd/Ctrl+K command palette */}
       <CommandPalette open={isPaletteOpen} onOpenChange={setIsPaletteOpen} />
+      <SchemaPreflightDialog />
 
       {/* Unified first-install and contextual product guidance. */}
       <OnboardingProvider />
@@ -216,12 +220,25 @@ export default function App() {
               <Route path="/logs" element={<Navigate to="/monitoring" replace />} />
               <Route path="/metrics" element={<Navigate to="/monitoring" replace />} />
 
-              {/* DataOps - Scheduled Queries (+ future data-observability features) */}
+              {/* Data - data observability, Scheduled Queries and Data Health (ADR 0016) */}
               <Route
-                path="/dataops/:feature?/:sub?"
+                path="/data/:tab?/:a?/:b?"
                 element={
-                  <AdminRoute requiredPermission={DATAOPS_ACCESS_PERMISSIONS}>
-                    <DataOpsPage />
+                  <AdminRoute requiredPermission={DATA_ACCESS_PERMISSIONS}>
+                    <DataPage />
+                  </AdminRoute>
+                }
+              />
+
+              {/* Old DataOps bookmarks */}
+              <Route path="/dataops/:feature?/:sub?" element={<LegacyDataOpsRedirect />} />
+
+              {/* Agents - MCP / PAT sessions, budgets and the pause switch (ADR 0016) */}
+              <Route
+                path="/agents/:tab?/:id?"
+                element={
+                  <AdminRoute requiredPermission={AGENTS_ACCESS_PERMISSIONS}>
+                    <AgentsPage />
                   </AdminRoute>
                 }
               />

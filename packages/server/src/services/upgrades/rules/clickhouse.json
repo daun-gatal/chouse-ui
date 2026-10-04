@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "description": "ClickHouse upgrade rules matched against the observed workload (ADR 0016 §9). Each rule applies when the target version is at or above `since` and the workload matches. Maintained in this repository; extend it with each ClickHouse release.",
+  "rules": [
+    {
+      "id": "legacy-object-json-type",
+      "since": "24.8",
+      "category": "deprecated",
+      "severity": "warning",
+      "title": "Columns use the legacy Object('json') type",
+      "detail": "The legacy Object('json') type is deprecated in favour of the JSON type. Plan a migration and test it on the canary before upgrading further.",
+      "match": { "columnTypePrefix": "Object(" }
+    },
+    {
+      "id": "ordinary-database-engine",
+      "since": "22.8",
+      "category": "deprecated",
+      "severity": "warning",
+      "title": "Databases use the deprecated Ordinary engine",
+      "detail": "Ordinary databases are deprecated; Atomic is the default engine. Convert them before relying on newer behaviour.",
+      "match": { "databaseEngine": "Ordinary" }
+    },
+    {
+      "id": "old-analyzer-pinned",
+      "since": "24.3",
+      "category": "settings",
+      "severity": "warning",
+      "title": "Queries or profiles turn the new analyzer off",
+      "detail": "The new query analyzer is enabled by default since 24.3. Workloads that switch it off depend on the old analyzer; check their results on the canary.",
+      "match": { "settingDisabled": ["allow_experimental_analyzer", "enable_analyzer"] }
+    },
+    {
+      "id": "compatibility-pinned",
+      "since": "0.0",
+      "category": "settings",
+      "severity": "info",
+      "title": "Settings profiles pin an older compatibility level",
+      "detail": "The `compatibility` setting keeps older defaults. Review which query shapes depend on it before removing the pin.",
+      "match": { "profileSetting": "compatibility" }
+    },
+    {
+      "id": "experimental-database-engines",
+      "since": "0.0",
+      "category": "experimental",
+      "severity": "info",
+      "title": "Experimental database engines are in use",
+      "detail": "MaterializedPostgreSQL and MaterializedMySQL are experimental and may change between releases. Verify replication on the canary.",
+      "match": { "databaseEngine": "MaterializedPostgreSQL|MaterializedMySQL" }
+    },
+    {
+      "id": "experimental-settings-in-queries",
+      "since": "0.0",
+      "category": "experimental",
+      "severity": "info",
+      "title": "Query shapes enable experimental settings",
+      "detail": "Experimental features can change behaviour between releases. Replay these query shapes on the canary.",
+      "match": { "querySettingPrefix": "allow_experimental_" }
+    }
+  ]
+}

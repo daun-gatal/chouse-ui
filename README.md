@@ -35,7 +35,7 @@
 
 ## Overview
 
-CHouse UI is the team operator's console for on-prem ClickHouse. Most tools nail one piece — a query workspace, a dashboard, an AI assistant, a cluster monitor; this is the **combination**: a team access layer (app-level **RBAC**, audit logging, and encrypted server-side credentials so the browser never sees a password), **multi-cluster fleet monitoring** with Slack/email alerts, and **Chouse AI** — an autonomous, read-only SRE that runs root-cause scans, optimizes queries and diagnoses errors right in the monitoring tabs, writes fixes with before→after `EXPLAIN` proof, and delivers RCA to Slack on a breach. Open-source and Apache 2.0 — so you never copy-paste an error into a chatbot or hunt for a rewrite; the diagnosis and the fix live next to the problem.
+CHouse UI is the team operator's console for on-prem ClickHouse. Most tools nail one piece — a query workspace, a dashboard, an AI assistant, a cluster monitor; this is the **combination**: a team access layer (app-level **RBAC**, audit logging, and encrypted server-side credentials so the browser never sees a password), **multi-cluster fleet monitoring** with Slack/email alerts, and **Chouse AI** — an autonomous, read-only SRE that runs root-cause scans, optimizes queries and diagnoses errors right in the monitoring tabs, writes fixes with before→after `EXPLAIN` proof, and delivers RCA to Slack on a breach. On top of that sits **data observability**: every table watched from day one, every ingestion source in one status vocabulary, lineage without instrumentation, root cause traced from a stale table down to the engine, and fixes that run only after approval. Open-source and Apache 2.0 — so you never copy-paste an error into a chatbot or hunt for a rewrite; the diagnosis and the fix live next to the problem.
 
 ### Why CHouse UI?
 
@@ -50,6 +50,8 @@ CHouse UI provides security and access control features for teams that need:
 | **Audit Trail** | Audit logging |
 | **Monitoring** | ClickHouse-native observability — query logs, memory breakdown, top-resource queries, replica lag, parts/merges, schema lints — no exporter required |
 | **Fleet view** | Watch every cluster at once — one pane, per-card polling, status / memory / lag / exceptions, drill into any node |
+| **Data observability** | Learned freshness/volume baselines for every table, Kafka/RabbitMQ/NATS/S3Queue/AzureQueue/replication/views as one model, lineage, cross-layer root cause, approved fixes |
+| **Agent governance** | MCP and token agents get dataset health, lineage and context tools, budgets checked before queries run, and a pause switch |
 | **Chouse AI (SRE)** | Autonomous read-only diagnostics — root-cause fleet scans with history + auto-RCA to Slack/email, plus in-tab query optimization (before→after `EXPLAIN`) and error/parts diagnosis |
 
 ---
@@ -100,11 +102,22 @@ CHouse UI provides security and access control features for teams that need:
   - **CPU** — load avg / threads / pools, CPU mode-split + concurrency charts, and a top-CPU-queries table
   - **ZooKeeper** — Keeper transactions, traffic, and system-load time-series
 
+### 📈 Data Observability (`/data`, [ADR 0016](docs/adr/0016-data-observability-platform.md))
+- **Is the data right, right now?** — trust states for every table from baselines learned out of `system.parts`, `part_log` and `query_log` (no table scans), coverage by criticality, and suggested Data Health promises that open the wizard pre-filled.
+- **Pipelines** — materialized and refreshable views, Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, MaterializedPostgreSQL/MySQL, external tables, Distributed inserts, dictionaries, async inserts, writers and scheduled jobs in one status vocabulary (healthy, lagging, stalled, retrying, failing, stopped, inefficient, unsupported on this version) — including failures clients never see, such as a consumer replaying the same batch.
+- **Lineage** — one graph from metadata and `INSERT … SELECT`, jobs, saved queries and agents; focus a table upstream, downstream or both.
+- **Incidents with a root cause** — a deterministic chain from the data symptom through transform, ingestion and external sources to the engine, each step with its system-table evidence, plus blast radius and a shared investigation notebook (Markdown postmortem export).
+- **Fixes with approval** — a closed catalog (kill query, restart engine tables, reload dictionaries, refresh views, TTL/codec changes, …) run with a separate remediation credential after approval — two approvers for high-impact actions, never the proposer — then verified and, where possible, rolled back. Approve in the UI, Slack or `chouse remediation`.
+- **Context** — table descriptions, owners and canonical metrics (also importable from dbt), and plain-language watchers.
+- **Monitoring › Performance / Capacity / Upgrades** — regressions against each query shape's baseline next to the changes around them, disk forecasts and measured codec savings, upgrade readiness against your workload with canary replay.
+- **Agents** (`/agents`) — MCP and token sessions with what they read and whether the data was healthy, budget policies, and a pause switch.
+- **Schema preflight** — DDL that breaks dependents is stopped with the impact; `schema:override` holders can confirm (audited).
+
 ### 🛰️ Fleet & Chouse AI
 - **Fleet view** (`/fleet`) — every configured connection side by side, grid or row layout. Each card polls its own connection independently, so a slow/down cluster never blocks the grid. Status (healthy / degraded / down), memory %, active queries, longest-running, exceptions feed, inventory strip, per-node trend sparklines. Drill into any card → that cluster's monitoring.
-- **Fleet poller** — a backend worker caches per-cluster metric snapshots to SQLite on a schedule (`FLEET_POLL_INTERVAL_SECONDS`), so the fleet page reads one fast endpoint instead of every browser hammering every cluster. HA-safe via a single-instance advisory lease. Toggle with `FLEET_POLLER_ENABLED`.
+- **Fleet collection** — the observability collector caches per-cluster metric snapshots on a schedule (`OBSERVE_FLEET_INTERVAL`), so the fleet page reads one fast endpoint instead of every browser hammering every cluster. HA-safe via per-connection leases; always on (`FLEET_POLLER_ENABLED` is deprecated and ignored).
 - **Threshold alerts** — node memory %, per-query memory, and long-running-query rules with hysteresis to avoid flapping. Delivered as Slack Block Kit cards + email (SMTP), configured per install.
-- **Chouse AI — Fleet Doctor** (`/doctor`) — an autonomous, **read-only** AI SRE. Scans the fleet with a guarded `query_node` tool (single `SELECT`, `system.*` only, ClickHouse `readonly=1`), pins root causes, and writes a structured report: per-node verdict, recommendations, evidence, and a heavy-query deep-dive. Reports persist with a history rail; scope (node subset) + time-window selectable. On an alert breach it can auto-run RCA and deliver the analysis to Slack/email. Advisory only — the AI never mutates the cluster.
+- **Chouse AI — Fleet Doctor** (`/doctor`) — an autonomous, **read-only** AI SRE. Scans the fleet with a guarded `query_node` tool (single `SELECT`, `system.*` only, ClickHouse `readonly=1`), pins root causes, and writes a structured report: per-node verdict, recommendations, evidence, and a heavy-query deep-dive. Reports persist with a history rail; scope (node subset) + time-window selectable. On an alert breach it can auto-run RCA and deliver the analysis to Slack/email. Each report opens as an investigation notebook; the AI never runs anything itself — fixes it proposes go through the same approval as any other.
 - **Chouse AI in the monitoring tabs** — the same read-only engine surfaced where you're already looking, so you fix a problem without leaving the tab. **Optimize with Chouse AI** on a Query Logs row → an optimized rewrite with the same result, a before→after `EXPLAIN` estimate, and one click to **Open in Explorer**. **Fix** on a `system.errors` row → cause / impact / ordered solutions. **Diagnose** on a part-log row → part-health read (merge pressure, too many parts, partition key). Gated by `ai:optimize`; advisory only — review before running.
 - **Errors** (`/errors`) — a viewer over `system.errors` + the crash log, searchable and paginated, so recurring server-side errors surface without ad-hoc SQL.
 
@@ -320,6 +333,9 @@ Features:
 - **Table Operations**: Select, insert, update, delete
 - **Metrics & Monitoring**: Per-tab view grants — `logs:view`, `parts:view`, `schema_advisor:view`, `cluster:view`, `errors:view`
 - **Fleet Monitoring**: `fleet:view`, `doctor:view` (read reports), `doctor:run` (generate scans + schedules)
+- **Data Observability**: `observe:view`, `observe:edit`, `context:edit`, `performance:view`, `capacity:view`, `cost:view`, `upgrades:view`, `upgrades:run`, `notebooks:edit`
+- **Remediation**: `remediation:propose`, `remediation:approve`, `remediation:approve_high` (two approvers), `schema:override`
+- **Agents**: `agents:view`, `agents:manage`
 - **System**: Audit logs, settings
 
 ---

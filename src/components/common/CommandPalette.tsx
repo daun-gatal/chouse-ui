@@ -19,6 +19,15 @@ import {
   UserCog,
   Users,
   Zap,
+  Bot,
+  GitBranch,
+  Siren,
+  Workflow,
+  TrendingUp,
+  HardDrive,
+  ArrowUpCircle,
+  CalendarClock,
+  type LucideIcon,
 } from "lucide-react";
 
 import {
@@ -60,9 +69,25 @@ interface CommandPaletteProps {
  * saved queries, recent queries, actions. Permission-aware (items the user
  * can't access are hidden).
  */
+/** ADR 0016 destinations, each shown only to users with one of its permissions. */
+const OBSERVABILITY_PAGES: Array<{ value: string; label: string; to: string; icon: LucideIcon; permissions: string[] }> = [
+  { value: "data overview observability trust", label: "Data · Overview", to: "/data/overview", icon: Gauge, permissions: [RBAC_PERMISSIONS.OBSERVE_VIEW] },
+  { value: "data incidents root cause rca", label: "Data · Incidents", to: "/data/incidents", icon: Siren, permissions: [RBAC_PERMISSIONS.OBSERVE_VIEW, RBAC_PERMISSIONS.DATA_HEALTH_VIEW] },
+  { value: "data lineage graph upstream downstream", label: "Data · Lineage", to: "/data/lineage", icon: GitBranch, permissions: [RBAC_PERMISSIONS.OBSERVE_VIEW] },
+  { value: "data pipelines kafka ingestion queue s3queue", label: "Data · Pipelines", to: "/data/pipelines", icon: Workflow, permissions: [RBAC_PERMISSIONS.OBSERVE_VIEW] },
+  { value: "data datasets tables promises data health", label: "Data · Datasets", to: "/data/datasets", icon: Table2, permissions: [RBAC_PERMISSIONS.OBSERVE_VIEW, RBAC_PERMISSIONS.DATA_HEALTH_VIEW] },
+  { value: "data coverage suggestions", label: "Data · Coverage", to: "/data/coverage", icon: ShieldCheck, permissions: [RBAC_PERMISSIONS.OBSERVE_VIEW] },
+  { value: "data context metrics dbt watchers", label: "Data · Context", to: "/data/context", icon: BookOpen, permissions: [RBAC_PERMISSIONS.OBSERVE_VIEW] },
+  { value: "data scheduled queries jobs dataops", label: "Data · Scheduled queries", to: "/data/scheduled-queries/overview", icon: CalendarClock, permissions: [RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW] },
+  { value: "monitoring performance regressions slower", label: "Monitoring · Performance", to: "/monitoring/performance", icon: TrendingUp, permissions: [RBAC_PERMISSIONS.PERFORMANCE_VIEW] },
+  { value: "monitoring capacity disk forecast cost", label: "Monitoring · Capacity", to: "/monitoring/capacity", icon: HardDrive, permissions: [RBAC_PERMISSIONS.CAPACITY_VIEW] },
+  { value: "monitoring upgrades version replay", label: "Monitoring · Upgrades", to: "/monitoring/upgrades", icon: ArrowUpCircle, permissions: [RBAC_PERMISSIONS.UPGRADES_VIEW] },
+  { value: "agents mcp ai sessions budgets", label: "Agents", to: "/agents/sessions", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
+];
+
 export default function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
-  const { hasPermission } = useRbacStore();
+  const { hasPermission, hasAnyPermission } = useRbacStore();
   const databases = useExplorerStore((s) => s.databases);
   const savedQueries = useWorkspaceStore((s) => s.tabs);
   const addTab = useWorkspaceStore((s) => s.addTab);
@@ -215,6 +240,13 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
               </CommandItem>
             </>
           )}
+
+          {OBSERVABILITY_PAGES.filter((page) => hasAnyPermission(page.permissions)).map((page) => (
+            <CommandItem key={page.to} value={page.value} onSelect={() => runAction(() => navigate(page.to))}>
+              <page.icon className="mr-2 h-3.5 w-3.5 text-paper-dim" />
+              {page.label}
+            </CommandItem>
+          ))}
 
           {canViewAdmin && (
             <>

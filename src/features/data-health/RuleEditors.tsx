@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 
-import type { DataHealthCheck, DataHealthColumn } from "@/api/dataHealth";
+import { DATA_HEALTH_DISTRIBUTION_STATISTICS, type DataHealthCheck, type DataHealthColumn, type DataHealthDistributionStatistic } from "@/api/dataHealth";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,27 @@ export interface CustomMetricRule {
   operator: Extract<DataHealthCheck, { type: "custom_metric" }>["config"]["operator"];
   threshold: number;
   upperThreshold: number;
+}
+
+export interface DistributionRule {
+  checkKey: string;
+  column: string;
+  statistic: DataHealthDistributionStatistic;
+  topValue: string;
+  tolerance: number;
+  minSamples: number;
+}
+
+const STATISTIC_LABELS: Record<DataHealthDistributionStatistic, string> = {
+  p50: "Median (p50)",
+  p95: "p95",
+  null_ratio: "Null ratio",
+  distinct_ratio: "Distinct ratio",
+  top_share: "Share of one value",
+};
+
+function isStatistic(value: string): value is DataHealthDistributionStatistic {
+  return DATA_HEALTH_DISTRIBUTION_STATISTICS.some((statistic) => statistic === value);
 }
 
 const CUSTOM_OPERATORS: CustomMetricRule["operator"][] = ["gt", "gte", "lt", "lte", "eq", "between"];
@@ -81,10 +102,12 @@ interface RuleEditorsProps {
   uniquenessRules: UniquenessRule[];
   validityRules: ValidityRule[];
   customMetricRules: CustomMetricRule[];
+  distributionRules: DistributionRule[];
   onCompletenessRulesChange: (rules: CompletenessRule[]) => void;
   onUniquenessRulesChange: (rules: UniquenessRule[]) => void;
   onValidityRulesChange: (rules: ValidityRule[]) => void;
   onCustomMetricRulesChange: (rules: CustomMetricRule[]) => void;
+  onDistributionRulesChange: (rules: DistributionRule[]) => void;
   createKey: (prefix: string) => string;
 }
 
@@ -94,10 +117,12 @@ export function RuleEditors({
   uniquenessRules,
   validityRules,
   customMetricRules,
+  distributionRules,
   onCompletenessRulesChange,
   onUniquenessRulesChange,
   onValidityRulesChange,
   onCustomMetricRulesChange,
+  onDistributionRulesChange,
   createKey,
 }: RuleEditorsProps): React.ReactElement {
   const updateCompleteness = (index: number, patch: Partial<CompletenessRule>): void => {
@@ -111,6 +136,9 @@ export function RuleEditors({
   };
   const updateCustom = (index: number, patch: Partial<CustomMetricRule>): void => {
     onCustomMetricRulesChange(customMetricRules.map((rule, position) => position === index ? { ...rule, ...patch } : rule));
+  };
+  const updateDistribution = (index: number, patch: Partial<DistributionRule>): void => {
+    onDistributionRulesChange(distributionRules.map((rule, position) => position === index ? { ...rule, ...patch } : rule));
   };
 
   return (
@@ -208,6 +236,45 @@ export function RuleEditors({
             </div>
           ))}
           {customMetricRules.length === 0 && <p className="py-2 text-[10px] text-paper-faint">No custom metrics.</p>}
+        </div>
+      </RuleSection>
+
+      <RuleSection
+        title="Distribution drift"
+        description="Follow a column statistic against its own recent history; breach when it moves beyond the tolerance."
+        addLabel="Add statistic"
+        onAdd={() => onDistributionRulesChange([...distributionRules, { checkKey: createKey("distribution"), column: "", statistic: "p50", topValue: "", tolerance: 3, minSamples: 7 }])}
+      >
+        <div className="mt-3 space-y-2">
+          {distributionRules.map((rule, index) => (
+            <div key={rule.checkKey} className="rounded-xs border border-ink-500 p-2">
+              <div className="flex items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <Label>Column</Label>
+                  {columns.length > 0 ? (
+                    <Select value={rule.column || "none"} onValueChange={(value) => updateDistribution(index, { column: value === "none" ? "" : value })}>
+                      <SelectTrigger className="mt-1 rounded-xs"><SelectValue placeholder="Select column" /></SelectTrigger>
+                      <SelectContent><SelectItem value="none">Select column</SelectItem>{columns.map((column) => <SelectItem key={column.name} value={column.name}>{column.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  ) : <Input value={rule.column} onChange={(event) => updateDistribution(index, { column: event.target.value })} placeholder="price_usd" className="mt-1 rounded-xs font-mono" />}
+                </div>
+                <div className="w-40">
+                  <Label>Statistic</Label>
+                  <Select value={rule.statistic} onValueChange={(value) => { if (isStatistic(value)) updateDistribution(index, { statistic: value }); }}>
+                    <SelectTrigger className="mt-1 rounded-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{DATA_HEALTH_DISTRIBUTION_STATISTICS.map((statistic) => <SelectItem key={statistic} value={statistic}>{STATISTIC_LABELS[statistic]}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <RemoveButton label={`Remove distribution rule ${index + 1}`} onClick={() => onDistributionRulesChange(distributionRules.filter((_, position) => position !== index))} />
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                {rule.statistic === "top_share" && <div><Label>Value to track</Label><Input value={rule.topValue} onChange={(event) => updateDistribution(index, { topValue: event.target.value })} placeholder="mobile" className="mt-1 rounded-xs font-mono" /></div>}
+                <div><Label>Tolerance ×</Label><Input type="number" min={1.05} max={100} step={0.05} value={rule.tolerance} onChange={(event) => updateDistribution(index, { tolerance: Number(event.target.value) })} className="mt-1 rounded-xs" /></div>
+                <div><Label>Samples before judging</Label><Input type="number" min={3} max={100} value={rule.minSamples} onChange={(event) => updateDistribution(index, { minSamples: Number(event.target.value) })} className="mt-1 rounded-xs" /></div>
+              </div>
+            </div>
+          ))}
+          {distributionRules.length === 0 && <p className="py-2 text-[10px] text-paper-faint">No distribution promises.</p>}
         </div>
       </RuleSection>
     </div>

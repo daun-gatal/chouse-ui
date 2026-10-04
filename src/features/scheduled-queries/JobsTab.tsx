@@ -156,7 +156,7 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
         {canEdit && guideActive && (
           <div className="flex justify-end">
             <Button
-              data-onboarding-id="dataops-scheduled-create"
+              data-onboarding-id="data-scheduled-create"
               className={SQ_BTN_PRIMARY}
               onClick={openNewJob}
             >
@@ -213,7 +213,7 @@ export function JobsTab({ selectedJobId, onSelectedJobChange }: { selectedJobId?
         )}
         {canEdit && (
           <Button
-            data-onboarding-id="dataops-scheduled-create"
+            data-onboarding-id="data-scheduled-create"
             className={SQ_BTN_PRIMARY}
             onClick={openNewJob}
           >

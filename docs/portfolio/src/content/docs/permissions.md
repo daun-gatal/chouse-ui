@@ -91,6 +91,25 @@ Every permission string in CHouse UI, grouped by area. Permissions are checked o
 | `ai:chat` | AI chat assistant |
 | `ai_models:view` / `create` / `update` / `delete` | Manage AI providers/models |
 
+## Data observability, remediation & agents
+
+| Permission | Grants | Default roles |
+| --- | --- | --- |
+| `observe:view` | Data overview, lineage, pipelines, datasets, coverage, context (read) | Admin, Developer, Analyst, Viewer |
+| `observe:edit` | Pin criticality, dismiss suggestions, acknowledge pipeline incidents, recompute root cause | Admin, Developer |
+| `context:edit` | Curated context, canonical metrics, dbt import | Admin, Developer |
+| `performance:view` | Monitoring › Performance | Admin, Developer, Analyst, Viewer |
+| `capacity:view` | Monitoring › Capacity | Admin, Developer |
+| `cost:view` | Cost by consumer (rates also need `settings:update`) | Admin, Developer |
+| `upgrades:view` / `upgrades:run` | Upgrade assessments / run checks, canary replay, codec trials | Admin, Developer (view) |
+| `remediation:propose` | Propose fixes from the catalog | Admin, Developer |
+| `remediation:approve` / `remediation:approve_high` | Approve standard / high-impact fixes (two approvers) | Admin |
+| `schema:override` | Run DDL that breaks dependents after confirming | Admin |
+| `notebooks:edit` | Add and remove cells in investigation notebooks | Admin, Developer |
+| `agents:view` / `agents:manage` | Agents page / budget policies and the pause switch | Admin, Developer (view) |
+
+Evidence about a table is shown only to users whose [data access rules](/docs/data-access-rules/) allow that table; other users' query text needs `query:history:view:all`.
+
 ## System & settings
 
 | Permission | Grants |

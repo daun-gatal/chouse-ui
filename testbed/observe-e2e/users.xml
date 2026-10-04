@@ -1,0 +1,10 @@
+<clickhouse>
+  <profiles>
+    <default>
+      <log_queries>1</log_queries>
+      <log_query_views>1</log_query_views>
+      <allow_experimental_database_materialized_postgresql>1</allow_experimental_database_materialized_postgresql>
+      <allow_experimental_refreshable_materialized_view>1</allow_experimental_refreshable_materialized_view>
+    </default>
+  </profiles>
+</clickhouse>

@@ -29,7 +29,9 @@ export type AiCapabilityId =
   | "summarize-data-health"
   | "diagnose-health-incident"
   | "tune-health-promise"
-  | "correlate-health-incidents";
+  | "correlate-health-incidents"
+  | "explain-incident"
+  | "compile-watcher";
 
 export interface InvokeOptions {
   modelId?: string;

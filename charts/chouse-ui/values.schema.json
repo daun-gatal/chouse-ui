@@ -131,6 +131,34 @@
     "config": { "type": "object" },
     "extraEnv": { "type": "array" },
     "extraEnvFrom": { "type": "array" },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fleetIntervalSeconds": { "type": ["string", "integer"], "pattern": "^[0-9]*$" },
+        "retentionDays": { "type": ["string", "integer"], "pattern": "^[0-9]*$" },
+        "maxFingerprints": { "type": ["string", "integer"], "pattern": "^[0-9]*$" },
+        "scratchDatabase": { "type": "string" }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maintenanceWindow": { "type": "string" },
+        "slackChannel": { "type": "string" }
+      }
+    },
+    "publicBaseUrl": { "type": "string" },
+    "slack": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "signingSecret": { "type": "string" },
+        "botToken": { "type": "string" }
+      }
+    },
     "scheduledQueries": {
       "type": "object",
       "properties": {

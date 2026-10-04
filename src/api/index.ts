@@ -63,6 +63,14 @@ export type {
   FleetBulkHistoryResponse,
 } from './fleet';
 
+// Data observability (ADR 0016)
+export * as observeApi from './observe';
+export * as remediationApi from './remediation';
+export * as notebooksApi from './notebooks';
+export * as contextApi from './context';
+export * as upgradesApi from './upgrades';
+export * as agentsApi from './agents';
+
 // RBAC (Role-Based Access Control)
 export {
   rbacAuthApi,

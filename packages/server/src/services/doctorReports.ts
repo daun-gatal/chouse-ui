@@ -5,7 +5,7 @@
  * history. We keep the newest N (default 100) and prune the rest right after
  * every insert, so the table stays small without a separate timer.
  *
- * Raw SQL (dual SQLite/Postgres) mirrors fleetPoller.ts — list-preview columns
+ * Raw SQL (dual SQLite/Postgres) mirrors the observe collectors — list-preview columns
  * (status/summary) are denormalised out of the JSON blobs so the history rail
  * never has to parse every report.
  */

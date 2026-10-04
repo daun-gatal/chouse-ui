@@ -62,6 +62,9 @@ export const MONITORING_ACCESS_PERMISSIONS: string[] = [
   RBAC_PERMISSIONS.SCHEMA_ADVISOR_VIEW,
   RBAC_PERMISSIONS.CLUSTER_VIEW,
   RBAC_PERMISSIONS.ERRORS_VIEW,
+  RBAC_PERMISSIONS.PERFORMANCE_VIEW,
+  RBAC_PERMISSIONS.CAPACITY_VIEW,
+  RBAC_PERMISSIONS.UPGRADES_VIEW,
 ];
 
 /** Having ANY of these reveals the Explorer page (route + nav entry). */
@@ -71,11 +74,15 @@ export const EXPLORER_ACCESS_PERMISSIONS: string[] = [
 ];
 
 /**
- * Having ANY of these reveals the DataOps page (route + nav entry). DataOps is a
- * category home for user-defined, scheduled data jobs and data observability;
- * phase-1 membership is the Scheduled Queries feature, growing as features land.
+ * Having ANY of these reveals the Data page (route + nav entry): data
+ * observability (ADR 0016) plus the Scheduled Queries and Data Health features
+ * it absorbed from DataOps.
  */
-export const DATAOPS_ACCESS_PERMISSIONS: string[] = [
+export const DATA_ACCESS_PERMISSIONS: string[] = [
+  RBAC_PERMISSIONS.OBSERVE_VIEW,
   RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW,
   RBAC_PERMISSIONS.DATA_HEALTH_VIEW,
 ];
+
+/** Having ANY of these reveals the Agents page (route + nav entry). */
+export const AGENTS_ACCESS_PERMISSIONS: string[] = [RBAC_PERMISSIONS.AGENTS_VIEW];

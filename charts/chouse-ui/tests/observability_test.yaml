@@ -1,0 +1,134 @@
+suite: data observability settings (ADR 0016)
+templates:
+  - deployment.yaml
+  # referenced by checksum annotations — loaded, not asserted
+  - config-secret.yaml
+  - secret.yaml
+set:
+  secrets.existingSecret: s
+tests:
+  - it: renders no observability env when nothing is set (existing installs unchanged)
+    template: deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OBSERVE_FLEET_INTERVAL
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SLACK_SIGNING_SECRET
+          any: true
+
+  - it: renders the values the user sets
+    template: deployment.yaml
+    set:
+      observability.fleetIntervalSeconds: 60
+      observability.retentionDays: "30"
+      observability.maxFingerprints: 2000
+      observability.scratchDatabase: scratch
+      remediation.maintenanceWindow: "01:00-03:00"
+      remediation.slackChannel: C123
+      publicBaseUrl: https://chouse.example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OBSERVE_FLEET_INTERVAL, value: "60" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OBSERVE_RETENTION_DAYS, value: "30" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OBSERVE_MAX_FINGERPRINTS, value: "2000" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OBSERVE_SCRATCH_DATABASE, value: scratch }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: REMEDIATION_MAINTENANCE_WINDOW, value: "01:00-03:00" }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: REMEDIATION_SLACK_CHANNEL, value: C123 }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: PUBLIC_BASE_URL, value: https://chouse.example.com }
+
+  - it: references Slack keys from an existing Secret
+    template: deployment.yaml
+    set:
+      slack.existingSecret: my-slack
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SLACK_SIGNING_SECRET
+            valueFrom:
+              secretKeyRef: { name: my-slack, key: SLACK_SIGNING_SECRET, optional: true }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SLACK_BOT_TOKEN
+            valueFrom:
+              secretKeyRef: { name: my-slack, key: SLACK_BOT_TOKEN, optional: true }
+
+  - it: renders a chart-managed Slack Secret for inline values
+    template: secret.yaml
+    set:
+      slack.botToken: xoxb-test
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-chouse-ui-slack
+      - equal:
+          path: stringData.SLACK_BOT_TOKEN
+          value: xoxb-test
+      - notExists:
+          path: stringData.SLACK_SIGNING_SECRET
+
+  - it: wires only the inline Slack key that is set
+    template: deployment.yaml
+    set:
+      slack.signingSecret: shh
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SLACK_SIGNING_SECRET
+            valueFrom:
+              secretKeyRef: { name: RELEASE-NAME-chouse-ui-slack, key: SLACK_SIGNING_SECRET, optional: true }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SLACK_BOT_TOKEN
+          any: true
+
+  - it: refuses two sources of Slack secrets
+    template: deployment.yaml
+    set:
+      slack.existingSecret: my-slack
+      slack.botToken: xoxb-test
+    asserts:
+      - failedTemplate:
+          errorPattern: two sources of truth
+
+  - it: refuses a malformed maintenance window
+    template: deployment.yaml
+    set:
+      remediation.maintenanceWindow: "2am-4am"
+    asserts:
+      - failedTemplate:
+          errorPattern: HH:MM-HH:MM
+
+  - it: refuses observability values that config.observe would silently override
+    template: deployment.yaml
+    set:
+      observability.retentionDays: 30
+      config:
+        observe:
+          retention_days: 10
+    asserts:
+      - failedTemplate:
+          errorPattern: config.yaml values override

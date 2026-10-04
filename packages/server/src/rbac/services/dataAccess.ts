@@ -174,7 +174,7 @@ export async function checkRoleAccess(
  *
  * System databases are hidden from the Explorer UI but queries are allowed by default.
  */
-function evaluateRules(
+export function evaluateRules(
   rules: DataAccessRuleResponse[],
   database: string,
   table: string | null

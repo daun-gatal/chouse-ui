@@ -30,6 +30,7 @@ import {
   summarizeScheduledQueryCapability,
   tuneHealthPromiseCapability,
 } from "./dataOps";
+import { compileWatcherCapability, explainIncidentCapability } from "./observe";
 
 export const CAPABILITIES = {
   "optimize-query": optimizeQueryCapability,
@@ -51,6 +52,8 @@ export const CAPABILITIES = {
   "diagnose-health-incident": diagnoseHealthIncidentCapability,
   "tune-health-promise": tuneHealthPromiseCapability,
   "correlate-health-incidents": correlateHealthIncidentsCapability,
+  "explain-incident": explainIncidentCapability,
+  "compile-watcher": compileWatcherCapability,
 } as const satisfies Record<string, AnyCapability>;
 
 export type CapabilityId = keyof typeof CAPABILITIES;

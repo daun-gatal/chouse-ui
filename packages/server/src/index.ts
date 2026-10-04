@@ -307,14 +307,12 @@ logger.info(
   "CHouse UI Server starting"
 );
 
-// Initialize RBAC system + start the fleet poller once schema is ready.
-// The poller is opt-in via FLEET_POLLER_ENABLED — when the env is unset it
-// logs an info line and stays dormant, so chouse-ui installs that don't
-// want background polling keep their existing behaviour.
+// Initialize RBAC system, then start the observability collector (ADR 0016),
+// which includes fleet collection, and the remediation worker.
 initializeRbac().then(async () => {
   logger.info({ phase: "startup" }, "RBAC system ready");
-  const { FleetPoller } = await import("./services/fleetPoller");
-  FleetPoller.getInstance().start();
+  const { startObservability } = await import("./services/observe");
+  await startObservability();
   // Chouse AI scheduled scans (daily/weekly/monthly) — dormant until a schedule
   // is enabled in the UI; cheap to run (checks a config file every 60s).
   const { DoctorScheduler } = await import("./services/doctorScheduler");
@@ -434,13 +432,12 @@ async function gracefulShutdown(signal: string): Promise<void> {
     clearInterval(cleanupInterval);
     logger.info({ phase: "shutdown" }, "Cleanup interval cleared");
 
-    // Stop the fleet poller — waits briefly for an in-flight tick to finish
-    // writing snapshots before the process exits.
+    // Stop the collectors — waits briefly for in-flight runs, then releases leases.
     try {
-      const { FleetPoller } = await import("./services/fleetPoller");
-      await FleetPoller.getInstance().stop();
+      const { stopObservability } = await import("./services/observe");
+      await stopObservability();
     } catch (error) {
-      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Fleet poller stop failed");
+      logger.warn({ phase: "shutdown", err: error instanceof Error ? error.message : String(error) }, "Observability stop failed");
     }
 
     // Stop claiming new scheduled-query slots. Anything in flight that can't be

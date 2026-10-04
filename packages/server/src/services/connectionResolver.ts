@@ -134,7 +134,8 @@ async function listUsableConnections(
 export async function resolveRequestedConnection(
   rbacUserId: string,
   isSuperAdmin: boolean,
-  connectionId: string
+  connectionId: string,
+  tags: Record<string, string> = {}
 ): Promise<ResolvedConnection> {
   const usable = await listUsableConnections(rbacUserId, isSuperAdmin);
   const match = usable.find((candidate) => candidate.id === connectionId);
@@ -158,7 +159,7 @@ export async function resolveRequestedConnection(
     connectionId,
     connectionName: match.name,
     config,
-    service: new ClickHouseService(config, { rbacUserId }),
+    service: new ClickHouseService(config, { rbacUserId, tags }),
   };
 }
 
@@ -172,7 +173,8 @@ export async function resolveRequestedConnection(
  */
 export async function resolveDefaultConnection(
   rbacUserId: string,
-  isSuperAdmin: boolean
+  isSuperAdmin: boolean,
+  tags: Record<string, string> = {}
 ): Promise<ResolvedConnection> {
   const usable = await listUsableConnections(rbacUserId, isSuperAdmin);
 
@@ -200,5 +202,5 @@ export async function resolveDefaultConnection(
     { module: "ConnectionResolver", connectionId: chosen.id },
     "Request carried no connection id — using the user's default connection"
   );
-  return await resolveRequestedConnection(rbacUserId, isSuperAdmin, chosen.id);
+  return await resolveRequestedConnection(rbacUserId, isSuperAdmin, chosen.id, tags);
 }

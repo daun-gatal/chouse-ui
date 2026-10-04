@@ -253,8 +253,8 @@ Toolsets (default: `core,explore,query,observe,ops`):
 | core | `whoami`, `list_connections`, `use_connection` |
 | explore | `list_databases`, `list_tables`, `describe_table`, `sample_table` (≤20 rows) |
 | query | `query` (SELECT-only), `explain_query`, `list_saved_queries`, `get_saved_query`, `run_saved_query` (write definitions refused) |
-| observe | `metrics_overview`, `live_queries`, `fleet_snapshots`, `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `health_timeline`, `list_alerts`, `audit_list` |
-| writes (needs `MCP_ALLOW_WRITES`) | `create_saved_query`, `run_scheduled_job`, `run_health_check`, `acknowledge_incident`, `test_alert_channel` |
+| observe | `metrics_overview`, `live_queries`, `fleet_snapshots`, `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `health_timeline`, `list_alerts`, `audit_list`, `get_dataset_health`, `get_lineage`, `get_table_context`, `get_metric`, `get_pipeline_status`, `list_incidents` |
+| writes (needs `MCP_ALLOW_WRITES`) | `create_saved_query`, `run_scheduled_job`, `run_health_check`, `acknowledge_incident`, `test_alert_channel`, `propose_remediation` (files a proposal only; a human approves it, never the proposer) |
 | destructive (needs `MCP_ALLOW_DESTRUCTIVE`) | `kill_query`, `query_raw`, `delete_saved_query`, `delete_scheduled_job` |
 | ai (opt-in, LLM spend) | `ai_optimize`, `doctor_scan`, `doctor_reports`, `get_doctor_report` |
 
@@ -353,6 +353,13 @@ unattended use unless the operator explicitly accepts that trade-off.
    admin, AI provider/model secrets, user/role grants, policy writes, native
    ClickHouse user/role writes, connection create/delete, audit prune/export,
    and uploads are never exposed as tools — they stay in the browser.
+   Remediation approval and execution are never tools either.
+7. **Agent governance** ([ADR 0016](adr/0016-data-observability-platform.md) §10):
+   every MCP and PAT call is recorded on an agent session (Agents page).
+   Queries run through `EXPLAIN ESTIMATE` against the per-token, per-role or
+   default budget policy, results carry health notices for stale or
+   incident-affected tables, and an administrator can pause all agent access
+   at once (`AGENT_ACCESS_PAUSED` / `AGENT_POLICY_BLOCKED`).
 
 Connection scoping: pass `X-Connection-Id` as a request header or a
 `connection_id` tool argument; otherwise the caller's default connection is

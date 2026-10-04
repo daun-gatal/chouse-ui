@@ -92,6 +92,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@playwright/test": "1.56.1",
     "@testing-library/dom": "^10.0.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/react-hooks": "^8.0.1",

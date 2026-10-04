@@ -45,7 +45,20 @@ export type ConnectionContextVariables = {
   rbacPermissions?: string[];
   isRbacAdmin?: boolean;
   rbacConnectionId?: string;
+  authMethod?: "jwt" | "pat";
+  patId?: string;
 };
+
+/**
+ * log_comment tags for agent traffic (ADR 0016 §10): PAT-authenticated
+ * requests are attributed to the token, and MCP calls to their tool.
+ */
+export function agentTags(c: Context): Record<string, string> {
+  if (c.get("authMethod") !== "pat") return {};
+  const source = c.req.header("X-Chouse-Agent-Source") === "mcp" ? "mcp" : "pat";
+  const tool = c.req.header("X-Chouse-Agent-Tool");
+  return { source, pat_id: String(c.get("patId") ?? ""), ...(tool ? { tool: tool.slice(0, 64) } : {}) };
+}
 
 export function getCookie(c: Context, name: string): string | undefined {
   const cookies = c.req.header("Cookie") || "";
@@ -77,13 +90,13 @@ export async function connectionContextMiddleware(
 
   let resolved;
   if (requestedConnectionId) {
-    resolved = await resolveRequestedConnection(rbacUserId, isSuperAdmin, requestedConnectionId);
+    resolved = await resolveRequestedConnection(rbacUserId, isSuperAdmin, requestedConnectionId, agentTags(c));
   } else if (legacySessionId) {
     throw connectionContextStale(
       "Your connection session is no longer valid on this server. Reconnecting…"
     );
   } else {
-    resolved = await resolveDefaultConnection(rbacUserId, isSuperAdmin);
+    resolved = await resolveDefaultConnection(rbacUserId, isSuperAdmin, agentTags(c));
   }
 
   const factsForConnection = await getConnectionFacts(

@@ -1,6 +1,6 @@
 # Data health
 
-Data health lets your team write *promises* over datasets — freshness, volume and schema expectations — evaluated on a schedule, with incident tracking when reality drifts. Live in **DataOps** (`/dataops/data-health`).
+Data health lets your team write *promises* over datasets — freshness, volume and schema expectations — evaluated on a schedule, with incident tracking when reality drifts. Live in **Data** (`/data/datasets?view=promises`, incidents under `/data/incidents`).
 
 ## The three tabs
 
@@ -41,6 +41,6 @@ See [DataOps AI](/docs/dataops-ai/) for the summarization layer and [Scheduled q
 
 ## Permissions
 
-Reading promises/datasets/incidents falls under the DataOps access set (`scheduled_queries:view`-family gates the suite). Manage permissions via the [permission catalog](/docs/permissions/).
+Reading promises and their incidents needs `data_health:view` (`data_health:view_all` to see everyone's); creating and editing needs `data_health:edit`. Manage permissions via the [permission catalog](/docs/permissions/).
 
 > **Tip:** Start with one freshness promise per critical table — it catches the majority of silent ingestion failures (job succeeded, upstream data didn't arrive).

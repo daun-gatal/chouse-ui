@@ -88,17 +88,24 @@ export class ClickHouseService {
   private config: ConnectionConfig;
   private rbacUserId?: string;
 
-  constructor(config: ConnectionConfig, options?: { rbacUserId?: string }) {
+  constructor(config: ConnectionConfig, options?: { rbacUserId?: string; tags?: Record<string, string> }) {
     this.config = config;
     this.rbacUserId = options?.rbacUserId;
+    this.tags = options?.tags ?? {};
+  }
+
+  /** Extra log_comment fields, e.g. the agent (PAT / MCP) identity (ADR 0016 §10). */
+  private readonly tags: Record<string, string>;
+
+  /** The log_comment this service attaches to every query it runs. */
+  private get logCommentJson(): string {
+    return JSON.stringify({ rbac_user_id: this.rbacUserId, ...this.tags });
   }
 
   private get client(): ClickHouseClient {
     // Tag every query this service runs with the RBAC user so query_log
     // attributes them to the app user, not just the bare ClickHouse user.
-    const logComment = this.rbacUserId
-      ? JSON.stringify({ rbac_user_id: this.rbacUserId })
-      : undefined;
+    const logComment = this.rbacUserId ? this.logCommentJson : undefined;
     return ClientManager.getInstance().getClient(this.config, logComment);
   }
 
@@ -185,7 +192,7 @@ export class ClickHouseService {
         // Inject RBAC User ID into log_comment if present
         if (this.rbacUserId) {
           commandParams.clickhouse_settings = {
-            log_comment: JSON.stringify({ rbac_user_id: this.rbacUserId }),
+            log_comment: this.logCommentJson,
           };
         }
 
@@ -223,7 +230,7 @@ export class ClickHouseService {
       if (this.rbacUserId) {
         // Tag format: {"rbac_user_id":"UUID"}
         // This allows us to track which RBAC user executed the query regardless of the DB user
-        clickhouse_settings.log_comment = JSON.stringify({ rbac_user_id: this.rbacUserId });
+        clickhouse_settings.log_comment = this.logCommentJson;
       }
 
       const result = await this.client.query({
@@ -297,7 +304,7 @@ export class ClickHouseService {
     }
 
     if (this.rbacUserId) {
-      clickhouse_settings.log_comment = JSON.stringify({ rbac_user_id: this.rbacUserId });
+      clickhouse_settings.log_comment = this.logCommentJson;
     }
 
     const startMs = performance.now();
@@ -517,7 +524,7 @@ export class ClickHouseService {
       };
 
       if (this.rbacUserId) {
-        clickhouse_settings.log_comment = JSON.stringify({ rbac_user_id: this.rbacUserId });
+        clickhouse_settings.log_comment = this.logCommentJson;
       }
 
       const result = await this.client.insert({

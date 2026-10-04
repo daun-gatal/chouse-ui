@@ -16,6 +16,7 @@ import { explorerApi, metricsApi, savedQueriesApi, queryApi, configApi } from '@
 import { log as appLog } from '@/lib/log';
 import { escapeQualifiedIdentifier } from '@/helpers/sqlUtils';
 import { useAuthStore } from '@/stores';
+import { withSchemaOverride } from '@/lib/schemaPreflight';
 import type {
   DatabaseInfo,
   TableDetails,
@@ -148,7 +149,7 @@ export function useDropDatabase() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: explorerApi.dropDatabase,
+    mutationFn: (name: string) => withSchemaOverride(`DROP DATABASE ${name}`, (override) => explorerApi.dropDatabase(name, override)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.databases });
     },
@@ -177,7 +178,7 @@ export function useDropTable() {
 
   return useMutation({
     mutationFn: ({ database, table }: { database: string; table: string }) =>
-      explorerApi.dropTable(database, table),
+      withSchemaOverride(`DROP TABLE ${database}.${table}`, (override) => explorerApi.dropTable(database, table, override)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.databases });
     },

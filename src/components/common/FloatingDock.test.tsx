@@ -30,7 +30,8 @@ vi.mock("@/lib/navAccess", () => ({
   ADMIN_ACCESS_PERMISSIONS: ["admin:view"],
   MONITORING_ACCESS_PERMISSIONS: ["monitoring:view"],
   EXPLORER_ACCESS_PERMISSIONS: ["explorer:view"],
-  DATAOPS_ACCESS_PERMISSIONS: ["dataops:view"],
+  DATA_ACCESS_PERMISSIONS: ["observe:view"],
+  AGENTS_ACCESS_PERMISSIONS: ["agents:view"],
 }));
 
 vi.mock("@/features/onboarding/store", () => {
@@ -273,5 +274,16 @@ describe("FloatingDock mobile layout", () => {
     await waitFor(() => expect(mocks.getPreferences).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("button", { name: "Switch to floating dock" })).not.toBeNull();
     expect(localStorage.getItem("chouseui-dock-mode")).toBe("sidebar");
+  });
+
+  it("links Data and Agents (ADR 0016) in place of DataOps", () => {
+    render(
+      <MemoryRouter>
+        <FloatingDock />
+      </MemoryRouter>,
+    );
+    const hrefs = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(expect.arrayContaining(["/data", "/agents"]));
+    expect(hrefs).not.toContain("/dataops");
   });
 });

@@ -10,13 +10,16 @@ import {
   TableProperties,
   Network,
   ShieldAlert,
+  TrendingUp,
+  HardDrive,
+  ArrowUpCircle,
   type LucideIcon,
 } from "lucide-react";
 import InfoDialog from "@/components/common/InfoDialog";
 import { Button } from "@/components/ui/button";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
-import { cn } from "@/lib/utils";
 import { DataControls } from "@/components/common/DataControls";
+import { NavPill, PageHeader } from "@/components/common/PageShell";
 
 import LogsPage from "./Logs";
 import MetricsPage from "./Metrics";
@@ -26,6 +29,9 @@ import SchemaDoctorPage from "./SchemaDoctor";
 import NoPermission from "@/components/common/NoPermission";
 import ClusterActivityPage from "./ClusterActivity";
 import ErrorsPage from "./Errors";
+import { PerformanceView } from "@/features/observe/PerformanceView";
+import { CapacityView } from "@/features/observe/CapacityView";
+import { UpgradesView } from "@/features/observe/UpgradesView";
 
 interface TabConfig {
   icon: LucideIcon;
@@ -71,6 +77,21 @@ const TAB_CONFIG: Record<TabKey, TabConfig> = {
     label: "Errors",
     description: "Error counters & crashes",
   },
+  performance: {
+    icon: TrendingUp,
+    label: "Performance",
+    description: "Regressions against each query's own baseline",
+  },
+  capacity: {
+    icon: HardDrive,
+    label: "Capacity",
+    description: "Disk forecasts, growth, codecs & cost",
+  },
+  upgrades: {
+    icon: ArrowUpCircle,
+    label: "Upgrades",
+    description: "Readiness, canary replay & rollout",
+  },
 };
 
 type TabKey =
@@ -80,64 +101,10 @@ type TabKey =
   | "parts"
   | "schema"
   | "cluster"
-  | "errors";
-
-interface TabPillProps {
-  tabKey: TabKey;
-  isActive: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-}
-
-/**
- * Compact horizontal tab — icon + label + optional Live badge. Active row
- * grows a brand underline. Mirrors the in-page sub-tab style (Queries /
- * Patterns / By table / Histogram) so the navigation feels unified.
- */
-function TabPill({ tabKey, isActive, onClick, disabled }: TabPillProps) {
-  const config = TAB_CONFIG[tabKey];
-  const Icon = config.icon;
-
-  return (
-    <button
-      type="button"
-      data-onboarding-id={`monitoring-section-${tabKey}`}
-      onClick={onClick}
-      disabled={disabled}
-      aria-current={isActive ? "page" : undefined}
-      className={cn(
-        "group relative inline-flex h-9 items-center gap-2 px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
-        isActive ? "text-paper" : "text-paper-muted hover:text-paper",
-        disabled && "cursor-not-allowed opacity-50"
-      )}
-    >
-      <Icon
-        className={cn(
-          "h-3.5 w-3.5",
-          isActive ? "text-brand" : "text-paper-dim group-hover:text-paper"
-        )}
-        aria-hidden
-      />
-      <span>{config.label}</span>
-      {config.liveBadge && (
-        <span className="inline-flex items-center gap-1 rounded-xs border border-red-300 bg-red-50 px-1 py-px font-mono text-[8px] uppercase tracking-[0.16em] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
-          <span
-            className="h-1 w-1 rounded-full bg-red-500 motion-safe:animate-pulse dark:bg-red-400"
-            aria-hidden
-          />
-          Live
-        </span>
-      )}
-      {isActive && (
-        <span
-          className="absolute -bottom-px left-0 right-0 h-px bg-brand"
-          aria-hidden
-        />
-      )}
-    </button>
-  );
-}
+  | "errors"
+  | "performance"
+  | "capacity"
+  | "upgrades";
 
 export default function Monitoring() {
   const { hasPermission, hasAnyPermission } = useRbacStore();
@@ -157,6 +124,9 @@ export default function Monitoring() {
   const canViewSchema = hasPermission(RBAC_PERMISSIONS.SCHEMA_ADVISOR_VIEW);
   const canViewCluster = hasPermission(RBAC_PERMISSIONS.CLUSTER_VIEW);
   const canViewErrors = hasPermission(RBAC_PERMISSIONS.ERRORS_VIEW);
+  const canViewPerformance = hasPermission(RBAC_PERMISSIONS.PERFORMANCE_VIEW);
+  const canViewCapacity = hasPermission(RBAC_PERMISSIONS.CAPACITY_VIEW);
+  const canViewUpgrades = hasPermission(RBAC_PERMISSIONS.UPGRADES_VIEW);
 
   const availableTabs: TabKey[] = [
     ...(canViewLogs ? (["logs"] as TabKey[]) : []),
@@ -166,6 +136,9 @@ export default function Monitoring() {
     ...(canViewCluster ? (["cluster"] as TabKey[]) : []),
     ...(canViewErrors ? (["errors"] as TabKey[]) : []),
     ...(canViewLiveQueries ? (["live-queries"] as TabKey[]) : []),
+    ...(canViewPerformance ? (["performance"] as TabKey[]) : []),
+    ...(canViewCapacity ? (["capacity"] as TabKey[]) : []),
+    ...(canViewUpgrades ? (["upgrades"] as TabKey[]) : []),
   ];
 
   const allTabKeys = Object.keys(TAB_CONFIG) as TabKey[];
@@ -217,38 +190,25 @@ export default function Monitoring() {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-ink-50" data-onboarding-id="monitoring-page">
       {/* ─── Header — compact: title + tabs + controls share one row ─── */}
-      <header className="flex-none border-b border-ink-500 px-6 pt-4">
-        <div className="flex flex-wrap items-end justify-between gap-4 pb-0">
-          <div className="flex items-center gap-3 pb-2">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xs border border-ink-500 bg-ink-100 text-paper-muted">
-              <Activity className="h-3.5 w-3.5" aria-hidden />
-            </span>
-            <div className="flex flex-col gap-0">
-              <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-paper-faint">
-                Observability
-              </span>
-              <h1 className="text-[18px] font-semibold leading-tight tracking-tight text-paper">
-                Monitoring
-              </h1>
-            </div>
-          </div>
-
-          {/* Tab pills — horizontal, single line, underline active */}
-          <nav
-            aria-label="Monitoring sections"
-            className="scrollbar-hide -mb-px flex items-center overflow-x-auto"
-          >
-            {availableTabs.map((tabKey) => (
-              <TabPill
-                key={tabKey}
-                tabKey={tabKey}
-                isActive={activeTab === tabKey}
-                onClick={() => navigate(`/monitoring/${tabKey}`)}
-              />
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2 pb-2">
+      <PageHeader
+        icon={Activity}
+        eyebrow="Observability"
+        title="Monitoring"
+        navLabel="Monitoring sections"
+        nav={availableTabs.map((tabKey) => (
+          <NavPill
+            key={tabKey}
+            icon={TAB_CONFIG[tabKey].icon}
+            label={TAB_CONFIG[tabKey].label}
+            liveBadge={TAB_CONFIG[tabKey].liveBadge}
+            onboardingId={`monitoring-section-${tabKey}`}
+            isActive={activeTab === tabKey}
+            onClick={() => navigate(`/monitoring/${tabKey}`)}
+            noShrink
+          />
+        ))}
+        actions={
+          <>
             <DataControls
               lastUpdated={lastUpdated}
               isRefreshing={isRefreshing}
@@ -265,9 +225,9 @@ export default function Monitoring() {
             >
               <InfoIcon className="h-4 w-4" />
             </Button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {/* ─── Content ─── */}
       <div className="flex-1 overflow-hidden p-4" data-onboarding-id="monitoring-content">
@@ -356,6 +316,24 @@ export default function Monitoring() {
             />
           </div>
         )}
+
+        {activeTab === "performance" && canViewPerformance && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <PerformanceView refreshKey={refreshKey} />
+          </div>
+        )}
+
+        {activeTab === "capacity" && canViewCapacity && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <CapacityView refreshKey={refreshKey} />
+          </div>
+        )}
+
+        {activeTab === "upgrades" && canViewUpgrades && (
+          <div className="h-full overflow-hidden rounded-md border border-ink-500 bg-ink-100">
+            <UpgradesView refreshKey={refreshKey} />
+          </div>
+        )}
           </>
         )}
       </div>
@@ -393,6 +371,9 @@ export default function Monitoring() {
                       {key === "schema" && "Lint columns for needless Nullable wrappers and oversized integers."}
                       {key === "cluster" && "Replication queue & mutations, plus cluster topology, Distributed insert backlog, and the ON CLUSTER DDL queue."}
                       {key === "errors" && "Server-wide error counters from system.errors and any crashes from system.crash_log."}
+                      {key === "performance" && "Each query shape against its own 14-day baseline, with the upgrades, DDL and setting changes around a regression."}
+                      {key === "capacity" && "Disk forecasts per node, top growth, codec savings measured on samples, and cost by consumer."}
+                      {key === "upgrades" && "Check a target version against your workload, replay it on a canary, and follow rollout gates."}
                     </span>
                   </div>
                 </div>

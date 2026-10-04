@@ -54,6 +54,24 @@ instead of becoming silent duplicate jobs or per-pod databases at runtime.
 {{- fail "clickhouse.auth.password is required when clickhouse.enabled=true — the chart never invents credentials. Generate with: openssl rand -hex 16" }}
 {{- end }}
 
+{{/* Data Observability Platform (ADR 0016 §16). */}}
+{{- if and .Values.slack.existingSecret (or .Values.slack.signingSecret .Values.slack.botToken) }}
+{{- fail "slack.existingSecret together with slack.signingSecret/botToken: two sources of truth. Put the keys in the existing Secret, or use the inline values — not both." }}
+{{- end }}
+{{- with .Values.remediation.maintenanceWindow }}
+{{- if not (regexMatch "^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$" .) }}
+{{- fail (printf "remediation.maintenanceWindow must be HH:MM-HH:MM in UTC (e.g. 02:00-04:00), got '%s'" .) }}
+{{- end }}
+{{- end }}
+{{- if and .Values.config (or .Values.observability.fleetIntervalSeconds .Values.observability.retentionDays .Values.observability.maxFingerprints .Values.observability.scratchDatabase) }}
+{{- if hasKey .Values.config "observe" }}
+{{- fail "observability.* and config.observe are both set: config.yaml values override the pod environment, so the chart values would be silently ignored. Use one of them." }}
+{{- end }}
+{{- end }}
+{{- if and .Values.config (or .Values.slack.existingSecret .Values.slack.signingSecret .Values.slack.botToken) (hasKey .Values.config "slack") }}
+{{- fail "slack.* and config.slack are both set: keep Slack secrets in slack.* (a Secret), not in config." }}
+{{- end }}
+
 {{/* MCP (ADR 0013): mirrors the server's own startup validation so a bad
      combination fails at render time instead of in the pod. */}}
 {{- if .Values.mcp.allowWrites }}

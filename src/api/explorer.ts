@@ -102,8 +102,8 @@ export async function createDatabase(input: CreateDatabaseInput): Promise<{ mess
 /**
  * Drop a database
  */
-export async function dropDatabase(name: string): Promise<{ message: string }> {
-  return api.delete(`/explorer/database/${name}`);
+export async function dropDatabase(name: string, schemaOverride = false): Promise<{ message: string }> {
+  return api.delete(`/explorer/database/${name}`, schemaOverride ? { headers: { "X-Schema-Override": "confirm" } } : undefined);
 }
 
 /**
@@ -116,7 +116,7 @@ export async function createTable(input: CreateTableInput): Promise<{ message: s
 /**
  * Drop a table
  */
-export async function dropTable(database: string, table: string): Promise<{ message: string }> {
-  return api.delete(`/explorer/table/${database}/${table}`);
+export async function dropTable(database: string, table: string, schemaOverride = false): Promise<{ message: string }> {
+  return api.delete(`/explorer/table/${database}/${table}`, schemaOverride ? { headers: { "X-Schema-Override": "confirm" } } : undefined);
 }
 

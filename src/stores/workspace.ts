@@ -16,6 +16,8 @@ import { useRbacStore } from './rbac';
 import { useAuthStore } from './auth';
 import { queryClient } from '@/providers/QueryProvider';
 import { queryKeys } from '@/hooks/useQuery';
+import { SCHEMA_PREFLIGHT_CODE } from '@/lib/schemaPreflight';
+import { parsePreflightDetails, useSchemaPreflightStore } from './schemaPreflight';
 
 // ============================================
 // Types
@@ -58,7 +60,7 @@ export interface WorkspaceState {
   updateTabTitle: (tabId: string, title: string) => void;
 
   // Query actions
-  runQuery: (query: string, tabId?: string) => Promise<QueryResult>;
+  runQuery: (query: string, tabId?: string, options?: { schemaOverride?: boolean }) => Promise<QueryResult>;
   abortQuery: (tabId: string) => void;
   loadQueryHistory: () => Promise<void>;
   removeQueryHistoryItem: (id: string) => void;
@@ -335,7 +337,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
        *   4. Subsequent onRows — rows appended live (up to maxResultRows cap)
        *   5. onEnd             — isStreaming = false, final statistics applied
        */
-      runQuery: async (query: string, tabId?: string) => {
+      runQuery: async (query: string, tabId?: string, options?: { schemaOverride?: boolean }) => {
         const executionQueryId = `query_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         const startedAt = Date.now();
         const authState = useAuthStore.getState();
@@ -476,31 +478,54 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               resolveStream(finalResult);
             },
 
-            onError(message) {
-              const errorResult: QueryResult = {
-                meta: streamedMeta,
-                data: streamedRows,
-                statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
-                rows: 0,
-                queryId: executionQueryId,
-                error: message,
+            onError(message, info) {
+              const fail = (): void => {
+                const errorResult: QueryResult = {
+                  meta: streamedMeta,
+                  data: streamedRows,
+                  statistics: { elapsed: 0, rows_read: 0, bytes_read: 0 },
+                  rows: 0,
+                  queryId: executionQueryId,
+                  error: message,
+                };
+
+                if (tabId) {
+                  get().updateTab(tabId, {
+                    result: errorResult,
+                    isLoading: false,
+                    isStreaming: false,
+                    queryId: null,
+                    error: message,
+                  });
+                  tabAbortControllers.delete(tabId);
+                }
+
+                recordHistory('error', 0, message);
+                resolveStream(errorResult);
               };
 
-              if (tabId) {
-                get().updateTab(tabId, {
-                  result: errorResult,
-                  isLoading: false,
-                  isStreaming: false,
-                  queryId: null,
-                  error: message,
-                });
-                tabAbortControllers.delete(tabId);
+              // ADR 0016 §11: a schema change that breaks dependents. Show the
+              // impact; an allowed user who confirms re-runs it once with the override.
+              const preflight = !options?.schemaOverride && info?.code === SCHEMA_PREFLIGHT_CODE
+                ? parsePreflightDetails(info.details)
+                : null;
+              if (!preflight) {
+                fail();
+                return;
               }
-
-              recordHistory('error', 0, message);
-              resolveStream(errorResult);
+              void useSchemaPreflightStore.getState()
+                .ask({ statement: query, message, ...preflight })
+                .then((confirmed) => {
+                  if (!confirmed) {
+                    fail();
+                    return;
+                  }
+                  if (tabId) tabAbortControllers.delete(tabId);
+                  get().runQuery(query, tabId, { schemaOverride: true }).then(resolveStream, rejectStream);
+                });
             },
-          }
+          },
+          { schemaOverride: options?.schemaOverride }
         ).catch((error: unknown) => {
           // AbortError = user pressed Stop — silent cancellation
           if (error instanceof DOMException && error.name === "AbortError") {

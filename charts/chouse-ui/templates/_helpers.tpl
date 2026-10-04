@@ -149,11 +149,66 @@ scheduler). Scheduler enablement is per-workload, so it is NOT set here.
 - name: CLICKHOUSE_DEFAULT_USER
   value: {{ .Values.clickhouse.auth.username | quote }}
 {{- end }}
+{{- include "chouse-ui.observabilityEnv" . }}
 {{- if .Values.config }}
 - name: CHOUSE_CONFIG_PATH
   value: {{ include "chouse-ui.configMountPath" . }}/config.yaml
 {{- end }}
 {{- with .Values.extraEnv }}
 {{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
+Data Observability Platform settings (ADR 0016 §16). Only values the user set
+are rendered, so existing installs render exactly as before.
+*/}}
+{{- define "chouse-ui.observabilityEnv" -}}
+{{- with .Values.observability.fleetIntervalSeconds }}
+- name: OBSERVE_FLEET_INTERVAL
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.observability.retentionDays }}
+- name: OBSERVE_RETENTION_DAYS
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.observability.maxFingerprints }}
+- name: OBSERVE_MAX_FINGERPRINTS
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.observability.scratchDatabase }}
+- name: OBSERVE_SCRATCH_DATABASE
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.remediation.maintenanceWindow }}
+- name: REMEDIATION_MAINTENANCE_WINDOW
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.remediation.slackChannel }}
+- name: REMEDIATION_SLACK_CHANNEL
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.publicBaseUrl }}
+- name: PUBLIC_BASE_URL
+  value: {{ . | quote }}
+{{- end }}
+{{- if or .Values.slack.existingSecret .Values.slack.signingSecret .Values.slack.botToken }}
+{{- $secret := .Values.slack.existingSecret | default (printf "%s-slack" (include "chouse-ui.fullname" .)) }}
+{{- if or .Values.slack.existingSecret .Values.slack.signingSecret }}
+- name: SLACK_SIGNING_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret }}
+      key: SLACK_SIGNING_SECRET
+      optional: true
+{{- end }}
+{{- if or .Values.slack.existingSecret .Values.slack.botToken }}
+- name: SLACK_BOT_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret }}
+      key: SLACK_BOT_TOKEN
+      optional: true
+{{- end }}
 {{- end }}
 {{- end }}

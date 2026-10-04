@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import { McpApiClient, McpApiError } from "./api";
+import { McpApiClient, McpApiError, runInToolScope } from "./api";
 import type { McpToolContext } from "./types";
 
 const CTX: McpToolContext = {
@@ -108,5 +108,25 @@ describe("McpApiClient", () => {
     const error = await client.request("GET", "/api/raw").catch((e: unknown) => e as McpApiError);
     expect(error.code).toBe("REQUEST_FAILED");
     expect(error.message).toContain("server exploded");
+  });
+});
+
+describe("McpApiClient tool scope", () => {
+  it("marks the scope recorded when the server already put the call on the agent session", async () => {
+    const proxy = new Hono();
+    proxy.post("/api/query/table/select", (c) => {
+      c.header("X-Chouse-Agent-Recorded", "1");
+      return c.json({ success: true, data: { rows: [] } });
+    });
+    proxy.get("/api/observe/pipelines", (c) => c.json({ success: true, data: { pipelines: [] } }));
+    const client = new McpApiClient(proxy, CTX, 5000);
+
+    const governed = { tool: "query", recorded: false };
+    await runInToolScope(governed, () => client.request("POST", "/api/query/table/select", { body: {} }));
+    expect(governed.recorded).toBe(true);
+
+    const plain = { tool: "get_pipeline_status", recorded: false };
+    await runInToolScope(plain, () => client.request("GET", "/api/observe/pipelines"));
+    expect(plain.recorded).toBe(false);
   });
 });

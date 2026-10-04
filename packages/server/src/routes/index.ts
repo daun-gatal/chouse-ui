@@ -16,6 +16,13 @@ import alerting from "./alerting";
 import scheduledQueries from "./scheduled-queries";
 import dataHealth from "./data-health";
 import queryHistory from "./query-history";
+import observe from "./observe";
+import remediation from "./remediation";
+import notebooks from "./notebooks";
+import contextRoute from "./context";
+import upgrades from "./upgrades";
+import agents from "./agents";
+import integrations from "./integrations";
 
 const api = new Hono();
 
@@ -46,6 +53,8 @@ const apiProtectionMiddleware = async (c: Context, next: Next) => {
     "/api/rbac/auth/refresh",
     "/api/rbac/auth/sso",
     "/api/rbac/health",
+    // Signed by Slack, verified in the handler (ADR 0016 §8).
+    "/api/integrations/slack/interactions",
   ];
   if (publicPaths.some(p => path === p || path.startsWith(p + "/"))) {
     await next();
@@ -96,6 +105,15 @@ api.route("/alerting", alerting);
 api.route("/scheduled-queries", scheduledQueries);
 api.route("/data-health", dataHealth);
 api.route("/query-history", queryHistory);
+
+// Data Observability Platform (ADR 0016)
+api.route("/observe", observe);
+api.route("/remediation", remediation);
+api.route("/notebooks", notebooks);
+api.route("/context", contextRoute);
+api.route("/upgrades", upgrades);
+api.route("/agents", agents);
+api.route("/integrations", integrations);
 
 // RBAC routes (Role-Based Access Control)
 api.route("/rbac", rbacRoutes);

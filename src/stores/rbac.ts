@@ -536,6 +536,23 @@ export const RBAC_PERMISSIONS = {
   DATA_HEALTH_DELETE: 'data_health:delete',
   DATA_HEALTH_RUN: 'data_health:run',
   DATA_HEALTH_VIEW_ALL: 'data_health:view_all',
+
+  // Data Observability Platform (ADR 0016)
+  OBSERVE_VIEW: 'observe:view',
+  OBSERVE_EDIT: 'observe:edit',
+  CONTEXT_EDIT: 'context:edit',
+  PERFORMANCE_VIEW: 'performance:view',
+  CAPACITY_VIEW: 'capacity:view',
+  COST_VIEW: 'cost:view',
+  UPGRADES_VIEW: 'upgrades:view',
+  UPGRADES_RUN: 'upgrades:run',
+  REMEDIATION_PROPOSE: 'remediation:propose',
+  REMEDIATION_APPROVE: 'remediation:approve',
+  REMEDIATION_APPROVE_HIGH: 'remediation:approve_high',
+  SCHEMA_OVERRIDE: 'schema:override',
+  AGENTS_VIEW: 'agents:view',
+  AGENTS_MANAGE: 'agents:manage',
+  NOTEBOOKS_EDIT: 'notebooks:edit',
 } as const;
 
 export type RbacPermission = typeof RBAC_PERMISSIONS[keyof typeof RBAC_PERMISSIONS];

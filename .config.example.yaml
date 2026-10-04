@@ -88,9 +88,29 @@ jwt:
 # Fleet Monitoring — optional
 # ============================================
 fleet:
-  poller_enabled: false
+  # Deprecated and ignored (ADR 0016): fleet collection is always on.
+  # poller_enabled: false
+  # Superseded by observe.fleet_interval; still read when that is unset.
   poll_interval_seconds: 30
   alert_config_file: /app/data/alert-config.json
+
+# ============================================
+# Data Observability Platform (ADR 0016) — optional, defaults shown
+# ============================================
+observe:
+  fleet_interval: 30            # seconds between fleet snapshots
+  retention_days: 90            # lineage, pipeline and query-shape evidence
+  max_fingerprints: 5000        # query shapes tracked per connection
+  scratch_database: chouse_scratch  # where codec trials copy samples
+
+remediation:
+  maintenance_window: "02:00-04:00"  # UTC, for window-only fixes
+  # slack_channel: C0123456789       # approval requests
+
+# public_base_url: https://chouse.example.com   # links in Slack messages
+# slack:
+#   signing_secret: ""   # prefer env SLACK_SIGNING_SECRET from a secret store
+#   bot_token: ""        # prefer env SLACK_BOT_TOKEN
 
 # ============================================
 # AI SRE / Doctor — optional

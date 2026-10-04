@@ -94,7 +94,68 @@ jobs:
         run: bun install
 
       - name: Run Frontend Tests
-        run: bunx vitest run src/api src/lib src/helpers src/hooks src/stores src/utils --run --exclude '**/packages/**'
+        # Full suite (ADR 0016 gate 3); vitest.config.ts excludes packages/ and e2e/.
+        run: bunx vitest run
+
+  observe-e2e:
+    name: Observability e2e (every source)
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 40
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ClickHouse 26.5 + 23.8, Redpanda, RabbitMQ, NATS, S3, Azurite and
+      # PostgreSQL in Docker; the suites run inside that network (ADR 0016 gate 8).
+      - name: Run observability e2e
+        run: ./scripts/e2e-observe.sh
+
+  ui-e2e:
+    name: UI e2e (parity)
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Node (Playwright runner)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        run: bun install && (cd packages/server && bun install)
+
+      # Baselines were captured with Google Chrome (preinstalled on the runner).
+      - name: Run UI e2e
+        env:
+          PW_CHANNEL: chrome
+        run: ./scripts/e2e-ui.sh
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-report
+          path: |
+            e2e/ui/.report
+            e2e/ui/.results
+          # Both folders start with a dot; upload-artifact skips them otherwise.
+          include-hidden-files: true
+          retention-days: 7
 
   build:
     name: Build

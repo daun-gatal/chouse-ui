@@ -73,6 +73,12 @@ mock.module("../middleware/dataAccess", () => ({
     checkTableAccess: mockCheckTableAccess
 }));
 
+const mockEnforceSchemaPreflight = mock();
+
+mock.module("../middleware/schemaPreflight", () => ({
+    enforceSchemaPreflight: mockEnforceSchemaPreflight
+}));
+
 import explorerRoutes from "./explorer";
 import { errorHandler } from "../middleware/error";
 
@@ -100,6 +106,8 @@ describe("Explorer Routes", () => {
         mockFilterTables.mockClear();
         mockCheckDatabaseAccess.mockClear();
         mockCheckTableAccess.mockClear();
+        mockEnforceSchemaPreflight.mockReset();
+        mockEnforceSchemaPreflight.mockResolvedValue(null);
 
         // Default mock behaviors
         mockPing.mockResolvedValue(true);
@@ -179,6 +187,19 @@ describe("Explorer Routes", () => {
 
             expect(res.status).toBe(200);
             expect(mockExecuteQuery).toHaveBeenCalledWith("DROP DATABASE IF EXISTS `dropped_db`");
+        });
+
+        it("refuses a drop that breaks dependents (schema preflight)", async () => {
+            mockEnforceSchemaPreflight.mockImplementation(async (c) =>
+                c.json({ success: false, error: { code: "SCHEMA_PREFLIGHT_BREAKS", message: "breaks" } }, 409));
+            const res = await app.request("/explorer/database/dropped_db", {
+                method: "DELETE",
+                headers: { "Authorization": "Bearer token" }
+            });
+
+            expect(res.status).toBe(409);
+            expect(mockEnforceSchemaPreflight.mock.calls[0][2]).toBe("DROP DATABASE IF EXISTS `dropped_db`");
+            expect(mockExecuteQuery).not.toHaveBeenCalledWith("DROP DATABASE IF EXISTS `dropped_db`");
         });
     });
 });

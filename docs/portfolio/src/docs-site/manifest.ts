@@ -86,6 +86,7 @@ export const DOC_GROUPS: DocGroup[] = [
       { slug: "monitoring-schema-advisor", title: "Schema advisor", description: "Nullable-column and oversized-integer linter over system.parts_columns, ranked by on-disk bytes." },
       { slug: "monitoring-cluster-activity", title: "Cluster activity", description: "Mutations, replication queue, blocked-task indicators and per-replica lag from system.mutations and system.replicas." },
       { slug: "monitoring-metrics", title: "Metrics", description: "Nine tabs of ClickHouse-native observability: overview, performance, storage, merges, errors, memory, CPU, ZooKeeper and network." },
+      { slug: "monitoring-performance-capacity", title: "Performance, capacity & upgrades", description: "Query-shape regressions next to the changes around them, disk forecasts and measured codec savings, and upgrade readiness with canary replay." },
       { slug: "monitoring-errors", title: "Errors", description: "A searchable viewer over system.errors and the crash log so recurring failures surface without ad-hoc SQL." },
     ],
   },
@@ -101,8 +102,11 @@ export const DOC_GROUPS: DocGroup[] = [
   },
   {
     id: "dataops",
-    label: "DataOps",
+    label: "Data",
     pages: [
+      { slug: "data-observability", title: "Data observability", description: "The Data page: learned freshness and volume baselines for every table, coverage, drift, context and watchers — without scanning tables." },
+      { slug: "data-pipelines-lineage", title: "Pipelines & lineage", description: "Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, replication, views and writers in one status vocabulary, and lineage without instrumentation." },
+      { slug: "data-incidents", title: "Incidents, root cause & fixes", description: "Cross-layer root cause and blast radius, investigation notebooks, approved remediation and schema change preflight." },
       { slug: "scheduled-queries", title: "Scheduled queries", description: "Cron-style SQL jobs with macros, run history, lineage and per-job leases that are safe across replicas." },
       { slug: "data-health", title: "Data health", description: "Promises over your datasets — freshness, volume and schema checks evaluated on a schedule with incident tracking." },
       { slug: "dataops-ai", title: "DataOps AI", description: "The operational brief: AI-generated summaries of scheduled jobs and data-health incidents in one card." },
@@ -113,6 +117,7 @@ export const DOC_GROUPS: DocGroup[] = [
     label: "Automation",
     pages: [
       { slug: "mcp", title: "MCP server", description: "Operate CHouse UI from AI agents over Model Context Protocol on port 8752 — read-only by default, human-approved destructive tools." },
+      { slug: "agents", title: "Agents & governance", description: "Every MCP and token agent session, budget policies checked before queries run, health notices and the pause switch." },
       { slug: "cli", title: "CLI", description: "The chouse command line: query, explore, monitor, run the doctor and manage schedules from scripts and CI." },
     ],
   },

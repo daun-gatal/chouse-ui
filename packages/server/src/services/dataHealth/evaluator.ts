@@ -79,8 +79,40 @@ function staticEvaluation(
     }
     case "schema_contract":
     case "volume_anomaly":
+    case "distribution":
       return { outcome: "not_evaluated", expectedLower: null, expectedUpper: null, message: "Check requires specialized evaluation" };
   }
+}
+
+/**
+ * ADR 0016 §5: a column statistic must stay within `tolerance`× of its own
+ * recent median. Ratios near zero get an absolute floor so 0.01% → 0.03% of
+ * nulls does not page anyone.
+ */
+export function evaluateDistribution(
+  check: Extract<DataHealthCheckDefinition, { type: "distribution" }>,
+  value: number,
+  history: number[],
+): DataHealthMetricEvaluation {
+  const base = { checkKey: check.checkKey, type: check.type, severity: check.severity, observedValue: value };
+  if (history.length < check.config.minSamples) {
+    return { ...base, outcome: "learning", expectedLower: null, expectedUpper: null, message: `Learning the ${check.config.statistic} of ${check.config.column} (${history.length}/${check.config.minSamples} samples)` };
+  }
+  const center = median(history);
+  const isRatio = check.config.statistic !== "p50" && check.config.statistic !== "p95";
+  const floor = isRatio ? 0.005 : 0;
+  const magnitude = Math.abs(center);
+  const lower = center >= 0 ? Math.max(0, magnitude / check.config.tolerance - floor) : center * check.config.tolerance;
+  const upper = center >= 0 ? magnitude * check.config.tolerance + floor : center / check.config.tolerance;
+  const pass = value >= lower && value <= upper;
+  const shift = center !== 0 ? `${(value / center).toFixed(2)}× its usual value` : "a change from zero";
+  return {
+    ...base,
+    outcome: pass ? "pass" : "breach",
+    expectedLower: lower,
+    expectedUpper: upper,
+    message: pass ? `${check.config.column} ${check.config.statistic} is within ${check.config.tolerance}× of its median` : `${check.config.column} ${check.config.statistic} moved to ${shift}`,
+  };
 }
 
 export function evaluateDataHealth(
@@ -123,6 +155,11 @@ export function evaluateDataHealth(
       const upper = check.config.hardMax == null ? (bounds?.upper ?? value) : Math.min(bounds?.upper ?? check.config.hardMax, check.config.hardMax);
       const pass = value >= lower && value <= upper;
       evaluations.push({ checkKey: check.checkKey, type: check.type, severity: check.severity, outcome: pass ? "pass" : "breach", observedValue: value, expectedLower: lower, expectedUpper: upper, message: pass ? "Volume is within its learned range" : "Volume is outside its learned range" });
+      continue;
+    }
+
+    if (check.type === "distribution") {
+      evaluations.push(evaluateDistribution(check, value, (history[check.checkKey] ?? []).filter(Number.isFinite)));
       continue;
     }
 

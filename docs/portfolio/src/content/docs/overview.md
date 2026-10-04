@@ -13,6 +13,8 @@ Open source under Apache 2.0, self-hosted, no exporter or agent required on your
 | **Audit trail** | Every action and query logged with actor, connection and timestamp |
 | **Monitoring** | ClickHouse-native observability — query logs, memory breakdown, top-resource queries, replica lag, parts/merges, schema lints |
 | **Fleet view** | Every cluster in one pane with per-card polling, status/memory/lag and drill-down |
+| **Data observability** | Learned freshness and volume baselines for every table, every ingestion source in one status vocabulary, lineage, cross-layer root cause and approved fixes |
+| **Agent governance** | Dataset health, lineage and context for MCP agents; budgets checked before queries run; a pause switch |
 | **Chouse AI (SRE)** | Read-only diagnostics: fleet root-cause scans with auto-RCA to Slack/email, in-tab query optimization (before → after EXPLAIN), error/parts diagnosis |
 
 The same capability set is operable without the browser: the [MCP server](/docs/mcp/) for AI agents and the [CLI](/docs/cli/) for scripts and CI.
@@ -28,8 +30,8 @@ Use the left sidebar to navigate; this list is the map:
 5. **Query workspace** — the SQL editor, Visual EXPLAIN, saved queries, command palette, AI Assist
 6. **Monitoring** — query logs, live queries, parts, schema advisor, cluster activity, metrics, errors
 7. **Fleet & Chouse AI** — the fleet view, threshold alerts, the Fleet Doctor and in-tab AI actions
-8. **DataOps** — scheduled queries, data health promises and the operational AI brief
-9. **Automation** — MCP server and CLI
+8. **Data** — data observability, pipelines and lineage, incidents with root cause and fixes, scheduled queries, data health promises and the operational AI brief
+9. **Automation** — MCP server, agents & governance, and CLI
 10. **Deploy & reference** — Docker, Helm, upgrades, architecture, security model, troubleshooting, FAQ
 
 ## Where to start

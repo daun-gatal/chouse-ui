@@ -284,7 +284,7 @@ ack are actions needing --yes.`,
 			render(resolved, got)
 		},
 	}
-	cmd.AddCommand(list, incidents, timeline, run, ack)
+	cmd.AddCommand(list, incidents, timeline, run, ack, newDatasetHealthCmd())
 	return cmd
 }
 

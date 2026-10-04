@@ -1,0 +1,47 @@
+<!-- Single-node ClickHouse for the observability e2e (ADR 0016): embedded
+     Keeper (S3Queue / AzureQueue keep file state there), the queue logs the
+     object-storage adapters read, and query_views_log for view outcomes. -->
+<clickhouse>
+  <keeper_server>
+    <tcp_port>9181</tcp_port>
+    <server_id>1</server_id>
+    <log_storage_path>/var/lib/clickhouse/coordination/log</log_storage_path>
+    <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+    <raft_configuration>
+      <server><id>1</id><hostname>localhost</hostname><port>9234</port></server>
+    </raft_configuration>
+  </keeper_server>
+  <zookeeper>
+    <node><host>localhost</host><port>9181</port></node>
+  </zookeeper>
+  <macros>
+    <shard>1</shard>
+    <replica>obs-1</replica>
+  </macros>
+  <remote_servers>
+    <!-- One reachable shard and one that never answers: Distributed backlog. -->
+    <obs_cluster>
+      <shard><replica><host>localhost</host><port>9000</port></replica></shard>
+      <shard><replica><host>unreachable.invalid</host><port>9000</port></replica></shard>
+    </obs_cluster>
+  </remote_servers>
+  <s3queue_log>
+    <database>system</database>
+    <table>s3queue_log</table>
+    <flush_interval_milliseconds>1000</flush_interval_milliseconds>
+  </s3queue_log>
+  <azure_queue_log>
+    <database>system</database>
+    <table>azure_queue_log</table>
+    <flush_interval_milliseconds>1000</flush_interval_milliseconds>
+  </azure_queue_log>
+  <query_views_log>
+    <database>system</database>
+    <table>query_views_log</table>
+    <flush_interval_milliseconds>1000</flush_interval_milliseconds>
+  </query_views_log>
+  <rabbitmq>
+    <username>guest</username>
+    <password>guest</password>
+  </rabbitmq>
+</clickhouse>

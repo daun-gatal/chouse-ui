@@ -9,7 +9,11 @@ export const DATA_HEALTH_CHECK_TYPES = [
   "validity",
   "schema_contract",
   "custom_metric",
+  "distribution",
 ] as const;
+
+export const DATA_HEALTH_DISTRIBUTION_STATISTICS = ["p50", "p95", "null_ratio", "distinct_ratio", "top_share"] as const;
+export type DataHealthDistributionStatistic = (typeof DATA_HEALTH_DISTRIBUTION_STATISTICS)[number];
 
 export const DATA_HEALTH_SEVERITIES = ["warning", "critical"] as const;
 export const DATA_HEALTH_PROMISE_STATES = ["healthy", "degraded", "unhealthy", "unknown", "paused"] as const;
@@ -105,6 +109,18 @@ export const dataHealthCheckDefinitionSchema = z.discriminatedUnion("type", [
       upperThreshold: z.number().finite().nullish(),
     }).refine((value) => value.operator !== "between" || value.upperThreshold != null, "Between requires an upper threshold")
       .refine((value) => value.operator !== "between" || value.upperThreshold == null || value.threshold <= value.upperThreshold, "Lower threshold cannot exceed upper threshold"),
+  }),
+  z.object({
+    ...checkBase,
+    type: z.literal("distribution"),
+    // ADR 0016 §5: a column statistic judged against its own recent history.
+    config: z.object({
+      column: z.string().trim().min(1).max(64),
+      statistic: z.enum(DATA_HEALTH_DISTRIBUTION_STATISTICS),
+      topValue: z.string().max(200).nullish(),
+      tolerance: z.number().min(1.05).max(100).default(3),
+      minSamples: z.number().int().min(3).max(100).default(7),
+    }).refine((value) => value.statistic !== "top_share" || (value.topValue != null && value.topValue !== ""), "top_share needs the value to track"),
   }),
 ]);
 
