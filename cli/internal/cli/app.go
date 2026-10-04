@@ -305,9 +305,16 @@ func (s *Session) resolveConnection() error {
 	}
 }
 
-// Print renders a result in the session's output format.
+// Print renders a result in the session's output format. An empty table or
+// CSV says so on stderr, so an empty stdout is never ambiguous.
 func (s *Session) Print(value any, view output.View) error {
-	return output.Print(s.Out, value, view, s.out)
+	if err := output.Print(s.Out, value, view, s.out); err != nil {
+		return err
+	}
+	if (s.out.Format == output.Table || s.out.Format == output.CSV) && output.Rows(value, view) == 0 {
+		s.notef("No results.")
+	}
+	return nil
 }
 
 // confirm gates a mutation: --yes, or a typed "yes" on a terminal.

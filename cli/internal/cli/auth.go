@@ -141,14 +141,14 @@ token — fully offline, safe to run any time to check what later commands use.`
 			if err != nil {
 				return err
 			}
-			if s.out.Format == output.Table {
+			// People get a summary; JSON and YAML keep the full profile.
+			if s.out.Format == output.Table || s.out.Format == output.CSV {
 				user, _ := me["user"].(map[string]any)
-				summary := map[string]any{"roles": me["roles"], "permissions": countOf(me["permissions"])}
-				for _, k := range []string{"username", "email", "id"} {
-					if user != nil {
-						summary[k] = user[k]
-					}
+				summary := map[string]any{}
+				for _, k := range []string{"id", "username", "email", "roles"} {
+					summary[k] = user[k]
 				}
+				summary["permissions"] = countOf(user["permissions"])
 				return s.Print(summary, output.View{})
 			}
 			return s.Print(me, output.View{})

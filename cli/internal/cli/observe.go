@@ -92,9 +92,11 @@ func (a *App) newRemediationCmd() *cobra.Command {
 		Aliases: []string{"fixes"},
 		Short:   "Review, approve or reject proposed fixes",
 		Long: `Fixes proposed for incidents (by people, Chouse AI or MCP agents)
-from the remediation catalog. Approving is how a fix gets to run: high-impact
-actions need two approvers and nobody approves their own proposal — the
-server enforces both. approve and reject ask first (or need --yes).`,
+from the remediation catalog. Approving is how a fix gets to run. The server
+enforces who may approve: a person may approve their own low-risk fix, but
+high-risk fixes need two approvers other than the proposer, and a fix
+proposed by Chouse AI or an agent always needs someone else. approve and
+reject ask first (or need --yes).`,
 		Example: `  chouse remediation list -c prod --status proposed
   chouse remediation get 6e0b…
   chouse remediation approve 6e0b… --comment "checked the plan" --yes`,

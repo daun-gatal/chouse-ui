@@ -77,8 +77,9 @@ type Options struct {
 }
 
 const (
-	maxAutoColumns = 8
-	maxCellWidth   = 60
+	maxAutoColumns   = 8
+	maxCellWidth     = 60
+	maxWrapperFields = 4
 )
 
 // Print renders value to w.
@@ -162,13 +163,18 @@ func findRows(value any, path string) ([]any, bool) {
 	if list, ok := value.([]any); ok {
 		return list, true
 	}
-	if obj, ok := value.(map[string]any); ok {
+	// A small wrapper such as {queries: [...], total: 3} holds one list and
+	// a few scalars of metadata. A record that happens to contain a list
+	// (a job's channelIds) is shown as its fields instead.
+	if obj, ok := value.(map[string]any); ok && len(obj) <= maxWrapperFields {
 		var only []any
 		count := 0
 		for _, v := range obj {
 			if list, ok := v.([]any); ok {
 				only = list
 				count++
+			} else if !isScalar(v) {
+				return nil, false
 			}
 		}
 		if count == 1 {
@@ -176,6 +182,12 @@ func findRows(value any, path string) ([]any, bool) {
 		}
 	}
 	return nil, false
+}
+
+// Rows reports how many rows a table or CSV view of value has.
+func Rows(value any, view View) int {
+	_, rows := Tabulate(value, view)
+	return len(rows)
 }
 
 // autoColumns takes the scalar fields of the rows, in first-seen order.
@@ -304,6 +316,11 @@ func normalize(value any) any {
 }
 
 func writeTable(w io.Writer, headers []string, rows [][]string, opts Options) error {
+	// An empty list with no known columns has nothing to show (the caller
+	// notes "No results." on stderr).
+	if len(headers) == 0 && len(rows) == 0 {
+		return nil
+	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	clean := func(s string) string {
 		s = strings.ReplaceAll(strings.ReplaceAll(s, "\n", " "), "\t", " ")
@@ -326,6 +343,9 @@ func writeTable(w io.Writer, headers []string, rows [][]string, opts Options) er
 }
 
 func writeCSV(w io.Writer, headers []string, rows [][]string, noHeaders bool) error {
+	if len(headers) == 0 && len(rows) == 0 {
+		return nil
+	}
 	cw := csv.NewWriter(w)
 	if !noHeaders {
 		lower := make([]string, len(headers))

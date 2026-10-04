@@ -116,3 +116,32 @@ func TestNormalizeHandlesTypedValues(t *testing.T) {
 		t.Fatalf("got %q", out)
 	}
 }
+
+func TestEmptyListsPrintNothingWithoutKnownColumns(t *testing.T) {
+	for _, format := range []string{Table, CSV} {
+		if out := render(t, []any{}, View{}, Options{Format: format}); out != "" {
+			t.Errorf("%s: want no output for an empty list, got %q", format, out)
+		}
+	}
+	// With curated columns the header still prints.
+	if out := render(t, []any{}, View{Columns: []Column{{Header: "id"}}}, Options{Format: Table}); strings.TrimSpace(out) != "ID" {
+		t.Errorf("curated columns keep the header: %q", out)
+	}
+	if Rows([]any{}, View{}) != 0 || Rows([]any{map[string]any{"a": 1.0}}, View{}) != 1 {
+		t.Error("Rows")
+	}
+}
+
+func TestRecordsWithAListAreShownAsFields(t *testing.T) {
+	// A job carrying channelIds must not be mistaken for a list of channels.
+	job := map[string]any{"id": "j1", "name": "daily", "enabled": true, "frequency": "manual", "channelIds": []any{}}
+	out := render(t, job, View{}, Options{Format: Table})
+	if !strings.Contains(out, "FIELD") || !strings.Contains(out, "daily") {
+		t.Fatalf("got:\n%s", out)
+	}
+	// A small wrapper of one list plus scalar metadata is a list.
+	wrapper := map[string]any{"queries": []any{map[string]any{"query_id": "q"}}, "total": 1.0}
+	if out := render(t, wrapper, View{}, Options{Format: Table, NoHeaders: true}); strings.TrimSpace(out) != "q" {
+		t.Fatalf("wrapper: %q", out)
+	}
+}

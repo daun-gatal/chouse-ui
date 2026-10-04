@@ -107,9 +107,11 @@ chouse remediation list -c prod --status proposed
 chouse remediation approve <actionId> --comment "reviewed" --yes
 ```
 
-Approval rules are enforced server-side: high-impact actions need two
-approvers and nobody approves their own proposal. The CLI never runs an
-action directly — an approved action runs inside the maintenance window.
+Approval rules are enforced server-side: a person may approve their own
+low-risk fix, high-risk fixes need two approvers other than the proposer, and
+a fix proposed by Chouse AI or an agent always needs someone else. The CLI
+never runs an action directly — the server runs it once approved (inside the
+maintenance window for window-only actions).
 
 AI agents ([ADR 0017](adr/0017-mcp-managed-in-the-ui.md)) — read-only; an
 administrator changes MCP settings and agent policies in the UI:
@@ -217,7 +219,10 @@ CLI 1.0 changes some commands and the default output:
 brings up the compose stack on DinD, and runs `scripts/e2e-cli-check.py`
 from inside the compose network: login with `--token-stdin`, connection
 names, reads, output formats, guarded writes, a real `KILL`, exit codes,
-`--debug` and cleanup. Sequential runs only; the login route is
+`--debug` and cleanup. It then runs `scripts/e2e-cli-output-check.py`, which
+discovers every leaf command from `--help` and runs each one in every output
+style (table, csv, json, yaml, and auto both piped and on a pseudo-terminal)
+against seeded data, validating each output and their consistency. Sequential runs only; the login route is
 rate-limited, so don't loop it tightly. In this repo's DinD setup the
 published ports live on the DinD host, so the checks run in a sidecar on the
 compose network, never against `localhost` (ADR 0012 §4).
