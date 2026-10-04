@@ -59,17 +59,17 @@ Navigate to `http://localhost:5521`. On first run an admin user is created autom
 | Username | `admin` |
 | Password | `admin123!` |
 
-> **Warning:** Rotate this password immediately — Preferences → Account — before anyone else can reach the instance.
+> **Warning:** Change this password right away — the **Getting started** guide that opens on first sign-in has a **Change password** step ([First login](/docs/first-login/#the-getting-started-guide)).
 
 ## Connect to ClickHouse
 
 After login, add your first ClickHouse connection:
 
-1. Open **Admin → Connections**.
+1. Open **Admin › Connections**.
 2. Add a connection with host `clickhouse-server:8123` (from inside the compose network), user `admin`, password `password`.
 3. Save — credentials are encrypted with AES-256-GCM server-side, never exposed to the browser.
 
-You now land on the [Overview dashboard](/docs/home/) and can start querying in the [SQL editor](/docs/workspace-editor/).
+Make it the active connection, then open **Explorer** to start querying in the [SQL editor](/docs/workspace-editor/), or **Data** to see what CHouse UI learns about your tables.
 
 ## Next steps
 

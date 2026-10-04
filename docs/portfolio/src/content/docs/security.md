@@ -1,44 +1,47 @@
 # Security model
 
-CHouse UI is built for teams that share a database. The model assumes untrusted browsers, shared accounts and audited actions.
+CHouse UI is built for teams that share ClickHouse. It assumes browsers and tokens can leak, that several people use the same clusters, and that every change must be traceable.
 
-## Feature matrix
+## Layers
 
-| Feature | Mechanism |
+| Layer | How |
 | --- | --- |
-| **No browser credentials** | ClickHouse passwords never reach the frontend — the server proxies everything |
-| **Encrypted storage** | AES-256-GCM for connection passwords (key + salt) |
-| **Password hashing** | Argon2id for user passwords |
-| **JWT tokens** | Short-lived access, long-lived refresh — see [Sessions & JWT](/docs/sessions-jwt/) |
-| **RBAC enforcement** | Every request checked against [permissions](/docs/permissions/) |
-| **Query validation** | SQL parsed and validated against [data access rules](/docs/data-access-rules/) |
-| **Audit logging** | All actions recorded with user context — see [Audit log](/docs/audit-log/) |
+| **No credentials in the browser** | ClickHouse passwords live only on the server; the browser, CLI and agents never receive them |
+| **Encrypted at rest** | Connection and remediation passwords and AI provider keys use AES-256-GCM (`RBAC_ENCRYPTION_KEY` + `RBAC_ENCRYPTION_SALT`) |
+| **Password hashing** | Argon2id for CHouse UI user passwords; tokens are stored hashed |
+| **Sessions** | Short-lived access JWTs and refresh tokens, signed with `jose` — see [Sessions & JWT](/docs/sessions-jwt/) |
+| **Sign-in protection** | Rate limiting per client IP (from `X-Forwarded-For` — your proxy must set it); optional [SSO](/docs/sso/)-only sign-in |
+| **Permissions** | Every API, CLI and MCP request is checked against the caller's [permissions](/docs/permissions/), live |
+| **Data access** | SQL is parsed (`node-sql-parser`) and every database and table checked against the caller's [data access policies](/docs/data-access-rules/) |
+| **Schema preflight** | DDL that would break dependents is stopped unless someone with `schema:override` confirms |
+| **Approved changes** | [Fixes](/docs/data-incidents/#fixes-with-approval) come from a closed catalog, need approval (two people for high-impact ones), and run with a separate remediation credential |
+| **Audit** | Sign-ins, admin changes, queries, fixes and every MCP call are [recorded](/docs/audit-log/) |
+| **Browser hardening** | Content security policy, strict CORS in production (`CORS_ORIGIN`), `dangerouslySetInnerHTML` only through DOMPurify |
 
-## Defense in depth
+## Request path
 
 ```
-Browser ──▶ JWT/PAT auth ──▶ RBAC permission check
-        ──▶ SQL parse (node-sql-parser)
-        ──▶ Data access rules (deny wins)
-        ──▶ Server-side ClickHouse client (readonly paths where applicable)
-        ──▶ Audit entry
+client ──▶ authenticate (JWT or PAT, checked live)
+       ──▶ permission check
+       ──▶ parse SQL ──▶ data access (first matching rule by priority; no match = deny)
+       ──▶ schema preflight for DDL
+       ──▶ ClickHouse, with the connection's credentials
+       ──▶ audit entry
 ```
 
-Each layer is independent: a rule change doesn't need a redeploy, a permission revocation applies on the next request, and a leaked browser token still can't reach tables the rules deny.
+Each layer stands alone: a role change applies on the next request, a revoked token fails on its next call, and a stolen session still can't reach tables its user's policies deny. ClickHouse's own grants on the connection user remain the outer limit.
 
-## The AI boundary
+## AI
 
-All Chouse AI surfaces (Fleet [Doctor](/docs/doctor/), [in-tab actions](/docs/ai-in-tab/), [chat](/docs/workspace-ai-assist/)) are:
+- The [Doctor](/docs/doctor/) and [in-tab AI](/docs/ai-in-tab/) investigate with single `SELECT` statements on `system.*` under `readonly=1`.
+- AI never runs SQL you didn't review: rewrites and drafts are suggestions, and AI-drafted fixes go through the same approval — and can't be approved by whoever submitted them.
+- Using AI needs `ai:optimize`, `ai:chat` or `doctor:run`. Prompts go only to the providers you configure; use a self-hosted model to keep them in your network ([AI models](/docs/ai-models/)).
 
-- **Read-only** — `readonly=1`, guarded single-SELECT tool surface limited to `system.*`
-- **Advisory** — suggestions require human review; nothing mutates automatically
-- **Permission-gated** — `ai:optimize` / `ai:chat` / `doctor:run`
+## Tokens, CLI and agents
 
-## MCP & CLI safety
-
-- [MCP](/docs/mcp/): read-only by default; writes/destructive are server-policy opt-ins with in-host human approval
-- [CLI](/docs/cli/): destructive verbs need `--yes`, `--dry-run` previews
-- Both verify tokens live against RBAC — revocation is instant
+- [Personal access tokens](/docs/personal-access-tokens/) act as their owner, can be narrowed with scopes and given an expiry, and are re-checked on every call.
+- [MCP](/docs/mcp/) is off by default; only read tools are on until an administrator turns on more, destructive tools are approved in the client, and token, user, policy, SSO and secret management are never exposed as tools. [Agents](/docs/agents/) adds budgets and a pause switch.
+- The [CLI](/docs/cli/) asks before any change (`--yes` without a terminal) and never prints tokens, even with `--debug`.
 
 ## Reporting vulnerabilities
 
@@ -46,6 +49,6 @@ See [SECURITY.md](https://github.com/daun-gatal/chouse-ui/blob/main/SECURITY.md)
 
 ## Operations
 
-- [Production checklist](/docs/production-checklist/) — the pre-exposure gate
-- [Secrets generation](/docs/configuration-secrets/) — and rotation caveats
-- [Audit log](/docs/audit-log/) — retention and export practices
+- [Production checklist](/docs/production-checklist/) — the gate before exposing CHouse UI
+- [Secrets](/docs/configuration-secrets/) — generating and rotating them
+- [Audit event catalog](/docs/audit-events/) — what is recorded

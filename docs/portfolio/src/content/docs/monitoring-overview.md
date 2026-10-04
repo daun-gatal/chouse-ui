@@ -4,19 +4,24 @@ route: /monitoring
 ---
 # Monitoring overview
 
-Monitoring is CHouse UI's ClickHouse-native observability suite at `/monitoring/:tab` — no exporter required; everything reads `system.*` tables directly through the server proxy.
+**Monitoring** (`/monitoring/<tab>`) shows what your ClickHouse servers are doing, read straight from their `system.*` tables through the CHouse UI server — no exporter or agent needed. Each tab needs its own permission, so a role can open some and not others.
 
-## The seven tabs
+## The tabs
 
-| Tab | Permission | Answers |
-| --- | --- | --- |
-| [Query logs](/docs/monitoring-query-logs/) | `logs:view` | What ran, how long, how expensive |
-| [Metrics](/docs/monitoring-metrics/) | `metrics:view` (+`:advanced` for deeper tabs) | Server health over time |
-| [Live queries](/docs/monitoring-live-queries/) | `live_queries:view` | What is running right now |
-| [Parts](/docs/monitoring-parts/) | `parts:view` | Merge/mutation pressure on parts |
-| [Schema advisor](/docs/monitoring-schema-advisor/) | `schema_advisor:view` | Which columns waste disk |
-| [Cluster activity](/docs/monitoring-cluster-activity/) | `cluster:view` | Mutations, replication, replica lag |
-| [Errors](/docs/monitoring-errors/) | `errors:view` | Recurring server-side failures |
+| Tab | Route | Needs | Answers |
+| --- | --- | --- | --- |
+| [Live queries](/docs/monitoring-live-queries/) | `/monitoring/live-queries` | `live_queries:view` | What is running right now, and can I stop it? |
+| [Query logs](/docs/monitoring-query-logs/) | `/monitoring/logs` | `logs:view` | What ran, how long it took, what it cost |
+| [Metrics](/docs/monitoring-metrics/) | `/monitoring/metrics` | `metrics:view` (`metrics:view:advanced` for the deeper views) | How the server is doing over time |
+| [Parts](/docs/monitoring-parts/) | `/monitoring/parts` | `parts:view` | Merges, mutations and part movements |
+| [Schema advisor](/docs/monitoring-schema-advisor/) | `/monitoring/schema` | `schema_advisor:view` | Which columns waste disk |
+| [Cluster](/docs/monitoring-cluster-activity/) | `/monitoring/cluster` | `cluster:view` | Replication, mutations, topology, insert backlog and DDL |
+| [Errors](/docs/monitoring-errors/) | `/monitoring/errors` | `errors:view` | Recurring server errors and crashes |
+| [Performance](/docs/monitoring-performance/) | `/monitoring/performance` | `performance:view` | Which query shapes got slower, and what changed |
+| [Capacity](/docs/monitoring-capacity/) | `/monitoring/capacity` | `capacity:view` | When disks fill up, what to reclaim, what reads cost |
+| [Upgrades](/docs/monitoring-upgrades/) | `/monitoring/upgrades` | `upgrades:view` | Whether an upgrade is safe for your workload |
+
+The first seven read system tables live. Performance, Capacity and Upgrades read the evidence the [collector](/docs/data-observability/#the-collector) stored, so they show history even for things ClickHouse has already rotated out.
 
 Tabs the user lacks permission for simply don't appear — the tab strip is [RBAC](/docs/permissions/)-driven.
 
@@ -37,6 +42,7 @@ Tabs the user lacks permission for simply don't appear — the tab strip is [RBA
 | `system.mutations`, `system.replication_queue`, `system.replicas` | Cluster activity |
 | `system.metrics`, `system.events`, `system.asynchronous_metrics` | Metrics tabs |
 | `system.errors`, crash log | Errors |
+| Stored evidence (`query_log`, `system.disks`, `part_log`, versions and settings over time) | Performance, Capacity, Upgrades |
 
 ## Deployment requirements
 
@@ -47,5 +53,5 @@ Tabs the user lacks permission for simply don't appear — the tab strip is [RBA
 ## Not here, but related
 
 - **Multi-cluster at a glance** → [Fleet view](/docs/fleet/)
-- **Automated diagnosis** → [Fleet Doctor](/docs/doctor/)
+- **Automated diagnosis** → [Doctor](/docs/doctor/)
 - **Page someone when it breaks** → [Alerting](/docs/alerting/)

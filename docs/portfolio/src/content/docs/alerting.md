@@ -18,7 +18,7 @@ permissions: alerting:view
 | **Email** | SMTP host, port, TLS, username, password, optional *from*, and recipients |
 | **Webhook** | An endpoint URL and an optional bearer secret (sent as `Authorization: Bearer …`) |
 
-Secrets are stored encrypted. **Send test** delivers a test message so you know the channel works before you rely on it.
+**Send test** delivers a test message so you know the channel works before you rely on it.
 
 Channels are shared: [promises](/docs/data-health/) can also notify them on incident changes.
 

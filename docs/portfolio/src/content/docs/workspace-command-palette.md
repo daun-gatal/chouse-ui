@@ -1,32 +1,42 @@
 # Command palette & shortcuts
 
-`Cmd/Ctrl+K` opens the global quick switcher — every jumpable surface in CHouse UI behind one keystroke. RBAC-gated: the palette only offers what the current user can access.
+Press **⌘K** (macOS) or **Ctrl+K** anywhere to open the command palette: type a few letters and press Enter to go there or do it.
 
-## What the palette reaches
+## What you can find
 
-| Category | Contents |
+| Group | Contents |
 | --- | --- |
-| Pages | Overview, fleet, monitoring tabs, explorer, DataOps, admin, preferences |
-| Databases & tables | Jump straight into the [explorer](/docs/explorer-databases/) for any accessible table |
-| Saved queries | Open or run any [saved query](/docs/workspace-saved-queries/) you can view |
-| Recent queries | Re-open recent executions from [history](/docs/workspace-saved-queries/) |
-| Actions | Connection switch, theme toggle, run EXPLAIN, and other context actions |
-| Help | Documentation entry points and [getting-started](/docs/overview/) links |
+| **Recent** | What you opened recently |
+| **Pages** | Every page and tab you have permission for — Home, Explorer, Monitoring tabs, Data tabs, Fleet, Doctor, Agents, Admin tabs, Preferences |
+| **Databases** and **Tables** | Jump into the [Explorer](/docs/explorer-databases/) on any table you can read |
+| **Saved queries** | Open a [saved query](/docs/workspace-saved-queries/) |
+| **Actions** | New query, refresh page, toggle dock mode (floating ↔ sidebar), log out |
+| **Help** | **Getting started** (reopens the [onboarding guide](/docs/first-login/#the-getting-started-guide)) and **Keyboard shortcuts** |
 
-## Keyboard-first workflow
+The palette only lists what your roles allow, so it's also a quick way to check what you can reach.
 
-1. `Cmd/Ctrl+K` → type a fragment (`stg_`, `orders`, `fleet`)
-2. Enter to jump — the palette remembers recents
-3. Escape closes without side effects
+## SQL editor shortcuts
 
-Because entries are permission-gated, the palette doubles as a discoverability layer: users see exactly what their role allows — nothing more.
+**Mod** is ⌘ on macOS and Ctrl elsewhere.
 
-## Core shortcuts
-
-| Shortcut | Action |
+| Action | Keys |
 | --- | --- |
-| `Cmd/Ctrl+K` | Command palette |
-| Editor | Monaco-native keys (multi-cursor, find, format) apply inside the editor |
-| Dock | Dock mode (floating/sidebar) is switchable; layout adapts per component via container queries |
+| Run query (the selection, if any) | Mod+Enter or F5 |
+| Format query | Mod+Shift+F |
+| Toggle comment | Mod+/ |
+| Find | Mod+F |
+| Find & replace | Mod+H |
+| Go to line | Ctrl+G (⌃G on macOS) |
+| Explain query plan | Mod+Shift+E |
+| AI optimize (with `ai:optimize`) | Mod+Shift+I |
+| Save | Mod+S |
+| Save as… | Mod+Shift+S |
+| Select all | Mod+A |
+| Undo / redo | Mod+Z / Mod+Shift+Z |
+| Multi-cursor | Alt+Click (⌥+Click on macOS) |
 
-> **Tip:** If the palette hides an entry you expect, check the [permission catalog](/docs/permissions/) — the palette mirrors RBAC exactly, which makes it a quick permission sanity check too.
+The same list is in the palette under **Keyboard shortcuts**.
+
+## In these docs
+
+Press **⌘K / Ctrl+K** or **/** to search the documentation.

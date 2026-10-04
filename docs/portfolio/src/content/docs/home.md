@@ -2,30 +2,35 @@
 app: Home
 route: /overview
 ---
-# Overview dashboard
+# Home
 
-The overview dashboard (`/overview`) is the per-cluster home reached after picking a [connection](/docs/connections/) or drilling into a [fleet card](/docs/fleet/). It requires authenticated access; quick actions are admin-gated.
+**Home** (`/overview`) is the starting page for the active connection: what you were working on, what you saved, and how the server is doing. Everyone who can sign in can open it.
 
-## What it shows
+## Where you land after signing in
 
-| Panel | Content |
+| You have | You land on |
 | --- | --- |
-| System stats | ClickHouse version, uptime, server-level counters for the active cluster |
-| Recent queries | Latest executions from query history (respecting [`query:history:*`](/docs/permissions/) grants) |
-| Quick actions | Shortcuts into the [SQL editor](/docs/workspace-editor/), [Monitoring](/docs/monitoring-overview/), [Explorer](/docs/explorer-databases/) |
+| `connections:view` | [Fleet](/docs/fleet/) — every connection at once |
+| Anything else | Home |
 
-## When to use it
+You can always switch with the dock.
 
-- **Daily entry point** — glance at cluster health, then jump straight to work
-- **After incidents** — recent queries give immediate context before opening full [query logs](/docs/monitoring-query-logs/)
-- **Team landing** — admins see the cluster overview; the page adapts to permissions
+## What's on the screen
 
-## Relationship to other views
-
-| View | Difference |
+| Section | Shows |
 | --- | --- |
-| [Fleet view](/docs/fleet/) | All clusters at once; overview is one cluster in detail |
-| [Monitoring](/docs/monitoring-overview/) | Deep observability tabs; overview is the summary layer |
-| [DataOps](/docs/scheduled-queries/) | Scheduled/data-health surfaces live in DataOps, not here |
+| **Continue working** | Your unsaved query tabs — **Open all** to restore them in the Explorer |
+| **Quick access** | Your favorites and recent tables |
+| **Saved queries** | Queries you saved or that were shared with you (`saved_queries:view`) |
+| **Cluster metrics** | Databases, tables & views, total rows, storage, connections and active queries |
+| **Quick actions** | **New query**, **Import** (upload CSV / TSV / JSON), **Monitor** (live metrics and queries), **Query history** |
+| **Recent activity** | Your latest query executions (`query:history:view`; everyone's with `query:history:view:all`) |
+| **ClickHouse resources** | Links to the ClickHouse documentation, SQL reference and best practices |
 
-> **Tip:** For a landing-by-role experience, note that users land on `/overview` (or `/fleet` for fleet-enabled admins) after login — role-based redirects keep non-admins away from pages they can't use.
+**Refresh all data** reloads every panel.
+
+## Related
+
+- [Fleet](/docs/fleet/) — all connections side by side
+- [Monitoring](/docs/monitoring-overview/) — the full detail behind *Cluster metrics*
+- [Data overview](/docs/data-overview/) — whether the data itself is right

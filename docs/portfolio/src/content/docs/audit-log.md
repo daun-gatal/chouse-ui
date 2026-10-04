@@ -5,7 +5,7 @@ permissions: audit:view
 ---
 # Audit logging
 
-CHouse UI records user actions and query history with actor context — the who/what/when trail for shared database access. View it under **Admin → Audit** (requires `audit:view`).
+CHouse UI records user actions and query history with actor context — the who/what/when trail for shared database access. View it under **Admin › Audit logs** (requires `audit:view`). Every action name is listed in the [audit event catalog](/docs/audit-events/).
 
 ## What is recorded
 

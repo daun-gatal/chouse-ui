@@ -39,6 +39,7 @@ link.
 | `mcp-tools.md` | the MCP tool registry in `packages/server/src/mcp` |
 | `cli-reference.md` | `src/content/reference/cli.json`, a snapshot of the CLI command tree |
 | `helm-values.md` | `charts/chouse-ui/README.md` (helm-docs output of `values.yaml`) |
+| `audit-events.md` | `AUDIT_ACTIONS` in `packages/server/src/rbac/schema/base.ts` |
 
 ```bash
 # docs/portfolio — needs `bun install` in packages/server too

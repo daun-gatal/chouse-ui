@@ -19,7 +19,7 @@ Every AI surface shows a **context preview** — exactly which schema pieces and
 
 ## Provider pluggability
 
-Providers are configured under **Admin → AI models** (`ai_models:*` permissions) or via API:
+Models are configured in [AI models](/docs/ai-models/) (`ai_models:*` permissions):
 
 - OpenAI, Anthropic, Google, Azure OpenAI, AWS Bedrock, Groq, Mistral, Cohere, Ollama, xAI, DeepSeek, Cerebras, Fireworks, Together, OpenRouter
 - **Any OpenAI-compatible API** works
@@ -30,7 +30,7 @@ Self-hosting via Ollama keeps prompts inside your network — a common requireme
 ## Privacy posture
 
 - Only the **schema context** (tables/columns you're working with) and the query text are sent — no data rows
-- Chat history is stored server-side and clearable; the [audit log](/docs/audit-log/) records AI usage
+- Chat history is stored server-side and can be cleared
 - The AI is **read-only and advisory** — it never runs writes, and in-tab optimizations require review before running (see [Chouse AI in-tab](/docs/ai-in-tab/))
 
 ## What the AI costs

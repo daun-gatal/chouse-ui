@@ -11,6 +11,7 @@
  *   mcp-tools.md           packages/server mcp tool registry
  *   cli-reference.md       src/content/reference/cli.json (snapshot kept current by cli TestCommandReference)
  *   helm-values.md         charts/chouse-ui/README.md values table (helm-docs output)
+ *   audit-events.md        packages/server rbac/schema/base.ts AUDIT_ACTIONS
  *
  * plus src/content/reference/permissions.json, which build-docs uses to
  * validate and link the `permissions:` frontmatter on every page.
@@ -29,7 +30,7 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { dirname, join, relative } from "path";
 import { fileURLToPath } from "url";
-import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, SYSTEM_ROLES } from "../../../packages/server/src/rbac/schema/base";
+import { AUDIT_ACTIONS, PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, SYSTEM_ROLES } from "../../../packages/server/src/rbac/schema/base";
 import { PERMISSION_CATEGORIES, PERMISSION_DISPLAY_NAMES, ROLE_DEFINITIONS } from "../../../packages/server/src/rbac/services/seed";
 import { listToolDefinitions, toolCatalog } from "../../../packages/server/src/mcp/server";
 import { MCP_CATEGORY_LABELS, MCP_CATEGORY_ORDER } from "../../../src/features/agents/mcp";
@@ -135,6 +136,60 @@ ${roles}
 Built-in roles can't be deleted, and only a super admin can change their permissions — the ticks below are the defaults a fresh install starts with. Create your own roles in **Admin › Roles** from any mix of the permissions below — see [Users & roles](/docs/rbac-roles/).
 
 ${sections.join("\n\n")}
+`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Audit events
+
+/** Readable names for the area prefix of an audit action (`<area>.<verb>`). */
+const AUDIT_AREAS: Record<string, string> = {
+  auth: "Sign-in",
+  pat: "Personal access tokens",
+  mcp: "MCP",
+  user: "Users",
+  sso: "Single sign-on",
+  role: "Roles",
+  clickhouse: "ClickHouse",
+  settings: "Settings",
+  live_query: "Live queries",
+  audit: "Audit log",
+  ai_provider: "AI providers",
+  ai_model: "AI provider models",
+  ai_config: "AI deployments",
+  connection: "Connections",
+  data_access: "Data access",
+  saved_query: "Saved queries",
+  fleet: "Fleet",
+  doctor: "Doctor",
+  alerting: "Alerting",
+  scheduled_query: "Scheduled queries",
+  data_health: "Data health",
+  observe: "Data observability",
+  context: "Context",
+  remediation: "Fixes",
+  schema: "Schema preflight",
+  notebook: "Notebooks",
+  upgrade: "Upgrades",
+  agent: "Agents",
+};
+
+function auditEventsPage(): string {
+  const groups = new Map<string, string[]>();
+  for (const action of Object.values(AUDIT_ACTIONS)) {
+    const area = action.split(".")[0];
+    if (!AUDIT_AREAS[area]) throw new Error(`Audit action ${action}: add a label for "${area}" to AUDIT_AREAS`);
+    if (!groups.has(area)) groups.set(area, []);
+    groups.get(area)?.push(action);
+  }
+  const rows = [...groups].map(([area, actions]) => [AUDIT_AREAS[area], actions.map(code).join(", ")]);
+  return page(
+    "AUDIT_ACTIONS in packages/server/src/rbac/schema/base.ts",
+    `
+Every action the [audit log](/docs/audit-log/) can record, by area — ${Object.keys(AUDIT_ACTIONS).length} in all. Filter the log by these names in **Admin › Audit logs**, or match them in an export.
+
+${table(["Area", "Actions"], rows)}
 `
   );
 }
@@ -482,6 +537,7 @@ function main(): void {
     [join(DOCS, "mcp-tools.md")]: mcpToolsPage(),
     [join(DOCS, "cli-reference.md")]: cliPage(),
     [join(DOCS, "helm-values.md")]: helmPage(),
+    [join(DOCS, "audit-events.md")]: auditEventsPage(),
     [join(REFERENCE, "permissions.json")]: `${JSON.stringify(permissionIndex(), null, 2)}\n`,
   };
 

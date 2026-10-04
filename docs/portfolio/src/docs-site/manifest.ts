@@ -107,6 +107,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "personal-access-tokens", title: "Personal access tokens", description: "Mint ch_pat_… tokens in Preferences to authenticate the CLI, MCP agents and CI — scoped, revocable, verified live." },
           { slug: "sessions-jwt", title: "Sessions & JWT", description: "Short-lived access tokens, long-lived refresh tokens, session expiry recovery and issuer/audience overrides." },
           { slug: "audit-log", title: "Audit logging", description: "Every user action and query recorded with actor, connection and timestamp; filter, export and retention behavior." },
+          { slug: "audit-events", title: "Audit event catalog", description: "Every action the audit log records, by area — generated from the server." },
           { slug: "security", title: "Security model", description: "Encrypted credentials, Argon2id hashing, JWT verification, SQL parsing against data access rules and audit coverage." },
         ],
       },
