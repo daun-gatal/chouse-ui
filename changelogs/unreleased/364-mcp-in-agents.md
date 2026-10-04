@@ -14,3 +14,4 @@ type: minor
 ### Fixed
 - **Explorer button on Data › Datasets** — opened an information tab for an empty database instead of the selected table; the command palette's table and database results had the same problem.
 - **Role cards grouped every new permission under "Other"** — the cards now use the server's permission categories, so Data Observability, Performance & Capacity, Remediation and Agents permissions show in their own groups.
+- **Invalid Data Health checks returned a server error** — saving or previewing a promise whose checks cannot run as defined (for example a row count without an event-time column, or two checks with the same key) failed with a 500. It now returns 400 with the reason, and the same applies to Chouse AI watcher drafts.

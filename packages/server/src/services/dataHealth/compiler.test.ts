@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { compileDataHealthQuery, eventTimeExpression, timePartitionPredicate } from "./compiler";
+import { compileDataHealthQuery, DataHealthCompileError, eventTimeExpression, timePartitionPredicate } from "./compiler";
 import type { DataHealthCheckDefinition } from "./types";
 
 const checks: DataHealthCheckDefinition[] = [
@@ -32,6 +32,23 @@ describe("compileDataHealthQuery", () => {
 
   it("rejects a windowed check without an event-time column", () => {
     expect(() => compileDataHealthQuery({ sourceType: "table", databaseName: "analytics", tableName: "orders" }, checks)).toThrow("event-time");
+  });
+
+  it("reports invalid definitions as DataHealthCompileError (an input problem, not a crash)", () => {
+    const invalid: Array<() => unknown> = [
+      () => compileDataHealthQuery({ sourceType: "table", databaseName: "analytics", tableName: "orders" }, checks),
+      () => compileDataHealthQuery({ sourceType: "query", sourceQuery: "DROP TABLE orders", eventTimeColumn: "created_at" }, checks),
+      () => compileDataHealthQuery({ sourceType: "table", databaseName: "a", tableName: "b", eventTimeColumn: "ts" }, [{ ...checks[0], enabled: false }]),
+      () => compileDataHealthQuery({ sourceType: "table", databaseName: "a", tableName: "b", eventTimeColumn: "ts" }, [checks[0], checks[0]]),
+    ];
+    for (const compile of invalid) {
+      try {
+        compile();
+        throw new Error("expected a compile error");
+      } catch (error) {
+        expect(error).toBeInstanceOf(DataHealthCompileError);
+      }
+    }
   });
 
   it("rejects write statements used as query sources", () => {

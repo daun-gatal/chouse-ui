@@ -8,15 +8,27 @@ import type {
   DataHealthEventTimeFormat,
 } from "./types";
 
+/**
+ * The promise's definition cannot be compiled (missing event-time column,
+ * duplicate check key, a source query that is not read-only, …). It is the
+ * caller's input that is wrong, so routes answer 400 with this message.
+ */
+export class DataHealthCompileError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DataHealthCompileError";
+  }
+}
+
 function sourceSql(source: DataHealthCompileSource): string {
   if (source.sourceType === "table") {
-    if (!source.databaseName || !source.tableName) throw new Error("Table sources require a database and table");
+    if (!source.databaseName || !source.tableName) throw new DataHealthCompileError("Table sources require a database and table");
     return escapeQualifiedIdentifier([source.databaseName, source.tableName]);
   }
   const query = source.sourceQuery?.trim().replace(/;+$/, "");
-  if (!query) throw new Error("Query sources require a read-only source query");
+  if (!query) throw new DataHealthCompileError("Query sources require a read-only source query");
   const validation = validateReadOnlySelect(query);
-  if (!validation.ok) throw new Error(validation.error ?? "Invalid source query");
+  if (!validation.ok) throw new DataHealthCompileError(validation.error ?? "Invalid source query");
   return `(${query})`;
 }
 
@@ -44,7 +56,7 @@ export function eventTimeExpression(
   if (eventTimeEncoding === "unix_microseconds") return `fromUnixTimestamp64Micro(toInt64(${column}), 'UTC')`;
   if (eventTimeEncoding === "unix_nanoseconds") return `fromUnixTimestamp64Nano(toInt64(${column}), 'UTC')`;
   if (eventTimeEncoding === "string") {
-    if (eventTimeFormat !== "best_effort") throw new Error(`Unsupported event-time string format: ${eventTimeFormat}`);
+    if (eventTimeFormat !== "best_effort") throw new DataHealthCompileError(`Unsupported event-time string format: ${eventTimeFormat}`);
     const parsed = `parseDateTime64BestEffortOrNull(toString(${column}), 3${timezone ? `, ${timezone}` : ""})`;
     return `toTimeZone(${parsed}, 'UTC')`;
   }
@@ -82,7 +94,7 @@ export function eventTimeWindowPredicate(
   slotEnd: string,
 ): string {
   if (eventTimeEncoding === "native" && isDateOnlyEventTimeType(eventTimeType)) {
-    if (!eventTimeTimezone) throw new Error("Date event-time columns require a calendar timezone");
+    if (!eventTimeTimezone) throw new DataHealthCompileError("Date event-time columns require a calendar timezone");
     const column = escapeIdentifier(eventTimeColumn);
     const timezone = sqlString(eventTimeTimezone);
     return `${column} >= toDate(${slotStart}, ${timezone}) AND ${column} < toDate(${slotEnd}, ${timezone})`;
@@ -184,7 +196,7 @@ function ratio(numerator: string, denominator: string): string {
 
 function freshnessExpression(check: Extract<DataHealthCheckDefinition, { type: "freshness" }>, source: DataHealthCompileSource): string {
   const column = normalizedEventTime(source, check.config.eventTimeColumn);
-  if (!column) throw new Error("freshness requires an event-time column");
+  if (!column) throw new DataHealthCompileError("freshness requires an event-time column");
   const dateOnly = source.eventTimeEncoding === "native" && isDateOnlyEventTimeType(source.eventTimeType);
   const freshnessWindow = eventTimeWindowPredicate(
     check.config.eventTimeColumn,
@@ -215,26 +227,26 @@ function metricExpression(check: DataHealthCheckDefinition, source: DataHealthCo
       return freshnessExpression(check, source);
     case "row_count":
     case "volume_anomaly":
-      if (!window) throw new Error(`${check.type} requires an event-time column`);
+      if (!window) throw new DataHealthCompileError(`${check.type} requires an event-time column`);
       return `toFloat64(countIf(${window}))`;
     case "completeness": {
-      if (!window) throw new Error("completeness requires an event-time column");
+      if (!window) throw new DataHealthCompileError("completeness requires an event-time column");
       const column = escapeIdentifier(check.config.column);
       return ratio(`countIf((${window}) AND ${column} IS NOT NULL)`, `countIf(${window})`);
     }
     case "uniqueness": {
-      if (!window) throw new Error("uniqueness requires an event-time column");
+      if (!window) throw new DataHealthCompileError("uniqueness requires an event-time column");
       const tuple = `tuple(${check.config.columns.map(escapeIdentifier).join(", ")})`;
       const count = `countIf(${window})`;
       return `if(${count} = 0, NULL, 1 - toFloat64(uniqExactIf(${tuple}, ${window})) / toFloat64(${count}))`;
     }
     case "validity":
-      if (!window) throw new Error("validity requires an event-time column");
+      if (!window) throw new DataHealthCompileError("validity requires an event-time column");
       return ratio(`countIf((${window}) AND (${check.config.predicate}))`, `countIf(${window})`);
     case "custom_metric":
       return `toFloat64OrNull(toString(${check.config.expression}))`;
     case "distribution": {
-      if (!window) throw new Error("distribution requires an event-time column");
+      if (!window) throw new DataHealthCompileError("distribution requires an event-time column");
       const column = escapeIdentifier(check.config.column);
       switch (check.config.statistic) {
         case "p50":
@@ -260,7 +272,7 @@ export function compileDataHealthQuery(
   checks: DataHealthCheckDefinition[],
 ): CompiledDataHealthQuery {
   const enabled = checks.filter((check) => check.enabled);
-  if (enabled.length === 0) throw new Error("At least one enabled check is required");
+  if (enabled.length === 0) throw new DataHealthCompileError("At least one enabled check is required");
   const aliases = new Set<string>();
   const metrics: string[] = [];
   const metricCheckKeys: string[] = [];
@@ -268,7 +280,7 @@ export function compileDataHealthQuery(
   let needsCadenceSource = false;
 
   for (const check of enabled) {
-    if (aliases.has(check.checkKey)) throw new Error(`Duplicate check key: ${check.checkKey}`);
+    if (aliases.has(check.checkKey)) throw new DataHealthCompileError(`Duplicate check key: ${check.checkKey}`);
     aliases.add(check.checkKey);
     const expression = metricExpression(check, source);
     if (expression == null) {
@@ -292,6 +304,6 @@ export function compileDataHealthQuery(
   const from = needsCadenceSource ? `\nFROM ${sourceSql(source)} AS dh_source${where}` : "";
   const sql = `SELECT\n  ${metrics.join(",\n  ")}${from}`;
   const validation = validateReadOnlySelect(sql);
-  if (!validation.ok) throw new Error(validation.error ?? "Generated Data Health query is not read-only");
+  if (!validation.ok) throw new DataHealthCompileError(validation.error ?? "Generated Data Health query is not read-only");
   return { sql, metricCheckKeys, schemaCheckKeys };
 }
