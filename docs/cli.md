@@ -71,6 +71,21 @@ chouse alert rules && chouse audit list --limit 20
 chouse ai optimize -f slow.sql
 ```
 
+Data observability ([ADR 0016](adr/0016-data-observability-platform.md)):
+
+```bash
+chouse health dataset shop.orders            # trust state, freshness, open incidents
+chouse lineage shop.orders --direction up    # sources, views, jobs, downstream
+chouse lineage shop.orders --impact          # what a schema change would break
+chouse incidents --all --limit 20            # data + pipeline incidents with root cause
+chouse remediation list -c <connectionId> --status proposed
+chouse remediation approve <actionId> --comment "reviewed" --yes
+```
+
+Approval rules are enforced server-side: high-impact actions need two
+approvers and nobody approves their own proposal. The CLI never runs an
+action directly — an approved action runs inside the maintenance window.
+
 Machine use: `--output json|yaml` (default `json`), `--quiet`, `--stdin`/`-f -`,
 exit codes `0/2/3/4/5/6`, no spinners when piped.
 
@@ -108,6 +123,7 @@ Reads never prompt. Mutations need TTY confirm and `--yes` in CI:
 chouse live kill <queryId> --yes
 chouse query --raw --yes "ALTER TABLE t UPDATE x = 1 WHERE id = 2"
 chouse scheduled run <id> --yes
+chouse remediation reject <actionId> --yes
 chouse upload preview --file rows.csv
 chouse metrics simulate "ALTER TABLE t UPDATE x = 1 WHERE id = 2"  # never executes
 ```
