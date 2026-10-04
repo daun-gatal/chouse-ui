@@ -25,10 +25,10 @@ const CLI_INSTALL = `curl -sSL https://github.com/daun-gatal/chouse-ui/releases/
 chouse auth login --server https://chouse.your-company.com   # prompts for the token`;
 
 const MCP_CLAUDE = `claude mcp add --transport http chouse \\
-  https://mcp.chouse-ui.com/mcp \\
+  https://lab.chouse-ui.com/mcp \\
   --header "Authorization: Bearer ch_pat_…"`;
 
-const MCP_CODEX = `codex mcp add chouse --url https://mcp.chouse-ui.com/mcp \\
+const MCP_CODEX = `codex mcp add chouse --url https://lab.chouse-ui.com/mcp \\
   --bearer-token-env-var CH_HOUSE_PAT`;
 
 interface Step {

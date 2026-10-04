@@ -28,6 +28,19 @@ interface FeatureGroup {
 
 const GROUPS: FeatureGroup[] = [
   {
+    category: "Monitoring & fleet",
+    icon: Gauge,
+    docs: "/docs/monitoring-overview/",
+    items: [
+      { icon: LayoutGrid, title: "Fleet view", desc: "Every connection side by side — status, memory, lag, trends — sampled once by the server, not by every browser" },
+      { icon: TrendingUp, title: "Performance regressions", desc: "Each query shape against its own 14-day baseline, lined up with the upgrades, DDL and setting changes around it" },
+      { icon: HardDrive, title: "Capacity & cost", desc: "Disk forecasts per node, top growth, codec savings measured on samples, and cost by consumer" },
+      { icon: ArrowUpCircle, title: "Upgrade readiness", desc: "A target version checked against your workload, replayed on a canary, then tracked through rollout gates" },
+      { icon: Activity, title: "Ten monitoring tabs", desc: "Live queries, query logs, metrics, parts, schema advisor, cluster, errors — no exporter to install" },
+      { icon: BellRing, title: "Alerts", desc: "Memory, long queries and too-many-parts ETA to Slack, Google Chat, email or webhooks — with an AI root-cause report on breach" },
+    ],
+  },
+  {
     category: "Data observability",
     icon: Radar,
     docs: "/docs/data-observability/",
@@ -54,19 +67,6 @@ const GROUPS: FeatureGroup[] = [
     ],
   },
   {
-    category: "Monitoring & fleet",
-    icon: Gauge,
-    docs: "/docs/monitoring-overview/",
-    items: [
-      { icon: LayoutGrid, title: "Fleet view", desc: "Every connection side by side — status, memory, lag, trends — sampled once by the server, not by every browser" },
-      { icon: TrendingUp, title: "Performance regressions", desc: "Each query shape against its own 14-day baseline, lined up with the upgrades, DDL and setting changes around it" },
-      { icon: HardDrive, title: "Capacity & cost", desc: "Disk forecasts per node, top growth, codec savings measured on samples, and cost by consumer" },
-      { icon: ArrowUpCircle, title: "Upgrade readiness", desc: "A target version checked against your workload, replayed on a canary, then tracked through rollout gates" },
-      { icon: Activity, title: "Ten monitoring tabs", desc: "Live queries, query logs, metrics, parts, schema advisor, cluster, errors — no exporter to install" },
-      { icon: BellRing, title: "Alerts", desc: "Memory, long queries and too-many-parts ETA to Slack, Google Chat, email or webhooks — with an AI root-cause report on breach" },
-    ],
-  },
-  {
     category: "Chouse AI",
     icon: Sparkles,
     docs: "/docs/doctor/",
@@ -77,6 +77,19 @@ const GROUPS: FeatureGroup[] = [
       { icon: MessageSquare, title: "AI Assist & chat", desc: "Schema-aware optimizer, debugger and chat in the SQL editor" },
       { icon: Eye, title: "Facts vs. interpretation", desc: "Incident explanations keep what was observed apart from what is inferred — the AI never picks the root cause" },
       { icon: KeyRound, title: "Your model", desc: "OpenAI, Anthropic, Google, Azure, Bedrock, Ollama and ten more — or any OpenAI-compatible server you host" },
+    ],
+  },
+  {
+    category: "Query & explore",
+    icon: BarChart3,
+    docs: "/docs/workspace-editor/",
+    items: [
+      { icon: FileText, title: "SQL editor", desc: "Monaco with schema-aware completion, execution stats and per-tab history" },
+      { icon: Layers, title: "Visual EXPLAIN", desc: "A query's plan before you run it, in a pop-out view" },
+      { icon: Search, title: "Database Explorer", desc: "Tree view with schema inspection, DDL and MergeTree table management" },
+      { icon: Star, title: "Saved queries & favorites", desc: "Saved, shared and favorite queries and tables, a step away" },
+      { icon: Download, title: "Upload & export", desc: "CSV, TSV and JSON in and out" },
+      { icon: SunMoon, title: "Command palette", desc: "⌘K to every page and table, keyboard shortcuts, and light, dark or auto themes" },
     ],
   },
   {
@@ -103,33 +116,32 @@ const GROUPS: FeatureGroup[] = [
       { icon: Database, title: "ClickHouse users & roles", desc: "Manage native ClickHouse accounts and grants from the same UI" },
     ],
   },
-  {
-    category: "Query & explore",
-    icon: BarChart3,
-    docs: "/docs/workspace-editor/",
-    items: [
-      { icon: FileText, title: "SQL editor", desc: "Monaco with schema-aware completion, execution stats and per-tab history" },
-      { icon: Layers, title: "Visual EXPLAIN", desc: "A query's plan before you run it, in a pop-out view" },
-      { icon: Search, title: "Database Explorer", desc: "Tree view with schema inspection, DDL and MergeTree table management" },
-      { icon: Star, title: "Saved queries & favorites", desc: "Saved, shared and favorite queries and tables, a step away" },
-      { icon: Download, title: "Upload & export", desc: "CSV, TSV and JSON in and out" },
-      { icon: SunMoon, title: "Command palette", desc: "⌘K to every page and table, keyboard shortcuts, and light, dark or auto themes" },
-    ],
-  },
 ];
 
 // Pillars — the "why teams pick it" view.
 const HIGHLIGHTS: Array<FeatureItem & { meta: string }> = [
   {
+    icon: LayoutGrid,
+    title: "Every cluster in one pane",
+    desc: "Status, memory, lag and trends for every connection, sampled once by the server — plus alerts to Slack, email or webhooks.",
+    meta: "Fleet",
+  },
+  {
+    icon: TrendingUp,
+    title: "Queries against their own baseline",
+    desc: "Query logs, live queries and regressions per query shape, lined up with the upgrades, DDL and settings changes around them.",
+    meta: "No exporter",
+  },
+  {
     icon: Radar,
-    title: "Watches the data itself",
-    desc: "Every table and every pipeline against its own learned baseline, from ClickHouse metadata — no scans, no agents on your clusters.",
+    title: "The data, not just the servers",
+    desc: "Freshness and volume for every table, every ingestion pipeline and lineage — from metadata, without scanning tables.",
     meta: "Day one",
   },
   {
     icon: Siren,
     title: "Root cause, not alerts",
-    desc: "A stale dashboard becomes one incident with a computed cause, the evidence and everything it affects.",
+    desc: "A problem becomes one incident with a computed cause, the evidence and everything it affects.",
     meta: "Cross-layer",
   },
   {
@@ -139,16 +151,16 @@ const HIGHLIGHTS: Array<FeatureItem & { meta: string }> = [
     meta: "Nothing unapproved",
   },
   {
-    icon: Users,
-    title: "Built for teams",
-    desc: "Own users and roles, data access policies per connection, SSO and a full audit trail.",
-    meta: "RBAC built-in",
+    icon: Stethoscope,
+    title: "An AI SRE that shows its work",
+    desc: "Chouse AI investigates with read-only queries, cites its evidence, and only ever proposes changes.",
+    meta: "Your model",
   },
   {
-    icon: Bot,
-    title: "Agents under the same rules",
-    desc: "MCP and tokens carry their owner's permissions, plus budgets, health notices and a pause switch.",
-    meta: "Governed",
+    icon: Users,
+    title: "Built for teams — and their agents",
+    desc: "Own users and roles, data access per connection, SSO and a full audit trail; AI agents get the same rules plus budgets.",
+    meta: "RBAC built-in",
   },
   {
     icon: Shield,

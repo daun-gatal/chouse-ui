@@ -17,9 +17,10 @@ const BOOT_LOG = [
   { kind: "muted", text: "[RBAC]  Initializing RBAC system…" },
   { kind: "muted", text: "[RBAC]    App version: 3.14.0 · postgres" },
   { kind: "muted", text: "[RBAC]    Migrations up to date · 1.55.0" },
-  { kind: "muted", text: "[Observe] Collector online · 3 connections" },
-  { kind: "muted", text: "[Observe] 412 tables · 9 pipelines · lineage built" },
-  { kind: "accent", text: "[Data]    1 incident · root cause: kafka → view" },
+  { kind: "muted", text: "[Fleet]   3 clusters · 9 nodes · all healthy" },
+  { kind: "muted", text: "[Queries] 1,204 shapes on baseline · 1 regression" },
+  { kind: "muted", text: "[Data]    412 tables · 9 pipelines · lineage built" },
+  { kind: "accent", text: "[Chouse AI] root cause: replica lag → merges" },
   { kind: "muted", text: "" },
   { kind: "link", text: "→ http://localhost:5521" },
 ] as const;
@@ -88,9 +89,9 @@ export default function Hero() {
               transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
               className="text-display-2xl font-semibold text-paper"
             >
-              Know your ClickHouse
+              Your ClickHouse,
               <br />
-              <span className="text-paper-dim">data is right.</span>
+              <span className="text-paper-dim">fully observed.</span>
             </motion.h1>
 
             <motion.p
@@ -99,12 +100,13 @@ export default function Hero() {
               transition={{ duration: 0.6, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
               className="mt-8 max-w-xl text-lg leading-relaxed text-paper-muted"
             >
-              CHouse UI is the team console for ClickHouse that watches{" "}
-              <span className="text-paper">the data itself</span> — every table, every pipeline,
-              lineage without instrumentation — traces a problem to its{" "}
-              <span className="text-paper">root cause</span>, and fixes it{" "}
-              <span className="text-paper">only after a person approves</span>. With first-class
-              RBAC, and the same rules for your AI agents. Self-hosted. Open source.
+              CHouse UI is the observability console for ClickHouse teams — your{" "}
+              <span className="text-paper">clusters</span>, the{" "}
+              <span className="text-paper">queries</span> running on them and the{" "}
+              <span className="text-paper">data</span> flowing through them, in one place. It
+              traces a problem to its <span className="text-paper">root cause</span> and fixes it{" "}
+              <span className="text-paper">only after a person approves</span>, with first-class
+              RBAC and the same rules for your AI agents. Self-hosted. Open source.
             </motion.p>
 
             {/* Actions */}

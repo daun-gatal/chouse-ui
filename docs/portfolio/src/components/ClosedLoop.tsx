@@ -11,14 +11,14 @@ import { Section, Container } from "./Section";
 const EASE = [0.16, 1, 0.3, 1] as const;
 
 const OLD_WAY = [
-  "Hear about stale data from the dashboard's users",
-  "Grep query_log, kafka_consumers and part_log by hand",
-  "Guess which upstream broke and who else is affected",
+  "Hear about it from a user — a slow dashboard, stale numbers",
+  "Grep query_log, replicas and part_log on each node by hand",
+  "Guess what changed and who else is affected",
   "Run the fix as whoever has the admin password",
 ];
 
 const IN_FLOW = [
-  "Detect — every table and pipeline against its own baseline",
+  "Detect — nodes, query shapes, tables and pipelines against their own baselines",
   "Trace — a root-cause chain down to the engine, with the blast radius",
   "Explain — Chouse AI separates facts from interpretation",
   "Fix — a catalog action, approved, run, verified, reversible",
@@ -49,8 +49,9 @@ export default function ClosedLoop() {
                 Find out first. Fix it safely.
               </h2>
               <p className="max-w-xl text-lg leading-relaxed text-paper-muted">
-                CHouse UI learns what normal looks like for every table from ClickHouse's own
-                metadata, so a stuck consumer or a late load becomes an{" "}
+                CHouse UI learns what normal looks like for every node, query and table from
+                ClickHouse's own system tables. A query that got slower shows up next to the
+                change that caused it; a lagging replica or a late load becomes an{" "}
                 <span className="text-paper">incident with its root cause</span> — not a
                 complaint. The fix comes from a closed catalog and runs with its own
                 credential{" "}

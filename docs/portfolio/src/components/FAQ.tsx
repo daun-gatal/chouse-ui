@@ -13,12 +13,12 @@ interface FaqItem {
 const FAQS: FaqItem[] = [
   {
     question: "What is CHouse UI, exactly?",
-    answer: "An open-source, self-hosted console for running ClickHouse as a team: query and explore, watch the clusters and the data in them, trace problems to their root cause, and fix them with approval — with its own RBAC, audit log and encrypted credentials, and the same rules for AI agents and scripts.",
+    answer: "An open-source, self-hosted observability console for running ClickHouse as a team: monitor the clusters, the queries and the data, query and explore, trace problems to their root cause, and fix them with approval — with its own RBAC, audit log and encrypted credentials, and the same rules for AI agents and scripts.",
     docs: [{ label: "Introduction", href: "/docs/overview/" }],
   },
   {
     question: "How is it different from other ClickHouse UIs?",
-    answer: "Most ClickHouse UIs are a solo query workspace or a dashboard. CHouse UI watches the data itself — every table and pipeline against its own baseline, lineage without instrumentation — turns a stale table into one incident with a computed root cause and blast radius, and runs fixes only after people approve them. Around that sits a team access layer: app-level RBAC with 100+ permissions, per-connection data access policies, SSO, an audit trail and server-side encrypted credentials — and AI agents get the same rules over MCP.",
+    answer: "Most ClickHouse UIs are a solo query workspace or a dashboard. CHouse UI is an observability console for the whole estate — every cluster and node, every query shape against its own baseline, and every table and pipeline with lineage — that turns a problem into one incident with a computed root cause and blast radius, and runs fixes only after people approve them. Around that sits a team access layer: app-level RBAC with 100+ permissions, per-connection data access policies, SSO, an audit trail and server-side encrypted credentials — and AI agents get the same rules over MCP.",
     docs: [{ label: "Introduction", href: "/docs/overview/" }],
   },
   {
@@ -88,7 +88,7 @@ const FAQS: FaqItem[] = [
   },
   {
     question: "Can AI agents or scripts query my cluster?",
-    answer: "Yes — mint a personal access token in Preferences and the same cluster works beyond the browser. The chouse CLI covers scripts and CI (query, explore, monitor the fleet, manage scheduled work — destructive commands need --yes and offer --dry-run). The MCP server at /mcp covers AI agents like Claude, Codex, and Cursor: an administrator turns it on and picks the tools in Agents › MCP (reads on, everything else off by default), every call re-checks live roles and token scopes, and agent queries pass budget checks first. A hosted lab at mcp.chouse-ui.com lets you try the MCP endpoint without deploying anything.",
+    answer: "Yes — mint a personal access token in Preferences and the same cluster works beyond the browser. The chouse CLI covers scripts and CI (query, explore, monitor the fleet, manage scheduled work — destructive commands need --yes and offer --dry-run). The MCP server at /mcp covers AI agents like Claude, Codex, and Cursor: an administrator turns it on and picks the tools in Agents › MCP (reads on, everything else off by default), every call re-checks live roles and token scopes, and agent queries pass budget checks first. A hosted lab at lab.chouse-ui.com/mcp lets you try the MCP endpoint without deploying anything.",
     docs: [
       { label: "CLI", href: "/docs/cli/" },
       { label: "MCP server", href: "/docs/mcp/" },
