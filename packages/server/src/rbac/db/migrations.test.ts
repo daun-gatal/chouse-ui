@@ -800,55 +800,6 @@ for (const dialect of DIALECTS) {
       expect(await h.rowCount("rbac_ai_models")).toBe(1);
     });
   });
-}
-
-// ---------------------------------------------------------------------------
-// Concurrent migration runners (Postgres only).
-//
-// During a rolling deploy / scale-up, several replicas boot and call
-// runMigrations() against the same Postgres at once. Without the advisory lock
-// they race on the version table (UNIQUE version) and on non-idempotent steps,
-// crashing the loser. With the lock, exactly one runs and the rest no-op.
-//
-// SQLite is single-process and not a multi-replica target, so this only applies
-// to Postgres.
-// ---------------------------------------------------------------------------
-describe("migrations · concurrent runners [postgres]", () => {
-  beforeAll(async () => {
-    await h.freshDatabase("postgres", pg);
-  }, 60_000);
-
-  it("serializes concurrent runMigrations without error or duplicate records", async () => {
-    // Fire several runners at once against the same fresh database. The advisory
-    // lock must serialize them: the winner applies the full chain, the others wait
-    // and then observe everything already applied.
-    const results = await Promise.all([
-      runMigrations({ skipSeed: true }),
-      runMigrations({ skipSeed: true }),
-      runMigrations({ skipSeed: true }),
-    ]);
-
-    // Exactly one runner applied the chain; the rest applied nothing.
-    const appliedChain = results.filter((r) => r.migrationsApplied.length > 0);
-    expect(appliedChain).toHaveLength(1);
-    expect(appliedChain[0].migrationsApplied).toEqual(MIGRATIONS.map((m) => m.version));
-    for (const r of results) {
-      if (r.migrationsApplied.length === 0) {
-        expect(r.migrationsApplied).toEqual([]);
-      }
-    }
-
-    // Every migration recorded exactly once (no duplicate-key crash, no double-apply).
-    for (const m of MIGRATIONS) {
-      const rows = await h.rawAll(sql`SELECT 1 FROM _rbac_migrations WHERE version = ${m.version}`);
-      expect(rows).toHaveLength(1);
-    }
-
-    // Final schema matches a normal install.
-    for (const m of MIGRATIONS) {
-      await VERSION_CHECKS[m.version]();
-    }
-  }, 60_000);
 
   describe(`migrations · ADR 0016 data carry-over [${dialect}]`, () => {
     let customViewer = "";
@@ -919,4 +870,53 @@ describe("migrations · concurrent runners [postgres]", () => {
       expect(await h.tableExists("obs_leases")).toBe(true);
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent migration runners (Postgres only).
+//
+// During a rolling deploy / scale-up, several replicas boot and call
+// runMigrations() against the same Postgres at once. Without the advisory lock
+// they race on the version table (UNIQUE version) and on non-idempotent steps,
+// crashing the loser. With the lock, exactly one runs and the rest no-op.
+//
+// SQLite is single-process and not a multi-replica target, so this only applies
+// to Postgres.
+// ---------------------------------------------------------------------------
+describe("migrations · concurrent runners [postgres]", () => {
+  beforeAll(async () => {
+    await h.freshDatabase("postgres", pg);
+  }, 60_000);
+
+  it("serializes concurrent runMigrations without error or duplicate records", async () => {
+    // Fire several runners at once against the same fresh database. The advisory
+    // lock must serialize them: the winner applies the full chain, the others wait
+    // and then observe everything already applied.
+    const results = await Promise.all([
+      runMigrations({ skipSeed: true }),
+      runMigrations({ skipSeed: true }),
+      runMigrations({ skipSeed: true }),
+    ]);
+
+    // Exactly one runner applied the chain; the rest applied nothing.
+    const appliedChain = results.filter((r) => r.migrationsApplied.length > 0);
+    expect(appliedChain).toHaveLength(1);
+    expect(appliedChain[0].migrationsApplied).toEqual(MIGRATIONS.map((m) => m.version));
+    for (const r of results) {
+      if (r.migrationsApplied.length === 0) {
+        expect(r.migrationsApplied).toEqual([]);
+      }
+    }
+
+    // Every migration recorded exactly once (no duplicate-key crash, no double-apply).
+    for (const m of MIGRATIONS) {
+      const rows = await h.rawAll(sql`SELECT 1 FROM _rbac_migrations WHERE version = ${m.version}`);
+      expect(rows).toHaveLength(1);
+    }
+
+    // Final schema matches a normal install.
+    for (const m of MIGRATIONS) {
+      await VERSION_CHECKS[m.version]();
+    }
+  }, 60_000);
 });
