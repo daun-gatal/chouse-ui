@@ -1,13 +1,14 @@
 /**
- * Agents (ADR 0016 §10): every agent connected over MCP or a personal access
- * token — what it read, what it cost, whether the data was healthy — plus
- * budget policies and the pause switch.
+ * Agents (ADR 0016 §10, ADR 0017): every agent connected over MCP or a
+ * personal access token — what it read, what it cost, whether the data was
+ * healthy — plus budget policies, the pause switch, and the MCP endpoint
+ * with its tool switches.
  */
 
 import { useState, type ReactElement } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { Bot, KeyRound, ListChecks, Pause, Play, Plus, Shield, Trash2, Wrench } from "lucide-react";
+import { Bot, ListChecks, Pause, Play, Plug, Plus, Shield, Trash2 } from "lucide-react";
 
 import type { AgentPolicy, AgentSession } from "@/api/agents";
 import { NavPill, PageHeader } from "@/components/common/PageShell";
@@ -17,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { McpPanel } from "@/features/agents/McpPanel";
 import { budgetShare, formToPolicy, policyToForm, type PolicyForm } from "@/features/agents/policyForm";
 import { DH_PRIMARY } from "@/features/data-health/lib";
 import { useAgentMutations, useAgentPolicies, useAgentSession, useAgentSessions, useAgentSummary } from "@/features/observe/hooks";
@@ -24,24 +26,15 @@ import { formatAgo, formatBytes, formatCount, formatPercent } from "@/features/o
 import { DataTable, EmptyState, ErrorState, Kpi, LoadingGrid, Mono, Panel, RatioBar, StatusPill } from "@/features/observe/ui";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 
-type Tab = "sessions" | "policies" | "tools";
+type Tab = "sessions" | "policies" | "mcp";
 const TABS: Array<{ key: Tab; label: string; icon: typeof Bot }> = [
   { key: "sessions", label: "Sessions", icon: ListChecks },
   { key: "policies", label: "Policies", icon: Shield },
-  { key: "tools", label: "MCP tools", icon: Wrench },
+  { key: "mcp", label: "MCP", icon: Plug },
 ];
 
-const MCP_TOOLS: Array<{ name: string; note: string; status: "new" | "extended" | "existing" }> = [
-  { name: "get_dataset_health", note: "Trust state, freshness and open incidents before relying on a table", status: "new" },
-  { name: "get_lineage", note: "Sources, views, jobs and downstream tables", status: "new" },
-  { name: "get_table_context", note: "Curated meaning, owners, caveats and canonical metrics", status: "new" },
-  { name: "get_metric", note: "Canonical metric definitions", status: "new" },
-  { name: "get_pipeline_status", note: "Every ingestion source with one status vocabulary", status: "new" },
-  { name: "list_incidents", note: "Data and pipeline incidents with their root cause", status: "new" },
-  { name: "propose_remediation", note: "Files a catalog fix for human approval (needs MCP_ALLOW_WRITES)", status: "new" },
-  { name: "query", note: "SELECT-only, now with the budget preflight and health notices", status: "extended" },
-  { name: "describe_table, sample_table, health_timeline, …", note: "Unchanged names and schemas", status: "existing" },
-];
+/** Earlier builds linked to /agents/tools. */
+const TAB_ALIASES: Record<string, Tab> = { tools: "mcp" };
 
 const OUTCOME_TONE = { ok: "ok", warned: "warn", blocked: "bad", error: "bad" } as const;
 
@@ -252,29 +245,10 @@ function PoliciesView(): ReactElement {
   );
 }
 
-function ToolsView(): ReactElement {
-  return (
-    <Panel title="MCP tools exposed" meta="chouse-mcp · every call runs under the token's own permissions and data access">
-      <ul className="divide-y divide-ink-500/60">
-        {MCP_TOOLS.map((t) => (
-          <li key={t.name} className="flex items-start justify-between gap-3 py-2.5">
-            <div className="min-w-0">
-              <Mono className="text-paper">{t.name}</Mono>
-              <p className="text-[11px] text-paper-muted">{t.note}</p>
-            </div>
-            <StatusPill tone={t.status === "new" ? "brand" : t.status === "extended" ? "info" : "muted"} dot={false}>{t.status}</StatusPill>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 text-[11px] text-paper-faint">There is no approve tool: fixes proposed by agents always wait for a person.</p>
-    </Panel>
-  );
-}
-
 export default function Agents(): ReactElement {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab?: string }>();
-  const active: Tab = TABS.find((t) => t.key === tab)?.key ?? "sessions";
+  const active: Tab = TABS.find((t) => t.key === tab)?.key ?? (tab ? TAB_ALIASES[tab] : undefined) ?? "sessions";
   const canManage = useRbacStore((s) => s.hasPermission(RBAC_PERMISSIONS.AGENTS_MANAGE));
   const summary = useAgentSummary();
   const policies = useAgentPolicies();
@@ -303,7 +277,7 @@ export default function Agents(): ReactElement {
         nav={TABS.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/agents/${t.key}`)} noShrink />)}
         actions={
           <>
-            <Button variant="outline" className="h-9 rounded-xs" onClick={() => navigate("/preferences")}><KeyRound className="mr-1.5 h-3.5 w-3.5" /> Connect an agent</Button>
+            <Button variant="outline" className="h-9 rounded-xs" onClick={() => navigate("/agents/mcp")}><Plug className="mr-1.5 h-3.5 w-3.5" /> Connect an agent</Button>
             {canManage && summary.data && (summary.data.paused ? (
               <Button className={DH_PRIMARY} disabled={pause.isPending} onClick={() => void togglePause(false)}><Play className="h-3.5 w-3.5" /> Resume agents</Button>
             ) : (
@@ -326,7 +300,7 @@ export default function Agents(): ReactElement {
           )}
           {active === "sessions" && <SessionsView dailyBudget={defaultBudget} />}
           {active === "policies" && <PoliciesView />}
-          {active === "tools" && <ToolsView />}
+          {active === "mcp" && <McpPanel />}
         </div>
       </div>
       <Dialog open={confirmPause} onOpenChange={setConfirmPause}>

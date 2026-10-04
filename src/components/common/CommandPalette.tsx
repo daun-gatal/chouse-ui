@@ -84,6 +84,7 @@ const OBSERVABILITY_PAGES: Array<{ value: string; label: string; to: string; ico
   { value: "monitoring capacity disk forecast cost", label: "Monitoring · Capacity", to: "/monitoring/capacity", icon: HardDrive, permissions: [RBAC_PERMISSIONS.CAPACITY_VIEW] },
   { value: "monitoring upgrades version replay", label: "Monitoring · Upgrades", to: "/monitoring/upgrades", icon: ArrowUpCircle, permissions: [RBAC_PERMISSIONS.UPGRADES_VIEW] },
   { value: "agents mcp ai sessions budgets", label: "Agents", to: "/agents/sessions", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
+  { value: "mcp server tools agents connect", label: "MCP server & tools", to: "/agents/mcp", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
 ];
 
 export default function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {

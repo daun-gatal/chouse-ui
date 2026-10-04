@@ -85,3 +85,69 @@ export function deleteAgentPolicy(id: string): Promise<{ deleted: string }> {
 export function setAgentsPaused(paused: boolean): Promise<{ paused: boolean }> {
   return api.post("/agents/pause", { paused });
 }
+
+// --- MCP (ADR 0017) -----------------------------------------------------------------
+
+export type McpToolAccess = "read" | "write" | "destructive";
+
+export type McpToolCategory =
+  | "identity"
+  | "explore"
+  | "query"
+  | "monitoring"
+  | "scheduling"
+  | "data_health"
+  | "data_observability"
+  | "ai";
+
+export interface McpToolParameter {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string | null;
+}
+
+export interface McpTool {
+  name: string;
+  title: string;
+  description: string;
+  category: McpToolCategory;
+  access: McpToolAccess;
+  spendsLlm: boolean;
+  /** The token needs at least one of these for the tool to be listed. */
+  permissions: string[];
+  parameters: McpToolParameter[];
+  enabled: boolean;
+  enabledByDefault: boolean;
+}
+
+export interface McpSettings {
+  enabled: boolean;
+  allowedOrigins: string[];
+  timeoutSeconds: number;
+  updatedBy: string | null;
+  updatedAt: number | null;
+}
+
+export interface McpOverview {
+  settings: McpSettings;
+  /** `url` is set when the server knows its public address (PUBLIC_BASE_URL). */
+  endpoint: { path: string; url: string | null };
+  tools: McpTool[];
+}
+
+export interface McpSettingsUpdate {
+  enabled?: boolean;
+  allowedOrigins?: string[];
+  timeoutSeconds?: number;
+  /** Per-tool switches; tools left out keep their current state. */
+  toolOverrides?: Record<string, boolean>;
+}
+
+export function getMcpOverview(): Promise<McpOverview> {
+  return api.get<McpOverview>("/agents/mcp");
+}
+
+export function updateMcpSettings(update: McpSettingsUpdate): Promise<McpOverview> {
+  return api.put<McpOverview>("/agents/mcp", update);
+}

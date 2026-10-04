@@ -26,6 +26,13 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // The MCP endpoint lives on the web port in production, so the address
+      // shown in Agents › MCP must work against the dev server too.
+      "/mcp": {
+        target: "http://localhost:5521",
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   test: {

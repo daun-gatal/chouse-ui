@@ -4,7 +4,7 @@
  * connection switches every screen.
  */
 
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
 
 import * as agents from "@/api/agents";
 import * as ctx from "@/api/context";
@@ -13,6 +13,7 @@ import * as observe from "@/api/observe";
 import * as remediation from "@/api/remediation";
 import * as upgrades from "@/api/upgrades";
 import { rbacConnectionsApi, type ClickHouseConnection } from "@/api/rbac";
+import { queryKeys } from "@/hooks/useQuery";
 import { useAuthStore } from "@/stores";
 
 const REFRESH_MS = 30_000;
@@ -67,6 +68,7 @@ const agentKeys = {
   sessions: (days: number) => [...agentKeys.all, "sessions", days] as const,
   session: (id: string) => [...agentKeys.all, "session", id] as const,
   policies: () => [...agentKeys.all, "policies"] as const,
+  mcp: () => [...agentKeys.all, "mcp"] as const,
 };
 
 function useConnection(): string | null {
@@ -354,6 +356,22 @@ export function useAgentMutations() {
     deletePolicy: useMutation({ mutationFn: (id: string) => agents.deleteAgentPolicy(id), onSuccess: invalidate }),
     pause: useMutation({ mutationFn: (paused: boolean) => agents.setAgentsPaused(paused), onSuccess: invalidate }),
   };
+}
+
+export function useMcpOverview(enabled = true): UseQueryResult<agents.McpOverview> {
+  return useQuery({ queryKey: agentKeys.mcp(), queryFn: agents.getMcpOverview, enabled });
+}
+
+export function useUpdateMcpSettings(): UseMutationResult<agents.McpOverview, Error, agents.McpSettingsUpdate> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (update: agents.McpSettingsUpdate) => agents.updateMcpSettings(update),
+    onSuccess: (overview) => {
+      client.setQueryData(agentKeys.mcp(), overview);
+      // The dock and the token card read the on/off state from /config.
+      void client.invalidateQueries({ queryKey: queryKeys.config });
+    },
+  });
 }
 
 // --- connections ------------------------------------------------------------------
