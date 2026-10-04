@@ -8,10 +8,32 @@
  * entry applies exactly as it does for the UI and CLI.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Hono } from "hono";
 import { McpToolContext } from "./types";
 
 export const MCP_USER_AGENT = "chouse-mcp/1";
+
+/** Mirrors AGENT_RECORDED_HEADER in services/agents/governance.ts. */
+const AGENT_RECORDED_HEADER = "x-chouse-agent-recorded";
+
+/**
+ * The tool call a subrequest belongs to (ADR 0016 §10). Subrequests carry the
+ * tool name so ClickHouse log_comment and agent sessions attribute queries to
+ * it; `recorded` turns true when the server already put the call on the
+ * agent's session (governed query endpoints), so the tool wrapper does not
+ * record it twice.
+ */
+export interface McpToolScope {
+  tool: string;
+  recorded: boolean;
+}
+
+const toolScope = new AsyncLocalStorage<McpToolScope>();
+
+export function runInToolScope<T>(scope: McpToolScope, fn: () => Promise<T>): Promise<T> {
+  return toolScope.run(scope, fn);
+}
 
 export class McpApiError extends Error {
   readonly code: string;
@@ -87,7 +109,12 @@ export class McpApiClient {
       Authorization: `Bearer ${this.ctx.token}`,
       "User-Agent": MCP_USER_AGENT,
       "Content-Type": "application/json",
+      "X-Chouse-Agent-Source": "mcp",
     };
+    const scope = toolScope.getStore();
+    if (scope) {
+      headers["X-Chouse-Agent-Tool"] = scope.tool;
+    }
     if (this.ctx.connectionId) {
       headers["X-Connection-Id"] = this.ctx.connectionId;
     }
@@ -105,6 +132,9 @@ export class McpApiClient {
 
     const response = await this.proxy.request(url.pathname + url.search, init);
     const raw = await response.text();
+    if (scope && response.headers.get(AGENT_RECORDED_HEADER) === "1") {
+      scope.recorded = true;
+    }
 
     let envelope: Envelope;
     try {

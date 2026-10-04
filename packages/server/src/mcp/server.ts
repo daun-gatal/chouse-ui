@@ -14,6 +14,7 @@ import { registerCoreTools } from "./tools/core";
 import { registerExploreTools } from "./tools/explore";
 import { registerQueryTools } from "./tools/query";
 import { registerObserveTools } from "./tools/observe";
+import { registerDataObservabilityTools, registerRemediationProposalTool } from "./tools/dataObservability";
 import { registerWriteTools } from "./tools/writes";
 import { registerDestructiveTools } from "./tools/destructive";
 import { registerAiTools } from "./tools/ai";
@@ -48,8 +49,14 @@ export function buildMcpServer(config: McpConfig, deps: McpDeps): McpServer {
   if (toolsets.has("core")) registerCoreTools(mcp, deps);
   if (toolsets.has("explore")) registerExploreTools(mcp, deps);
   if (toolsets.has("query")) registerQueryTools(mcp, deps);
-  if (toolsets.has("observe")) registerObserveTools(mcp, deps);
-  if (toolsets.has("writes") && config.allowWrites) registerWriteTools(mcp, deps);
+  if (toolsets.has("observe")) {
+    registerObserveTools(mcp, deps);
+    registerDataObservabilityTools(mcp, deps);
+  }
+  if (toolsets.has("writes") && config.allowWrites) {
+    registerWriteTools(mcp, deps);
+    registerRemediationProposalTool(mcp, deps);
+  }
   if (toolsets.has("destructive") && config.allowDestructive) registerDestructiveTools(mcp, deps);
   if (toolsets.has("ai")) registerAiTools(mcp, deps);
 

@@ -14,7 +14,7 @@ import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { getClientIp } from "../rbac/middleware/rbacAuth";
 import { requestLogger } from "../utils/logger";
 import { enforceSchemaPreflight } from "../middleware/schemaPreflight";
-import { governAgentQuery, recordAgentQuery, type AgentContext, type GovernanceResult } from "../services/agents/governance";
+import { AGENT_RECORDED_HEADER, governAgentQuery, recordAgentQuery, type AgentContext, type GovernanceResult } from "../services/agents/governance";
 
 export type Variables = ConnectionContextVariables;
 
@@ -255,6 +255,8 @@ async function executeQueryWithValidation(
   // ADR 0016 §10: agents (PAT / MCP) pass the pause switch, budget preflight and health notices.
   const agent = agentContext(c, connectionId);
   const governance = agent ? await governAgentQuery(agent, sql, service) : null;
+  // Tells the MCP client this call is already on the agent's session (no double recording).
+  if (governance) c.header(AGENT_RECORDED_HEADER, "1");
   if (agent && governance?.decision.decision === "block") return agentBlocked(c, governance);
 
   let result;
@@ -391,8 +393,12 @@ query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), as
     }, 403);
   }
 
+  const preflight = await enforceSchemaPreflight(c, connectionId, sql, defaultDatabase);
+  if (preflight) return preflight;
+
   const agent = agentContext(c, connectionId);
   const governance = agent ? await governAgentQuery(agent, sql, service) : null;
+  if (governance) c.header(AGENT_RECORDED_HEADER, "1");
   if (agent && governance?.decision.decision === "block") return agentBlocked(c, governance);
   if (agent && governance) await recordAgentQuery(agent, governance, sql, "ok", 0);
 
@@ -443,6 +449,7 @@ query.post("/execute-stream", zValidator("json", QueryRequestSchemaWithType), as
       "Content-Type": "application/x-ndjson",
       "Cache-Control": "no-cache",
       "X-Accel-Buffering": "no", // disable nginx/proxy buffering
+      ...(governance ? { [AGENT_RECORDED_HEADER]: "1" } : {}),
     },
   });
 });

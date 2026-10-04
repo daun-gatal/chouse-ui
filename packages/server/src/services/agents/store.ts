@@ -84,6 +84,8 @@ export async function recordToolCall(input: {
   tool: string;
   argsSummary?: string | null;
   outcome: AgentToolCall["outcome"];
+  /** A ClickHouse query (counted on the session) rather than another tool call. */
+  isQuery?: boolean;
   detail?: Record<string, unknown>;
   readBytes?: number;
 }): Promise<void> {
@@ -92,7 +94,7 @@ export async function recordToolCall(input: {
     INSERT INTO agent_tool_calls (id, session_id, pat_id, user_id, tool, args_summary, outcome, detail, read_bytes, created_at)
     VALUES (${randomUUID()}, ${input.sessionId}, ${input.patId}, ${input.userId}, ${input.tool}, ${input.argsSummary?.slice(0, 1000) ?? null}, ${input.outcome}, ${JSON.stringify(input.detail ?? {})}, ${input.readBytes ?? 0}, ${now})
   `);
-  const queries = input.tool === "query" ? 1 : 0;
+  const queries = input.isQuery ? 1 : 0;
   await run(sql`
     UPDATE agent_sessions SET last_seen_at = ${now}, queries = queries + ${queries}, read_bytes = read_bytes + ${input.readBytes ?? 0},
       warnings = warnings + ${input.outcome === "warned" ? 1 : 0}, blocked = blocked + ${input.outcome === "blocked" ? 1 : 0}

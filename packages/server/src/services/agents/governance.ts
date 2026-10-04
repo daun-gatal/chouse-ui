@@ -35,6 +35,9 @@ export interface GovernanceResult {
   sessionId: string;
 }
 
+/** Set on responses whose query was already recorded on the agent's session. */
+export const AGENT_RECORDED_HEADER = "X-Chouse-Agent-Recorded";
+
 const READ_STATEMENT = /^\s*(with|select)\b/i;
 
 /** Tables touched by a query, from `EXPLAIN ESTIMATE` (database, table, rows, marks). */
@@ -104,7 +107,7 @@ export async function governAgentQuery(ctx: AgentContext, statement: string, ser
     paused,
   });
   if (decision.decision === "block") {
-    await store.recordToolCall({ sessionId: session.id, patId: ctx.patId, userId: ctx.userId, tool: ctx.tool, argsSummary: statement, outcome: "blocked", detail: { reasons: decision.reasons, estimatedBytes: decision.estimatedBytes } });
+    await store.recordToolCall({ sessionId: session.id, patId: ctx.patId, userId: ctx.userId, tool: ctx.tool, argsSummary: statement, outcome: "blocked", isQuery: true, detail: { reasons: decision.reasons, estimatedBytes: decision.estimatedBytes } });
   }
   return { decision, sessionId: session.id };
 }
@@ -118,6 +121,7 @@ export async function recordAgentQuery(ctx: AgentContext, governance: Governance
     tool: ctx.tool,
     argsSummary: statement,
     outcome: outcome === "error" ? "error" : warned ? "warned" : "ok",
+    isQuery: true,
     detail: { estimatedBytes: governance.decision.estimatedBytes, notices: governance.decision.notices, reasons: governance.decision.reasons, ...(error ? { error: error.slice(0, 500) } : {}) },
     readBytes,
   });

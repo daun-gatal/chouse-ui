@@ -182,6 +182,12 @@ const DEFAULT_TOOL_NAMES = [
   "health_timeline",
   "list_alerts",
   "audit_list",
+  "get_dataset_health",
+  "get_lineage",
+  "get_table_context",
+  "get_metric",
+  "get_pipeline_status",
+  "list_incidents",
 ];
 
 describe("tool registration matrix", () => {
@@ -212,6 +218,7 @@ describe("tool registration matrix", () => {
         "run_health_check",
         "acknowledge_incident",
         "test_alert_channel",
+        "propose_remediation",
       ])
     );
     expect(onNames).not.toContain("kill_query");
@@ -397,5 +404,64 @@ describe("privilege fence (source contract)", () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+});
+
+describe("data observability tools (ADR 0016)", () => {
+  it("projects dataset health, lineage and context onto the observe API", async () => {
+    const { proxy, calls } = makeProxy({ ok: true });
+    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const harness = await createHarness(mcp);
+    await harness.request("tools/call", { name: "get_dataset_health", arguments: { database: "shop", table: "orders" } }, CTX);
+    await harness.request("tools/call", { name: "get_lineage", arguments: { database: "shop", table: "orders", direction: "up", depth: 2 } }, CTX);
+    await harness.request("tools/call", { name: "get_table_context", arguments: { database: "shop", table: "orders" } }, CTX);
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /api/observe/datasets/shop/orders",
+      "GET /api/observe/lineage",
+      "GET /api/context/tables/shop/orders",
+    ]);
+    await harness.close();
+  });
+
+  it("filters metrics by name", async () => {
+    const { proxy } = makeProxy({ metrics: [{ name: "gmv" }, { name: "orders" }] });
+    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const harness = await createHarness(mcp);
+    const { result } = await harness.request("tools/call", { name: "get_metric", arguments: { name: "gmv" } }, CTX);
+    expect(resultText(result)).toContain("gmv");
+    expect(resultText(result)).not.toContain("\"orders\"");
+    await harness.close();
+  });
+
+  it("files a remediation proposal and never approves it", async () => {
+    const { proxy, calls } = makeProxy({ id: "a1", status: "proposed" });
+    const mcp = buildMcpServer(makeConfig({ allowWrites: true, toolsets: ["core", "writes"] }), buildMcpDeps(proxy, 5000));
+    const harness = await createHarness(mcp);
+    const { result } = await harness.request(
+      "tools/call",
+      { name: "propose_remediation", arguments: { type: "kill_query", params: { queryId: "q-1" }, rationale: "runaway scan", connection_id: "conn-1" } },
+      CTX
+    );
+    expect(result?.isError).toBeFalsy();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.path).toBe("/api/remediation/actions");
+    expect(calls[0]?.body).toMatchObject({ connectionId: "conn-1", params: { type: "kill_query", queryId: "q-1" }, rationale: "runaway scan" });
+    expect(calls.some((c) => c.path.endsWith("/approve"))).toBe(false);
+    await harness.close();
+  });
+
+  it("tags subrequests with the agent source and tool", async () => {
+    const seen: Array<Record<string, string>> = [];
+    const proxy = new Hono();
+    proxy.all("*", (c) => {
+      seen.push(c.req.header());
+      return c.json({ success: true, data: {} });
+    });
+    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const harness = await createHarness(mcp);
+    await harness.request("tools/call", { name: "get_pipeline_status", arguments: { status: "failing" } }, CTX);
+    expect(seen[0]?.["x-chouse-agent-source"]).toBe("mcp");
+    expect(seen[0]?.["x-chouse-agent-tool"]).toBe("get_pipeline_status");
+    await harness.close();
   });
 });

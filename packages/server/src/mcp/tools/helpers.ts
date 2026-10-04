@@ -17,12 +17,13 @@ import type {
 } from "@modelcontextprotocol/sdk/types";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol";
 import { z } from "zod";
-import { McpApiClient, McpApiError } from "../api";
+import { McpApiClient, McpApiError, runInToolScope, type McpToolScope } from "../api";
 import { cappedJson } from "../safety";
 import { auditMcpToolCall } from "../audit";
 import type { McpToolContext } from "../types";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { logger } from "../../utils/logger";
+import * as agentStore from "../../services/agents/store";
 
 export type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
@@ -54,8 +55,38 @@ export function jsonResult(data: unknown): CallToolResult {
 }
 
 /**
- * Run a projected API call with the standard wrapping: error mapping, caps,
- * redaction, and audit. `target` names the object acted on (for audit).
+ * Put a tool call on the caller's agent session (ADR 0016 §10). Calls that
+ * reached a governed query endpoint were recorded by the server already.
+ * Best-effort: session bookkeeping never fails the tool.
+ */
+async function recordAgentToolCall(
+  ctx: McpToolContext,
+  scope: McpToolScope,
+  target: string | undefined,
+  outcome: "ok" | "error" | "blocked",
+  error?: string
+): Promise<void> {
+  if (scope.recorded) return;
+  try {
+    const session = await agentStore.touchSession(ctx.identity.patId ?? null, ctx.identity.userId, "mcp", null);
+    await agentStore.recordToolCall({
+      sessionId: session.id,
+      patId: ctx.identity.patId ?? null,
+      userId: ctx.identity.userId,
+      tool: scope.tool,
+      argsSummary: target ?? null,
+      outcome,
+      detail: error ? { error: error.slice(0, 500) } : {},
+    });
+  } catch (err) {
+    logger.warn({ module: "Mcp", tool: scope.tool, err: err instanceof Error ? err.message : String(err) }, "Failed to record agent tool call");
+  }
+}
+
+/**
+ * Run a projected API call with the standard wrapping: agent pause switch,
+ * error mapping, caps, redaction, audit and agent-session recording.
+ * `target` names the object acted on (for audit).
  */
 export async function runApiTool(
   ctx: McpToolContext,
@@ -64,28 +95,27 @@ export async function runApiTool(
   target: string | undefined,
   call: () => Promise<unknown>
 ): Promise<CallToolResult> {
+  const scope: McpToolScope = { tool, recorded: false };
+  if (await agentStore.isAgentAccessPaused().catch(() => false)) {
+    await auditMcpToolCall(ctx.identity, { tool, target, connectionId: ctx.connectionId, status: "failed", error: "Agent access is paused" });
+    await recordAgentToolCall(ctx, scope, target, "blocked", "Agent access is paused");
+    return textResult("AGENT_ACCESS_PAUSED: An administrator paused agent access. Try again later.", true);
+  }
   try {
-    const data = await call();
+    const data = await runInToolScope(scope, call);
     await auditMcpToolCall(ctx.identity, {
       tool,
       target,
       connectionId: ctx.connectionId,
       status: "success",
     });
+    await recordAgentToolCall(ctx, scope, target, "ok");
     return jsonResult(data);
   } catch (error) {
-    if (error instanceof McpApiError) {
-      await auditMcpToolCall(ctx.identity, {
-        tool,
-        target,
-        connectionId: ctx.connectionId,
-        status: "failed",
-        error: error.message,
-      });
-      return textResult(`${error.code}: ${error.message}`, true);
-    }
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn({ module: "Mcp", tool, err: message }, "MCP tool failed");
+    if (!(error instanceof McpApiError)) {
+      logger.warn({ module: "Mcp", tool, err: message }, "MCP tool failed");
+    }
     await auditMcpToolCall(ctx.identity, {
       tool,
       target,
@@ -93,7 +123,8 @@ export async function runApiTool(
       status: "failed",
       error: message,
     });
-    return textResult(message, true);
+    await recordAgentToolCall(ctx, scope, target, error instanceof McpApiError && error.code === "AGENT_POLICY_BLOCKED" ? "blocked" : "error", message);
+    return error instanceof McpApiError ? textResult(`${error.code}: ${error.message}`, true) : textResult(message, true);
   }
 }
 
