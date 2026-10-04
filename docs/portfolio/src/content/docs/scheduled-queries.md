@@ -1,3 +1,8 @@
+---
+app: Data › Scheduled queries
+route: /data/scheduled-queries
+permissions: scheduled_queries:view
+---
 # Scheduled queries
 
 Scheduled queries run SQL on a cron-style cadence — ingestion jobs, rollups, extracts — with run history, lineage and safety rails. They live in **Data** (`/data/scheduled-queries`, permissions `scheduled_queries:view`; edits need `scheduled_queries:edit`, deletes `scheduled_queries:delete`).

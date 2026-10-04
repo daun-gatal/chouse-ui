@@ -1,3 +1,8 @@
+---
+app: Agents
+route: /agents
+permissions: agents:view
+---
 # Agents & governance
 
 **Agents** (`/agents`, `agents:view`) shows every AI agent connected over [MCP](/docs/mcp/) or a [personal access token](/docs/personal-access-tokens/): what it read, what it cost, and whether the data it answered from was healthy.

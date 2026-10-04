@@ -1,3 +1,8 @@
+---
+app: Doctor
+route: /doctor
+permissions: doctor:view
+---
 # Chouse AI — Fleet Doctor
 
 The Fleet Doctor (`/doctor`, permissions `doctor:view` to read, `doctor:run` to trigger) is an autonomous, **read-only** AI SRE: it scans your fleet, pins root causes and writes structured reports you can act on.

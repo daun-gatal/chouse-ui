@@ -21,18 +21,17 @@ The same capability set is operable without the browser: the [MCP server](/docs/
 
 ## How the documentation is organized
 
-Use the left sidebar to navigate; this list is the map:
+Search every page with **⌘K** (or **/**), or use the sidebar. The sections follow what you need to do, in order:
 
-1. **Getting started** — install, first login and the concepts that explain everything else
-2. **Configuration** — YAML and environment variable references, secrets, the production checklist
-3. **Access & security** — roles, data access rules, the permission catalog, SSO, tokens, audit
-4. **Database Explorer** — connections, schema and table management, uploads, exports
-5. **Query workspace** — the SQL editor, Visual EXPLAIN, saved queries, command palette, AI Assist
-6. **Monitoring** — query logs, live queries, parts, schema advisor, cluster activity, metrics, errors
-7. **Fleet & Chouse AI** — the fleet view, threshold alerts, the Fleet Doctor and in-tab AI actions
-8. **Data** — data observability, pipelines and lineage, incidents with root cause and fixes, scheduled queries, data health promises and the operational AI brief
-9. **Automation** — MCP server, agents & governance, and CLI
-10. **Deploy & reference** — Docker, Helm, upgrades, architecture, security model, troubleshooting, FAQ
+1. **[Start here](/docs/start/)** — this introduction, the quick start, first login and the core concepts
+2. **[Install & upgrade](/docs/install/)** — Docker, Helm, the production checklist, migrations and upgrades, compatibility
+3. **[Configure](/docs/configure/)** — YAML and environment variable references, secrets, ClickHouse connections
+4. **[Access & security](/docs/access/)** — users and roles, data access rules, the permission catalog, SSO, tokens, sessions, audit, the security model
+5. **[Using CHouse UI](/docs/using/)** — one group per menu in the app: [Home](/docs/using/#home), [Explorer](/docs/using/#explorer), [Data](/docs/using/#data), [Monitoring](/docs/using/#monitoring), [Fleet](/docs/using/#fleet), [Doctor](/docs/using/#doctor) and [Agents](/docs/using/#agents)
+6. **[Automation](/docs/automation/)** — the MCP server for AI agents and the CLI for scripts and CI
+7. **[Reference & help](/docs/reference/)** — architecture, troubleshooting, FAQ
+
+Pages about a screen open with where it is in the app and the permissions that show it, so you can go from what you see to what you need.
 
 ## Where to start
 
@@ -41,4 +40,4 @@ Use the left sidebar to navigate; this list is the map:
 | Evaluating CHouse UI | [Quick start](/docs/quick-start/) — running locally in five minutes |
 | Setting it up for your team | [First login](/docs/first-login/) → [Production checklist](/docs/production-checklist/) |
 | Rolling out to users | [Users & roles](/docs/rbac-roles/) → [Data access rules](/docs/data-access-rules/) |
-| Looking for a specific feature | The sidebar group that matches it — every capability has a page |
+| Looking for a specific screen | [Using CHouse UI](/docs/using/) — grouped like the app's menu |

@@ -1,3 +1,8 @@
+---
+app: Admin › Connections
+route: /admin/connections
+permissions: connections:view
+---
 # Connections
 
 A connection is a registered ClickHouse server. CHouse UI supports multiple connections simultaneously — one UI, many clusters. Manage them in **Admin → Connections** (`connections:view`; changes need `connections:edit`/`connections:delete`).
@@ -26,7 +31,7 @@ The connection selector (dock / header) switches the active connection for all t
 
 - **Credentials at rest** — encrypted with the [encryption key/salt](/docs/configuration-secrets/); rotating those requires re-saving connections
 - **ClickHouse session** — created server-side on connect; auto-recovered on expiry (see [Sessions & JWT](/docs/sessions-jwt/))
-- **Fleet** — every connection is a fleet card; status/memory/lag per cluster — see [Fleet view](/docs/fleet-view/)
+- **Fleet** — every connection is a fleet card; status/memory/lag per cluster — see [Fleet view](/docs/fleet/)
 - **Per-connection scoping** — [saved queries](/docs/workspace-saved-queries/) and [data access rules](/docs/data-access-rules/) can be connection-aware
 
 ## Least-privilege guidance

@@ -1,3 +1,8 @@
+---
+app: Data › Incidents
+route: /data/incidents
+permissions: observe:view, data_health:view
+---
 # Incidents, root cause & fixes
 
 ## The investigation view

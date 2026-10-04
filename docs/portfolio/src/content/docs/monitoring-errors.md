@@ -1,3 +1,8 @@
+---
+app: Monitoring › Errors
+route: /monitoring/errors
+permissions: errors:view
+---
 # Errors
 
 The errors viewer (`/monitoring/errors`, permission `errors:view`) is a searchable, paginated surface over `system.errors` and the crash log — so recurring server-side failures surface without ad-hoc SQL.

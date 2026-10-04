@@ -39,7 +39,7 @@ CHouse UI is a monorepo with two main packages:
 | --- | --- | --- |
 | AI Optimizer | Rewrite + EXPLAIN for [in-tab Optimize](/docs/ai-in-tab/) | read-only, advisory |
 | AI Chat | [Workspace assistant](/docs/workspace-ai-assist/) | schema context only |
-| Fleet Doctor | Autonomous [fleet scans](/docs/ai-fleet-doctor/) | guarded single-SELECT `system.*`, `readonly=1` |
+| Fleet Doctor | Autonomous [fleet scans](/docs/doctor/) | guarded single-SELECT `system.*`, `readonly=1` |
 
 Providers plug in via the AI models admin; see the [provider list](/docs/workspace-ai-assist/).
 

@@ -1,3 +1,7 @@
+---
+app: Preferences › Personal access tokens
+route: /preferences
+---
 # Personal access tokens
 
 Personal access tokens (PATs) let scripts, CI pipelines and AI agents authenticate as *you* without a browser. Minted once in the UI, sent as a bearer token, verified live against RBAC on every call.

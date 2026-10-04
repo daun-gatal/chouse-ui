@@ -3,7 +3,7 @@ import remarkGfm from "remark-gfm";
 import type { ReactNode } from "react";
 import { CodeBlock, CodeInline } from "./CodeBlock";
 import { Callout } from "./Callout";
-import { headingId, nodeText } from "../lib";
+import { headingId, nodeText, withBase } from "../lib";
 
 /**
  * Themed markdown renderer for docs pages. Runs server-side (SSG) — no hooks,
@@ -20,25 +20,25 @@ export function Markdown({ children }: { children: string }) {
       remarkPlugins={[remarkGfm]}
       components={{
         h1: ({ children }) => (
-          <h2 id={headingId(flatten(children))} className="text-display-md mt-12 font-semibold text-paper">
+          <h2 id={headingId(flatten(children))} className="text-display-md mt-12 scroll-mt-20 font-semibold text-paper">
             {children}
           </h2>
         ),
         h2: ({ children }) => (
           <h2
             id={headingId(flatten(children))}
-            className="mt-14 border-t border-ink-500 pt-10 text-display-md font-semibold tracking-tight text-paper"
+            className="mt-14 scroll-mt-20 border-t border-ink-500 pt-10 text-display-md font-semibold tracking-tight text-paper"
           >
             {children}
           </h2>
         ),
         h3: ({ children }) => (
-          <h3 id={headingId(flatten(children))} className="mt-10 text-xl font-semibold tracking-tight text-paper">
+          <h3 id={headingId(flatten(children))} className="mt-10 scroll-mt-20 text-xl font-semibold tracking-tight text-paper">
             {children}
           </h3>
         ),
         h4: ({ children }) => (
-          <h4 id={headingId(flatten(children))} className="mt-8 text-lg font-semibold tracking-tight text-paper">
+          <h4 id={headingId(flatten(children))} className="mt-8 scroll-mt-20 text-lg font-semibold tracking-tight text-paper">
             {children}
           </h4>
         ),
@@ -58,9 +58,29 @@ export function Markdown({ children }: { children: string }) {
             );
           }
           return (
-            <a href={href} className={className}>
+            <a href={href?.startsWith("/") ? withBase(href) : href} className={className}>
               {children}
             </a>
+          );
+        },
+        // Screenshots and figures: lazy, bordered, with the title as caption.
+        img: ({ src, alt, title }) => {
+          const source = typeof src === "string" && src.startsWith("/") ? withBase(src) : src;
+          return (
+            <span className="mt-6 block">
+              <img
+                src={typeof source === "string" ? source : undefined}
+                alt={alt ?? ""}
+                loading="lazy"
+                decoding="async"
+                className="block w-full rounded-md border border-ink-500 bg-ink-100"
+              />
+              {title && (
+                <span className="mt-2 block font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                  {title}
+                </span>
+              )}
+            </span>
           );
         },
         strong: ({ children }) => <strong className="font-semibold text-paper">{children}</strong>,
@@ -69,7 +89,7 @@ export function Markdown({ children }: { children: string }) {
           <ul className="mt-4 flex flex-col gap-2 text-[15px] leading-relaxed text-paper-muted">{children}</ul>
         ),
         ol: ({ children }) => (
-          <ol className="mt-4 list-decimal space-y-2 pl-5 text-[15px] leading-relaxed text-paper-muted marker:font-mono marker:text-paper-faint">
+          <ol className="mt-4 list-decimal space-y-2 pl-5 [&>li>span[aria-hidden]:first-child]:hidden [&>li]:pl-1 text-[15px] leading-relaxed text-paper-muted marker:font-mono marker:text-paper-faint">
             {children}
           </ol>
         ),

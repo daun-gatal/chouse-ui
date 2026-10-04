@@ -1,3 +1,8 @@
+---
+app: Monitoring › Metrics
+route: /monitoring/metrics
+permissions: metrics:view, metrics:view:advanced
+---
 # Metrics
 
 Metrics (`/monitoring/metrics`, permission `metrics:view`; deeper tabs need `metrics:view:advanced`) is the server-health suite — nine tabs of ClickHouse-native time-series built on `system.metrics`, `system.events` and `system.asynchronous_metrics`.

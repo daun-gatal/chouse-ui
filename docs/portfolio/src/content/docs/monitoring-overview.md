@@ -1,3 +1,7 @@
+---
+app: Monitoring
+route: /monitoring
+---
 # Monitoring overview
 
 Monitoring is CHouse UI's ClickHouse-native observability suite at `/monitoring/:tab` — no exporter required; everything reads `system.*` tables directly through the server proxy.
@@ -19,7 +23,7 @@ Tabs the user lacks permission for simply don't appear — the tab strip is [RBA
 ## Shared controls
 
 - **Time range** — 15 m / 1 h / 6 h / 24 h presets plus a Grafana-style drill-down calendar (day → month → year) in one popover
-- **Connection context** — every tab reads the active [connection](/docs/explorer-connections/)
+- **Connection context** — every tab reads the active [connection](/docs/connections/)
 - **Chouse AI hooks** — with `ai:optimize`, rows in logs/errors/parts expose Optimize / Fix / Diagnose actions (see [Chouse AI in-tab](/docs/ai-in-tab/))
 
 ## System tables behind the suite
@@ -42,6 +46,6 @@ Tabs the user lacks permission for simply don't appear — the tab strip is [RBA
 
 ## Not here, but related
 
-- **Multi-cluster at a glance** → [Fleet view](/docs/fleet-view/)
-- **Automated diagnosis** → [Fleet Doctor](/docs/ai-fleet-doctor/)
+- **Multi-cluster at a glance** → [Fleet view](/docs/fleet/)
+- **Automated diagnosis** → [Fleet Doctor](/docs/doctor/)
 - **Page someone when it breaks** → [Alerting](/docs/alerting/)

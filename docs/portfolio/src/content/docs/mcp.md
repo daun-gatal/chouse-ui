@@ -1,3 +1,8 @@
+---
+app: Agents › MCP
+route: /agents/mcp
+permissions: agents:view
+---
 # MCP server
 
 AI agents (Claude Code, Codex, Cursor, VS Code Copilot, OpenCode, CI pipelines) can operate CHouse UI without the browser through a **Model Context Protocol** endpoint at **`/mcp` on the same address as the UI** — no extra port, Service or Ingress. Transport: **Streamable HTTP**. Authentication: a [personal access token](/docs/personal-access-tokens/) (`Authorization: Bearer ch_pat_…`), verified live against RBAC on every call.
@@ -21,23 +26,90 @@ Preferences → Personal access tokens → create a token for the agent, then ex
 
 ## Connect a client
 
-Agents › MCP has copy-ready setup for each client with your endpoint filled in, and the CLI prints it for your profile (`chouse mcp config claude-code`). For example:
+Agents › MCP has copy-ready setup for each client with your endpoint filled in, and the CLI prints it for your profile (`chouse mcp config claude-code`). The token always comes from the `CH_HOUSE_PAT` environment variable or a secret prompt — never paste it into a config file. With the endpoint at `https://chouse.corp/mcp`:
+
+:::tabs
+@tab Claude Code
+Terminal (add `--scope user` for every project):
 
 ```bash
 claude mcp add --transport http chouse https://chouse.corp/mcp \
   --header "Authorization: Bearer $CH_HOUSE_PAT"
 ```
+@tab Codex CLI
+```bash
+codex mcp add chouse --url https://chouse.corp/mcp --bearer-token-env-var CH_HOUSE_PAT
+```
+@tab Cursor
+`.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "chouse": {
       "url": "https://chouse.corp/mcp",
-      "headers": { "Authorization": "Bearer ${env:CH_HOUSE_PAT}" }
+      "headers": {
+        "Authorization": "Bearer ${env:CH_HOUSE_PAT}"
+      }
     }
   }
 }
 ```
+@tab VS Code
+`.vscode/mcp.json` — VS Code prompts for the token and stores it as a secret:
+
+```json
+{
+  "servers": {
+    "chouse": {
+      "type": "http",
+      "url": "https://chouse.corp/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:chouse_pat}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "chouse_pat",
+      "type": "promptString",
+      "description": "CHouse UI personal access token",
+      "password": true
+    }
+  ]
+}
+```
+@tab OpenCode
+`opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "chouse": {
+      "type": "remote",
+      "url": "https://chouse.corp/mcp",
+      "enabled": true,
+      "oauth": false,
+      "headers": {
+        "Authorization": "Bearer {env:CH_HOUSE_PAT}"
+      },
+      "timeout": 60000
+    }
+  }
+}
+```
+@tab curl
+Smoke test — lists the tools your token gets:
+
+```bash
+curl -s https://chouse.corp/mcp \
+  -H "Authorization: Bearer $CH_HOUSE_PAT" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+:::
 
 Headerless clients (curl, CLI and desktop agents) always pass origin checks; requests that carry an `Origin` must match the allowed origins (DNS-rebinding protection).
 

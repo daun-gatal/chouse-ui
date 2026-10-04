@@ -1,3 +1,8 @@
+---
+app: Data › Datasets
+route: /data/datasets
+permissions: observe:view, data_health:view
+---
 # Data health
 
 Data health lets your team write *promises* over datasets — freshness, volume and schema expectations — evaluated on a schedule, with incident tracking when reality drifts. Live in **Data** (`/data/datasets?view=promises`, incidents under `/data/incidents`).
@@ -24,7 +29,7 @@ Promises are created via a wizard (`PromiseWizard`) and evaluated on a schedule 
 
 ## Evaluation & incidents
 
-1. The evaluator runs the promise's checks against the [connection](/docs/explorer-connections/)
+1. The evaluator runs the promise's checks against the [connection](/docs/connections/)
 2. **Pass** → recorded to the promise's timeline
 3. **Fail** → an **incident** opens: the promise, dataset, failed check and evidence
 4. Incidents support **clear & rerun** semantics — acknowledge, fix the upstream job, re-evaluate ([ADR 0006](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0006-event-triggered-data-health.md), [ADR 0007](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0007-clear-and-rerun-for-scheduled-jobs-and-data-health.md))

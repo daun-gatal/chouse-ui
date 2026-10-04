@@ -1,3 +1,8 @@
+---
+app: Monitoring › Live queries
+route: /monitoring/live-queries
+permissions: live_queries:view
+---
 # Live queries
 
 Live queries (`/monitoring/live-queries`, permission `live_queries:view`) shows what is running on the cluster *right now* — with the tools to intervene.

@@ -1,3 +1,8 @@
+---
+app: Explorer
+route: /explorer
+permissions: database:view, table:view
+---
 # Databases & tables
 
 The Explorer (`/explorer`, requires explorer access) is the tree-view home for schema work: inspect structure, create/drop databases, and manage tables across MergeTree engine families.
@@ -6,7 +11,7 @@ The Explorer (`/explorer`, requires explorer access) is the tree-view home for s
 
 - Databases expand to their tables; each table expands to columns
 - Schema inspection shows column types, defaults and codecs where available
-- The tree reflects the active [connection](/docs/explorer-connections/) and your [data access rules](/docs/data-access-rules/) — hidden databases simply don't appear
+- The tree reflects the active [connection](/docs/connections/) and your [data access rules](/docs/data-access-rules/) — hidden databases simply don't appear
 
 ## Database operations
 

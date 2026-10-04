@@ -19,7 +19,7 @@ A **connection** is a stored ClickHouse server endpoint — host, port, credenti
 
 - Multiple servers can be registered; a selector in the UI switches between them
 - Passwords are encrypted with AES-256-GCM server-side; the browser never sees them
-- The [fleet view](/docs/fleet-view/) treats every connection as a monitored cluster
+- The [fleet view](/docs/fleet/) treats every connection as a monitored cluster
 - Admins manage connections in **Admin → Connections** (`connections:view`/`connections:edit`)
 
 ## 3. Everything is proxied through the server
@@ -49,6 +49,6 @@ Chouse AI — the Fleet Doctor and the in-tab Optimize/Fix/Diagnose actions — 
 | --- | --- |
 | Run and save SQL | [SQL editor](/docs/workspace-editor/), [Saved queries](/docs/workspace-saved-queries/) |
 | Understand cluster load | [Monitoring](/docs/monitoring-overview/) |
-| Watch many clusters | [Fleet view](/docs/fleet-view/) |
+| Watch many clusters | [Fleet view](/docs/fleet/) |
 | Automate without the browser | [MCP server](/docs/mcp/), [CLI](/docs/cli/) |
 | Schedule SQL and watch data quality | [Scheduled queries](/docs/scheduled-queries/), [Data health](/docs/data-health/) |

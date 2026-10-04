@@ -1,3 +1,8 @@
+---
+app: Data › Overview
+route: /data/overview
+permissions: observe:view
+---
 # Data observability
 
 The **Data** page (`/data`) answers one question for every table on the active connection: *is the data right, right now?* It replaces DataOps — Scheduled Queries and Data Health live here too, unchanged — and adds learned baselines, pipelines, lineage, incidents with a root cause, coverage and context ([ADR 0016](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0016-data-observability-platform.md)). Old `/dataops/*` links redirect.

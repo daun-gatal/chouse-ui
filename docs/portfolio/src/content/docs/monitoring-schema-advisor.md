@@ -1,8 +1,13 @@
+---
+app: Monitoring › Schema advisor
+route: /monitoring/schema
+permissions: schema_advisor:view
+---
 # Schema advisor
 
 The schema advisor (`/monitoring/schema`, permission `schema_advisor:view`) is a data-hygiene linter over `system.parts_columns` — it finds columns that waste on-disk space and ranks them by bytes.
 
-> Formerly named "Schema doctor" — renamed to disambiguate from the AI Fleet [Doctor](/docs/ai-fleet-doctor/).
+> Formerly named "Schema doctor" — renamed to disambiguate from the AI Fleet [Doctor](/docs/doctor/).
 
 ## What it lints
 

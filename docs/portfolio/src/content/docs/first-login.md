@@ -44,7 +44,7 @@ CHouse UI never talks to ClickHouse directly from the browser — it connects th
 2. Enter host, port, user and password. Passwords are encrypted with AES-256-GCM and never reach the frontend.
 3. Save, then pick the connection from the connection selector.
 
-Details in [Connections](/docs/explorer-connections/). From there, head to the [SQL editor](/docs/workspace-editor/) and run your first query.
+Details in [Connections](/docs/connections/). From there, head to the [SQL editor](/docs/workspace-editor/) and run your first query.
 
 ## If login fails
 

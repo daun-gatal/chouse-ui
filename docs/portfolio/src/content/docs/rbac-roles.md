@@ -1,3 +1,8 @@
+---
+app: Admin › Users and Admin › Roles
+route: /admin/users
+permissions: users:view, roles:view
+---
 # Users & roles
 
 CHouse UI has its own permission system — separate from ClickHouse's user system — that controls who can use the web interface and what they can do there. Manage it under **Admin → Users** (requires `users:view`).

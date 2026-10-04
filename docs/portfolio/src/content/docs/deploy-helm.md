@@ -26,7 +26,7 @@ For trying it out with everything included, the chart can deploy a bundled Click
 
 ## App configuration
 
-App-level settings (ClickHouse presets, [SSO](/docs/sso/), [MCP](/docs/mcp/), [scheduled queries](/docs/scheduled-queries/), [fleet](/docs/fleet-view/)) map to the same keys as the [YAML configuration](/docs/configuration-yaml/) — provided as chart values rather than env plumbing.
+App-level settings (ClickHouse presets, [SSO](/docs/sso/), [MCP](/docs/mcp/), [scheduled queries](/docs/scheduled-queries/), [fleet](/docs/fleet/)) map to the same keys as the [YAML configuration](/docs/configuration-yaml/) — provided as chart values rather than env plumbing.
 
 ## Ingress notes
 

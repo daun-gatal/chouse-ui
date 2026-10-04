@@ -69,7 +69,7 @@ After login, add your first ClickHouse connection:
 2. Add a connection with host `clickhouse-server:8123` (from inside the compose network), user `admin`, password `password`.
 3. Save — credentials are encrypted with AES-256-GCM server-side, never exposed to the browser.
 
-You now land on the [Overview dashboard](/docs/workspace-overview/) and can start querying in the [SQL editor](/docs/workspace-editor/).
+You now land on the [Overview dashboard](/docs/home/) and can start querying in the [SQL editor](/docs/workspace-editor/).
 
 ## Next steps
 

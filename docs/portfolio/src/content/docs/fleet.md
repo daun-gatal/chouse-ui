@@ -1,6 +1,11 @@
+---
+app: Fleet
+route: /fleet
+permissions: fleet:view
+---
 # Fleet view
 
-The fleet view (`/fleet`, permission `fleet:view`) shows every configured [connection](/docs/explorer-connections/) side by side — one pane for the whole estate.
+The fleet view (`/fleet`, permission `fleet:view`) shows every configured [connection](/docs/connections/) side by side — one pane for the whole estate.
 
 ## The grid
 
@@ -34,7 +39,7 @@ Why it exists: without it, every open browser tab hammers every cluster. With it
 
 ## Who sees the fleet
 
-`fleet:view` typically maps to admin-type roles. Regular users land on the [overview dashboard](/docs/workspace-overview/) of their assigned connection instead.
+`fleet:view` typically maps to admin-type roles. Regular users land on the [overview dashboard](/docs/home/) of their assigned connection instead.
 
 ## Underlying data
 

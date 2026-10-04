@@ -1,6 +1,11 @@
+---
+app: Monitoring › Query logs, Errors and Parts
+route: /monitoring
+permissions: ai:optimize
+---
 # Chouse AI in-tab
 
-The same read-only AI engine that powers the [Fleet Doctor](/docs/ai-fleet-doctor/) is surfaced *inside the monitoring tabs* — so you fix a problem without leaving the tab you found it in. Gated by `ai:optimize`.
+The same read-only AI engine that powers the [Fleet Doctor](/docs/doctor/) is surfaced *inside the monitoring tabs* — so you fix a problem without leaving the tab you found it in. Gated by `ai:optimize`.
 
 ## The three actions
 

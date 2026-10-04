@@ -1,6 +1,10 @@
+---
+app: Home
+route: /overview
+---
 # Overview dashboard
 
-The overview dashboard (`/overview`) is the per-cluster home reached after picking a [connection](/docs/explorer-connections/) or drilling into a [fleet card](/docs/fleet-view/). It requires authenticated access; quick actions are admin-gated.
+The overview dashboard (`/overview`) is the per-cluster home reached after picking a [connection](/docs/connections/) or drilling into a [fleet card](/docs/fleet/). It requires authenticated access; quick actions are admin-gated.
 
 ## What it shows
 
@@ -20,7 +24,7 @@ The overview dashboard (`/overview`) is the per-cluster home reached after picki
 
 | View | Difference |
 | --- | --- |
-| [Fleet view](/docs/fleet-view/) | All clusters at once; overview is one cluster in detail |
+| [Fleet view](/docs/fleet/) | All clusters at once; overview is one cluster in detail |
 | [Monitoring](/docs/monitoring-overview/) | Deep observability tabs; overview is the summary layer |
 | [DataOps](/docs/scheduled-queries/) | Scheduled/data-health surfaces live in DataOps, not here |
 

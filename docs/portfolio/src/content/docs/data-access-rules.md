@@ -1,3 +1,8 @@
+---
+app: Admin › Data access
+route: /admin/data-access
+permissions: data_access:view
+---
 # Data access rules
 
 Data access rules restrict which databases and tables each user or role may touch. Every query is parsed and validated against the applicable rules before it reaches ClickHouse. Manage them under **Admin → Data access** (requires `data_access:view`; edits need `data_access:update`/`create`/`delete`).

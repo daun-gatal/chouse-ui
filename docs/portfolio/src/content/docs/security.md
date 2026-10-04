@@ -28,7 +28,7 @@ Each layer is independent: a rule change doesn't need a redeploy, a permission r
 
 ## The AI boundary
 
-All Chouse AI surfaces (Fleet [Doctor](/docs/ai-fleet-doctor/), [in-tab actions](/docs/ai-in-tab/), [chat](/docs/workspace-ai-assist/)) are:
+All Chouse AI surfaces (Fleet [Doctor](/docs/doctor/), [in-tab actions](/docs/ai-in-tab/), [chat](/docs/workspace-ai-assist/)) are:
 
 - **Read-only** — `readonly=1`, guarded single-SELECT tool surface limited to `system.*`
 - **Advisory** — suggestions require human review; nothing mutates automatically

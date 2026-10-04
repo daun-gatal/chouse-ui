@@ -1,3 +1,7 @@
+---
+app: Data › Scheduled queries and Data › Datasets (detail views)
+permissions: ai:optimize
+---
 # DataOps AI
 
 DataOps AI is the summarization layer over the DataOps suite: an AI-generated **operational brief** of what happened across your scheduled jobs and data-health incidents, right where you look at them.
@@ -34,7 +38,7 @@ Each insight links back to the underlying run/incident for verification — the 
 
 | Feature | Relationship |
 | --- | --- |
-| [Fleet Doctor](/docs/ai-fleet-doctor/) | Cluster-level AI SRE; DataOps AI is the data-pipeline counterpart |
+| [Fleet Doctor](/docs/doctor/) | Cluster-level AI SRE; DataOps AI is the data-pipeline counterpart |
 | [In-tab AI](/docs/ai-in-tab/) | Query-level diagnosis; DataOps AI is job/pipeline-level |
 | [Data health](/docs/data-health/) | The signals the AI summarizes |
 

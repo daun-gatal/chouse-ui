@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { label: "Docs", href: "/docs/overview/" },
+  { label: "Docs", href: "/docs/" },
   { label: "Features", href: "#features" },
   { label: "Try Lab", href: "#try-lab" },
   { label: "FAQ", href: "#faq" },

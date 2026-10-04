@@ -1,3 +1,8 @@
+---
+app: Explorer › Import data
+route: /explorer
+permissions: table:insert
+---
 # Upload & preview
 
 Load files into existing tables and inspect rows without writing SQL.

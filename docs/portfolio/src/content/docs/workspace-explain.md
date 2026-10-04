@@ -1,3 +1,8 @@
+---
+app: Explorer › SQL tabs › Explain
+route: /explorer
+permissions: query:execute
+---
 # Visual EXPLAIN
 
 Visual EXPLAIN shows what the planner will do with a query before you run it — access paths, join order, and where the cost is.

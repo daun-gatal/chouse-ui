@@ -1,3 +1,8 @@
+---
+app: Monitoring › Performance, Capacity and Upgrades
+route: /monitoring/performance
+permissions: performance:view, capacity:view, upgrades:view
+---
 # Performance, capacity & upgrades
 
 Three Monitoring tabs added by [ADR 0016](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0016-data-observability-platform.md).

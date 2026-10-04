@@ -25,7 +25,7 @@ Work through this before exposing CHouse UI beyond localhost.
 ## Runtime
 
 - [ ] Set `NODE_ENV=production` and `LOG_LEVEL=info` (or `warn`)
-- [ ] Enable the [fleet poller](/docs/fleet-view/) rather than letting every browser poll clusters
+- [ ] Enable the [fleet poller](/docs/fleet/) rather than letting every browser poll clusters
 - [ ] Leave MCP off (Agents › MCP) unless agents need access, turn on only the tools they need, and read the [MCP](/docs/mcp/) safety model first
 - [ ] Verify migrations ran on boot: `docker logs chouse-ui | grep RBAC`
 

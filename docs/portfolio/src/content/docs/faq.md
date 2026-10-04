@@ -33,7 +33,7 @@ Yes — [SSO](/docs/sso/) supports OIDC, OAuth2 and SAML with role mapping.
 No — monitoring reads ClickHouse system tables natively; see [Monitoring overview](/docs/monitoring-overview/).
 
 **Can the AI damage my cluster?**
-No — it is read-only (`readonly=1`, single-SELECT `system.*` tools) and advisory; suggestions require human review. See [Fleet Doctor](/docs/ai-fleet-doctor/).
+No — it is read-only (`readonly=1`, single-SELECT `system.*` tools) and advisory; suggestions require human review. See [Fleet Doctor](/docs/doctor/).
 
 **Which AI providers are supported?**
 OpenAI, Anthropic, Google, Bedrock, Groq, Mistral, Cohere, Ollama, xAI, DeepSeek, Cerebras, Fireworks, Together, OpenRouter — and any OpenAI-compatible API. See [AI Assist](/docs/workspace-ai-assist/).

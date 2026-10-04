@@ -1,3 +1,8 @@
+---
+app: Explorer › SQL tabs › Optimize, Debug and AI chat
+route: /explorer
+permissions: ai:optimize, ai:chat
+---
 # AI Assist
 
 AI Assist is the schema-aware assistant living in the workspace: an optimizer to rewrite slow queries, a debugger to explain failures, and a chat for open questions about the current schema and data context.

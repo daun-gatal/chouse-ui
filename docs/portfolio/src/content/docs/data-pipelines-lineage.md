@@ -1,3 +1,8 @@
+---
+app: Data › Pipelines and Data › Lineage
+route: /data/pipelines
+permissions: observe:view
+---
 # Pipelines & lineage
 
 ## Pipelines

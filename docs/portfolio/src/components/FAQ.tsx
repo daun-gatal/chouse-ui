@@ -49,7 +49,7 @@ const FAQS: FaqItem[] = [
   {
     question: "Can I connect multiple ClickHouse servers?",
     answer: "Yes. Multi-connection is first-class — switch between servers from the connection selector. Each connection's credentials are encrypted independently.",
-    docs: [{ label: "Connections", href: "/docs/explorer-connections/" }],
+    docs: [{ label: "Connections", href: "/docs/connections/" }],
   },
   {
     question: "Which database backends are supported for RBAC metadata?",

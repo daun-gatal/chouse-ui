@@ -1,3 +1,8 @@
+---
+app: Admin › SSO
+route: /admin/sso
+permissions: sso:view
+---
 # Single sign-on (SSO)
 
 CHouse UI authenticates users against its own RBAC system; SSO delegates the *authentication* step to your identity provider while the app still issues its own session tokens and applies its own roles.

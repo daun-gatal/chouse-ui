@@ -28,7 +28,7 @@ Common failure modes and how to diagnose them.
 | Tabs missing | Permission gates (`logs:view`, …) not granted | Check the [permission catalog](/docs/permissions/) |
 | Empty query logs | `system.query_log` disabled / connection user lacks `system.*` read | Enable logging; widen grants |
 | Time window empty | Clock skew between hosts / no data in window | Sync clocks; widen window |
-| Fleet stuck on "polling" | Poller disabled (`FLEET_POLLER_ENABLED=false`) | Enable the poller — see [Fleet view](/docs/fleet-view/) |
+| Fleet stuck on "polling" | Poller disabled (`FLEET_POLLER_ENABLED=false`) | Enable the poller — see [Fleet view](/docs/fleet/) |
 
 ## Alerts & AI
 

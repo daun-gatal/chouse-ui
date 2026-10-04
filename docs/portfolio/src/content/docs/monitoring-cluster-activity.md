@@ -1,3 +1,8 @@
+---
+app: Monitoring › Cluster
+route: /monitoring/cluster
+permissions: cluster:view
+---
 # Cluster activity
 
 Cluster activity (`/monitoring/cluster`, permission `cluster:view`) answers "is the machinery stuck?" — mutations, replication queues and replica health at a glance.
