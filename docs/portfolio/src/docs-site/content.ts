@@ -27,6 +27,8 @@ export interface PageFacts {
   permissions?: string[];
   /** Minimum ClickHouse version, e.g. "23.8". */
   clickhouse?: string;
+  /** Set by scripts/gen-reference.ts on generated pages: what the page is generated from. */
+  generated?: string;
 }
 
 export type ContentBlock =
@@ -41,7 +43,7 @@ export interface SearchChunk {
   text: string;
 }
 
-const FACT_KEYS = new Set(["app", "route", "permissions", "clickhouse"]);
+const FACT_KEYS = new Set(["app", "route", "permissions", "clickhouse", "generated"]);
 const PERMISSION_RE = /^[a-z_]+(:[a-z_]+)+$/;
 const FENCE_RE = /^\s*(```|~~~)/;
 
@@ -68,6 +70,8 @@ export function parseFrontmatter(raw: string): { facts: PageFacts; body: string 
       facts.route = value;
     } else if (key === "app") {
       facts.app = value;
+    } else if (key === "generated") {
+      facts.generated = value;
     } else {
       facts.clickhouse = value;
     }

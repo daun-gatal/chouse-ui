@@ -26,6 +26,7 @@ import { parseHeadings, resetHeadings, withBase, SITE_URL } from "../src/docs-si
 import { parseBlocks, parseFrontmatter, plainMarkdown, searchChunks, stripLeadingH1 } from "../src/docs-site/content";
 import { renderDocPageHtml, renderHomeHtml, renderRedirectHtml, renderSectionHtml } from "../src/docs-site/render";
 import type { RenderContext } from "../src/docs-site/render";
+import type { PermissionIndex } from "../src/docs-site/components/DocsPage";
 import type { ContentBlock, PageFacts } from "../src/docs-site/content";
 import type { DocHeading } from "../src/docs-site/lib";
 import type { DocEntry } from "../src/docs-site/manifest";
@@ -36,6 +37,8 @@ const ROOT = join(__dirname, "..");
 const DIST = join(ROOT, "dist");
 const CONTENT_DIR = join(ROOT, "src", "content", "docs");
 const LANDING_DIR = join(ROOT, "src", "components");
+/** Generated from the server by scripts/gen-reference.ts. */
+const PERMISSIONS_PATH = join(ROOT, "src", "content", "reference", "permissions.json");
 
 interface LoadedPage {
   entry: DocEntry;
@@ -105,6 +108,23 @@ function loadPage(entry: DocEntry): LoadedPage {
   }
 }
 
+function loadPermissions(): PermissionIndex {
+  if (!existsSync(PERMISSIONS_PATH)) {
+    throw new Error("src/content/reference/permissions.json is missing — run `bun scripts/gen-reference.ts`");
+  }
+  return JSON.parse(readFileSync(PERMISSIONS_PATH, "utf8")) as PermissionIndex;
+}
+
+/** A page may only claim permissions that exist. */
+function checkPermissions(pages: LoadedPage[], permissions: PermissionIndex): void {
+  const errors = pages.flatMap((page) =>
+    (page.facts.permissions ?? [])
+      .filter((p) => !permissions[p])
+      .map((p) => `${page.entry.page.slug}.md: unknown permission "${p}" in frontmatter`)
+  );
+  if (errors.length) throw new Error(`Bad frontmatter:\n  - ${errors.join("\n  - ")}`);
+}
+
 /** Every anchor a /docs/ URL can carry, keyed by the slug or section id. */
 function anchorTable(pages: LoadedPage[]): Map<string, Set<string>> {
   const table = new Map<string, Set<string>>();
@@ -120,7 +140,7 @@ function checkLinks(pages: LoadedPage[]): void {
   const errors: string[] = [];
 
   const check = (source: string, href: string): void => {
-    const match = /^\/docs\/(?:([a-z0-9-]+)\/)?(?:#([a-z0-9-]+))?$/.exec(href);
+    const match = /^\/docs\/(?:([a-z0-9-]+)\/)?(?:#([a-z0-9_-]+))?$/.exec(href);
     if (!match) {
       errors.push(`${source}: malformed docs link "${href}" (expected /docs/<slug>/ or /docs/<slug>/#anchor)`);
       return;
@@ -186,6 +206,8 @@ function main(): void {
 
   validateManifest();
   const pages = allPages().map(loadPage);
+  const permissions = loadPermissions();
+  checkPermissions(pages, permissions);
   checkLinks(pages);
 
   const generated: Array<{ url: string; title: string }> = [];
@@ -202,7 +224,7 @@ function main(): void {
     // The Markdown component re-allocates heading ids in document order, so
     // reset before rendering to match the ids parsed for the TOC.
     resetHeadings();
-    const html = renderDocPageHtml(page, ctx);
+    const html = renderDocPageHtml(page, permissions, ctx);
     writePage(docPath(page.entry.page.slug), html);
     generated.push({ url: `${SITE_URL}${withBase(docPath(page.entry.page.slug))}`, title: page.entry.page.title });
     console.log(`✓ ${docPath(page.entry.page.slug)} (${page.headings.length} headings)`);

@@ -25,7 +25,7 @@ import {
 // Permission Categories
 // ============================================
 
-const PERMISSION_CATEGORIES: Record<string, string[]> = {
+export const PERMISSION_CATEGORIES: Record<string, string[]> = {
   'User Management': [
     PERMISSIONS.USERS_VIEW,
     PERMISSIONS.USERS_CREATE,
@@ -183,7 +183,7 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
 };
 
 // Human-readable permission names
-const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
+export const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.USERS_VIEW]: 'View Users',
   [PERMISSIONS.USERS_CREATE]: 'Create Users',
   [PERMISSIONS.USERS_UPDATE]: 'Update Users',
@@ -286,7 +286,7 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
 };
 
 // Role display names and descriptions
-const ROLE_DEFINITIONS: Record<SystemRole, { displayName: string; description: string }> = {
+export const ROLE_DEFINITIONS: Record<SystemRole, { displayName: string; description: string }> = {
   [SYSTEM_ROLES.SUPER_ADMIN]: {
     displayName: 'Super Administrator',
     description: 'Full system access with all permissions',

@@ -67,6 +67,7 @@ export const DOC_SECTIONS: DocSection[] = [
         pages: [
           { slug: "deploy-docker", title: "Docker deployment", description: "docker-compose up for the full stack, production hardening, volumes, health checks and upgrades." },
           { slug: "deploy-helm", title: "Helm chart", description: "Install the signed OCI chart, choose SQLite or PostgreSQL topology, and configure ingress, secrets and SSO." },
+          { slug: "helm-values", title: "Helm values reference", description: "Every value of the chouse-ui Helm chart with its type, default and meaning — generated from the chart." },
           { slug: "production-checklist", title: "Production checklist", description: "The pre-production gate: unique secrets, rotated admin password, CORS, HTTPS, PostgreSQL and backups." },
           { slug: "migrations-upgrades", title: "Migrations & upgrades", description: "Migrations run automatically on boot — what happens on fresh installs, upgrades and restarts, plus the RBAC CLI tools." },
           { slug: "compatibility", title: "Compatibility matrix", description: "Tested ClickHouse, PostgreSQL and SQLite versions, plus browser and runtime requirements." },
@@ -83,7 +84,7 @@ export const DOC_SECTIONS: DocSection[] = [
         id: "configure",
         pages: [
           { slug: "configuration-yaml", title: "YAML configuration", description: "Configure the server with a grouped YAML file via CHOUSE_CONFIG_PATH — precedence rules and a full example." },
-          { slug: "configuration-env", title: "Environment variables", description: "Every environment variable: server, ClickHouse defaults, RBAC database, JWT, encryption, observability, doctor, scheduled queries and SSO." },
+          { slug: "configuration-env", title: "Environment variables", description: "Every setting the server reads, with its default, YAML key and what it does — checked against the code." },
           { slug: "configuration-secrets", title: "Secrets generation", description: "Generate JWT secrets and AES-256 encryption keys/salts with openssl, and what each secret protects." },
           { slug: "connections", title: "Connections", description: "Add and manage multiple ClickHouse servers, connection presets, encrypted credentials and quick switching." },
         ],
@@ -100,7 +101,7 @@ export const DOC_SECTIONS: DocSection[] = [
         pages: [
           { slug: "rbac-roles", title: "Users & roles", description: "The built-in roles from Super Admin to Guest, what each can do, and how role assignment works." },
           { slug: "data-access-rules", title: "Data access rules", description: "Per-user and per-role database/table rules with wildcards, regex patterns, deny precedence and priority ordering." },
-          { slug: "permissions", title: "Permission catalog", description: "Every permission string in CHouse UI and what it unlocks, grouped the way role cards group them." },
+          { slug: "permissions", title: "Permission catalog", description: "Every permission, what it allows and which built-in roles hold it — generated from the server." },
           { slug: "sso", title: "Single sign-on (SSO)", description: "Delegate authentication to OIDC, OAuth2 or SAML identity providers with role mapping, JIT provisioning and config-file/env layering." },
           { slug: "personal-access-tokens", title: "Personal access tokens", description: "Mint ch_pat_… tokens in Preferences to authenticate the CLI, MCP agents and CI — scoped, revocable, verified live." },
           { slug: "sessions-jwt", title: "Sessions & JWT", description: "Short-lived access tokens, long-lived refresh tokens, session expiry recovery and issuer/audience overrides." },
@@ -197,7 +198,9 @@ export const DOC_SECTIONS: DocSection[] = [
         id: "automation",
         pages: [
           { slug: "mcp", title: "MCP server", description: "Operate CHouse UI from AI agents over Model Context Protocol at /mcp — turned on and tool-by-tool in Agents › MCP, read-only by default." },
+          { slug: "mcp-tools", title: "MCP tool catalog", description: "Every MCP tool with its access level, default state, required permissions and parameters — generated from the server." },
           { slug: "cli", title: "CLI", description: "The chouse command line: query, explore, monitor, run the doctor and manage schedules from scripts and CI." },
+          { slug: "cli-reference", title: "CLI command reference", description: "Every chouse command, subcommand and flag — generated from the CLI itself." },
         ],
       },
     ],

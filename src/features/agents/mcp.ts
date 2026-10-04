@@ -9,7 +9,7 @@ import type { McpTool, McpToolAccess, McpToolCategory } from "@/api/agents";
 
 export const MCP_TOKEN_ENV = "CH_HOUSE_PAT";
 
-const MCP_CATEGORY_LABELS: Record<McpToolCategory, string> = {
+export const MCP_CATEGORY_LABELS: Record<McpToolCategory, string> = {
   identity: "Identity & connections",
   explore: "Explore",
   query: "Query",
@@ -20,7 +20,7 @@ const MCP_CATEGORY_LABELS: Record<McpToolCategory, string> = {
   ai: "Chouse AI",
 };
 
-const MCP_CATEGORY_ORDER: McpToolCategory[] = [
+export const MCP_CATEGORY_ORDER: McpToolCategory[] = [
   "identity",
   "explore",
   "query",

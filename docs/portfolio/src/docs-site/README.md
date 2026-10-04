@@ -26,6 +26,37 @@ Where it goes:
 | Automation | MCP and the CLI |
 | Reference & help | Architecture, troubleshooting, FAQ |
 
+## Generated reference pages
+
+These pages are generated from the code by `scripts/gen-reference.ts`. Never edit
+them by hand: their frontmatter says `generated:` and the build hides the edit
+link.
+
+| Page | Source |
+| --- | --- |
+| `permissions.md` | `packages/server/src/rbac/schema/base.ts` and `rbac/services/seed.ts` |
+| `configuration-env.md` | `src/content/reference/config-keys.ts` (YAML keys from `.config.example.yaml`) |
+| `mcp-tools.md` | the MCP tool registry in `packages/server/src/mcp` |
+| `cli-reference.md` | `src/content/reference/cli.json`, a snapshot of the CLI command tree |
+| `helm-values.md` | `charts/chouse-ui/README.md` (helm-docs output of `values.yaml`) |
+
+```bash
+# docs/portfolio — needs `bun install` in packages/server too
+bun scripts/gen-reference.ts          # regenerate
+bun scripts/gen-reference.ts --check  # what CI runs
+```
+
+The CLI snapshot is written by the CLI's own test, which fails when the command
+tree changes without it: `UPDATE_CLI_REFERENCE=1 go test ./internal/cli -run
+TestCommandReference` in `cli/`.
+
+`--check` also enforces coverage:
+
+- every environment variable the server reads is listed in `config-keys.ts`, and
+  every live entry there is still read
+- every app screen (each route, and each tab of Monitoring, Data, Admin and
+  Agents) appears on some page, as `route:` frontmatter or in the text
+
 ## Renaming or removing a page
 
 Never break a published URL. Rename the file and the manifest slug, then add
@@ -51,7 +82,7 @@ clickhouse: 23.8
 | --- | --- |
 | `app` | Menu path as the app labels it, joined with ` › ` |
 | `route` | App route (must start with `/`) |
-| `permissions` | Permissions that open the screen. Holding any one of them is enough |
+| `permissions` | Permissions that open the screen. Holding any one of them is enough. Each must exist in the permission catalog; badges link to it |
 | `clickhouse` | Minimum ClickHouse version, when the feature needs one |
 
 Unknown keys fail the build.

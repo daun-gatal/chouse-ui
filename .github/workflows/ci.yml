@@ -139,13 +139,19 @@ jobs:
       - name: Build Frontend
         run: bun run build
 
+      # Reference pages (permissions, env vars, MCP tools, CLI, Helm values)
+      # are generated from the code; fail when they are stale, when the server
+      # reads an undocumented env var, or when an app screen has no docs page.
+      - name: Check Docs Reference & Coverage
+        run: |
+          (cd packages/server && bun install --frozen-lockfile)
+          (cd docs/portfolio && bun install --frozen-lockfile && bun scripts/gen-reference.ts --check)
+
       # The docs build validates the manifest, frontmatter and every internal
       # docs link/anchor; without this, a broken link only fails at deploy.
       - name: Build Portfolio & Docs
         working-directory: docs/portfolio
-        run: |
-          bun install --frozen-lockfile
-          bun run build
+        run: bun run build
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4

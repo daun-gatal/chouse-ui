@@ -1,0 +1,522 @@
+{
+  "users:view": {
+    "name": "View Users",
+    "category": "User Management",
+    "anchor": "user-management"
+  },
+  "users:create": {
+    "name": "Create Users",
+    "category": "User Management",
+    "anchor": "user-management"
+  },
+  "users:update": {
+    "name": "Update Users",
+    "category": "User Management",
+    "anchor": "user-management"
+  },
+  "users:delete": {
+    "name": "Delete Users",
+    "category": "User Management",
+    "anchor": "user-management"
+  },
+  "roles:view": {
+    "name": "View Roles",
+    "category": "Role Management",
+    "anchor": "role-management"
+  },
+  "roles:create": {
+    "name": "Create Roles",
+    "category": "Role Management",
+    "anchor": "role-management"
+  },
+  "roles:update": {
+    "name": "Update Roles",
+    "category": "Role Management",
+    "anchor": "role-management"
+  },
+  "roles:delete": {
+    "name": "Delete Roles",
+    "category": "Role Management",
+    "anchor": "role-management"
+  },
+  "roles:assign": {
+    "name": "Assign Roles",
+    "category": "Role Management",
+    "anchor": "role-management"
+  },
+  "data_access:view": {
+    "name": "View Data Access Policies",
+    "category": "Data Access Policies",
+    "anchor": "data-access-policies"
+  },
+  "data_access:create": {
+    "name": "Create Data Access Policies",
+    "category": "Data Access Policies",
+    "anchor": "data-access-policies"
+  },
+  "data_access:update": {
+    "name": "Update Data Access Policies",
+    "category": "Data Access Policies",
+    "anchor": "data-access-policies"
+  },
+  "data_access:delete": {
+    "name": "Delete Data Access Policies",
+    "category": "Data Access Policies",
+    "anchor": "data-access-policies"
+  },
+  "data_access:assign": {
+    "name": "Assign Data Access Policies to Roles",
+    "category": "Data Access Policies",
+    "anchor": "data-access-policies"
+  },
+  "clickhouse:users:view": {
+    "name": "View ClickHouse Users",
+    "category": "ClickHouse Users",
+    "anchor": "clickhouse-users"
+  },
+  "clickhouse:users:create": {
+    "name": "Create ClickHouse Users",
+    "category": "ClickHouse Users",
+    "anchor": "clickhouse-users"
+  },
+  "clickhouse:users:update": {
+    "name": "Update ClickHouse Users",
+    "category": "ClickHouse Users",
+    "anchor": "clickhouse-users"
+  },
+  "clickhouse:users:delete": {
+    "name": "Delete ClickHouse Users",
+    "category": "ClickHouse Users",
+    "anchor": "clickhouse-users"
+  },
+  "clickhouse:roles:view": {
+    "name": "clickhouse:roles:view",
+    "category": "ClickHouse Roles",
+    "anchor": "clickhouse-roles"
+  },
+  "clickhouse:roles:create": {
+    "name": "clickhouse:roles:create",
+    "category": "ClickHouse Roles",
+    "anchor": "clickhouse-roles"
+  },
+  "clickhouse:roles:update": {
+    "name": "clickhouse:roles:update",
+    "category": "ClickHouse Roles",
+    "anchor": "clickhouse-roles"
+  },
+  "clickhouse:roles:delete": {
+    "name": "clickhouse:roles:delete",
+    "category": "ClickHouse Roles",
+    "anchor": "clickhouse-roles"
+  },
+  "clickhouse:roles:assign": {
+    "name": "clickhouse:roles:assign",
+    "category": "ClickHouse Roles",
+    "anchor": "clickhouse-roles"
+  },
+  "database:view": {
+    "name": "View Databases",
+    "category": "Database Operations",
+    "anchor": "database-operations"
+  },
+  "database:create": {
+    "name": "Create Databases",
+    "category": "Database Operations",
+    "anchor": "database-operations"
+  },
+  "database:drop": {
+    "name": "Drop Databases",
+    "category": "Database Operations",
+    "anchor": "database-operations"
+  },
+  "table:view": {
+    "name": "View Tables",
+    "category": "Table Operations",
+    "anchor": "table-operations"
+  },
+  "table:create": {
+    "name": "Create Tables",
+    "category": "Table Operations",
+    "anchor": "table-operations"
+  },
+  "table:alter": {
+    "name": "Alter Tables",
+    "category": "Table Operations",
+    "anchor": "table-operations"
+  },
+  "table:drop": {
+    "name": "Drop Tables",
+    "category": "Table Operations",
+    "anchor": "table-operations"
+  },
+  "table:select": {
+    "name": "Select from Tables",
+    "category": "Table Operations",
+    "anchor": "table-operations"
+  },
+  "table:insert": {
+    "name": "Insert into Tables",
+    "category": "Table Operations",
+    "anchor": "table-operations"
+  },
+  "table:update": {
+    "name": "Update Tables",
+    "category": "Table Operations",
+    "anchor": "table-operations"
+  },
+  "table:delete": {
+    "name": "Delete from Tables",
+    "category": "Table Operations",
+    "anchor": "table-operations"
+  },
+  "query:execute": {
+    "name": "Execute Queries",
+    "category": "Query Operations",
+    "anchor": "query-operations"
+  },
+  "query:execute:ddl": {
+    "name": "Execute DDL Queries",
+    "category": "Query Operations",
+    "anchor": "query-operations"
+  },
+  "query:execute:dml": {
+    "name": "Execute DML Queries",
+    "category": "Query Operations",
+    "anchor": "query-operations"
+  },
+  "query:execute:misc": {
+    "name": "Execute Misc Queries (SHOW, DESCRIBE)",
+    "category": "Query Operations",
+    "anchor": "query-operations"
+  },
+  "query:history:view": {
+    "name": "View Own Query History",
+    "category": "Query Operations",
+    "anchor": "query-operations"
+  },
+  "query:history:view:all": {
+    "name": "View All Query History",
+    "category": "Query Operations",
+    "anchor": "query-operations"
+  },
+  "saved_queries:view": {
+    "name": "View Saved Queries",
+    "category": "Saved Queries",
+    "anchor": "saved-queries"
+  },
+  "saved_queries:create": {
+    "name": "Create Saved Queries",
+    "category": "Saved Queries",
+    "anchor": "saved-queries"
+  },
+  "saved_queries:update": {
+    "name": "Update Saved Queries",
+    "category": "Saved Queries",
+    "anchor": "saved-queries"
+  },
+  "saved_queries:delete": {
+    "name": "Delete Saved Queries",
+    "category": "Saved Queries",
+    "anchor": "saved-queries"
+  },
+  "saved_queries:share": {
+    "name": "Share Saved Queries",
+    "category": "Saved Queries",
+    "anchor": "saved-queries"
+  },
+  "metrics:view": {
+    "name": "View Metrics",
+    "category": "Metrics & Monitoring",
+    "anchor": "metrics-monitoring"
+  },
+  "metrics:view:advanced": {
+    "name": "View Advanced Metrics",
+    "category": "Metrics & Monitoring",
+    "anchor": "metrics-monitoring"
+  },
+  "logs:view": {
+    "name": "View Query Logs",
+    "category": "Metrics & Monitoring",
+    "anchor": "metrics-monitoring"
+  },
+  "parts:view": {
+    "name": "View Parts & Partitions",
+    "category": "Metrics & Monitoring",
+    "anchor": "metrics-monitoring"
+  },
+  "schema_advisor:view": {
+    "name": "View Schema Advisor",
+    "category": "Metrics & Monitoring",
+    "anchor": "metrics-monitoring"
+  },
+  "cluster:view": {
+    "name": "View Cluster",
+    "category": "Metrics & Monitoring",
+    "anchor": "metrics-monitoring"
+  },
+  "errors:view": {
+    "name": "View Errors",
+    "category": "Metrics & Monitoring",
+    "anchor": "metrics-monitoring"
+  },
+  "fleet:view": {
+    "name": "View Fleet",
+    "category": "Fleet Monitoring",
+    "anchor": "fleet-monitoring"
+  },
+  "doctor:view": {
+    "name": "View Chouse AI Doctor",
+    "category": "Fleet Monitoring",
+    "anchor": "fleet-monitoring"
+  },
+  "doctor:run": {
+    "name": "Run Chouse AI Doctor Scan",
+    "category": "Fleet Monitoring",
+    "anchor": "fleet-monitoring"
+  },
+  "settings:view": {
+    "name": "View Settings",
+    "category": "Settings",
+    "anchor": "settings"
+  },
+  "settings:update": {
+    "name": "Update Settings",
+    "category": "Settings",
+    "anchor": "settings"
+  },
+  "audit:view": {
+    "name": "View Audit Logs",
+    "category": "Audit",
+    "anchor": "audit"
+  },
+  "audit:export": {
+    "name": "Export Audit Logs",
+    "category": "Audit",
+    "anchor": "audit"
+  },
+  "audit:delete": {
+    "name": "Delete Audit Logs",
+    "category": "Audit",
+    "anchor": "audit"
+  },
+  "live_queries:view": {
+    "name": "View Live Queries",
+    "category": "Live Query Management",
+    "anchor": "live-query-management"
+  },
+  "live_queries:kill": {
+    "name": "Kill Own Live Queries",
+    "category": "Live Query Management",
+    "anchor": "live-query-management"
+  },
+  "live_queries:kill_all": {
+    "name": "Kill All Live Queries",
+    "category": "Live Query Management",
+    "anchor": "live-query-management"
+  },
+  "connections:view": {
+    "name": "View Connections",
+    "category": "Connection Management",
+    "anchor": "connection-management"
+  },
+  "connections:edit": {
+    "name": "Edit Connections",
+    "category": "Connection Management",
+    "anchor": "connection-management"
+  },
+  "connections:delete": {
+    "name": "Delete Connections",
+    "category": "Connection Management",
+    "anchor": "connection-management"
+  },
+  "ai:optimize": {
+    "name": "AI Query Optimization",
+    "category": "AI Assistant",
+    "anchor": "ai-assistant"
+  },
+  "ai:chat": {
+    "name": "AI Chat Assistant",
+    "category": "AI Assistant",
+    "anchor": "ai-assistant"
+  },
+  "ai_models:view": {
+    "name": "View AI Models",
+    "category": "AI Models Management",
+    "anchor": "ai-models-management"
+  },
+  "ai_models:create": {
+    "name": "Create AI Models",
+    "category": "AI Models Management",
+    "anchor": "ai-models-management"
+  },
+  "ai_models:update": {
+    "name": "Update AI Models",
+    "category": "AI Models Management",
+    "anchor": "ai-models-management"
+  },
+  "ai_models:delete": {
+    "name": "Delete AI Models",
+    "category": "AI Models Management",
+    "anchor": "ai-models-management"
+  },
+  "sso:view": {
+    "name": "View SSO Configuration",
+    "category": "SSO Management",
+    "anchor": "sso-management"
+  },
+  "sso:edit": {
+    "name": "Edit SSO Configuration",
+    "category": "SSO Management",
+    "anchor": "sso-management"
+  },
+  "sso:delete": {
+    "name": "Delete SSO Providers",
+    "category": "SSO Management",
+    "anchor": "sso-management"
+  },
+  "alerting:view": {
+    "name": "View Alerting Configuration",
+    "category": "Alerting",
+    "anchor": "alerting"
+  },
+  "alerting:edit": {
+    "name": "Edit Alerting Configuration",
+    "category": "Alerting",
+    "anchor": "alerting"
+  },
+  "alerting:delete": {
+    "name": "Delete Alerting Configuration",
+    "category": "Alerting",
+    "anchor": "alerting"
+  },
+  "scheduled_queries:view": {
+    "name": "View Scheduled Queries",
+    "category": "Scheduled Queries",
+    "anchor": "scheduled-queries"
+  },
+  "scheduled_queries:edit": {
+    "name": "Create and Edit Scheduled Queries",
+    "category": "Scheduled Queries",
+    "anchor": "scheduled-queries"
+  },
+  "scheduled_queries:delete": {
+    "name": "Delete Scheduled Queries",
+    "category": "Scheduled Queries",
+    "anchor": "scheduled-queries"
+  },
+  "scheduled_queries:run": {
+    "name": "Manually Run Scheduled Queries",
+    "category": "Scheduled Queries",
+    "anchor": "scheduled-queries"
+  },
+  "scheduled_queries:write": {
+    "name": "Create Materialize Scheduled Queries",
+    "category": "Scheduled Queries",
+    "anchor": "scheduled-queries"
+  },
+  "scheduled_queries:view_all": {
+    "name": "View and Act on All Scheduled Queries",
+    "category": "Scheduled Queries",
+    "anchor": "scheduled-queries"
+  },
+  "data_health:view": {
+    "name": "View Data Health",
+    "category": "Data Health",
+    "anchor": "data-health"
+  },
+  "data_health:edit": {
+    "name": "Create and Edit Data Health Promises",
+    "category": "Data Health",
+    "anchor": "data-health"
+  },
+  "data_health:delete": {
+    "name": "Delete Data Health Promises",
+    "category": "Data Health",
+    "anchor": "data-health"
+  },
+  "data_health:run": {
+    "name": "Manually Run Data Health Promises",
+    "category": "Data Health",
+    "anchor": "data-health"
+  },
+  "data_health:view_all": {
+    "name": "View and Act on All Data Health Promises",
+    "category": "Data Health",
+    "anchor": "data-health"
+  },
+  "observe:view": {
+    "name": "View Data Observability",
+    "category": "Data Observability",
+    "anchor": "data-observability"
+  },
+  "observe:edit": {
+    "name": "Accept Monitoring Suggestions and Pin Criticality",
+    "category": "Data Observability",
+    "anchor": "data-observability"
+  },
+  "context:edit": {
+    "name": "Edit Table Context and Metrics",
+    "category": "Data Observability",
+    "anchor": "data-observability"
+  },
+  "schema:override": {
+    "name": "Run Schema Changes That Break Dependents",
+    "category": "Data Observability",
+    "anchor": "data-observability"
+  },
+  "notebooks:edit": {
+    "name": "Add Cells to Investigation Notebooks",
+    "category": "Data Observability",
+    "anchor": "data-observability"
+  },
+  "performance:view": {
+    "name": "View Query Performance",
+    "category": "Performance & Capacity",
+    "anchor": "performance-capacity"
+  },
+  "capacity:view": {
+    "name": "View Capacity",
+    "category": "Performance & Capacity",
+    "anchor": "performance-capacity"
+  },
+  "cost:view": {
+    "name": "View Cost",
+    "category": "Performance & Capacity",
+    "anchor": "performance-capacity"
+  },
+  "upgrades:view": {
+    "name": "View Upgrade Readiness",
+    "category": "Performance & Capacity",
+    "anchor": "performance-capacity"
+  },
+  "upgrades:run": {
+    "name": "Run Upgrade Replays and Codec Trials",
+    "category": "Performance & Capacity",
+    "anchor": "performance-capacity"
+  },
+  "remediation:propose": {
+    "name": "Propose Remediation Actions",
+    "category": "Remediation",
+    "anchor": "remediation"
+  },
+  "remediation:approve": {
+    "name": "Approve Remediation Actions",
+    "category": "Remediation",
+    "anchor": "remediation"
+  },
+  "remediation:approve_high": {
+    "name": "Approve High-Risk Remediation Actions",
+    "category": "Remediation",
+    "anchor": "remediation"
+  },
+  "agents:view": {
+    "name": "View Agent Activity",
+    "category": "Agents",
+    "anchor": "agents"
+  },
+  "agents:manage": {
+    "name": "Manage Agent Policies",
+    "category": "Agents",
+    "anchor": "agents"
+  }
+}

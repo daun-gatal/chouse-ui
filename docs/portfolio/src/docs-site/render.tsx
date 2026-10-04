@@ -5,6 +5,7 @@ import { DocsHome, DocsSectionHub } from "./components/DocsHub";
 import { ArchitectureDiagram } from "./components/ArchitectureDiagram";
 import { DOCS_HOME_PATH, docPath, sectionPath } from "./manifest";
 import { SITE_URL, withBase } from "./lib";
+import type { PermissionIndex } from "./components/DocsPage";
 import type { ContentBlock, PageFacts } from "./content";
 import type { DocHeading } from "./lib";
 import type { DocEntry, DocSection } from "./manifest";
@@ -115,6 +116,7 @@ function shell(meta: PageMeta, ctx: RenderContext, bodyHtml: string): string {
 /** Render one doc page. */
 export function renderDocPageHtml(
   args: { entry: DocEntry; facts: PageFacts; blocks: ContentBlock[]; headings: DocHeading[] },
+  permissions: PermissionIndex,
   ctx: RenderContext
 ): string {
   const { section, group, page } = args.entry;
@@ -124,7 +126,14 @@ export function renderDocPageHtml(
     }
   }
   const bodyHtml = renderToStaticMarkup(
-    <DocsPage entry={args.entry} facts={args.facts} blocks={args.blocks} headings={args.headings} diagrams={DIAGRAMS} />
+    <DocsPage
+      entry={args.entry}
+      facts={args.facts}
+      blocks={args.blocks}
+      headings={args.headings}
+      diagrams={DIAGRAMS}
+      permissions={permissions}
+    />
   );
   const crumbs: LdCrumb[] = [
     { name: section.label, path: sectionPath(section.id) },

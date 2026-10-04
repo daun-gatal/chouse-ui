@@ -9,8 +9,11 @@ import type { DocEntry } from "../manifest";
 
 const EDIT_BASE = "https://github.com/daun-gatal/chouse-ui/edit/preview/docs/portfolio/src/content/docs";
 
-/** "In the app · Needs · ClickHouse" strip under the lead. */
-function FactsBar({ facts }: { facts: PageFacts }) {
+/** Permission → its display name and the anchor of its category on the permission catalog. */
+export type PermissionIndex = Record<string, { name: string; anchor: string }>;
+
+/** "In the app · Needs · ClickHouse · Source" strip under the lead. */
+function FactsBar({ facts, permissions }: { facts: PageFacts; permissions: PermissionIndex }) {
   const items: Array<{ label: string; value: ReactNode }> = [];
   if (facts.app) {
     items.push({
@@ -31,7 +34,8 @@ function FactsBar({ facts }: { facts: PageFacts }) {
           {facts.permissions.map((permission) => (
             <a
               key={permission}
-              href={withBase("/docs/permissions/")}
+              href={withBase(`/docs/permissions/#${permissions[permission]?.anchor ?? ""}`)}
+              title={permissions[permission]?.name}
               className="rounded-xs border border-ink-600 bg-ink-200 px-1.5 py-0.5 font-mono text-[11.5px] text-paper transition-colors hover:border-accent/60"
             >
               {permission}
@@ -43,6 +47,12 @@ function FactsBar({ facts }: { facts: PageFacts }) {
   }
   if (facts.clickhouse) {
     items.push({ label: "ClickHouse", value: <span className="font-mono text-[12.5px] text-paper">≥ {facts.clickhouse}</span> });
+  }
+  if (facts.generated) {
+    items.push({
+      label: "Source",
+      value: <span className="text-paper-muted">Generated from {facts.generated}, so it always matches the code.</span>,
+    });
   }
   if (items.length === 0) return null;
   return (
@@ -105,12 +115,14 @@ export function DocsPage({
   blocks,
   headings,
   diagrams,
+  permissions,
 }: {
   entry: DocEntry;
   facts: PageFacts;
   blocks: ContentBlock[];
   headings: DocHeading[];
   diagrams: Record<string, ComponentType>;
+  permissions: PermissionIndex;
 }) {
   const { section, group, page } = entry;
   const crumbs = [
@@ -133,7 +145,7 @@ export function DocsPage({
           </span>
           <h1 className="text-display-lg font-semibold tracking-tight text-paper text-balance">{page.title}</h1>
           <p className="max-w-2xl text-lg leading-relaxed text-paper-muted">{page.description}</p>
-          <FactsBar facts={facts} />
+          <FactsBar facts={facts} permissions={permissions} />
         </div>
         <div className="mt-2">
           {blocks.map((block, i) => {
@@ -143,16 +155,18 @@ export function DocsPage({
             return <Diagram key={i} />;
           })}
         </div>
-        <p className="mt-14">
-          <a
-            href={`${EDIT_BASE}/${page.slug}.md`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim transition-colors hover:text-paper"
-          >
-            Edit this page on GitHub ↗
-          </a>
-        </p>
+        {!facts.generated && (
+          <p className="mt-14">
+            <a
+              href={`${EDIT_BASE}/${page.slug}.md`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-dim transition-colors hover:text-paper"
+            >
+              Edit this page on GitHub ↗
+            </a>
+          </p>
+        )}
       </article>
     </DocsLayout>
   );
