@@ -72,7 +72,7 @@ export function listToolDefinitions(): ChouseToolRegistration[] {
 }
 
 /** True when the identity holds at least one of the tool's permissions. */
-export function canUseTool(tool: Pick<ChouseToolRegistration, "permissions">, identity: Pick<McpIdentity, "permissions">): boolean {
+function canUseTool(tool: Pick<ChouseToolRegistration, "permissions">, identity: Pick<McpIdentity, "permissions">): boolean {
   return tool.permissions.length === 0 || tool.permissions.some((permission) => identity.permissions.includes(permission));
 }
 

@@ -9,7 +9,7 @@ import type { McpTool, McpToolAccess, McpToolCategory } from "@/api/agents";
 
 export const MCP_TOKEN_ENV = "CH_HOUSE_PAT";
 
-export const MCP_CATEGORY_LABELS: Record<McpToolCategory, string> = {
+const MCP_CATEGORY_LABELS: Record<McpToolCategory, string> = {
   identity: "Identity & connections",
   explore: "Explore",
   query: "Query",
@@ -20,7 +20,7 @@ export const MCP_CATEGORY_LABELS: Record<McpToolCategory, string> = {
   ai: "Chouse AI",
 };
 
-export const MCP_CATEGORY_ORDER: McpToolCategory[] = [
+const MCP_CATEGORY_ORDER: McpToolCategory[] = [
   "identity",
   "explore",
   "query",
@@ -47,7 +47,7 @@ export function mcpEndpointUrl(endpoint: { path: string; url: string | null }, o
   return `${origin}${base}${endpoint.path}`;
 }
 
-export type McpClientId = "claude-code" | "codex" | "cursor" | "vscode" | "opencode" | "curl";
+type McpClientId = "claude-code" | "codex" | "cursor" | "vscode" | "opencode" | "curl";
 
 export interface McpClientSnippet {
   id: McpClientId;

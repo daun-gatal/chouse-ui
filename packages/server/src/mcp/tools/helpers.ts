@@ -221,7 +221,7 @@ export function registerChouseTool(sink: McpToolSink, tool: ChouseToolRegistrati
 }
 
 /** MCP tool annotations derived from the tool's access level. */
-export function toolAnnotations(tool: ChouseToolRegistration): ToolAnnotations {
+function toolAnnotations(tool: ChouseToolRegistration): ToolAnnotations {
   return {
     title: tool.title,
     readOnlyHint: tool.access === "read",

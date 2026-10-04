@@ -13,13 +13,13 @@ import { one, run, sql, str } from "../services/observe/db";
 import { logger } from "../utils/logger";
 import type { ChouseToolRegistration } from "./tools/helpers";
 
-export const MCP_SETTINGS_KEY = "mcp_settings";
-export const MCP_DEFAULT_TIMEOUT_SECONDS = 60;
-export const MCP_TIMEOUT_MIN_SECONDS = 1;
-export const MCP_TIMEOUT_MAX_SECONDS = 600;
+const MCP_SETTINGS_KEY = "mcp_settings";
+const MCP_DEFAULT_TIMEOUT_SECONDS = 60;
+const MCP_TIMEOUT_MIN_SECONDS = 1;
+const MCP_TIMEOUT_MAX_SECONDS = 600;
 const CACHE_TTL_MS = 5_000;
 
-export const mcpSettingsSchema = z.object({
+const mcpSettingsSchema = z.object({
   /** Off by default: the endpoint answers 404 until an administrator turns it on. */
   enabled: z.boolean(),
   /**
@@ -111,7 +111,7 @@ export function isToolEnabled(settings: Pick<McpSettings, "toolOverrides">, tool
 }
 
 /** Env keys the dedicated MCP listener used to read (ignored since 3.14.0). */
-export const LEGACY_MCP_ENV_KEYS = [
+const LEGACY_MCP_ENV_KEYS = [
   "MCP_ENABLED",
   "MCP_HOST",
   "MCP_PORT",
