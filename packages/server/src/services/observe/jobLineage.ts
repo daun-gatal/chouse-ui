@@ -1,26 +1,20 @@
 /**
- * Scheduled Queries → Lineage (observed runtime).
+ * Scheduled-query lineage (ADR 0016 §3, §18): the job view of the warehouse
+ * lineage graph.
  *
- * Every scheduled run executes against ClickHouse with a client-level
- * `log_comment` of `{source:"scheduled_query", job_id, rbac_user_id}` (see
- * runner.ts / clientManager.ts), so `system.query_log` already records the
- * *actual* tables and columns each job touched. We read that back, attribute it
- * to jobs by `job_id`, and build a table/job dependency graph — no extra
- * instrumentation, and it reflects what really ran (not static SQL parsing).
+ * `GET /api/scheduled-queries/:id/lineage` keeps its route, permission and
+ * response shape, but the observations now come from the lineage collector's
+ * stored edges (`reader_job` / `write` edges of `job:<id>` nodes) instead of a
+ * per-request `system.query_log` scan. Column detail for produced tables comes
+ * from the catalog collector.
  *
- * Read vs write: the write target is taken from the job's own materialize config
- * (`destDatabase.destTable`) — authoritative — and everything else the run read
- * from `system.query_log.tables` is treated as a source. Jobs chain when one
- * job's destination table is another job's source table.
+ * Read vs write: the write target is the job's own materialize config
+ * (`destDatabase.destTable`); everything else the job read is a source. Jobs
+ * chain when one job's destination table is another job's source table.
  */
 
-import type { ClickHouseClient } from "@clickhouse/client";
-
-import { logger } from "../../utils/logger";
-import { clientForConnection } from "./chClient";
-import { describeDestination } from "./materialize";
-import { plainSession } from "./session";
-import type { ScheduledQueryRow, SqOutputMode } from "./types";
+import type { ScheduledQueryRow, SqOutputMode } from "../scheduledQueries/types";
+import { all, json, num, sql, str } from "./db";
 
 // --- response shapes (camelCase; mirrored in src/api/scheduledQueries.ts) ----
 
@@ -90,53 +84,24 @@ export function clampWindowDays(days: number): number {
   return Math.min(WINDOW_MAX_DAYS, Math.max(WINDOW_MIN_DAYS, Math.trunc(days)));
 }
 
-/**
- * One read of `system.query_log` for the connection: per scheduled-query job,
- * the distinct tables and columns observed in the window, plus run count and the
- * last-seen time. `tables`/`columns` come pre-qualified as `db.table` /
- * `db.table.column` by ClickHouse.
- */
-async function observeJobs(client: ClickHouseClient, windowDays: number): Promise<Map<string, JobObservation>> {
-  const result = await client.query({
-    query: `
-      SELECT
-        JSONExtractString(log_comment, 'job_id') AS job_id,
-        arrayDistinct(arrayFlatten(groupArray(tables))) AS tables,
-        arrayDistinct(arrayFlatten(groupArray(columns))) AS columns,
-        countDistinct(query_id) AS run_count,
-        toUnixTimestamp(max(event_time)) * 1000 AS last_seen_ms
-      FROM system.query_log
-      WHERE type = 'QueryFinish'
-        AND event_time >= now() - toIntervalDay({days:UInt32})
-        AND JSONExtractString(log_comment, 'source') = 'scheduled_query'
-        AND JSONExtractString(log_comment, 'job_id') != ''
-      GROUP BY job_id`,
-    query_params: { days: windowDays },
-    format: "JSON",
-    clickhouse_settings: { readonly: "1", max_execution_time: 20, max_result_rows: "5000" },
-  });
-
-  const json = (await result.json()) as {
-    data?: Array<{
-      job_id?: string;
-      tables?: string[];
-      columns?: string[];
-      run_count?: number | string;
-      last_seen_ms?: number | string;
-    }>;
-  };
-
+/** Per-job observations from the stored lineage edges within the window. */
+async function observeJobs(connectionId: string, windowDays: number): Promise<Map<string, JobObservation>> {
+  const since = Date.now() - windowDays * 86_400_000;
+  const rows = await all(sql`
+    SELECT source_id, target_id, kind, columns, observations, last_seen_at FROM obs_lineage_edges
+    WHERE connection_id = ${connectionId} AND last_seen_at >= ${since}
+      AND ((kind = 'reader_job' AND target_id LIKE 'job:%') OR (kind = 'write' AND source_id LIKE 'job:%'))`);
   const byJob = new Map<string, JobObservation>();
-  for (const row of json.data ?? []) {
-    const jobId = String(row.job_id ?? "");
-    if (!jobId) continue;
-    byJob.set(jobId, {
-      jobId,
-      tables: (row.tables ?? []).map(String).filter((t) => t && !t.startsWith("system.")),
-      columns: (row.columns ?? []).map(String).filter((col) => col && !col.startsWith("system.")),
-      runCount: Number(row.run_count ?? 0),
-      lastSeen: row.last_seen_ms != null ? Number(row.last_seen_ms) : null,
-    });
+  for (const row of rows) {
+    const isRead = str(row.kind) === "reader_job";
+    const jobId = (isRead ? str(row.target_id) : str(row.source_id)).slice("job:".length);
+    const table = (isRead ? str(row.source_id) : str(row.target_id)).replace(/^table:/, "");
+    const obs = byJob.get(jobId) ?? { jobId, tables: [], columns: [], runCount: 0, lastSeen: null };
+    if (!obs.tables.includes(table)) obs.tables.push(table);
+    for (const col of json<string[]>(row.columns, [])) obs.columns.push(`${table}.${col}`);
+    obs.runCount = Math.max(obs.runCount, num(row.observations));
+    obs.lastSeen = Math.max(obs.lastSeen ?? 0, num(row.last_seen_at));
+    byJob.set(jobId, obs);
   }
   return byJob;
 }
@@ -270,86 +235,34 @@ export function assembleGraph(
 }
 
 /**
- * Fill in the columns for tables a job *writes*. `system.query_log.columns`
- * records the columns a query *reads*, so an `INSERT … SELECT` never reports the
- * destination's written columns — we read the destination's real schema from
- * `system.columns` instead, and mirror it onto the write edges. Best-effort:
- * a table that no longer exists (or can't be introspected) is left as-is.
+ * Fill in the columns for tables a job *writes*: query_log records the columns a
+ * query reads, so destinations get their schema from the catalog collector.
  */
-async function enrichProducedColumns(client: ClickHouseClient, nodes: LineageNode[], edges: LineageEdge[]): Promise<void> {
-  const produced = nodes.filter(
-    (node): node is LineageTableNode => node.kind === "table" && node.produced && node.columns.length === 0,
-  );
-  await Promise.all(
-    produced.map(async (node) => {
-      try {
-        const dest = await describeDestination(plainSession(client), node.database, node.table);
-        if (!dest.exists || dest.columns.length === 0) return;
-        const cols = dest.columns.map((c) => c.name).sort();
-        node.columns = cols;
-        for (const edge of edges) {
-          if (edge.kind === "write" && edge.to === node.id && edge.columns.length === 0) edge.columns = cols;
-        }
-      } catch {
-        /* best-effort: leave the node without column detail */
-      }
-    }),
-  );
+async function enrichProducedColumns(connectionId: string, nodes: LineageNode[], edges: LineageEdge[]): Promise<void> {
+  for (const node of nodes) {
+    if (node.kind !== "table" || !node.produced || node.columns.length > 0) continue;
+    const cols = (await all(sql`
+      SELECT column_name FROM obs_catalog_columns WHERE connection_id = ${connectionId} AND database_name = ${node.database} AND table_name = ${node.table} ORDER BY column_name`)).map((r) => str(r.column_name));
+    if (cols.length === 0) continue;
+    node.columns = cols;
+    for (const edge of edges) {
+      if (edge.kind === "write" && edge.to === node.id && edge.columns.length === 0) edge.columns = cols;
+    }
+  }
 }
 
 /**
- * The RBAC tag for the queries a lineage read issues (the `query_log` scan and
- * the destination-schema reads) — attributes them to the viewing user in
- * ClickHouse `query_log`, not the bare ClickHouse user, mirroring how runs are
- * tagged. The `source` is deliberately NOT `scheduled_query`, so these reads are
- * never mistaken for job runs by a later lineage observation query.
+ * Build the lineage graph for `focusJob`. `visibleJobs` is the set of jobs the
+ * caller may see; only those on the focus job's connection are considered.
  */
-function lineageLogComment(actorUserId: string | null, focusJobId: string): string {
-  return JSON.stringify({ rbac_user_id: actorUserId, source: "scheduled_query_lineage", job_id: focusJobId });
-}
-
-/**
- * Build the observed-runtime lineage graph for `focusJob`. `visibleJobs` is the
- * set of jobs the caller may see; only those on the focus job's connection are
- * considered, since lineage is meaningful only within a connection. `actorUserId`
- * is the viewing RBAC user, used to attribute the ClickHouse reads in query_log.
- */
-export async function buildLineage(
-  focusJob: ScheduledQueryRow,
-  visibleJobs: ScheduledQueryRow[],
-  windowDays: number,
-  actorUserId: string | null,
-): Promise<LineageGraph> {
+export async function buildLineage(focusJob: ScheduledQueryRow, visibleJobs: ScheduledQueryRow[], windowDays: number): Promise<LineageGraph> {
   const observedAt = Date.now();
   const sameConnJobs = visibleJobs.filter((job) => job.connectionId === focusJob.connectionId);
-
-  let client: ClickHouseClient;
-  let observations: Map<string, JobObservation>;
-  try {
-    client = await clientForConnection(focusJob.connectionId, lineageLogComment(actorUserId, focusJob.id));
-    observations = await observeJobs(client, windowDays);
-  } catch (err) {
-    logger.warn(
-      { module: "ScheduledQueries", jobId: focusJob.id, err: err instanceof Error ? err.message : String(err) },
-      "Lineage query_log read failed",
-    );
-    return {
-      focusJobId: focusJob.id,
-      connectionId: focusJob.connectionId,
-      windowDays,
-      observedAt,
-      nodes: [],
-      edges: [],
-      note: "Could not read system.query_log for this connection.",
-    };
-  }
-
+  const observations = await observeJobs(focusJob.connectionId, windowDays);
   const { nodes, edges } = assembleGraph(focusJob, sameConnJobs, observations);
-  await enrichProducedColumns(client, nodes, edges);
-
+  await enrichProducedColumns(focusJob.connectionId, nodes, edges);
   const note = observations.has(focusJob.id)
     ? undefined
-    : `No runtime observations in the last ${windowDays} day(s). Run this job (or wait for its schedule) to populate lineage.`;
-
+    : `No runtime observations in the last ${windowDays} day(s). Run this job (or wait for its schedule and the next lineage collection) to populate lineage.`;
   return { focusJobId: focusJob.id, connectionId: focusJob.connectionId, windowDays, observedAt, nodes, edges, note };
 }

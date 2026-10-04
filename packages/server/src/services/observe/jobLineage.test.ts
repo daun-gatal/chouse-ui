@@ -6,8 +6,8 @@
 
 import { describe, it, expect } from "bun:test";
 
-import { assembleGraph, clampWindowDays, type JobObservation } from "./lineage";
-import type { ScheduledQueryRow } from "./types";
+import { assembleGraph, clampWindowDays, type JobObservation } from "./jobLineage";
+import type { ScheduledQueryRow } from "../scheduledQueries/types";
 
 function job(over: Partial<ScheduledQueryRow> & Pick<ScheduledQueryRow, "id" | "name">): ScheduledQueryRow {
   return {

@@ -7,7 +7,7 @@ import * as healthStore from "../../dataHealth/store";
 import { dataHealthCheckDefinitionSchema, type DataHealthCheckDefinition } from "../../dataHealth/types";
 import { fireTimesBetween } from "../../scheduledQueries/cadence";
 import { clientForConnection } from "../../scheduledQueries/chClient";
-import { buildLineage } from "../../scheduledQueries/lineage";
+import { buildLineage } from "../../observe/jobLineage";
 import * as scheduledStore from "../../scheduledQueries/store";
 import type { ScheduledQueryRow } from "../../scheduledQueries/types";
 import {
@@ -151,7 +151,7 @@ async function scheduledEvidence(ctx: AgentRunContext, jobId: string): Promise<S
   const evidence = buildScheduledQueryEvidence(job, runs);
   try {
     const visibleJobs = await scheduledStore.listJobs(ctx.isAdmin || ctx.permissions?.includes(PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL) ? null : ctx.userId ?? "__none__");
-    const lineage = await buildLineage(job, visibleJobs, 14, ctx.userId ?? null);
+    const lineage = await buildLineage(job, visibleJobs, 14);
     for (const node of lineage.nodes.slice(0, 30)) {
       evidence.references.push({
         id: `lineage:${node.id}`,
@@ -184,7 +184,7 @@ async function healthEvidence(ctx: AgentRunContext, promiseId: string): Promise<
     const job = await scheduledStore.getJob(promise.scheduledQueryId);
     if (job) {
       const visibleJobs = await scheduledStore.listJobs(ctx.isAdmin || ctx.permissions?.includes(PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL) ? null : ctx.userId ?? "__none__");
-      const lineage = await buildLineage(job, [job, ...visibleJobs], 14, ctx.userId ?? null);
+      const lineage = await buildLineage(job, [job, ...visibleJobs], 14);
       for (const node of lineage.nodes.slice(0, 30)) {
         evidence.references.push({
           id: `lineage:${node.id}`,

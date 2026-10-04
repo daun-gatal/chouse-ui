@@ -116,6 +116,14 @@ export function buildObservedGraph(groups: QueryGroup[], defaultDatabase: string
       const target = g.target ? tableNode(g.target) : null;
       if (!target) continue;
       addEdge({ source: principal.nodeId, target, kind: "write", granularity: "table" }, g.runs);
+      // A scheduled job's INSERT … SELECT sources are also what the job read.
+      if (principal.kind === "job") {
+        for (const t of g.tables) {
+          const id = tableNode(t);
+          if (!id || id === target) continue;
+          addEdge({ source: id, target: principal.nodeId, kind: "reader_job", columns: columnsOf(g.columns, t), granularity: "column" }, g.runs);
+        }
+      }
       for (const t of g.tables) {
         const id = tableNode(t);
         if (!id || id === target) continue;

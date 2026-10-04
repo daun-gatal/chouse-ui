@@ -48,7 +48,7 @@ import {
 } from "../services/scheduledQueries/cluster";
 import { plainSession, type ChSession } from "../services/scheduledQueries/session";
 import { buildExecutableQuery, toDateTime64Param } from "../services/scheduledQueries/validation";
-import { buildLineage, clampWindowDays } from "../services/scheduledQueries/lineage";
+import { buildLineage, clampWindowDays } from "../services/observe/jobLineage";
 import { listPromisesByUpstreamJobId } from "../services/dataHealth/store";
 
 const scheduledQueries = new Hono();
@@ -564,7 +564,7 @@ scheduledQueries.get("/:id/lineage", requirePermission(PERMISSIONS.SCHEDULED_QUE
   const windowDays = clampWindowDays(parseInt(windowParam, 10) || 14);
   // Only jobs the caller may see feed the cross-job chain (respects view_all).
   const visibleJobs = await store.listJobs(ownerScope(c));
-  const graph = await buildLineage(focusJob, visibleJobs, windowDays, userId(c) ?? null);
+  const graph = await buildLineage(focusJob, visibleJobs, windowDays);
   return ok(c, graph);
 });
 

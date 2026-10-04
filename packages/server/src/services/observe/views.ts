@@ -295,14 +295,25 @@ export interface UnifiedIncident {
   rootCause: { layer: string; summary: string } | null;
 }
 
-export async function listIncidents(connectionIds: string[], allowed: Map<string, Allowed>, opts: { status?: "active" | "all" } = {}): Promise<UnifiedIncident[]> {
+export interface IncidentScope {
+  status?: "active" | "all";
+  /** Data Health incidents need data_health:view; without view_all they are limited to the user's promises. */
+  includeDataHealth?: boolean;
+  dataHealthOwner?: string | null;
+  /** Pipeline / engine / capacity incidents need observe:view. */
+  includeObserve?: boolean;
+}
+
+export async function listIncidents(connectionIds: string[], allowed: Map<string, Allowed>, opts: IncidentScope = {}): Promise<UnifiedIncident[]> {
   if (connectionIds.length === 0) return [];
   const status = opts.status ?? "active";
-  const dh = await all(sql`
+  const owner = opts.dataHealthOwner ?? null;
+  const dh = opts.includeDataHealth === false ? [] : await all(sql`
     SELECT i.*, p.connection_id, p.database_name, p.table_name, p.name AS promise_name FROM data_health_incidents i JOIN data_health_promises p ON p.id = i.promise_id
     WHERE p.connection_id IN (${sql.join(connectionIds.map((c) => sql`${c}`), sql`, `)}) ${status === "active" ? sql`AND i.status <> 'recovered'` : sql``}
+      ${owner ? sql`AND (p.owner_id = ${owner} OR p.created_by = ${owner})` : sql``}
     ORDER BY i.last_event_at DESC LIMIT 500`);
-  const ob = await listObserveIncidents({ connectionIds, status, limit: 500 });
+  const ob = opts.includeObserve === false ? [] : await listObserveIncidents({ connectionIds, status, limit: 500 });
   const rcas = new Map((await all(sql`SELECT incident_source, incident_id, root_cause FROM incident_rca`)).map((r) => [`${str(r.incident_source)}:${str(r.incident_id)}`, json<{ layer: string; summary: string } | null>(r.root_cause, null)]));
   const out: UnifiedIncident[] = [];
   for (const i of dh) {
@@ -361,10 +372,10 @@ export async function incidentConnection(source: IncidentSource, id: string): Pr
 
 // --- overview --------------------------------------------------------------------
 
-export async function overview(connectionId: string, allowed: Allowed): Promise<Record<string, unknown>> {
+export async function overview(connectionId: string, allowed: Allowed, scope: IncidentScope): Promise<Record<string, unknown>> {
   const datasets = await listDatasets(connectionId, allowed);
   const pipelines = await listPipelines(connectionId, allowed);
-  const incidents = await listIncidents([connectionId], new Map([[connectionId, allowed]]));
+  const incidents = await listIncidents([connectionId], new Map([[connectionId, allowed]]), scope);
   const critical = datasets.filter((d) => d.criticality === "critical");
   const changes = (await all(sql`SELECT occurred_at, kind, summary, object_ref FROM obs_change_events WHERE connection_id = ${connectionId} ORDER BY occurred_at DESC LIMIT 20`))
     .filter((c) => {
