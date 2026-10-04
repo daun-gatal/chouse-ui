@@ -116,7 +116,7 @@ export const DOC_GROUPS: DocGroup[] = [
     id: "automation",
     label: "Automation",
     pages: [
-      { slug: "mcp", title: "MCP server", description: "Operate CHouse UI from AI agents over Model Context Protocol on port 8752 — read-only by default, human-approved destructive tools." },
+      { slug: "mcp", title: "MCP server", description: "Operate CHouse UI from AI agents over Model Context Protocol at /mcp — turned on and tool-by-tool in Agents › MCP, read-only by default." },
       { slug: "agents", title: "Agents & governance", description: "Every MCP and token agent session, budget policies checked before queries run, health notices and the pause switch." },
       { slug: "cli", title: "CLI", description: "The chouse command line: query, explore, monitor, run the doctor and manage schedules from scripts and CI." },
     ],

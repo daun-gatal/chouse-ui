@@ -13,7 +13,7 @@ Work through this before exposing CHouse UI beyond localhost.
 
 - [ ] Set `CORS_ORIGIN` to your actual domain (default `*` is unsafe)
 - [ ] Serve HTTPS via a reverse proxy or ingress
-- [ ] Restrict access with firewall rules — `5521` for the UI, `8752` only if MCP is enabled
+- [ ] Restrict access with firewall rules — `5521` serves the UI, API and MCP (`/mcp`)
 - [ ] Register the SSO redirect URI at your IdP if using SSO
 
 ## Storage
@@ -26,7 +26,7 @@ Work through this before exposing CHouse UI beyond localhost.
 
 - [ ] Set `NODE_ENV=production` and `LOG_LEVEL=info` (or `warn`)
 - [ ] Enable the [fleet poller](/docs/fleet-view/) rather than letting every browser poll clusters
-- [ ] Keep `MCP_ENABLED=false` unless agents need access — and read the [MCP](/docs/mcp/) safety model first
+- [ ] Leave MCP off (Agents › MCP) unless agents need access, turn on only the tools they need, and read the [MCP](/docs/mcp/) safety model first
 - [ ] Verify migrations ran on boot: `docker logs chouse-ui | grep RBAC`
 
 ## AI (optional)

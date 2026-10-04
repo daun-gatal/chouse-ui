@@ -37,10 +37,11 @@ We use a lightweight [MADR](https://adr.github.io/madr/)-style template:
 | [0010](0010-pod-local-state-and-multi-replica-correctness.md) | Pod-local State and Multi-Replica Correctness | Accepted |
 | [0011](0011-personal-access-tokens.md) | Personal Access Tokens for CLI and MCP Machine Auth | Accepted |
 | [0012](0012-chouse-cli.md) | CHouse CLI: Safe Browserless Operations with Go Binary Distribution | Accepted |
-| [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Accepted (amended by 0014, 0016) |
-| [0014](0014-mcp-destructive-client-approval.md) | MCP Destructive-Tool Approval Moves to the Client | Accepted |
+| [0013](0013-chouse-mcp.md) | CHouse MCP Server: In-Process Streamable HTTP with PAT Auth | Accepted (amended by 0014, 0016, 0017) |
+| [0014](0014-mcp-destructive-client-approval.md) | MCP Destructive-Tool Approval Moves to the Client | Accepted (amended by 0017) |
 | [0015](0015-cluster-aware-materialize-destinations.md) | Cluster-Aware Materialize Destinations for Scheduled Queries | Accepted |
 | [0016](0016-data-observability-platform.md) | Data Observability Platform: Single Cut-over to Cross-Layer Observability | Accepted |
+| [0017](0017-mcp-managed-in-the-ui.md) | MCP Served on the Web Port and Managed in the UI | Accepted |
 
 ## Conventions
 

@@ -50,6 +50,12 @@ configure one. `chouse version` is always offline (binary version only);
 the server in your profile, so you only pass it once (env stays
 session-scoped and is never written to disk).
 
+Servers behind an internal CA: pass `--ca-cert ca.pem` (or set
+`CHOUSE_CA_CERT`) — `auth login --ca-cert …` remembers it for the profile, so
+every later command trusts it. `--insecure-skip-tls-verify`
+(`CHOUSE_INSECURE_SKIP_TLS_VERIFY=true`) exists for debugging only: it warns
+on stderr and is never remembered.
+
 Precedence: `--token > CH_HOUSE_PAT > credentials file (0600) > --profile`.
 `--server`: flag > `CHOUSE_SERVER` > profile. `--connection/-c`: flag >
 `CHOUSE_CONNECTION` > server default. The CLI never calls PAT-fenced routes
@@ -82,6 +88,23 @@ chouse remediation list -c <connectionId> --status proposed
 chouse remediation approve <actionId> --comment "reviewed" --yes
 ```
 
+AI agents ([ADR 0017](adr/0017-mcp-managed-in-the-ui.md)) — read-only; an
+administrator changes MCP settings and agent policies in the UI:
+
+```bash
+chouse mcp status                     # on/off, endpoint (<server>/mcp), tools your token gets
+chouse mcp tools -o yaml              # the tools an agent with your token sees
+chouse mcp config claude-code | sh    # register this server with Claude Code
+chouse mcp config cursor > .cursor/mcp.json   # also: codex, vscode, opencode
+chouse mcp settings                   # Agents › MCP settings and every tool's state (agents:view)
+chouse agents summary && chouse agents sessions --days 7
+chouse agents session <sessionId>     # replay one session's tool calls
+chouse agents policies
+```
+
+`mcp config` prints the raw snippet (it bypasses `-o`); every snippet reads
+the token from `CH_HOUSE_PAT` or a secret prompt, never inline.
+
 Approval rules are enforced server-side: high-impact actions need two
 approvers and nobody approves their own proposal. The CLI never runs an
 action directly — an approved action runs inside the maintenance window.
@@ -93,7 +116,7 @@ exit codes `0/2/3/4/5/6`, no spinners when piped.
 
 Available on every command: `--server`, `--token`, `--profile`,
 `-c/--connection`, `-o/--output`, `-q/--quiet`, `--timeout`,
-`--yes`, `--dry-run`.
+`--yes`, `--dry-run`, `--ca-cert`, `--insecure-skip-tls-verify`.
 
 - `-o/--output` selects presentation (`json|yaml`, default `json`); `query --format`
   instead selects the *server* result format, and `upload --format` the upload
@@ -104,6 +127,9 @@ Available on every command: `--server`, `--token`, `--profile`,
 - `-c/--connection` scopes the invocation to one connection (header +
   filter); it is the same flag everywhere, including list commands.
 - `--timeout` bounds every request (context deadline and client cap alike).
+  Reads (GET) retry up to three times within it on network errors, `429`
+  and `502/503/504`, honoring `Retry-After`, so a rolling restart does not
+  fail a script; writes are never retried.
 - `--dry-run` previews without executing where supported (`query --raw`
   writes, `upload into`, `explorer drop`); elsewhere it fails fast instead
   of silently executing.
@@ -111,7 +137,8 @@ Available on every command: `--server`, `--token`, `--profile`,
 ## Output contract
 
 Output is always machine-parseable: `json` (default) or `yaml` via
-`-o/--output`. `audit export` streams raw bytes and bypasses `-o`.
+`-o/--output`. `audit export` streams raw bytes and `mcp config` prints a
+raw snippet; both bypass `-o`.
 `auth login`/`logout` print a machine result honoring `-o` with the human note
 on stderr.
 

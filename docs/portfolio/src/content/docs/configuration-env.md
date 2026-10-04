@@ -85,13 +85,6 @@ All configuration can be expressed as environment variables (`.env`) or as neste
 
 ## MCP server
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `MCP_ENABLED` | `false` | Serve the MCP endpoint on port `8752` |
-| `MCP_ALLOW_WRITES` | `false` | Create/run/ack operational actions |
-| `MCP_ALLOW_DESTRUCTIVE` | `false` | KILL/raw SQL/deletes (requires writes) |
-| `MCP_TOOLSETS` | `core,explore,query,observe,ops` | Registered toolsets |
-| `MCP_ALLOWED_ORIGINS` | — | Origin allowlist (DNS-rebinding protection) |
-| `MCP_TIMEOUT_SECONDS` | `60` | Per-request tool timeout |
+The MCP endpoint has no environment variables: it is served at `/mcp` on the web port and turned on, with its allowed origins, timeout and tools, in **Agents › MCP** — see [MCP](/docs/mcp/). The `MCP_*` variables of 3.13 are ignored (a warning names any that are still set).
 
 > **Tip:** Generate every secret with [openssl](/docs/configuration-secrets/) — never reuse the example values.

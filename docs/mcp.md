@@ -1,80 +1,57 @@
 # CHouse MCP Server
 
-AI agents (Cursor, VS Code Copilot, OpenCode, Claude Desktop, CI pipelines) can
-operate CHouse UI without the browser through a **Model Context Protocol**
-endpoint on a dedicated port. Authentication is a personal access token
-(`ch_pat_…`, [ADR 0011](adr/0011-personal-access-tokens.md)); the transport is
-**Streamable HTTP** ([ADR 0013](adr/0013-chouse-mcp.md)). Safe by default:
-read-only unless the operator enables writes, and destructive tools are
-approved by a human through your client's permission prompt before they run
-(see [Human approval per client](#human-approval-per-client)).
+AI agents (Cursor, VS Code Copilot, OpenCode, Claude Code, Codex, CI
+pipelines) can operate CHouse UI without the browser through a **Model
+Context Protocol** endpoint served at **`/mcp` on the same address as the
+UI**. Authentication is a personal access token (`ch_pat_…`,
+[ADR 0011](adr/0011-personal-access-tokens.md)); the transport is
+**Streamable HTTP** ([ADR 0013](adr/0013-chouse-mcp.md)). An administrator
+turns it on and picks the tools in **Agents › MCP**
+([ADR 0017](adr/0017-mcp-managed-in-the-ui.md)). Safe by default: read-only
+tools only until an administrator turns on anything that changes or deletes
+things, and destructive tools are approved by a human through your client's
+permission prompt before they run (see
+[Human approval per client](#human-approval-per-client)).
 
-## Enable
+## Turn it on
 
-**Docker:**
+There is nothing to deploy or configure in env, Compose or Helm: the
+endpoint shares the web port (`5521`) and therefore the UI's Service,
+Ingress and TLS. It answers `404 MCP_DISABLED` until it is turned on.
 
-```yaml
-# docker-compose.yml
-services:
-  chouse-ui:
-    ports:
-      - "8752:8752"   # or "80:8752" / "443:8752" for https://<host>/mcp
-    environment:
-      MCP_ENABLED: "true"
-      # Optional, default off:
-      # MCP_ALLOW_WRITES: "true"        # create/run/ack actions
-      # MCP_ALLOW_DESTRUCTIVE: "true"   # KILL / raw SQL / deletes (needs writes)
-      # MCP_TOOLSETS: "core,explore,query,observe,ops"
-      # MCP_ALLOWED_ORIGINS: "https://your-agent-host.example"
-```
+1. Sign in as someone with `agents:manage` (Admin and Super Admin by
+   default) and open **Agents › MCP**.
+2. Switch **MCP server** on. The page shows the endpoint URL agents use —
+   `https://<your-chouse-host>/mcp` (the server's `PUBLIC_BASE_URL` when
+   set, otherwise the address you opened the UI on).
+3. Optionally list **allowed origins** (only browser-based agent hosts send
+   one) and change the **tool call timeout** (1–600 s, default 60).
+4. Review the **Tools** list (below) and turn on what your agents need.
 
-**Kubernetes (Helm):**
+Changes apply on every replica within a few seconds, without a restart, and
+are recorded in the audit log as `agent.mcp_update`. Anyone with
+`agents:view` can see the settings and the tool list; `chouse mcp settings`
+shows the same from the CLI.
 
-```yaml
-mcp:
-  enabled: true          # dedicated port 8752 + <release>-mcp Service
-  # allowWrites: false   # server-side policy — agents cannot opt in
-  # allowDestructive: false
-  # toolsets: [core, explore, query, observe, ops]
-  # allowedOrigins: []
-  service:
-    type: ClusterIP      # NodePort/LoadBalancer expose MCP directly (no Ingress)
-  ingress:
-    # Optional: expose the endpoint at https://<host>/mcp through the ingress.
-    # Mirrors the UI ingress — className/annotations/tls rendered verbatim.
-    enabled: true
-    hosts:
-      - host: chouse.corp
-    annotations:         # MCP streams over SSE: raise the read timeout, disable buffering
-      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-      nginx.ingress.kubernetes.io/proxy-buffering: "off"
-    # tls:                # same shape as ingress.tls; not needed on
-    #   - hosts: [chouse.corp]     # TLS-terminating controllers
-    #     secretName: chouse-tls     # (e.g. Tailscale Funnel)
-```
+**Upgrading from 3.13.** The dedicated port 8752, the `MCP_*` environment
+variables, the `mcp.*` YAML keys and the Helm chart's `mcp.*` values
+(`<release>-mcp` Service and MCP Ingress) are gone. The server logs a
+warning when an old `MCP_*` key is still set and the chart's install notes
+warn about leftover `mcp:` values. Point agents at `https://<host>/mcp`
+instead of `:8752/mcp`, then turn MCP on in Agents › MCP — it starts off
+after the upgrade, whatever `MCP_ENABLED` was.
 
-Three exposure options for the MCP endpoint: the dedicated **Service**
-(in-cluster; `type: LoadBalancer`/`NodePort` for direct access), the
-**ingress path** (`https://<host>/mcp` — TLS on 80/443, no non-standard
-port), or both.
-
-MCP is **disabled by default** everywhere. In development it is on, bound to
-`localhost`. The chart renders the `mcp:` block into the pod environment and
-creates the dedicated Service plus a NetworkPolicy port rule, so agent
-traffic can be scoped separately from the public UI origin. `helm` refuses
-renders where `allowWrites`/`allowDestructive` are set without `enabled`,
-or where `mcp.ingress.enabled` is set without the listener or any host.
-The MCP ingress follows the UI ingress pattern exactly: `className`,
-`annotations`, and `tls` are rendered verbatim from `mcp.ingress.*` — no
-inheritance, no merging (copy what the UI ingress has when you want the
-same certificate or issuer). The container keeps listening on 8752 and the
-ingress routes the path to the dedicated Service.
+**Reverse proxies.** MCP responses stream over SSE, like AI chat. If your
+proxy buffers responses, disable buffering and raise the read timeout for
+the UI host (nginx: `proxy-buffering: "off"`,
+`proxy-read-timeout: "300"`).
 
 ## Mint a token
 
 Preferences → Personal access tokens → create. The token can be scoped: a
-token with only `table:select, metrics:view` caps the agent regardless of the
-server toolsets. Every call re-checks live roles ∩ token scopes — revoke,
+token with only `table:select, metrics:view` caps the agent regardless of
+which tools are on — and `tools/list` only shows the tools a token's
+permissions allow. Every call re-checks live roles ∩ token scopes — revoke,
 demotion, or deactivation take effect on the **next** tool call.
 
 ## Try the hosted lab
@@ -82,9 +59,9 @@ demotion, or deactivation take effect on the **next** tool call.
 **https://mcp.chouse-ui.com/mcp** is a live, hosted instance of this server.
 Mint a personal access token in the lab UI (same Preferences flow, same
 `ch_pat_…` format), point any MCP client below at the endpoint, and evaluate
-the toolset without deploying anything. The lab runs the default-safe policy
+the tools without deploying anything. The lab runs the default-safe policy
 (read-only; writes and destructive tools off), so it is safe to experiment
-with — self-host when you need the write/ops toolsets. Smoke test:
+with — self-host when you need the write or destructive tools. Smoke test:
 
 ```bash
 curl -s https://mcp.chouse-ui.com/mcp \
@@ -95,6 +72,11 @@ curl -s https://mcp.chouse-ui.com/mcp \
 ```
 
 ## Client configuration
+
+Agents › MCP has copy-ready setup for every client below with your endpoint
+filled in, and `chouse mcp config <claude-code|codex|cursor|vscode|opencode>`
+prints the same for your CLI profile. Every snippet reads the token from
+`CH_HOUSE_PAT` (or a secret prompt) so it never lands in a config file.
 
 ### OpenCode (TUI + Web)
 
@@ -171,16 +153,14 @@ never lands on disk):
 }
 ```
 
-**Cursor** (`.cursor/mcp.json`) and **Claude Desktop**
-(`claude_desktop_config.json`) use the same shape:
+**Cursor** (`.cursor/mcp.json`):
 
 ```jsonc
 {
   "mcpServers": {
     "chouse": {
-      "type": "http",
-      "url": "http://127.0.0.1:8752/mcp",
-      "headers": { "Authorization": "Bearer ch_pat_…" }
+      "url": "https://chouse.corp/mcp",
+      "headers": { "Authorization": "Bearer ${env:CH_HOUSE_PAT}" }
     }
   }
 }
@@ -233,7 +213,7 @@ header instead of the env var, use `http_headers = { Authorization =
 **CI / scripts** — plain JSON-RPC POSTs:
 
 ```bash
-curl -s http://chouse.internal:8752/mcp \
+curl -s https://chouse.corp/mcp \
   -H "Authorization: Bearer $CH_HOUSE_PAT" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
@@ -241,22 +221,39 @@ curl -s http://chouse.internal:8752/mcp \
 ```
 
 Note on `Origin`: requests carrying an `Origin` header are rejected unless the
-origin is in `MCP_ALLOWED_ORIGINS` (DNS-rebinding protection). Headerless
-clients (curl, CI agents) always pass.
+origin is in the allowed origins in Agents › MCP (DNS-rebinding protection).
+Headerless clients (curl, CLI and desktop agents) always pass.
 
 ## Tools
 
-Toolsets (default: `core,explore,query,observe,ops`):
+Every tool has a title, a description, an access level and the permissions
+it needs, all shown in Agents › MCP with its parameters. Each tool is
+switched on or off on its own (or a whole category at once):
 
-| Toolset | Tools |
-|---|---|
-| core | `whoami`, `list_connections`, `use_connection` |
-| explore | `list_databases`, `list_tables`, `describe_table`, `sample_table` (≤20 rows) |
-| query | `query` (SELECT-only), `explain_query`, `list_saved_queries`, `get_saved_query`, `run_saved_query` (write definitions refused) |
-| observe | `metrics_overview`, `live_queries`, `fleet_snapshots`, `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs`, `list_health_checks`, `get_health_check`, `health_timeline`, `list_alerts`, `audit_list`, `get_dataset_health`, `get_lineage`, `get_table_context`, `get_metric`, `get_pipeline_status`, `list_incidents` |
-| writes (needs `MCP_ALLOW_WRITES`) | `create_saved_query`, `run_scheduled_job`, `run_health_check`, `acknowledge_incident`, `test_alert_channel`, `propose_remediation` (files a proposal only; a human approves it, never the proposer) |
-| destructive (needs `MCP_ALLOW_DESTRUCTIVE`) | `kill_query`, `query_raw`, `delete_saved_query`, `delete_scheduled_job` |
-| ai (opt-in, LLM spend) | `ai_optimize`, `doctor_scan`, `doctor_reports`, `get_doctor_report` |
+- **Read** tools are on by default.
+- **Write** and **destructive** tools, and tools that **spend LLM budget**,
+  are off until an administrator turns them on. Turning on a tool that
+  changes or deletes things asks for confirmation first.
+- A tool added in a later release arrives in its default state; **Reset to
+  defaults** puts every tool back.
+
+`tools/list` shows a token only the tools that are on **and** that its
+permissions allow (it needs at least one of the listed permissions), so an
+agent's context never carries a tool it would be refused. The route behind
+each tool still checks permissions and data access on every call. Tool
+annotations follow the access level (`readOnlyHint`, `destructiveHint`), so
+clients prompt for the right calls.
+
+| Category | Read (on by default) | Write / destructive / LLM (off by default) |
+|---|---|---|
+| Identity & connections | `whoami`, `list_connections`, `use_connection` | |
+| Explore | `list_databases`, `list_tables`, `describe_table`, `sample_table` (≤20 rows) | |
+| Query | `query` (SELECT-only), `explain_query`, `list_saved_queries`, `get_saved_query`, `run_saved_query` (write definitions refused) | `create_saved_query` (write), `query_raw`, `delete_saved_query` (destructive) |
+| Data observability | `get_dataset_health`, `get_lineage`, `get_table_context`, `get_metric`, `get_pipeline_status`, `list_incidents` | `propose_remediation` (write — files a proposal only; a human approves it, never the proposer) |
+| Data health | `list_health_checks`, `get_health_check`, `health_timeline` | `run_health_check`, `acknowledge_incident` (write) |
+| Monitoring | `metrics_overview`, `live_queries`, `fleet_snapshots`, `list_alerts`, `audit_list` | `test_alert_channel` (write), `kill_query` (destructive) |
+| Scheduled queries | `list_scheduled_jobs`, `get_scheduled_job`, `list_scheduled_runs` | `run_scheduled_job` (write), `delete_scheduled_job` (destructive) |
+| Chouse AI | `doctor_reports`, `get_doctor_report` | `ai_optimize`, `doctor_scan` (LLM spend) |
 
 Resources: `chouse://connection/{id}`, `chouse://database/{name}`,
 `chouse://table/{db}/{table}`, `chouse://saved-query/{id}`,
@@ -271,8 +268,8 @@ user, alongside the route-level audit entries the projected API already writes.
 
 ## Human approval per client
 
-Destructive tools run under the operator's flags and the token's scopes —
-approval by a human happens in the **client**, via each host's native
+Destructive tools run once an administrator turns them on, under the
+token's scopes — approval by a human happens in the **client**, via each host's native
 permission system. Tool names below assume the server is configured under the
 name `chouse`; adjust the prefix if you named it differently.
 
@@ -284,7 +281,7 @@ name `chouse`; adjust the prefix if you named it differently.
 | VS Code Copilot | confirms each invocation | keep per-tool auto-approve toggles off |
 | Cursor | asks per tool call | leave "Always allow" off for these tools |
 | Claude Desktop | asks per tool call | don't choose "Always allow" for these tools |
-| CI / headless | no human present | none — flags + scoped PATs are the only layer |
+| CI / headless | no human present | none — tool switches + scoped PATs are the only layer |
 
 **OpenCode** (v1.1.1+; the legacy `tools` boolean map is deprecated):
 
@@ -329,19 +326,20 @@ invocation by default; keep the per-tool "always allow" toggles off for
 `kill_query`, `query_raw`, `delete_saved_query`, and `delete_scheduled_job`.
 
 **CI / headless agents** (OpenCode `--auto`, `claude -p`, `codex exec`, CI
-pipelines) have no human to ask — the operator's flags and a narrowly scoped
-PAT are the only guardrails there. Never mint a destructive-capable PAT for
+pipelines) have no human to ask — the tool switches in Agents › MCP and a
+narrowly scoped PAT are the only guardrails there. Never mint a destructive-capable PAT for
 unattended use unless the operator explicitly accepts that trade-off.
 
 ## Safety model
 
-1. **Read-only by default.** Write/destructive tools are not registered unless
-   the operator enables them — an agent cannot opt in.
+1. **Read-only by default.** Write, destructive and LLM-spending tools are
+   not listed until an administrator turns them on in Agents › MCP — an agent
+   cannot opt in, and a token never sees a tool its permissions do not allow.
 2. **SQL classification** reuses the AST-based parser that guards the API:
    `query` accepts a single SELECT/WITH/SHOW/DESCRIBE/EXPLAIN; anything else
    (including multi-statement input) fails closed.
 3. **Human approval happens in the client** ([ADR 0014](adr/0014-mcp-destructive-client-approval.md)):
-   destructive tools execute under the operator's flags and the PAT's scopes,
+   destructive tools execute once an administrator turns them on, under the PAT's scopes,
    and the human approves them through the host's permission prompt —
    configured per client above.
 4. **Result caps:** 100 rows / 200 KB / 2 KB per cell, plus secret redaction
@@ -369,7 +367,8 @@ protocol is stateless and multi-replica safe.
 ## End-to-end
 
 `./scripts/e2e-mcp.sh` builds the server from the working tree, boots the
-compose stack with `MCP_ENABLED=true` on DinD, and runs
-`scripts/e2e-mcp-check.py` inside the compose network: PAT auth, read-only
-toolset, SELECT through ClickHouse, write refusal, Origin/JWT rejection, and
-PAT-revocation taking effect on the next call. Sequential runs only.
+compose stack on DinD, and runs `scripts/e2e-mcp-check.py` inside the
+compose network: off by default (404), turned on through the Agents › MCP
+API, PAT auth, read-only tools by default, a per-tool switch, SELECT through
+ClickHouse, write refusal, Origin/JWT rejection, and PAT-revocation taking
+effect on the next call. Sequential runs only.

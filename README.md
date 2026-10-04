@@ -211,12 +211,15 @@ the topology guide, SSO/config examples, and ingress notes.
 
 ### Deployment (MCP for AI agents)
 
-AI agents can operate CHouse UI without the browser through an MCP endpoint on
-a dedicated port (8752), authenticated with a personal access token. Disabled
-by default; enable with `MCP_ENABLED=true` (Docker) or `mcp.enabled: true`
-(Helm). Read-only unless the operator opts into writes; destructive tools
-require in-host human approval. See [`docs/mcp.md`](docs/mcp.md) and
-[ADR 0013](docs/adr/0013-chouse-mcp.md).
+AI agents can operate CHouse UI without the browser through an MCP endpoint at
+`/mcp` on the same address as the UI (no extra port, Service or Ingress),
+authenticated with a personal access token. It is off until an administrator
+turns it on in **Agents › MCP**, where each tool is switched on or off:
+read-only tools are on by default, anything that changes or deletes things
+stays off until turned on, and destructive tools require in-host human
+approval. See [`docs/mcp.md`](docs/mcp.md),
+[ADR 0013](docs/adr/0013-chouse-mcp.md) and
+[ADR 0017](docs/adr/0017-mcp-managed-in-the-ui.md).
 
 ---
 
