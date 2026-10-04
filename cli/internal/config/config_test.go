@@ -108,7 +108,7 @@ func TestSaveProfile(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	// Set with makeCurrent: creates entry, switches current, 0600 file.
-	if err := SaveProfile("default", "https://host:5521/", true); err != nil {
+	if err := SaveProfile("default", ProfileUpdate{Server: "https://host:5521/"}, true); err != nil {
 		t.Fatalf("SaveProfile: %v", err)
 	}
 	cfg, err := LoadFile()
@@ -134,10 +134,10 @@ func TestSaveProfile(t *testing.T) {
 	if err := SaveCredentials("default", "ch_pat_secret"); err != nil {
 		t.Fatalf("SaveCredentials: %v", err)
 	}
-	if err := SaveProfile("other", "https://other:5521", false); err != nil {
+	if err := SaveProfile("other", ProfileUpdate{Server: "https://other:5521"}, false); err != nil {
 		t.Fatalf("SaveProfile other: %v", err)
 	}
-	if err := SaveProfile("default", "", false); err != nil {
+	if err := SaveProfile("default", ProfileUpdate{}, false); err != nil {
 		t.Fatalf("SaveProfile empty: %v", err)
 	}
 	cfg, err = LoadFile()
@@ -187,13 +187,15 @@ func TestResolveOutputDefaultJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	// No flag/env/file value: output must default to json (table/csv removed).
+	// No flag/env/file value: output defaults to auto (table on a
+	// terminal, json when piped).
+	t.Setenv(EnvOutput, "")
 	got, err := Resolve(Flags{})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if got.Output != "json" {
-		t.Fatalf("expected json default output, got %q", got.Output)
+	if got.Output != "auto" {
+		t.Fatalf("expected auto default output, got %q", got.Output)
 	}
 
 	// Profile default wins over the built-in default, flag wins over all.
@@ -211,5 +213,78 @@ func TestResolveOutputDefaultJSON(t *testing.T) {
 	}
 	if got.Output != "json" {
 		t.Fatalf("flag output precedence broken: %q", got.Output)
+	}
+}
+
+func TestResolveTLSSettings(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(EnvCACert, "")
+	t.Setenv(EnvInsecure, "")
+	if err := SaveProfile("default", ProfileUpdate{Server: "https://h", CACert: "ca.pem"}, true); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Resolve(Flags{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(r.CACert) || filepath.Base(r.CACert) != "ca.pem" {
+		t.Errorf("profile CA must be stored as an absolute path, got %q", r.CACert)
+	}
+	if r.InsecureSkipTLSVerify {
+		t.Error("TLS verification must be on by default")
+	}
+
+	t.Setenv(EnvCACert, "/env/ca.pem")
+	t.Setenv(EnvInsecure, "true")
+	r, _ = Resolve(Flags{})
+	if r.CACert != "/env/ca.pem" || !r.InsecureSkipTLSVerify {
+		t.Errorf("env must override the profile: %+v", r)
+	}
+	r, _ = Resolve(Flags{CACert: "/flag/ca.pem"})
+	if r.CACert != "/flag/ca.pem" {
+		t.Errorf("flag must win, got %q", r.CACert)
+	}
+}
+
+func TestProfileManagement(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if err := UseProfile("prod"); err == nil {
+		t.Fatal("switching to a profile that does not exist must fail")
+	}
+	if err := SetProfileValue("prod", "server", "https://prod.example/"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetProfileValue("prod", "token", "x"); err == nil {
+		t.Fatal("tokens must not be settable through config set")
+	}
+	if err := SaveCredentials("prod", "ch_pat_secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := UseProfile("prod"); err != nil {
+		t.Fatalf("UseProfile: %v", err)
+	}
+	profiles, err := ListProfiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 1 || !profiles[0].Current || profiles[0].Server != "https://prod.example" || !profiles[0].HasToken {
+		t.Fatalf("unexpected profiles: %+v", profiles)
+	}
+	cfg, _ := LoadFile()
+	if got, _ := ProfileValue(cfg.Profiles["prod"], "server"); got != "https://prod.example" {
+		t.Fatalf("server: %q", got)
+	}
+	if err := SetProfileValue("prod", "server", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteProfile("prod"); err != nil {
+		t.Fatal(err)
+	}
+	creds, _ := LoadCredentials()
+	if _, ok := creds.Tokens["prod"]; ok {
+		t.Fatal("deleting a profile must remove its token")
+	}
+	if cfg, _ := LoadFile(); cfg.CurrentProfile != "" {
+		t.Fatalf("deleting the current profile must reset it, got %q", cfg.CurrentProfile)
 	}
 }

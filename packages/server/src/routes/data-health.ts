@@ -7,7 +7,7 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/midd
 import { AUDIT_ACTIONS, PERMISSIONS, SYSTEM_ROLES } from "../rbac/schema/base";
 import { getConnectionById, getUserConnections } from "../rbac/services/connections";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
-import { compileDataHealthQuery, eventTimeTypeFromSchema, isDateOnlyEventTimeType } from "../services/dataHealth/compiler";
+import { compileDataHealthQuery, DataHealthCompileError, eventTimeTypeFromSchema, isDateOnlyEventTimeType } from "../services/dataHealth/compiler";
 import { backtestDataHealth, buildFailingRowsQuery, runFailingRowsDiagnostic } from "../services/dataHealth/diagnostics";
 import * as healthStore from "../services/dataHealth/store";
 import { DATA_HEALTH_EVENT_TIME_ENCODINGS, dataHealthCheckDefinitionSchema } from "../services/dataHealth/types";
@@ -172,6 +172,16 @@ function validateDateEventTime(body: PromiseBody, eventTimeType: string | undefi
   }
 }
 
+/** Compile a promise; a definition that cannot compile is a 400, not a 500. */
+function compileOrBadRequest(...args: Parameters<typeof compileDataHealthQuery>): ReturnType<typeof compileDataHealthQuery> {
+  try {
+    return compileDataHealthQuery(...args);
+  } catch (error) {
+    if (error instanceof DataHealthCompileError) throw AppError.badRequest(error.message);
+    throw error;
+  }
+}
+
 interface PromiseCompilation {
   compiled: ReturnType<typeof compileDataHealthQuery>;
   eventTimeType: string | undefined;
@@ -189,7 +199,7 @@ async function compile(c: Context, body: PromiseBody, upstreamJob: ScheduledQuer
     ? partitionMetadata?.columns.find((column) => column.name === body.source.eventTimeColumn)?.type ?? body.source.eventTimeType
     : undefined;
   validateDateEventTime(body, eventTimeType, upstreamJob);
-  const compiled = compileDataHealthQuery({
+  const compiled = compileOrBadRequest({
     sourceType: body.source.sourceType,
     databaseName: body.source.sourceType === "table" ? body.source.databaseName : undefined,
     tableName: body.source.sourceType === "table" ? body.source.tableName : undefined,
@@ -494,7 +504,7 @@ dataHealth.post(
     const partitionMetadata = promise.sourceType === "table" && promise.databaseName && promise.tableName
       ? await describeDestination(plainSession(client), promise.databaseName, promise.tableName)
       : null;
-    const compiled = compileDataHealthQuery({
+    const compiled = compileOrBadRequest({
       sourceType: promise.sourceType,
       databaseName: promise.databaseName ?? undefined,
       tableName: promise.tableName ?? undefined,

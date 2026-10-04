@@ -4,67 +4,55 @@ import (
 	"net/url"
 
 	"github.com/spf13/cobra"
+
+	"github.com/daun-gatal/chouse-ui/cli/internal/output"
 )
 
-func newFleetCmd() *cobra.Command {
+func (a *App) newFleetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fleet",
-		Short: "Every cluster at once (read-only snapshots)",
-		Long: `Fleet-wide snapshots, history, and fixed server-side metrics —
-one view across all clusters. Everything here reads; metric names are fixed
-server-side, so there is no ad-hoc SQL to get wrong.`,
+		Short: "Every connection at once: health snapshots and history",
+		Long: `The latest health snapshot of every connection you can see, their
+history, and fixed server-side metrics (no ad-hoc SQL).`,
 		Example: `  chouse fleet list
-  chouse fleet history --metric summary --limit 5 -o json`,
+  chouse fleet history --metric summary --from 2026-10-01T00:00:00Z`,
+	}
+	list := &cobra.Command{
+		Use:     "list",
+		Short:   "Latest snapshot per connection",
+		Example: `  chouse fleet list`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			got, err := s.Client.Get(s.Ctx, "/api/fleet/snapshots", nil)
+			if err != nil {
+				return err
+			}
+			return s.Print(got, output.View{})
+		}),
 	}
 	var from, to, metric string
 	var limit int
-
-	list := &cobra.Command{
-		Use:   "list",
-		Short: "Cached per-cluster snapshots (fast)",
-		Long:  `Cached per-cluster snapshots — the fastest fleet overview. For fresh numbers, use history or query instead.`,
-		Example: `  chouse fleet list
-  chouse fleet list -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Get(ctx, "/api/fleet/snapshots", nil)
-			if err != nil {
-				failErr(err)
-			}
-			render(resolved, got)
-		},
-	}
 	history := &cobra.Command{
-		Use:   "history",
-		Short: "Fleet history window",
-		Long:  `Fleet metric history over an RFC3339 window (--from/--to), one metric at a time. Defaults cover the recent summary window.`,
-		Example: `  chouse fleet history --limit 5
-  chouse fleet history --metric summary --from 2026-09-01T00:00:00Z -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
+		Use:     "history",
+		Short:   "Snapshot history in an RFC3339 window",
+		Example: `  chouse fleet history --metric summary --limit 50`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
 			q := url.Values{}
-			if from != "" {
-				q.Set("from", from)
-			}
-			if to != "" {
-				q.Set("to", to)
-			}
-			if metric != "" {
-				q.Set("metric", metric)
+			for k, v := range map[string]string{"from": from, "to": to, "metric": metric} {
+				if v != "" {
+					q.Set(k, v)
+				}
 			}
 			if limit > 0 {
 				q.Set("limit", itoa(limit))
 			}
-			got, err := c.Get(ctx, "/api/fleet/history", q)
+			got, err := s.Client.Get(s.Ctx, "/api/fleet/history", q)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			return s.Print(got, output.View{})
+		}),
 	}
 	history.Flags().StringVar(&from, "from", "", "RFC3339 start")
 	history.Flags().StringVar(&to, "to", "", "RFC3339 end")
@@ -72,58 +60,52 @@ server-side, so there is no ad-hoc SQL to get wrong.`,
 	history.Flags().IntVar(&limit, "limit", 100, "max rows")
 
 	query := &cobra.Command{
-		Use:     "query <connectionId> <metric>",
-		Short:   "Fixed server-side metric (no ad-hoc SQL)",
-		Long:    `Fetch one fixed server-side metric for one connection. Metric names are allow-listed server-side — list them via doctor reports or fleet history first.`,
-		Example: `  chouse fleet query 57c2b5bf-0081-4880-9a05-057d1ec3b098 summary -o json`,
-		Args:    cobra.ExactArgs(2),
-		Run: func(_ *cobra.Command, args []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Post(ctx, "/api/fleet/query", map[string]any{"connectionId": args[0], "metric": args[1]})
-			if err != nil {
-				failErr(err)
+		Use:     "query <metric>",
+		Short:   "One fixed server-side metric for the -c connection",
+		Example: `  chouse fleet query summary -c prod`,
+		Args:    cobra.ExactArgs(1),
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			if err := s.requireConnection("fleet query"); err != nil {
+				return err
 			}
-			render(resolved, got)
-		},
+			got, err := s.Client.Post(s.Ctx, "/api/fleet/query", map[string]any{"connectionId": s.Cfg.Connection, "metric": args[0]})
+			if err != nil {
+				return err
+			}
+			return s.Print(got, output.View{})
+		}),
 	}
 	cmd.AddCommand(list, history, query)
 	return cmd
 }
 
-func newDoctorCmd() *cobra.Command {
+func (a *App) newDoctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
-		Short: "Autonomous read-only AI SRE (LLM cost on scan)",
-		Long: `Read past AI SRE reports for free; a fresh scan costs LLM budget
-and writes a report row, so scan needs --yes like any mutation. Never
-mutates data — advisory only.`,
+		Short: "Chouse AI Doctor: fleet health reports",
+		Long: `Read past Doctor reports for free. A new scan calls the AI model
+(LLM cost) and stores a report, so it asks first (or needs --yes). Advisory
+only — it never changes data.`,
 		Example: `  chouse doctor reports
-  chouse doctor get rpt_abc123 -o json
+  chouse doctor get 7c1e…
   chouse doctor scan --hours 24 --yes`,
 	}
 	var model string
 	var hours int
 	var connections []string
-
 	scan := &cobra.Command{
-		Use:   "scan",
-		Short: "Run a fleet scan (advisory only, never mutates)",
-		Long: `Run a fresh AI SRE scan over --hours of fleet history (optionally
-one --model and a --connections subset). Consumes LLM budget and writes a
-report row — hence --yes. For past results without spending, see reports.`,
-		Example: `  chouse doctor scan --yes
-  chouse doctor scan --hours 12 --model m_abc --yes -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			if !flagQuiet {
-				printlnStderr("warning: doctor scan consumes LLM budget and writes a report row")
+		Use:     "scan",
+		Short:   "Run a scan (LLM cost)",
+		Example: `  chouse doctor scan --hours 12 --yes`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			if err := a.rejectDryRun("doctor scan"); err != nil {
+				return err
 			}
-			rejectDryRun("doctor scan")
-			confirmDestructive("doctor.scan", "fleet")
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
+			s.notef("note: a scan calls the AI model (LLM cost) and stores a report")
+			if err := s.confirm("run Doctor scan", "fleet"); err != nil {
+				return err
+			}
 			body := map[string]any{"hours": hours}
 			if model != "" {
 				body["modelId"] = model
@@ -131,69 +113,56 @@ report row — hence --yes. For past results without spending, see reports.`,
 			if len(connections) > 0 {
 				body["connectionIds"] = connections
 			}
-			got, err := c.Post(ctx, "/api/fleet/doctor/scan", body)
+			got, err := s.Client.Post(s.Ctx, "/api/fleet/doctor/scan", body)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			auditLine("doctor.scan", "fleet", "doctor:run")
-			render(resolved, got)
-		},
+			s.audit("doctor.scan", "fleet", "doctor:run")
+			return s.Print(got, output.View{})
+		}),
 	}
-	scan.Flags().StringVar(&model, "model", "", "model ID (default server-side)")
-	scan.Flags().IntVar(&hours, "hours", 24, "lookback 1..72")
-	scan.Flags().StringSliceVar(&connections, "connections", nil, "subset of connection IDs")
+	scan.Flags().StringVar(&model, "model", "", "AI model id (default: the server's)")
+	scan.Flags().IntVar(&hours, "hours", 24, "look back 1-72 hours")
+	scan.Flags().StringSliceVar(&connections, "connections", nil, "only these connection ids")
 
 	reports := &cobra.Command{
-		Use:   "reports",
-		Short: "List persisted reports",
-		Long:  `List persisted AI SRE reports — free to read, no scan cost. Grab an id for get.`,
-		Example: `  chouse doctor reports
-  chouse doctor reports -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Get(ctx, "/api/fleet/doctor/reports", nil)
+		Use:     "reports",
+		Short:   "List reports",
+		Example: `  chouse doctor reports`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			got, err := s.Client.Get(s.Ctx, "/api/fleet/doctor/reports", nil)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			return s.Print(got, output.View{})
+		}),
 	}
 	get := &cobra.Command{
-		Use:   "get <reportId>",
-		Short: "Show one report",
-		Long:  `Show one persisted AI SRE report in full. Free to read — only scan spends budget.`,
-		Example: `  chouse doctor get rpt_abc123
-  chouse doctor get rpt_abc123 -o json`,
-		Args: cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Get(ctx, "/api/fleet/doctor/reports/"+args[0], nil)
+		Use:     "get <reportId>",
+		Short:   "Show one report",
+		Example: `  chouse doctor get 7c1e… -o yaml`,
+		Args:    cobra.ExactArgs(1),
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			got, err := s.Client.Get(s.Ctx, "/api/fleet/doctor/reports/"+url.PathEscape(args[0]), nil)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			return s.Print(got, output.View{})
+		}),
 	}
 	schedule := &cobra.Command{
-		Use:   "schedule",
-		Short: "Show doctor schedule",
-		Long:  `Show the AI SRE scan schedule (cadence, enabled flag, next run). Read-only.`,
-		Example: `  chouse doctor schedule
-  chouse doctor schedule -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Get(ctx, "/api/fleet/doctor/schedule", nil)
+		Use:     "schedule",
+		Short:   "Show the scan schedule",
+		Example: `  chouse doctor schedule`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			got, err := s.Client.Get(s.Ctx, "/api/fleet/doctor/schedule", nil)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			return s.Print(got, output.View{})
+		}),
 	}
 	cmd.AddCommand(scan, reports, get, schedule)
 	return cmd

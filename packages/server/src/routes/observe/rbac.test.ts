@@ -70,6 +70,8 @@ function cases(): Case[] {
     { method: "GET", path: "/agents/policies", permissions: ["agents:view"] },
     { method: "POST", path: "/agents/pause", permissions: ["agents:manage"], body: { paused: false } },
     { method: "PUT", path: "/agents/policies", permissions: ["agents:manage"], body: { scopeKind: "default", scopeId: "*", maxBytesPerQuery: null, dailyBytes: null, partitionFilterBytes: null, incidentMode: "warn", alertMultiplier: null } },
+    { method: "GET", path: "/agents/mcp", permissions: ["agents:view"] },
+    { method: "PUT", path: "/agents/mcp", permissions: ["agents:manage"], body: { enabled: false } },
     { method: "POST", path: "/notebooks/ensure", permissions: ["doctor:view"], body: { kind: "doctor_report", ref: "missing" } },
   ];
 }

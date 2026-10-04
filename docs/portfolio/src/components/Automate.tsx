@@ -24,7 +24,7 @@ const CLI_REFERENCE_URL =
 const MCP_LAB_UI_URL = "https://lab.chouse-ui.com";
 
 const CLI_INSTALL = `curl -sSL https://github.com/daun-gatal/chouse-ui/releases/latest/download/install-cli.sh | bash
-chouse auth login --server https://chouse.your-company.com --token ch_pat_…`;
+chouse auth login --server https://chouse.your-company.com   # prompts for the token`;
 
 const MCP_CLAUDE = `claude mcp add --transport http chouse \\
   https://mcp.chouse-ui.com/mcp \\

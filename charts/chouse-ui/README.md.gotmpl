@@ -131,9 +131,22 @@ approvals need `slack.signingSecret` and `slack.botToken`, or
 > still accepted but ignored — fleet collection is always on. They will be
 > removed in a future major release.
 
+## MCP for AI agents
+
+The MCP endpoint ([ADR 0017](../../docs/adr/0017-mcp-managed-in-the-ui.md))
+is served at `/mcp` on the web port, so agents reach it through the same
+Service, Ingress and TLS as the UI (`https://<host>/mcp`). There are no chart
+values for it: an administrator turns it on, sets its allowed origins and
+picks the tools agents get in **Agents › MCP**.
+
+> **Upgrading from 1.x:** `mcp.*` values, the dedicated port 8752, the
+> `<release>-mcp` Service and the MCP Ingress are gone. Leftover `mcp:` values
+> are ignored (the install notes warn while they are set). Turn MCP on in
+> Agents › MCP and point agents at `https://<host>/mcp`.
+
 ## Ingress notes
 
-- AI chat streams over **SSE**: raise the proxy read timeout (nginx:
+- AI chat and MCP (`/mcp`) stream over **SSE**: raise the proxy read timeout (nginx:
   `nginx.ingress.kubernetes.io/proxy-read-timeout: "300"`) and disable
   response buffering (`nginx.ingress.kubernetes.io/proxy-buffering: "off"`).
 - Login rate limiting keys on **`X-Forwarded-For`** — the ingress must

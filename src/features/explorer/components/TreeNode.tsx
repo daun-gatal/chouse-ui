@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
 import { escapeQualifiedIdentifier } from "@/helpers/sqlUtils";
+import { explorerPath } from "@/lib/explorerPath";
 
 export interface TreeNodeData {
   name: string;
@@ -102,10 +103,10 @@ const TreeNode: React.FC<TreeNodeProps> = ({
   const handleViewInfo = useCallback(async () => {
     if (isDatabase) {
       await addRecentItem(node.name);
-      navigate(`/explorer?database=${node.name}`);
+      navigate(explorerPath(node.name));
     } else {
       await addRecentItem(databaseName, node.name);
-      navigate(`/explorer?database=${databaseName}&table=${node.name}`);
+      navigate(explorerPath(databaseName, node.name));
     }
   }, [isDatabase, navigate, node.name, databaseName, addRecentItem]);
 

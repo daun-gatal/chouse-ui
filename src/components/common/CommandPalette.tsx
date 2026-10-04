@@ -52,6 +52,7 @@ import { rbacAuthApi, rbacConnectionsApi } from "@/api/rbac";
 import { getSessionId } from "@/api/client";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/log";
+import { explorerPath } from "@/lib/explorerPath";
 
 // Maximum items per section — keeps the palette skim-able even on dense DBs.
 const MAX_DATABASES = 8;
@@ -83,6 +84,7 @@ const OBSERVABILITY_PAGES: Array<{ value: string; label: string; to: string; ico
   { value: "monitoring capacity disk forecast cost", label: "Monitoring · Capacity", to: "/monitoring/capacity", icon: HardDrive, permissions: [RBAC_PERMISSIONS.CAPACITY_VIEW] },
   { value: "monitoring upgrades version replay", label: "Monitoring · Upgrades", to: "/monitoring/upgrades", icon: ArrowUpCircle, permissions: [RBAC_PERMISSIONS.UPGRADES_VIEW] },
   { value: "agents mcp ai sessions budgets", label: "Agents", to: "/agents/sessions", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
+  { value: "mcp server tools agents connect", label: "MCP server & tools", to: "/agents/mcp", icon: Bot, permissions: [RBAC_PERMISSIONS.AGENTS_VIEW] },
 ];
 
 export default function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
@@ -304,7 +306,7 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
                 <CommandItem
                   key={`db-${db.name}`}
                   value={`database ${db.name}`}
-                  onSelect={() => runAction(() => navigate(`/explorer?db=${encodeURIComponent(db.name)}`))}
+                  onSelect={() => runAction(() => navigate(explorerPath(db.name)))}
                 >
                   <Database className="mr-2 h-3.5 w-3.5 text-paper-dim" />
                   <span className="font-mono text-[12px]">{db.name}</span>
@@ -324,11 +326,7 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
                   key={`table-${dbName}.${tableName}`}
                   value={`table ${dbName} ${tableName}`}
                   onSelect={() =>
-                    runAction(() =>
-                      navigate(
-                        `/explorer?db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`,
-                      ),
-                    )
+                    runAction(() => navigate(explorerPath(dbName, tableName)))
                   }
                 >
                   <Table2 className="mr-2 h-3.5 w-3.5 text-paper-dim" />

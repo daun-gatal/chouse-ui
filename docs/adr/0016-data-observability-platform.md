@@ -692,6 +692,12 @@ pixel-diff threshold. Changed pages are reviewed against the canvas.
 **CI.** `ci.yml` gains `observe-e2e` and `ui-e2e` jobs, so the PR itself proves
 every gate.
 
+> **Implementation note (3.14.0):** gate 9 was a cut-over gate. Its parity
+> baseline was the pre-0016 `preview`, so once the cut-over merged it guarded
+> nothing new while every intended UI change forced re-captured screenshots.
+> The Playwright suite, `scripts/e2e-ui*.sh` and the `ui-e2e` CI job were
+> removed; component tests (Vitest) and the Docker e2e suites remain.
+
 **Commit rules:**
 - every commit passes gates 1–5
 - the branch is pushed only after gates 1–10 pass locally

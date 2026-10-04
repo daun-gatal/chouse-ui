@@ -21,7 +21,7 @@ export function originGuard(allowedOrigins: string[]): (c: Context, next: Next) 
           success: false,
           error: {
             code: "ORIGIN_NOT_ALLOWED",
-            message: `Origin '${origin}' is not allowed on the MCP endpoint. Add it to MCP_ALLOWED_ORIGINS (ADR 0013).`,
+            message: `Origin '${origin}' is not allowed on the MCP endpoint. Add it to the allowed origins in Agents › MCP.`,
           },
         },
         403

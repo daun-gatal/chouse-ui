@@ -56,7 +56,6 @@ The complete annotated example lives in [`.config.example.yaml`](https://github.
 | `fleet` | `poller_enabled`, `poll_interval_seconds`, `alert_config_file` |
 | `doctor` | `schedule_file`, `auto_rca_cooldown_minutes` |
 | `scheduled_queries` | `enabled` |
-| `mcp` | `enabled`, `allow_writes`, `allow_destructive`, `toolsets`, `allowed_origins`, `timeout_seconds` |
 | `auth.sso` | `enabled`, `base_url`, `default_role`, `auto_link_by_email`, `providers.<id>.*` |
 | `auth.password_login` | `enabled` |
 | `auth.config_watch_interval_ms` | multi-replica SSO/config propagation |

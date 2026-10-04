@@ -1,15 +1,15 @@
 /**
- * Data observability toolset (ADR 0016 §10): dataset health, lineage, curated
- * context, metrics, pipeline status and incidents (read-only, observe
- * toolset), plus `propose_remediation` (writes toolset), which only files a
+ * Data observability tools (ADR 0016 §10): dataset health, lineage, curated
+ * context, metrics, pipeline status and incidents (read-only), plus
+ * `propose_remediation` (a write tool, off by default), which only files a
  * proposal. Approval and execution stay with humans in the UI, CLI or Slack;
  * an MCP proposal is never self-approved.
  */
 
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
+import { PERMISSIONS } from "../../rbac/schema/base";
 import type { McpDeps } from "../types";
-import { apiFor, argEnum, argOptionalString, argString, registerChouseTool, runApiTool, toolContext } from "./helpers";
+import { apiFor, argEnum, argOptionalString, argString, registerChouseTool, type McpToolSink, runApiTool, toolContext } from "./helpers";
 
 const connectionArg = z.string().min(1).optional().describe("Connection id (defaults to the request's connection)");
 
@@ -60,12 +60,15 @@ function segment(value: string): string {
   return encodeURIComponent(value);
 }
 
-export function registerDataObservabilityTools(mcp: McpServer, deps: McpDeps): void {
-  registerChouseTool(mcp, {
+export function registerDataObservabilityTools(sink: McpToolSink, deps: McpDeps): void {
+  registerChouseTool(sink, {
     name: "get_dataset_health",
+    title: "Dataset health",
+    category: "data_observability",
+    access: "read",
+    permissions: [PERMISSIONS.OBSERVE_VIEW],
     description: "Health of one table: trust state, freshness, volume baseline, open incidents, owners and recent writers. Check this before relying on a table's data.",
     inputSchema: tableSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const api = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
@@ -77,11 +80,14 @@ export function registerDataObservabilityTools(mcp: McpServer, deps: McpDeps): v
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "get_lineage",
+    title: "Table lineage",
+    category: "data_observability",
+    access: "read",
+    permissions: [PERMISSIONS.OBSERVE_VIEW],
     description: "Column-free table lineage around one table: sources, materialized views, dictionaries, scheduled jobs and downstream tables.",
     inputSchema: lineageSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const api = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
@@ -94,11 +100,14 @@ export function registerDataObservabilityTools(mcp: McpServer, deps: McpDeps): v
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "get_table_context",
+    title: "Table context",
+    category: "data_observability",
+    access: "read",
+    permissions: [PERMISSIONS.OBSERVE_VIEW],
     description: "Curated context for a table: description, owner, column meanings, caveats and defined metrics.",
     inputSchema: tableSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const api = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
@@ -110,11 +119,14 @@ export function registerDataObservabilityTools(mcp: McpServer, deps: McpDeps): v
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "get_metric",
+    title: "Metric definitions",
+    category: "data_observability",
+    access: "read",
+    permissions: [PERMISSIONS.OBSERVE_VIEW],
     description: "Defined business metrics (name, SQL expression, table, filters). Use these definitions instead of inventing aggregations.",
     inputSchema: metricSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const api = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
@@ -126,11 +138,14 @@ export function registerDataObservabilityTools(mcp: McpServer, deps: McpDeps): v
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "get_pipeline_status",
+    title: "Pipeline status",
+    category: "data_observability",
+    access: "read",
+    permissions: [PERMISSIONS.OBSERVE_VIEW],
     description: "Ingestion pipelines (Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, refreshable views, scheduled jobs, ...) with one shared status vocabulary, lag and error class.",
     inputSchema: pipelineSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const api = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
@@ -143,11 +158,14 @@ export function registerDataObservabilityTools(mcp: McpServer, deps: McpDeps): v
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "list_incidents",
+    title: "Data incidents",
+    category: "data_observability",
+    access: "read",
+    permissions: [PERMISSIONS.OBSERVE_VIEW, PERMISSIONS.DATA_HEALTH_VIEW],
     description: "Data and pipeline incidents with severity, subject and the deterministic root-cause summary when computed.",
     inputSchema: incidentsSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const api = deps.clientFor(ctx);
@@ -159,14 +177,17 @@ export function registerDataObservabilityTools(mcp: McpServer, deps: McpDeps): v
   });
 }
 
-export function registerRemediationProposalTool(mcp: McpServer, deps: McpDeps): void {
-  registerChouseTool(mcp, {
+export function registerRemediationProposalTool(sink: McpToolSink, deps: McpDeps): void {
+  registerChouseTool(sink, {
     name: "propose_remediation",
+    title: "Propose a fix",
+    category: "data_observability",
+    access: "write",
+    permissions: [PERMISSIONS.REMEDIATION_PROPOSE],
     description:
       "Propose a fix from the closed remediation catalog. This only files a proposal: a human approves it in CHouse UI, the CLI or Slack " +
       "before anything runs, and the proposer can never approve its own proposal.",
     inputSchema: proposeSchema,
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const api = deps.clientFor(ctx);

@@ -6,7 +6,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"os"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -47,57 +47,40 @@ func Classify(sql string) Intent {
 	return IntentUnknown
 }
 
-// IsWrite reports whether the statement needs --yes confirmation.
-func IsWrite(sql string) bool {
-	return Classify(sql) != IntentRead
-}
-
 // ConfirmOptions controls destructive gating.
 type ConfirmOptions struct {
 	// Yes is --yes (non-interactive approval for CI/agents).
 	Yes bool
-	// DryRun prints the plan without executing.
-	DryRun bool
-	// Action and Target describe the mutation for the prompt/audit line.
+	// Action and Target describe the mutation for the prompt.
 	Action string
 	Target string
-	// In overrides stdin (tests inject /dev/null).
-	In *os.File
+	// In is where the typed answer comes from; Prompt is where the question
+	// goes (stderr, so stdout stays clean).
+	In     io.Reader
+	Prompt io.Writer
+	// TTY is whether In is an interactive terminal.
+	TTY bool
 }
 
-// RequireConfirm enforces TTY confirm or --yes. Non-TTY without --yes fails
-// closed so agents cannot accidentally mutate.
+// RequireConfirm enforces a typed "yes" on a terminal or --yes. Without a
+// terminal and without --yes it fails closed, so agents and scripts cannot
+// mutate by accident.
 func RequireConfirm(opts ConfirmOptions) error {
 	if opts.Yes {
 		return nil
 	}
-	if !isTTY(opts.In) {
-		return fmt.Errorf("refusing %s on %q without --yes in non-interactive mode (pass --yes to approve, --dry-run to preview)", opts.Action, opts.Target)
+	if !opts.TTY || opts.In == nil {
+		return fmt.Errorf("refusing %s on %q without --yes in non-interactive mode (pass --yes to approve, --dry-run to preview where supported)", opts.Action, opts.Target)
 	}
-	fmt.Fprintf(os.Stderr, "%s %q? This may mutate data. Type 'yes' to continue: ", opts.Action, opts.Target)
-	reader := bufio.NewReader(stdin(opts.In))
-	line, err := reader.ReadString('\n')
-	if err != nil {
+	if opts.Prompt != nil {
+		fmt.Fprintf(opts.Prompt, "%s %q? This may change data. Type 'yes' to continue: ", opts.Action, opts.Target)
+	}
+	line, err := bufio.NewReader(opts.In).ReadString('\n')
+	if err != nil && strings.TrimSpace(line) == "" {
 		return fmt.Errorf("confirm %s: %w", opts.Action, err)
 	}
 	if strings.TrimSpace(strings.ToLower(line)) != "yes" {
 		return errors.New("aborted: confirmation not given")
 	}
 	return nil
-}
-
-func stdin(f *os.File) *os.File {
-	if f != nil {
-		return f
-	}
-	return os.Stdin
-}
-
-func isTTY(f *os.File) bool {
-	target := stdin(f)
-	info, err := target.Stat()
-	if err != nil {
-		return false
-	}
-	return (info.Mode() & os.ModeCharDevice) != 0
 }

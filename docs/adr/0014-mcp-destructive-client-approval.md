@@ -1,6 +1,6 @@
 # 0014 — MCP Destructive-Tool Approval Moves to the Client
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0017](0017-mcp-managed-in-the-ui.md) — the operator flags are replaced by per-tool switches in Agents › MCP)
 - **Date:** 2026-09-13
 - **Amends:** the destructive-approval aspect of [0013](0013-chouse-mcp.md) §4 — every other decision in 0013 stands.
 - **Builds on:** [0013](0013-chouse-mcp.md) (MCP server), [0010](0010-pod-local-state-and-multi-replica-correctness.md) (fail-closed, stateless)

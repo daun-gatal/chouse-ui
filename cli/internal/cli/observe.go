@@ -7,70 +7,32 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/daun-gatal/chouse-ui/cli/internal/api"
+	"github.com/daun-gatal/chouse-ui/cli/internal/output"
 )
 
-// splitTable parses "db.table" into its parts (exit 2 on bad input).
-func splitTable(fq string) (string, string) {
-	dot := strings.Index(fq, ".")
-	if dot <= 0 || dot == len(fq)-1 {
-		fail(api.ExitUsage, fmt.Sprintf("expected <database>.<table>, got %q", fq))
-	}
-	return fq[:dot], fq[dot+1:]
-}
-
-// requireConnection fails fast when a command needs a pinned connection.
-func requireConnection(connection, what string) {
-	if connection == "" {
-		fail(api.ExitUsage, what+" needs a connection: pass -c <connectionId> or set CHOUSE_CONNECTION")
-	}
-}
-
-// newDatasetHealthCmd is `chouse health dataset` (ADR 0016): one table's trust state.
-func newDatasetHealthCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "dataset <database>.<table>",
-		Short: "One table's health: trust state, freshness, incidents",
-		Long: `Health of one table from the observability platform: trust state
-(trusted, degraded, stale, unknown), freshness, volume baseline, open
-incidents, owners and recent writers. Check it before relying on a table.`,
-		Example: `  chouse health dataset shop.orders
-  chouse health dataset shop.orders -c conn_abc -o json`,
-		Args: cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			db, table := splitTable(args[0])
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Get(ctx, "/api/observe/datasets/"+url.PathEscape(db)+"/"+url.PathEscape(table), nil)
-			if err != nil {
-				failErr(err)
-			}
-			render(resolved, got)
-		},
-	}
-}
-
-func newLineageCmd() *cobra.Command {
+func (a *App) newLineageCmd() *cobra.Command {
 	var direction string
 	var depth int
 	var impact bool
 	cmd := &cobra.Command{
-		Use:   "lineage <database>.<table>",
-		Short: "Table lineage: sources, views, jobs and downstream tables",
-		Long: `Lineage around one table, collected from ClickHouse metadata, query
+		Use:   "lineage <database.table>",
+		Short: "Where a table's data comes from and where it goes",
+		Long: `Lineage around one table, built from ClickHouse metadata, query
 logs and scheduled jobs. --impact lists everything downstream that a change
 to the table would affect (what schema preflight checks before DDL).`,
-		Example: `  chouse lineage shop.orders
+		Example: `  chouse lineage shop.orders -c prod
   chouse lineage shop.orders --direction up --depth 2
-  chouse lineage shop.orders --impact -o json`,
+  chouse lineage shop.orders --impact`,
 		Args: cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			db, table := splitTable(args[0])
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			q := url.Values{}
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			db, table, err := splitTable(args[0])
+			if err != nil {
+				return err
+			}
+			if direction != "up" && direction != "down" && direction != "both" {
+				return usagef("--direction must be up, down or both")
+			}
+			q := s.connectionQuery()
 			q.Set("node", "table:"+db+"."+table)
 			path := "/api/observe/lineage"
 			if impact {
@@ -79,165 +41,126 @@ to the table would affect (what schema preflight checks before DDL).`,
 				q.Set("direction", direction)
 				q.Set("depth", itoa(depth))
 			}
-			got, err := c.Get(ctx, path, q)
+			got, err := s.Client.Get(s.Ctx, path, q)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			if impact {
+				return s.Print(got, output.View{})
+			}
+			return s.Print(got, view("nodes", "ID", "KIND", "LABEL", "STATUS"))
+		}),
 	}
-	cmd.Flags().StringVar(&direction, "direction", "both", "up|down|both")
-	cmd.Flags().IntVar(&depth, "depth", 3, "hops to follow (1..8)")
-	cmd.Flags().BoolVar(&impact, "impact", false, "list downstream impact only")
+	cmd.Flags().StringVar(&direction, "direction", "both", "up, down or both")
+	cmd.Flags().IntVar(&depth, "depth", 3, "hops to follow (1-8)")
+	cmd.Flags().BoolVar(&impact, "impact", false, "list what a change to the table would affect")
 	return cmd
 }
 
-func newIncidentsCmd() *cobra.Command {
+func (a *App) newIncidentsCmd() *cobra.Command {
 	var all bool
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "incidents",
-		Short: "Data and pipeline incidents with root cause",
-		Long: `Incidents from every source — Data Health promises and the
-observability platform (pipelines, freshness, volume, parts, replication) —
-with severity, subject and the deterministic root-cause summary. Active only
-unless --all. Scoped to -c when given, otherwise every connection you can use.`,
+		Short: "Data and pipeline incidents with their root cause",
+		Long: `Incidents from Data Health promises and the observability platform
+(pipelines, freshness, volume, parts, replication) with severity, subject
+and root cause. Active only unless --all; scoped to -c when given.`,
 		Example: `  chouse incidents
   chouse incidents --all --limit 20 -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			q := url.Values{}
+		Args: cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			q := s.connectionQuery()
 			if all {
 				q.Set("status", "all")
 			}
-			if resolved.Connection != "" {
-				q.Set("connectionId", resolved.Connection)
-			}
-			got, err := c.Get(ctx, "/api/observe/incidents", q)
+			got, err := s.Client.Get(s.Ctx, "/api/observe/incidents", q)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			truncateList(got, "incidents", limit)
-			render(resolved, got)
-		},
+			return s.Print(limitList(got, "incidents", limit), view("incidents", "ID", "SOURCE", "STATUS", "SEVERITY", "KIND", "OPENED=openedAt", "TITLE", "ROOT CAUSE=rootCause"))
+		}),
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "include recovered incidents")
-	cmd.Flags().IntVar(&limit, "limit", 50, "max rows (client-side)")
+	cmd.Flags().IntVar(&limit, "limit", 50, "max rows")
 	return cmd
 }
 
-// truncateList caps an enveloped list client-side so --limit is honest.
-func truncateList(got any, key string, limit int) {
-	if limit <= 0 {
-		return
-	}
-	if m, ok := got.(map[string]any); ok {
-		if arr, ok := m[key].([]any); ok && len(arr) > limit {
-			m[key] = arr[:limit]
-		}
-	}
-}
-
-func newRemediationCmd() *cobra.Command {
+func (a *App) newRemediationCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "remediation",
-		Short: "Review, approve or reject proposed fixes",
-		Long: `Fixes proposed from incidents (by people, Chouse AI or MCP agents)
-from the closed remediation catalog. Approving is how a fix gets to run:
-high-impact actions need two approvers, and nobody approves their own
-proposal. Approve and reject are actions needing --yes.`,
-		Example: `  chouse remediation list -c conn_abc
-  chouse remediation get act_abc123
-  chouse remediation approve act_abc123 --comment "checked the plan" --yes`,
+		Use:     "remediation",
+		Aliases: []string{"fixes"},
+		Short:   "Review, approve or reject proposed fixes",
+		Long: `Fixes proposed for incidents (by people, Chouse AI or MCP agents)
+from the remediation catalog. Approving is how a fix gets to run. The server
+enforces who may approve: a person may approve their own low-risk fix, but
+high-risk fixes need two approvers other than the proposer, and a fix
+proposed by Chouse AI or an agent always needs someone else. approve and
+reject ask first (or need --yes).`,
+		Example: `  chouse remediation list -c prod --status proposed
+  chouse remediation get 6e0b…
+  chouse remediation approve 6e0b… --comment "checked the plan" --yes`,
 	}
 	var status string
 	var limit int
-	var comment string
-
 	list := &cobra.Command{
-		Use:   "list",
-		Short: "List actions on a connection",
-		Long:  `List remediation actions on the -c connection, newest first. --status filters (comma-separated: proposed, approved, executing, executed, verified, failed_verification, failed, rolled_back, rejected).`,
-		Example: `  chouse remediation list -c conn_abc
-  chouse remediation list -c conn_abc --status proposed -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			requireConnection(resolved.Connection, "remediation list")
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			q := url.Values{}
-			q.Set("connectionId", resolved.Connection)
+		Use:     "list",
+		Short:   "Actions on the -c connection, newest first",
+		Example: `  chouse remediation list -c prod --status proposed,approved`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			if err := s.requireConnection("remediation list"); err != nil {
+				return err
+			}
+			q := s.connectionQuery()
 			if status != "" {
 				q.Set("status", status)
 			}
-			got, err := c.Get(ctx, "/api/remediation/actions", q)
+			got, err := s.Client.Get(s.Ctx, "/api/remediation/actions", q)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			truncateList(got, "actions", limit)
-			render(resolved, got)
-		},
+			return s.Print(limitList(got, "actions", limit), view("actions", "ID", "STATUS", "TYPE", "CLASS=approvalClass", "TITLE", "PROPOSED BY=proposedBy", "CREATED=createdAt"))
+		}),
 	}
-	list.Flags().StringVar(&status, "status", "", "status filter (comma-separated)")
-	list.Flags().IntVar(&limit, "limit", 50, "max rows (client-side)")
+	list.Flags().StringVar(&status, "status", "", "comma-separated: proposed, approved, executing, executed, verified, failed_verification, failed, rolled_back, rejected")
+	list.Flags().IntVar(&limit, "limit", 50, "max rows")
 
-	get := &cobra.Command{
-		Use:     "get <actionId>",
-		Short:   "Show one action with its approvals and executions",
-		Long:    `Show one action: the exact statements it will run, its approval class, approvals so far and every execution attempt.`,
-		Example: `  chouse remediation get act_abc123 -o json`,
-		Args:    cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Get(ctx, "/api/remediation/actions/"+url.PathEscape(args[0]), nil)
-			if err != nil {
-				failErr(err)
-			}
-			render(resolved, got)
-		},
-	}
+	get := a.getCmd("get <actionId>", "One action: statements, approvals, executions", "  chouse remediation get 6e0b… -o yaml", cobra.ExactArgs(1),
+		func(args []string) string { return "/api/remediation/actions/" + url.PathEscape(args[0]) }, output.View{})
 
-	decide := func(verb string) *cobra.Command {
-		return &cobra.Command{
+	var comment string
+	decide := func(verb, permission string) *cobra.Command {
+		title := strings.ToUpper(verb[:1]) + verb[1:]
+		c := &cobra.Command{
 			Use:   verb + " <actionId>",
-			Short: strings.ToUpper(verb[:1]) + verb[1:] + " an action (action)",
-			Long: fmt.Sprintf(`%s one proposed action. Review it with get first. The server enforces
-the approval rules (two approvers for high-impact actions, never the proposer)
-and records the decision with channel=cli. Needs --yes outside a TTY.`, strings.ToUpper(verb[:1])+verb[1:]),
-			Example: fmt.Sprintf("  chouse remediation %s act_abc123 --comment \"reviewed\" --yes", verb),
+			Short: title + " a proposed action",
+			Long: fmt.Sprintf(`%s one proposed action — review it with get first. The server enforces
+the approval rules and records the decision with channel=cli.`, title),
+			Example: fmt.Sprintf("  chouse remediation %s 6e0b… --comment \"reviewed\" --yes", verb),
 			Args:    cobra.ExactArgs(1),
-			Run: func(_ *cobra.Command, args []string) {
-				rejectDryRun("remediation " + verb)
-				confirmDestructive("remediation."+verb, args[0])
-				c, resolved := mustClient(true)
-				ctx, cancel := ctxWithTimeout()
-				defer cancel()
+			RunE: a.action(needAuth, func(s *Session, args []string) error {
+				if err := a.rejectDryRun("remediation " + verb); err != nil {
+					return err
+				}
+				if err := s.confirm(verb+" remediation", args[0]); err != nil {
+					return err
+				}
 				body := map[string]any{}
 				if comment != "" {
 					body["comment"] = comment
 				}
-				got, err := c.Post(ctx, "/api/remediation/actions/"+url.PathEscape(args[0])+"/"+verb, body)
+				got, err := s.Client.Post(s.Ctx, "/api/remediation/actions/"+url.PathEscape(args[0])+"/"+verb, body)
 				if err != nil {
-					failErr(err)
+					return err
 				}
-				permission := "remediation:approve"
-				if verb == "reject" {
-					permission = "remediation:approve|remediation:propose"
-				}
-				auditLine("remediation."+verb, args[0], permission)
-				render(resolved, got)
-			},
+				s.audit("remediation."+verb, args[0], permission)
+				return s.Print(got, output.View{})
+			}),
 		}
+		c.Flags().StringVar(&comment, "comment", "", "decision comment")
+		return c
 	}
-	approve := decide("approve")
-	reject := decide("reject")
-	approve.Flags().StringVar(&comment, "comment", "", "decision comment")
-	reject.Flags().StringVar(&comment, "comment", "", "decision comment")
-
-	cmd.AddCommand(list, get, approve, reject)
+	cmd.AddCommand(list, get, decide("approve", "remediation:approve"), decide("reject", "remediation:approve|remediation:propose"))
 	return cmd
 }

@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { server } from "@/test/mocks/server";
-import { deleteAgentPolicy, getAgentSession, getAgentSummary, listAgentPolicies, listAgentSessions, saveAgentPolicy, setAgentsPaused } from "./agents";
+import { deleteAgentPolicy, getAgentSession, getAgentSummary, getMcpOverview, listAgentPolicies, listAgentSessions, saveAgentPolicy, setAgentsPaused, updateMcpSettings } from "./agents";
 
 describe("agents API", () => {
   it("reads sessions and manages policies", async () => {
@@ -31,5 +31,22 @@ describe("agents API", () => {
       "POST /api/agents/pause",
     ]);
     expect(seen[1].params).toEqual({ days: "7" });
+  });
+
+  it("reads and updates the MCP settings", async () => {
+    const seen: Array<{ method: string; body: unknown }> = [];
+    const overview = { settings: { enabled: true }, endpoint: { path: "/mcp", url: null }, tools: [{ name: "query" }] };
+    server.use(
+      http.all("/api/agents/mcp", async ({ request }) => {
+        seen.push({ method: request.method, body: request.method === "PUT" ? await request.json() : undefined });
+        return HttpResponse.json({ success: true, data: overview });
+      }),
+    );
+    expect(await getMcpOverview()).toEqual(overview);
+    expect(await updateMcpSettings({ enabled: true, toolOverrides: { kill_query: true } })).toEqual(overview);
+    expect(seen).toEqual([
+      { method: "GET", body: undefined },
+      { method: "PUT", body: { enabled: true, toolOverrides: { kill_query: true } } },
+    ]);
   });
 });

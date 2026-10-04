@@ -4,8 +4,9 @@
  * Drives the assembled McpServer over the SDK's InMemoryTransport like a
  * real client, and captures the subrequests each tool projects against a
  * stub Hono proxy. The gate matrix is the safety contract: reads on by
- * default, writes and destructive tools only when the operator enables
- * them, and the privilege fence never appears as a tool.
+ * default, writes, destructive and LLM-spending tools only when an
+ * administrator turns them on (Agents › MCP), tools a token cannot use are
+ * never listed, and the privilege fence never appears as a tool.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -16,23 +17,23 @@ import { join } from "node:path";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types";
-import { buildMcpServer, buildMcpDeps } from "./server";
-import type { McpConfig } from "./config";
+import { PERMISSIONS } from "../rbac/schema/base";
+import { buildMcpServer, buildMcpDeps, listToolDefinitions, toolCatalog, toolParameters } from "./server";
+import type { McpSettings } from "./settings";
+import { MCP_TOOL_CATEGORIES } from "./tools/helpers";
 import type { McpToolContext } from "./types";
 
-function makeConfig(overrides: Partial<McpConfig> = {}): McpConfig {
-  return {
-    enabled: true,
-    host: "localhost",
-    port: 8752,
-    allowWrites: false,
-    allowDestructive: false,
-    toolsets: ["core", "explore", "query", "observe", "ops"],
-    allowedOrigins: [],
-    timeoutSeconds: 60,
-    ...overrides,
-  };
+type ToolSwitches = Pick<McpSettings, "toolOverrides">;
+
+const DEFAULTS: ToolSwitches = { toolOverrides: {} };
+
+/** Settings with the named tools switched on. */
+function enable(...names: string[]): ToolSwitches {
+  return { toolOverrides: Object.fromEntries(names.map((name) => [name, true])) };
 }
+
+/** An identity holding every permission, so only the switches decide. */
+const ALL = { permissions: Object.values(PERMISSIONS) as string[] };
 
 interface Captured {
   method: string;
@@ -64,6 +65,7 @@ const CTX: McpToolContext = {
     patId: "pat-1",
   },
   token: "ch_pat_testtoken123456789012",
+  timeoutMs: 5000,
 };
 
 function isResponse(
@@ -190,98 +192,131 @@ const DEFAULT_TOOL_NAMES = [
   "list_incidents",
 ];
 
+const WRITE_TOOLS = [
+  "create_saved_query",
+  "run_scheduled_job",
+  "run_health_check",
+  "acknowledge_incident",
+  "test_alert_channel",
+  "propose_remediation",
+];
+
+const DESTRUCTIVE_TOOLS = ["kill_query", "query_raw", "delete_saved_query", "delete_scheduled_job"];
+
+async function listTools(mcp: McpServer): Promise<Array<{ name: string; title?: string; annotations?: Record<string, unknown> }>> {
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const pending = new Map<number, (message: { id: number; result?: unknown; error?: unknown }) => void>();
+  clientTransport.onmessage = (message: JSONRPCMessage) => {
+    if (isResponse(message)) {
+      pending.get(message.id)?.(message);
+      pending.delete(message.id);
+    }
+  };
+  await mcp.connect(serverTransport);
+  const response = new Promise<{ id: number; result?: unknown; error?: unknown }>((resolve) => {
+    pending.set(1, resolve);
+  });
+  await clientTransport.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} } as JSONRPCMessage);
+  const message = await response;
+  await mcp.close();
+  return ((message.result as { tools?: unknown[] } | undefined)?.tools ?? []) as Array<{ name: string; title?: string; annotations?: Record<string, unknown> }>;
+}
+
 describe("tool registration matrix", () => {
-  it("registers the read-only default toolset and nothing else", async () => {
+  it("lists every read-only tool by default and nothing else", async () => {
     const { proxy } = makeProxy({});
-    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
-    const names = (await listToolNames(mcp)).sort();
-    expect(names).toEqual([...DEFAULT_TOOL_NAMES].sort());
+    const names = (await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL))).sort();
+    expect(names).toEqual([...DEFAULT_TOOL_NAMES, "doctor_reports", "get_doctor_report"].sort());
   });
 
-  it("hides write tools until MCP_ALLOW_WRITES", async () => {
+  it("keeps write tools off until an administrator enables them", async () => {
     const { proxy } = makeProxy({});
-    const off = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
-    const offNames = await listToolNames(off);
-    expect(offNames).not.toContain("run_scheduled_job");
-    expect(offNames).not.toContain("acknowledge_incident");
-    await off.close();
+    const offNames = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    for (const name of WRITE_TOOLS) expect(offNames).not.toContain(name);
 
-    const on = buildMcpServer(
-      makeConfig({ allowWrites: true, toolsets: ["core", "writes"] }),
-      buildMcpDeps(proxy, 5000)
-    );
-    const onNames = await listToolNames(on);
-    expect(onNames).toEqual(
-      expect.arrayContaining([
-        "create_saved_query",
-        "run_scheduled_job",
-        "run_health_check",
-        "acknowledge_incident",
-        "test_alert_channel",
-        "propose_remediation",
-      ])
-    );
+    const onNames = await listToolNames(buildMcpServer(enable(...WRITE_TOOLS), buildMcpDeps(proxy), ALL));
+    expect(onNames).toEqual(expect.arrayContaining(WRITE_TOOLS));
     expect(onNames).not.toContain("kill_query");
-    await on.close();
   });
 
-  it("hides destructive tools until MCP_ALLOW_DESTRUCTIVE, then registers them", async () => {
+  it("keeps destructive tools off until an administrator enables them", async () => {
     const { proxy } = makeProxy({});
-    const off = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
-    expect(await listToolNames(off)).not.toContain("kill_query");
-    await off.close();
+    expect(await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL))).not.toContain("kill_query");
 
-    const on = buildMcpServer(
-      makeConfig({ allowWrites: true, allowDestructive: true, toolsets: ["core", "destructive"] }),
-      buildMcpDeps(proxy, 5000)
-    );
-    const names = await listToolNames(on);
-    expect(names).toEqual(
-      expect.arrayContaining(["kill_query", "query_raw", "delete_saved_query", "delete_scheduled_job"])
-    );
-    await on.close();
+    const names = await listToolNames(buildMcpServer(enable(...DESTRUCTIVE_TOOLS), buildMcpDeps(proxy), ALL));
+    expect(names).toEqual(expect.arrayContaining(DESTRUCTIVE_TOOLS));
   });
 
-  it("registers ai tools only for the opt-in ai toolset", async () => {
+  it("keeps LLM-spending tools off by default", async () => {
     const { proxy } = makeProxy({});
-    const on = buildMcpServer(makeConfig({ toolsets: ["core", "ai"] }), buildMcpDeps(proxy, 5000));
-    const names = await listToolNames(on);
-    expect(names).toEqual(expect.arrayContaining(["ai_optimize", "doctor_scan", "doctor_reports", "get_doctor_report"]));
-    await on.close();
+    const off = await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL));
+    expect(off).not.toContain("ai_optimize");
+    expect(off).not.toContain("doctor_scan");
+    const on = await listToolNames(buildMcpServer(enable("ai_optimize", "doctor_scan"), buildMcpDeps(proxy), ALL));
+    expect(on).toEqual(expect.arrayContaining(["ai_optimize", "doctor_scan"]));
   });
 
-  it("marks the query tool read-only and destructive tools destructive", async () => {
+  it("hides a read-only tool an administrator turned off", async () => {
     const { proxy } = makeProxy({});
-    const on = buildMcpServer(
-      makeConfig({ allowWrites: true, allowDestructive: true, toolsets: ["core", "query", "destructive"] }),
-      buildMcpDeps(proxy, 5000)
-    );
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const pending = new Map<number, (message: { id: number; result?: unknown; error?: unknown }) => void>();
-    clientTransport.onmessage = (message: JSONRPCMessage) => {
-      if (isResponse(message)) {
-        const resolve = pending.get(message.id);
-        if (resolve) {
-          pending.delete(message.id);
-          resolve(message);
-        }
-      }
-    };
-    await on.connect(serverTransport);
-    const response = new Promise<{ id: number; result?: unknown; error?: unknown }>((resolve) => {
-      pending.set(1, resolve);
-    });
-    await clientTransport.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} } as JSONRPCMessage);
-    const message = await response;
-    await on.close();
-    const tools = (message.result?.tools ?? []) as Array<{
-      name: string;
-      annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
-    }>;
-    const query = tools.find((tool) => tool.name === "query");
-    expect(query?.annotations?.readOnlyHint).toBe(true);
-    const kill = tools.find((tool) => tool.name === "kill_query");
-    expect(kill?.annotations?.destructiveHint).toBe(true);
+    const names = await listToolNames(buildMcpServer({ toolOverrides: { audit_list: false } }, buildMcpDeps(proxy), ALL));
+    expect(names).not.toContain("audit_list");
+    expect(names).toContain("query");
+  });
+
+  it("lists only the tools the token's permissions allow", async () => {
+    const { proxy } = makeProxy({});
+    const names = (await listToolNames(buildMcpServer(DEFAULTS, buildMcpDeps(proxy), { permissions: ["metrics:view"] }))).sort();
+    expect(names).toEqual(["metrics_overview", "whoami"]);
+  });
+
+  it("derives titles and annotations from each tool's access level", async () => {
+    const { proxy } = makeProxy({});
+    const tools = await listTools(buildMcpServer(enable("kill_query", "create_saved_query"), buildMcpDeps(proxy), ALL));
+    const byName = new Map(tools.map((tool) => [tool.name, tool]));
+    expect(byName.get("query")?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+    expect(byName.get("query")?.title).toBe("Run a read-only query");
+    expect(byName.get("kill_query")?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(byName.get("create_saved_query")?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+  });
+});
+
+describe("tool catalog", () => {
+  const tools = listToolDefinitions();
+  const known = new Set<string>(Object.values(PERMISSIONS));
+
+  it("names every tool once", () => {
+    expect(new Set(tools.map((tool) => tool.name)).size).toBe(tools.length);
+  });
+
+  it("gives every tool a title, a known category and known permissions", () => {
+    for (const tool of tools) {
+      expect(tool.title.length).toBeGreaterThan(0);
+      expect(MCP_TOOL_CATEGORIES).toContain(tool.category);
+      for (const permission of tool.permissions) expect(known.has(permission)).toBe(true);
+    }
+  });
+
+  it("requires a permission for every tool but whoami", () => {
+    expect(tools.filter((tool) => tool.permissions.length === 0).map((tool) => tool.name)).toEqual(["whoami"]);
+  });
+
+  it("reports each tool's state and default", () => {
+    const catalog = toolCatalog(tools, { toolOverrides: { kill_query: true, audit_list: false } });
+    const byName = new Map(catalog.map((entry) => [entry.name, entry]));
+    expect(byName.get("kill_query")).toMatchObject({ access: "destructive", enabled: true, enabledByDefault: false });
+    expect(byName.get("audit_list")).toMatchObject({ access: "read", enabled: false, enabledByDefault: true });
+    expect(byName.get("ai_optimize")).toMatchObject({ access: "read", spendsLlm: true, enabled: false, enabledByDefault: false });
+  });
+
+  it("describes input parameters", () => {
+    const sample = tools.find((tool) => tool.name === "sample_table");
+    expect(sample).toBeDefined();
+    expect(toolParameters(sample!)).toEqual([
+      { name: "database", type: "string", required: true, description: "Database name" },
+      { name: "table", type: "string", required: true, description: "Table name" },
+      { name: "limit", type: "number", required: false, description: "Rows to sample (max 20)" },
+      { name: "connection_id", type: "string", required: false, description: "Connection id (defaults to the request/header connection)" },
+    ]);
   });
 });
 
@@ -289,7 +324,7 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
   it("projects a subrequest with the caller's PAT and caps the result", async () => {
     const rows = Array.from({ length: 200 }, (_, index) => ({ n: index }));
     const { proxy } = makeProxy({ rows });
-    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const mcp = buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     const { result } = await harness.request("tools/call", { name: "metrics_overview", arguments: {} }, CTX);
     expect(result?.isError).toBeFalsy();
@@ -301,7 +336,7 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
 
   it("refuses non-read SQL in the query tool without calling the API", async () => {
     const { proxy, calls } = makeProxy({});
-    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const mcp = buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     const { result } = await harness.request("tools/call", { name: "query", arguments: { sql: "DROP TABLE t" } }, CTX);
     expect(result?.isError).toBe(true);
@@ -313,7 +348,7 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
   it("surfaces API failures as tool errors with the server code", async () => {
     const proxy = new Hono();
     proxy.all("*", (c) => c.json({ success: false, error: { code: "FORBIDDEN", message: "nope" } }, 403));
-    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const mcp = buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     const { result } = await harness.request("tools/call", { name: "metrics_overview", arguments: {} }, CTX);
     expect(result?.isError).toBe(true);
@@ -323,7 +358,7 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
 
   it("fails closed when invoked without authenticated context", async () => {
     const { proxy } = makeProxy({});
-    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const mcp = buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     const { result, error } = await harness.request("tools/call", { name: "metrics_overview", arguments: {} });
     // A missing identity surfaces as a protocol error (the handler refuses
@@ -334,12 +369,9 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
     await harness.close();
   });
 
-  it("destructive tools execute under the operator's flags", async () => {
+  it("destructive tools run once an administrator enables them", async () => {
     const { proxy, calls } = makeProxy({ killed: true });
-    const mcp = buildMcpServer(
-      makeConfig({ allowWrites: true, allowDestructive: true, toolsets: ["core", "destructive"] }),
-      buildMcpDeps(proxy, 5000)
-    );
+    const mcp = buildMcpServer(enable(...DESTRUCTIVE_TOOLS), buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     const { result } = await harness.request(
       "tools/call",
@@ -356,10 +388,7 @@ describe("tool call flow (raw JSON-RPC with authInfo)", () => {
   it("destructive tools surface the API's authorization error when the PAT lacks the route permission", async () => {
     const proxy = new Hono();
     proxy.all("*", (c) => c.json({ success: false, error: { code: "FORBIDDEN", message: "missing live_queries:kill" } }, 403));
-    const mcp = buildMcpServer(
-      makeConfig({ allowWrites: true, allowDestructive: true, toolsets: ["core", "destructive"] }),
-      buildMcpDeps(proxy, 5000)
-    );
+    const mcp = buildMcpServer(enable(...DESTRUCTIVE_TOOLS), buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     const { result } = await harness.request(
       "tools/call",
@@ -410,7 +439,7 @@ describe("privilege fence (source contract)", () => {
 describe("data observability tools (ADR 0016)", () => {
   it("projects dataset health, lineage and context onto the observe API", async () => {
     const { proxy, calls } = makeProxy({ ok: true });
-    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const mcp = buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     await harness.request("tools/call", { name: "get_dataset_health", arguments: { database: "shop", table: "orders" } }, CTX);
     await harness.request("tools/call", { name: "get_lineage", arguments: { database: "shop", table: "orders", direction: "up", depth: 2 } }, CTX);
@@ -425,7 +454,7 @@ describe("data observability tools (ADR 0016)", () => {
 
   it("filters metrics by name", async () => {
     const { proxy } = makeProxy({ metrics: [{ name: "gmv" }, { name: "orders" }] });
-    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const mcp = buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     const { result } = await harness.request("tools/call", { name: "get_metric", arguments: { name: "gmv" } }, CTX);
     expect(resultText(result)).toContain("gmv");
@@ -435,7 +464,7 @@ describe("data observability tools (ADR 0016)", () => {
 
   it("files a remediation proposal and never approves it", async () => {
     const { proxy, calls } = makeProxy({ id: "a1", status: "proposed" });
-    const mcp = buildMcpServer(makeConfig({ allowWrites: true, toolsets: ["core", "writes"] }), buildMcpDeps(proxy, 5000));
+    const mcp = buildMcpServer(enable("propose_remediation"), buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     const { result } = await harness.request(
       "tools/call",
@@ -457,7 +486,7 @@ describe("data observability tools (ADR 0016)", () => {
       seen.push(c.req.header());
       return c.json({ success: true, data: {} });
     });
-    const mcp = buildMcpServer(makeConfig(), buildMcpDeps(proxy, 5000));
+    const mcp = buildMcpServer(DEFAULTS, buildMcpDeps(proxy), ALL);
     const harness = await createHarness(mcp);
     await harness.request("tools/call", { name: "get_pipeline_status", arguments: { status: "failing" } }, CTX);
     expect(seen[0]?.["x-chouse-agent-source"]).toBe("mcp");

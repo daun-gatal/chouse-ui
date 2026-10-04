@@ -585,6 +585,7 @@ export const AUDIT_ACTIONS = {
   UPGRADE_REPLAY: 'upgrade.replay',
   AGENT_POLICY_UPDATE: 'agent.policy_update',
   AGENT_ACCESS_PAUSE: 'agent.access_pause',
+  AGENT_MCP_UPDATE: 'agent.mcp_update',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

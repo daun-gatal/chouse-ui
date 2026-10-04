@@ -14,7 +14,7 @@ Tokens are stored hashed server-side; losing the display copy means minting a ne
 
 | Consumer | Auth header | Notes |
 | --- | --- | --- |
-| [CLI](/docs/cli/) | `Authorization: Bearer ch_pat_…` | `chouse auth login --token ch_pat_…` |
+| [CLI](/docs/cli/) | `Authorization: Bearer ch_pat_…` | `chouse auth login` (prompts for the token) |
 | [MCP server](/docs/mcp/) | Same | Agents pass the token; every call verified against RBAC |
 | CI scripts | HTTP API | Same `/api/*` endpoints the UI uses |
 
@@ -30,5 +30,5 @@ Tokens are stored hashed server-side; losing the display copy means minting a ne
 ## Security notes
 
 - A PAT grants whatever *you* can do — treat it like a password
-- For destructive MCP toolsets, the human-approval layer applies on top of RBAC — see [MCP server](/docs/mcp/)
+- For destructive MCP tools, the human-approval layer applies on top of RBAC — see [MCP server](/docs/mcp/)
 - Rotate tokens when a team member leaves: revoke theirs, reissue for shared pipelines

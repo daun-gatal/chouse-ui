@@ -71,6 +71,11 @@ echo "Running CLI checks from inside the compose network..."
 set +e
 docker run --rm -i --network "$NETWORK" "$RUNNER_IMAGE" python3 - < scripts/e2e-cli-check.py
 CHECK_STATUS=$?
+if [ "$CHECK_STATUS" -eq 0 ]; then
+  echo "Running the output-style matrix (every command x every -o)..."
+  docker run --rm -i --network "$NETWORK" "$RUNNER_IMAGE" python3 - < scripts/e2e-cli-output-check.py | grep -v '^MATRIX-JSON'
+  CHECK_STATUS=${PIPESTATUS[0]}
+fi
 set -e
 if [ "$CHECK_STATUS" -ne 0 ]; then
   echo "--- chouse-ui-local logs (tail) ---"

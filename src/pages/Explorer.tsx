@@ -19,6 +19,7 @@ import { useExplorerStore } from "@/stores/explorer";
 import { useRbacStore } from "@/stores/rbac";
 import { rbacUserPreferencesApi } from "@/api/rbac";
 import { log } from "@/lib/log";
+import { explorerPath, readExplorerTarget } from "@/lib/explorerPath";
 
 const ExplorerPage = () => {
   const { data: databases = [] } = useDatabases();
@@ -45,8 +46,9 @@ const ExplorerPage = () => {
     }
   };
 
-  const currentDatabase = searchParams.get("database") || "";
-  const currentTable = searchParams.get("table") || "";
+  const explorerTarget = readExplorerTarget(searchParams);
+  const currentDatabase = explorerTarget?.database ?? "";
+  const currentTable = explorerTarget?.table ?? "";
 
   const databaseCount = databases.length;
   const tableCount = databases.reduce((acc, db) => acc + (db.children?.length || 0), 0);
@@ -163,7 +165,7 @@ const ExplorerPage = () => {
     if (currentDatabase) {
       items.push({
         label: currentDatabase,
-        path: `/explorer?database=${currentDatabase}`,
+        path: explorerPath(currentDatabase),
         icon: <Database className="h-3 w-3 text-paper-dim" aria-hidden />,
       });
     }
@@ -171,7 +173,7 @@ const ExplorerPage = () => {
     if (currentTable) {
       items.push({
         label: currentTable,
-        path: `/explorer?database=${currentDatabase}&table=${currentTable}`,
+        path: explorerPath(currentDatabase, currentTable),
         icon: <Table2 className="h-3 w-3 text-paper-dim" aria-hidden />,
       });
     }

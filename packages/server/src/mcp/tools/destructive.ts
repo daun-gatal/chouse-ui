@@ -1,16 +1,15 @@
 /**
- * Destructive toolset: KILL, raw SQL, and deletes (ADR 0014).
+ * Destructive tools: KILL, raw SQL, and deletes (ADR 0014).
  *
- * Server-side authorization: registered only when
- * MCP_ALLOW_DESTRUCTIVE=true (which also requires MCP_ALLOW_WRITES=true), and
- * every call executes under the caller's PAT scopes via the projected API
- * routes. Human approval is client-side: the host's permission prompt (ask
+ * Server-side authorization: off until an administrator turns each one on in
+ * Agents › MCP (ADR 0017), and every call executes under the caller's PAT
+ * scopes via the projected API routes. Human approval is client-side: the host's permission prompt (ask
  * rules) or an explicit user confirmation — agents ask the user first, as
  * their tool descriptions and the server instructions direct.
  */
 
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
+import { PERMISSIONS } from "../../rbac/schema/base";
 import type { McpDeps } from "../types";
 import {
   runApiTool,
@@ -18,7 +17,7 @@ import {
   toolContext,
   argString,
   argOptionalString,
-  registerChouseTool,
+  registerChouseTool, type McpToolSink,
 } from "./helpers";
 
 // Schemas hoisted as plain zod v3 records (see helpers.ts note on TS2589).
@@ -40,14 +39,17 @@ const deleteScheduledJobSchema: Record<string, z.ZodTypeAny> = {
   id: z.string().min(1).describe("Scheduled query id"),
 };
 
-export function registerDestructiveTools(mcp: McpServer, deps: McpDeps): void {
-  registerChouseTool(mcp, {
+export function registerDestructiveTools(sink: McpToolSink, deps: McpDeps): void {
+  registerChouseTool(sink, {
     name: "kill_query",
+    title: "Kill a query",
+    category: "monitoring",
+    access: "destructive",
+    permissions: [PERMISSIONS.LIVE_QUERIES_KILL, PERMISSIONS.LIVE_QUERIES_KILL_ALL],
     description:
-      "Terminate a running ClickHouse query by query_id. Destructive — gated by the operator's flags and " +
+      "Terminate a running ClickHouse query by query_id. Destructive — enabled by an administrator and limited by " +
       "your token's scopes; the human approves via the client's permission prompt before the call.",
     inputSchema: killQuerySchema,
-    annotations: { destructiveHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const queryId = argString(args, "query_id");
@@ -58,14 +60,17 @@ export function registerDestructiveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "query_raw",
+    title: "Run any SQL",
+    category: "query",
+    access: "destructive",
+    permissions: [PERMISSIONS.QUERY_EXECUTE_DDL, PERMISSIONS.QUERY_EXECUTE_DML],
     description:
       "Execute an arbitrary SQL statement (DDL/DML); prefer the read-only 'query' tool for SELECTs. " +
-      "Destructive — gated by the operator's flags and your token's scopes; the human approves via the " +
+      "Destructive — enabled by an administrator and limited by your token's scopes; the human approves via the " +
       "client's permission prompt before the call.",
     inputSchema: queryRawSchema,
-    annotations: { destructiveHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const sql = argString(args, "sql");
@@ -77,13 +82,16 @@ export function registerDestructiveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "delete_saved_query",
+    title: "Delete a saved query",
+    category: "query",
+    access: "destructive",
+    permissions: [PERMISSIONS.SAVED_QUERIES_DELETE],
     description:
-      "Delete a saved query by id. Destructive — gated by the operator's flags and your token's scopes; " +
+      "Delete a saved query by id. Destructive — enabled by an administrator and limited by your token's scopes; " +
       "the human approves via the client's permission prompt before the call.",
     inputSchema: deleteSavedQuerySchema,
-    annotations: { destructiveHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const id = argString(args, "id");
@@ -93,13 +101,16 @@ export function registerDestructiveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "delete_scheduled_job",
+    title: "Delete a scheduled job",
+    category: "scheduling",
+    access: "destructive",
+    permissions: [PERMISSIONS.SCHEDULED_QUERIES_DELETE],
     description:
-      "Delete a scheduled query by id. Destructive — gated by the operator's flags and your token's " +
+      "Delete a scheduled query by id. Destructive — enabled by an administrator and limited by your token's " +
       "scopes; the human approves via the client's permission prompt before the call.",
     inputSchema: deleteScheduledJobSchema,
-    annotations: { destructiveHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const id = argString(args, "id");

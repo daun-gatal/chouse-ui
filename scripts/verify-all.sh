@@ -39,7 +39,7 @@ gate 6 "Migrations (SQLite + PostgreSQL)"
 
 if [ -z "${FULL:-}" ]; then
   echo
-  echo "Gates 1-6 passed. Set FULL=1 for the Docker e2e gates (7-10)."
+  echo "Gates 1-6 passed. Set FULL=1 for the Docker e2e gates (7-9)."
   exit 0
 fi
 
@@ -53,10 +53,7 @@ gate 7 "Cluster e2e (existing)"
 gate 8 "Observability e2e"
 ./scripts/e2e-observe.sh
 
-gate 9 "UI e2e"
-./scripts/e2e-ui.sh
-
-gate 10 "Helm"
+gate 9 "Helm"
 helm lint charts/chouse-ui --strict --values charts/chouse-ui/ci/default-values.yaml
 helm unittest charts/chouse-ui
 

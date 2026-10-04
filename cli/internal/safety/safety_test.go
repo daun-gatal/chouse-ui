@@ -1,6 +1,8 @@
 package safety
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -20,17 +22,26 @@ func TestClassify(t *testing.T) {
 }
 
 func TestRequireConfirmNonTTYFailsClosed(t *testing.T) {
-	// /dev/null is non-TTY: without --yes this must refuse.
-	f, err := openDevNull()
-	if err != nil {
-		t.Skip("no /dev/null")
+	if err := RequireConfirm(ConfirmOptions{Action: "drop", Target: "db.t", In: strings.NewReader("yes\n")}); err == nil {
+		t.Fatal("non-TTY without --yes must fail closed, even with input")
 	}
-	defer f.Close()
-	err = RequireConfirm(ConfirmOptions{Action: "drop", Target: "db.t", In: f})
-	if err == nil {
-		t.Fatal("non-TTY without --yes must fail closed")
-	}
-	if err := RequireConfirm(ConfirmOptions{Action: "drop", Target: "db.t", Yes: true, In: f}); err != nil {
+	if err := RequireConfirm(ConfirmOptions{Action: "drop", Target: "db.t", Yes: true}); err != nil {
 		t.Fatalf("--yes must approve: %v", err)
+	}
+}
+
+func TestRequireConfirmOnATerminal(t *testing.T) {
+	var prompt bytes.Buffer
+	if err := RequireConfirm(ConfirmOptions{Action: "drop", Target: "db.t", In: strings.NewReader("yes\n"), Prompt: &prompt, TTY: true}); err != nil {
+		t.Fatalf("typed yes must approve: %v", err)
+	}
+	if !strings.Contains(prompt.String(), "drop \"db.t\"") {
+		t.Fatalf("prompt: %q", prompt.String())
+	}
+	if err := RequireConfirm(ConfirmOptions{Action: "drop", Target: "db.t", In: strings.NewReader("y\n"), TTY: true}); err == nil {
+		t.Fatal("anything but yes must abort")
+	}
+	if err := RequireConfirm(ConfirmOptions{Action: "drop", Target: "db.t", In: strings.NewReader("yes"), TTY: true}); err != nil {
+		t.Fatalf("yes without a newline (EOF) must approve: %v", err)
 	}
 }

@@ -114,7 +114,7 @@ jobs:
           cd cli
           go build -o /tmp/chouse ./cmd/chouse
           /tmp/chouse version --output json || true
-          /tmp/chouse --help | grep -q "Safe-by-default"
+          /tmp/chouse --help | grep -q "Safe by default"
 
       # Sandboxed HOME so the PATH-wiring assertions never touch the runner's
       # real rc files. Installs the latest cli-v* prebuilt release.

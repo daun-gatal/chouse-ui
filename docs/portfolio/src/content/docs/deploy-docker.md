@@ -48,8 +48,7 @@ services:
 
 | Port | Purpose |
 | --- | --- |
-| `5521` | UI + API |
-| `8752` | [MCP](/docs/mcp/) — expose only if enabled |
+| `5521` | UI, API and the [MCP](/docs/mcp/) endpoint (`/mcp`, off until turned on in Agents › MCP) |
 
 ## Upgrading
 
@@ -70,7 +69,7 @@ curl -s http://localhost:5521/     # UI responds
 
 ## Behind a reverse proxy
 
-Terminate TLS at the proxy; forward to `5521`. Set `CORS_ORIGIN` to the public URL. For MCP over the same domain, proxy `8752` and raise the read timeout (SSE streaming) — details in the [MCP page](/docs/mcp/).
+Terminate TLS at the proxy; forward to `5521`. Set `CORS_ORIGIN` to the public URL. MCP is served at `/mcp` on the same upstream, so it needs no extra proxy rule — just raise the read timeout and turn buffering off (SSE streaming), as for AI chat; details in the [MCP page](/docs/mcp/).
 
 ## Kubernetes instead?
 

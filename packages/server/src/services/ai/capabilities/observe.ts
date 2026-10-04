@@ -16,7 +16,7 @@ import { AppError } from "../../../types";
 import { all, sql, str } from "../../observe/db";
 import { incidentConnection, incidentDetail } from "../../observe/views";
 import { actionParamsSchema, buildAction } from "../../remediation/catalog";
-import { compileDataHealthQuery } from "../../dataHealth/compiler";
+import { compileDataHealthQuery, DataHealthCompileError } from "../../dataHealth/compiler";
 import { dataHealthCheckDefinitionSchema, type DataHealthCheckDefinition } from "../../dataHealth/types";
 import type { AgentMessage, AgentRunContext, StructuredCapability } from "../types";
 
@@ -185,7 +185,14 @@ Comparisons with "the same hour last week" become a custom_metric ratio expressi
       tableName: table.table,
       ...(eventColumn ? { eventTimeColumn: eventColumn.name, eventTimeType: eventColumn.type, eventTimeEncoding: "native" as const } : {}),
     };
-    const compiled = compileDataHealthQuery(source, [check.data]);
+    let compiled: ReturnType<typeof compileDataHealthQuery>;
+    try {
+      compiled = compileDataHealthQuery(source, [check.data]);
+    } catch (error) {
+      // The drafted check cannot run on this table (e.g. no event-time column).
+      if (error instanceof DataHealthCompileError) throw AppError.badRequest(`The watcher cannot be checked as written: ${error.message}`);
+      throw error;
+    }
     return {
       draft: { name: parsed.name.slice(0, 200), connectionId: prepared.connectionId, source, frequency: parsed.frequency, criticality: "standard", checks: [check.data] },
       compiledSql: compiled.sql,

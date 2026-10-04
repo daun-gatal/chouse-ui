@@ -1,93 +1,71 @@
 # MCP server
 
-AI agents (Cursor, VS Code Copilot, OpenCode, Claude Desktop, CI pipelines) can operate CHouse UI without the browser through a **Model Context Protocol** endpoint on a dedicated port (**8752**). Transport: **Streamable HTTP**. Authentication: a [personal access token](/docs/personal-access-tokens/) (`Authorization: Bearer ch_pat_…`), verified live against RBAC on every call.
+AI agents (Claude Code, Codex, Cursor, VS Code Copilot, OpenCode, CI pipelines) can operate CHouse UI without the browser through a **Model Context Protocol** endpoint at **`/mcp` on the same address as the UI** — no extra port, Service or Ingress. Transport: **Streamable HTTP**. Authentication: a [personal access token](/docs/personal-access-tokens/) (`Authorization: Bearer ch_pat_…`), verified live against RBAC on every call.
 
-Safe by default: **read-only** unless the operator enables writes, and destructive tools are approved by a human through the client's permission prompt before they run.
+Safe by default: the endpoint is **off** until an administrator turns it on, only **read-only** tools are on until an administrator turns on more, and destructive tools are approved by a human through the client's permission prompt before they run.
 
-## Enable
+## Turn it on
 
-**Docker:**
+1. Sign in with `agents:manage` (Admin and Super Admin by default) and open **Agents › MCP**.
+2. Switch **MCP server** on. The page shows the endpoint, e.g. `https://chouse.corp/mcp`: the address you opened the UI on, unless the server sets `PUBLIC_BASE_URL` or you fill in **Public address** (for agents that reach CHouse UI on another address — a port-forward, an internal IP, another Ingress host). It warns when the endpoint is `localhost`.
+3. Optionally add **allowed origins** (only browser-based agent hosts send one) and change the **tool call timeout** (default 60 s).
+4. Review the **Tools** list and turn on what your agents need.
 
-```yaml
-# docker-compose.yml
-services:
-  chouse-ui:
-    ports:
-      - "8752:8752"   # or "80:8752" / "443:8752" for https://<host>/mcp
-    environment:
-      MCP_ENABLED: "true"
-      # Optional, default off:
-      # MCP_ALLOW_WRITES: "true"        # create/run/ack actions
-      # MCP_ALLOW_DESTRUCTIVE: "true"   # KILL / raw SQL / deletes (needs writes)
-      # MCP_TOOLSETS: "core,explore,query,observe,ops"
-      # MCP_ALLOWED_ORIGINS: "https://your-agent-host.example"
-```
+Changes reach every replica within seconds, without a restart, and are audited. There is nothing to set in Docker or Helm. Behind a proxy that buffers responses, turn buffering off and raise the read timeout for the UI host — MCP streams over SSE, like AI chat.
 
-**Kubernetes (Helm):**
-
-```yaml
-mcp:
-  enabled: true          # dedicated port 8752 + <release>-mcp Service
-  # allowWrites: false   # server-side policy — agents can never opt in
-  # allowDestructive: false
-  # toolsets: [core, explore, query, observe, ops]
-  # allowedOrigins: []
-  service:
-    type: ClusterIP      # NodePort/LoadBalancer expose MCP directly (no Ingress)
-  ingress:
-    enabled: true
-    hosts:
-      - host: chouse.corp
-    annotations:         # MCP streams over SSE: raise read timeout, disable buffering
-      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-      nginx.ingress.kubernetes.io/proxy-buffering: "off"
-```
-
-Three exposure options: the dedicated **Service** (in-cluster), the **ingress path** (`https://<host>/mcp`), or both.
+> **Upgrading from 3.13:** port `8752`, the `MCP_*` variables and the chart's `mcp.*` values are gone. Point agents at `https://<host>/mcp` and turn MCP on in Agents › MCP — it starts off after the upgrade.
 
 ## Mint a token
 
-Preferences → Personal access tokens → create a token for the agent, then reference it in the client config. One token per agent keeps revocation surgical.
+Preferences → Personal access tokens → create a token for the agent, then export it as `CH_HOUSE_PAT`. One token per agent keeps revocation surgical, and a token scoped to fewer permissions sees fewer tools.
 
-## Client configuration (OpenCode example)
+## Connect a client
+
+Agents › MCP has copy-ready setup for each client with your endpoint filled in, and the CLI prints it for your profile (`chouse mcp config claude-code`). For example:
+
+```bash
+claude mcp add --transport http chouse https://chouse.corp/mcp \
+  --header "Authorization: Bearer $CH_HOUSE_PAT"
+```
 
 ```json
 {
   "mcpServers": {
     "chouse": {
-      "url": "http://chouse.corp:8752/mcp",
-      "headers": { "Authorization": "Bearer ch_pat_…" }
+      "url": "https://chouse.corp/mcp",
+      "headers": { "Authorization": "Bearer ${env:CH_HOUSE_PAT}" }
     }
   }
 }
 ```
 
-The endpoint also works behind the ingress at `https://<host>/mcp`. Headerless clients (curl, CI) always pass origin checks; browser-origin requests must match `MCP_ALLOWED_ORIGINS` (DNS-rebinding protection).
+Headerless clients (curl, CLI and desktop agents) always pass origin checks; requests that carry an `Origin` must match the allowed origins (DNS-rebinding protection).
 
-## Toolsets
+## Tools
 
-| Toolset | Contents |
-| --- | --- |
-| `core` | Connection/session basics |
-| `explore` | Database/table discovery |
-| `query` | Running queries (read by default) |
-| `observe` | Monitoring reads (logs, metrics, live queries…) |
-| `ops` | Operational state — live queries, scheduled jobs, health |
-| `writes` | Opt-in: create/run/ack actions (needs `MCP_ALLOW_WRITES`) |
-| `destructive` | Opt-in: KILL, raw SQL, deletes (needs writes + `MCP_ALLOW_DESTRUCTIVE`) |
-| `ai` | Opt-in: LLM-spending tools |
+Every tool has a description, an access level and the permissions it needs, shown in Agents › MCP with its parameters. Switch tools on or off one at a time or per category:
+
+| Access | Default | Examples |
+| --- | --- | --- |
+| Read | On | `query` (SELECT-only), `describe_table`, `get_dataset_health`, `get_lineage`, `metrics_overview` |
+| Write | Off | `create_saved_query`, `run_health_check`, `acknowledge_incident`, `propose_remediation` |
+| Destructive | Off | `kill_query`, `query_raw`, `delete_saved_query`, `delete_scheduled_job` |
+| Spends LLM budget | Off | `ai_optimize`, `doctor_scan` |
+
+An agent only sees tools that are on **and** that its token's permissions allow, so it never carries a tool it would be refused. Turning on a tool that changes or deletes things asks for confirmation.
 
 ## Human approval per client
 
-Destructive tools use the client's own permission system: the agent must ask, the human approves in-host (MCP elicitation) before the tool runs. The server-side policy (`allowWrites`/`allowDestructive`) is the hard ceiling — agents can never opt themselves into writes.
+Destructive tools use the client's own permission system: the agent must ask, and the human approves in the host before the tool runs. The tool switches are the hard ceiling — agents can never turn a tool on themselves.
 
 ## Safety model
 
 | Layer | Guarantee |
 | --- | --- |
-| RBAC | Every tool call verified live against the token owner's permissions |
-| Server policy | Writes/destructive disabled by default; agents cannot enable them |
+| RBAC | Every tool call verified live against the token owner's permissions and data access |
+| Tool switches | Writes, destructive and LLM-spending tools off by default; only administrators change them |
 | Human approval | Client-side prompt for destructive tools |
-| Audit | All usage lands in the [audit log](/docs/audit-log/) |
+| Governance | Budgets, health notices and a pause switch on the [Agents](/docs/agents/) page |
+| Audit | Every call and every settings change lands in the [audit log](/docs/audit-log/) |
 
-Full reference: [`docs/mcp.md`](https://github.com/daun-gatal/chouse-ui/blob/main/docs/mcp.md) and [ADR 0013](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0013-chouse-mcp.md).
+Full reference: [`docs/mcp.md`](https://github.com/daun-gatal/chouse-ui/blob/main/docs/mcp.md), [ADR 0013](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0013-chouse-mcp.md) and [ADR 0017](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0017-mcp-managed-in-the-ui.md).

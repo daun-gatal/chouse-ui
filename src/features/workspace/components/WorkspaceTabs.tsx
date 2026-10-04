@@ -44,6 +44,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useSearchParams } from "react-router";
+import { readExplorerTarget } from "@/lib/explorerPath";
 import { cn } from "@/lib/utils";
 
 interface SortableTabProps {
@@ -199,10 +200,12 @@ function WorkspaceTabs() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
-    const database = searchParams.get("database") || "";
-    const table = searchParams.get("table") || "";
-    if (database || table) {
-      const existingTab = tabs.find(
+    const target = readExplorerTarget(searchParams);
+    if (target) {
+      const { database, table } = target;
+      // Read the live store, not the render's `tabs`: a second run of this
+      // effect before re-render (StrictMode) must see the tab just added.
+      const existingTab = useWorkspaceStore.getState().tabs.find(
         (tab) =>
           tab.type === "information" &&
           typeof tab.content === "object" &&
@@ -222,7 +225,7 @@ function WorkspaceTabs() {
 
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, tabs, addTab, setActiveTab, setSearchParams]);
+  }, [searchParams, addTab, setActiveTab, setSearchParams]);
 
   const addNewCodeTab = useCallback(() => {
     const queryCount = tabs.filter((t) => t.type === "sql").length;

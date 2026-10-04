@@ -20,6 +20,10 @@ Budget policies apply to every agent, a role, or one token — the most specific
 
 **Pause all agent access** refuses every MCP tool call and every token-authenticated query until resumed. People using the UI are not affected.
 
+## MCP
+
+The **MCP** tab turns the MCP endpoint on (it is served at `/mcp` on the same address as the UI), sets its allowed origins, tool call timeout and — when agents use another address than you — its public address, and gives copy-ready setup for Claude Code, Codex, Cursor, VS Code, OpenCode and curl. It lists every tool with its description, access level (read, write, destructive), the permissions it needs and its parameters; switch tools on or off one at a time or per category, with each category collapsible. Reads are on by default; anything that changes or deletes things, or spends LLM budget, stays off until you turn it on. A token only ever sees the tools that are on and that its permissions allow. Viewing needs `agents:view`; changing needs `agents:manage`. Details: [MCP](/docs/mcp/).
+
 ## What agents get
 
-The MCP server adds `get_dataset_health`, `get_lineage`, `get_table_context`, `get_metric`, `get_pipeline_status` and `list_incidents`, and — with `MCP_ALLOW_WRITES` — `propose_remediation`. There is no approve tool: an agent's proposal always waits for a person. Query results carry health notices ("this table has an open incident; say so in the answer").
+The MCP server adds `get_dataset_health`, `get_lineage`, `get_table_context`, `get_metric`, `get_pipeline_status` and `list_incidents`, and — once an administrator turns it on — `propose_remediation`. There is no approve tool: an agent's proposal always waits for a person. Query results carry health notices ("this table has an open incident; say so in the answer").

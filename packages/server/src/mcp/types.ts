@@ -23,15 +23,16 @@ export interface McpToolContext {
   /** X-Connection-Id from the MCP request, if the client pinned one. */
   connectionId?: string;
   clientIp?: string;
+  /** Per-subrequest timeout from the MCP settings. */
+  timeoutMs: number;
 }
 
 /**
  * Static dependencies shared by every tool registration: the in-process
- * proxy app and the timeout policy. A per-request client is built from the
- * tool context (each request carries its own PAT and connection).
+ * proxy app. A per-request client is built from the tool context (each
+ * request carries its own PAT, connection and timeout).
  */
 export interface McpDeps {
   proxyApi: Hono;
-  timeoutMs: number;
   clientFor(ctx: McpToolContext): McpApiClient;
 }

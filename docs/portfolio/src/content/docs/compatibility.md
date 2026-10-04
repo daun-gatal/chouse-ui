@@ -18,7 +18,7 @@ Version combinations CHouse UI has been tested against end-to-end.
 | Bun (development) | 1.0+ |
 | Node.js (alternative runtime) | 18+ |
 | RAM | 2 GB recommended |
-| Ports | `5521` (UI/server), `8123` (ClickHouse HTTP), `8752` (MCP, optional) |
+| Ports | `5521` (UI, API and MCP at `/mcp`), `8123` (ClickHouse HTTP) |
 
 ## Deployment targets
 

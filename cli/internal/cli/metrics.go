@@ -2,30 +2,30 @@ package cli
 
 import (
 	"net/url"
-	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/daun-gatal/chouse-ui/cli/internal/output"
+	"github.com/daun-gatal/chouse-ui/cli/internal/safety"
 )
 
-func newMetricsCmd() *cobra.Command {
+func (a *App) newMetricsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "metrics",
-		Short: "ClickHouse-native observability (read-only)",
-		Long: `Cluster stats, top tables, error views, custom SELECT metrics,
-and ALTER impact simulation. Everything here reads; simulate never executes
-— the safe way to sanity-check a mutation before running it for real.`,
+		Short: "ClickHouse server metrics (read-only)",
+		Long: `Server stats, the largest tables, recent errors, part pressure,
+your own SELECT as a metric, and the impact of an ALTER UPDATE/DELETE —
+which is estimated, never run.`,
 		Example: `  chouse metrics overview
-  chouse metrics top-tables --limit 5 -o json
-  chouse metrics simulate "ALTER TABLE t UPDATE x = 1 WHERE id = 2"`,
+  chouse metrics top-tables --limit 5
+  chouse metrics simulate "ALTER TABLE t DELETE WHERE day < today() - 30"`,
 	}
 	var interval, limit int
 	var query string
 
-	get := func(path string, extra func(url.Values)) func(*cobra.Command, []string) {
-		return func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
+	get := func(path string, v output.View, extra func(url.Values)) func(*cobra.Command, []string) error {
+		return a.action(needAuth, func(s *Session, _ []string) error {
 			q := url.Values{}
 			if interval > 0 {
 				q.Set("interval", itoa(interval))
@@ -36,189 +36,157 @@ and ALTER impact simulation. Everything here reads; simulate never executes
 			if extra != nil {
 				extra(q)
 			}
-			got, err := c.Get(ctx, path, q)
+			got, err := s.Client.Get(s.Ctx, path, q)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		}
+			return s.Print(got, v)
+		})
 	}
 
 	overview := &cobra.Command{
-		Use:   "overview",
-		Short: "System stats + resources",
-		Long:  `Cluster-wide stats and resource pressure over --interval minutes. First stop when something feels slow.`,
-		Example: `  chouse metrics overview
-  chouse metrics overview --interval 5 -o json`,
-		Run: get("/api/metrics/stats", nil),
+		Use:     "overview",
+		Short:   "Server stats and resource use",
+		Example: `  chouse metrics overview`,
+		Args:    cobra.NoArgs,
+		RunE:    get("/api/metrics/stats", output.View{}, nil),
 	}
 	top := &cobra.Command{
-		Use:   "top-tables",
-		Short: "Top tables by size",
-		Long:  `Largest tables by bytes on disk. Use it to find disk hogs before reaching for TTLs or drops.`,
-		Example: `  chouse metrics top-tables
-  chouse metrics top-tables --limit 5 -o json`,
-		Run: get("/api/metrics/top-tables", nil),
+		Use:     "top-tables",
+		Short:   "Largest tables",
+		Example: `  chouse metrics top-tables --limit 5`,
+		Args:    cobra.NoArgs,
+		RunE:    get("/api/metrics/top-tables", output.View{}, nil),
 	}
 	errs := &cobra.Command{
-		Use:   "errors",
-		Short: "Server errors over interval",
-		Long:  `Recent server-side errors with samples and counts. Needs system.query_log on the cluster.`,
-		Example: `  chouse metrics errors
-  chouse metrics errors --interval 60 -o json`,
-		Run: get("/api/metrics/errors", nil),
+		Use:     "errors",
+		Short:   "Server errors in the last --interval minutes",
+		Example: `  chouse metrics errors --interval 60`,
+		Args:    cobra.NoArgs,
+		RunE:    get("/api/metrics/errors", output.View{}, nil),
 	}
 	parts := &cobra.Command{
-		Use:   "parts-pressure",
-		Short: "Merge/part pressure",
-		Long:  `Merge and part pressure across the cluster. Sustained pressure here explains slow inserts before disks fill.`,
-		Example: `  chouse metrics parts-pressure
-  chouse metrics parts-pressure -o json`,
-		Run: get("/api/metrics/parts-pressure", nil),
+		Use:     "parts-pressure",
+		Short:   "Tables with too many parts or slow merges",
+		Example: `  chouse metrics parts-pressure`,
+		Args:    cobra.NoArgs,
+		RunE:    get("/api/metrics/parts-pressure", output.View{}, nil),
 	}
 	custom := &cobra.Command{
 		Use:     "custom",
-		Short:   "Run a SELECT-only custom metric query",
-		Long:    `Run your own SELECT as a metric query (--query required). Anything non-SELECT is refused client-side.`,
-		Example: `  chouse metrics custom --query "SELECT count() FROM system.query_log" -o json`,
-		Run: get("/api/metrics/custom", func(q url.Values) {
-			q.Set("query", query)
-		}),
+		Short:   "Run your own SELECT as a metric",
+		Example: `  chouse metrics custom --query "SELECT count() FROM system.query_log"`,
+		Args:    cobra.NoArgs,
+		PreRunE: func(*cobra.Command, []string) error {
+			if safety.Classify(query) != safety.IntentRead {
+				return usagef("--query must be a single SELECT")
+			}
+			return nil
+		},
+		RunE: get("/api/metrics/custom", output.View{}, func(q url.Values) { q.Set("query", query) }),
 	}
 	custom.Flags().StringVar(&query, "query", "", "SELECT … (required)")
 	_ = custom.MarkFlagRequired("query")
 
 	simulate := &cobra.Command{
-		Use:   "simulate <ALTER …>",
-		Short: "Estimate ALTER UPDATE/DELETE impact (never executes)",
-		Long: `Estimate how many rows an ALTER UPDATE/DELETE would touch without
-executing it. Always safe — pair it with query --raw --dry-run when planning
-a mutation.`,
-		Example: `  chouse metrics simulate "ALTER TABLE t UPDATE x = 1 WHERE id = 2"
-  chouse metrics simulate "ALTER TABLE analytics.events DELETE WHERE day < today() - 30" -o json`,
-		Args: cobra.MinimumNArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.DDLSimulate(ctx, joinArgs(args))
+		Use:     "simulate <ALTER …>",
+		Short:   "Estimate the rows an ALTER UPDATE/DELETE would touch (never runs it)",
+		Example: `  chouse metrics simulate "ALTER TABLE t UPDATE x = 1 WHERE id = 2"`,
+		Args:    cobra.MinimumNArgs(1),
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			got, err := s.Client.DDLSimulate(s.Ctx, strings.Join(args, " "))
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			return s.Print(got, output.View{})
+		}),
 	}
 
 	cmd.AddCommand(overview, top, errs, parts, custom, simulate)
-	cmd.PersistentFlags().IntVar(&interval, "interval", 60, "minutes")
+	cmd.PersistentFlags().IntVar(&interval, "interval", 60, "window in minutes")
 	cmd.PersistentFlags().IntVar(&limit, "limit", 20, "max rows")
 	return cmd
 }
 
-func newLogsCmd() *cobra.Command {
+func (a *App) newLogsCmd() *cobra.Command {
+	var limit int
+	var user string
 	cmd := &cobra.Command{
 		Use:   "logs",
-		Short: "Query-log views (read-only)",
-		Long: `Canned views over system.query_log: slow/error queries, patterns,
-per-table activity, and a histogram. Tune --window/--limit; all read-only.`,
-		Example: `  chouse logs queries --limit 5
-  chouse logs patterns --window 60 -o json`,
+		Short: "Recent queries from system.query_log",
+		Long: `The most recent queries in ClickHouse's query log on the -c
+connection, newest first: when, how long, and whether they finished or
+failed. Filter by ClickHouse user with --user.`,
+		Example: `  chouse logs
+  chouse logs --user etl --limit 50 -o csv`,
+		Args: cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			if limit < 1 || limit > 100 {
+				return usagef("--limit must be between 1 and 100")
+			}
+			q := url.Values{}
+			q.Set("limit", itoa(limit))
+			if user != "" {
+				q.Set("username", user)
+			}
+			got, err := s.Client.Get(s.Ctx, "/api/metrics/recent-queries", q)
+			if err != nil {
+				return err
+			}
+			return s.Print(got, view("", "TIME=event_time", "TYPE", "MS=query_duration_ms", "QUERY"))
+		}),
 	}
-	var window, limit int
-	mk := func(view string) *cobra.Command {
-		return &cobra.Command{
-			Use:     view,
-			Short:   "Show " + view,
-			Long:    "Show the " + view + " query-log view over --window minutes, capped at --limit rows. Read-only.",
-			Example: "  chouse logs " + view + " --limit 5\n  chouse logs " + view + " --window 30 -o json",
-			Run: func(_ *cobra.Command, _ []string) {
-				c, resolved := mustClient(true)
-				ctx, cancel := ctxWithTimeout()
-				defer cancel()
-				q := url.Values{}
-				q.Set("interval", itoa(window))
-				q.Set("limit", itoa(limit))
-				got, err := c.Get(ctx, "/api/metrics/recent-queries", q)
-				if err != nil {
-					failErr(err)
-				}
-				render(resolved, map[string]any{"view": view, "data": got})
-			},
-		}
-	}
-	for _, v := range []string{"queries", "patterns", "tables", "histogram"} {
-		cmd.AddCommand(mk(v))
-	}
-	cmd.PersistentFlags().IntVar(&window, "window", 60, "minutes")
-	cmd.PersistentFlags().IntVar(&limit, "limit", 50, "max rows")
+	cmd.Flags().IntVar(&limit, "limit", 20, "max rows (1-100)")
+	cmd.Flags().StringVar(&user, "user", "", "only this ClickHouse user")
 	return cmd
 }
 
-func newLiveCmd() *cobra.Command {
+func (a *App) newLiveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "live",
-		Short: "Running queries: list, then kill with --yes",
-		Long: `See what's running right now and kill runaways. Listing is
-read-only; kill is destructive and needs --yes outside a TTY. Find the
-query_id in list output first — never guess it.`,
-		Example: `  chouse live list -o json
-  chouse live kill q_abc123 --yes`,
+		Short: "Running queries: list, and kill runaways",
+		Long: `See what is running on the -c connection and kill runaways. You
+see your own queries unless you hold live_queries:kill_all. kill changes
+things, so it asks first (or needs --yes).`,
+		Example: `  chouse live list
+  chouse live kill 8f1c… --yes`,
 	}
 	list := &cobra.Command{
-		Use:   "list",
-		Short: "List running queries (own scope unless kill_all)",
-		Long:  `List running queries with ids, users, and runtimes. Your scope covers your own queries unless you hold kill_all.`,
-		Example: `  chouse live list
-  chouse live list -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Get(ctx, "/api/live-queries", nil)
+		Use:     "list",
+		Short:   "List running queries",
+		Example: `  chouse live list -o json | jq -r '.queries[].query_id'`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			got, err := s.Client.Get(s.Ctx, "/api/live-queries", nil)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			return s.Print(got, output.View{List: "queries", Columns: []output.Column{
+				{Header: "query_id"}, {Header: "user", Path: "user"}, {Header: "elapsed_s", Path: "elapsed_seconds"},
+				{Header: "read_rows"}, bytesCol("memory", "memory_usage"), {Header: "query"},
+			}})
+		}),
 	}
 	kill := &cobra.Command{
-		Use:   "kill <queryId>",
-		Short: "KILL a running query (destructive)",
-		Long: `Kill one running query by id. Destructive and immediate — needs
---yes outside a TTY, and --dry-run is rejected (there is nothing safe to
-preview). Copy the id from live list; a wrong id just 404s.`,
-		Example: `  chouse live list -o json
-  chouse live kill q_abc123 --yes`,
-		Args: cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			rejectDryRun("live kill")
-			confirmDestructive("live.kill", args[0])
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Post(ctx, "/api/live-queries/kill", map[string]any{"queryId": args[0]})
-			if err != nil {
-				failErr(err)
+		Use:     "kill <queryId>",
+		Short:   "Kill a running query",
+		Example: `  chouse live kill 8f1c2d… --yes`,
+		Args:    cobra.ExactArgs(1),
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			if err := a.rejectDryRun("live kill"); err != nil {
+				return err
 			}
-			auditLine("live.kill", args[0], "live_queries:kill(_all)")
-			render(resolved, got)
-		},
+			if err := s.confirm("kill query", args[0]); err != nil {
+				return err
+			}
+			got, err := s.Client.Post(s.Ctx, "/api/live-queries/kill", map[string]any{"queryId": args[0]})
+			if err != nil {
+				return err
+			}
+			s.audit("live.kill", args[0], "live_queries:kill")
+			return s.Print(got, output.View{})
+		}),
 	}
 	cmd.AddCommand(list, kill)
 	return cmd
-}
-
-func itoa(v int) string {
-	return strconv.Itoa(v)
-}
-
-func joinArgs(args []string) string {
-	out := ""
-	for i, a := range args {
-		if i > 0 {
-			out += " "
-		}
-		out += a
-	}
-	return out
 }

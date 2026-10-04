@@ -1,12 +1,12 @@
 /**
- * Writes toolset: reversible-ish operational actions.
- * Registered only when MCP_ALLOW_WRITES=true (ADR 0013 §4).
+ * Write tools: reversible-ish operational actions.
+ * Off until an administrator turns each one on in Agents › MCP (ADR 0017).
  */
 
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
+import { PERMISSIONS } from "../../rbac/schema/base";
 import type { McpDeps } from "../types";
-import { runApiTool, toolContext, argString, argOptionalString, registerChouseTool } from "./helpers";
+import { runApiTool, toolContext, argString, argOptionalString, registerChouseTool, type McpToolSink } from "./helpers";
 
 // Schemas hoisted as plain zod v3 records (see helpers.ts note on TS2589).
 const createSavedQuerySchema: Record<string, z.ZodTypeAny> = {
@@ -19,9 +19,13 @@ const idSchema: Record<string, z.ZodTypeAny> = {
   id: z.string().min(1).describe("Resource id"),
 };
 
-export function registerWriteTools(mcp: McpServer, deps: McpDeps): void {
-  registerChouseTool(mcp, {
+export function registerWriteTools(sink: McpToolSink, deps: McpDeps): void {
+  registerChouseTool(sink, {
     name: "create_saved_query",
+    title: "Save a query",
+    category: "query",
+    access: "write",
+    permissions: [PERMISSIONS.SAVED_QUERIES_CREATE],
     description: "Save a query definition for reuse.",
     inputSchema: createSavedQuerySchema,
     handler: async (args, extra) => {
@@ -39,8 +43,12 @@ export function registerWriteTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "run_scheduled_job",
+    title: "Run a scheduled job now",
+    category: "scheduling",
+    access: "write",
+    permissions: [PERMISSIONS.SCHEDULED_QUERIES_RUN],
     description: "Trigger a scheduled query to run now.",
     inputSchema: idSchema,
     handler: async (args, extra) => {
@@ -52,8 +60,12 @@ export function registerWriteTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "run_health_check",
+    title: "Run a data health check",
+    category: "data_health",
+    access: "write",
+    permissions: [PERMISSIONS.DATA_HEALTH_RUN],
     description: "Evaluate a data-health check now.",
     inputSchema: idSchema,
     handler: async (args, extra) => {
@@ -65,8 +77,12 @@ export function registerWriteTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "acknowledge_incident",
+    title: "Acknowledge an incident",
+    category: "data_health",
+    access: "write",
+    permissions: [PERMISSIONS.DATA_HEALTH_EDIT],
     description: "Acknowledge an open data-health incident.",
     inputSchema: idSchema,
     handler: async (args, extra) => {
@@ -81,8 +97,12 @@ export function registerWriteTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "test_alert_channel",
+    title: "Test an alert channel",
+    category: "monitoring",
+    access: "write",
+    permissions: [PERMISSIONS.ALERTING_EDIT],
     description: "Send a test notification through an alert channel (this pages people).",
     inputSchema: idSchema,
     handler: async (args, extra) => {

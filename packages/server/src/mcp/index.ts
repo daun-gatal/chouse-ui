@@ -1,10 +1,12 @@
 /**
- * MCP HTTP application (ADR 0013 §1/§2).
+ * MCP HTTP endpoint (ADR 0013, ADR 0017).
  *
- * A dedicated Hono app for the MCP port: Origin validation (spec MUST),
- * PAT-only auth via verifyBearer(), and the stateless Streamable HTTP
- * transport (2026-07-28 — no protocol sessions, so multi-replica is correct
- * with zero pod-local state).
+ * Served at `/mcp` on the main web port, so it reaches agents through the
+ * same Service, Ingress and TLS as the UI — no second listener to expose.
+ * Every request: settings check (an administrator turns MCP on in
+ * Agents › MCP), Origin validation (spec MUST), PAT-only auth via
+ * verifyBearer(), then the stateless Streamable HTTP transport (no protocol
+ * sessions, so multi-replica is correct with zero pod-local state).
  *
  * Stateless mode requires a fresh transport + server per request (the SDK's
  * documented pattern); both are cheap — tool registration is plain object
@@ -17,27 +19,50 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { AppError } from "../types";
 import { createMcpAuthMiddleware, type McpTokenVerifier } from "./auth";
 import { originGuard } from "./origin";
-import type { McpConfig } from "./config";
+import { getMcpSettings, type StoredMcpSettings } from "./settings";
 import type { McpDeps, McpIdentity, McpToolContext } from "./types";
 import { buildMcpServer } from "./server";
+
+declare module "hono" {
+  interface ContextVariableMap {
+    mcpSettings: StoredMcpSettings;
+  }
+}
 
 export interface McpAppOptions {
   /** Test seam: overrides the production verifyBearer()-backed verifier. */
   verifyToken?: McpTokenVerifier;
+  /** Test seam: overrides the database-backed settings. */
+  loadSettings?: () => Promise<StoredMcpSettings>;
 }
 
 /**
- * Build the MCP Hono app. Every request is verified independently, which is
- * exactly the fail-closed property the rest of the server relies on.
+ * Build the MCP Hono app, to be mounted at `/mcp`. Every request is verified
+ * independently, which is exactly the fail-closed property the rest of the
+ * server relies on.
  */
-export function createMcpApp(
-  config: McpConfig,
-  deps: McpDeps,
-  options?: McpAppOptions
-): { app: Hono } {
+export function createMcpApp(deps: McpDeps, options?: McpAppOptions): { app: Hono } {
   const app = new Hono();
+  const loadSettings = options?.loadSettings ?? (() => getMcpSettings());
 
-  app.use("*", originGuard(config.allowedOrigins));
+  app.use("*", async (c, next) => {
+    const settings = await loadSettings();
+    if (!settings.enabled) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: "MCP_DISABLED",
+            message: "The MCP endpoint is turned off. An administrator can turn it on in Agents › MCP.",
+          },
+        },
+        404
+      );
+    }
+    c.set("mcpSettings", settings);
+    await next();
+  });
+  app.use("*", (c, next) => originGuard(c.get("mcpSettings").allowedOrigins)(c, next));
   app.use("*", createMcpAuthMiddleware(options?.verifyToken));
 
   app.onError((error, c) => {
@@ -51,7 +76,8 @@ export function createMcpApp(
     return c.json({ success: false, error: { code: "MCP_ERROR", message } }, 500);
   });
 
-  app.all("/mcp", async (c) => {
+  app.all("/", async (c) => {
+    const settings = c.get("mcpSettings");
     const identity: McpIdentity = c.get("mcpIdentity");
     const token: string = c.get("mcpToken");
     const mcp: McpToolContext = {
@@ -59,9 +85,10 @@ export function createMcpApp(
       token,
       connectionId: c.req.header("X-Connection-Id"),
       clientIp: c.req.header("X-Forwarded-For") || c.req.header("X-Real-IP"),
+      timeoutMs: settings.timeoutSeconds * 1000,
     };
 
-    const mcpServer = buildMcpServer(config, deps);
+    const mcpServer = buildMcpServer(settings, deps, identity);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });

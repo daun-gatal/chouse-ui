@@ -2,292 +2,248 @@ package cli
 
 import (
 	"net/url"
-	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/daun-gatal/chouse-ui/cli/internal/output"
 )
 
-func newScheduledCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "scheduled",
-		Short: "Scheduled queries (preview before create/run)",
-		Long: `Inspect scheduled query jobs, their run history, and validate
-new job bodies before creating them. Listing and previewing are free;
-run and delete are actions and need --yes.`,
-		Example: `  chouse scheduled list
-  chouse scheduled preview --connection 57c2b5bf-0081-4880-9a05-057d1ec3b098 --query "SELECT 1"
-  chouse scheduled run job_abc123 --yes`,
+// getCmd is a read-only GET of path (built from the arguments) rendered
+// with v.
+func (a *App) getCmd(use, short, example string, nargs cobra.PositionalArgs, path func(args []string) string, v output.View) *cobra.Command {
+	return &cobra.Command{
+		Use:     use,
+		Short:   short,
+		Example: example,
+		Args:    nargs,
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			got, err := s.Client.Get(s.Ctx, path(args), nil)
+			if err != nil {
+				return err
+			}
+			return s.Print(got, v)
+		}),
 	}
-	var previewQuery string
-	var limit int
+}
+
+// postAction is a confirmed POST to path (built from the first argument).
+func (a *App) postAction(use, short, example, action, permission string, path func(id string) string) *cobra.Command {
+	return &cobra.Command{
+		Use:     use,
+		Short:   short,
+		Example: example,
+		Args:    cobra.ExactArgs(1),
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			if err := a.rejectDryRun(action); err != nil {
+				return err
+			}
+			if err := s.confirm(action, args[0]); err != nil {
+				return err
+			}
+			got, err := s.Client.Post(s.Ctx, path(args[0]), map[string]any{})
+			if err != nil {
+				return err
+			}
+			s.audit(action, args[0], permission)
+			return s.Print(got, output.View{})
+		}),
+	}
+}
+
+func esc(s string) string { return url.PathEscape(s) }
+
+func (a *App) newScheduledCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "scheduled",
+		Aliases: []string{"jobs"},
+		Short:   "Scheduled queries: jobs, runs, run now",
+		Long: `Scheduled query jobs and their runs. preview checks a SELECT
+without creating anything; run and delete ask first (or need --yes).
+Creating and editing jobs stays in the UI.`,
+		Example: `  chouse scheduled list -c prod
+  chouse scheduled runs 4d2e… --limit 5
+  chouse scheduled run 4d2e… --yes`,
+	}
+	jobs := view("jobs", "ID", "NAME", "ENABLED", "FREQUENCY", "MODE=outputMode", "LAST RUN=lastRunAt")
 
 	list := &cobra.Command{
-		Use:   "list",
-		Short: "List jobs",
-		Long:  `List scheduled query jobs, optionally scoped with -c. Pair with runs or preview before touching anything.`,
-		Example: `  chouse scheduled list
-  chouse scheduled list -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			q := url.Values{}
-			if resolved.Connection != "" {
-				q.Set("connectionId", resolved.Connection)
-			}
-			got, err := c.Get(ctx, "/api/scheduled-queries", q)
+		Use:     "list",
+		Short:   "List jobs (scoped to -c when given)",
+		Example: `  chouse scheduled list -c prod`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			got, err := s.Client.Get(s.Ctx, "/api/scheduled-queries", s.connectionQuery())
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			return s.Print(got, jobs)
+		}),
 	}
+	get := a.getCmd("get <id>", "Show one job", "  chouse scheduled get 4d2e… -o yaml", cobra.ExactArgs(1),
+		func(args []string) string { return "/api/scheduled-queries/" + esc(args[0]) }, output.View{})
 
-	get := &cobra.Command{
-		Use:     "get <id>",
-		Short:   "Show one job",
-		Long:    `Show one scheduled job's definition (query, frequency, connection) without running it.`,
-		Example: `  chouse scheduled get job_abc123 -o json`,
-		Args:    cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Get(ctx, "/api/scheduled-queries/"+args[0], nil)
-			if err != nil {
-				failErr(err)
-			}
-			render(resolved, got)
-		},
-	}
+	var limit int
 	runs := &cobra.Command{
-		Use:   "runs <id>",
-		Short: "Show run history",
-		Long:  `Show a job's past runs (newest first, capped at --limit) to check health before running it again.`,
-		Example: `  chouse scheduled runs job_abc123 --limit 5
-  chouse scheduled runs job_abc123 -o json`,
-		Args: cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
+		Use:     "runs <id>",
+		Short:   "A job's runs, newest first",
+		Example: `  chouse scheduled runs 4d2e… --limit 5`,
+		Args:    cobra.ExactArgs(1),
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
 			q := url.Values{}
 			if limit > 0 {
 				q.Set("limit", itoa(limit))
 			}
-			got, err := c.Get(ctx, "/api/scheduled-queries/"+args[0]+"/runs", q)
+			got, err := s.Client.Get(s.Ctx, "/api/scheduled-queries/"+esc(args[0])+"/runs", q)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
+			return s.Print(got, view("runs", "ID", "STATUS", "TRIGGER", "STARTED=startedAt", "MS=durationMs", "ROWS=rowCount", "MESSAGE"))
+		}),
 	}
-	runs.Flags().IntVar(&limit, "limit", 50, "max runs")
+	runs.Flags().IntVar(&limit, "limit", 20, "max runs")
 
+	var previewSQL, previewFile string
 	preview := &cobra.Command{
 		Use:   "preview",
-		Short: "Validate a job body without creating (dry-run)",
-		Long: `Validate a SELECT against a connection without creating any job:
-checks access, read-only-ness, and tokens. Needs a connection via
---connection, -c, or CHOUSE_CONNECTION. Always safe.`,
-		Example: `  chouse scheduled preview --connection 57c2b5bf-0081-4880-9a05-057d1ec3b098 --query "SELECT 1"
-  chouse scheduled preview -c 57c2b5bf-0081-4880-9a05-057d1ec3b098 --query "SELECT count() FROM analytics.events" -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			if resolved.Connection == "" {
-				fail(2, "preview needs a connection: pass --connection <id> (or -c / CHOUSE_CONNECTION)")
+		Short: "Check a SELECT as a job body without creating anything",
+		Example: `  chouse scheduled preview -c prod --query "SELECT count() FROM events"
+  chouse scheduled preview -c prod -f job.sql`,
+		Args: cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			if err := s.requireConnection("scheduled preview"); err != nil {
+				return err
 			}
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Post(ctx, "/api/scheduled-queries/preview", map[string]any{
-				"query":        previewQuery,
-				"frequency":    "manual",
-				"connectionId": resolved.Connection,
-			})
+			var args []string
+			if previewSQL != "" {
+				args = []string{previewSQL}
+			}
+			sql, err := a.readSQL(previewFile, false, args)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, got)
-		},
-	}
-	preview.Flags().StringVar(&previewQuery, "query", "SELECT 1", "SELECT to validate")
-	runNow := &cobra.Command{
-		Use:   "run <id>",
-		Short: "Execute a job now (action)",
-		Long: `Execute a scheduled job immediately, outside its timetable. An
-action like any mutation — needs --yes outside a TTY. Check runs first.`,
-		Example: `  chouse scheduled runs job_abc123 --limit 3
-  chouse scheduled run job_abc123 --yes`,
-		Args: cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			rejectDryRun("scheduled run")
-			confirmDestructive("scheduled.run", args[0])
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Post(ctx, "/api/scheduled-queries/"+args[0]+"/run", map[string]any{})
+			got, err := s.Client.Post(s.Ctx, "/api/scheduled-queries/preview", map[string]any{"query": sql, "frequency": "manual", "connectionId": s.Cfg.Connection})
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			auditLine("scheduled.run", args[0], "scheduled_queries:run")
-			render(resolved, got)
-		},
+			return s.Print(got, output.View{})
+		}),
 	}
+	preview.Flags().StringVar(&previewSQL, "query", "", "SELECT to check")
+	preview.Flags().StringVarP(&previewFile, "file", "f", "", "read the SELECT from a file (- for stdin)")
+
+	run := a.postAction("run <id>", "Run a job now", "  chouse scheduled run 4d2e… --yes", "run scheduled job", "scheduled_queries:run",
+		func(id string) string { return "/api/scheduled-queries/" + esc(id) + "/run" })
+
 	remove := &cobra.Command{
 		Use:     "delete <id>",
-		Short:   "Delete a job (destructive)",
-		Long:    `Delete a scheduled job permanently. Destructive — needs --yes outside a TTY. Double-check runs first.`,
-		Example: `  chouse scheduled delete job_abc123 --yes`,
+		Short:   "Delete a job",
+		Example: `  chouse scheduled delete 4d2e… --yes`,
 		Args:    cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			rejectDryRun("scheduled delete")
-			confirmDestructive("scheduled.delete", args[0])
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Delete(ctx, "/api/scheduled-queries/"+args[0])
-			if err != nil {
-				failErr(err)
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			if err := a.rejectDryRun("scheduled delete"); err != nil {
+				return err
 			}
-			auditLine("scheduled.delete", args[0], "scheduled_queries:delete")
-			render(resolved, got)
-		},
+			if err := s.confirm("delete scheduled job", args[0]); err != nil {
+				return err
+			}
+			got, err := s.Client.Delete(s.Ctx, "/api/scheduled-queries/"+esc(args[0]))
+			if err != nil {
+				return err
+			}
+			s.audit("scheduled.delete", args[0], "scheduled_queries:delete")
+			return s.Print(got, output.View{})
+		}),
 	}
-	cmd.AddCommand(list, get, runs, preview, runNow, remove)
+	cmd.AddCommand(list, get, runs, preview, run, remove)
 	return cmd
 }
 
-func newHealthCmd() *cobra.Command {
+func (a *App) newHealthCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "health",
-		Short: "Data-health promises and incidents",
-		Long: `Data-health promises, their incidents, and timelines — plus the
-actions to re-run checks or acknowledge incidents. Reads are free; run and
-ack are actions needing --yes.`,
-		Example: `  chouse health list
-  chouse health incidents --limit 5 -o json
-  chouse health ack inc_abc123 --yes`,
+		Short: "Data health: promises, incidents, dataset trust",
+		Long: `Data health promises and their incidents, one table's trust state,
+and the actions to re-run checks or acknowledge an incident (both ask first,
+or need --yes).`,
+		Example: `  chouse health list -c prod
+  chouse health incidents
+  chouse health dataset shop.orders -c prod
+  chouse health ack 9a1f… --yes`,
+	}
+	list := &cobra.Command{
+		Use:     "list",
+		Short:   "List promises (scoped to -c when given)",
+		Example: `  chouse health list -c prod`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			got, err := s.Client.Get(s.Ctx, "/api/data-health", s.connectionQuery())
+			if err != nil {
+				return err
+			}
+			return s.Print(got, view("promises", "ID", "NAME", "STATUS", "CRITICALITY", "DATABASE=databaseName", "TABLE=tableName", "ENABLED"))
+		}),
 	}
 	var limit int
-	list := &cobra.Command{
-		Use:   "list",
-		Short: "List promises",
-		Long:  `List data-health promises and their current state. Start here, then drill into incidents or a timeline.`,
-		Example: `  chouse health list
-  chouse health list -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			q := url.Values{}
-			if resolved.Connection != "" {
-				q.Set("connectionId", resolved.Connection)
-			}
-			got, err := c.Get(ctx, "/api/data-health", q)
-			if err != nil {
-				failErr(err)
-			}
-			render(resolved, got)
-		},
-	}
 	incidents := &cobra.Command{
-		Use:   "incidents",
-		Short: "List incidents",
-		Long:  `List data-health incidents, newest first, capped at --limit (client-side). Acknowledge one with health ack.`,
-		Example: `  chouse health incidents --limit 5
-  chouse health incidents -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			q := url.Values{}
-			if resolved.Connection != "" {
-				q.Set("connectionId", resolved.Connection)
-			}
-			got, err := c.Get(ctx, "/api/data-health/incidents", q)
+		Use:     "incidents",
+		Short:   "Data health incidents, newest first",
+		Example: `  chouse health incidents --limit 10`,
+		Args:    cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			got, err := s.Client.Get(s.Ctx, "/api/data-health/incidents", s.connectionQuery())
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			// The endpoint takes no limit param: truncate client-side so
-			// --limit is honest (same pattern as saved list).
-			if limit > 0 {
-				if m, ok := got.(map[string]any); ok {
-					if arr, ok := m["incidents"].([]any); ok && len(arr) > limit {
-						m["incidents"] = arr[:limit]
-					}
-				}
-			}
-			render(resolved, got)
-		},
+			return s.Print(limitList(got, "incidents", limit), view("incidents", "ID", "STATUS", "SEVERITY", "KIND", "OPENED=openedAt", "SUMMARY"))
+		}),
 	}
-	incidents.Flags().IntVar(&limit, "limit", 50, "max rows (client-side)")
-	timeline := &cobra.Command{
-		Use:   "timeline <promiseId>",
-		Short: "Show promise timeline",
-		Long:  `Show one promise's check timeline (newest samples first, capped at --limit). Read-only history for post-mortems.`,
-		Example: `  chouse health timeline prom_abc123 --limit 10
-  chouse health timeline prom_abc123 -o json`,
-		Args: cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			q := url.Values{}
-			if limit > 0 {
-				q.Set("limit", itoa(limit))
-			}
-			got, err := c.Get(ctx, "/api/data-health/"+args[0]+"/timeline", q)
-			if err != nil {
-				failErr(err)
-			}
-			render(resolved, got)
-		},
-	}
-	timeline.Flags().IntVar(&limit, "limit", 50, "max samples")
-	run := &cobra.Command{
-		Use:     "run <promiseId>",
-		Short:   "Execute checks now (action)",
-		Long:    `Execute a promise's checks immediately instead of waiting for the schedule. An action — needs --yes outside a TTY.`,
-		Example: `  chouse health run prom_abc123 --yes`,
-		Args:    cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			rejectDryRun("health run")
-			confirmDestructive("health.run", args[0])
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Post(ctx, "/api/data-health/"+args[0]+"/run", map[string]any{})
-			if err != nil {
-				failErr(err)
-			}
-			auditLine("health.run", args[0], "data_health:run")
-			render(resolved, got)
-		},
-	}
-	ack := &cobra.Command{
-		Use:     "ack <incidentId>",
-		Short:   "Acknowledge an incident",
-		Long:    `Acknowledge an incident so on-call knows it's handled. An action — needs --yes outside a TTY.`,
-		Example: `  chouse health ack inc_abc123 --yes`,
-		Args:    cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			rejectDryRun("health ack")
-			confirmDestructive("health.ack", args[0])
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			got, err := c.Post(ctx, "/api/data-health/incidents/"+args[0]+"/acknowledge", map[string]any{})
-			if err != nil {
-				failErr(err)
-			}
-			auditLine("health.ack", args[0], "data_health:edit")
-			render(resolved, got)
-		},
-	}
-	cmd.AddCommand(list, incidents, timeline, run, ack, newDatasetHealthCmd())
-	return cmd
-}
+	incidents.Flags().IntVar(&limit, "limit", 50, "max rows")
 
-func printlnStderr(s string) {
-	_, _ = os.Stderr.WriteString(s + "\n")
+	var timelineLimit int
+	timeline := &cobra.Command{
+		Use:     "timeline <promiseId>",
+		Short:   "A promise's check history",
+		Example: `  chouse health timeline 2b7c… --limit 10`,
+		Args:    cobra.ExactArgs(1),
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			q := url.Values{}
+			if timelineLimit > 0 {
+				q.Set("limit", itoa(timelineLimit))
+			}
+			got, err := s.Client.Get(s.Ctx, "/api/data-health/"+esc(args[0])+"/timeline", q)
+			if err != nil {
+				return err
+			}
+			return s.Print(got, output.View{})
+		}),
+	}
+	timeline.Flags().IntVar(&timelineLimit, "limit", 50, "max samples")
+
+	dataset := &cobra.Command{
+		Use:   "dataset <database.table>",
+		Short: "One table's trust state, freshness and open incidents",
+		Long: `How far to trust one table right now: trust state, freshness,
+volume baseline, open incidents, owners and recent writers.`,
+		Example: `  chouse health dataset shop.orders -c prod`,
+		Args:    cobra.ExactArgs(1),
+		RunE: a.action(needAuth, func(s *Session, args []string) error {
+			db, table, err := splitTable(args[0])
+			if err != nil {
+				return err
+			}
+			got, err := s.Client.Get(s.Ctx, "/api/observe/datasets/"+esc(db)+"/"+esc(table), s.connectionQuery())
+			if err != nil {
+				return err
+			}
+			return s.Print(got, output.View{})
+		}),
+	}
+
+	run := a.postAction("run <promiseId>", "Run a promise's checks now", "  chouse health run 2b7c… --yes", "run data health checks", "data_health:run",
+		func(id string) string { return "/api/data-health/" + esc(id) + "/run" })
+	ack := a.postAction("ack <incidentId>", "Acknowledge an incident", "  chouse health ack 9a1f… --yes", "acknowledge incident", "data_health:edit",
+		func(id string) string { return "/api/data-health/incidents/" + esc(id) + "/acknowledge" })
+
+	cmd.AddCommand(list, incidents, timeline, dataset, run, ack)
+	return cmd
 }

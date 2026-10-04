@@ -46,6 +46,9 @@ func (e *Error) Error() string {
 // ExitCode maps an API error to the CLI machine contract.
 func (e *Error) ExitCode() int {
 	switch e.StatusCode {
+	case 0:
+		// No HTTP response at all: DNS, refused, TLS, reset.
+		return ExitNetwork
 	case http.StatusUnauthorized:
 		return ExitAuth
 	case http.StatusForbidden:
@@ -123,6 +126,15 @@ func plainError(status int, raw []byte) *Error {
 	return &Error{StatusCode: status, Code: "DECODE_ERROR", Message: "non-envelope response: " + msg}
 }
 
+// withRequestID fills the server's request id (x-request-id) so a failure
+// can be found in the server logs.
+func withRequestID(e *Error, resp *http.Response) *Error {
+	if e.RequestID == "" && resp != nil {
+		e.RequestID = resp.Header.Get("X-Request-Id")
+	}
+	return e
+}
+
 func orElse(v, fallback string) string {
 	if strings.TrimSpace(v) != "" {
 		return v
@@ -142,6 +154,8 @@ type Client struct {
 	ConnectionID string
 	HTTP         *http.Client
 	UserAgent    string
+	// Retry applies to idempotent requests only (see transport.go).
+	Retry RetryPolicy
 }
 
 // New builds a client with a bounded timeout.
@@ -152,6 +166,7 @@ func New(baseURL, token, connectionID string) *Client {
 		ConnectionID: strings.TrimSpace(connectionID),
 		HTTP:         &http.Client{Timeout: 60 * time.Second},
 		UserAgent:    "chouse-cli/1",
+		Retry:        DefaultRetryPolicy,
 	}
 }
 
@@ -195,8 +210,12 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, query url.Valu
 	if err != nil {
 		return err
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
+		// Ctrl-C and --timeout surface as themselves, not as a network fault.
+		if ctxErr := req.Context().Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return &Error{Code: "NETWORK_ERROR", Message: err.Error()}
 	}
 	defer resp.Body.Close()
@@ -207,12 +226,12 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, query url.Valu
 	var env envelope
 	if err := json.Unmarshal(raw, &env); err != nil {
 		if resp.StatusCode >= 400 {
-			return plainError(resp.StatusCode, raw)
+			return withRequestID(plainError(resp.StatusCode, raw), resp)
 		}
 		return &Error{StatusCode: resp.StatusCode, Code: "DECODE_ERROR", Message: fmt.Sprintf("non-envelope response: %s", truncate(string(raw), 300))}
 	}
 	if !env.Success {
-		return decodeError(resp.StatusCode, raw)
+		return withRequestID(decodeError(resp.StatusCode, raw), resp)
 	}
 	if out != nil && len(env.Data) > 0 && string(env.Data) != "null" {
 		if err := json.Unmarshal(env.Data, out); err != nil {
@@ -228,8 +247,12 @@ func (c *Client) GetRaw(ctx context.Context, path string, query url.Values) ([]b
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
+		// Ctrl-C and --timeout surface as themselves, not as a network fault.
+		if ctxErr := req.Context().Err(); ctxErr != nil {
+			return nil, "", ctxErr
+		}
 		return nil, "", &Error{Code: "NETWORK_ERROR", Message: err.Error()}
 	}
 	defer resp.Body.Close()
@@ -240,9 +263,9 @@ func (c *Client) GetRaw(ctx context.Context, path string, query url.Values) ([]b
 	if resp.StatusCode >= 400 {
 		var env envelope
 		if json.Unmarshal(raw, &env) == nil && !env.Success {
-			return nil, "", decodeError(resp.StatusCode, raw)
+			return nil, "", withRequestID(decodeError(resp.StatusCode, raw), resp)
 		}
-		return nil, "", &Error{StatusCode: resp.StatusCode, Code: "REQUEST_FAILED", Message: truncate(string(raw), 300)}
+		return nil, "", withRequestID(&Error{StatusCode: resp.StatusCode, Code: "REQUEST_FAILED", Message: truncate(string(raw), 300)}, resp)
 	}
 	return raw, resp.Header.Get("Content-Type"), nil
 }
@@ -283,34 +306,6 @@ func (c *Client) Validate(ctx context.Context) (map[string]any, error) {
 
 // --- Connections (read + test only; create/delete stay UI-only) ---
 
-// ConnectionsList is GET /api/rbac/connections.
-func (c *Client) ConnectionsList(ctx context.Context, search string, limit int) (map[string]any, error) {
-	q := url.Values{}
-	if search != "" {
-		q.Set("search", search)
-	}
-	if limit > 0 {
-		q.Set("limit", fmt.Sprint(limit))
-	}
-	var raw any
-	if err := c.DoJSON(ctx, http.MethodGet, "/api/rbac/connections", q, nil, &raw); err != nil {
-		return nil, err
-	}
-	return map[string]any{"data": raw}, nil
-}
-
-// ConnectionTest probes without saving: POST /api/rbac/connections/test.
-func (c *Client) ConnectionTest(ctx context.Context, payload map[string]any) (map[string]any, error) {
-	var out map[string]any
-	return out, c.DoJSON(ctx, http.MethodPost, "/api/rbac/connections/test", nil, payload, &out)
-}
-
-// ConnectionUse probes a saved connection: POST /api/rbac/connections/:id/connect.
-func (c *Client) ConnectionUse(ctx context.Context, id string) (map[string]any, error) {
-	var out map[string]any
-	return out, c.DoJSON(ctx, http.MethodPost, "/api/rbac/connections/"+id+"/connect", nil, nil, &out)
-}
-
 // CanAccess is POST /api/rbac/data-access/check.
 func (c *Client) CanAccess(ctx context.Context, payload map[string]any) (map[string]any, error) {
 	var out map[string]any
@@ -346,12 +341,6 @@ func (c *Client) QueryTableSelect(ctx context.Context, query string, maxRows int
 	}
 	var out map[string]any
 	return out, c.DoJSON(ctx, http.MethodPost, "/api/query/table/select", nil, body, &out)
-}
-
-// QueryShow is POST /api/query/show.
-func (c *Client) QueryShow(ctx context.Context, query string) (map[string]any, error) {
-	var out map[string]any
-	return out, c.DoJSON(ctx, http.MethodPost, "/api/query/show", nil, map[string]any{"query": query}, &out)
 }
 
 // DDLSimulate is POST /api/metrics/ddl/simulate (never executes).
@@ -398,12 +387,6 @@ func (c *Client) Post(ctx context.Context, path string, body any) (any, error) {
 	return out, c.DoJSON(ctx, http.MethodPost, path, nil, body, &out)
 }
 
-// Put performs an authenticated PUT returning decoded data.
-func (c *Client) Put(ctx context.Context, path string, body any) (any, error) {
-	var out any
-	return out, c.DoJSON(ctx, http.MethodPut, path, nil, body, &out)
-}
-
 // Delete performs an authenticated DELETE returning decoded data.
 func (c *Client) Delete(ctx context.Context, path string) (any, error) {
 	var out any
@@ -444,8 +427,12 @@ func (c *Client) UploadPreview(ctx context.Context, filePath, format string, has
 	if c.ConnectionID != "" {
 		req.Header.Set("X-Connection-Id", c.ConnectionID)
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
+		// Ctrl-C and --timeout surface as themselves, not as a network fault.
+		if ctxErr := req.Context().Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, &Error{Code: "NETWORK_ERROR", Message: err.Error()}
 	}
 	defer resp.Body.Close()

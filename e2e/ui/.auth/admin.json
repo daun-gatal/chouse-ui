@@ -1,0 +1,62 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:5599",
+      "localStorage": [
+        {
+          "name": "workspace-storage",
+          "value": "[object Object]"
+        },
+        {
+          "name": "explorer-storage",
+          "value": "[object Object]"
+        },
+        {
+          "name": "explorer-last-user-id",
+          "value": "89f35295-2b32-4593-bb8d-0b9ef3d23933"
+        },
+        {
+          "name": "workspace-last-user-id",
+          "value": "89f35295-2b32-4593-bb8d-0b9ef3d23933"
+        },
+        {
+          "name": "explorer-storage-89f35295-2b32-4593-bb8d-0b9ef3d23933",
+          "value": "[object Object]"
+        },
+        {
+          "name": "connection-info-storage",
+          "value": "{\"state\":{\"sessionId\":\"c3b06918-bc82-4b1b-bd62-3d4e764d15a5\",\"username\":\"default\",\"url\":\"http://opencode-dind-apps.kitty-barb.ts.net:3000\",\"version\":\"26.5.7.64\",\"isAdmin\":true,\"activeConnectionId\":\"475af2bb-8e08-439c-9f13-3c06abf0b9cd\",\"activeConnectionName\":\"e2e-clickhouse\"},\"version\":0}"
+        },
+        {
+          "name": "rbac-storage",
+          "value": "{\"state\":{\"user\":{\"id\":\"89f35295-2b32-4593-bb8d-0b9ef3d23933\",\"email\":\"admin@localhost\",\"username\":\"admin\",\"displayName\":\"System Administrator\",\"avatarUrl\":null,\"isActive\":true,\"hasSsoIdentity\":false,\"bootstrapOnboardingPending\":true,\"requiresPasswordChange\":false,\"roles\":[\"super_admin\"],\"permissions\":[\"data_health:view\",\"capacity:view\",\"ai_models:view\",\"live_queries:kill\",\"data_access:view\",\"data_access:create\",\"cost:view\",\"users:update\",\"scheduled_queries:write\",\"fleet:view\",\"notebooks:edit\",\"remediation:propose\",\"clickhouse:users:create\",\"query:history:view:all\",\"table:delete\",\"table:drop\",\"table:insert\",\"clickhouse:users:update\",\"roles:delete\",\"scheduled_queries:run\",\"roles:update\",\"clickhouse:roles:delete\",\"settings:update\",\"table:create\",\"table:alter\",\"connections:edit\",\"metrics:view\",\"saved_queries:delete\",\"alerting:delete\",\"saved_queries:share\",\"data_access:assign\",\"metrics:view:advanced\",\"saved_queries:create\",\"remediation:approve\",\"data_health:run\",\"users:create\",\"alerting:edit\",\"logs:view\",\"table:select\",\"sso:edit\",\"ai:chat\",\"ai:optimize\",\"clickhouse:roles:create\",\"saved_queries:update\",\"clickhouse:roles:update\",\"doctor:view\",\"query:execute:ddl\",\"table:update\",\"agents:view\",\"roles:assign\",\"context:edit\",\"roles:view\",\"query:execute\",\"ai_models:delete\",\"scheduled_queries:delete\",\"clickhouse:users:view\",\"sso:delete\",\"data_health:delete\",\"connections:delete\",\"upgrades:view\",\"observe:edit\",\"audit:export\",\"data_access:delete\",\"live_queries:kill_all\",\"query:execute:dml\",\"database:create\",\"errors:view\",\"users:delete\",\"query:history:view\",\"cluster:view\",\"audit:delete\",\"data_health:edit\",\"connections:view\",\"schema_advisor:view\",\"upgrades:run\",\"clickhouse:roles:assign\",\"scheduled_queries:view\",\"settings:view\",\"users:view\",\"alerting:view\",\"doctor:run\",\"clickhouse:users:delete\",\"agents:manage\",\"data_access:update\",\"remediation:approve_high\",\"database:view\",\"scheduled_queries:edit\",\"parts:view\",\"saved_queries:view\",\"table:view\",\"clickhouse:roles:view\",\"scheduled_queries:view_all\",\"ai_models:create\",\"audit:view\",\"performance:view\",\"data_health:view_all\",\"database:drop\",\"live_queries:view\",\"ai_models:update\",\"query:execute:misc\",\"observe:view\",\"schema:override\",\"sso:view\",\"roles:create\"],\"lastLoginAt\":\"2026-10-04T08:51:46.000Z\",\"createdAt\":\"2026-10-04T08:51:45.000Z\"},\"roles\":[\"super_admin\"],\"permissions\":[\"data_health:view\",\"capacity:view\",\"ai_models:view\",\"live_queries:kill\",\"data_access:view\",\"data_access:create\",\"cost:view\",\"users:update\",\"scheduled_queries:write\",\"fleet:view\",\"notebooks:edit\",\"remediation:propose\",\"clickhouse:users:create\",\"query:history:view:all\",\"table:delete\",\"table:drop\",\"table:insert\",\"clickhouse:users:update\",\"roles:delete\",\"scheduled_queries:run\",\"roles:update\",\"clickhouse:roles:delete\",\"settings:update\",\"table:create\",\"table:alter\",\"connections:edit\",\"metrics:view\",\"saved_queries:delete\",\"alerting:delete\",\"saved_queries:share\",\"data_access:assign\",\"metrics:view:advanced\",\"saved_queries:create\",\"remediation:approve\",\"data_health:run\",\"users:create\",\"alerting:edit\",\"logs:view\",\"table:select\",\"sso:edit\",\"ai:chat\",\"ai:optimize\",\"clickhouse:roles:create\",\"saved_queries:update\",\"clickhouse:roles:update\",\"doctor:view\",\"query:execute:ddl\",\"table:update\",\"agents:view\",\"roles:assign\",\"context:edit\",\"roles:view\",\"query:execute\",\"ai_models:delete\",\"scheduled_queries:delete\",\"clickhouse:users:view\",\"sso:delete\",\"data_health:delete\",\"connections:delete\",\"upgrades:view\",\"observe:edit\",\"audit:export\",\"data_access:delete\",\"live_queries:kill_all\",\"query:execute:dml\",\"database:create\",\"errors:view\",\"users:delete\",\"query:history:view\",\"cluster:view\",\"audit:delete\",\"data_health:edit\",\"connections:view\",\"schema_advisor:view\",\"upgrades:run\",\"clickhouse:roles:assign\",\"scheduled_queries:view\",\"settings:view\",\"users:view\",\"alerting:view\",\"doctor:run\",\"clickhouse:users:delete\",\"agents:manage\",\"data_access:update\",\"remediation:approve_high\",\"database:view\",\"scheduled_queries:edit\",\"parts:view\",\"saved_queries:view\",\"table:view\",\"clickhouse:roles:view\",\"scheduled_queries:view_all\",\"ai_models:create\",\"audit:view\",\"performance:view\",\"data_health:view_all\",\"database:drop\",\"live_queries:view\",\"ai_models:update\",\"query:execute:misc\",\"observe:view\",\"schema:override\",\"sso:view\",\"roles:create\"]},\"version\":0}"
+        },
+        {
+          "name": "rbac_refresh_token",
+          "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI4OWYzNTI5NS0yYjMyLTQ1OTMtYmI4ZC0wYjllZjNkMjM5MzMiLCJzZXNzaW9uSWQiOiJiZjFmOGQ3Yi0yMmU3LTRmY2EtOWRhNC1jODhjMDNmMTFlZmQiLCJ0eXBlIjoicmVmcmVzaCIsImp0aSI6IjQ4OWFmNmE1LTY2YWItNGZmZS05MjQxLWUzNjQ0OGRkMDFjZCIsImlhdCI6MTc5MTEwMzkwNywiaXNzIjoiY2hvdXNldWkiLCJhdWQiOiJjaG91c2V1aS1jbGllbnQiLCJleHAiOjE3OTE3MDg3MDd9.Rr6htTdeYbrkedzPvJ4GKwjDJZWLneMgq7QcPynMLmc"
+        },
+        {
+          "name": "ch_connection_id",
+          "value": "475af2bb-8e08-439c-9f13-3c06abf0b9cd"
+        },
+        {
+          "name": "clickhouse_selected_connection_id",
+          "value": "475af2bb-8e08-439c-9f13-3c06abf0b9cd"
+        },
+        {
+          "name": "vite-ui-theme",
+          "value": "dark"
+        },
+        {
+          "name": "rbac_access_token",
+          "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI4OWYzNTI5NS0yYjMyLTQ1OTMtYmI4ZC0wYjllZjNkMjM5MzMiLCJlbWFpbCI6ImFkbWluQGxvY2FsaG9zdCIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlcyI6WyJzdXBlcl9hZG1pbiJdLCJwZXJtaXNzaW9ucyI6WyJkYXRhX2hlYWx0aDp2aWV3IiwiY2FwYWNpdHk6dmlldyIsImFpX21vZGVsczp2aWV3IiwibGl2ZV9xdWVyaWVzOmtpbGwiLCJkYXRhX2FjY2Vzczp2aWV3IiwiZGF0YV9hY2Nlc3M6Y3JlYXRlIiwiY29zdDp2aWV3IiwidXNlcnM6dXBkYXRlIiwic2NoZWR1bGVkX3F1ZXJpZXM6d3JpdGUiLCJmbGVldDp2aWV3Iiwibm90ZWJvb2tzOmVkaXQiLCJyZW1lZGlhdGlvbjpwcm9wb3NlIiwiY2xpY2tob3VzZTp1c2VyczpjcmVhdGUiLCJxdWVyeTpoaXN0b3J5OnZpZXc6YWxsIiwidGFibGU6ZGVsZXRlIiwidGFibGU6ZHJvcCIsInRhYmxlOmluc2VydCIsImNsaWNraG91c2U6dXNlcnM6dXBkYXRlIiwicm9sZXM6ZGVsZXRlIiwic2NoZWR1bGVkX3F1ZXJpZXM6cnVuIiwicm9sZXM6dXBkYXRlIiwiY2xpY2tob3VzZTpyb2xlczpkZWxldGUiLCJzZXR0aW5nczp1cGRhdGUiLCJ0YWJsZTpjcmVhdGUiLCJ0YWJsZTphbHRlciIsImNvbm5lY3Rpb25zOmVkaXQiLCJtZXRyaWNzOnZpZXciLCJzYXZlZF9xdWVyaWVzOmRlbGV0ZSIsImFsZXJ0aW5nOmRlbGV0ZSIsInNhdmVkX3F1ZXJpZXM6c2hhcmUiLCJkYXRhX2FjY2Vzczphc3NpZ24iLCJtZXRyaWNzOnZpZXc6YWR2YW5jZWQiLCJzYXZlZF9xdWVyaWVzOmNyZWF0ZSIsInJlbWVkaWF0aW9uOmFwcHJvdmUiLCJkYXRhX2hlYWx0aDpydW4iLCJ1c2VyczpjcmVhdGUiLCJhbGVydGluZzplZGl0IiwibG9nczp2aWV3IiwidGFibGU6c2VsZWN0Iiwic3NvOmVkaXQiLCJhaTpjaGF0IiwiYWk6b3B0aW1pemUiLCJjbGlja2hvdXNlOnJvbGVzOmNyZWF0ZSIsInNhdmVkX3F1ZXJpZXM6dXBkYXRlIiwiY2xpY2tob3VzZTpyb2xlczp1cGRhdGUiLCJkb2N0b3I6dmlldyIsInF1ZXJ5OmV4ZWN1dGU6ZGRsIiwidGFibGU6dXBkYXRlIiwiYWdlbnRzOnZpZXciLCJyb2xlczphc3NpZ24iLCJjb250ZXh0OmVkaXQiLCJyb2xlczp2aWV3IiwicXVlcnk6ZXhlY3V0ZSIsImFpX21vZGVsczpkZWxldGUiLCJzY2hlZHVsZWRfcXVlcmllczpkZWxldGUiLCJjbGlja2hvdXNlOnVzZXJzOnZpZXciLCJzc286ZGVsZXRlIiwiZGF0YV9oZWFsdGg6ZGVsZXRlIiwiY29ubmVjdGlvbnM6ZGVsZXRlIiwidXBncmFkZXM6dmlldyIsIm9ic2VydmU6ZWRpdCIsImF1ZGl0OmV4cG9ydCIsImRhdGFfYWNjZXNzOmRlbGV0ZSIsImxpdmVfcXVlcmllczpraWxsX2FsbCIsInF1ZXJ5OmV4ZWN1dGU6ZG1sIiwiZGF0YWJhc2U6Y3JlYXRlIiwiZXJyb3JzOnZpZXciLCJ1c2VyczpkZWxldGUiLCJxdWVyeTpoaXN0b3J5OnZpZXciLCJjbHVzdGVyOnZpZXciLCJhdWRpdDpkZWxldGUiLCJkYXRhX2hlYWx0aDplZGl0IiwiY29ubmVjdGlvbnM6dmlldyIsInNjaGVtYV9hZHZpc29yOnZpZXciLCJ1cGdyYWRlczpydW4iLCJjbGlja2hvdXNlOnJvbGVzOmFzc2lnbiIsInNjaGVkdWxlZF9xdWVyaWVzOnZpZXciLCJzZXR0aW5nczp2aWV3IiwidXNlcnM6dmlldyIsImFsZXJ0aW5nOnZpZXciLCJkb2N0b3I6cnVuIiwiY2xpY2tob3VzZTp1c2VyczpkZWxldGUiLCJhZ2VudHM6bWFuYWdlIiwiZGF0YV9hY2Nlc3M6dXBkYXRlIiwicmVtZWRpYXRpb246YXBwcm92ZV9oaWdoIiwiZGF0YWJhc2U6dmlldyIsInNjaGVkdWxlZF9xdWVyaWVzOmVkaXQiLCJwYXJ0czp2aWV3Iiwic2F2ZWRfcXVlcmllczp2aWV3IiwidGFibGU6dmlldyIsImNsaWNraG91c2U6cm9sZXM6dmlldyIsInNjaGVkdWxlZF9xdWVyaWVzOnZpZXdfYWxsIiwiYWlfbW9kZWxzOmNyZWF0ZSIsImF1ZGl0OnZpZXciLCJwZXJmb3JtYW5jZTp2aWV3IiwiZGF0YV9oZWFsdGg6dmlld19hbGwiLCJkYXRhYmFzZTpkcm9wIiwibGl2ZV9xdWVyaWVzOnZpZXciLCJhaV9tb2RlbHM6dXBkYXRlIiwicXVlcnk6ZXhlY3V0ZTptaXNjIiwib2JzZXJ2ZTp2aWV3Iiwic2NoZW1hOm92ZXJyaWRlIiwic3NvOnZpZXciLCJyb2xlczpjcmVhdGUiXSwic2Vzc2lvbklkIjoiYmYxZjhkN2ItMjJlNy00ZmNhLTlkYTQtYzg4YzAzZjExZWZkIiwidHlwZSI6ImFjY2VzcyIsImlhdCI6MTc5MTEwMzkwNywiaXNzIjoiY2hvdXNldWkiLCJhdWQiOiJjaG91c2V1aS1jbGllbnQiLCJleHAiOjE3OTExMTgzMDd9.EUe8FSe-QVCVBw3IwABQ8l86k6bM12iS80_cEVpP6jc"
+        },
+        {
+          "name": "chouseui-dock-mode",
+          "value": "sidebar"
+        }
+      ]
+    }
+  ]
+}

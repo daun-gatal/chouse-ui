@@ -65,6 +65,7 @@ import {
 } from "@/components/ui/tooltip";
 import PermissionGuard from "@/components/common/PermissionGuard";
 import type { SavedQuery } from "@/api";
+import { explorerPath } from "@/lib/explorerPath";
 import type { QueryHistoryItem, QueryHistoryStatus } from "@/stores";
 import { cn } from "@/lib/utils";
 
@@ -535,9 +536,9 @@ const DatabaseExplorer: React.FC = () => {
   const handleQuickAccessClick = useCallback(async (item: { type: string; database: string; table?: string }) => {
     await addRecentItem(item.database, item.table);
     if (item.type === 'database' || !item.table) {
-      navigate(`/explorer?database=${item.database}`);
+      navigate(explorerPath(item.database));
     } else {
-      navigate(`/explorer?database=${item.database}&table=${item.table}`);
+      navigate(explorerPath(item.database, item.table));
     }
   }, [navigate, addRecentItem]);
 

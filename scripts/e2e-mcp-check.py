@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""DinD E2E checker for ADR 0013 (CHouse MCP server).
+"""DinD E2E checker for ADR 0013 / ADR 0017 (CHouse MCP server).
 
 Runs INSIDE the compose network (via `docker run --network <project>_default`)
-where `chouse-ui:5521` and `chouse-ui:8752/mcp` resolve. Proves the agent
-surface: PAT-only auth, read-only toolset, SQL classification, and that
-revoking the PAT fails the very next call (no TTL lag).
+where `chouse-ui:5521` (web, API and /mcp) resolves. Proves the agent
+surface: off until an administrator turns it on through the Agents › MCP API,
+PAT-only auth, read-only tools by default, per-tool switches, SQL
+classification, and that revoking the PAT fails the very next call (no TTL
+lag).
 
 Exit 0 = all checks green. Any failure prints CHECK <name>: FAIL and exits 1.
 """
@@ -17,7 +19,7 @@ import urllib.request
 import urllib.error
 
 BASE = "http://chouse-ui:5521"
-MCP = "http://chouse-ui:8752/mcp"
+MCP = "http://chouse-ui:5521/mcp"
 CLICKHOUSE = "http://clickhouse:8123"
 FAILURES: list[str] = []
 
@@ -175,6 +177,27 @@ def login_and_provision() -> None:
     STATE["pat_id"] = payload["data"]["token"]["id"]
 
 
+def mcp_off_by_default() -> None:
+    status, _ = rpc("tools/list", {}, token=STATE["pat"], expect_http_error=True)
+    assert status == 404, f"expected 404 MCP_DISABLED before it is turned on, got {status}"
+
+
+def mcp_turn_on() -> None:
+    status, payload = api("PUT", "/api/agents/mcp", token=STATE["admin_jwt"], body={"enabled": True}, xhr=True)
+    assert status == 200, f"turn on status {status}: {payload}"
+    assert payload["data"]["settings"]["enabled"] is True, payload
+
+
+def mcp_tool_switch() -> None:
+    status, payload = api("PUT", "/api/agents/mcp", token=STATE["admin_jwt"], body={"toolOverrides": {"audit_list": False}}, xhr=True)
+    assert status == 200, f"switch status {status}: {payload}"
+    status, message = rpc("tools/list", {}, token=STATE["pat"])
+    names = [tool["name"] for tool in message.get("result", {}).get("tools", [])]
+    assert "audit_list" not in names, f"switched-off tool still listed: {names}"
+    status, payload = api("PUT", "/api/agents/mcp", token=STATE["admin_jwt"], body={"toolOverrides": {"audit_list": True}}, xhr=True)
+    assert status == 200, f"switch back status {status}: {payload}"
+
+
 def mcp_initialize() -> None:
     status, message = rpc("initialize", {
         "protocolVersion": "2025-06-18",
@@ -259,8 +282,11 @@ def revoked_pat_fails_next_call() -> None:
 def main() -> int:
     check("health", wait_for_health)
     check("login_and_provision", login_and_provision)
+    check("mcp_off_by_default", mcp_off_by_default)
+    check("mcp_turn_on", mcp_turn_on)
     check("mcp_initialize", mcp_initialize)
     check("mcp_toolset_is_read_only", mcp_toolset_is_read_only)
+    check("mcp_tool_switch", mcp_tool_switch)
     check("mcp_query_select_works", mcp_query_select_works)
     check("mcp_query_refuses_writes", mcp_query_refuses_writes)
     check("mcp_write_tool_absent", mcp_write_tool_absent)

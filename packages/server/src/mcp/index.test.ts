@@ -1,15 +1,16 @@
 /**
- * HTTP-level MCP app tests (ADR 0013): origin guard, PAT-only auth, and the
- * end-to-end initialize → tools/call path through the stateless Streamable
- * HTTP transport with a stubbed verifier and stubbed proxy API.
+ * HTTP-level MCP app tests (ADR 0013, ADR 0017): the Agents › MCP switch,
+ * origin guard, PAT-only auth, and the end-to-end initialize → tools/call
+ * path through the stateless Streamable HTTP transport, mounted at /mcp the
+ * way the web server mounts it, with a stubbed verifier, settings and proxy.
  */
 
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import { AppError } from "../types";
 import { createMcpApp } from "./index";
-import { buildMcpDeps } from "./server";
-import { loadMcpConfig } from "./config";
+import { buildMcpDeps, MCP_PATH } from "./server";
+import { DEFAULT_MCP_SETTINGS, type StoredMcpSettings } from "./settings";
 import type { McpIdentity } from "./types";
 
 const IDENTITY: McpIdentity = {
@@ -24,19 +25,22 @@ const IDENTITY: McpIdentity = {
 
 const VALID_TOKEN = "ch_pat_validtoken123456789012";
 
-function makeApp() {
+function makeApp(settings: Partial<StoredMcpSettings> = {}): Hono {
   const proxy = new Hono();
   proxy.get("/api/rbac/auth/profile", (c) =>
     c.json({ success: true, data: { user: { username: "user" }, roles: [], permissions: ["metrics:view"] } })
   );
-  const config = loadMcpConfig({ NODE_ENV: "production", MCP_ENABLED: "true" }).config;
-  if (!config) throw new Error("test config missing");
-  return createMcpApp(config, buildMcpDeps(proxy, 5000), {
+  const mcp = createMcpApp(buildMcpDeps(proxy), {
     verifyToken: async (token: string) => {
       if (token === VALID_TOKEN) return IDENTITY;
       throw AppError.unauthorized("Invalid personal access token");
     },
+    loadSettings: async () => ({ ...DEFAULT_MCP_SETTINGS, enabled: true, updatedBy: null, updatedAt: null, ...settings }),
   }).app;
+  const app = new Hono();
+  app.get("/api/health", (c) => c.json({ ok: true }));
+  app.route(MCP_PATH, mcp);
+  return app;
 }
 
 const ACCEPT = "application/json, text/event-stream";
@@ -176,5 +180,52 @@ describe("createMcpApp (HTTP)", () => {
       { Authorization: "Bearer ch_pat_revokedtoken1234567890" }
     );
     expect(res.status).toBe(401);
+  });
+
+  it("answers 404 MCP_DISABLED until an administrator turns MCP on", async () => {
+    const app = makeApp({ enabled: false });
+    const res = await post(
+      app,
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
+      { Authorization: `Bearer ${VALID_TOKEN}` }
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("MCP_DISABLED");
+    expect(body.error.message).toContain("Agents › MCP");
+  });
+
+  it("accepts an Origin from the allowlist", async () => {
+    const app = makeApp({ allowedOrigins: ["https://agent.example"] });
+    const res = await post(
+      app,
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2026-07-28", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+      },
+      { Authorization: `Bearer ${VALID_TOKEN}`, Origin: "https://agent.example" }
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("lists only enabled tools the token can use", async () => {
+    const app = makeApp({ toolOverrides: { sample_table: false } });
+    const res = await post(
+      app,
+      { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+      { Authorization: `Bearer ${VALID_TOKEN}` }
+    );
+    const body = await rpcBody(res);
+    const names = (body.result?.tools ?? []).map((tool) => tool.name).sort();
+    // IDENTITY holds table:select and metrics:view; sample_table is switched off.
+    expect(names).toEqual(["explain_query", "metrics_overview", "query", "whoami"]);
+  });
+
+  it("leaves the rest of the web server alone", async () => {
+    const app = makeApp({ enabled: false });
+    const res = await app.request("/api/health");
+    expect(res.status).toBe(200);
   });
 });

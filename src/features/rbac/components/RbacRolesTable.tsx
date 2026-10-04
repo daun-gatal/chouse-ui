@@ -52,6 +52,7 @@ import ConfirmationDialog from '@/components/common/ConfirmationDialog';
 
 import { rbacRolesApi, rbacDataAccessPoliciesApi, type RbacRole } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores/rbac';
+import { groupPermissionsByCategory } from '@/lib/permissionCategories';
 import { cn } from '@/lib/utils';
 import { RoleFormDialog } from './RoleFormDialog';
 
@@ -81,44 +82,6 @@ const getRoleStyle = (role: string) => ({
   ...ROLE_STYLE,
   icon: ROLE_ICONS[role] || role.slice(0, 2).toUpperCase(),
 });
-
-// ============================================
-// Permission Categories for Display
-// ============================================
-
-const PERMISSION_CATEGORIES: Record<string, string> = {
-  'users': 'User Management',
-  'roles': 'Role Management',
-  'connections': 'ClickHouse Connections',
-  'clickhouse': 'ClickHouse Users',
-  'database': 'Database',
-  'table': 'Table',
-  'query': 'Query',
-  'saved_queries': 'Saved Queries',
-  'metrics': 'Metrics',
-  'logs': 'Monitoring',
-  'parts': 'Monitoring',
-  'schema_advisor': 'Monitoring',
-  'cluster': 'Monitoring',
-  'errors': 'Monitoring',
-  'fleet': 'Fleet Management',
-  'doctor': 'Fleet Doctor',
-  'settings': 'Settings',
-  'audit': 'Audit',
-  'live_queries': 'Live Queries',
-  'ai': 'AI Assistant',
-  'ai_models': 'AI Models',
-  'data_access': 'Data Access',
-  'sso': 'SSO Management',
-  'alerting': 'Alerting',
-  'scheduled_queries': 'Scheduled Queries',
-  'data_health': 'Data Health',
-};
-
-const getPermissionCategory = (permission: string): string => {
-  const prefix = permission.split(':')[0];
-  return PERMISSION_CATEGORIES[prefix] || 'Other';
-};
 
 // ============================================
 // Component Props
@@ -199,18 +162,23 @@ export const RbacRolesTable: React.FC<RbacRolesTableProps> = ({
     });
   };
 
-  // Group permissions by category
-  const groupPermissions = (permissions: string[]) => {
-    const grouped: Record<string, string[]> = {};
-    permissions.forEach((perm) => {
-      const category = getPermissionCategory(perm);
-      if (!grouped[category]) {
-        grouped[category] = [];
-      }
-      grouped[category].push(perm);
+  // Categories come from the server (the role editor's source of truth); the
+  // local mirror covers the moment before the list loads.
+  const { data: permissionsByCategory } = useQuery({
+    queryKey: ['rbac-permissions-by-category'],
+    queryFn: () => rbacRolesApi.getPermissionsByCategory(),
+  });
+
+  const serverCategories = useMemo(() => {
+    const map = new Map<string, string>();
+    Object.entries(permissionsByCategory ?? {}).forEach(([category, permissions]) => {
+      permissions.forEach((permission) => map.set(permission.name, category));
     });
-    return grouped;
-  };
+    return map;
+  }, [permissionsByCategory]);
+
+  const groupPermissions = (permissions: string[]): Record<string, string[]> =>
+    groupPermissionsByCategory(permissions, serverCategories);
 
   return (
     <div className="p-6 space-y-6">

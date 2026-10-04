@@ -72,34 +72,10 @@ instead of becoming silent duplicate jobs or per-pod databases at runtime.
 {{- fail "slack.* and config.slack are both set: keep Slack secrets in slack.* (a Secret), not in config." }}
 {{- end }}
 
-{{/* MCP (ADR 0013): mirrors the server's own startup validation so a bad
-     combination fails at render time instead of in the pod. */}}
-{{- if .Values.mcp.allowWrites }}
-{{- if not .Values.mcp.enabled }}
-{{- fail "mcp.allowWrites=true requires mcp.enabled=true" }}
-{{- end }}
-{{- end }}
-{{- if .Values.mcp.allowDestructive }}
-{{- if not .Values.mcp.enabled }}
-{{- fail "mcp.allowDestructive=true requires mcp.enabled=true" }}
-{{- end }}
-{{- if not .Values.mcp.allowWrites }}
-{{- fail "mcp.allowDestructive=true requires mcp.allowWrites=true (the server refuses this combination at startup too)" }}
-{{- end }}
-{{- end }}
-{{- if .Values.mcp.ingress.enabled }}
-{{- if not .Values.mcp.enabled }}
-{{- fail "mcp.ingress.enabled=true requires mcp.enabled=true (the /mcp path targets the dedicated MCP Service and would 503 without it)" }}
-{{- end }}
-{{- if not .Values.mcp.ingress.hosts }}
-{{- fail "mcp.ingress.enabled=true requires at least one mcp.ingress.hosts entry (declare the hosts that carry /mcp)" }}
-{{- end }}
-{{- end }}
-
 {{/* config.yaml values override the pod environment (the server injects them
      into process.env last), so a config key the chart also manages would
      silently win over the chart's wiring. Refuse the ambiguity. */}}
-{{- range $key := list "port" "node_env" "static_path" "chouse" "scheduled_queries" "mcp" }}
+{{- range $key := list "port" "node_env" "static_path" "chouse" "scheduled_queries" }}
 {{- if hasKey $.Values.config $key }}
 {{- fail (printf "config.%s conflicts with chart-managed settings — remove it from `config` and use the chart values instead (config.yaml overrides the pod environment)" $key) }}
 {{- end }}

@@ -9,6 +9,16 @@ mock.module("../services/aiConfig", () => ({
   isAIEnabled: async () => _mockAiEnabled,
 }));
 
+// The Agents › MCP switch (ADR 0017): null makes the settings read fail.
+let _mockMcpEnabled: boolean | null = false;
+
+mock.module("../mcp/settings", () => ({
+  getMcpSettings: async () => {
+    if (_mockMcpEnabled === null) throw new Error("RBAC database not ready");
+    return { enabled: _mockMcpEnabled };
+  },
+}));
+
 import configRoute from "./config";
 
 describe("Config Route", () => {
@@ -18,6 +28,7 @@ describe("Config Route", () => {
     beforeEach(() => {
         originalEnv = { ...process.env };
         _mockAiEnabled = false;
+        _mockMcpEnabled = false;
         app = new Hono();
         app.route("/config", configRoute);
     });
@@ -62,8 +73,8 @@ describe("Config Route", () => {
         expect(body.data.features.aiOptimizer).toBe(true);
     });
 
-    it("should report mcpEnabled true when MCP_ENABLED is truthy", async () => {
-        process.env.MCP_ENABLED = "true";
+    it("reports mcpEnabled from the Agents › MCP setting", async () => {
+        _mockMcpEnabled = true;
 
         const res = await app.request("/config");
         expect(res.status).toBe(200);
@@ -72,11 +83,17 @@ describe("Config Route", () => {
         expect(body.data.features.mcpEnabled).toBe(true);
     });
 
-    it("should report mcpEnabled false when MCP_ENABLED is false", async () => {
-        // loadMcpConfig defaults enabled to true whenever NODE_ENV is not
-        // "production" (bun test runs with NODE_ENV=test), so the disabled
-        // state has to be asserted through an explicit value, not by unsetting.
-        process.env.MCP_ENABLED = "false";
+    it("ignores the removed MCP_ENABLED env var", async () => {
+        process.env.MCP_ENABLED = "true";
+
+        const res = await app.request("/config");
+        const body = await res.json();
+
+        expect(body.data.features.mcpEnabled).toBe(false);
+    });
+
+    it("reports mcpEnabled false when the setting cannot be read", async () => {
+        _mockMcpEnabled = null;
 
         const res = await app.request("/config");
         expect(res.status).toBe(200);

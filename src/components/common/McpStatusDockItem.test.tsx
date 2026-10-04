@@ -1,12 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/test/mocks/server";
 import { queryKeys } from "@/hooks";
 
 import { McpStatusDockItem } from "./McpStatusDockItem";
+
+let canViewAgents = false;
+
+vi.mock("@/stores", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores")>();
+  return {
+    ...actual,
+    useRbacStore: <T,>(select: (state: { hasPermission: (permission: string) => boolean }) => T): T =>
+      select({ hasPermission: () => canViewAgents }),
+  };
+});
 
 function renderDockItem(): QueryClient {
   // useConfig sets retry: 1 at query level (overriding client defaults), so
@@ -16,13 +28,37 @@ function renderDockItem(): QueryClient {
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <McpStatusDockItem />
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<McpStatusDockItem />} />
+          <Route path="/agents/mcp" element={<p>Agents MCP page</p>} />
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
   return queryClient;
 }
 
 describe("McpStatusDockItem", () => {
+  beforeEach(() => {
+    canViewAgents = false;
+  });
+
+  it("opens Agents › MCP for people who can see Agents", async () => {
+    canViewAgents = true;
+    renderDockItem();
+
+    fireEvent.click(await screen.findByRole("button", { name: "MCP server: enabled" }));
+    expect(await screen.findByText("Agents MCP page")).toBeTruthy();
+  });
+
+  it("stays a plain indicator without agents:view", async () => {
+    renderDockItem();
+
+    fireEvent.click(await screen.findByRole("button", { name: "MCP server: enabled" }));
+    expect(screen.queryByText("Agents MCP page")).toBeNull();
+  });
+
   it("renders the enabled state once the config flag resolves", async () => {
     renderDockItem();
 

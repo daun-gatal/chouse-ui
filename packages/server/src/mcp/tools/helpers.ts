@@ -23,6 +23,7 @@ import { auditMcpToolCall } from "../audit";
 import type { McpToolContext } from "../types";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { logger } from "../../utils/logger";
+import type { Permission } from "../../rbac/schema/base";
 import * as agentStore from "../../services/agents/store";
 
 export type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -172,16 +173,66 @@ export function argOptionalString(args: Record<string, unknown>, key: string): s
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/** Domain a tool belongs to — how the catalog groups tools in the UI. */
+export const MCP_TOOL_CATEGORIES = [
+  "identity",
+  "explore",
+  "query",
+  "monitoring",
+  "scheduling",
+  "data_health",
+  "data_observability",
+  "ai",
+] as const;
+export type McpToolCategory = (typeof MCP_TOOL_CATEGORIES)[number];
+
+/**
+ * What a tool does to the system. Reads are on by default; writes and
+ * destructive tools stay off until an administrator turns them on, and the
+ * MCP annotations clients use for approval prompts are derived from this.
+ */
+export type McpToolAccess = "read" | "write" | "destructive";
+
 export interface ChouseToolRegistration {
   name: string;
+  /** Short human title (MCP `title`, catalog heading). */
+  title: string;
+  category: McpToolCategory;
+  access: McpToolAccess;
+  /**
+   * The token needs at least one of these for the tool to be listed (empty:
+   * any token). Mirrors the projected route's guard; the route still decides.
+   */
+  permissions: Permission[];
+  /** Spends LLM budget on every call: off by default even when read-only. */
+  spendsLlm?: boolean;
   description: string;
   inputSchema?: Record<string, z.ZodTypeAny>;
-  annotations?: ToolAnnotations;
   handler: (args: Record<string, unknown>, extra: ToolExtra) => Promise<CallToolResult>;
 }
 
+/** Where tool definitions go: the catalog collector or a live McpServer. */
+export interface McpToolSink {
+  add(tool: ChouseToolRegistration): void;
+}
+
+export function registerChouseTool(sink: McpToolSink, tool: ChouseToolRegistration): void {
+  sink.add(tool);
+}
+
+/** MCP tool annotations derived from the tool's access level. */
+function toolAnnotations(tool: ChouseToolRegistration): ToolAnnotations {
+  return {
+    title: tool.title,
+    readOnlyHint: tool.access === "read",
+    destructiveHint: tool.access === "destructive",
+    idempotentHint: tool.access === "read",
+    openWorldHint: false,
+  };
+}
+
 /**
- * Single registration boundary for chouse tools.
+ * Single SDK registration boundary for chouse tools.
  *
  * The SDK's `registerTool` infers its generics from `AnySchema` — a union of
  * zod v3 and zod v4 core types (zod-compat) — and in the full server graph
@@ -193,10 +244,11 @@ export interface ChouseToolRegistration {
  * tool definition stays strictly typed on our side (loose args narrowed by
  * the arg* accessors above).
  */
-export function registerChouseTool(mcp: McpServer, tool: ChouseToolRegistration): void {
+export function registerOnServer(mcp: McpServer, tool: ChouseToolRegistration): void {
   type Register = (
     name: string,
     config: {
+      title?: string;
       description?: string;
       inputSchema?: Record<string, z.ZodTypeAny>;
       annotations?: ToolAnnotations;
@@ -210,9 +262,10 @@ export function registerChouseTool(mcp: McpServer, tool: ChouseToolRegistration)
   register(
     tool.name,
     {
+      title: tool.title,
       description: tool.description,
       inputSchema: tool.inputSchema ?? {},
-      ...(tool.annotations ? { annotations: tool.annotations } : {}),
+      annotations: toolAnnotations(tool),
     },
     async (args, extra) => tool.handler(args, extra)
   );
