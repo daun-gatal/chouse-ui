@@ -203,7 +203,9 @@ function WorkspaceTabs() {
     const target = readExplorerTarget(searchParams);
     if (target) {
       const { database, table } = target;
-      const existingTab = tabs.find(
+      // Read the live store, not the render's `tabs`: a second run of this
+      // effect before re-render (StrictMode) must see the tab just added.
+      const existingTab = useWorkspaceStore.getState().tabs.find(
         (tab) =>
           tab.type === "information" &&
           typeof tab.content === "object" &&
@@ -223,7 +225,7 @@ function WorkspaceTabs() {
 
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, tabs, addTab, setActiveTab, setSearchParams]);
+  }, [searchParams, addTab, setActiveTab, setSearchParams]);
 
   const addNewCodeTab = useCallback(() => {
     const queryCount = tabs.filter((t) => t.type === "sql").length;
