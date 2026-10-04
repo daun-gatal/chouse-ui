@@ -1,6 +1,6 @@
 # Scheduled queries
 
-Scheduled queries run SQL on a cron-style cadence — ingestion jobs, rollups, extracts — with run history, lineage and safety rails. They live in **DataOps** (`/dataops/scheduled-queries`, permissions `scheduled_queries:view`; edits need `scheduled_queries:edit`, deletes `scheduled_queries:delete`).
+Scheduled queries run SQL on a cron-style cadence — ingestion jobs, rollups, extracts — with run history, lineage and safety rails. They live in **Data** (`/data/scheduled-queries`, permissions `scheduled_queries:view`; edits need `scheduled_queries:edit`, deletes `scheduled_queries:delete`).
 
 ## Creating a job
 

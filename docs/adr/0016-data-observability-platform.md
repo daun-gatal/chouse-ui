@@ -85,9 +85,10 @@ Principles:
 
 `packages/server/src/services/observe/` replaces `fleetPoller.ts`.
 
-- **Where it runs:** always in the scheduler deployment, never in web pods.
-- **Leases:** each `(connection, collector)` pair is claimed through a row lease
-  in `obs_leases`, which replaces `fleet_poller_lease`.
+- **Where it runs:** in every server process. Each `(connection, collector)`
+  pair is claimed through a row lease, so exactly one process collects it at a
+  time (see "Changes during implementation").
+- **Leases:** row leases in `obs_leases`, which replace `fleet_poller_lease`.
 - **Watermarks:** each collector reads incrementally from an `event_time`
   watermark kept in `obs_watermarks`.
 
@@ -115,7 +116,7 @@ so granting the privileges clears the state without a re-save.
 **Bounds per connection:**
 - 5,000 fingerprints
 - a 20,000-node graph
-- 1-minute samples for 48h, then hourly rollups for 90 days
+- pipeline samples for 48h; lineage, query-shape and table evidence for 90 days
   (`OBSERVE_RETENTION_DAYS`)
 
 ### 2. Evidence store (RBAC database)
@@ -134,8 +135,9 @@ All state lives in the existing RBAC database (SQLite or PostgreSQL), bounded by
   `obs_regressions`, `obs_change_events`.
 - **Capacity:** `obs_capacity_samples`, `obs_capacity_forecasts`,
   `obs_codec_trials`, `obs_cost_rates`.
-- **Incidents:** `incident_rca` and `incident_blast_radius`, keyed to
-  `data_health_incidents` (new `incident_kind = 'engine'`).
+- **Incidents:** `obs_incidents` for pipeline, freshness, part, replication and
+  capacity incidents; `incident_rca` and `incident_blast_radius` keyed by
+  `(source, id)` to either `obs_incidents` or `data_health_incidents`.
 - **Remediation:** `remediation_actions`, `remediation_approvals`,
   `remediation_executions`.
 - **Notebooks:** `notebooks`, `notebook_cells`.
@@ -175,9 +177,12 @@ PAT-authenticated scripts keep working. A contract test pins the response shape.
 
 Deleted:
 - `services/scheduledQueries/lineage.ts`: its `query_log` attribution moves
-  into the `lineage` collector.
-- `LineageTab.tsx`: the job detail page opens the global graph focused on the
-  job node, a superset of the old tab.
+  into the `lineage` collector (`services/observe/jobLineage.ts` serves the
+  kept endpoint from the stored edges).
+
+Kept: the job detail's runtime-lineage panel stays on the endpoint above, so
+users with only `scheduled_queries:view` keep it; users with `observe:view`
+get a link into the global graph focused on the job node.
 
 ### 4. Source-agnostic pipelines
 
@@ -249,8 +254,8 @@ contract, so a pipeline is never invisible.
 | `inefficient` | small inserts, part explosion |
 | `unsupported_on_version` | required evidence missing on this server version |
 
-A status transition opens an incident (`incident_kind = 'engine'`) when the
-pipeline is upstream of a promised or critical table.
+A status transition opens an `obs_incidents` row when the pipeline feeds a
+promised, critical or important table within three hops.
 
 ### 5. Baselines, coverage, drift and usage
 
@@ -330,7 +335,7 @@ Actions come from a closed catalog: a Zod discriminated union in
 | Settings | `set_profile_setting` |
 | Merges and replicas | `optimize_partition`, `restart_replica` |
 | Schema | `add_skip_index`, `modify_ttl`, `modify_column_codec` |
-| Pipelines | `restart_engine_table` (detach/attach for any queue or object-storage engine table), `reload_dictionary`, `refresh_view` (`SYSTEM REFRESH VIEW`), `flush_distributed` (`SYSTEM FLUSH DISTRIBUTED`), `retry_failed_files` (object-storage queues) |
+| Pipelines | `restart_engine_table` (detach/attach for any queue or object-storage engine table), `reload_dictionary`, `refresh_view` (`SYSTEM REFRESH VIEW`), `flush_distributed` (`SYSTEM FLUSH DISTRIBUTED`) |
 
 **Lifecycle:** `proposed → approved → executing → executed → verified |
 failed_verification | rolled_back`.
@@ -428,7 +433,7 @@ These follow the mandatory rules in CLAUDE.md:
 - **`1.53.0` (additive):**
   - every table in §2 (`IF NOT EXISTS`)
   - the `distribution` check type
-  - `incident_kind` and RCA columns
+  - `obs_incidents` and the RCA tables
   - new permissions and default grants
 - **`1.54.0` (data):**
   - copy `fleet_poller_lease` into `obs_leases`
@@ -554,7 +559,7 @@ test that exists before the refactor starts:
 Per `.rules/HELM_CHART.md`, in the same PR:
 
 - **Deprecated (still accepted):** `FLEET_POLLER_ENABLED` and the config.yaml
-  `poller_enabled` key. Fleet collection is now always on in the scheduler. If
+  `poller_enabled` key. Fleet collection is now always on. If
   either key is set, startup logs one warning ("deprecated, ignored; see ADR
   0016") and continues. The chart README marks it deprecated. Removing the key
   is left to a future major release.
@@ -562,8 +567,8 @@ Per `.rules/HELM_CHART.md`, in the same PR:
   `OBSERVE_MAX_FINGERPRINTS`, `OBSERVE_SCRATCH_DATABASE`,
   `REMEDIATION_MAINTENANCE_WINDOW`, `SLACK_SIGNING_SECRET`, `SLACK_BOT_TOKEN`
   (with existing-secret support).
-- **Scheduler resources:** the scheduler deployment gets the collector's
-  resource requests.
+- **Scheduler resources:** unchanged; the collector runs on every pod under
+  leases, so no single deployment carries it.
 - **Ingress and NetworkPolicy:** allow Slack to reach the interactions endpoint.
 - **Chart version:** bump `version`; `appVersion` is left to automation.
 - **Chart README:** regenerated.
@@ -575,7 +580,7 @@ Nothing below is a public contract. Every removed user-facing entry point has a
 compatible replacement (§18).
 
 - `src/pages/DataOps.tsx` (the `/dataops/*` URLs redirect statically to `/data/*`).
-- `LineageTab.tsx` and `services/scheduledQueries/lineage.ts` (the REST endpoint
+- `services/scheduledQueries/lineage.ts` (the REST endpoint
   stays, §3).
 - `services/fleetPoller.ts` (its env and config keys stay accepted, §16).
 - "Advisory only" wording and code paths in the Doctor.
@@ -647,7 +652,7 @@ failure.
 
 **`e2e-observe.sh`** builds a testbed from the existing
 `testbed/scheduled-cluster-e2e` (3 nodes plus Keeper). It adds Redpanda (Kafka
-API), RabbitMQ, NATS, MinIO (S3Queue), Azurite (AzureQueue) and PostgreSQL
+API), RabbitMQ, NATS, an S3-compatible store (S3Queue), Azurite (AzureQueue) and PostgreSQL
 (MaterializedPostgreSQL and the PostgreSQL engine). It creates:
 
 - one healthy pipeline and one injected failure per adapter
@@ -741,3 +746,23 @@ every gate.
 - **A new visual shell matching the canvas pixel-for-pixel.** Rejected: it would
   regress established layouts and the three dock modes. The canvas is a content
   reference; the existing design system is the visual source of truth.
+
+## Changes during implementation
+
+Recorded before merge so the merged ADR matches what ships. None changes the
+compatibility contract (§18) or the release type.
+
+| Area | Planned | Shipped | Why |
+|---|---|---|---|
+| Collector placement (§1) | Scheduler deployment only | Every process, one lease per `(connection, collector)` | SQLite installs have no separate scheduler; leases already make collection single-writer on PostgreSQL. |
+| Incidents (§2, §4) | `incident_kind` on `data_health_incidents` | Separate `obs_incidents`; RCA keyed by `(source, id)` | Pipeline and engine incidents have no promise; overloading the promise table would break its constraints. |
+| Retention (§1) | 1-minute samples 48h, hourly rollups 90 days | Pipeline samples 48h, no rollups | Statuses and charts only read the last 48h; rollups had no reader. |
+| Remediation catalog (§8) | `retry_failed_files` | Dropped | ClickHouse has no statement to retry individual failed S3Queue/AzureQueue files; `restart_engine_table` covers re-reading. |
+| Maintenance window (§8) | Unspecified format | `HH:MM-HH:MM` in UTC (`REMEDIATION_MAINTENANCE_WINDOW`) | Validated by the server and the Helm chart. |
+| Permissions (§13) | — | `notebooks:edit` added | Writing notebook cells needed its own gate (read follows the attached incident/report). |
+| Scheduled-query lineage (§3, §17) | `LineageTab.tsx` removed | Kept on the compatible endpoint, plus a link to the global graph | `observe:view` is not granted to every `scheduled_queries:view` role; removing it would regress those users. |
+| Header layout (§14) | Pills share the title row | Same, and the pill row scrolls on one line from `lg` up | Ten Monitoring tabs no longer fit; wrapping pushed every page down. |
+| Testbed (§Gates) | MinIO for S3Queue | S3Mock | MinIO no longer publishes public images. |
+| Pipeline status (§4) | — | Queue views count progress only from runs that wrote rows; failed batches and permanently failed queue files stay visible | Found by the multi-source e2e: RabbitMQ/NATS views log empty polls as successes, and failures appear only once in the logs. |
+| RCA (§6) | — | Unknown errors no longer default to the engine layer; driver errors are external; a pipeline's engine error joins only its own chain | Found by the multi-source e2e: unrelated incidents were attributed to one view's failure. |
+
