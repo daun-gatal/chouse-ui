@@ -1,42 +1,62 @@
-# Data observability
+---
+app: Data
+route: /data
+permissions: observe:view, data_health:view, scheduled_queries:view
+---
+# How data is watched
 
-The **Data** page (`/data`) answers one question for every table on the active connection: *is the data right, right now?* It replaces DataOps — Scheduled Queries and Data Health live here too, unchanged — and adds learned baselines, pipelines, lineage, incidents with a root cause, coverage and context ([ADR 0016](https://github.com/daun-gatal/chouse-ui/blob/main/docs/adr/0016-data-observability-platform.md)). Old `/dataops/*` links redirect.
+The **Data** page answers one question for every table on the active connection: *is the data right, right now?* This page explains where its answers come from. Each tab has its own page: [Overview](/docs/data-overview/), [Incidents](/docs/data-incidents/), [Lineage](/docs/data-lineage/), [Pipelines](/docs/data-pipelines/), [Datasets & promises](/docs/data-health/), [Coverage](/docs/data-coverage/), [Context](/docs/data-context/) and [Scheduled queries](/docs/scheduled-queries/).
 
-## Tabs and permissions
+Data replaced the DataOps page in 3.14; old `/dataops/*` links redirect.
 
-| Tab | Shows | Needs |
+## The collector
+
+A collector runs inside every CHouse UI server pod. On a schedule it reads ClickHouse's own metadata for each connection and stores what it learns — the **evidence** — in the RBAC database:
+
+| Collector | Reads | Feeds |
 | --- | --- | --- |
-| **Overview** | Trusted tables, critical coverage, open incidents with their root cause, pipelines needing attention, suggested monitors, recent schema changes | `observe:view` |
-| **Incidents** | Data Health and pipeline/engine incidents in one list; the investigation view | `observe:view` or `data_health:view` |
-| **Lineage** | The warehouse graph around any table | `observe:view` |
-| **Pipelines** | Every ingestion source with one status vocabulary | `observe:view` |
-| **Datasets** | Observed tables (trust, drift, schema history, usage) · Promises · Promise health | `observe:view` (tables), `data_health:view` (promises) |
-| **Coverage** | Coverage by criticality, suggested promises, cold data | `observe:view` |
-| **Context** | Curated table context, canonical metrics, dbt import, watchers | `observe:view` (read), `context:edit` (write) |
-| **Scheduled queries** | Unchanged | `scheduled_queries:view` |
+| Catalog & tables | `system.tables`, `system.columns`, `system.parts`, `system.part_log` | Freshness, volume, schema history |
+| Usage & queries | `system.query_log` | Criticality, read patterns, lineage from `INSERT … SELECT`, performance baselines |
+| Pipelines | Engine-specific system tables (Kafka, S3Queue, views, …) | [Pipeline status](/docs/data-pipelines/) |
+| Changes & capacity | Settings, versions, DDL, `system.disks` | Change timeline, [capacity forecasts](/docs/monitoring-capacity/) |
+| Profiles | A 0.1% sample of critical tables | Column distribution drift |
+| Fleet | `system.metrics`, `system.processes`, … | [Fleet](/docs/fleet/) and alerts |
 
-Every evidence query respects your data access rules: a table you cannot read never appears, not even as a lineage node or in someone else's query text.
+It never runs `SELECT *` over your data; only the profiler reads table rows, and only a small sample of the tables that matter most. A lease per connection and collector means each piece of work runs on one pod at a time, however many replicas you run.
 
-## How tables are watched without scanning them
+Evidence queries respect [data access rules](/docs/data-access-rules/): a table you can't read never appears, not even as a lineage node or inside someone else's query text.
 
-A collector on the server reads ClickHouse metadata on a cadence — `system.parts` and `part_log` for writes, `query_log` for reads — and learns, per table:
+## What every table gets, from day one
 
-- **Freshness** — the normal gap between writes (p50/p99), so "stale" means stale *for this table*
-- **Volume** — an hourly band; a quiet hour outside it marks the table **degraded**
-- **Criticality** — from real read volume (pin it on the dataset page with `observe:edit`)
+Without any setup, each table learns:
 
-Tables move through **learning → trusted**, and to **degraded** or **stale** when the evidence says so. Critical and important tables are also profiled on a 0.1% sample (null ratio, distinct count, p50/p95) to catch distribution drift such as prices suddenly 100× larger.
+- **Freshness** — its normal gap between writes (p50 and p99), so *stale* means stale **for this table**.
+- **Volume** — an hourly band of rows written; an hour well outside it marks the table *degraded*.
+- **Criticality** — *critical*, *important* or *normal*, from how much it is actually read. Pin it by hand on the table's detail view (needs `observe:edit`).
 
-The collector needs read access to the system tables it uses. Saving a connection never fails because of missing grants; **Admin › Connections › Edit › Check privileges** lists what is missing and the exact `GRANT` statements.
+Each table has a **trust state**:
 
-## Coverage and suggestions
+| State | Meaning |
+| --- | --- |
+| **learning** | Not enough history yet to judge |
+| **trusted** | Writes and volume are within the learned baseline |
+| **degraded** | Volume is outside the learned band |
+| **stale** | No write for longer than the table normally goes without one |
 
-Every table has a learned baseline from day one. **Promises** add explicit intent on top ([Data health](/docs/data-health/)). Coverage ranks read-heavy tables without a promise and turns each into a suggestion; **Accept** opens the promise wizard pre-filled (needs `data_health:edit`), **Dismiss** hides it (`observe:edit`).
+[Promises](/docs/data-health/) add explicit expectations on top — "loaded by 07:00", "no duplicate order ids" — when the learned baseline isn't enough.
 
-## Context and watchers
+## Grant the collector what it needs
 
-Context tells people and agents what a table means: description, grain, owner, "use this instead", tags, and canonical metrics (`gmv = sumIf(amount, status = 'paid')`). Import descriptions from a dbt `manifest.json`. Agents read it through the MCP `get_table_context` and `get_metric` tools.
+The connection's ClickHouse user must be able to read the system tables above. Saving a connection never fails because of a missing grant; instead, **Admin › Connections › Edit › Check privileges** lists what is missing and the exact `GRANT` statements to run. A missing grant shows up as *unsupported* or missing evidence for the features that need it.
 
-A **watcher** is a sentence — *"tell me when checkout orders drop more than 30% compared with the same hour last week"* — that Chouse AI compiles into a Data Health promise draft you review in the wizard (needs `data_health:edit` and `ai:optimize`).
+Collector health is shown as a chip on the Data page header. Settings that tune it (`OBSERVE_*`) are on [Environment variables](/docs/configuration-env/#data-observability).
 
-See also: [Pipelines & lineage](/docs/data-pipelines-lineage/), [Incidents, root cause & fixes](/docs/data-incidents/).
+## Permissions
+
+| Tab | Needs any of |
+| --- | --- |
+| Overview, Lineage, Pipelines, Coverage, Context | `observe:view` |
+| Incidents, Datasets | `observe:view`, `data_health:view` |
+| Scheduled queries | `scheduled_queries:view` |
+
+Changing things needs more: `observe:edit` (criticality, dismissing suggestions, pipeline incidents), `context:edit` (table context and metrics), `data_health:edit` (promises), and the `remediation:*` permissions for [fixes](/docs/data-incidents/#fixes-with-approval).

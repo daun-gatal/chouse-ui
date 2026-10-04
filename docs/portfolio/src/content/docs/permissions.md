@@ -1,125 +1,248 @@
-# Permission catalog
+---
+generated: packages/server/src/rbac/schema/base.ts and rbac/services/seed.ts
+---
+Every permission in CHouse UI, grouped the way **Admin › Roles** groups them, with the built-in roles that hold it by default. The server checks the permission on every API, MCP and CLI request; the app hides what the signed-in user cannot use.
 
-Every permission string in CHouse UI, grouped by area. Permissions are checked on each request; tabs and actions are shown only when the current user holds the required grant.
+> **Note:** A permission opens a feature, not data. Which databases and tables a user can touch is decided separately by [data access rules](/docs/data-access-rules/), and ClickHouse still enforces the grants of the connection's own user.
 
-## User management
+## Built-in roles
 
-| Permission | Grants |
-| --- | --- |
-| `users:view` | List users |
-| `users:create` | Create users |
-| `users:update` | Edit users |
-| `users:delete` | Delete users |
+| Role | ID | For | Permissions |
+| --- | --- | --- | --- |
+| Super Administrator | `super_admin` | Full system access with all permissions | 104 |
+| Administrator | `admin` | User management and full ClickHouse access | 90 |
+| Developer | `developer` | DDL and DML access for development | 38 |
+| Analyst | `analyst` | Read/write access for data analysis | 24 |
+| Viewer | `viewer` | Read-only access to data | 14 |
+| Guest | `guest` | Read-only access to all tabs and data | 20 |
 
-## Role management
+Built-in roles can't be deleted, and only a super admin can change their permissions — the ticks below are the defaults a fresh install starts with. Create your own roles in **Admin › Roles** from any mix of the permissions below — see [Users & roles](/docs/rbac-roles/).
 
-| Permission | Grants |
-| --- | --- |
-| `roles:view` / `roles:create` / `roles:update` / `roles:delete` | Manage roles |
-| `roles:assign` | Assign roles to users |
+## User Management
 
-## Data access
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `users:view` | View Users | ✓ | ✓ |   |   |   | ✓ |
+| `users:create` | Create Users | ✓ | ✓ |   |   |   |   |
+| `users:update` | Update Users | ✓ | ✓ |   |   |   |   |
+| `users:delete` | Delete Users | ✓ | ✓ |   |   |   |   |
 
-| Permission | Grants |
-| --- | --- |
-| `data_access:view` | View data access rules |
-| `data_access:create` / `update` / `delete` | Manage rules |
-| `data_access:assign` | Assign rules to subjects |
+## Role Management
 
-## ClickHouse user management
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `roles:view` | View Roles | ✓ | ✓ |   |   |   | ✓ |
+| `roles:create` | Create Roles | ✓ |   |   |   |   |   |
+| `roles:update` | Update Roles | ✓ |   |   |   |   |   |
+| `roles:delete` | Delete Roles | ✓ |   |   |   |   |   |
+| `roles:assign` | Assign Roles | ✓ | ✓ |   |   |   |   |
 
-| Permission | Grants |
-| --- | --- |
-| `clickhouse:users:view` / `create` / `update` / `delete` | Manage native ClickHouse users |
-| `clickhouse:roles:view` / `create` / `update` / `delete` / `assign` | Manage native ClickHouse roles |
+## Data Access Policies
 
-## Connections
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `data_access:view` | View Data Access Policies | ✓ | ✓ |   |   |   | ✓ |
+| `data_access:create` | Create Data Access Policies | ✓ | ✓ |   |   |   |   |
+| `data_access:update` | Update Data Access Policies | ✓ | ✓ |   |   |   |   |
+| `data_access:delete` | Delete Data Access Policies | ✓ | ✓ |   |   |   |   |
+| `data_access:assign` | Assign Data Access Policies to Roles | ✓ | ✓ |   |   |   |   |
 
-| Permission | Grants |
-| --- | --- |
-| `connections:view` | List connections |
-| `connections:edit` | Add/edit connections |
-| `connections:delete` | Remove connections |
+## ClickHouse Users
 
-## Explorer / database & tables
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `clickhouse:users:view` | View ClickHouse Users | ✓ | ✓ |   |   |   | ✓ |
+| `clickhouse:users:create` | Create ClickHouse Users | ✓ | ✓ |   |   |   |   |
+| `clickhouse:users:update` | Update ClickHouse Users | ✓ | ✓ |   |   |   |   |
+| `clickhouse:users:delete` | Delete ClickHouse Users | ✓ | ✓ |   |   |   |   |
 
-| Permission | Grants |
-| --- | --- |
-| `database:view` / `create` / `drop` | Inspect / create / drop databases |
-| `table:view` / `create` / `alter` / `drop` | Table lifecycle |
-| `table:select` / `insert` / `update` / `delete` | Row-level DML |
+## ClickHouse Roles
 
-## Queries
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `clickhouse:roles:view` |   | ✓ | ✓ |   |   |   | ✓ |
+| `clickhouse:roles:create` |   | ✓ | ✓ |   |   |   |   |
+| `clickhouse:roles:update` |   | ✓ | ✓ |   |   |   |   |
+| `clickhouse:roles:delete` |   | ✓ | ✓ |   |   |   |   |
+| `clickhouse:roles:assign` |   | ✓ | ✓ |   |   |   |   |
 
-| Permission | Grants |
-| --- | --- |
-| `query:execute` | Run queries |
-| `query:execute:ddl` | Run DDL |
-| `query:execute:dml` | Run DML |
-| `query:history:view` | View own query history |
-| `query:history:view:all` | View all users' history |
+## Database Operations
 
-## Saved queries
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `database:view` | View Databases | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `database:create` | Create Databases | ✓ | ✓ | ✓ |   |   |   |
+| `database:drop` | Drop Databases | ✓ | ✓ | ✓ |   |   |   |
 
-| Permission | Grants |
-| --- | --- |
-| `saved_queries:view` / `create` / `update` / `delete` | Manage saved queries |
-| `saved_queries:share` | Share saved queries |
+## Table Operations
 
-## Monitoring (per-tab view grants)
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `table:view` | View Tables | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `table:create` | Create Tables | ✓ | ✓ | ✓ |   |   |   |
+| `table:alter` | Alter Tables | ✓ | ✓ | ✓ |   |   |   |
+| `table:drop` | Drop Tables | ✓ | ✓ | ✓ |   |   |   |
+| `table:select` | Select from Tables | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `table:insert` | Insert into Tables | ✓ | ✓ | ✓ | ✓ |   |   |
+| `table:update` | Update Tables | ✓ | ✓ | ✓ | ✓ |   |   |
+| `table:delete` | Delete from Tables | ✓ | ✓ | ✓ | ✓ |   |   |
 
-| Permission | Tab |
-| --- | --- |
-| `metrics:view` / `metrics:view:advanced` | Metrics (advanced for the deeper tabs) |
-| `logs:view` | Query logs |
-| `parts:view` | Parts |
-| `schema_advisor:view` | Schema advisor |
-| `cluster:view` | Cluster activity |
-| `errors:view` | Errors |
-| `live_queries:view` | Live queries |
-| `live_queries:kill` | Kill a query |
-| `live_queries:kill_all` | Kill all queries |
+## Query Operations
 
-## Fleet & Chouse AI
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `query:execute` | Execute Queries | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `query:execute:ddl` | Execute DDL Queries | ✓ | ✓ | ✓ |   |   |   |
+| `query:execute:dml` | Execute DML Queries | ✓ | ✓ | ✓ | ✓ |   |   |
+| `query:execute:misc` | Execute Misc Queries (SHOW, DESCRIBE) | ✓ | ✓ | ✓ | ✓ |   |   |
+| `query:history:view` | View Own Query History | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `query:history:view:all` | View All Query History | ✓ | ✓ |   |   |   |   |
 
-| Permission | Grants |
-| --- | --- |
-| `fleet:view` | Fleet view |
-| `doctor:view` | View Fleet Doctor reports |
-| `doctor:run` | Trigger scans / manage schedules |
-| `ai:optimize` | In-tab Optimize / Fix / Diagnose |
-| `ai:chat` | AI chat assistant |
-| `ai_models:view` / `create` / `update` / `delete` | Manage AI providers/models |
+## Saved Queries
 
-## Data observability, remediation & agents
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `saved_queries:view` | View Saved Queries | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `saved_queries:create` | Create Saved Queries | ✓ | ✓ | ✓ | ✓ |   |   |
+| `saved_queries:update` | Update Saved Queries | ✓ | ✓ | ✓ | ✓ |   |   |
+| `saved_queries:delete` | Delete Saved Queries | ✓ | ✓ | ✓ | ✓ |   |   |
+| `saved_queries:share` | Share Saved Queries | ✓ | ✓ |   |   |   |   |
 
-| Permission | Grants | Default roles |
-| --- | --- | --- |
-| `observe:view` | Data overview, lineage, pipelines, datasets, coverage, context (read) | Admin, Developer, Analyst, Viewer |
-| `observe:edit` | Pin criticality, dismiss suggestions, acknowledge pipeline incidents, recompute root cause | Admin, Developer |
-| `context:edit` | Curated context, canonical metrics, dbt import | Admin, Developer |
-| `performance:view` | Monitoring › Performance | Admin, Developer, Analyst, Viewer |
-| `capacity:view` | Monitoring › Capacity | Admin, Developer |
-| `cost:view` | Cost by consumer (rates also need `settings:update`) | Admin, Developer |
-| `upgrades:view` / `upgrades:run` | Upgrade assessments / run checks, canary replay, codec trials | Admin, Developer (view) |
-| `remediation:propose` | Propose fixes from the catalog | Admin, Developer |
-| `remediation:approve` / `remediation:approve_high` | Approve standard / high-impact fixes (two approvers) | Admin |
-| `schema:override` | Run DDL that breaks dependents after confirming | Admin |
-| `notebooks:edit` | Add and remove cells in investigation notebooks | Admin, Developer |
-| `agents:view` / `agents:manage` | Agents page / budget policies and the pause switch | Admin, Developer (view) |
+## Metrics & Monitoring
 
-Evidence about a table is shown only to users whose [data access rules](/docs/data-access-rules/) allow that table; other users' query text needs `query:history:view:all`.
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `metrics:view` | View Metrics | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `metrics:view:advanced` | View Advanced Metrics | ✓ | ✓ |   |   |   | ✓ |
+| `logs:view` | View Query Logs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `parts:view` | View Parts & Partitions | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `schema_advisor:view` | View Schema Advisor | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `cluster:view` | View Cluster | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `errors:view` | View Errors | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-## System & settings
+## Fleet Monitoring
 
-| Permission | Grants |
-| --- | --- |
-| `settings:view` / `settings:update` | App settings |
-| `audit:view` / `audit:export` / `audit:delete` | Audit log |
-| `sso:view` / `sso:edit` / `sso:delete` | SSO admin |
-| `alerting:view` / `alerting:edit` / `alerting:delete` | Alerting config |
-| `scheduled_queries:view` / `edit` / `delete` | Scheduled queries |
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `fleet:view` | View Fleet | ✓ |   |   |   |   |   |
+| `doctor:view` | View Chouse AI Doctor | ✓ |   |   |   |   |   |
+| `doctor:run` | Run Chouse AI Doctor Scan | ✓ |   |   |   |   |   |
 
-## How roles map to permissions
+## Settings
 
-Roles bundle permissions; Super Admin holds all. To see effective grants for a role, open **Admin → Roles**. Custom roles can mix any of the above — see [Users & roles](/docs/rbac-roles/).
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `settings:view` | View Settings | ✓ | ✓ |   |   |   | ✓ |
+| `settings:update` | Update Settings | ✓ | ✓ |   |   |   |   |
+
+## Audit
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `audit:view` | View Audit Logs | ✓ | ✓ |   |   |   | ✓ |
+| `audit:export` | Export Audit Logs | ✓ |   |   |   |   |   |
+| `audit:delete` | Delete Audit Logs | ✓ |   |   |   |   |   |
+
+## Live Query Management
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `live_queries:view` | View Live Queries | ✓ | ✓ |   |   |   |   |
+| `live_queries:kill` | Kill Own Live Queries | ✓ | ✓ |   |   |   |   |
+| `live_queries:kill_all` | Kill All Live Queries | ✓ | ✓ |   |   |   |   |
+
+## Connection Management
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `connections:view` | View Connections | ✓ |   |   |   |   |   |
+| `connections:edit` | Edit Connections | ✓ |   |   |   |   |   |
+| `connections:delete` | Delete Connections | ✓ |   |   |   |   |   |
+
+## AI Assistant
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ai:optimize` | AI Query Optimization | ✓ | ✓ | ✓ | ✓ |   |   |
+| `ai:chat` | AI Chat Assistant | ✓ | ✓ | ✓ | ✓ |   |   |
+
+## AI Models Management
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ai_models:view` | View AI Models | ✓ | ✓ |   |   |   |   |
+| `ai_models:create` | Create AI Models | ✓ | ✓ |   |   |   |   |
+| `ai_models:update` | Update AI Models | ✓ | ✓ |   |   |   |   |
+| `ai_models:delete` | Delete AI Models | ✓ | ✓ |   |   |   |   |
+
+## SSO Management
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sso:view` | View SSO Configuration | ✓ | ✓ |   |   |   |   |
+| `sso:edit` | Edit SSO Configuration | ✓ |   |   |   |   |   |
+| `sso:delete` | Delete SSO Providers | ✓ |   |   |   |   |   |
+
+## Alerting
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `alerting:view` | View Alerting Configuration | ✓ | ✓ |   |   |   |   |
+| `alerting:edit` | Edit Alerting Configuration | ✓ | ✓ |   |   |   |   |
+| `alerting:delete` | Delete Alerting Configuration | ✓ |   |   |   |   |   |
+
+## Scheduled Queries
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `scheduled_queries:view` | View Scheduled Queries | ✓ | ✓ |   |   |   |   |
+| `scheduled_queries:edit` | Create and Edit Scheduled Queries | ✓ | ✓ |   |   |   |   |
+| `scheduled_queries:delete` | Delete Scheduled Queries | ✓ | ✓ |   |   |   |   |
+| `scheduled_queries:run` | Manually Run Scheduled Queries | ✓ | ✓ |   |   |   |   |
+| `scheduled_queries:write` | Create Materialize Scheduled Queries | ✓ | ✓ |   |   |   |   |
+| `scheduled_queries:view_all` | View and Act on All Scheduled Queries | ✓ | ✓ |   |   |   |   |
+
+## Data Health
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `data_health:view` | View Data Health | ✓ | ✓ |   |   |   |   |
+| `data_health:edit` | Create and Edit Data Health Promises | ✓ | ✓ |   |   |   |   |
+| `data_health:delete` | Delete Data Health Promises | ✓ | ✓ |   |   |   |   |
+| `data_health:run` | Manually Run Data Health Promises | ✓ | ✓ |   |   |   |   |
+| `data_health:view_all` | View and Act on All Data Health Promises | ✓ | ✓ |   |   |   |   |
+
+## Data Observability
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `observe:view` | View Data Observability | ✓ | ✓ | ✓ | ✓ | ✓ |   |
+| `observe:edit` | Accept Monitoring Suggestions and Pin Criticality | ✓ | ✓ | ✓ |   |   |   |
+| `context:edit` | Edit Table Context and Metrics | ✓ | ✓ | ✓ |   |   |   |
+| `schema:override` | Run Schema Changes That Break Dependents | ✓ | ✓ |   |   |   |   |
+| `notebooks:edit` | Add Cells to Investigation Notebooks | ✓ | ✓ | ✓ |   |   |   |
+
+## Performance & Capacity
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `performance:view` | View Query Performance | ✓ | ✓ | ✓ | ✓ | ✓ |   |
+| `capacity:view` | View Capacity | ✓ | ✓ | ✓ |   |   |   |
+| `cost:view` | View Cost | ✓ | ✓ | ✓ |   |   |   |
+| `upgrades:view` | View Upgrade Readiness | ✓ | ✓ | ✓ |   |   |   |
+| `upgrades:run` | Run Upgrade Replays and Codec Trials | ✓ | ✓ |   |   |   |   |
+
+## Remediation
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `remediation:propose` | Propose Remediation Actions | ✓ | ✓ | ✓ |   |   |   |
+| `remediation:approve` | Approve Remediation Actions | ✓ | ✓ |   |   |   |   |
+| `remediation:approve_high` | Approve High-Risk Remediation Actions | ✓ | ✓ |   |   |   |   |
+
+## Agents
+
+| Permission | Allows | Super Admin | Admin | Developer | Analyst | Viewer | Guest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `agents:view` | View Agent Activity | ✓ | ✓ | ✓ |   |   |   |
+| `agents:manage` | Manage Agent Policies | ✓ | ✓ |   |   |   |   |

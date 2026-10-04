@@ -16,6 +16,8 @@ on:
       - .github/workflows/cli.yml
       - .github/workflows/cli-release.yml
       - .github/workflows/ci.yml
+      # The docs CLI reference snapshot is checked by TestCommandReference.
+      - docs/portfolio/src/content/reference/cli.json
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -217,7 +217,7 @@ authenticated with a personal access token. It is off until an administrator
 turns it on in **Agents › MCP**, where each tool is switched on or off:
 read-only tools are on by default, anything that changes or deletes things
 stays off until turned on, and destructive tools require in-host human
-approval. See [`docs/mcp.md`](docs/mcp.md),
+approval. See the [MCP docs](https://chouse-ui.com/docs/mcp/),
 [ADR 0013](docs/adr/0013-chouse-mcp.md) and
 [ADR 0017](docs/adr/0017-mcp-managed-in-the-ui.md).
 

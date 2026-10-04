@@ -1,3 +1,8 @@
+---
+app: Explorer › SQL tabs
+route: /explorer
+permissions: query:execute
+---
 # SQL editor
 
 The workspace editor is a Monaco-based SQL editor with schema-aware completion, per-query execution statistics and full history. Requires `query:execute`; DDL/DML need the extra `query:execute:ddl` / `query:execute:dml` grants.

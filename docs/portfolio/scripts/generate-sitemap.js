@@ -54,13 +54,6 @@ const sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>
     <priority>1.0</priority>
   </url>
   
-  <!-- Documentation (external link, but good to have) -->
-  <url>
-    <loc>${siteUrl}/docs/</loc>
-    <lastmod>${lastMod}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
 ${docsPagesXml}
 </urlset>`;
 

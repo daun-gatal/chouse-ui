@@ -1,6 +1,11 @@
+---
+app: Monitoring › Query logs, Errors and Parts
+route: /monitoring
+permissions: ai:optimize
+---
 # Chouse AI in-tab
 
-The same read-only AI engine that powers the [Fleet Doctor](/docs/ai-fleet-doctor/) is surfaced *inside the monitoring tabs* — so you fix a problem without leaving the tab you found it in. Gated by `ai:optimize`.
+Chouse AI is built into three Monitoring tabs, so you can work on a problem without leaving the row you found it on. It needs `ai:optimize` and a configured [AI model](/docs/ai-models/).
 
 ## The three actions
 
@@ -33,12 +38,11 @@ The classic flow — copy an error into a chatbot, paste back a guess, hunt for 
 | --- | --- |
 | Read-only | `readonly=1`, single-SELECT tool surface, `system.*` only |
 | Advisory only | Suggestions require human review before anything runs |
-| Auditable | Usage lands in the [audit log](/docs/audit-log/) |
 | Spend-gated | `ai:optimize` controls who can invoke it; provider budgets apply |
 
 ## Provider setup
 
-Uses the same providers as [AI Assist](/docs/workspace-ai-assist/) — configure under **Admin → AI models**. No provider configured = AI actions hidden.
+Uses the same models as [AI Assist](/docs/workspace-ai-assist/), configured in [AI models](/docs/ai-models/). With no active deployment, the AI actions are hidden.
 
 ## Quick tour
 

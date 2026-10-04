@@ -1,41 +1,34 @@
-# DataOps AI
+---
+app: Data › Scheduled queries and Data › Datasets (detail pages)
+permissions: ai:optimize
+---
+# Operational brief
 
-DataOps AI is the summarization layer over the DataOps suite: an AI-generated **operational brief** of what happened across your scheduled jobs and data-health incidents, right where you look at them.
+The **AI operational brief** is a card on each [scheduled query](/docs/scheduled-queries/)'s page and each [promise](/docs/data-health/)'s page. Chouse AI reads that job's or promise's definition and its recent runs, evaluations and incidents, and writes a short summary of what's going on and what to do next. It needs `ai:optimize` and a configured [AI model](/docs/ai-models/).
 
-## What it does
+## What it shows
 
-| Surface | AI role |
+| Section | Shows |
 | --- | --- |
-| **Operational brief card** | One card summarizing job runs + promise status: what succeeded, what's drifting, what needs a human |
-| **Insight dialog** (`AiInsightDialog`) | Deep-dive on a specific run or incident: why it likely failed and what to check |
-| **Model button** | Pick the provider/model per insight — same selector UX as [AI Assist](/docs/workspace-ai-assist/) |
+| **Observed facts** | What the evidence says — failed or slow runs, breaches, gaps |
+| **Impact** | What is affected downstream |
+| **Blockers** and **Warnings** | What needs attention now, and what to watch |
+| **Recommendations** and **Safe next actions** | Concrete steps, in order |
+| **Evidence and freshness** | The runs and incidents it was based on, and how current they are |
+
+Investigations of a specific run or incident open in a dialog with the same sections.
+
+## Using it
+
+- **Refresh AI brief** regenerates it from the latest evidence.
+- **Useful?** — mark it useful or not; the feedback helps tune it.
+- The model button on Data pages picks the AI model for every AI feature there; your choice is stored for you. *System default* uses the default [deployment](/docs/ai-models/#3-create-a-deployment).
 
 ## What it sees
 
-The same telemetry the DataOps tabs already have: job definitions, run history, statuses, error text, promise evaluations and incidents. It does **not** see data rows — consistent with the read-only posture of all Chouse AI surfaces.
-
-## Reading the brief
-
-The brief is ordered by action-worthiness:
-
-1. **Broken promises / failed jobs** — act now
-2. **Drifting trends** (volume shrinking, durations growing) — watch
-3. **Healthy confirmation** — skim and move on
-
-Each insight links back to the underlying run/incident for verification — the AI proposes; the tabs prove.
-
-## Setup
-
-- Requires AI providers configured — see [AI Assist](/docs/workspace-ai-assist/) (Admin → AI models)
-- Runs under the DataOps access permissions; usage is [audited](/docs/audit-log/)
-- Spends provider tokens per insight — the same budget controls apply
+Job and promise definitions, run history, statuses and error text, evaluations and incidents. It doesn't read rows from your tables. If the AI is unavailable, the card says so and the rest of the page works as usual.
 
 ## Related
 
-| Feature | Relationship |
-| --- | --- |
-| [Fleet Doctor](/docs/ai-fleet-doctor/) | Cluster-level AI SRE; DataOps AI is the data-pipeline counterpart |
-| [In-tab AI](/docs/ai-in-tab/) | Query-level diagnosis; DataOps AI is job/pipeline-level |
-| [Data health](/docs/data-health/) | The signals the AI summarizes |
-
-> **Tip:** The brief is the fastest morning stand-up artifact: one card, one paragraph, one set of links into the tabs that matter.
+- [Incidents, root cause & fixes](/docs/data-incidents/) — the cross-layer investigation with Chouse AI's explanation
+- [Doctor](/docs/doctor/) — the AI health check for whole servers

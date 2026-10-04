@@ -1,63 +1,61 @@
 # Migrations & upgrades
 
-Database migrations run **automatically on server startup** — no manual intervention required.
+CHouse UI migrates its own database automatically when it starts. Upgrading is: back up, replace the image, watch the logs.
 
-## What happens on boot
+## What happens when the server starts
 
-| Scenario | Behavior |
+| Situation | What happens |
 | --- | --- |
-| **Fresh install** | Creates schema, seeds roles/permissions/admin user |
-| **Version upgrade** | Applies only pending migrations |
-| **Normal restart** | No migrations needed |
+| **Fresh install** | Creates the schema, the built-in roles and permissions, and the first-run admin (`RBAC_ADMIN_*`) |
+| **Upgrade** | Applies only the migrations the database hasn't had, in order — including the default grants of new permissions to the built-in roles |
+| **Restart** | Nothing to do |
 
-Verification after any boot:
-
-```bash
-docker logs chouse-ui | grep RBAC
-```
-
-## Upgrading (Docker)
+Migrations work on SQLite and PostgreSQL, forward only. With several replicas on PostgreSQL, one pod migrates while the others wait on a lock, so starting them together is safe. Skipping releases is fine: an old install jumps straight to the latest schema.
 
 ```bash
-docker pull ghcr.io/daun-gatal/chouse-ui:latest
-docker-compose up -d
-docker logs chouse-ui | grep RBAC   # confirm migrations applied
+docker logs chouse-ui 2>&1 | grep RBAC      # Docker
+kubectl logs deploy/chouse-ui | grep RBAC   # Kubernetes
 ```
 
-## Upgrading (Helm)
+## Upgrade checklist
+
+1. **Read [What's new](/docs/whats-new/)** and the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md) for every release you are crossing — especially *Removed* and *Changed*.
+2. **Back up** the RBAC database: a PostgreSQL dump, or the `/app/data` directory for SQLite. Keep `RBAC_ENCRYPTION_KEY` and `RBAC_ENCRYPTION_SALT` with it — a backup is useless without them.
+3. **Replace the image** and start it:
+
+   :::tabs
+   @tab Docker
+   ```bash
+   docker pull ghcr.io/daun-gatal/chouse-ui:latest
+   docker compose up -d
+   ```
+   @tab Helm
+   ```bash
+   helm upgrade chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui --reuse-values
+   ```
+   :::
+
+4. **Watch the `RBAC` log lines** until migrations finish.
+5. **Smoke-test**: sign in, run a query, open Monitoring and Data.
+
+If a migration fails, restore the backup, start the previous image, and [open an issue](https://github.com/daun-gatal/chouse-ui/issues) with the log.
+
+## Maintenance commands
+
+For scripted installs or recovery, the server package has an RBAC CLI (run in `packages/server`, or `docker exec` into the container with the same environment as the server):
 
 ```bash
-helm upgrade chouse-ui oci://ghcr.io/daun-gatal/charts/chouse-ui \
-  --reuse-values
-kubectl logs deploy/chouse-ui | grep RBAC
+bun run rbac:status    # migration state
+bun run rbac:version   # schema version
+bun run rbac:migrate   # apply pending migrations now
+bun run rbac:seed      # create missing built-in roles and the first-run admin
+CONFIRM_RESET=yes bun run rbac:reset   # wipe the RBAC database — destroys all users, connections and settings
 ```
 
-## CLI maintenance tools
+> **Warning:** `rbac:reset` deletes everything CHouse UI stores. It refuses to run unless `CONFIRM_RESET=yes` is set.
 
-Manual migration control (packages/server scripts):
+## Releases
 
-```bash
-bun run rbac:status    # current migration state
-bun run rbac:migrate   # apply pending migrations manually
-bun run rbac:seed      # re-seed roles/permissions/admin
-```
-
-Use the CLI tools when scripted installs need explicit migration control; the automatic path covers normal operation.
-
-## Release cadence
-
-- Releases are cut automatically from `main` ([auto-release](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md)); the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md) lists every migration-affecting change under **Changed/Added**
-- The CLI ships independently (`cli-v*` tags) — see [CLI](/docs/cli/)
-
-## Safe-upgrade checklist
-
-1. Read the changelog entry for the target version
-2. Back up the RBAC database (and `/app/data` if SQLite)
-3. Pull + restart, watch `RBAC` log lines
-4. Smoke-test: login, run a query, open a monitoring tab
-5. If a migration fails: restore the DB backup, restart the previous image version, and [open an issue](https://github.com/daun-gatal/chouse-ui/issues)
-
-## RBAC storage and HA
-
-- **SQLite**: file under `/app/data` — single instance only
-- **PostgreSQL**: migrations apply once; replicas start against the migrated schema — see [Helm chart](/docs/deploy-helm/) topology
+- The server image, the Helm chart and the CLI are versioned separately: image `v3.x`, chart `2.x` (with `appVersion` matching the image), CLI `cli-v1.x`.
+- Every release lists its changes in the [changelog](https://github.com/daun-gatal/chouse-ui/blob/main/CHANGELOG.md). Breaking changes are called out under *Removed* and *Changed*, with what to do.
+- The CLI checks the server version: `chouse status` tells you whether your CLI supports the server.

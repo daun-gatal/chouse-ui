@@ -17,10 +17,8 @@ import { Section, Container, SectionHeader, CodeBlock, SecondaryAction, Tag } fr
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
-const MCP_REFERENCE_URL =
-  "https://github.com/daun-gatal/chouse-ui/blob/main/docs/mcp.md";
-const CLI_REFERENCE_URL =
-  "https://github.com/daun-gatal/chouse-ui/blob/main/docs/cli.md";
+const MCP_REFERENCE_URL = "/docs/mcp/";
+const CLI_REFERENCE_URL = "/docs/cli/";
 const MCP_LAB_UI_URL = "https://lab.chouse-ui.com";
 
 const CLI_INSTALL = `curl -sSL https://github.com/daun-gatal/chouse-ui/releases/latest/download/install-cli.sh | bash
@@ -87,9 +85,10 @@ const STEPS: Step[] = [
     title: "MCP server",
     description: (
       <>
-        A Model Context Protocol endpoint any agent can operate — read-only by
-        default, destructive tools always need human approval in the agent
-        host. Works with the hosted lab — see below — or your own deployment.
+        A Model Context Protocol endpoint at <code>/mcp</code> on your own
+        address, turned on tool by tool in Agents › MCP — reads on, everything
+        else off — with budgets, health notices and a pause switch for every
+        agent. Try it on the hosted lab below, or your own deployment.
       </>
     ),
     body: (
@@ -240,12 +239,20 @@ export default function Automate() {
 
         <div className="mt-16 flex flex-col items-start gap-3 border-t border-ink-500 pt-10">
           <div className="flex flex-wrap items-center gap-3">
-            <SecondaryAction href={MCP_REFERENCE_URL} target="_blank" rel="noreferrer">
-              MCP reference
+            <SecondaryAction href={MCP_REFERENCE_URL}>
+              MCP guide
               <ArrowUpRight className="h-4 w-4" aria-hidden />
             </SecondaryAction>
-            <SecondaryAction href={CLI_REFERENCE_URL} target="_blank" rel="noreferrer">
-              CLI reference
+            <SecondaryAction href="/docs/mcp-tools/">
+              MCP tool catalog
+              <ArrowUpRight className="h-4 w-4" aria-hidden />
+            </SecondaryAction>
+            <SecondaryAction href={CLI_REFERENCE_URL}>
+              CLI guide
+              <ArrowUpRight className="h-4 w-4" aria-hidden />
+            </SecondaryAction>
+            <SecondaryAction href="/docs/agents/">
+              Agent governance
               <ArrowUpRight className="h-4 w-4" aria-hidden />
             </SecondaryAction>
           </div>

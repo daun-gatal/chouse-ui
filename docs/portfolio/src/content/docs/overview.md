@@ -1,38 +1,36 @@
-CHouse UI is the team operator's console for on-prem ClickHouse. Most tools nail one piece — a query workspace, a dashboard, an AI assistant, a cluster monitor. CHouse UI is the **combination**: a team access layer (app-level RBAC, audit logging, and encrypted server-side credentials so the browser never sees a password), multi-cluster fleet monitoring with Slack/email alerts, and **Chouse AI** — an autonomous, read-only SRE that runs root-cause scans, optimizes queries and diagnoses errors right in the monitoring tabs.
+CHouse UI is a self-hosted web console for operating ClickHouse as a team. It gives everyone one place to query and explore, watches the clusters **and the data in them**, traces problems to their root cause, and fixes them — but only after a person approves. AI agents and scripts use the same server, under the same rules.
 
-Open source under Apache 2.0, self-hosted, no exporter or agent required on your clusters.
+Open source under Apache 2.0. It runs next to your clusters with nothing to install on them: CHouse UI only needs a ClickHouse user to connect with.
 
 ## Capability matrix
 
-| Capability | What you get |
+| Area | What you get |
 | --- | --- |
-| **Credential management** | AES-256-GCM encrypted server-side storage — the browser never sees a password |
-| **Architecture** | Secure backend proxy — no direct browser-to-ClickHouse |
-| **Access control** | Full RBAC: six roles, granular permission strings, per-user/role data access rules |
-| **Multi-connection** | Manage many ClickHouse servers from one UI; fleet view monitors them all at once |
-| **Audit trail** | Every action and query logged with actor, connection and timestamp |
-| **Monitoring** | ClickHouse-native observability — query logs, memory breakdown, top-resource queries, replica lag, parts/merges, schema lints |
-| **Fleet view** | Every cluster in one pane with per-card polling, status/memory/lag and drill-down |
-| **Data observability** | Learned freshness and volume baselines for every table, every ingestion source in one status vocabulary, lineage, cross-layer root cause and approved fixes |
-| **Agent governance** | Dataset health, lineage and context for MCP agents; budgets checked before queries run; a pause switch |
-| **Chouse AI (SRE)** | Read-only diagnostics: fleet root-cause scans with auto-RCA to Slack/email, in-tab query optimization (before → after EXPLAIN), error/parts diagnosis |
+| **Query & explore** | [SQL editor](/docs/workspace-editor/) with schema-aware completion, [Visual EXPLAIN](/docs/workspace-explain/), [saved queries](/docs/workspace-saved-queries/), the [Explorer](/docs/explorer-databases/) for databases and tables, [uploads](/docs/explorer-upload/) and [exports](/docs/explorer-export/) |
+| **Data observability** | Learned freshness and volume for [every table](/docs/data-observability/), [pipelines](/docs/data-pipelines/) from Kafka to S3Queue in one status vocabulary, [lineage](/docs/data-lineage/) without instrumentation, [promises](/docs/data-health/) and [coverage](/docs/data-coverage/) |
+| **Root cause & fixes** | [Incidents](/docs/data-incidents/) traced across layers with their blast radius, investigation notebooks, and fixes from a closed catalog that run only after approval |
+| **Monitoring** | Ten [Monitoring](/docs/monitoring-overview/) tabs from live queries to [performance regressions](/docs/monitoring-performance/), [capacity forecasts](/docs/monitoring-capacity/) and [upgrade readiness](/docs/monitoring-upgrades/); every cluster at once on [Fleet](/docs/fleet/) with [alerts](/docs/alerting/) |
+| **Chouse AI** | [AI Assist](/docs/workspace-ai-assist/) in the editor, [in-tab diagnosis](/docs/ai-in-tab/), the [Doctor](/docs/doctor/) for fleet health checks, incident explanations and plain-language watchers — on [your choice of model](/docs/ai-models/) |
+| **Access control** | Own [users and roles](/docs/rbac-roles/) with 100+ [permissions](/docs/permissions/), [data access policies](/docs/data-access-rules/) per connection, [SSO](/docs/sso/), [audit log](/docs/audit-log/); credentials encrypted and never sent to the browser |
+| **Automation** | An [MCP server](/docs/mcp/) for AI agents with [governance](/docs/agents/) — budgets, health notices, a pause switch — and the [`chouse` CLI](/docs/cli/) for scripts and CI |
+| **Deployment** | One container and one port; [Docker](/docs/deploy-docker/) or a signed [Helm chart](/docs/deploy-helm/); SQLite for one replica, PostgreSQL for many |
 
-The same capability set is operable without the browser: the [MCP server](/docs/mcp/) for AI agents and the [CLI](/docs/cli/) for scripts and CI.
+New in this release: [What's new in 3.14](/docs/whats-new/).
 
 ## How the documentation is organized
 
-Use the left sidebar to navigate; this list is the map:
+Search every page with **⌘K** (or **/**), or use the sidebar. The sections follow what you need to do, in order:
 
-1. **Getting started** — install, first login and the concepts that explain everything else
-2. **Configuration** — YAML and environment variable references, secrets, the production checklist
-3. **Access & security** — roles, data access rules, the permission catalog, SSO, tokens, audit
-4. **Database Explorer** — connections, schema and table management, uploads, exports
-5. **Query workspace** — the SQL editor, Visual EXPLAIN, saved queries, command palette, AI Assist
-6. **Monitoring** — query logs, live queries, parts, schema advisor, cluster activity, metrics, errors
-7. **Fleet & Chouse AI** — the fleet view, threshold alerts, the Fleet Doctor and in-tab AI actions
-8. **Data** — data observability, pipelines and lineage, incidents with root cause and fixes, scheduled queries, data health promises and the operational AI brief
-9. **Automation** — MCP server, agents & governance, and CLI
-10. **Deploy & reference** — Docker, Helm, upgrades, architecture, security model, troubleshooting, FAQ
+1. **[Start here](/docs/start/)** — this introduction, the quick start, first login and the core concepts
+2. **[Install & upgrade](/docs/install/)** — Docker, Helm and its values, the production checklist, migrations and upgrades, compatibility
+3. **[Configure](/docs/configure/)** — YAML and environment variable references, secrets, ClickHouse connections
+4. **[Access & security](/docs/access/)** — users and roles, data access rules, the permission catalog, SSO, tokens, sessions, audit, the security model
+5. **[Using CHouse UI](/docs/using/)** — one group per menu in the app: [Home](/docs/using/#home), [Explorer](/docs/using/#explorer), [Data](/docs/using/#data), [Monitoring](/docs/using/#monitoring), [Fleet](/docs/using/#fleet), [Doctor](/docs/using/#doctor), [Agents](/docs/using/#agents), [Admin](/docs/using/#admin) and [Preferences](/docs/using/#preferences)
+6. **[Guides](/docs/guides/)** — step-by-step walk-throughs: investigate a stale table, approve a fix, connect an agent, use the CLI in CI, plan an upgrade, set up team access
+7. **[Automation](/docs/automation/)** — the MCP server and its tool catalog, and the CLI with its command reference
+8. **[Reference & help](/docs/reference/)** — architecture, troubleshooting, FAQ and a glossary
+
+Pages about a screen open with where it is in the app and the permissions that show it, so you can go from what you see to what you need.
 
 ## Where to start
 
@@ -41,4 +39,4 @@ Use the left sidebar to navigate; this list is the map:
 | Evaluating CHouse UI | [Quick start](/docs/quick-start/) — running locally in five minutes |
 | Setting it up for your team | [First login](/docs/first-login/) → [Production checklist](/docs/production-checklist/) |
 | Rolling out to users | [Users & roles](/docs/rbac-roles/) → [Data access rules](/docs/data-access-rules/) |
-| Looking for a specific feature | The sidebar group that matches it — every capability has a page |
+| Looking for a specific screen | [Using CHouse UI](/docs/using/) — grouped like the app's menu |

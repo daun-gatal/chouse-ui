@@ -129,7 +129,7 @@ export default function QuickStart() {
               <ArrowDown className="h-4 w-4" />
               Production deployment
             </SecondaryAction>
-            <SecondaryAction href="/docs/overview/">
+            <SecondaryAction href="/docs/">
               <ArrowUpRight className="h-4 w-4" />
               Full documentation
             </SecondaryAction>

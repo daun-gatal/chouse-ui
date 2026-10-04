@@ -1,3 +1,8 @@
+---
+app: Explorer › Saved queries
+route: /explorer
+permissions: saved_queries:view
+---
 # Saved queries & history
 
 Saved queries persist the SQL your team reuses; history keeps every execution findable. Both are per-connection aware.

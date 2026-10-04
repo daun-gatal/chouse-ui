@@ -3,7 +3,7 @@ import { Workflow, ArrowRight, Check } from "lucide-react";
 import { Section, Container } from "./Section";
 
 /**
- * Positioning callout — the "no context-switching" pitch. Deliberately NOT in
+ * Positioning callout — the detect → trace → explain → fix loop. Deliberately NOT in
  * the numbered section sequence (like WhatsNew): it reads as a narrative beat
  * between the features and the live playground, not a feature index.
  */
@@ -11,22 +11,22 @@ import { Section, Container } from "./Section";
 const EASE = [0.16, 1, 0.3, 1] as const;
 
 const OLD_WAY = [
-  "Copy the error out of the console",
-  "Paste it into a chatbot, re-add the context",
-  "Hunt for a rewrite, hope it's equivalent",
-  "Switch back, paste, re-run — repeat",
+  "Hear about stale data from the dashboard's users",
+  "Grep query_log, kafka_consumers and part_log by hand",
+  "Guess which upstream broke and who else is affected",
+  "Run the fix as whoever has the admin password",
 ];
 
 const IN_FLOW = [
-  "See an error → cause, impact, and ordered fixes inline",
-  "Spot a slow query → an optimized rewrite, same result",
-  "before→after EXPLAIN proves it reads fewer rows",
-  "One click → Open in Explorer and run it",
+  "Detect — every table and pipeline against its own baseline",
+  "Trace — a root-cause chain down to the engine, with the blast radius",
+  "Explain — Chouse AI separates facts from interpretation",
+  "Fix — a catalog action, approved, run, verified, reversible",
 ];
 
 export default function ClosedLoop() {
   return (
-    <Section id="closed-loop" aria-label="Stay in flow">
+    <Section id="closed-loop" aria-label="From symptom to fix">
       <Container>
         <div className="grid grid-cols-12 gap-x-6 gap-y-10">
           {/* Left: the pitch */}
@@ -42,22 +42,23 @@ export default function ClosedLoop() {
                 <span className="h-px w-6 bg-ink-700" aria-hidden />
                 <span className="inline-flex items-center gap-2">
                   <Workflow className="h-3 w-3" aria-hidden />
-                  The closed loop
+                  From symptom to fix
                 </span>
               </span>
               <h2 className="text-display-lg font-semibold text-paper text-balance">
-                The fix lives where the problem is.
+                Find out first. Fix it safely.
               </h2>
               <p className="max-w-xl text-lg leading-relaxed text-paper-muted">
-                No pasting stack traces into a chatbot, no hunting for the right rewrite.
-                Spot a slow query and optimize it in place — with a{" "}
-                <span className="text-paper">before→after EXPLAIN</span> as proof. Hit a
-                server error and get the cause and ordered fixes inline. The{" "}
-                <span className="text-paper">diagnosis and the fix sit right next to the
-                problem</span>, so you never leave the tab.
+                CHouse UI learns what normal looks like for every table from ClickHouse's own
+                metadata, so a stuck consumer or a late load becomes an{" "}
+                <span className="text-paper">incident with its root cause</span> — not a
+                complaint. The fix comes from a closed catalog and runs with its own
+                credential{" "}
+                <span className="text-paper">only after approval</span> — by two people for
+                high-impact changes — then is verified and can be rolled back.
               </p>
               <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
-                Detect → Diagnose → Fix → Act · read-only, advisory
+                Detect → Trace → Explain → Fix → Verify · nothing runs unapproved
               </p>
             </div>
           </motion.div>
@@ -89,7 +90,7 @@ export default function ClosedLoop() {
               </div>
               <div className="flex flex-col gap-4 rounded-md border border-accent/30 bg-accent/5 p-5">
                 <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
-                  With Chouse AI
+                  With CHouse UI
                 </span>
                 <ul className="flex flex-col gap-3">
                   {IN_FLOW.map((t) => (

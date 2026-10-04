@@ -23,8 +23,8 @@ export function slugify(text: string): string {
   return text
     .trim()
     .toLowerCase()
-    .replace(/[`*_~[\]()#]/g, "")
-    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[`*~[\]()#]/g, "")
+    .replace(/[^a-z0-9_\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
@@ -79,7 +79,9 @@ export function parseHeadings(markdown: string): DocHeading[] {
     const match = /^(#{2,3})\s+(.+?)\s*#*\s*$/.exec(line);
     if (match) {
       const level = match[1].length as 2 | 3;
-      const text = match[2].trim();
+      // Drop _emphasis_ markers: the rendered heading has none, and its id
+      // must match this one now that slugs keep underscores (tool names).
+      const text = match[2].trim().replace(/(^|[^\w])_([^_]+)_(?=[^\w]|$)/g, "$1$2");
       headings.push({ id: headingId(text), text, level });
     }
   }

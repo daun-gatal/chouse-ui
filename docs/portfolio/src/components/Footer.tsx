@@ -3,7 +3,7 @@ import { Container } from "./Section";
 
 // Mirrors the primary navbar (Docs · Features · Try Lab · FAQ).
 const NAV = [
-  { label: "Docs", href: "/docs/overview/" },
+  { label: "Docs", href: "/docs/" },
   { label: "Features", href: "#features" },
   { label: "Try Lab", href: "#try-lab" },
   { label: "FAQ", href: "#faq" },

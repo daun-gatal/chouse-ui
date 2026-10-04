@@ -1,14 +1,20 @@
+---
+app: Agents
+route: /agents
+permissions: agents:view
+screenshot: agents-sessions
+---
 # Agents & governance
 
 **Agents** (`/agents`, `agents:view`) shows every AI agent connected over [MCP](/docs/mcp/) or a [personal access token](/docs/personal-access-tokens/): what it read, what it cost, and whether the data it answered from was healthy.
 
 ## Sessions
 
-Each session lists queries, bytes read, share of the daily budget, warnings and blocks. Open one to replay its tool calls — `get_table_context`, `get_dataset_health`, then `query` — with the health notices attached to each result. Every agent query is tagged in `log_comment`, so `system.query_log` attributes it too. Arguments of other users' sessions are hidden without `query:history:view:all`.
+**Agents › Sessions** (`/agents/sessions`) lists every agent session with its queries, bytes read, share of the daily budget, warnings and blocks. Open one to replay its tool calls — `get_table_context`, `get_dataset_health`, then `query` — with the health notices attached to each result. Every agent query is tagged in `log_comment`, so `system.query_log` attributes it too. Arguments of other users' sessions are hidden without `query:history:view:all`.
 
 ## Policies
 
-Budget policies apply to every agent, a role, or one token — the most specific wins (`agents:manage` to edit):
+**Agents › Policies** (`/agents/policies`). Budget policies apply to every agent, a role, or one token — the most specific wins (`agents:manage` to edit):
 
 | Setting | Effect |
 | --- | --- |
@@ -22,7 +28,7 @@ Budget policies apply to every agent, a role, or one token — the most specific
 
 ## MCP
 
-The **MCP** tab turns the MCP endpoint on (it is served at `/mcp` on the same address as the UI), sets its allowed origins, tool call timeout and — when agents use another address than you — its public address, and gives copy-ready setup for Claude Code, Codex, Cursor, VS Code, OpenCode and curl. It lists every tool with its description, access level (read, write, destructive), the permissions it needs and its parameters; switch tools on or off one at a time or per category, with each category collapsible. Reads are on by default; anything that changes or deletes things, or spends LLM budget, stays off until you turn it on. A token only ever sees the tools that are on and that its permissions allow. Viewing needs `agents:view`; changing needs `agents:manage`. Details: [MCP](/docs/mcp/).
+The **MCP** tab (`/agents/mcp`) turns the MCP endpoint on (it is served at `/mcp` on the same address as the UI), sets its allowed origins, tool call timeout and — when agents use another address than you — its public address, and gives copy-ready setup for Claude Code, Codex, Cursor, VS Code, OpenCode and curl. It lists every tool with its description, access level (read, write, destructive), the permissions it needs and its parameters; switch tools on or off one at a time or per category, with each category collapsible. Reads are on by default; anything that changes or deletes things, or spends LLM budget, stays off until you turn it on. A token only ever sees the tools that are on and that its permissions allow. Viewing needs `agents:view`; changing needs `agents:manage`. Details: [MCP](/docs/mcp/).
 
 ## What agents get
 

@@ -192,6 +192,28 @@ log.error('Failed to fetch data', { err: error instanceof Error ? error.message 
 
 ---
 
+## Documentation
+
+The docs site (`docs/portfolio`, published at `/docs`) is the source of truth for
+operating CHouse UI. A user-visible change is not done until its docs page is.
+
+- **Hand-written pages** live in `docs/portfolio/src/content/docs/`. Update the page
+  for the screen or feature you changed; add a page (and a manifest entry) for a new
+  screen. Conventions: `docs/portfolio/src/docs-site/README.md`.
+- **Generated pages** (permission catalog, environment variables, MCP tool catalog,
+  CLI reference, Helm values) are built from the code by
+  `docs/portfolio/scripts/gen-reference.ts`. Never edit them by hand — change the
+  source, then run `bun scripts/gen-reference.ts` in `docs/portfolio`.
+- **New environment variable:** add it to
+  `docs/portfolio/src/content/reference/config-keys.ts`.
+- **CLI command or flag changed:** regenerate the snapshot with
+  `UPDATE_CLI_REFERENCE=1 go test ./internal/cli -run TestCommandReference` (in
+  `cli/`), then `bun scripts/gen-reference.ts`.
+- CI fails when a generated page is stale, the server reads an undocumented env
+  var, an app screen (route or tab) has no docs page, or a docs link is broken.
+
+---
+
 ## Checklist Before Committing
 
 - [ ] No `any` types — all TypeScript types properly defined
@@ -207,4 +229,4 @@ log.error('Failed to fetch data', { err: error instanceof Error ? error.message 
 - [ ] Unit tests added/updated for new/modified functions
 - [ ] All tests pass (`bunx vitest run`)
 - [ ] Unused imports/symbols cleaned up in touched files (see `.rules/DEAD_CODE.md`)
-- [ ] If change is user-visible: `## [Unreleased]` in `CHANGELOG.md` updated (`Added / Changed / Fixed / Removed`)
+- [ ] If change is user-visible: fragment added in `changelogs/unreleased/` (never edit `CHANGELOG.md`) and the docs page updated (see Documentation)

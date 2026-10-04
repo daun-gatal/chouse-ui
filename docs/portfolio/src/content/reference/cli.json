@@ -1,0 +1,1236 @@
+{
+  "globalFlags": [
+    {
+      "name": "ca-cert",
+      "type": "string",
+      "usage": "PEM CA bundle to trust for the server, e.g. an internal CA (env CHOUSE_CA_CERT)"
+    },
+    {
+      "name": "connection",
+      "shorthand": "c",
+      "type": "string",
+      "usage": "ClickHouse connection name or id (env CHOUSE_CONNECTION)"
+    },
+    {
+      "name": "debug",
+      "type": "bool",
+      "usage": "trace each request (method, path, status, time, request id) on stderr; never prints tokens"
+    },
+    {
+      "name": "dry-run",
+      "type": "bool",
+      "usage": "preview a change without making it, where supported"
+    },
+    {
+      "name": "insecure-skip-tls-verify",
+      "type": "bool",
+      "usage": "do not verify the server certificate — debugging only (env CHOUSE_INSECURE_SKIP_TLS_VERIFY)"
+    },
+    {
+      "name": "no-headers",
+      "type": "bool",
+      "usage": "omit the header row in table and csv output"
+    },
+    {
+      "name": "output",
+      "shorthand": "o",
+      "type": "string",
+      "usage": "output format: auto|table|csv|json|yaml (default auto: table on a terminal, json when piped; env CHOUSE_OUTPUT)"
+    },
+    {
+      "name": "profile",
+      "type": "string",
+      "usage": "config profile (env CHOUSE_PROFILE)"
+    },
+    {
+      "name": "quiet",
+      "shorthand": "q",
+      "type": "bool",
+      "usage": "no notes on stderr (results and errors still print)"
+    },
+    {
+      "name": "server",
+      "type": "string",
+      "usage": "CHouse UI server URL (env CHOUSE_SERVER)"
+    },
+    {
+      "name": "timeout",
+      "type": "int",
+      "default": "60",
+      "usage": "request timeout in seconds (1-600)"
+    },
+    {
+      "name": "token",
+      "type": "string",
+      "usage": "personal access token ch_pat_… (env CH_HOUSE_PAT; prefer the env or auth login)"
+    },
+    {
+      "name": "wide",
+      "type": "bool",
+      "usage": "do not truncate long table cells"
+    },
+    {
+      "name": "yes",
+      "type": "bool",
+      "usage": "approve changes without a prompt (required without a terminal)"
+    }
+  ],
+  "groups": [
+    {
+      "id": "start",
+      "title": "Getting started:"
+    },
+    {
+      "id": "data",
+      "title": "Query and explore:"
+    },
+    {
+      "id": "ops",
+      "title": "Operate:"
+    },
+    {
+      "id": "observe",
+      "title": "Data observability:"
+    },
+    {
+      "id": "agents",
+      "title": "AI and agents:"
+    }
+  ],
+  "commands": [
+    {
+      "path": "chouse agents",
+      "use": "chouse agents",
+      "short": "Agent activity: sessions, queries, budgets (agents:view)",
+      "long": "What agents connected over MCP or with personal access tokens did:\nsessions with their queries, bytes read and policy outcomes, and the budget\npolicies that apply. Read-only; policies and the pause switch stay in the UI.",
+      "example": "  chouse agents summary\n  chouse agents sessions --days 7\n  chouse agents session <sessionId>\n  chouse agents policies",
+      "group": "agents",
+      "runnable": true
+    },
+    {
+      "path": "chouse agents policies",
+      "use": "chouse agents policies",
+      "short": "Budget policies (per token, per role, default)",
+      "long": "Budget policies checked with EXPLAIN ESTIMATE before agent queries\nrun: per-query and daily read limits, partition-filter thresholds and what\nhappens on tables with an open incident. The most specific policy wins:\ntoken, then role, then the default.",
+      "example": "  chouse agents policies",
+      "runnable": true
+    },
+    {
+      "path": "chouse agents session",
+      "use": "chouse agents session <sessionId>",
+      "short": "One session with every tool call (replay)",
+      "long": "Replay one session: every tool call with its arguments, outcome,\npolicy notices and bytes read. Arguments of other people's sessions need\nquery:history:view:all.",
+      "example": "  chouse agents session pat-123:1790000000000",
+      "runnable": true
+    },
+    {
+      "path": "chouse agents sessions",
+      "use": "chouse agents sessions [flags]",
+      "short": "Agent sessions in the last --days (1-30)",
+      "long": "Every MCP and personal-access-token session in the window, newest\nfirst, with its queries, bytes read and how many calls were warned or\nblocked. A session is consecutive calls from one token with gaps under\n30 minutes.",
+      "example": "  chouse agents sessions --days 7",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "days",
+          "type": "int",
+          "default": "1",
+          "usage": "window in days (1-30)"
+        }
+      ]
+    },
+    {
+      "path": "chouse agents summary",
+      "use": "chouse agents summary",
+      "short": "Last 24 hours: active agents, queries, warnings, blocks, pause state",
+      "long": "Agent activity over the last 24 hours: active agents and sessions,\nqueries and bytes read, results that carried a health warning, queries\nblocked by a budget policy, and whether agent access is paused.",
+      "example": "  chouse agents summary",
+      "runnable": true
+    },
+    {
+      "path": "chouse ai",
+      "use": "chouse ai",
+      "short": "Chouse AI on SQL: optimize and diagnose (LLM cost)",
+      "long": "Ask Chouse AI to optimize or diagnose SQL. Advisory only — it never\nruns anything — but it calls the AI model (LLM cost), so it asks first (or\nneeds --yes). Listing capabilities and models is free.",
+      "example": "  chouse ai optimize -f slow.sql --yes\n  chouse ai optimize --capability debug-query \"SELECT …\" --yes\n  chouse ai models",
+      "group": "agents",
+      "runnable": true
+    },
+    {
+      "path": "chouse ai capabilities",
+      "use": "chouse ai capabilities",
+      "short": "What Chouse AI can do for your token",
+      "example": "  chouse ai capabilities",
+      "runnable": true
+    },
+    {
+      "path": "chouse ai models",
+      "use": "chouse ai models",
+      "short": "Active AI models",
+      "example": "  chouse ai models",
+      "runnable": true
+    },
+    {
+      "path": "chouse ai optimize",
+      "use": "chouse ai optimize [sql] [flags]",
+      "short": "Optimize or diagnose SQL (LLM cost)",
+      "example": "  chouse ai optimize -f slow.sql --yes -o json",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "capability",
+          "type": "string",
+          "default": "optimize-query",
+          "usage": "optimize-query|debug-query|diagnose-error|diagnose-parts|diagnose-schema"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "usage": "read SQL from a file (- for stdin)"
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "usage": "AI model id"
+        },
+        {
+          "name": "stdin",
+          "type": "bool",
+          "usage": "read SQL from stdin"
+        }
+      ]
+    },
+    {
+      "path": "chouse alert",
+      "use": "chouse alert",
+      "short": "Alert channels, rules and deliveries",
+      "long": "Inspect alerting: channels (secrets masked), rules and recent\ndeliveries. test sends a real notification, so it asks first (or needs\n--yes). Editing rules and channels stays in the UI.",
+      "example": "  chouse alert channels\n  chouse alert events --limit 10\n  chouse alert test 51b0… --yes",
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse alert channels",
+      "use": "chouse alert channels",
+      "short": "Notification channels (secrets masked)",
+      "example": "  chouse alert channels",
+      "runnable": true
+    },
+    {
+      "path": "chouse alert events",
+      "use": "chouse alert events [flags]",
+      "short": "Recent alert deliveries, newest first",
+      "example": "  chouse alert events --limit 10",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50",
+          "usage": "max events"
+        }
+      ]
+    },
+    {
+      "path": "chouse alert rules",
+      "use": "chouse alert rules",
+      "short": "Alert rules",
+      "example": "  chouse alert rules",
+      "runnable": true
+    },
+    {
+      "path": "chouse alert test",
+      "use": "chouse alert test <channelId>",
+      "short": "Send a test notification through a channel",
+      "example": "  chouse alert test 51b0… --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse audit",
+      "use": "chouse audit",
+      "short": "Audit log: list and export",
+      "long": "Who did what, when and from where. You see your own entries\nunless you hold audit:view. export writes CSV (audit:export). Pruning stays\nin the UI.",
+      "example": "  chouse audit list --limit 20\n  chouse audit list --action mcp.tool_call --status failed\n  chouse audit export --limit 5000 > audit.csv",
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse audit export",
+      "use": "chouse audit export [flags]",
+      "short": "Export entries as CSV (up to 10000)",
+      "long": "Write audit entries as CSV to stdout (always CSV; -o does not apply). Same filters as list.",
+      "example": "  chouse audit export --limit 1000 > audit.csv",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "action",
+          "type": "string",
+          "usage": "only this action, e.g. mcp.tool_call"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "1000",
+          "usage": "max rows"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "usage": "success or failed"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "only this user id"
+        }
+      ]
+    },
+    {
+      "path": "chouse audit list",
+      "use": "chouse audit list [flags]",
+      "short": "List entries, newest first",
+      "example": "  chouse audit list --limit 20",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "action",
+          "type": "string",
+          "usage": "only this action, e.g. mcp.tool_call"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50",
+          "usage": "max rows"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "usage": "success or failed"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "only this user id"
+        }
+      ]
+    },
+    {
+      "path": "chouse auth",
+      "use": "chouse auth",
+      "short": "Log in with a personal access token",
+      "long": "Manage the personal access token (PAT) this CLI uses. Tokens are\nstored 0600 in ~/.config/chouse/credentials.yaml and never printed (only a\nmasked form). Log in once per profile; every other command then just works.",
+      "example": "  chouse auth login --server https://chouse.corp\n  echo \"$TOKEN\" | chouse auth login --server https://chouse.corp --token-stdin\n  chouse auth status\n  chouse auth whoami",
+      "group": "start",
+      "runnable": true
+    },
+    {
+      "path": "chouse auth login",
+      "use": "chouse auth login [flags]",
+      "short": "Validate a token and store it for the profile",
+      "long": "Validate a personal access token against the server and store it\n(0600) for the profile, remembering --server and --ca-cert so later commands\nneed no flags. The token is read from a hidden prompt, --token-stdin or\nCH_HOUSE_PAT — never pass it as an argument. Mint it once in the UI:\nPreferences → Personal access tokens.",
+      "example": "  chouse auth login --server https://chouse.corp\n  chouse auth login --server https://chouse.internal --ca-cert corp-ca.pem --profile prod\n  echo \"$TOKEN\" | chouse auth login --server https://chouse.corp --token-stdin",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "token-stdin",
+          "type": "bool",
+          "usage": "read the token from stdin"
+        }
+      ]
+    },
+    {
+      "path": "chouse auth logout",
+      "use": "chouse auth logout",
+      "short": "Remove the stored token for the profile",
+      "long": "Delete the profile's stored token from this machine. The token\nstays valid on the server — revoke it in the UI to retire it.",
+      "example": "  chouse auth logout\n  chouse auth logout --profile prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse auth status",
+      "use": "chouse auth status",
+      "short": "Show the effective profile without printing secrets",
+      "long": "Show the resolved profile, server, connection, CA bundle and masked\ntoken — fully offline, safe to run any time to check what later commands use.",
+      "example": "  chouse auth status\n  chouse auth status -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse auth whoami",
+      "use": "chouse auth whoami",
+      "short": "Show the token's user, roles and permissions",
+      "long": "Ask the server who the token belongs to: user, roles, permissions and data-access rules.",
+      "example": "  chouse auth whoami\n  chouse auth whoami -o json | jq .permissions",
+      "runnable": true
+    },
+    {
+      "path": "chouse config",
+      "use": "chouse config",
+      "short": "Profiles and their settings",
+      "long": "Profiles hold non-secret defaults — server, connection, output and\nCA bundle — in ~/.config/chouse/config.yaml. Tokens live separately in\ncredentials.yaml and are set with chouse auth login. --profile (or\nCHOUSE_PROFILE) picks a profile for one command; use-profile switches the\ndefault.",
+      "example": "  chouse config view\n  chouse config set connection prod\n  chouse config use-profile staging\n  chouse config profiles",
+      "group": "start",
+      "runnable": true
+    },
+    {
+      "path": "chouse config delete-profile",
+      "use": "chouse config delete-profile <name>",
+      "short": "Delete a profile and its stored token",
+      "example": "  chouse config delete-profile old --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse config get",
+      "use": "chouse config get <key>",
+      "short": "Print one profile setting (server, connection, output, ca_cert)",
+      "long": "Print one setting stored in the profile (not the flag or environment override).",
+      "example": "  chouse config get server",
+      "runnable": true
+    },
+    {
+      "path": "chouse config profiles",
+      "use": "chouse config profiles",
+      "short": "List profiles",
+      "example": "  chouse config profiles",
+      "runnable": true
+    },
+    {
+      "path": "chouse config set",
+      "use": "chouse config set <key> <value>",
+      "short": "Set a profile setting (server, connection, output, ca_cert)",
+      "long": "Store a non-secret setting in the profile (current, or --profile).\nconnection takes a name or an id; output takes auto, table, csv, json or\nyaml; ca_cert is stored as an absolute path. Tokens are not settable here —\nuse chouse auth login.",
+      "example": "  chouse config set server https://chouse.corp\n  chouse config set connection prod\n  chouse config set output json --profile ci",
+      "runnable": true
+    },
+    {
+      "path": "chouse config unset",
+      "use": "chouse config unset <key>",
+      "short": "Clear a profile setting",
+      "example": "  chouse config unset connection",
+      "runnable": true
+    },
+    {
+      "path": "chouse config use-profile",
+      "use": "chouse config use-profile <name>",
+      "short": "Make a profile the default",
+      "long": "Switch the default profile. It must already exist (create one with chouse auth login --profile NAME).",
+      "example": "  chouse config use-profile prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse config view",
+      "use": "chouse config view",
+      "short": "Show the effective settings and where each comes from",
+      "long": "Show the settings this invocation resolves to (flags > environment > profile), with the token masked.",
+      "example": "  chouse config view\n  chouse config view --profile prod -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection",
+      "use": "chouse connection",
+      "short": "ClickHouse connections you can use",
+      "long": "List, inspect and check the ClickHouse connections your token can\nuse. Every command takes -c with a connection name or id; set a default with\nchouse config set connection NAME. Creating and deleting connections stores\nor removes credentials, so it stays in the UI (Admin › Connections).",
+      "example": "  chouse connection list\n  chouse connection get prod\n  chouse connection can-i analytics events -c prod",
+      "aliases": [
+        "conn",
+        "connections"
+      ],
+      "group": "start",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection can-i",
+      "use": "chouse connection can-i <database> [table]",
+      "short": "Check whether you may read a database or table",
+      "long": "Ask the server whether your token may read a database, or one\ntable, on the -c connection. Run it before scripting anything that assumes\naccess.",
+      "example": "  chouse connection can-i analytics -c prod\n  chouse connection can-i analytics events -c prod -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection get",
+      "use": "chouse connection get <name|id>",
+      "short": "Show one connection (no password)",
+      "example": "  chouse connection get prod -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse connection list",
+      "use": "chouse connection list [flags]",
+      "short": "List the connections you can use (no passwords)",
+      "example": "  chouse connection list\n  chouse connection list --search prod -o json",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "0",
+          "usage": "max rows (0: all)"
+        },
+        {
+          "name": "search",
+          "type": "string",
+          "usage": "filter by name or host"
+        }
+      ]
+    },
+    {
+      "path": "chouse connection test",
+      "use": "chouse connection test <name|id>",
+      "short": "Check that a connection is reachable",
+      "long": "Dial a saved connection and report reachability and the server\nversion. Nothing is stored or changed. Testing ad-hoc credentials stays in\nthe UI.",
+      "example": "  chouse connection test prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse doctor",
+      "use": "chouse doctor",
+      "short": "Chouse AI Doctor: fleet health reports",
+      "long": "Read past Doctor reports for free. A new scan calls the AI model\n(LLM cost) and stores a report, so it asks first (or needs --yes). Advisory\nonly — it never changes data.",
+      "example": "  chouse doctor reports\n  chouse doctor get 7c1e…\n  chouse doctor scan --hours 24 --yes",
+      "group": "agents",
+      "runnable": true
+    },
+    {
+      "path": "chouse doctor get",
+      "use": "chouse doctor get <reportId>",
+      "short": "Show one report",
+      "example": "  chouse doctor get 7c1e… -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse doctor reports",
+      "use": "chouse doctor reports",
+      "short": "List reports",
+      "example": "  chouse doctor reports",
+      "runnable": true
+    },
+    {
+      "path": "chouse doctor scan",
+      "use": "chouse doctor scan [flags]",
+      "short": "Run a scan (LLM cost)",
+      "example": "  chouse doctor scan --hours 12 --yes",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "connections",
+          "type": "stringSlice",
+          "usage": "only these connection ids"
+        },
+        {
+          "name": "hours",
+          "type": "int",
+          "default": "24",
+          "usage": "look back 1-72 hours"
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "usage": "AI model id (default: the server's)"
+        }
+      ]
+    },
+    {
+      "path": "chouse doctor schedule",
+      "use": "chouse doctor schedule",
+      "short": "Show the scan schedule",
+      "example": "  chouse doctor schedule",
+      "runnable": true
+    },
+    {
+      "path": "chouse fleet",
+      "use": "chouse fleet",
+      "short": "Every connection at once: health snapshots and history",
+      "long": "The latest health snapshot of every connection you can see, their\nhistory, and fixed server-side metrics (no ad-hoc SQL).",
+      "example": "  chouse fleet list\n  chouse fleet history --metric summary --from 2026-10-01T00:00:00Z",
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse fleet history",
+      "use": "chouse fleet history [flags]",
+      "short": "Snapshot history in an RFC3339 window",
+      "example": "  chouse fleet history --metric summary --limit 50",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "from",
+          "type": "string",
+          "usage": "RFC3339 start"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "100",
+          "usage": "max rows"
+        },
+        {
+          "name": "metric",
+          "type": "string",
+          "default": "summary",
+          "usage": "metric name"
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "usage": "RFC3339 end"
+        }
+      ]
+    },
+    {
+      "path": "chouse fleet list",
+      "use": "chouse fleet list",
+      "short": "Latest snapshot per connection",
+      "example": "  chouse fleet list",
+      "runnable": true
+    },
+    {
+      "path": "chouse fleet query",
+      "use": "chouse fleet query <metric>",
+      "short": "One fixed server-side metric for the -c connection",
+      "example": "  chouse fleet query summary -c prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse health",
+      "use": "chouse health",
+      "short": "Data health: promises, incidents, dataset trust",
+      "long": "Data health promises and their incidents, one table's trust state,\nand the actions to re-run checks or acknowledge an incident (both ask first,\nor need --yes).",
+      "example": "  chouse health list -c prod\n  chouse health incidents\n  chouse health dataset shop.orders -c prod\n  chouse health ack 9a1f… --yes",
+      "group": "observe",
+      "runnable": true
+    },
+    {
+      "path": "chouse health ack",
+      "use": "chouse health ack <incidentId>",
+      "short": "Acknowledge an incident",
+      "example": "  chouse health ack 9a1f… --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse health dataset",
+      "use": "chouse health dataset <database.table>",
+      "short": "One table's trust state, freshness and open incidents",
+      "long": "How far to trust one table right now: trust state, freshness,\nvolume baseline, open incidents, owners and recent writers.",
+      "example": "  chouse health dataset shop.orders -c prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse health incidents",
+      "use": "chouse health incidents [flags]",
+      "short": "Data health incidents, newest first",
+      "example": "  chouse health incidents --limit 10",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50",
+          "usage": "max rows"
+        }
+      ]
+    },
+    {
+      "path": "chouse health list",
+      "use": "chouse health list",
+      "short": "List promises (scoped to -c when given)",
+      "example": "  chouse health list -c prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse health run",
+      "use": "chouse health run <promiseId>",
+      "short": "Run a promise's checks now",
+      "example": "  chouse health run 2b7c… --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse health timeline",
+      "use": "chouse health timeline <promiseId> [flags]",
+      "short": "A promise's check history",
+      "example": "  chouse health timeline 2b7c… --limit 10",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50",
+          "usage": "max samples"
+        }
+      ]
+    },
+    {
+      "path": "chouse incidents",
+      "use": "chouse incidents [flags]",
+      "short": "Data and pipeline incidents with their root cause",
+      "long": "Incidents from Data Health promises and the observability platform\n(pipelines, freshness, volume, parts, replication) with severity, subject\nand root cause. Active only unless --all; scoped to -c when given.",
+      "example": "  chouse incidents\n  chouse incidents --all --limit 20 -o json",
+      "group": "observe",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool",
+          "usage": "include recovered incidents"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50",
+          "usage": "max rows"
+        }
+      ]
+    },
+    {
+      "path": "chouse lineage",
+      "use": "chouse lineage <database.table> [flags]",
+      "short": "Where a table's data comes from and where it goes",
+      "long": "Lineage around one table, built from ClickHouse metadata, query\nlogs and scheduled jobs. --impact lists everything downstream that a change\nto the table would affect (what schema preflight checks before DDL).",
+      "example": "  chouse lineage shop.orders -c prod\n  chouse lineage shop.orders --direction up --depth 2\n  chouse lineage shop.orders --impact",
+      "group": "observe",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "depth",
+          "type": "int",
+          "default": "3",
+          "usage": "hops to follow (1-8)"
+        },
+        {
+          "name": "direction",
+          "type": "string",
+          "default": "both",
+          "usage": "up, down or both"
+        },
+        {
+          "name": "impact",
+          "type": "bool",
+          "usage": "list what a change to the table would affect"
+        }
+      ]
+    },
+    {
+      "path": "chouse live",
+      "use": "chouse live",
+      "short": "Running queries: list, and kill runaways",
+      "long": "See what is running on the -c connection and kill runaways. You\nsee your own queries unless you hold live_queries:kill_all. kill changes\nthings, so it asks first (or needs --yes).",
+      "example": "  chouse live list\n  chouse live kill 8f1c… --yes",
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse live kill",
+      "use": "chouse live kill <queryId>",
+      "short": "Kill a running query",
+      "example": "  chouse live kill 8f1c2d… --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse live list",
+      "use": "chouse live list",
+      "short": "List running queries",
+      "example": "  chouse live list -o json | jq -r '.queries[].query_id'",
+      "runnable": true
+    },
+    {
+      "path": "chouse logs",
+      "use": "chouse logs [flags]",
+      "short": "Recent queries from system.query_log",
+      "long": "The most recent queries in ClickHouse's query log on the -c\nconnection, newest first: when, how long, and whether they finished or\nfailed. Filter by ClickHouse user with --user.",
+      "example": "  chouse logs\n  chouse logs --user etl --limit 50 -o csv",
+      "group": "ops",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "20",
+          "usage": "max rows (1-100)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "only this ClickHouse user"
+        }
+      ]
+    },
+    {
+      "path": "chouse mcp",
+      "use": "chouse mcp",
+      "short": "The MCP endpoint for AI agents: status, tools, client setup",
+      "long": "The server's MCP endpoint (ADR 0013, ADR 0017) is served at /mcp on the\nsame address as the UI. An administrator turns it on and picks the tools in\nthe UI (Agents › MCP); these commands show what your token gets there and\nprint setup for agent hosts. They never change the server's MCP settings.",
+      "example": "  chouse mcp status\n  chouse mcp tools\n  chouse mcp config claude-code | sh",
+      "group": "agents",
+      "runnable": true
+    },
+    {
+      "path": "chouse mcp config",
+      "use": "chouse mcp config <claude-code|codex|cursor|vscode|opencode>",
+      "short": "Print agent host setup for this server's MCP endpoint",
+      "long": "Print ready-to-use setup that points an agent host at this profile's\nserver. The token is read from CH_HOUSE_PAT (VS Code prompts for it), so no\nsecret is written into a config file. Output is the raw snippet (it bypasses\n-o): a shell command for claude-code/codex, JSON for the others.",
+      "example": "  chouse mcp config claude-code | sh\n  chouse mcp config cursor > .cursor/mcp.json\n  chouse mcp config vscode > .vscode/mcp.json",
+      "runnable": true
+    },
+    {
+      "path": "chouse mcp settings",
+      "use": "chouse mcp settings",
+      "short": "The server's MCP settings and every tool's state (agents:view)",
+      "long": "Show what an administrator configured in Agents › MCP: whether the\nendpoint is on, allowed origins, the tool call timeout, and every tool with\nits access level, required permissions and whether it is on (-o yaml for\neverything). Changing them stays in the UI.",
+      "example": "  chouse mcp settings -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse mcp status",
+      "use": "chouse mcp status",
+      "short": "Whether MCP is on, its endpoint, and how many tools your token gets",
+      "long": "Report whether an administrator turned the MCP endpoint on, the URL\nagents connect to (this server's address plus /mcp), and — when it is on and\na token is configured — how many tools that token gets.",
+      "example": "  chouse mcp status\n  chouse mcp status -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse mcp tools",
+      "use": "chouse mcp tools",
+      "short": "The MCP tools your token gets",
+      "long": "List the tools an agent using your token sees: the ones an\nadministrator turned on in Agents › MCP that your permissions allow.",
+      "example": "  chouse mcp tools\n  chouse mcp tools -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse metrics",
+      "use": "chouse metrics",
+      "short": "ClickHouse server metrics (read-only)",
+      "long": "Server stats, the largest tables, recent errors, part pressure,\nyour own SELECT as a metric, and the impact of an ALTER UPDATE/DELETE —\nwhich is estimated, never run.",
+      "example": "  chouse metrics overview\n  chouse metrics top-tables --limit 5\n  chouse metrics simulate \"ALTER TABLE t DELETE WHERE day < today() - 30\"",
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse metrics custom",
+      "use": "chouse metrics custom [flags]",
+      "short": "Run your own SELECT as a metric",
+      "example": "  chouse metrics custom --query \"SELECT count() FROM system.query_log\"",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "query",
+          "type": "string",
+          "usage": "SELECT … (required)"
+        }
+      ]
+    },
+    {
+      "path": "chouse metrics errors",
+      "use": "chouse metrics errors",
+      "short": "Server errors in the last --interval minutes",
+      "example": "  chouse metrics errors --interval 60",
+      "runnable": true
+    },
+    {
+      "path": "chouse metrics overview",
+      "use": "chouse metrics overview",
+      "short": "Server stats and resource use",
+      "example": "  chouse metrics overview",
+      "runnable": true
+    },
+    {
+      "path": "chouse metrics parts-pressure",
+      "use": "chouse metrics parts-pressure",
+      "short": "Tables with too many parts or slow merges",
+      "example": "  chouse metrics parts-pressure",
+      "runnable": true
+    },
+    {
+      "path": "chouse metrics simulate",
+      "use": "chouse metrics simulate <ALTER …>",
+      "short": "Estimate the rows an ALTER UPDATE/DELETE would touch (never runs it)",
+      "example": "  chouse metrics simulate \"ALTER TABLE t UPDATE x = 1 WHERE id = 2\"",
+      "runnable": true
+    },
+    {
+      "path": "chouse metrics top-tables",
+      "use": "chouse metrics top-tables",
+      "short": "Largest tables",
+      "example": "  chouse metrics top-tables --limit 5",
+      "runnable": true
+    },
+    {
+      "path": "chouse query",
+      "use": "chouse query [sql] [flags]",
+      "short": "Run SQL: read-only by default, writes with --raw",
+      "long": "Run SQL on the -c connection. SELECT, WITH, SHOW, DESCRIBE and\nEXPLAIN run directly and print as a table (or -o csv/json/yaml). Anything\nelse needs --raw, and then a confirmation or --yes; --dry-run estimates it\nwithout running it. Give SQL as arguments, -f FILE (- for stdin) or --stdin.\n--out FILE writes the result to a file (format from the extension).",
+      "example": "  chouse query \"SELECT name, engine FROM system.tables LIMIT 5\"\n  chouse query -f report.sql --out report.csv\n  chouse query \"SELECT * FROM events LIMIT 1000\" -o csv > events.csv\n  chouse query --explain plan \"SELECT * FROM big WHERE day = today()\"\n  chouse query --raw --dry-run \"ALTER TABLE t DELETE WHERE id = 2\"\n  chouse query --raw --yes \"ALTER TABLE t DELETE WHERE id = 2\"",
+      "group": "data",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "explain",
+          "type": "string",
+          "usage": "show the plan instead of running: plan|ast|syntax|pipeline|estimate"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "usage": "read SQL from a file (- for stdin)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "JSON",
+          "usage": "with --raw: the server result format (JSON, JSONEachRow, CSV, TabSeparated)"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "1000",
+          "usage": "max result rows (1-100000)"
+        },
+        {
+          "name": "out",
+          "type": "string",
+          "usage": "write the result to a file (.csv, .json, .yaml)"
+        },
+        {
+          "name": "raw",
+          "type": "bool",
+          "usage": "allow any SQL (writes need confirmation or --yes)"
+        },
+        {
+          "name": "stdin",
+          "type": "bool",
+          "usage": "read SQL from stdin"
+        }
+      ]
+    },
+    {
+      "path": "chouse remediation",
+      "use": "chouse remediation",
+      "short": "Review, approve or reject proposed fixes",
+      "long": "Fixes proposed for incidents (by people, Chouse AI or MCP agents)\nfrom the remediation catalog. Approving is how a fix gets to run. The server\nenforces who may approve: a person may approve their own low-risk fix, but\nhigh-risk fixes need two approvers other than the proposer, and a fix\nproposed by Chouse AI or an agent always needs someone else. approve and\nreject ask first (or need --yes).",
+      "example": "  chouse remediation list -c prod --status proposed\n  chouse remediation get 6e0b…\n  chouse remediation approve 6e0b… --comment \"checked the plan\" --yes",
+      "aliases": [
+        "fixes"
+      ],
+      "group": "observe",
+      "runnable": true
+    },
+    {
+      "path": "chouse remediation approve",
+      "use": "chouse remediation approve <actionId> [flags]",
+      "short": "Approve a proposed action",
+      "long": "Approve one proposed action — review it with get first. The server enforces\nthe approval rules and records the decision with channel=cli.",
+      "example": "  chouse remediation approve 6e0b… --comment \"reviewed\" --yes",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "comment",
+          "type": "string",
+          "usage": "decision comment"
+        }
+      ]
+    },
+    {
+      "path": "chouse remediation get",
+      "use": "chouse remediation get <actionId>",
+      "short": "One action: statements, approvals, executions",
+      "example": "  chouse remediation get 6e0b… -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse remediation list",
+      "use": "chouse remediation list [flags]",
+      "short": "Actions on the -c connection, newest first",
+      "example": "  chouse remediation list -c prod --status proposed,approved",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50",
+          "usage": "max rows"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "usage": "comma-separated: proposed, approved, executing, executed, verified, failed_verification, failed, rolled_back, rejected"
+        }
+      ]
+    },
+    {
+      "path": "chouse remediation reject",
+      "use": "chouse remediation reject <actionId> [flags]",
+      "short": "Reject a proposed action",
+      "long": "Reject one proposed action — review it with get first. The server enforces\nthe approval rules and records the decision with channel=cli.",
+      "example": "  chouse remediation reject 6e0b… --comment \"reviewed\" --yes",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "comment",
+          "type": "string",
+          "usage": "decision comment"
+        }
+      ]
+    },
+    {
+      "path": "chouse saved",
+      "use": "chouse saved",
+      "short": "Saved queries: list, show, run, create, delete",
+      "long": "Named queries shared with the UI. run executes one through the\nread-only path (saved writes are refused — use query --raw); delete asks\nfirst (or needs --yes).",
+      "example": "  chouse saved list\n  chouse saved run 3f2a… -o csv > out.csv\n  chouse saved create --name daily-orders -f orders.sql",
+      "aliases": [
+        "saved-queries"
+      ],
+      "group": "data",
+      "runnable": true
+    },
+    {
+      "path": "chouse saved create",
+      "use": "chouse saved create [sql] [flags]",
+      "short": "Save a query (SQL as arguments, -f FILE or --stdin)",
+      "example": "  chouse saved create --name six-seven \"SELECT 6*7 AS x\"\n  chouse saved create --name daily -f daily.sql --public -c prod",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "description",
+          "type": "string",
+          "usage": "description"
+        },
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "usage": "read SQL from a file (- for stdin)"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "usage": "name (required)"
+        },
+        {
+          "name": "public",
+          "type": "bool",
+          "usage": "share with everyone"
+        },
+        {
+          "name": "stdin",
+          "type": "bool",
+          "usage": "read SQL from stdin"
+        }
+      ]
+    },
+    {
+      "path": "chouse saved delete",
+      "use": "chouse saved delete <id>",
+      "short": "Delete a saved query",
+      "example": "  chouse saved delete 3f2a… --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse saved get",
+      "use": "chouse saved get <id>",
+      "short": "Show one saved query and its SQL",
+      "example": "  chouse saved get 3f2a… -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse saved list",
+      "use": "chouse saved list [flags]",
+      "short": "List saved queries (scoped to -c when given)",
+      "example": "  chouse saved list -c prod",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "0",
+          "usage": "max rows (0: all)"
+        }
+      ]
+    },
+    {
+      "path": "chouse saved run",
+      "use": "chouse saved run <id> [flags]",
+      "short": "Run a saved query (read-only)",
+      "example": "  chouse saved run 3f2a…\n  chouse saved run 3f2a… --out result.csv",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "1000",
+          "usage": "max result rows"
+        },
+        {
+          "name": "out",
+          "type": "string",
+          "usage": "write the result to a file (.csv, .json, .yaml)"
+        }
+      ]
+    },
+    {
+      "path": "chouse scheduled",
+      "use": "chouse scheduled",
+      "short": "Scheduled queries: jobs, runs, run now",
+      "long": "Scheduled query jobs and their runs. preview checks a SELECT\nwithout creating anything; run and delete ask first (or need --yes).\nCreating and editing jobs stays in the UI.",
+      "example": "  chouse scheduled list -c prod\n  chouse scheduled runs 4d2e… --limit 5\n  chouse scheduled run 4d2e… --yes",
+      "aliases": [
+        "jobs"
+      ],
+      "group": "ops",
+      "runnable": true
+    },
+    {
+      "path": "chouse scheduled delete",
+      "use": "chouse scheduled delete <id>",
+      "short": "Delete a job",
+      "example": "  chouse scheduled delete 4d2e… --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse scheduled get",
+      "use": "chouse scheduled get <id>",
+      "short": "Show one job",
+      "example": "  chouse scheduled get 4d2e… -o yaml",
+      "runnable": true
+    },
+    {
+      "path": "chouse scheduled list",
+      "use": "chouse scheduled list",
+      "short": "List jobs (scoped to -c when given)",
+      "example": "  chouse scheduled list -c prod",
+      "runnable": true
+    },
+    {
+      "path": "chouse scheduled preview",
+      "use": "chouse scheduled preview [flags]",
+      "short": "Check a SELECT as a job body without creating anything",
+      "example": "  chouse scheduled preview -c prod --query \"SELECT count() FROM events\"\n  chouse scheduled preview -c prod -f job.sql",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "file",
+          "shorthand": "f",
+          "type": "string",
+          "usage": "read the SELECT from a file (- for stdin)"
+        },
+        {
+          "name": "query",
+          "type": "string",
+          "usage": "SELECT to check"
+        }
+      ]
+    },
+    {
+      "path": "chouse scheduled run",
+      "use": "chouse scheduled run <id>",
+      "short": "Run a job now",
+      "example": "  chouse scheduled run 4d2e… --yes",
+      "runnable": true
+    },
+    {
+      "path": "chouse scheduled runs",
+      "use": "chouse scheduled runs <id> [flags]",
+      "short": "A job's runs, newest first",
+      "example": "  chouse scheduled runs 4d2e… --limit 5",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "20",
+          "usage": "max runs"
+        }
+      ]
+    },
+    {
+      "path": "chouse status",
+      "use": "chouse status",
+      "short": "Server health, version, compatibility and migration status",
+      "long": "Probe the configured server: health, version and whether this CLI\nsupports it, plus (with a token) the RBAC migration state. Run it before\ndebugging anything else.",
+      "example": "  chouse status\n  chouse status -o json",
+      "group": "start",
+      "runnable": true
+    },
+    {
+      "path": "chouse table",
+      "use": "chouse table",
+      "short": "Databases, tables, schemas and samples (read-only)",
+      "long": "Explore what your token can see on the -c connection: databases\nand tables, a table's columns and CREATE statement, and sample rows. All\nread-only; run DDL with chouse query --raw.",
+      "example": "  chouse table list\n  chouse table list analytics\n  chouse table schema analytics.events\n  chouse table sample analytics.events --limit 20",
+      "aliases": [
+        "tables",
+        "explorer"
+      ],
+      "group": "data",
+      "runnable": true
+    },
+    {
+      "path": "chouse table list",
+      "use": "chouse table list [database]",
+      "short": "List tables (optionally in one database)",
+      "example": "  chouse table list -c prod\n  chouse table list analytics -o csv",
+      "runnable": true
+    },
+    {
+      "path": "chouse table sample",
+      "use": "chouse table sample <db.table | db table> [flags]",
+      "short": "Show sample rows",
+      "example": "  chouse table sample analytics.events --limit 20\n  chouse table sample analytics.events -o csv",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "20",
+          "usage": "rows (max 1000)"
+        }
+      ]
+    },
+    {
+      "path": "chouse table schema",
+      "use": "chouse table schema <db.table | db table>",
+      "short": "Show a table's engine, columns and CREATE statement",
+      "example": "  chouse table schema analytics.events\n  chouse table schema analytics.events -o json",
+      "runnable": true
+    },
+    {
+      "path": "chouse upload",
+      "use": "chouse upload",
+      "short": "Check how a CSV/TSV/JSON file would import",
+      "long": "Send the first megabyte of a file for column inference — names,\ntypes, nullability and sample values. Nothing is stored. Importing the file\nstays in the UI (Explorer › Upload), or use chouse query --raw with INSERT.",
+      "example": "  chouse upload preview rows.csv\n  chouse upload preview rows.tsv --format TSV --header=false -o json",
+      "group": "data",
+      "runnable": true
+    },
+    {
+      "path": "chouse upload preview",
+      "use": "chouse upload preview <file> [flags]",
+      "short": "Infer columns from a file",
+      "example": "  chouse upload preview rows.csv",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "CSV",
+          "usage": "file format: CSV, TSV or JSON"
+        },
+        {
+          "name": "header",
+          "type": "bool",
+          "default": "true",
+          "usage": "the first row is a header"
+        }
+      ]
+    },
+    {
+      "path": "chouse version",
+      "use": "chouse version",
+      "short": "Print the CLI version (server version: chouse status)",
+      "long": "Print the CLI version, build commit and date. Always offline — it\nnever contacts a server, so it doubles as the install check. chouse status\nshows the server version and whether this CLI supports it.",
+      "example": "  chouse version\n  chouse version -o json",
+      "group": "start",
+      "runnable": true
+    }
+  ]
+}

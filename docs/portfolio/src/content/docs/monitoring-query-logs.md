@@ -1,3 +1,9 @@
+---
+app: Monitoring › Query logs
+route: /monitoring/logs
+permissions: logs:view
+screenshot: monitoring-query-logs
+---
 # Query logs
 
 Query logs is the deep-dive surface over `system.query_log` — every execution the cluster recorded, rolled up and charted five different ways. It lives at `/monitoring/logs` and requires the `logs:view` permission.

@@ -1,53 +1,50 @@
+---
+app: Sign-in page
+route: /login
+screenshot: login
+---
 # First login
-
-After [installing](/docs/quick-start/) CHouse UI, the first sign-in establishes your admin identity and walks you through the essentials.
 
 ## Sign in
 
+Open CHouse UI (`http://localhost:5521` locally, or your host). The sign-in page at `/login` takes an email or username and a password, or offers your [SSO](/docs/sso/) providers when they are configured.
+
+On a fresh install, sign in with the first-run admin account:
+
 | Field | Value |
 | --- | --- |
-| URL | `http://localhost:5521` (or your host) |
-| Email | `admin@localhost` |
+| Email or username | `admin@localhost` or `admin` |
 | Password | `admin123!` |
 
-> **Warning:** These defaults exist only for the seeded first-run account. Rotate the password before exposing the instance to anyone.
+These come from `RBAC_ADMIN_EMAIL`, `RBAC_ADMIN_USERNAME` and `RBAC_ADMIN_PASSWORD`, which are only used to create this account on the very first start. Set them before the first start to choose your own.
 
-## Rotate the default password
+> **Warning:** Change the seeded password before anyone else can reach the instance.
 
-1. Open the user menu (bottom dock) → **Preferences**.
-2. In **Account**, set a new password (hashed with Argon2id server-side).
-3. Save — the next sign-in requires the new password.
+## The Getting started guide
 
-If SSO is configured, users [sign in through the identity provider](/docs/sso/) instead; the password field can be disabled entirely.
+On first sign-in the **Getting started with CHouse** guide opens. On a fresh install it starts with two setup steps, and the checklist is complete when both are done:
 
-## First-run tour
+1. **Change password** — replace the seeded password (12+ characters with uppercase, lowercase, a number and a symbol). You are signed out and sign in again with the new one.
+2. **Connect ClickHouse** — **Open connections** takes you to **Admin › Connections** to add and test your first server.
 
-On the first authenticated visit CHouse UI starts a guided tour:
-
-- **Getting-started hub** — a checklist of the core setup steps (connect a cluster, run a query, explore monitoring)
-- **Contextual coachmarks** — short highlights anchored to the dock, connection selector and editor, dismissible at any time
-- Tour state is stored per user, so each teammate sees it once
-
-## Set your preferences
-
-**Preferences** (`/preferences`) stores per-user settings, synced server-side:
-
-- **Theme** — light, dark or auto (light 06:00–18:00 local time, dark otherwise)
-- **Max result rows** — the default row cap for query results
-- **Personal access tokens** — mint and revoke [`ch_pat_…` tokens](/docs/personal-access-tokens/)
+Below the setup, the guide offers short tours of each area you have permission for — Explorer, Monitoring, Data, Fleet, Agents, Admin — with highlights on the real screens. Progress is saved per user. Reopen the guide any time from the command palette (**⌘K / Ctrl+K › Getting started**).
 
 ## Add your first connection
 
-CHouse UI never talks to ClickHouse directly from the browser — it connects through the server. Add a connection:
+The browser never talks to ClickHouse directly; the server does, with credentials it stores encrypted.
 
-1. **Admin → Connections** → add (requires `connections:edit`).
-2. Enter host, port, user and password. Passwords are encrypted with AES-256-GCM and never reach the frontend.
-3. Save, then pick the connection from the connection selector.
+1. **Admin › Connections › Add connection** (needs `connections:edit`).
+2. Enter the host, port, user and password, and **Test connection**.
+3. Save, then make it active from the connection selector.
 
-Details in [Connections](/docs/explorer-connections/). From there, head to the [SQL editor](/docs/workspace-editor/) and run your first query.
+Then open the [SQL editor](/docs/workspace-editor/) in **Explorer** and run a query. Details: [Connections](/docs/connections/).
 
-## If login fails
+## Set your preferences
 
-- **Wrong credentials** — the seeded admin is only created on first run; check the server log for the `RBAC` seed line.
-- **Session expired** — CHouse UI auto-reconnects ClickHouse sessions; a full re-login fixes expired JWTs.
+[Preferences](/docs/preferences/) holds your theme, the default result row limit and your [personal access tokens](/docs/personal-access-tokens/).
+
+## If sign-in fails
+
+- **Wrong credentials on a fresh install** — the seeded account is only created when the RBAC database is first created. Setting `RBAC_ADMIN_*` after that has no effect; reset a password from another admin account, or see [Migrations & upgrades](/docs/migrations-upgrades/) for the RBAC CLI.
+- **"Password sign-in is disabled"** — `AUTH_PASSWORD_LOGIN_ENABLED=false` with SSO configured. Use the SSO button.
 - More in [Troubleshooting](/docs/troubleshooting/).

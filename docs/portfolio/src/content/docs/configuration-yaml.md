@@ -45,7 +45,7 @@ clickhouse:
 
 ## Full option groups
 
-The complete annotated example lives in [`.config.example.yaml`](https://github.com/daun-gatal/chouse-ui/blob/main/.config.example.yaml). Option groups:
+Every key maps to an environment variable by joining the path with `_` and upper-casing it; the full list with defaults is on [Environment variables](/docs/configuration-env/). The complete annotated example lives in [`.config.example.yaml`](https://github.com/daun-gatal/chouse-ui/blob/main/.config.example.yaml). Option groups:
 
 | Group | Keys |
 | --- | --- |
@@ -53,8 +53,10 @@ The complete annotated example lives in [`.config.example.yaml`](https://github.
 | `rbac` | `db_type`, `sqlite_path`, `postgres_url`, `postgres_pool_size`, `encryption.key`, `encryption.salt`, `admin.{email,username,password}` |
 | `clickhouse` | `default_url`, `default_user`, `preset_urls` |
 | `jwt` | `secret`, `access_expiry`, `refresh_expiry`, `issuer`, `audience` |
-| `fleet` | `poller_enabled`, `poll_interval_seconds`, `alert_config_file` |
-| `doctor` | `schedule_file`, `auto_rca_cooldown_minutes` |
+| `fleet` | `poll_interval_seconds`, `alert_config_file` (legacy import) |
+| `observe` | `fleet_interval`, `retention_days`, `max_fingerprints`, `scratch_database` |
+| `remediation` | `maintenance_window` |
+| `doctor` | `schedule_file` (legacy import), `auto_rca_cooldown_minutes` |
 | `scheduled_queries` | `enabled` |
 | `auth.sso` | `enabled`, `base_url`, `default_role`, `auto_link_by_email`, `providers.<id>.*` |
 | `auth.password_login` | `enabled` |

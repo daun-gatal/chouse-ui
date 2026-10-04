@@ -37,62 +37,75 @@ function Connector({ label }: { label: string }) {
 export function ArchitectureDiagram() {
   return (
     <figure className="mt-8 flex flex-col" aria-label="CHouse UI architecture">
-      {/* Browser layer */}
-      <div className="rounded-md border border-ink-500 bg-ink-100 p-5">
-        <div className="flex items-baseline justify-between gap-3">
-          <h4 className="text-[15px] font-semibold text-paper">Browser</h4>
-          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-paper-faint">
-            React 19 SPA
-          </span>
+      {/* Client layer */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-md border border-ink-500 bg-ink-100 p-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h4 className="text-[15px] font-semibold text-paper">Browser</h4>
+            <span className="font-mono text-[10px] text-paper-faint">session JWT</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Chip>React 19 SPA</Chip>
+            <Chip>TanStack Query</Chip>
+          </div>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Chip>Vite 7 + React Router v7</Chip>
-          <Chip>Zustand stores</Chip>
-          <Chip>TanStack Query v5</Chip>
-          <Chip>ApiClient (fetch)</Chip>
+        <div className="rounded-md border border-ink-500 bg-ink-100 p-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h4 className="text-[15px] font-semibold text-paper">chouse CLI</h4>
+            <span className="font-mono text-[10px] text-paper-faint">ch_pat_ token</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Chip>scripts · CI</Chip>
+            <Chip>/api/*</Chip>
+          </div>
+        </div>
+        <div className="rounded-md border border-ink-500 bg-ink-100 p-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h4 className="text-[15px] font-semibold text-paper">AI agents</h4>
+            <span className="font-mono text-[10px] text-paper-faint">ch_pat_ token</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Chip>MCP clients</Chip>
+            <Chip>/mcp</Chip>
+          </div>
         </div>
       </div>
 
-      <Connector label="/api/*" />
+      <Connector label="one port: /, /api/*, /mcp" />
 
       {/* Server layer */}
       <div className="rounded-md border border-ink-500 bg-ink-100 p-5">
         <div className="flex items-baseline justify-between gap-3">
-          <h4 className="text-[15px] font-semibold text-paper">Bun server</h4>
+          <h4 className="text-[15px] font-semibold text-paper">CHouse UI server</h4>
           <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-paper-faint">
-            packages/server · Hono v4
+            packages/server · Bun + Hono
           </span>
         </div>
         <div className="mt-4 flex flex-col gap-3">
-          <Row label="Middleware">
-            <Chip>CORS</Chip>
-            <Chip>Rate limit</Chip>
+          <Row label="Every request">
+            <Chip>Authenticate</Chip>
+            <Chip>Permission</Chip>
             <Chip>SQL parser</Chip>
             <Chip>Data access</Chip>
-          </Row>
-          <Row label="Routes">
-            <Chip>query</Chip>
-            <Chip>explorer</Chip>
-            <Chip>metrics</Chip>
-            <Chip>saved-queries</Chip>
-            <Chip>live-queries</Chip>
-            <Chip>upload</Chip>
-            <Chip>ai-chat</Chip>
-          </Row>
-          <Row label="Services">
-            <Chip>ClickHouse proxy</Chip>
-            <Chip>AI optimizer</Chip>
-            <Chip>Query analyzer</Chip>
-            <Chip>AI chat</Chip>
-          </Row>
-          <Row label="RBAC">
-            <Chip>Auth</Chip>
-            <Chip>Users</Chip>
-            <Chip>Roles</Chip>
-            <Chip>Connections</Chip>
+            <Chip>Schema preflight</Chip>
+            <Chip>Agent budgets</Chip>
             <Chip>Audit</Chip>
-            <Chip>Data access</Chip>
-            <Chip>AI providers/models</Chip>
+          </Row>
+          <Row label="Features">
+            <Chip>Explorer &amp; query</Chip>
+            <Chip>Monitoring</Chip>
+            <Chip>Data</Chip>
+            <Chip>Fleet</Chip>
+            <Chip>Doctor</Chip>
+            <Chip>Agents &amp; MCP tools</Chip>
+            <Chip>Admin</Chip>
+          </Row>
+          <Row label="Background">
+            <Chip>Observability collector</Chip>
+            <Chip>Fleet alerter</Chip>
+            <Chip>Scheduled queries</Chip>
+            <Chip>Remediation worker</Chip>
+            <Chip>Doctor scheduler</Chip>
           </Row>
         </div>
       </div>
@@ -107,8 +120,8 @@ export function ArchitectureDiagram() {
             <span className="font-mono text-[10px] text-paper-faint">▼</span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Chip>@clickhouse/client</Chip>
-            <Chip>system.* reads</Chip>
+            <Chip>connection credentials</Chip>
+            <Chip>remediation credential</Chip>
           </div>
         </div>
         <div className="rounded-md border border-ink-500 bg-ink-100 p-5">
@@ -127,14 +140,14 @@ export function ArchitectureDiagram() {
             <span className="font-mono text-[10px] text-paper-faint">▼</span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Chip>Drizzle ORM</Chip>
-            <Chip>RBAC + audit + jobs</Chip>
+            <Chip>RBAC · audit · jobs</Chip>
+            <Chip>evidence · leases</Chip>
           </div>
         </div>
       </div>
 
       <figcaption className="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
-        Browser → server proxy → ClickHouse / AI / database — credentials never leave the server
+        Every client → one server → ClickHouse / AI / database — credentials never leave the server
       </figcaption>
     </figure>
   );

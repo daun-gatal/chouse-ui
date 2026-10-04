@@ -1,3 +1,9 @@
+---
+app: Monitoring › Parts
+route: /monitoring/parts
+permissions: parts:view
+screenshot: monitoring-parts
+---
 # Parts
 
 Parts (`/monitoring/parts`, permission `parts:view`) turns `system.part_log` into a health picture of how data lands, merges and mutates on disk.

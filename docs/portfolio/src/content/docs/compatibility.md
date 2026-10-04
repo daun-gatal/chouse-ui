@@ -8,6 +8,7 @@ Version combinations CHouse UI has been tested against end-to-end.
 | --- | --- | --- |
 | ClickHouse | 24.11 | Monitoring suite verified end-to-end against a production cluster |
 | ClickHouse | 25 | Query logs, metrics, fleet |
+| ClickHouse | 23.8 and 26.5 | Data observability end-to-end against every pipeline source (Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, PostgreSQL replication); features a version lacks show *unsupported on this version* |
 | PostgreSQL | 18 | RBAC database (`RBAC_DB_TYPE=postgres`) |
 | SQLite | 3.51.0 | RBAC database via Bun's built-in SQLite (`RBAC_DB_TYPE=sqlite`) |
 
@@ -16,7 +17,8 @@ Version combinations CHouse UI has been tested against end-to-end.
 | Requirement | Minimum |
 | --- | --- |
 | Bun (development) | 1.0+ |
-| Node.js (alternative runtime) | 18+ |
+| `chouse` CLI 1.x | CHouse UI server 3.14 or later (`chouse status` checks) |
+| Kubernetes (Helm chart) | 1.25+ |
 | RAM | 2 GB recommended |
 | Ports | `5521` (UI, API and MCP at `/mcp`), `8123` (ClickHouse HTTP) |
 
