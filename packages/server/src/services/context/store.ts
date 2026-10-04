@@ -184,10 +184,6 @@ export async function deleteMetric(id: string): Promise<boolean> {
   return true;
 }
 
-export async function getMetricByName(connectionId: string, name: string): Promise<Metric[]> {
-  return (await listMetrics(connectionId)).filter((m) => m.name === name);
-}
-
 // --- dbt manifest import -----------------------------------------------------
 
 const manifestSchema = z.object({

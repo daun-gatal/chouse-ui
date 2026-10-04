@@ -24,7 +24,6 @@ export const observeKeys = {
   datasets: (c: string | null, q: string, state: string, criticality: string) => [...observeKeys.all, "datasets", c, q, state, criticality] as const,
   dataset: (c: string | null, db: string, table: string) => [...observeKeys.all, "dataset", c, db, table] as const,
   lineage: (c: string | null, node: string | null, depth: number, direction: string) => [...observeKeys.all, "lineage", c, node, depth, direction] as const,
-  impact: (c: string | null, node: string) => [...observeKeys.all, "impact", c, node] as const,
   pipelines: (c: string | null, kind: string, status: string) => [...observeKeys.all, "pipelines", c, kind, status] as const,
   pipelineSamples: (c: string | null, id: string) => [...observeKeys.all, "pipeline-samples", c, id] as const,
   coverage: (c: string | null) => [...observeKeys.all, "coverage", c] as const,
@@ -33,23 +32,21 @@ export const observeKeys = {
   performance: (c: string | null) => [...observeKeys.all, "performance", c] as const,
   fingerprint: (c: string | null, fp: string) => [...observeKeys.all, "fingerprint", c, fp] as const,
   capacity: (c: string | null) => [...observeKeys.all, "capacity", c] as const,
-  privileges: (c: string | null) => [...observeKeys.all, "privileges", c] as const,
 };
 
-export const remediationKeys = {
+const remediationKeys = {
   all: ["remediation"] as const,
   catalog: () => [...remediationKeys.all, "catalog"] as const,
   actions: (c: string | null, filter: string) => [...remediationKeys.all, "actions", c, filter] as const,
-  action: (id: string) => [...remediationKeys.all, "action", id] as const,
   credential: (c: string) => [...remediationKeys.all, "credential", c] as const,
 };
 
-export const notebookKeys = {
+const notebookKeys = {
   all: ["notebooks"] as const,
   attached: (kind: string, ref: string) => [...notebookKeys.all, kind, ref] as const,
 };
 
-export const contextKeys = {
+const contextKeys = {
   all: ["context"] as const,
   tables: (c: string | null, q: string) => [...contextKeys.all, "tables", c, q] as const,
   table: (c: string | null, db: string, table: string) => [...contextKeys.all, "table", c, db, table] as const,
@@ -64,7 +61,7 @@ export const upgradeKeys = {
   rollout: () => [...upgradeKeys.all, "rollout"] as const,
 };
 
-export const agentKeys = {
+const agentKeys = {
   all: ["agents"] as const,
   summary: () => [...agentKeys.all, "summary"] as const,
   sessions: (days: number) => [...agentKeys.all, "sessions", days] as const,
@@ -107,11 +104,6 @@ export function useLineage(node: string | null, depth: number, direction: "up" |
   return useQuery({ queryKey: observeKeys.lineage(c, node, depth, direction), queryFn: () => observe.getLineage({ connectionId: cid(c), node, depth, direction }), enabled: Boolean(c) });
 }
 
-export function useImpact(node: string | null): UseQueryResult<Awaited<ReturnType<typeof observe.getImpact>>> {
-  const c = useConnection();
-  return useQuery({ queryKey: observeKeys.impact(c, node ?? ""), queryFn: () => observe.getImpact(node ?? "", cid(c)), enabled: Boolean(c && node) });
-}
-
 export function usePipelines(kind = "", status = ""): UseQueryResult<observe.Pipeline[]> {
   const c = useConnection();
   return useQuery({ queryKey: observeKeys.pipelines(c, kind, status), queryFn: () => observe.listPipelines({ connectionId: cid(c), kind, status }), enabled: Boolean(c), refetchInterval: REFRESH_MS });
@@ -149,11 +141,6 @@ export function useFingerprintSeries(fingerprint: string | null): UseQueryResult
 export function useCapacity(): UseQueryResult<observe.Capacity> {
   const c = useConnection();
   return useQuery({ queryKey: observeKeys.capacity(c), queryFn: () => observe.getCapacity(cid(c)), enabled: Boolean(c) });
-}
-
-export function usePrivileges(enabled = true): UseQueryResult<Awaited<ReturnType<typeof observe.getPrivileges>>> {
-  const c = useConnection();
-  return useQuery({ queryKey: observeKeys.privileges(c), queryFn: () => observe.getPrivileges(cid(c)), enabled: enabled && Boolean(c) });
 }
 
 export function usePinCriticality() {
@@ -223,10 +210,6 @@ export function useRemediationActions(filter: { incidentId?: string; notebookId?
     enabled: enabled && Boolean(c),
     refetchInterval: REFRESH_MS,
   });
-}
-
-export function useRemediationAction(id: string | null): UseQueryResult<Awaited<ReturnType<typeof remediation.getAction>>> {
-  return useQuery({ queryKey: remediationKeys.action(id ?? ""), queryFn: () => remediation.getAction(id ?? ""), enabled: Boolean(id) });
 }
 
 function useRemediationMutation<TInput>(fn: (input: TInput) => Promise<unknown>) {

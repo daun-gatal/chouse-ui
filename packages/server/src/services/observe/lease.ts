@@ -24,10 +24,6 @@ export async function acquireLease(key: string, holder: string, ttlSeconds: numb
   return rows[0]?.holder === holder;
 }
 
-export async function releaseLease(key: string, holder: string): Promise<void> {
-  await run(sql`UPDATE obs_leases SET holder = '', acquired_at = 0, expires_at = 0 WHERE lease_key = ${key} AND holder = ${holder}`);
-}
-
 export async function releaseAll(holder: string): Promise<void> {
   await run(sql`UPDATE obs_leases SET holder = '', acquired_at = 0, expires_at = 0 WHERE holder = ${holder}`);
 }

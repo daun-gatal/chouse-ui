@@ -14,7 +14,7 @@ import { ClientManager } from "../clientManager";
 import { getCredential } from "../remediation/store";
 import { quoteIdent, quoteString } from "../remediation/catalog";
 import { selectRows } from "./clickhouse";
-import { one, run, sql, str } from "./db";
+import { run, sql } from "./db";
 
 export const SCRATCH_DATABASE = process.env.OBSERVE_SCRATCH_DATABASE || "chouse_scratch";
 const SAMPLE_ROWS = 1_000_000;
@@ -87,6 +87,3 @@ export async function setCostRates(currency: string, perTibRead: number, perCpuH
   `);
 }
 
-export async function trialExists(id: string): Promise<boolean> {
-  return (await one(sql`SELECT id FROM obs_codec_trials WHERE id = ${id}`)) !== null && str(id) !== "";
-}

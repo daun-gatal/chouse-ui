@@ -11,9 +11,9 @@
  * - every call is recorded on the agent's session.
  */
 
-import { decideBudget, healthNotices, type BudgetDecision, type HealthNotice, type TableEstimate, type TableHealth } from "./budget";
+import { decideBudget, type BudgetDecision, type TableEstimate, type TableHealth } from "./budget";
 import * as store from "./store";
-import { all, num, one, sql, str } from "../observe/db";
+import { num, one, sql, str } from "../observe/db";
 import { logger } from "../../utils/logger";
 
 export interface AgentContext {
@@ -127,11 +127,3 @@ export async function recordAgentQuery(ctx: AgentContext, governance: Governance
   });
 }
 
-/** Health notices for an arbitrary table list (MCP get_dataset_health). */
-export async function noticesFor(connectionId: string, tables: string[]): Promise<HealthNotice[]> {
-  return healthNotices(await tableHealth(connectionId, tables));
-}
-
-export async function agentUsageByConnection(sinceMs: number): Promise<Array<{ sessionId: string; bytes: number }>> {
-  return (await all(sql`SELECT session_id, SUM(read_bytes) AS bytes FROM agent_tool_calls WHERE created_at >= ${sinceMs} GROUP BY session_id`)).map((r) => ({ sessionId: str(r.session_id), bytes: num(r.bytes) }));
-}

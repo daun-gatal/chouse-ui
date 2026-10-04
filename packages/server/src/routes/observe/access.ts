@@ -59,14 +59,6 @@ export async function tableAccess(c: Context, connectionId: string): Promise<Tab
   };
 }
 
-/** Lineage node ids are `table:db.table`; non-table nodes carry no table data. */
-export function nodeAllowed(allowed: TablePredicate, nodeId: string): boolean {
-  if (!nodeId.startsWith("table:")) return true;
-  const fq = nodeId.slice("table:".length);
-  const dot = fq.indexOf(".");
-  return allowed(fq.slice(0, dot), fq.slice(dot + 1));
-}
-
 /** Other people's query text is shown only to users who may see all query history. */
 export function canSeeAllQueryText(c: Context): boolean {
   return isAdmin(c) || hasPermission(c, PERMISSIONS.QUERY_HISTORY_VIEW_ALL);

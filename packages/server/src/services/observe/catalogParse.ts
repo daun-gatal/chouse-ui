@@ -21,8 +21,6 @@ export type ObjectKind =
 export const QUEUE_ENGINES = new Set(["Kafka", "RabbitMQ", "NATS", "FileLog", "Redis"]);
 export const OBJECT_STORAGE_QUEUE_ENGINES = new Set(["S3Queue", "AzureQueue"]);
 export const EXTERNAL_ENGINES = new Set(["PostgreSQL", "MySQL", "MongoDB", "S3", "URL", "HDFS", "AzureBlobStorage", "SQLite", "ODBC", "JDBC", "Iceberg", "DeltaLake", "Hudi", "Redis", "File"]);
-export const REPLICATED_DATABASE_ENGINES = new Set(["MaterializedPostgreSQL", "MaterializedMySQL", "PostgreSQL", "MySQL"]);
-
 export function tableNodeId(database: string, table: string): string {
   return `table:${database}.${table}`;
 }

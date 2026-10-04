@@ -8,7 +8,6 @@ import { ApiError } from "@/api/client";
 import { parsePreflightDetails, useSchemaPreflightStore } from "@/stores/schemaPreflight";
 
 export const SCHEMA_PREFLIGHT_CODE = "SCHEMA_PREFLIGHT_BREAKS";
-export const SCHEMA_OVERRIDE_HEADERS: Record<string, string> = { "X-Schema-Override": "confirm" };
 
 export async function withSchemaOverride<T>(statement: string, run: (override: boolean) => Promise<T>): Promise<T> {
   try {
