@@ -2,6 +2,7 @@
 app: Admin › SSO
 route: /admin/sso
 permissions: sso:view
+screenshot: admin-sso
 ---
 # Single sign-on (SSO)
 

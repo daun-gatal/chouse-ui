@@ -2,6 +2,7 @@
 app: Agents
 route: /agents
 permissions: agents:view
+screenshot: agents-sessions
 ---
 # Agents & governance
 

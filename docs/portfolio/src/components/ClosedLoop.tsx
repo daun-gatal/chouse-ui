@@ -54,8 +54,8 @@ export default function ClosedLoop() {
                 <span className="text-paper">incident with its root cause</span> — not a
                 complaint. The fix comes from a closed catalog and runs with its own
                 credential{" "}
-                <span className="text-paper">only after a second person approves it</span>, then
-                is verified and can be rolled back.
+                <span className="text-paper">only after approval</span> — by two people for
+                high-impact changes — then is verified and can be rolled back.
               </p>
               <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
                 Detect → Trace → Explain → Fix → Verify · nothing runs unapproved

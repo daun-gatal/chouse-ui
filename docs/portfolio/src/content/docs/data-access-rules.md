@@ -2,6 +2,7 @@
 app: Admin › Data access
 route: /admin/data-access
 permissions: data_access:view
+screenshot: admin-data-access
 ---
 # Data access rules
 

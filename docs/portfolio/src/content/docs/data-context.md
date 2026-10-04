@@ -2,6 +2,7 @@
 app: Data › Context
 route: /data/context
 permissions: observe:view
+screenshot: data-context
 ---
 # Context
 

@@ -2,6 +2,7 @@
 app: Monitoring › Cluster
 route: /monitoring/cluster
 permissions: cluster:view
+screenshot: monitoring-cluster
 ---
 # Cluster activity
 

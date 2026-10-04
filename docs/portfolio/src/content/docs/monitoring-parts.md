@@ -2,6 +2,7 @@
 app: Monitoring › Parts
 route: /monitoring/parts
 permissions: parts:view
+screenshot: monitoring-parts
 ---
 # Parts
 

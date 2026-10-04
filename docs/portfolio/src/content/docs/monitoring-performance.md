@@ -2,6 +2,7 @@
 app: Monitoring › Performance
 route: /monitoring/performance
 permissions: performance:view
+screenshot: monitoring-performance
 ---
 # Performance
 

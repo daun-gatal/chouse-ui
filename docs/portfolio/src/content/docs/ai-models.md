@@ -2,6 +2,7 @@
 app: Admin › AI models
 route: /admin/ai-models
 permissions: ai_models:view
+screenshot: admin-ai-models
 ---
 # AI models
 

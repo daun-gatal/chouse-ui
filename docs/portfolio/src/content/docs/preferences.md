@@ -1,6 +1,7 @@
 ---
 app: Preferences
 route: /preferences
+screenshot: preferences
 ---
 # Preferences
 

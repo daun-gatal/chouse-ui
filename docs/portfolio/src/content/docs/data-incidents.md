@@ -2,6 +2,7 @@
 app: Data › Incidents
 route: /data/incidents
 permissions: observe:view, data_health:view
+screenshot: data-incidents
 ---
 # Incidents, root cause & fixes
 

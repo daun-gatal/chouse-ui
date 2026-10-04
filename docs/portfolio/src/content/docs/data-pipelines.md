@@ -2,6 +2,7 @@
 app: Data › Pipelines
 route: /data/pipelines
 permissions: observe:view
+screenshot: data-pipelines
 ---
 # Pipelines
 

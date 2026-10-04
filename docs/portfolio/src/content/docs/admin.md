@@ -1,6 +1,7 @@
 ---
 app: Admin
 route: /admin
+screenshot: admin-users
 ---
 # Admin overview
 

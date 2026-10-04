@@ -1,6 +1,7 @@
 ---
 app: Sign-in page
 route: /login
+screenshot: login
 ---
 # First login
 

@@ -9,7 +9,7 @@
 // Logs go to stderr; stdout is reserved for the tar stream of /out.
 
 /* global process, Buffer, console, setTimeout, fetch, window -- Node script; `window` is inside a page init script */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
 const APP = process.env.APP_URL ?? "http://chouse-ui:5521";
@@ -180,8 +180,16 @@ async function seedApp() {
 
 async function capture() {
   mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "dark" });
+  // The app needs a secure context (crypto APIs); on the compose network it is
+  // served over plain HTTP from a non-localhost name, so tell Chromium to trust it.
+  const browser = await chromium.launch({ args: [`--unsafely-treat-insecure-origin-as-secure=${APP}`] });
+  // The container has no locale; without one Intl throws and the app never renders.
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    colorScheme: "dark",
+    locale: "en-US",
+    timezoneId: "UTC",
+  });
   await context.addInitScript(() => {
     try {
       window.localStorage.setItem("vite-ui-theme", "dark");
@@ -190,15 +198,28 @@ async function capture() {
     }
   });
   const page = await context.newPage();
+  const consoleLines = [];
+  page.on("console", (msg) => consoleLines.push(`${msg.type()}: ${msg.text()}`));
+  page.on("pageerror", (err) => consoleLines.push(`pageerror: ${err.message}`));
+  page.on("requestfailed", (req) => consoleLines.push(`requestfailed: ${req.url()} ${req.failure()?.errorText ?? ""}`));
+  const debug = async (why) => {
+    await page.screenshot({ path: `${OUT}/_debug.jpg`, type: "jpeg", quality: 70 }).catch(() => undefined);
+    writeFileSync(`${OUT}/_debug.txt`, `${why}\nurl: ${page.url()}\n\n${consoleLines.join("\n")}\n\n${await page.content().catch(() => "")}`);
+  };
 
   await page.goto(`${APP}/login`, { waitUntil: "networkidle" });
   await page.screenshot({ path: `${OUT}/login.jpg`, type: "jpeg", quality: 82 });
   log("✓ login ← /login");
 
-  await page.locator('input[autocomplete="username"]').fill("admin@localhost");
-  await page.locator('input[autocomplete="current-password"]').fill(DEMO_PASSWORD);
-  await page.locator('button[type="submit"]').click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30000 });
+  try {
+    await page.locator('input[autocomplete="username"]').fill("admin@localhost", { timeout: 60000 });
+    await page.locator('input[autocomplete="current-password"]').fill(DEMO_PASSWORD);
+    await page.locator('button[type="submit"]').click();
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30000 });
+  } catch (error) {
+    await debug(String(error));
+    throw error;
+  }
 
   for (const [name, route] of SHOTS) {
     try {

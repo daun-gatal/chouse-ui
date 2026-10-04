@@ -2,6 +2,7 @@
 app: Fleet
 route: /fleet
 permissions: fleet:view
+screenshot: fleet
 ---
 # Fleet view
 

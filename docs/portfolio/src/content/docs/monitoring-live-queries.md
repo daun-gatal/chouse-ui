@@ -2,6 +2,7 @@
 app: Monitoring › Live queries
 route: /monitoring/live-queries
 permissions: live_queries:view
+screenshot: monitoring-live-queries
 ---
 # Live queries
 

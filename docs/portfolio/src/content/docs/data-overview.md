@@ -2,6 +2,7 @@
 app: Data › Overview
 route: /data/overview
 permissions: observe:view
+screenshot: data-overview
 ---
 # Data overview
 

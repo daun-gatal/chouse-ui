@@ -2,6 +2,7 @@
 app: Monitoring › Metrics
 route: /monitoring/metrics
 permissions: metrics:view, metrics:view:advanced
+screenshot: monitoring-metrics
 ---
 # Metrics
 

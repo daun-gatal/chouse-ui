@@ -52,8 +52,14 @@ echo "Seeding and capturing (this takes a few minutes)..."
 # The script is streamed over stdin, not bind-mounted (DinD resolves volume
 # sources on the Docker host); the screenshots come back as a tar on stdout.
 docker run --rm -i --network "$NETWORK" -e SHOTS_WAIT_SECONDS="${SHOTS_WAIT_SECONDS:-150}" "$PLAYWRIGHT_IMAGE" \
-  bash -c 'cat > /tmp/shots.mjs && cd /tmp && npm init -y >/dev/null 2>&1 && npm i --silent playwright-core@1.49.1 >&2 && node shots.mjs >&2 && tar -C /out -cf - .' \
-  < scripts/docs-screenshots.mjs > "$TMP_TAR"
+  bash -c 'cat > /tmp/shots.mjs && cd /tmp && npm init -y >/dev/null 2>&1 && npm i --silent playwright-core@1.49.1 >&2 && { node shots.mjs >&2; status=$?; tar -C /out -cf - .; exit $status; }' \
+  < scripts/docs-screenshots.mjs > "$TMP_TAR" || {
+    status=$?
+    mkdir -p "$OUT_DIR"
+    tar -C "$OUT_DIR" -xf "$TMP_TAR" --wildcards '*_debug.*' 2>/dev/null || true
+    echo "Capture failed (exit $status); see $OUT_DIR/_debug.*" >&2
+    exit "$status"
+  }
 
 mkdir -p "$OUT_DIR"
 find "${OUT_DIR:?}" -maxdepth 1 -name '*.jpg' -delete

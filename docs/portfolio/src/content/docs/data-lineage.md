@@ -2,6 +2,7 @@
 app: Data › Lineage
 route: /data/lineage
 permissions: observe:view
+screenshot: data-lineage
 ---
 # Lineage
 

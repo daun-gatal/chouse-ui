@@ -2,6 +2,7 @@
 app: Monitoring › Query logs
 route: /monitoring/logs
 permissions: logs:view
+screenshot: monitoring-query-logs
 ---
 # Query logs
 

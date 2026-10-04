@@ -2,6 +2,7 @@
 app: Monitoring › Capacity
 route: /monitoring/capacity
 permissions: capacity:view
+screenshot: monitoring-capacity
 ---
 # Capacity
 

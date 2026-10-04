@@ -2,6 +2,7 @@
 app: Data › Datasets
 route: /data/datasets
 permissions: observe:view, data_health:view
+screenshot: data-datasets
 ---
 # Datasets & promises
 

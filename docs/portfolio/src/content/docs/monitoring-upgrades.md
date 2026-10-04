@@ -2,6 +2,7 @@
 app: Monitoring › Upgrades
 route: /monitoring/upgrades
 permissions: upgrades:view
+screenshot: monitoring-upgrades
 ---
 # Upgrades
 

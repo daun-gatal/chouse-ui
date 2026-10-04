@@ -1,6 +1,7 @@
 ---
 app: Home
 route: /overview
+screenshot: home
 ---
 # Home
 

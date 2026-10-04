@@ -2,6 +2,7 @@
 app: Explorer
 route: /explorer
 permissions: database:view, table:view
+screenshot: explorer
 ---
 # Databases & tables
 

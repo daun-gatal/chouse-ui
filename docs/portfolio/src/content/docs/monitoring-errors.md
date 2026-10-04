@@ -2,6 +2,7 @@
 app: Monitoring › Errors
 route: /monitoring/errors
 permissions: errors:view
+screenshot: monitoring-errors
 ---
 # Errors
 

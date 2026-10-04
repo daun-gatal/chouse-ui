@@ -2,6 +2,7 @@
 app: Admin › Audit logs
 route: /admin/audit
 permissions: audit:view
+screenshot: admin-audit
 ---
 # Audit logging
 

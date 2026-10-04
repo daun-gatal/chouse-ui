@@ -2,6 +2,7 @@
 app: Data › Scheduled queries
 route: /data/scheduled-queries
 permissions: scheduled_queries:view
+screenshot: data-scheduled-queries
 ---
 # Scheduled queries
 

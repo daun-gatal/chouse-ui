@@ -2,6 +2,7 @@
 app: Admin › Connections
 route: /admin/connections
 permissions: connections:view
+screenshot: admin-connections
 ---
 # Connections
 

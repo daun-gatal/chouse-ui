@@ -2,6 +2,7 @@
 app: Data › Coverage
 route: /data/coverage
 permissions: observe:view
+screenshot: data-coverage
 ---
 # Coverage
 

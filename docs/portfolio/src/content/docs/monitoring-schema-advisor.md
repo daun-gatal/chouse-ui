@@ -2,6 +2,7 @@
 app: Monitoring › Schema advisor
 route: /monitoring/schema
 permissions: schema_advisor:view
+screenshot: monitoring-schema-advisor
 ---
 # Schema advisor
 

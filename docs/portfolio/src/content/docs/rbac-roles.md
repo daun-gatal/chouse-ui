@@ -2,6 +2,7 @@
 app: Admin › Users and Admin › Roles
 route: /admin/users
 permissions: users:view, roles:view
+screenshot: admin-roles
 ---
 # Users & roles
 

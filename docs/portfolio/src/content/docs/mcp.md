@@ -2,6 +2,7 @@
 app: Agents › MCP
 route: /agents/mcp
 permissions: agents:view
+screenshot: agents-mcp
 ---
 # MCP server
 

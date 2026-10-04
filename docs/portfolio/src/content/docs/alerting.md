@@ -2,6 +2,7 @@
 app: Admin › Alerting
 route: /admin/alerting
 permissions: alerting:view
+screenshot: admin-alerting
 ---
 # Alerting
 

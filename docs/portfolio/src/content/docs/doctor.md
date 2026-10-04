@@ -2,6 +2,7 @@
 app: Doctor
 route: /doctor
 permissions: doctor:view
+screenshot: doctor
 ---
 # Chouse AI Doctor
 
