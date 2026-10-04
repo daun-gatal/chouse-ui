@@ -1,4 +1,4 @@
-CHouse UI is a self-hosted web console for operating ClickHouse as a team. It gives everyone one place to query and explore, watches the clusters **and the data in them**, traces problems to their root cause, and fixes them — but only after a person approves. AI agents and scripts use the same server, under the same rules.
+CHouse UI is a self-hosted observability console for running ClickHouse as a team. It watches your **clusters**, the **queries** running on them and the **data** flowing through them, traces problems to their root cause, and fixes them — but only after a person approves. Everyone gets one place to query and explore, and AI agents and scripts use the same server, under the same rules.
 
 Open source under Apache 2.0. It runs next to your clusters with nothing to install on them: CHouse UI only needs a ClickHouse user to connect with.
 
@@ -6,11 +6,11 @@ Open source under Apache 2.0. It runs next to your clusters with nothing to inst
 
 | Area | What you get |
 | --- | --- |
-| **Query & explore** | [SQL editor](/docs/workspace-editor/) with schema-aware completion, [Visual EXPLAIN](/docs/workspace-explain/), [saved queries](/docs/workspace-saved-queries/), the [Explorer](/docs/explorer-databases/) for databases and tables, [uploads](/docs/explorer-upload/) and [exports](/docs/explorer-export/) |
+| **Monitoring** | Ten [Monitoring](/docs/monitoring-overview/) tabs from live queries to [performance regressions](/docs/monitoring-performance/), [capacity forecasts](/docs/monitoring-capacity/) and [upgrade readiness](/docs/monitoring-upgrades/); every cluster at once on [Fleet](/docs/fleet/) with [alerts](/docs/alerting/) |
 | **Data observability** | Learned freshness and volume for [every table](/docs/data-observability/), [pipelines](/docs/data-pipelines/) from Kafka to S3Queue in one status vocabulary, [lineage](/docs/data-lineage/) without instrumentation, [promises](/docs/data-health/) and [coverage](/docs/data-coverage/) |
 | **Root cause & fixes** | [Incidents](/docs/data-incidents/) traced across layers with their blast radius, investigation notebooks, and fixes from a closed catalog that run only after approval |
-| **Monitoring** | Ten [Monitoring](/docs/monitoring-overview/) tabs from live queries to [performance regressions](/docs/monitoring-performance/), [capacity forecasts](/docs/monitoring-capacity/) and [upgrade readiness](/docs/monitoring-upgrades/); every cluster at once on [Fleet](/docs/fleet/) with [alerts](/docs/alerting/) |
 | **Chouse AI** | [AI Assist](/docs/workspace-ai-assist/) in the editor, [in-tab diagnosis](/docs/ai-in-tab/), the [Doctor](/docs/doctor/) for fleet health checks, incident explanations and plain-language watchers — on [your choice of model](/docs/ai-models/) |
+| **Query & explore** | [SQL editor](/docs/workspace-editor/) with schema-aware completion, [Visual EXPLAIN](/docs/workspace-explain/), [saved queries](/docs/workspace-saved-queries/), the [Explorer](/docs/explorer-databases/) for databases and tables, [uploads](/docs/explorer-upload/) and [exports](/docs/explorer-export/) |
 | **Access control** | Own [users and roles](/docs/rbac-roles/) with 100+ [permissions](/docs/permissions/), [data access policies](/docs/data-access-rules/) per connection, [SSO](/docs/sso/), [audit log](/docs/audit-log/); credentials encrypted and never sent to the browser |
 | **Automation** | An [MCP server](/docs/mcp/) for AI agents with [governance](/docs/agents/) — budgets, health notices, a pause switch — and the [`chouse` CLI](/docs/cli/) for scripts and CI |
 | **Deployment** | One container and one port; [Docker](/docs/deploy-docker/) or a signed [Helm chart](/docs/deploy-helm/); SQLite for one replica, PostgreSQL for many |

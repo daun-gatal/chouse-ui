@@ -125,7 +125,7 @@ Requests without an `Origin` header (curl, the CLI, desktop agents) always pass 
 
 ## Try the hosted lab
 
-**https://mcp.chouse-ui.com/mcp** is a hosted instance you can point any client at without deploying anything. Create a token in the lab's UI (same **Preferences** flow) and use it as above. The lab keeps the default-safe policy — read tools only — so it is safe to experiment with.
+**https://lab.chouse-ui.com/mcp** is a hosted instance you can point any client at without deploying anything. Create a token in the lab's UI (same **Preferences** flow) and use it as above. The lab keeps the default-safe policy — read tools only — so it is safe to experiment with.
 
 ## Tools
 
