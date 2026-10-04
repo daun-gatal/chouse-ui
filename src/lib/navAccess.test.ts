@@ -5,6 +5,8 @@ import {
   ADMIN_ACCESS_PERMISSIONS,
   MONITORING_ACCESS_PERMISSIONS,
   EXPLORER_ACCESS_PERMISSIONS,
+  DATA_ACCESS_PERMISSIONS,
+  AGENTS_ACCESS_PERMISSIONS,
 } from "./navAccess";
 
 describe("navAccess — admin", () => {
@@ -44,5 +46,25 @@ describe("navAccess — monitoring & explorer", () => {
       RBAC_PERMISSIONS.DB_VIEW,
       RBAC_PERMISSIONS.TABLE_VIEW,
     ]);
+  });
+});
+
+describe("navAccess — data observability (ADR 0016)", () => {
+  it("data page opens for observability, scheduled queries or data health viewers", () => {
+    expect(DATA_ACCESS_PERMISSIONS).toEqual([
+      RBAC_PERMISSIONS.OBSERVE_VIEW,
+      RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW,
+      RBAC_PERMISSIONS.DATA_HEALTH_VIEW,
+    ]);
+  });
+
+  it("monitoring opens for the new performance, capacity and upgrades tabs", () => {
+    expect(MONITORING_ACCESS_PERMISSIONS).toEqual(
+      expect.arrayContaining([RBAC_PERMISSIONS.PERFORMANCE_VIEW, RBAC_PERMISSIONS.CAPACITY_VIEW, RBAC_PERMISSIONS.UPGRADES_VIEW]),
+    );
+  });
+
+  it("agents page needs agents:view", () => {
+    expect(AGENTS_ACCESS_PERMISSIONS).toEqual([RBAC_PERMISSIONS.AGENTS_VIEW]);
   });
 });

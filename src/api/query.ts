@@ -363,6 +363,13 @@ export async function optimizeQueryFromLog(
  * Callbacks for the NDJSON stream from /query/execute-stream.
  * All callbacks are called on the main thread as lines arrive.
  */
+/** Structured detail of a refused stream request (e.g. 409 SCHEMA_PREFLIGHT_BREAKS). */
+export interface StreamErrorInfo {
+  status: number;
+  code?: string;
+  details?: unknown;
+}
+
 export interface QueryStreamCallbacks {
   /** Fired once when column names and types are known (very early). */
   onMeta: (meta: QueryMeta[], queryId: string) => void;
@@ -374,7 +381,7 @@ export interface QueryStreamCallbacks {
   /** Fired once when the stream ends normally. */
   onEnd: (stats: QueryStatistics, totalRows: number) => void;
   /** Fired if a server-side or network error interrupts the stream. */
-  onError: (message: string) => void;
+  onError: (message: string, info?: StreamErrorInfo) => void;
 }
 
 /**
@@ -391,12 +398,15 @@ export async function executeQueryStream(
   queryId: string | undefined,
   signal: AbortSignal | undefined,
   maxResultRows: number | undefined,
-  callbacks: QueryStreamCallbacks
+  callbacks: QueryStreamCallbacks,
+  options?: { schemaOverride?: boolean }
 ): Promise<void> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-Requested-With": "XMLHttpRequest",
   };
+  // ADR 0016 §11: confirmed override of a schema change that breaks dependents.
+  if (options?.schemaOverride) headers["X-Schema-Override"] = "confirm";
 
   Object.assign(headers, connectionIdentityHeaders());
 
@@ -416,11 +426,14 @@ export async function executeQueryStream(
   if (!response.ok) {
     // Non-streaming error (auth failure, 403, etc.)
     let message = `HTTP ${response.status}`;
+    const info: StreamErrorInfo = { status: response.status };
     try {
-      const body = await response.json() as { error?: { message?: string } };
+      const body = await response.json() as { error?: { message?: string; code?: string; details?: unknown } };
       if (body?.error?.message) message = body.error.message;
+      info.code = body?.error?.code;
+      info.details = body?.error?.details;
     } catch { /* ignore */ }
-    callbacks.onError(message);
+    callbacks.onError(message, info);
     return;
   }
 

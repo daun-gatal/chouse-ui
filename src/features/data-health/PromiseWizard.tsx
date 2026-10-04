@@ -21,7 +21,8 @@ import { RBAC_PERMISSIONS, useAuthStore, useRbacStore } from "@/stores";
 import { cn } from "@/lib/utils";
 import { useCreateDataHealthPromise, useUpdateDataHealthPromise } from "./hooks";
 import { detectEventTimeColumn, DH_LABEL, DH_PRIMARY, eventTimeSupport, isDateOnlyColumnType, isSupportedEventTimeColumnType, suggestEventTimeEncoding } from "./lib";
-import { RuleEditors, type CompletenessRule, type CustomMetricRule, type UniquenessRule, type ValidityRule } from "./RuleEditors";
+import { RuleEditors, type CompletenessRule, type CustomMetricRule, type DistributionRule, type UniquenessRule, type ValidityRule } from "./RuleEditors";
+import { draftToFormPatch, type PromiseWizardDraft } from "./draft";
 
 interface FormState {
   name: string;
@@ -63,6 +64,7 @@ interface FormState {
   schemaContract: boolean;
   allowAdditionalColumns: boolean;
   customMetricRules: CustomMetricRule[];
+  distributionRules: DistributionRule[];
 }
 
 const STEPS = ["Dataset", "Health promise", "Review"] as const;
@@ -75,6 +77,7 @@ function defaultForm(): FormState {
     freshness: true, freshnessMinutes: 60, rowCount: true, rowCountMin: "1", rowCountMax: "", anomaly: true, anomalyHardMin: "",
     completenessRules: [], uniquenessRules: [], validityRules: [], schemaContract: true, allowAdditionalColumns: true,
     customMetricRules: [],
+    distributionRules: [],
   };
 }
 
@@ -95,6 +98,7 @@ function formFromPromise(promise: DataHealthPromise): FormState {
   const uniquenessRules: UniquenessRule[] = promise.checks.flatMap((check) => check.type === "uniqueness" ? [{ checkKey: check.checkKey, columns: check.config.columns, maxDuplicatePercent: check.config.maxDuplicateRatio * 100 }] : []);
   const validityRules: ValidityRule[] = promise.checks.flatMap((check) => check.type === "validity" ? [{ checkKey: check.checkKey, name: check.name, predicate: check.config.predicate, minPercent: check.config.minRatio * 100 }] : []);
   const customMetricRules: CustomMetricRule[] = promise.checks.flatMap((check) => check.type === "custom_metric" ? [{ checkKey: check.checkKey, name: check.name, expression: check.config.expression, operator: check.config.operator, threshold: check.config.threshold, upperThreshold: check.config.upperThreshold ?? 0 }] : []);
+  const distributionRules: DistributionRule[] = promise.checks.flatMap((check) => check.type === "distribution" ? [{ checkKey: check.checkKey, column: check.config.column, statistic: check.config.statistic, topValue: check.config.topValue ?? "", tolerance: check.config.tolerance, minSamples: check.config.minSamples }] : []);
   return {
     ...form,
     name: promise.name, description: promise.description ?? "", sourceType: promise.sourceType,
@@ -111,6 +115,7 @@ function formFromPromise(promise: DataHealthPromise): FormState {
     completenessRules, uniquenessRules, validityRules,
     schemaContract: Boolean(schema), allowAdditionalColumns: schema?.type === "schema_contract" ? schema.config.allowAdditionalColumns : true,
     customMetricRules,
+    distributionRules,
   };
 }
 
@@ -128,11 +133,7 @@ function CheckToggle({ checked, onCheckedChange, title, description, hint, child
 }
 
 /** Prefill for the "protect the output table" handoff from the Scheduled Query builder (ADR 0006). */
-export interface PromiseWizardDraft {
-  databaseName: string;
-  tableName: string;
-  upstreamJobId: string;
-}
+export type { PromiseWizardDraft };
 
 export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { open: boolean; onOpenChange: (open: boolean) => void; promise?: DataHealthPromise; initialDraft?: PromiseWizardDraft }) {
   const activeConnectionId = useAuthStore((state) => state.activeConnectionId);
@@ -178,7 +179,7 @@ export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { o
     setForm(promise
       ? formFromPromise(promise)
       : initialDraft
-        ? { ...defaultForm(), name: `${initialDraft.databaseName}.${initialDraft.tableName} is healthy`, databaseName: initialDraft.databaseName, tableName: initialDraft.tableName, frequency: "event", upstreamJobId: initialDraft.upstreamJobId }
+        ? { ...defaultForm(), ...draftToFormPatch(initialDraft) }
         : defaultForm());
     let active = true;
     void Promise.all([getDatabases(), listChannels()]).then(([databaseRows, channelRows]) => { if (active) { setDatabases(databaseRows); setChannels(channelRows.filter((channel) => channel.enabled)); } }).catch(() => { if (active) toast.error("Could not load dataset metadata"); });
@@ -269,6 +270,7 @@ export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { o
     for (const rule of form.validityRules) if (rule.predicate.trim()) result.push({ checkKey: rule.checkKey, name: rule.name.trim() || "Business-rule validity", type: "validity", severity: "warning", enabled: true, config: { predicate: rule.predicate.trim(), minRatio: rule.minPercent / 100 } });
     if (form.schemaContract && columns.length > 0) result.push({ checkKey: "schema_contract", name: "Schema contract", type: "schema_contract", severity: "critical", enabled: true, config: { expectedColumns: columns.map((column) => ({ name: column.name, type: column.type })), allowAdditionalColumns: form.allowAdditionalColumns } });
     for (const rule of form.customMetricRules) if (rule.expression.trim()) result.push({ checkKey: rule.checkKey, name: rule.name.trim() || "Custom metric", type: "custom_metric", severity: "warning", enabled: true, config: { expression: rule.expression.trim(), operator: rule.operator, threshold: rule.threshold, upperThreshold: rule.operator === "between" ? rule.upperThreshold : undefined } });
+    for (const rule of form.distributionRules) if (rule.column.trim()) result.push({ checkKey: rule.checkKey, name: `${rule.column} ${rule.statistic.replace("_", " ")} drift`, type: "distribution", severity: "warning", enabled: true, config: { column: rule.column.trim(), statistic: rule.statistic, topValue: rule.statistic === "top_share" ? rule.topValue.trim() : null, tolerance: rule.tolerance, minSamples: rule.minSamples } });
     return result;
   }, [form, columns]);
 
@@ -287,6 +289,7 @@ export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { o
       ...form.uniquenessRules.map((rule) => rule.checkKey),
       ...form.validityRules.map((rule) => rule.checkKey),
       ...form.customMetricRules.map((rule) => rule.checkKey),
+      ...form.distributionRules.map((rule) => rule.checkKey),
       "freshness", "row_count", "volume_anomaly", "schema_contract",
     ]);
     let index = 1;
@@ -298,8 +301,9 @@ export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { o
     && new Set(form.completenessRules.map((rule) => rule.column)).size === form.completenessRules.length
     && form.uniquenessRules.every((rule) => rule.columns.length > 0 && rule.columns.length <= 10 && new Set(rule.columns).size === rule.columns.length && Number.isFinite(rule.maxDuplicatePercent) && rule.maxDuplicatePercent >= 0 && rule.maxDuplicatePercent <= 100)
     && form.validityRules.every((rule) => Boolean(rule.name.trim()) && Boolean(rule.predicate.trim()) && Number.isFinite(rule.minPercent) && rule.minPercent >= 0 && rule.minPercent <= 100)
-    && form.customMetricRules.every((rule) => Boolean(rule.name.trim()) && Boolean(rule.expression.trim()) && Number.isFinite(rule.threshold) && (rule.operator !== "between" || (Number.isFinite(rule.upperThreshold) && rule.threshold <= rule.upperThreshold)));
-  const needsEventTime = form.freshness || form.rowCount || form.anomaly || form.completenessRules.length > 0 || form.uniquenessRules.length > 0 || form.validityRules.length > 0;
+    && form.customMetricRules.every((rule) => Boolean(rule.name.trim()) && Boolean(rule.expression.trim()) && Number.isFinite(rule.threshold) && (rule.operator !== "between" || (Number.isFinite(rule.upperThreshold) && rule.threshold <= rule.upperThreshold)))
+    && form.distributionRules.every((rule) => Boolean(rule.column.trim()) && rule.tolerance >= 1.05 && rule.tolerance <= 100 && Number.isInteger(rule.minSamples) && rule.minSamples >= 3 && rule.minSamples <= 100 && (rule.statistic !== "top_share" || Boolean(rule.topValue.trim())));
+  const needsEventTime = form.freshness || form.rowCount || form.anomaly || form.completenessRules.length > 0 || form.uniquenessRules.length > 0 || form.validityRules.length > 0 || form.distributionRules.length > 0;
   const canContinue = step === 0
     ? Boolean((promise?.connectionId || activeConnectionId) && form.name.trim() && (form.sourceType === "table" ? form.databaseName && form.tableName : form.sourceQuery.trim()))
     : step === 1
@@ -339,6 +343,7 @@ export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { o
       uniquenessRules: recommendation.checks.flatMap((check) => check.type === "uniqueness" ? [{ checkKey: check.checkKey, columns: check.config.columns, maxDuplicatePercent: check.config.maxDuplicateRatio * 100 }] : []),
       validityRules: recommendation.checks.flatMap((check) => check.type === "validity" ? [{ checkKey: check.checkKey, name: check.name, predicate: check.config.predicate, minPercent: check.config.minRatio * 100 }] : []),
       customMetricRules: recommendation.checks.flatMap((check) => check.type === "custom_metric" ? [{ checkKey: check.checkKey, name: check.name, expression: check.config.expression, operator: check.config.operator, threshold: check.config.threshold, upperThreshold: check.config.upperThreshold ?? 0 }] : []),
+      distributionRules: recommendation.checks.flatMap((check) => check.type === "distribution" ? [{ checkKey: check.checkKey, column: check.config.column, statistic: check.config.statistic, topValue: check.config.topValue ?? "", tolerance: check.config.tolerance, minSamples: check.config.minSamples }] : []),
       graceMinutes: Math.round(recommendation.graceSecs / 60),
       breachAfter: recommendation.breachAfter,
       recoverAfter: recommendation.recoverAfter,
@@ -377,10 +382,12 @@ export function PromiseWizard({ open, onOpenChange, promise, initialDraft }: { o
               uniquenessRules={form.uniquenessRules}
               validityRules={form.validityRules}
               customMetricRules={form.customMetricRules}
+              distributionRules={form.distributionRules}
               onCompletenessRulesChange={(completenessRules) => update({ completenessRules })}
               onUniquenessRulesChange={(uniquenessRules) => update({ uniquenessRules })}
               onValidityRulesChange={(validityRules) => update({ validityRules })}
               onCustomMetricRulesChange={(customMetricRules) => update({ customMetricRules })}
+              onDistributionRulesChange={(distributionRules) => update({ distributionRules })}
               createKey={createRuleKey}
             />
             {!ruleDefinitionsValid && <p className="text-[11px] text-red-500">Complete every added rule, keep percentages between 0 and 100, and ensure “between” minimums do not exceed maximums.</p>}

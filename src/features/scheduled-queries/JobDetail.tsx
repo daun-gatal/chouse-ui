@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -54,6 +55,7 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
   const canEdit = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_EDIT);
   const canRun = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_RUN);
   const canViewAll = hasPermission(RBAC_PERMISSIONS.SCHEDULED_QUERIES_VIEW_ALL);
+  const canViewLineage = hasPermission(RBAC_PERMISSIONS.OBSERVE_VIEW);
   const canUseAi = hasPermission(RBAC_PERMISSIONS.AI_OPTIMIZE);
   const canProtect = hasPermission(RBAC_PERMISSIONS.DATA_HEALTH_EDIT);
   const modelId = useDataOpsModelId();
@@ -275,6 +277,11 @@ export function JobDetail({ job, jobs, onBack }: JobDetailProps) {
             <div className="flex items-center gap-2"><Network className="h-4 w-4 text-brand" /><h3 className={SQ_LABEL}>Runtime lineage</h3></div>
             <p className="mt-1 text-[11px] text-paper-muted">Observed upstream reads and downstream writes for this job.</p>
           </div>
+          {canViewLineage && (
+            <Link to={`/data/lineage?node=${encodeURIComponent(`job:${job.id}`)}`} className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-muted hover:text-brand">
+              Open in Data › Lineage
+            </Link>
+          )}
         </div>
         <LineageTab selectedJobId={job.id} embedded />
       </section>

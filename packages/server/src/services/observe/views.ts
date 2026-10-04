@@ -238,11 +238,11 @@ export async function lineageGraph(connectionId: string, allowed: Allowed, focus
 export async function listPipelines(connectionId: string, allowed: Allowed, filter: { kind?: string; status?: string } = {}): Promise<Array<Record<string, unknown>>> {
   const rows = await all(sql`SELECT * FROM obs_pipelines WHERE connection_id = ${connectionId} ORDER BY name`);
   const since = Date.now() - 24 * 3600 * 1000;
-  const samples = await all(sql`SELECT pipeline_id, sampled_at, units_in, errors, lag_seconds, backlog FROM obs_pipeline_samples WHERE connection_id = ${connectionId} AND sampled_at >= ${since} ORDER BY sampled_at`);
-  const series = new Map<string, Array<{ at: number; units: number | null; errors: number | null }>>();
+  const samples = await all(sql`SELECT pipeline_id, sampled_at, units_in, errors, lag_seconds, backlog, last_success_at FROM obs_pipeline_samples WHERE connection_id = ${connectionId} AND sampled_at >= ${since} ORDER BY sampled_at`);
+  const series = new Map<string, Array<{ at: number; units: number | null; errors: number | null; lag: number | null; backlog: number | null; lastSuccessAt: number | null }>>();
   for (const s of samples) {
     const list = series.get(str(s.pipeline_id)) ?? [];
-    list.push({ at: num(s.sampled_at), units: numOrNull(s.units_in), errors: numOrNull(s.errors) });
+    list.push({ at: num(s.sampled_at), units: numOrNull(s.units_in), errors: numOrNull(s.errors), lag: numOrNull(s.lag_seconds), backlog: numOrNull(s.backlog), lastSuccessAt: numOrNull(s.last_success_at) });
     series.set(str(s.pipeline_id), list);
   }
   return rows
@@ -251,6 +251,7 @@ export async function listPipelines(connectionId: string, allowed: Allowed, filt
     .filter((r) => !filter.status || str(r.status) === filter.status)
     .map((r) => {
       const points = series.get(str(r.pipeline_id)) ?? [];
+      const latest = points[points.length - 1];
       return {
         id: str(r.pipeline_id),
         kind: str(r.kind),
@@ -267,6 +268,9 @@ export async function listPipelines(connectionId: string, allowed: Allowed, filt
         units24h: points.reduce((sum, p) => sum + (p.units ?? 0), 0),
         errors24h: points.reduce((sum, p) => sum + (p.errors ?? 0), 0),
         sparkline: points.slice(-60).map((p) => p.units ?? 0),
+        lagSeconds: latest?.lag ?? null,
+        backlog: latest?.backlog ?? null,
+        lastSuccessAt: [...points].reverse().find((p) => p.lastSuccessAt !== null)?.lastSuccessAt ?? null,
       };
     });
 }

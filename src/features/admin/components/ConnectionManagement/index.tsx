@@ -75,6 +75,7 @@ import {
 } from '@/api/rbac';
 import { useRbacStore, RBAC_PERMISSIONS } from '@/stores';
 import { SkeletonRows } from '@/components/common/Skeletons';
+import { ConnectionObservability } from '@/features/observe/ConnectionObservability';
 
 // ============================================
 // Validation Schema
@@ -221,7 +222,7 @@ function ConnectionFormDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[520px] rounded-xs border-ink-500 bg-ink-100 p-0">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px] rounded-xs border-ink-500 bg-ink-100 p-0">
         <DialogHeader className="border-b border-ink-500 px-5 py-4">
           <DialogTitle className="flex items-center gap-3 text-paper">
             <span className="grid h-9 w-9 place-items-center rounded-xs border border-ink-500 bg-ink-200 text-paper-muted">
@@ -442,6 +443,8 @@ function ConnectionFormDialog({
                 )}
               </div>
             )}
+
+            {isEditing && <ConnectionObservability connectionId={connection.id} />}
 
             <DialogFooter className="gap-2 border-t border-ink-500 pt-4 sm:gap-2">
               <Button

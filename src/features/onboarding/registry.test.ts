@@ -58,7 +58,7 @@ describe("onboarding registry", () => {
     const monitoring = ONBOARDING_CHAPTERS.find((chapter) => chapter.id === "monitoring");
     const nestedSteps = monitoring?.steps.filter((step) => step.id !== "monitoring.live-queries") ?? [];
 
-    expect(nestedSteps).toHaveLength(29);
+    expect(nestedSteps).toHaveLength(32);
     expect(nestedSteps.every((step) => step.route.includes("?guide="))).toBe(true);
     expect(nestedSteps.every((step) => step.target?.startsWith("monitoring-"))).toBe(true);
     expect(nestedSteps.every((step) => step.target !== "monitoring-content")).toBe(true);
@@ -85,7 +85,7 @@ describe("onboarding registry", () => {
     ]);
   });
 
-  it("uses compact DataOps and Admin controls instead of whole-page targets", () => {
+  it("uses compact Data and Admin controls instead of whole-page targets", () => {
     const dataOpsTargets = ONBOARDING_CHAPTERS
       .find((chapter) => chapter.id === "dataops")
       ?.steps.map((step) => step.target) ?? [];
@@ -94,7 +94,7 @@ describe("onboarding registry", () => {
       ?.steps.filter((step) => step.id !== "admin.user-create")
       .map((step) => step.target) ?? [];
 
-    expect(dataOpsTargets.every((target) => target?.startsWith("dataops-") && target !== "dataops-content")).toBe(true);
+    expect(dataOpsTargets.every((target) => target?.startsWith("data-") && target !== "data-content" && target !== "data-page")).toBe(true);
     expect(adminTargets.every((target) => target?.startsWith("admin-section-") && target !== "admin-content")).toBe(true);
   });
 

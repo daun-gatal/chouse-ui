@@ -35,6 +35,7 @@ vi.mock("@/stores", () => ({
 vi.mock("@/features/fleet/components/DoctorReportView", () => ({ default: () => null }));
 vi.mock("@/features/fleet/components/DoctorHistoryList", () => ({ default: () => null }));
 vi.mock("@/features/fleet/components/DoctorScheduleDialog", () => ({ default: () => null }));
+vi.mock("@/features/observe/DoctorInvestigation", () => ({ DoctorInvestigation: () => null }));
 
 interface Deferred<T> {
   promise: Promise<T>;

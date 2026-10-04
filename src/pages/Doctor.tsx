@@ -37,6 +37,7 @@ import DoctorReportView from "@/features/fleet/components/DoctorReportView";
 import DoctorHistoryList from "@/features/fleet/components/DoctorHistoryList";
 import DoctorScheduleDialog from "@/features/fleet/components/DoctorScheduleDialog";
 import { useRbacStore, RBAC_PERMISSIONS } from "@/stores";
+import { DoctorInvestigation } from "@/features/observe/DoctorInvestigation";
 
 const WINDOW_OPTIONS = [
   { label: "1h", hours: 1 },
@@ -656,7 +657,10 @@ export default function Doctor() {
             ) : scan.isPending && viewingRunning ? (
               <InvestigatingPanel model={models.find((m) => m.id === resolvedModelId)?.model} hours={hours} />
             ) : reportId && reportQuery.data ? (
-              <DoctorReportView report={reportQuery.data} />
+              <>
+                <DoctorReportView report={reportQuery.data} />
+                <DoctorInvestigation reportId={reportId} />
+              </>
             ) : reportId && reportQuery.isLoading ? (
               <div className="flex flex-col items-center gap-3 py-16 text-paper-muted">
                 <Loader2 className="h-6 w-6 animate-spin" aria-hidden />

@@ -54,7 +54,7 @@ describe("DatasetsTab onboarding targets", () => {
     guideActiveMock.mockReturnValue(true);
     render(<DatasetsTab selectedPromiseId="promise-1" onSelectedPromiseChange={vi.fn()} />);
 
-    const target = document.querySelector('[data-onboarding-id="dataops-health-create"]');
+    const target = document.querySelector('[data-onboarding-id="data-health-create"]');
     expect(target).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "New promise" }));
     expect(screen.getByText("New promise wizard")).toBeTruthy();
@@ -64,7 +64,7 @@ describe("DatasetsTab onboarding targets", () => {
     render(<DatasetsTab selectedPromiseId="promise-1" onSelectedPromiseChange={vi.fn()} />);
 
     expect(screen.getByText("Selected promise detail")).toBeTruthy();
-    expect(document.querySelector('[data-onboarding-id="dataops-health-create"]')).toBeNull();
+    expect(document.querySelector('[data-onboarding-id="data-health-create"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "New promise" })).toBeNull();
   });
 

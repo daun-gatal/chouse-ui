@@ -23,7 +23,12 @@ export type DataHealthCheck =
   | (CheckBase & { type: "uniqueness"; config: { columns: string[]; maxDuplicateRatio: number } })
   | (CheckBase & { type: "validity"; config: { predicate: string; minRatio: number } })
   | (CheckBase & { type: "schema_contract"; config: { expectedColumns: Array<{ name: string; type: string }>; allowAdditionalColumns: boolean } })
-  | (CheckBase & { type: "custom_metric"; config: { expression: string; operator: "gt" | "gte" | "lt" | "lte" | "eq" | "between"; threshold: number; upperThreshold?: number | null } });
+  | (CheckBase & { type: "custom_metric"; config: { expression: string; operator: "gt" | "gte" | "lt" | "lte" | "eq" | "between"; threshold: number; upperThreshold?: number | null } })
+  | (CheckBase & { type: "distribution"; config: { column: string; statistic: DataHealthDistributionStatistic; topValue?: string | null; tolerance: number; minSamples: number } });
+
+/** Column statistics a `distribution` check can follow (ADR 0016 §5). */
+export const DATA_HEALTH_DISTRIBUTION_STATISTICS = ["p50", "p95", "null_ratio", "distinct_ratio", "top_share"] as const;
+export type DataHealthDistributionStatistic = (typeof DATA_HEALTH_DISTRIBUTION_STATISTICS)[number];
 
 export interface DataHealthSchedule {
   frequency: DataHealthFrequency;

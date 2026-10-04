@@ -58,7 +58,7 @@ describe("JobsTab onboarding targets", () => {
     guideActiveMock.mockReturnValue(true);
     render(<JobsTab selectedJobId="job-1" onSelectedJobChange={vi.fn()} />);
 
-    const target = document.querySelector('[data-onboarding-id="dataops-scheduled-create"]');
+    const target = document.querySelector('[data-onboarding-id="data-scheduled-create"]');
     expect(target).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "New job" }));
     expect(screen.getByText("New job wizard")).toBeTruthy();
@@ -68,7 +68,7 @@ describe("JobsTab onboarding targets", () => {
     render(<JobsTab selectedJobId="job-1" onSelectedJobChange={vi.fn()} />);
 
     expect(screen.getByText("Selected job detail")).toBeTruthy();
-    expect(document.querySelector('[data-onboarding-id="dataops-scheduled-create"]')).toBeNull();
+    expect(document.querySelector('[data-onboarding-id="data-scheduled-create"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "New job" })).toBeNull();
   });
 
