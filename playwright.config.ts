@@ -27,6 +27,8 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
     colorScheme: "dark",
+    // Time-of-day text (e.g. the Home greeting) must not depend on the runner's zone.
+    timezoneId: "UTC",
     trace: "retain-on-failure",
     ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
   },

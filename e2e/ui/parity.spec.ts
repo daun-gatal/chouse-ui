@@ -18,7 +18,12 @@ interface ParityRoute {
 }
 
 const UNCHANGED_ROUTES: ParityRoute[] = [
-  { name: "home", path: "/overview" },
+  {
+    name: "home",
+    path: "/overview",
+    // Live server counters: open connections and running queries vary per run.
+    masks: (page) => ["Connections", "Active queries"].map((label) => page.getByText(label, { exact: true }).locator("xpath=../following-sibling::span[1]")),
+  },
   { name: "explorer", path: "/explorer", ready: (page) => page.getByText("analytics", { exact: true }).first() },
   { name: "monitoring-live-queries", path: "/monitoring/live-queries" },
   { name: "monitoring-logs", path: "/monitoring/logs" },
