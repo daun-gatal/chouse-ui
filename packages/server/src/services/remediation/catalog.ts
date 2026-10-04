@@ -313,7 +313,7 @@ export const REQUIRED_GRANTS: Record<ActionType, string | null> = {
   add_skip_index: "ALTER ADD INDEX, ALTER DROP INDEX",
   modify_ttl: "ALTER MODIFY TTL",
   modify_column_codec: "ALTER MODIFY COLUMN",
-  restart_engine_table: "DETACH TABLE (via DROP TABLE grant), CREATE TABLE",
+  restart_engine_table: "DROP TABLE and CREATE TABLE on the table, TABLE ENGINE ON <its engine> (e.g. Kafka, RabbitMQ, S3Queue)",
   reload_dictionary: "SYSTEM RELOAD DICTIONARY",
   refresh_view: "SYSTEM VIEWS",
   flush_distributed: "SYSTEM FLUSH DISTRIBUTED",

@@ -72,6 +72,8 @@ const CONFIG = new Set([
   "NOT_IMPLEMENTED",
 ]);
 
+const DATA = new Set(["FUNCTION_THROW_IF_VALUE_IS_NON_ZERO", "CHECK_CONSTRAINT_VIOLATED"]);
+
 const DATA_PREFIXES = ["CANNOT_PARSE", "CANNOT_READ_ALL_DATA", "INCORRECT_DATA", "CANNOT_CONVERT", "TYPE_MISMATCH", "VALUE_IS_OUT_OF_RANGE", "CANNOT_INSERT_NULL", "INCORRECT_NUMBER_OF_COLUMNS", "TOO_LARGE_STRING_SIZE"];
 
 /** Extract the trailing "(ERROR_NAME)" from a ClickHouse exception message. */
@@ -92,11 +94,14 @@ export function classifyError(message: string | null | undefined): ErrorClass | 
     if (ENGINE.has(name)) return "engine";
     if (CONFIG.has(name)) return "config";
     if (EXTERNAL.has(name) || EXTERNAL_PREFIXES.some((p) => name.startsWith(p))) return "external";
-    if (DATA_PREFIXES.some((p) => name.startsWith(p))) return "data";
+    if (DATA.has(name) || DATA_PREFIXES.some((p) => name.startsWith(p))) return "data";
   }
   const text = message.toLowerCase();
+  // Driver errors of external databases arrive as std::exception without an error name.
+  if (/type: (pqxx|mysqlxx|poco::net|mongo|sqlite)::/.test(text)) return "external";
   if (/memory limit|too many parts|no space left/.test(text)) return "engine";
   if (/connection refused|timed out|could not resolve|access denied by remote|403|404|503|broker|unreachable/.test(text)) return "external";
   if (/cannot parse|malformed|unexpected token/.test(text)) return "data";
-  return "engine";
+  // Unknown: let the pipeline's own layer decide rather than blaming the engine.
+  return null;
 }

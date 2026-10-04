@@ -61,6 +61,13 @@ export const tablesCollector: ConnectionCollector = {
       SELECT database, table, sum(rows) AS rows, sum(bytes_on_disk) AS bytes, toUnixTimestamp(max(modification_time)) * 1000 AS modified_ms
       FROM system.parts WHERE active AND database NOT IN ${EXCLUDED} GROUP BY database, table`, { maxExecutionTime: 60 });
     await runBatch(statements);
+    // Tables that never received data have no active parts but still need a
+    // baseline: they are what sits downstream of a pipeline that never delivered.
+    const withParts = new Set(totals.map((t) => `${t.database}.${t.table}`));
+    for (const c of await all(sql`SELECT database_name, table_name FROM obs_catalog_tables WHERE connection_id = ${connectionId} AND engine LIKE '%MergeTree'`)) {
+      const key = `${str(c.database_name)}.${str(c.table_name)}`;
+      if (!withParts.has(key)) totals.push({ database: str(c.database_name), table: str(c.table_name), rows: 0, bytes: 0, modified_ms: 0 });
+    }
 
     const existing = new Map((await all(sql`SELECT database_name, table_name, criticality, criticality_pinned FROM obs_table_baselines WHERE connection_id = ${connectionId}`)).map((r) => [`${str(r.database_name)}.${str(r.table_name)}`, r]));
     const firstSeen = new Map((await all(sql`

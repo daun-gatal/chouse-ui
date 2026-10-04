@@ -104,9 +104,10 @@ async function pipelineSignals(connectionId: string): Promise<RcaSignal[]> {
       evidence: { source: `${str(p.kind)} (${str(p.engine)})`, detail: latest ? str(latest.error_sample).slice(0, 500) : str(p.status_reason) },
       severity: ["retrying", "stalled"].includes(str(p.status)) ? 3 : 2,
     });
-    // An engine-class error inside a pipeline is also an engine signal.
+    // An engine-class error inside a pipeline is also an engine signal, scoped to
+    // that pipeline's node: one view's timeout must not join every incident's chain.
     if (errorClass === "engine") {
-      signals.push({ nodeId: null, layer: "engine", kind: "engine_error", onsetAt: num(p.status_since), summary: str(latest?.error_sample).slice(0, 200), evidence: { source: str(p.kind), detail: str(latest?.error_sample).slice(0, 500) }, severity: 2 });
+      signals.push({ nodeId: node, layer: "engine", kind: "engine_error", onsetAt: num(p.status_since), summary: str(latest?.error_sample).slice(0, 200), evidence: { source: str(p.kind), detail: str(latest?.error_sample).slice(0, 500) }, severity: 2 });
     }
   }
   return signals;

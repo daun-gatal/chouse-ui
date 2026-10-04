@@ -97,11 +97,26 @@ function result(): AdapterResult {
 interface ViewStats {
   view_name: string;
   ok: number;
+  /** Successful runs that wrote rows; queue-attached views also log empty polls as successes. */
+  wrote: number;
   failed: number;
   written: number;
   bytes: number;
   last_ok_ms: number;
+  last_write_ms: number;
   last_exception: string;
+}
+
+/**
+ * A view run counts as progress when it wrote rows, or when nothing failed
+ * at all (an insert-driven view whose SELECT filtered everything out is fine).
+ * Empty polls of a queue engine alongside failing batches are not progress.
+ */
+export function viewProgress(stats: Array<Pick<ViewStats, "ok" | "wrote" | "failed">>): boolean {
+  const wrote = stats.reduce((s, v) => s + Number(v.wrote), 0);
+  const ok = stats.reduce((s, v) => s + Number(v.ok), 0);
+  const failed = stats.reduce((s, v) => s + Number(v.failed), 0);
+  return wrote > 0 || (ok > 0 && failed === 0);
 }
 
 async function viewStats(ctx: AdapterContext): Promise<Map<string, ViewStats>> {
@@ -109,15 +124,37 @@ async function viewStats(ctx: AdapterContext): Promise<Map<string, ViewStats>> {
   const rows = await selectRows<ViewStats>(ctx.client, `
     SELECT view_name,
       countIf(status = 'QueryFinish') AS ok,
+      countIf(status = 'QueryFinish' AND written_rows > 0) AS wrote,
       countIf(status IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing')) AS failed,
       sumIf(written_rows, status = 'QueryFinish') AS written,
       sumIf(written_bytes, status = 'QueryFinish') AS bytes,
       toUnixTimestamp64Milli(maxIf(event_time_microseconds, status = 'QueryFinish')) AS last_ok_ms,
+      toUnixTimestamp64Milli(maxIf(event_time_microseconds, status = 'QueryFinish' AND written_rows > 0)) AS last_write_ms,
       argMaxIf(exception, event_time_microseconds, exception != '') AS last_exception
     FROM system.query_views_log
     WHERE event_time > fromUnixTimestamp({since:UInt32})
     GROUP BY view_name`, { params: { since: sec(ctx.sinceMs) } });
   return new Map(rows.map((r) => [r.view_name, r]));
+}
+
+const STICKY_LOOKBACK_SECONDS = 24 * 3600;
+
+/**
+ * Views whose latest failure is newer than their latest write, over a day.
+ * Queue consumers (RabbitMQ, NATS) hold or drop a failed batch and then only
+ * log empty polls, so a per-run window forgets the failure after one sample;
+ * this keeps it visible until data flows again.
+ */
+async function stuckViews(ctx: AdapterContext, names: string[]): Promise<Map<string, string>> {
+  if (names.length === 0 || !hasTable(ctx.capabilities, "query_views_log")) return new Map();
+  // The alias must not be `exception`: HAVING below would resolve to it.
+  const rows = await selectRows<{ view_name: string; last_exception: string }>(ctx.client, `
+    SELECT view_name, argMaxIf(exception, event_time_microseconds, exception != '') AS last_exception
+    FROM system.query_views_log
+    WHERE event_time > now() - {lookback:UInt32} AND view_name IN ({names:Array(String)})
+    GROUP BY view_name
+    HAVING maxIf(event_time_microseconds, exception != '') > maxIf(event_time_microseconds, status = 'QueryFinish' AND written_rows > 0)`, { params: { lookback: STICKY_LOOKBACK_SECONDS, names } });
+  return new Map(rows.map((r) => [r.view_name, r.last_exception]));
 }
 
 export async function materializedViews(ctx: AdapterContext, tables: CatalogTable[]): Promise<AdapterResult> {
@@ -140,7 +177,7 @@ export async function materializedViews(ctx: AdapterContext, tables: CatalogTabl
       sample.errorSample = s.last_exception || null;
       sample.errorClass = classifyError(s.last_exception);
       sample.lastSuccessAt = Number(s.last_ok_ms) > 0 ? Number(s.last_ok_ms) : null;
-      sample.progressing = Number(s.ok) > 0;
+      sample.progressing = viewProgress([s]);
     }
     out.samples.set(id, sample);
   }
@@ -207,6 +244,7 @@ export async function queueEngines(ctx: AdapterContext, tables: CatalogTable[], 
       FROM system.kafka_consumers GROUP BY database, table`)
     : [];
   const kafka = new Map(kafkaRows.map((r) => [`${r.database}.${r.table}`, r]));
+  const stuck = await stuckViews(ctx, queues.filter((q) => q.engine !== "Kafka").flatMap((q) => ctx.viewsBySource.get(tableNode(q.database, q.table)) ?? []));
   for (const q of queues) {
     const key = `${q.database}.${q.table}`;
     const id = `queue_engine:${key}`;
@@ -215,17 +253,24 @@ export async function queueEngines(ctx: AdapterContext, tables: CatalogTable[], 
     const sample = emptySample(ctx.nowMs);
     // Every queue engine: the views reading it carry the outcome of each batch.
     const attached = (ctx.viewsBySource.get(node) ?? []).map((v) => views.get(v)).filter((v): v is ViewStats => v !== undefined);
-    const viewOk = attached.reduce((s, v) => s + Number(v.ok), 0);
     const viewFailed = attached.reduce((s, v) => s + Number(v.failed), 0);
     const viewWritten = attached.reduce((s, v) => s + Number(v.written), 0);
-    const viewLastOk = attached.reduce((m, v) => Math.max(m, Number(v.last_ok_ms) || 0), 0);
+    // Queue views log every poll; only a poll that wrote rows is a success.
+    const viewLastOk = attached.reduce((m, v) => Math.max(m, Number(v.last_write_ms) || 0), 0);
     const viewException = attached.find((v) => v.last_exception)?.last_exception ?? null;
     sample.unitsIn = viewWritten;
     sample.errors = viewFailed;
     sample.errorSample = viewException;
     sample.errorClass = classifyError(viewException);
     sample.lastSuccessAt = viewLastOk > 0 ? viewLastOk : null;
-    sample.progressing = attached.length > 0 ? viewOk > 0 : null;
+    sample.progressing = attached.length > 0 ? viewProgress(attached) : null;
+    const stuckException = (ctx.viewsBySource.get(node) ?? []).map((v) => stuck.get(v)).find((e) => e);
+    if (stuckException && !(viewWritten > 0)) {
+      sample.progressing = false;
+      sample.errors = Math.max(1, sample.errors ?? 0);
+      sample.errorSample = stuckException;
+      sample.errorClass = classifyError(stuckException);
+    }
 
     if (q.engine === "Kafka") {
       if (!kafkaSupported) {
@@ -282,15 +327,25 @@ export async function objectStorageQueues(ctx: AdapterContext, tables: CatalogTa
     const byTable = new Map(logRows.map((r) => [`${r.database}.${r.table}`, r]));
     // In-flight files live in keeper; map keeper paths back to tables via the queue settings.
     let backlog = new Map<string, number>();
+    // Files that exhausted their retries stay Failed in keeper; the log shows them once.
+    let failedFiles = new Map<string, number>();
     if (hasTable(ctx.capabilities, cache) && hasTable(ctx.capabilities, settings)) {
-      const rows = await selectRows<{ database: string; table: string; processing: number }>(ctx.client, `
-        SELECT s.database AS database, s.table AS table, countIf(toString(c.status) = 'Processing') AS processing
+      const rows = await selectRows<{ database: string; table: string; processing: number; failed: number }>(ctx.client, `
+        SELECT s.database AS database, s.table AS table,
+          countIf(toString(c.status) = 'Processing') AS processing, countIf(toString(c.status) = 'Failed') AS failed
         FROM system.${settings} AS s
         INNER JOIN system.${cache} AS c ON startsWith(c.zookeeper_path, s.value)
         WHERE s.name = 'keeper_path' AND s.value != ''
         GROUP BY s.database, s.table`);
       backlog = new Map(rows.map((r) => [`${r.database}.${r.table}`, Number(r.processing)]));
+      failedFiles = new Map(rows.filter((r) => Number(r.failed) > 0).map((r) => [`${r.database}.${r.table}`, Number(r.failed)]));
     }
+    const lastFailure = supported && failedFiles.size > 0
+      ? new Map((await selectRows<{ database: string; table: string; exception: string }>(ctx.client, `
+        SELECT database, table, argMaxIf(exception, event_time, exception != '') AS exception
+        FROM system.${log} WHERE event_time > now() - {lookback:UInt32} AND toString(status) = 'Failed'
+        GROUP BY database, table`, { params: { lookback: STICKY_LOOKBACK_SECONDS } })).map((r) => [`${r.database}.${r.table}`, r.exception]))
+      : new Map<string, string>();
     for (const q of ofEngine) {
       const key = `${q.database}.${q.table}`;
       const id = `object_storage_queue:${key}`;
@@ -312,6 +367,12 @@ export async function objectStorageQueues(ctx: AdapterContext, tables: CatalogTa
         sample.backlogUnit = "files";
       }
       sample.progressing = r ? Number(r.processed) > 0 : inflight ? false : null;
+      const stuckFiles = failedFiles.get(key) ?? 0;
+      if (stuckFiles > 0 && !(sample.errors ?? 0)) {
+        sample.errors = stuckFiles;
+        sample.errorSample = `${stuckFiles} file(s) failed after all retries: ${lastFailure.get(key) || "see the queue log"}`;
+        sample.errorClass = classifyError(lastFailure.get(key));
+      }
       out.samples.set(id, sample);
     }
   }

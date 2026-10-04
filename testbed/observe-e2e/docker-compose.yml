@@ -1,0 +1,106 @@
+# Observability e2e testbed (ADR 0016 §Gates, scripts/e2e-observe.sh).
+# Every source the collector models, each feeding ClickHouse: Redpanda (Kafka
+# API), RabbitMQ, NATS, S3Mock (S3Queue), Azurite (AzureQueue) and PostgreSQL
+# (MaterializedPostgreSQL + PostgreSQL engine). `clickhouse-old` is a second
+# version: features it lacks must read `unsupported_on_version`, and it is the
+# canary for workload replay. The runner executes the Bun e2e suites inside
+# this network, so nothing but Docker is needed on the host.
+name: chouse-observe-e2e
+
+x-ch: &ch
+  ulimits:
+    nofile: { soft: 262144, hard: 262144 }
+  environment:
+    CLICKHOUSE_PASSWORD: e2e
+    CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+
+services:
+  clickhouse:
+    <<: *ch
+    build:
+      context: .
+      dockerfile: clickhouse.Dockerfile
+      args:
+        CH_VERSION: ${CH_VERSION:-26.5-alpine}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8123/ping"]
+      interval: 2s
+      retries: 60
+
+  clickhouse-old:
+    <<: *ch
+    build:
+      context: .
+      dockerfile: clickhouse.Dockerfile
+      args:
+        CH_VERSION: ${CH_OLD_VERSION:-23.8-alpine}
+        USERS_FILE: users-old.xml
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8123/ping"]
+      interval: 2s
+      retries: 60
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command: [redpanda, start, --mode, dev-container, --smp, "1", --memory, 512M, --kafka-addr, "0.0.0.0:9092", --advertise-kafka-addr, "redpanda:9092"]
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 2s
+      retries: 60
+
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 3s
+      retries: 60
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      retries: 60
+
+  s3:
+    # S3-compatible object store for S3Queue (MinIO no longer ships public images).
+    image: adobe/s3mock:3.11.0
+    environment:
+      initialBuckets: events
+      root: /tmp/s3
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.33.0
+    command: [azurite-blob, --blobHost, 0.0.0.0, --skipApiVersionCheck, --loose]
+
+  postgres:
+    image: postgres:16-alpine
+    command: [postgres, -c, wal_level=logical, -c, max_replication_slots=10, -c, max_wal_senders=10]
+    environment:
+      POSTGRES_PASSWORD: e2e
+      POSTGRES_DB: crm
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 60
+
+  runner:
+    build:
+      context: ../..
+      dockerfile: testbed/observe-e2e/runner.Dockerfile
+    profiles: [runner]
+    environment:
+      OBSERVE_E2E_URL: http://clickhouse:8123
+      OBSERVE_E2E_PASSWORD: e2e
+      OBSERVE_E2E_OLD_URL: http://clickhouse-old:8123
+      OBSERVE_E2E_SOURCES: "1"
+    depends_on:
+      clickhouse: { condition: service_healthy }
+      clickhouse-old: { condition: service_healthy }
+      redpanda: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      s3: { condition: service_started }
+      azurite: { condition: service_started }
+      postgres: { condition: service_healthy }
