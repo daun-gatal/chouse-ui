@@ -153,6 +153,8 @@ jobs:
           path: |
             e2e/ui/.report
             e2e/ui/.results
+          # Both folders start with a dot; upload-artifact skips them otherwise.
+          include-hidden-files: true
           retention-days: 7
 
   build:

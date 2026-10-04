@@ -23,12 +23,14 @@ export STATIC_PATH=./dist
 export LOG_LEVEL="${LOG_LEVEL:-warn}"
 export RBAC_DB_TYPE=sqlite
 export RBAC_SQLITE_PATH="$STATE_DIR/rbac.db"
-export RBAC_ENCRYPTION_KEY="e2e0000000000000000000000000000000000000000000000000000000000000"
-export RBAC_ENCRYPTION_SALT="e2e1111111111111111111111111111111111111111111111111111111111111"
-export JWT_SECRET="e2e-ui-jwt-secret-that-is-long-enough-1234567890"
+# Throwaway secrets for a throwaway RBAC database, generated per server start.
+export RBAC_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+export RBAC_ENCRYPTION_SALT="$(openssl rand -hex 32)"
+export JWT_SECRET="$(openssl rand -hex 32)"
 export RBAC_ADMIN_EMAIL=admin@localhost
 export RBAC_ADMIN_USERNAME=admin
-export RBAC_ADMIN_PASSWORD='admin123!'
+: "${E2E_ADMIN_PASSWORD:?run through scripts/e2e-ui.sh, which generates it}"
+export RBAC_ADMIN_PASSWORD="$E2E_ADMIN_PASSWORD"
 export ALERT_CONFIG_FILE="$STATE_DIR/alert-config.json"
 export DOCTOR_SCHEDULE_FILE="$STATE_DIR/doctor-schedule.json"
 

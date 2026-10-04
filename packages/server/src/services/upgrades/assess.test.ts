@@ -40,5 +40,8 @@ describe("workload replay", () => {
 
   it("wraps a query in an order-insensitive result hash", () => {
     expect(replayQuery("SELECT 1;")).toBe("SELECT count() AS c, sum(cityHash64(*)) AS h FROM (SELECT 1)");
+    // HTTP clients append a FORMAT clause; it is stripped, not a reason to skip the shape.
+    expect(replayable("SELECT sum(number) FROM numbers(10) FORMAT JSONEachRow")).toBe(true);
+    expect(replayQuery("SELECT sum(number) FROM numbers(10) FORMAT JSONEachRow")).toBe("SELECT count() AS c, sum(cityHash64(*)) AS h FROM (SELECT sum(number) FROM numbers(10))");
   });
 });

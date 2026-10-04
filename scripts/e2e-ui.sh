@@ -15,11 +15,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-CH_VERSION="${CH_VERSION:-26.5-alpine}"
+# Exact patch: the Home page shows the server version, and the baselines were
+# captured on this build (a floating tag changes the text on CI).
+CH_VERSION="${CH_VERSION:-26.5.7.64-alpine}"
 export E2E_CH_HOST="${E2E_CH_HOST:-localhost}"
 export E2E_CH_PORT="${E2E_CH_PORT:-18123}"
-# Throwaway password of the isolated e2e node.
-export E2E_CH_PASSWORD="${E2E_CH_PASSWORD:-e2e}"
+# Throwaway credentials, generated per run: nothing secret lives in the repo.
+export E2E_CH_PASSWORD="${E2E_CH_PASSWORD:-$(openssl rand -hex 16)}"
+export E2E_ADMIN_PASSWORD="${E2E_ADMIN_PASSWORD:-$(openssl rand -hex 12)}A!"
 NAME=cheui-ch
 
 cleanup() {

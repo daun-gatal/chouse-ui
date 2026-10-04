@@ -191,12 +191,16 @@ export function replayable(query: string): boolean {
   if (!/^\s*(with|select)\b/.test(q)) return false;
   if (/\bsystem\./.test(q)) return false;
   if (/\b(now|now64|today|yesterday|rand|rand64|randcanonical|generateuuidv4|currentuser|hostname|uptime|version)\s*\(/.test(q)) return false;
-  if (/\bformat\s+\w+\s*$/.test(q)) return false;
   return true;
 }
 
+/** HTTP clients append `FORMAT …`; the comparison wraps the query, so the clause goes. */
+export function stripFormat(query: string): string {
+  return query.replace(/;\s*$/, "").replace(/\s+FORMAT\s+\w+\s*;?\s*$/i, "");
+}
+
 export function replayQuery(query: string): string {
-  return `SELECT count() AS c, sum(cityHash64(*)) AS h FROM (${query.replace(/;\s*$/, "")})`;
+  return `SELECT count() AS c, sum(cityHash64(*)) AS h FROM (${stripFormat(query)})`;
 }
 
 async function timed(client: ClickHouseClient, query: string): Promise<{ hash: string; ms: number }> {

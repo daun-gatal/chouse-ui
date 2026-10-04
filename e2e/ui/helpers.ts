@@ -2,7 +2,8 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 export type ThemeName = "dark" | "light";
 
-export const ADMIN = { login: "admin@localhost", password: "admin123!" };
+/** The seeded admin; scripts/e2e-ui.sh generates the password for each run. */
+export const ADMIN = { login: "admin@localhost", password: process.env.E2E_ADMIN_PASSWORD ?? "" };
 
 /** Fixed wall clock so timestamps rendered by the app are identical on every run. */
 export const FIXED_TIME = new Date("2026-10-01T10:00:00.000Z");

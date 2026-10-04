@@ -12,7 +12,7 @@ setup("authenticate as admin with a ClickHouse connection", async ({ page }) => 
 
   const host = process.env.E2E_CH_HOST ?? "localhost";
   const port = Number(process.env.E2E_CH_PORT ?? 18123);
-  const password = process.env.E2E_CH_PASSWORD ?? "e2e";
+  const password = process.env.E2E_CH_PASSWORD ?? "";
 
   const created = await page.evaluate(
     async ({ host, port, password }) => {
