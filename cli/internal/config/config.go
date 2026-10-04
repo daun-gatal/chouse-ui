@@ -25,6 +25,8 @@ const (
 	EnvConnection = "CHOUSE_CONNECTION"
 	EnvProfile    = "CHOUSE_PROFILE"
 	EnvOutput     = "CHOUSE_OUTPUT"
+	EnvCACert     = "CHOUSE_CA_CERT"
+	EnvInsecure   = "CHOUSE_INSECURE_SKIP_TLS_VERIFY"
 )
 
 // Profile groups non-secret connection defaults.
@@ -32,6 +34,9 @@ type Profile struct {
 	Server     string `yaml:"server"`
 	Connection string `yaml:"connection"`
 	Output     string `yaml:"output"`
+	// CACert is a PEM bundle trusted in addition to the system roots, for
+	// servers behind an internal CA.
+	CACert string `yaml:"ca_cert,omitempty"`
 }
 
 // FileConfig is ~/.config/chouse/config.yaml.
@@ -52,6 +57,10 @@ type Resolved struct {
 	Connection string
 	Profile    string
 	Output     string
+	CACert     string
+	// InsecureSkipTLSVerify is never stored in a profile: it must be asked
+	// for on every invocation (flag or env).
+	InsecureSkipTLSVerify bool
 }
 
 // Dir returns ~/.config/chouse, creating it with 0700 when asked.
@@ -157,11 +166,17 @@ func SaveCredentials(profile, token string) error {
 	return os.WriteFile(filepath.Join(dir, "credentials.yaml"), raw, 0o600)
 }
 
+// ProfileUpdate is the non-secret setup `auth login` remembers.
+type ProfileUpdate struct {
+	Server string
+	CACert string
+}
+
 // SaveProfile merges non-secret profile settings into config.yaml without
-// touching stored tokens (those live in credentials.yaml). Empty server
-// leaves any existing value alone — it never clears. makeCurrent switches
+// touching stored tokens (those live in credentials.yaml). Empty fields
+// leave existing values alone — they never clear. makeCurrent switches
 // CurrentProfile (used when --profile was explicitly passed at login).
-func SaveProfile(profile, server string, makeCurrent bool) error {
+func SaveProfile(profile string, update ProfileUpdate, makeCurrent bool) error {
 	if strings.TrimSpace(profile) == "" {
 		return errors.New("profile must not be empty")
 	}
@@ -174,8 +189,15 @@ func SaveProfile(profile, server string, makeCurrent bool) error {
 		return err
 	}
 	p := cfg.Profiles[profile]
-	if strings.TrimSpace(server) != "" {
-		p.Server = strings.TrimRight(strings.TrimSpace(server), "/")
+	if strings.TrimSpace(update.Server) != "" {
+		p.Server = strings.TrimRight(strings.TrimSpace(update.Server), "/")
+	}
+	if strings.TrimSpace(update.CACert) != "" {
+		caCert, err := filepath.Abs(strings.TrimSpace(update.CACert))
+		if err != nil {
+			return err
+		}
+		p.CACert = caCert
 	}
 	cfg.Profiles[profile] = p
 	if makeCurrent {
@@ -213,6 +235,8 @@ type Flags struct {
 	Connection string
 	Profile    string
 	Output     string
+	CACert     string
+	Insecure   bool
 }
 
 // Resolve applies flag > env > file precedence.
@@ -242,6 +266,8 @@ func Resolve(f Flags) (Resolved, error) {
 	server := firstNonEmpty(f.Server, os.Getenv(EnvServer), fileProfile.Server)
 	connection := firstNonEmpty(f.Connection, os.Getenv(EnvConnection), fileProfile.Connection, "")
 	output := firstNonEmpty(f.Output, os.Getenv(EnvOutput), fileProfile.Output, "json")
+	caCert := firstNonEmpty(f.CACert, os.Getenv(EnvCACert), fileProfile.CACert)
+	insecure := f.Insecure || truthy(os.Getenv(EnvInsecure))
 
 	return Resolved{
 		Server:     strings.TrimRight(strings.TrimSpace(server), "/"),
@@ -249,7 +275,18 @@ func Resolve(f Flags) (Resolved, error) {
 		Connection: strings.TrimSpace(connection),
 		Profile:    profile,
 		Output:     strings.ToLower(strings.TrimSpace(output)),
+		CACert:     caCert,
+
+		InsecureSkipTLSVerify: insecure,
 	}, nil
+}
+
+func truthy(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // RequireServer fails with an actionable message when no server is

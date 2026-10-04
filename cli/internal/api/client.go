@@ -142,6 +142,8 @@ type Client struct {
 	ConnectionID string
 	HTTP         *http.Client
 	UserAgent    string
+	// Retry applies to idempotent requests only (see transport.go).
+	Retry RetryPolicy
 }
 
 // New builds a client with a bounded timeout.
@@ -152,6 +154,7 @@ func New(baseURL, token, connectionID string) *Client {
 		ConnectionID: strings.TrimSpace(connectionID),
 		HTTP:         &http.Client{Timeout: 60 * time.Second},
 		UserAgent:    "chouse-cli/1",
+		Retry:        DefaultRetryPolicy,
 	}
 }
 
@@ -195,7 +198,7 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, query url.Valu
 	if err != nil {
 		return err
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return &Error{Code: "NETWORK_ERROR", Message: err.Error()}
 	}
@@ -228,7 +231,7 @@ func (c *Client) GetRaw(ctx context.Context, path string, query url.Values) ([]b
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, "", &Error{Code: "NETWORK_ERROR", Message: err.Error()}
 	}
@@ -444,7 +447,7 @@ func (c *Client) UploadPreview(ctx context.Context, filePath, format string, has
 	if c.ConnectionID != "" {
 		req.Header.Set("X-Connection-Id", c.ConnectionID)
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, &Error{Code: "NETWORK_ERROR", Message: err.Error()}
 	}

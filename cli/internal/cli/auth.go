@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -45,8 +44,7 @@ once in the UI: Preferences → Personal access tokens.`,
 			if token == "" {
 				fail(api.ExitUsage, "pass --token ch_pat_… or set CH_HOUSE_PAT (mint once in the UI: Preferences → Personal access tokens)")
 			}
-			c := api.New(resolved.Server, token, resolved.Connection)
-			c.HTTP.Timeout = time.Duration(timeoutSecs()) * time.Second
+			c := newAPIClient(resolved, token)
 			ctx, cancel := ctxWithTimeout()
 			defer cancel()
 			if _, err := c.Validate(ctx); err != nil {
@@ -55,10 +53,11 @@ once in the UI: Preferences → Personal access tokens.`,
 			if err := config.SaveCredentials(resolved.Profile, token); err != nil {
 				fail(api.ExitServer, err.Error())
 			}
-			// Remember explicitly-passed setup: the server for this profile, and
-			// the profile itself as current. Env-derived values stay
-			// session-scoped and are never written to disk.
-			if err := config.SaveProfile(resolved.Profile, flagServer, flagProfile != ""); err != nil {
+			// Remember explicitly-passed setup: the server and CA bundle for
+			// this profile, and the profile itself as current. Env-derived
+			// values stay session-scoped and are never written to disk, and
+			// --insecure-skip-tls-verify is never remembered.
+			if err := config.SaveProfile(resolved.Profile, config.ProfileUpdate{Server: flagServer, CACert: flagCACert}, flagProfile != ""); err != nil {
 				fail(api.ExitUsage, err.Error())
 			}
 			if !flagQuiet {
@@ -90,6 +89,7 @@ fully offline, safe to run any time to check what later commands will use.`,
 				"connection": resolved.Connection,
 				"token":      config.MaskToken(resolved.Token),
 				"output":     resolved.Output,
+				"caCert":     resolved.CACert,
 			})
 		},
 	}

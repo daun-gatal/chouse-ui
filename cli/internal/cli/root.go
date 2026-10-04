@@ -26,6 +26,8 @@ var (
 	flagTimeout    int
 	flagYes        bool
 	flagDryRun     bool
+	flagCACert     string
+	flagInsecure   bool
 )
 
 // NewRoot builds the full command tree.
@@ -59,6 +61,8 @@ offer --dry-run previews.`,
 	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 60, "request timeout in seconds")
 	root.PersistentFlags().BoolVar(&flagYes, "yes", false, "approve destructive actions (required in non-TTY)")
 	root.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "preview without executing where supported")
+	root.PersistentFlags().StringVar(&flagCACert, "ca-cert", "", "PEM CA bundle to trust for the server, e.g. an internal CA (env CHOUSE_CA_CERT)")
+	root.PersistentFlags().BoolVar(&flagInsecure, "insecure-skip-tls-verify", false, "do not verify the server certificate — debugging only (env CHOUSE_INSECURE_SKIP_TLS_VERIFY)")
 
 	root.AddCommand(
 		newStatusCmd(),
@@ -81,6 +85,8 @@ offer --dry-run previews.`,
 		newAICmd(),
 		newUploadCmd(),
 		newAuditCmd(),
+		newAgentsCmd(),
+		newMCPCmd(),
 		newConfigCmd(),
 		newVersionCmd(version, commit, date),
 	)
@@ -116,13 +122,27 @@ func mustClient(requireAuth bool) (*api.Client, config.Resolved) {
 			fail(api.ExitAuth, err.Error())
 		}
 	}
-	c := api.New(resolved.Server, resolved.Token, resolved.Connection)
-	c.UserAgent = "chouse-cli/1"
-	c.HTTP.Timeout = time.Duration(timeoutSecs()) * time.Second
+	c := newAPIClient(resolved, resolved.Token)
 	if flagOutput != "" {
 		resolved.Output = flagOutput
 	}
 	return c, resolved
+}
+
+// newAPIClient builds a client for the resolved server with the request
+// timeout and TLS trust applied. Every command goes through it, so a
+// custom CA works everywhere, including auth login.
+func newAPIClient(resolved config.Resolved, token string) *api.Client {
+	c := api.New(resolved.Server, token, resolved.Connection)
+	c.UserAgent = "chouse-cli/1"
+	c.HTTP.Timeout = time.Duration(timeoutSecs()) * time.Second
+	if resolved.InsecureSkipTLSVerify && !flagQuiet {
+		fmt.Fprintln(os.Stderr, "warning: TLS certificate verification is disabled (--insecure-skip-tls-verify)")
+	}
+	if err := c.ConfigureTLS(api.TLSOptions{CACertFile: resolved.CACert, InsecureSkipVerify: resolved.InsecureSkipTLSVerify}); err != nil {
+		fail(api.ExitUsage, err.Error())
+	}
+	return c
 }
 
 // mustConfig resolves config for serverless local commands (auth status,
@@ -134,6 +154,8 @@ func mustConfig() config.Resolved {
 		Connection: flagConnection,
 		Profile:    flagProfile,
 		Output:     flagOutput,
+		CACert:     flagCACert,
+		Insecure:   flagInsecure,
 	})
 	if err != nil {
 		fail(api.ExitUsage, err.Error())

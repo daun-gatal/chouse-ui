@@ -108,7 +108,7 @@ func TestSaveProfile(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	// Set with makeCurrent: creates entry, switches current, 0600 file.
-	if err := SaveProfile("default", "https://host:5521/", true); err != nil {
+	if err := SaveProfile("default", ProfileUpdate{Server: "https://host:5521/"}, true); err != nil {
 		t.Fatalf("SaveProfile: %v", err)
 	}
 	cfg, err := LoadFile()
@@ -134,10 +134,10 @@ func TestSaveProfile(t *testing.T) {
 	if err := SaveCredentials("default", "ch_pat_secret"); err != nil {
 		t.Fatalf("SaveCredentials: %v", err)
 	}
-	if err := SaveProfile("other", "https://other:5521", false); err != nil {
+	if err := SaveProfile("other", ProfileUpdate{Server: "https://other:5521"}, false); err != nil {
 		t.Fatalf("SaveProfile other: %v", err)
 	}
-	if err := SaveProfile("default", "", false); err != nil {
+	if err := SaveProfile("default", ProfileUpdate{}, false); err != nil {
 		t.Fatalf("SaveProfile empty: %v", err)
 	}
 	cfg, err = LoadFile()
@@ -211,5 +211,35 @@ func TestResolveOutputDefaultJSON(t *testing.T) {
 	}
 	if got.Output != "json" {
 		t.Fatalf("flag output precedence broken: %q", got.Output)
+	}
+}
+
+func TestResolveTLSSettings(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(EnvCACert, "")
+	t.Setenv(EnvInsecure, "")
+	if err := SaveProfile("default", ProfileUpdate{Server: "https://h", CACert: "ca.pem"}, true); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Resolve(Flags{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(r.CACert) || filepath.Base(r.CACert) != "ca.pem" {
+		t.Errorf("profile CA must be stored as an absolute path, got %q", r.CACert)
+	}
+	if r.InsecureSkipTLSVerify {
+		t.Error("TLS verification must be on by default")
+	}
+
+	t.Setenv(EnvCACert, "/env/ca.pem")
+	t.Setenv(EnvInsecure, "true")
+	r, _ = Resolve(Flags{})
+	if r.CACert != "/env/ca.pem" || !r.InsecureSkipTLSVerify {
+		t.Errorf("env must override the profile: %+v", r)
+	}
+	r, _ = Resolve(Flags{CACert: "/flag/ca.pem"})
+	if r.CACert != "/flag/ca.pem" {
+		t.Errorf("flag must win, got %q", r.CACert)
 	}
 }

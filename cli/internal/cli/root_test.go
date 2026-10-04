@@ -21,7 +21,7 @@ func TestCommandTreeComplete(t *testing.T) {
 	want := []string{
 		"status", "auth", "connection", "query", "table", "saved",
 		"metrics", "logs", "live", "fleet", "doctor", "scheduled",
-		"health", "lineage", "incidents", "remediation", "alert", "ai", "upload", "audit", "config", "version",
+		"health", "lineage", "incidents", "remediation", "alert", "ai", "upload", "audit", "agents", "mcp", "config", "version",
 	}
 	seen := map[string]bool{}
 	for _, c := range root.Commands() {
@@ -36,7 +36,7 @@ func TestCommandTreeComplete(t *testing.T) {
 
 func TestGlobalSafetyFlagsExist(t *testing.T) {
 	root := NewRoot("test", "", "")
-	for _, f := range []string{"yes", "dry-run", "output", "token", "server", "connection", "timeout"} {
+	for _, f := range []string{"yes", "dry-run", "output", "token", "server", "connection", "timeout", "ca-cert", "insecure-skip-tls-verify"} {
 		if root.PersistentFlags().Lookup(f) == nil {
 			t.Errorf("missing global flag --%s", f)
 		}
