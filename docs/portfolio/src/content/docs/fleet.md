@@ -5,49 +5,42 @@ permissions: fleet:view
 ---
 # Fleet view
 
-The fleet view (`/fleet`, permission `fleet:view`) shows every configured [connection](/docs/connections/) side by side — one pane for the whole estate.
+**Fleet** shows every ClickHouse [connection](/docs/connections/) you can reach side by side, one card per connection, so you can see the whole estate at once and drill into the one that needs attention.
 
-## The grid
+## What's on the screen
 
-Layouts: **grid** or **rows**. Each card polls its own connection independently, so a slow or down cluster never blocks the rest of the page.
-
-Per card:
-
-| Signal | Source |
+| Area | Shows |
 | --- | --- |
-| Status | healthy / degraded / down |
-| Memory % | Server RAM usage |
-| Active queries | Current running count |
-| Longest-running | The oldest live query |
-| Exceptions feed | Recent errors |
-| Inventory strip | Databases/tables at a glance |
-| Per-node trend sparklines | Memory/lag direction over recent polls |
+| Status counts | How many connections are **healthy**, **degraded** or **down** — click one to filter |
+| Cards (or compact rows) | Per connection: status, memory use, active queries, the longest-running query, replica lag and per-node trend sparklines |
+| Fleet inventory | Databases and tables at a glance |
+| Fleet trends | Memory and lag over the selected history window |
+| Recent exceptions | The latest errors from `system.errors` across the fleet |
 
-## Drill-down
+Use the toolbar to filter by name or host, sort, switch between **card** and **compact row** view, pick the **history window** and set **auto-refresh** (15s, 30s, 60s or off).
 
-Click any card → that cluster's [monitoring](/docs/monitoring-overview/) with the connection pre-selected. Fleet is the map; monitoring is the street view.
+Click a card to open that connection's [Monitoring](/docs/monitoring-overview/) with it already selected.
 
-## The fleet poller
+## Where the numbers come from
 
-A backend worker caches per-cluster metric snapshots to SQLite on a schedule:
+The browser doesn't query your clusters. A collector on the server samples every connection on a fixed interval and stores snapshots, and the Fleet page reads those. One request serves every viewer, however many tabs are open.
 
-- `FLEET_POLL_INTERVAL_SECONDS` (default `30`) — see [Environment variables](/docs/configuration-env/)
-- **HA-safe**: a single-instance advisory lease ensures one poller does the work even with multiple replicas
-- Toggle: `FLEET_POLLER_ENABLED`
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `OBSERVE_FLEET_INTERVAL` | `30` | Seconds between samples (`FLEET_POLL_INTERVAL_SECONDS` still works; this one wins) |
+| `FLEET_RETENTION_HOURS` | `24` | How much history the trends can show |
+| `FLEET_METRIC_TIMEOUT_SECONDS` | `15` | Time limit for one metric query against a cluster |
 
-Why it exists: without it, every open browser tab hammers every cluster. With it, the fleet page reads **one fast endpoint** backed by cached snapshots. Enable it in any multi-user deployment — see the [production checklist](/docs/production-checklist/).
+The collector runs on every pod; a lease per connection makes sure only one pod samples each connection at a time, so adding replicas doesn't multiply the load on ClickHouse. It reads `system.metrics`, `system.asynchronous_metrics`, `system.processes`, `system.errors` and `system.replicas`.
 
-## Who sees the fleet
+> **Note:** Before 3.14 the collector was optional (`FLEET_POLLER_ENABLED`). It now always runs; the variable is ignored with a warning.
 
-`fleet:view` typically maps to admin-type roles. Regular users land on the [overview dashboard](/docs/home/) of their assigned connection instead.
+If the page shows **Snapshot worker stalled**, no fresh samples have arrived. Check the server logs for collector errors and that the connection's user can read the system tables (**Admin › Connections › Edit › Check privileges**).
 
-## Underlying data
+## Alerts
 
-| Table | Used for |
-| --- | --- |
-| `system.metrics` / `asynchronous_metrics` | Memory, status |
-| `system.processes` | Active/longest queries |
-| `system.errors` | Exceptions feed |
-| `system.replicas` | Lag signals |
+Fleet samples also feed [threshold alerts](/docs/alerting/) — node memory, per-query memory and long-running queries — delivered to Slack or email, optionally with an automatic [Doctor](/docs/doctor/) root-cause report.
 
-> **Tip:** Combine the fleet view with [threshold alerts](/docs/alerting/) — the grid is for humans browsing; alerts are for the pager.
+## Who can see it
+
+`fleet:view` opens the page. Users see a card for each connection their roles' [data access policies](/docs/data-access-rules/) allow; super admins see every connection. Users without `fleet:view` land on [Home](/docs/home/) for their connection instead.

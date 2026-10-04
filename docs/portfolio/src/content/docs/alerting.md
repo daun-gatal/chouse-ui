@@ -3,44 +3,59 @@ app: Admin › Alerting
 route: /admin/alerting
 permissions: alerting:view
 ---
-# Threshold alerts
+# Alerting
 
-Threshold alerts watch fleet metrics and page you when rules breach — delivered as **Slack Block Kit cards** and/or **email (SMTP)**. Configure under **Admin → Alerting** (`alerting:view`; edits need `alerting:edit`/`alerting:delete`).
+**Admin › Alerting** turns [fleet](/docs/fleet/) samples into alerts: you define where alerts go (**notification channels**), what triggers them (**alert rules**), and see what fired (**recent alerts**). Editing needs `alerting:edit`; deleting needs `alerting:delete`.
 
-## Rule types
+## Notification channels
 
-| Rule type | Watches |
+**Add channel**, give it a name, pick a type and switch it **Enabled**:
+
+| Type | Needs |
 | --- | --- |
-| Node memory % | Server RAM usage per node |
-| Per-query memory | Individual queries holding too much memory |
-| Long-running queries | Queries exceeding a duration threshold |
+| **Slack** | An incoming webhook URL |
+| **Google Chat** | A space webhook URL |
+| **Email** | SMTP host, port, TLS, username, password, optional *from*, and recipients |
+| **Webhook** | An endpoint URL and an optional bearer secret (sent as `Authorization: Bearer …`) |
 
-Each rule is scoped per connection (cluster) with its own threshold and duration.
+Secrets are stored encrypted. **Send test** delivers a test message so you know the channel works before you rely on it.
 
-## Hysteresis — no flapping
+Channels are shared: [promises](/docs/data-health/) can also notify them on incident changes.
 
-Rules include hysteresis: a rule must *sustain* its breach for the configured duration before firing, and must *recover* for a duration before resolving. This kills the alert-storm noise that makes on-call ignore pages.
+## Alert rules
 
-## Delivery channels
+**Add rule**, then:
 
-| Channel | Setup |
+1. **Name** and **Severity** (*info*, *warning* or *critical*).
+2. **Thresholds** — set any of these; `0` turns one off:
+
+   | Threshold | Fires when |
+   | --- | --- |
+   | **Node mem %** | A node's memory use exceeds this percentage |
+   | **Query GB** | A single query holds more than this much memory |
+   | **Query min** | A single query has run longer than this many minutes |
+   | **Parts ETA min** | A table is projected to reach `parts_to_throw_insert` (inserts start failing with *too many parts*) within this many minutes |
+
+3. **Deliver to channels** — one or more channels.
+4. Optionally **AI auto-RCA on breach** with a **Model**: when the rule fires, the [Doctor](/docs/doctor/) investigates the affected connection and sends its report to the same channels, at most once per `DOCTOR_AUTO_RCA_COOLDOWN_MINUTES` (default 60) per server.
+
+Only one fleet rule can be active at a time; disable the current one before enabling another.
+
+## How alerts fire
+
+Rules are checked on every fleet sample (`OBSERVE_FLEET_INTERVAL`, default 30 s). An alert fires once when a condition goes from healthy to breaching, and doesn't repeat while it stays breached; the state survives pod restarts and failover, so a rollout doesn't re-send everything. A parts-pressure alert re-arms only once the projected time climbs well clear of the limit, to avoid flapping.
+
+**Recent alerts** lists what fired. Clear entries older than 24 hours, 7 days or 30 days, or all of them.
+
+> **Note:** Before 3.14, channels and rules lived in `ALERT_CONFIG_FILE`. That file is imported into the database once on upgrade; after that, manage everything here.
+
+## Suggested starting rules
+
+| Threshold | Start with |
 | --- | --- |
-| **Slack** | Incoming webhook; deliveries are Block Kit cards with the cluster, metric, value and link into the [fleet](/docs/fleet/) |
-| **Email** | SMTP settings; same content in plain format |
+| Node mem % | 85 |
+| Query GB | About a quarter of a node's RAM |
+| Query min | 10 |
+| Parts ETA min | 60 |
 
-Channels and rules are stored in the alert config file (`ALERT_CONFIG_FILE`, default `/app/data/alert-config.json`) — included in your `/app/data` volume backup (see the [production checklist](/docs/production-checklist/)).
-
-## Auto-RCA on breach
-
-When an alert breaches, the [Fleet Doctor](/docs/doctor/) can automatically run a root-cause analysis on the affected cluster and deliver the report to the same channels — governed by `DOCTOR_AUTO_RCA_COOLDOWN_MINUTES` so a single incident doesn't trigger repeated scans.
-
-## Suggested starter rules
-
-| Rule | Value |
-| --- | --- |
-| Node memory | warn at 80 %, sustained 5 min |
-| Per-query memory | 25 % of cluster RAM (matches the flame threshold in [query logs](/docs/monitoring-query-logs/)) |
-| Long-running query | 10 min, sustained 2 min |
-| Replica lag | Watch [cluster activity](/docs/monitoring-cluster-activity/) trends first, then codify |
-
-> **Tip:** Alerts answer "page me"; the [fleet view](/docs/fleet/) answers "what's the state right now". Configure both from the same thresholds so they never disagree.
+Tune them after a week of watching [Fleet](/docs/fleet/) trends, so alerts and the dashboard agree.

@@ -3,45 +3,47 @@ app: Doctor
 route: /doctor
 permissions: doctor:view
 ---
-# Chouse AI — Fleet Doctor
+# Chouse AI Doctor
 
-The Fleet Doctor (`/doctor`, permissions `doctor:view` to read, `doctor:run` to trigger) is an autonomous, **read-only** AI SRE: it scans your fleet, pins root causes and writes structured reports you can act on.
+The **Doctor** (`/doctor`) is Chouse AI's fleet health check. It investigates your ClickHouse servers with read-only queries, writes a structured report of what's wrong and why, and proposes fixes that only run after a person approves them. Reading reports needs `doctor:view`; running a scan needs `doctor:run`.
 
-## What a scan does
+It needs an AI model: set one up in [AI models](/docs/ai-models/) first, or the page asks you to **Configure AI first**.
 
-1. **Guarded query tool** — the doctor's only tool is a single `SELECT` restricted to `system.*`, executed with ClickHouse `readonly=1`
-2. **Evidence gathering** — query costs, memory pressure, parts/merges, replica lag, error trends across the fleet (scoped to the nodes you select)
-3. **Structured report** — per-node verdict, recommendations, cited evidence, and a heavy-query deep-dive
+## Run a scan
 
-## Reading a report
+1. Choose **Which nodes to scan** (all, or a subset of your connections) and the **Investigation window** — how far back to look (e.g. 24h).
+2. **Run Chouse AI Doctor Scan**. The Doctor gathers evidence — query cost, memory pressure, parts and merges, mutations, replica health and lag, error trends — and writes the report. You can cancel while it runs.
+
+## Read a report
 
 | Section | Use |
 | --- | --- |
-| Per-node verdict | healthy / degraded / troubled at a glance |
-| Recommendations | Ordered, concrete next steps |
-| Evidence | The queries that justify the verdict — verify anything before acting |
-| Heavy-query deep-dive | The costliest statements with [EXPLAIN](/docs/workspace-explain/) context |
+| **Nodes** | Per node: verdict, memory, CPU, queries, long-running queries, merges, mutations, sick replicas and lag |
+| **Recommendations** | Ordered, concrete next steps, each with the evidence behind it |
+| **Heavy query analysis** | The costliest queries, with an **optimized query** to review before running and the estimated data each would scan |
 
-## History rail
+Each report opens as an [investigation notebook](/docs/data-incidents/#investigation-notebooks), so your team can add query snapshots and notes and export a postmortem. **Fixes from this report** lists proposed fixes; they go through the same [approval rules](/docs/data-incidents/#fixes-with-approval) as any other fix.
 
-Reports persist with a history rail — scan the past runs to see what changed between two dates. **Scope** (node subset) and **time window** are selectable per run.
+Past reports are in **History**; select reports to delete them. Reports triggered by an alert are marked **Auto-RCA**.
 
-## Schedules & auto-RCA
+## Scheduled scans
 
-- `DOCTOR_SCHEDULE_FILE` stores scheduled scan definitions (cron-style cadence)
-- On an [alert breach](/docs/alerting/), the doctor can auto-run **RCA** on the affected cluster and deliver the analysis to Slack/email — rate-limited by `DOCTOR_AUTO_RCA_COOLDOWN_MINUTES` (default 60 min per server)
+**Scheduled scans** (needs `doctor:run`) runs a scan on the server without anyone's browser open:
 
-## Safety model
+- **Frequency** — daily, weekly (pick the day) or monthly (day 1–28), at an hour in UTC
+- **Scan window** — tied to the cadence: daily looks at 24h, weekly 7d, monthly 30d
+- **AI model** and which nodes
+- **Send to Slack / email** — deliver the report through the [alert channels](/docs/alerting/)
 
-| Guarantee | Mechanism |
+## Automatic root cause on alerts
+
+An [alert rule](/docs/alerting/) can turn on **AI auto-RCA on breach**: when it fires, the Doctor investigates the affected server and sends the report to the rule's channels — at most once per `DOCTOR_AUTO_RCA_COOLDOWN_MINUTES` (default 60) per server.
+
+## Safety
+
+| Guarantee | How |
 | --- | --- |
-| No mutations | `readonly=1` + single-SELECT tool surface, `system.*` only |
-| No credential sprawl | Runs through CHouse UI's server with its [RBAC](/docs/permissions/) checks |
-| No silent advice | Every recommendation carries cited evidence |
-| Spend control | `doctor:run` gates who can trigger scans; provider budgets live at the AI provider |
-
-## Providers
-
-The doctor runs on the same pluggable provider list as [AI Assist](/docs/workspace-ai-assist/) — configure in **Admin → AI models**. Self-hosted models (e.g. Ollama) keep prompts in-network.
-
-> **Tip:** Treat doctor reports as a second pair of eyes, not a replacement for the tabs — the report links back into [query logs](/docs/monitoring-query-logs/) and [cluster activity](/docs/monitoring-cluster-activity/) for verification.
+| Investigation changes nothing | Its only tool runs single `SELECT` statements on `system.*`, with ClickHouse `readonly=1` |
+| Advice is checkable | Every recommendation cites the evidence it is based on |
+| Fixes need people | Proposed fixes come from the remediation catalog and run only after approval; an AI-drafted fix can't be approved by whoever submitted it |
+| Spend is controlled | Only `doctor:run` can start scans; every scan and schedule change is [audited](/docs/audit-log/) |

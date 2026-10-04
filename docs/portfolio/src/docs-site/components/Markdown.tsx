@@ -88,8 +88,8 @@ export function Markdown({ children }: { children: string }) {
         ul: ({ children }) => (
           <ul className="mt-4 flex flex-col gap-2 text-[15px] leading-relaxed text-paper-muted">{children}</ul>
         ),
-        ol: ({ children }) => (
-          <ol className="mt-4 list-decimal space-y-2 pl-5 [&>li>span[aria-hidden]:first-child]:hidden [&>li]:pl-1 text-[15px] leading-relaxed text-paper-muted marker:font-mono marker:text-paper-faint">
+        ol: ({ children, start }) => (
+          <ol start={start} className="mt-4 list-decimal space-y-2 pl-5 [&>li>span[aria-hidden]:first-child]:hidden [&>li]:pl-1 text-[15px] leading-relaxed text-paper-muted marker:font-mono marker:text-paper-faint">
             {children}
           </ol>
         ),

@@ -1,54 +1,65 @@
 # Architecture
 
-CHouse UI is a monorepo with two main packages:
-
-- **Frontend** (`src/`) — React 19 + Vite SPA with Zustand stores, TanStack Query and shadcn/ui
-- **Backend** (`packages/server/`) — Bun + Hono API server with RBAC, ClickHouse proxy and AI optimizer
+CHouse UI is one server process that serves the web app, the API and the MCP endpoint on a single port, plus a database of its own. The browser, the CLI and AI agents all go through the same server, which talks to your ClickHouse clusters.
 
 ## Request path
 
 {{diagram:architecture}}
 
-## The security pipeline (per request)
+Every request passes the same checks, whichever client sent it:
 
-1. **Auth** — JWT verified (or [PAT](/docs/personal-access-tokens/) checked live)
-2. **RBAC check** — required [permission](/docs/permissions/) for the endpoint
-3. **SQL parse** — `node-sql-parser` extracts statements and referenced tables
-4. **Data access rules** — deny/allow evaluation (see [Data access rules](/docs/data-access-rules/))
-5. **Forward** — `@clickhouse/client` server-side, credentials never leaving the server
+1. **Authenticate** — a session JWT from the web app, or a [personal access token](/docs/personal-access-tokens/) checked live for the CLI, MCP and scripts.
+2. **Authorize** — the endpoint's required [permission](/docs/permissions/).
+3. **Parse SQL** — `node-sql-parser` splits statements and extracts every database and table referenced.
+4. **Check data access** — the user's [data access policies](/docs/data-access-rules/) for that connection.
+5. **Preflight DDL** — [schema preflight](/docs/data-incidents/#schema-change-preflight) stops changes that would break dependents.
+6. **Forward** — `@clickhouse/client` on the server, with the connection's credentials, which never reach the browser.
 
-## Background workers
+The MCP endpoint (`/mcp`) translates tool calls into these same API requests, so an agent can never do more than its token's owner. [Agents](/docs/agents/) adds budgets checked with `EXPLAIN ESTIMATE` before agent queries run.
 
-| Worker | Purpose | Toggle |
+## Background work
+
+Background services run inside every server pod. Each piece of work claims a lease in the RBAC database first, so with several replicas each job runs on exactly one pod and moves to another if that pod dies.
+
+| Service | Does | Lease | Switch |
+| --- | --- | --- | --- |
+| Observability collector | Samples metadata per connection: catalog, lineage, pipelines, tables, usage, queries, changes, capacity, profiles, fleet | Per connection and collector | Always on |
+| Fleet alerter | Evaluates [alert rules](/docs/alerting/) on each fleet sample | Runs with the fleet collector | Always on |
+| Scheduled-query runner | Runs [scheduled queries](/docs/scheduled-queries/) and promise evaluations | Per job | `SCHEDULED_QUERIES_ENABLED` |
+| Remediation worker | Runs approved [fixes](/docs/data-incidents/#fixes-with-approval), verifies them, resumes delayed jobs | Remediation lease | Always on |
+| Doctor scheduler | Runs [scheduled Doctor scans](/docs/doctor/#scheduled-scans) | Claims the schedule row | Configured in the UI |
+
+Settings that tune them are on [Environment variables](/docs/configuration-env/).
+
+## Storage
+
+| Store | Holds | Backend |
 | --- | --- | --- |
-| Fleet poller | Per-cluster metric snapshots to SQLite; advisory-lease HA | `FLEET_POLLER_ENABLED` |
-| Scheduled queries runner | Cron jobs with per-job atomic leases | `SCHEDULED_QUERIES_ENABLED` |
-| Data-health evaluator | Promise evaluations, incident tracking | rides the scheduler |
-| Doctor scheduler | Scheduled fleet scans + auto-RCA | `DOCTOR_SCHEDULE_FILE` |
+| RBAC database | Users, roles, policies, connections (credentials encrypted), audit log, preferences, tokens, AI models, SSO, alerting, saved and scheduled queries, promises, MCP and agent settings, observability evidence, incidents, notebooks, fixes | SQLite (one replica) or PostgreSQL (any number of replicas) |
+| `/app/data` volume | The SQLite file, when you use SQLite | Docker volume or PVC |
 
-## Storage layout
+Your ClickHouse data stays in ClickHouse. CHouse UI stores metadata about it (baselines, lineage, samples of system tables), and query result snapshots only where a person saves one in a notebook.
 
-| Store | Contents | Backend |
+Migrations run automatically on start — see [Migrations & upgrades](/docs/migrations-upgrades/).
+
+## AI
+
+| Feature | Uses | Can change anything? |
 | --- | --- | --- |
-| RBAC database | Users, roles, connections, audit, preferences, AI models, SSO config | SQLite (single instance) or PostgreSQL (HA) |
-| `/app/data` | SQLite file, alert config, doctor schedule | volume |
+| [AI Assist](/docs/workspace-ai-assist/) and chat | Schema context and your query | No — suggests SQL you run yourself |
+| [In-tab AI](/docs/ai-in-tab/) | One log, error or part row | No — suggests a rewrite or fix to review |
+| [Doctor](/docs/doctor/) | Single `SELECT` on `system.*`, `readonly=1` | No — reports and *proposes* fixes |
+| Incident explanations, [watchers](/docs/data-context/#watchers), [operational brief](/docs/dataops-ai/) | Stored evidence, context, run history | No — drafts that a person reviews |
 
-## AI services
+Models and providers are configured in [AI models](/docs/ai-models/). The AI layer is built on DeepAgents / LangChain.
 
-| Service | Role | Safety |
-| --- | --- | --- |
-| AI Optimizer | Rewrite + EXPLAIN for [in-tab Optimize](/docs/ai-in-tab/) | read-only, advisory |
-| AI Chat | [Workspace assistant](/docs/workspace-ai-assist/) | schema context only |
-| Fleet Doctor | Autonomous [fleet scans](/docs/doctor/) | guarded single-SELECT `system.*`, `readonly=1` |
+## Repository layout
 
-Providers plug in via the AI models admin; see the [provider list](/docs/workspace-ai-assist/).
-
-## Key libraries
-
-| Layer | Library |
+| Path | Contents |
 | --- | --- |
-| Server | Bun, Hono, Drizzle ORM, Pino, jose (JWT) |
-| SQL safety | node-sql-parser |
-| AI | DeepAgents / LangChain |
-| Frontend | React 19, Vite 7, React Router 7, Zustand, TanStack Query/Table/Virtual, shadcn/ui + Radix, Tailwind 4, Monaco, AG Grid, Recharts + uPlot, cmdk, DOMPurify |
-| ClickHouse | `@clickhouse/client` (server), `@clickhouse/client-web` |
+| `src/` | Web app — React 19, Vite 7, React Router 7, Zustand, TanStack Query, shadcn/ui, Tailwind 4, Monaco, AG Grid |
+| `packages/server/` | Server — Bun, Hono, Drizzle ORM (SQLite/PostgreSQL), Pino, jose (JWT), node-sql-parser, the MCP server |
+| `cli/` | The `chouse` CLI (Go, Cobra) |
+| `charts/chouse-ui/` | The Helm chart |
+| `docs/adr/` | Architecture decision records |
+| `docs/portfolio/` | This website and documentation |

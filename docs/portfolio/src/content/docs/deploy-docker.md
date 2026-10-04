@@ -29,7 +29,6 @@ services:
       RBAC_DB_TYPE: postgres
       RBAC_POSTGRES_URL: postgres://user:password@postgres:5432/chouse
       CORS_ORIGIN: https://chouse.yourcorp.com
-      FLEET_POLLER_ENABLED: "true"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -41,8 +40,8 @@ services:
 
 | Path | Contents |
 | --- | --- |
-| `/app/data` | SQLite RBAC DB (if used), alert config, doctor schedule |
-| PostgreSQL (recommended) | RBAC data — survives container replacement cleanly |
+| `/app/data` | The SQLite RBAC database, when you use SQLite |
+| PostgreSQL (recommended for production) | All CHouse UI state, so the container can be replaced freely |
 
 ## Ports
 
@@ -64,12 +63,12 @@ Migrations run automatically on boot — see [Migrations & upgrades](/docs/migra
 
 ```bash
 docker logs -f chouse-ui           # Pino JSON logs, LOG_LEVEL controls verbosity
-curl -s http://localhost:5521/     # UI responds
+curl -s http://localhost:5521/api/health   # liveness
 ```
 
 ## Behind a reverse proxy
 
-Terminate TLS at the proxy; forward to `5521`. Set `CORS_ORIGIN` to the public URL. MCP is served at `/mcp` on the same upstream, so it needs no extra proxy rule — just raise the read timeout and turn buffering off (SSE streaming), as for AI chat; details in the [MCP page](/docs/mcp/).
+Terminate TLS at the proxy and forward to `5521`. Set `CORS_ORIGIN` and `PUBLIC_BASE_URL` to the public URL. MCP is served at `/mcp` on the same upstream, so it needs no extra rule — but AI chat and MCP stream responses, so raise the read timeout and turn off response buffering. Make the proxy set `X-Forwarded-For` to the real client IP; sign-in rate limiting relies on it.
 
 ## Kubernetes instead?
 

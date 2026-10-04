@@ -52,7 +52,8 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "overview", title: "Introduction", description: "What CHouse UI is, the full capability matrix, and how this documentation is organized." },
           { slug: "quick-start", title: "Quick start", description: "Run CHouse UI with Docker Compose in under five minutes — UI on port 5521, ClickHouse on 8123, default admin login." },
           { slug: "first-login", title: "First login", description: "Sign in with the seeded admin account, rotate the password, and take the first-run tour." },
-          { slug: "concepts", title: "Core concepts", description: "How CHouse UI RBAC differs from ClickHouse users, what a connection is, and how queries are proxied and checked." },
+          { slug: "concepts", title: "Core concepts", description: "The six ideas behind everything else: own users and roles, connections, the server proxy, metadata-based observation, approved fixes and governed agents." },
+          { slug: "whats-new", title: "What's new in 3.14", description: "Data observability, approved fixes, Agents and MCP in the UI, CLI 1.0, Helm chart 2.0 — and what to change when you upgrade." },
         ],
       },
     ],
@@ -141,19 +142,23 @@ export const DOC_SECTIONS: DocSection[] = [
         id: "data",
         label: "Data",
         pages: [
-          { slug: "data-observability", title: "Data observability", description: "The Data page: learned freshness and volume baselines for every table, coverage, drift, context and watchers — without scanning tables." },
-          { slug: "data-incidents", title: "Incidents, root cause & fixes", description: "Cross-layer root cause and blast radius, investigation notebooks, approved remediation and schema change preflight." },
-          { slug: "data-pipelines-lineage", title: "Pipelines & lineage", description: "Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, replication, views and writers in one status vocabulary, and lineage without instrumentation." },
-          { slug: "data-health", title: "Datasets & promises", description: "Promises over your datasets — freshness, volume and schema checks evaluated on a schedule with incident tracking." },
-          { slug: "scheduled-queries", title: "Scheduled queries", description: "Cron-style SQL jobs with macros, run history, lineage and per-job leases that are safe across replicas." },
-          { slug: "dataops-ai", title: "Operational brief", description: "AI-generated summaries of scheduled jobs and data-health incidents in one card." },
+          { slug: "data-observability", title: "How data is watched", description: "The collector, learned baselines, trust states and criticality behind every Data tab — and the grants it needs." },
+          { slug: "data-overview", title: "Overview", description: "One screen for whether the data is right: trusted tables, critical coverage, open incidents with their root cause, pipelines and suggestions." },
+          { slug: "data-incidents", title: "Incidents, root cause & fixes", description: "Cross-layer root cause and blast radius, investigation notebooks, fixes that run only after approval, Slack approvals and schema preflight." },
+          { slug: "data-lineage", title: "Lineage", description: "How data moves between tables, built from metadata and query_log without instrumentation — upstream sources and downstream blast radius." },
+          { slug: "data-pipelines", title: "Pipelines", description: "Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, replication, views and writers in one status vocabulary, with samples and errors." },
+          { slug: "data-health", title: "Datasets & promises", description: "Observed tables with their baselines, drift and usage, and promises — explicit checks evaluated on a schedule with incidents." },
+          { slug: "data-coverage", title: "Coverage", description: "How well tables are protected, suggested promises for read-heavy tables, and cold data nobody reads." },
+          { slug: "data-context", title: "Context", description: "Table descriptions, owners, canonical metrics, dbt import and plain-language watchers — for people and AI agents." },
+          { slug: "scheduled-queries", title: "Scheduled queries", description: "Cron and event-driven SQL jobs with macros, materialize destinations (also across a cluster), run history and replica-safe leases." },
+          { slug: "dataops-ai", title: "Operational brief", description: "AI-generated summaries of a scheduled job's or promise's recent runs and incidents, on its detail page." },
         ],
       },
       {
         id: "monitoring",
         label: "Monitoring",
         pages: [
-          { slug: "monitoring-overview", title: "Monitoring overview", description: "The Monitoring tabs, the permission each one needs, and the system tables behind them." },
+          { slug: "monitoring-overview", title: "Monitoring overview", description: "The ten Monitoring tabs, the permission each one needs, and the system tables behind them." },
           { slug: "monitoring-live-queries", title: "Live queries", description: "Running queries with CPU time and thread count, memory-pressure context and kill support." },
           { slug: "monitoring-query-logs", title: "Query logs", description: "Five sub-views over system.query_log — Queries, Patterns, By table, By Redash and the duration/memory histogram." },
           { slug: "monitoring-metrics", title: "Metrics", description: "Nine tabs of ClickHouse-native observability: overview, performance, storage, merges, errors, memory, CPU, ZooKeeper and network." },
@@ -161,7 +166,9 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "monitoring-schema-advisor", title: "Schema advisor", description: "Nullable-column and oversized-integer linter over system.parts_columns, ranked by on-disk bytes." },
           { slug: "monitoring-cluster-activity", title: "Cluster", description: "Mutations, replication queue, blocked-task indicators and per-replica lag from system.mutations and system.replicas." },
           { slug: "monitoring-errors", title: "Errors", description: "A searchable viewer over system.errors and the crash log so recurring failures surface without ad-hoc SQL." },
-          { slug: "monitoring-performance-capacity", title: "Performance, capacity & upgrades", description: "Query-shape regressions next to the changes around them, disk forecasts and measured codec savings, and upgrade readiness with canary replay." },
+          { slug: "monitoring-performance", title: "Performance", description: "Each query shape against its own 14-day baseline, regressions lined up with the upgrades, DDL and setting changes around them." },
+          { slug: "monitoring-capacity", title: "Capacity", description: "Disk forecasts per node, top growth, codec trials on samples and cost by consumer." },
+          { slug: "monitoring-upgrades", title: "Upgrades", description: "Upgrade readiness against your real workload, replay on a canary and a rollout tracker." },
           { slug: "ai-in-tab", title: "Chouse AI in Monitoring", description: "Optimize query-log rows, fix system.errors rows and diagnose part-log rows without leaving the tab — read-only, before→after EXPLAIN." },
         ],
       },
@@ -169,8 +176,7 @@ export const DOC_SECTIONS: DocSection[] = [
         id: "fleet",
         label: "Fleet",
         pages: [
-          { slug: "fleet", title: "Fleet view", description: "Every configured cluster side by side with status, memory, lag and drill-down." },
-          { slug: "alerting", title: "Threshold alerts", description: "Node memory, per-query memory and long-running-query rules with hysteresis, delivered via Slack Block Kit and email." },
+          { slug: "fleet", title: "Fleet view", description: "Every connection side by side with status, memory, lag and trends, sampled by the server — not by every browser." },
         ],
       },
       {
@@ -185,6 +191,23 @@ export const DOC_SECTIONS: DocSection[] = [
         label: "Agents",
         pages: [
           { slug: "agents", title: "Agents & governance", description: "Every MCP and token agent session, budget policies checked before queries run, health notices and the pause switch." },
+        ],
+      },
+      {
+        id: "admin",
+        label: "Admin",
+        pages: [
+          { slug: "admin", title: "Admin overview", description: "Every Admin tab — users, roles, data access, connections, ClickHouse users and roles, audit, AI models, SSO, alerting — and who can open it." },
+          { slug: "clickhouse-users-roles", title: "ClickHouse users & roles", description: "Create and manage real ClickHouse users and roles with native grants, from templates or by hand." },
+          { slug: "ai-models", title: "AI models", description: "Connect AI providers, register provider models and publish deployments for Chouse AI — sixteen provider types, keys encrypted." },
+          { slug: "alerting", title: "Alerting", description: "Threshold rules on fleet samples with Slack and email channels, test sends, and automatic Doctor root-cause reports." },
+        ],
+      },
+      {
+        id: "preferences",
+        label: "Preferences",
+        pages: [
+          { slug: "preferences", title: "Preferences", description: "Your theme, default result row limit, effective access and personal access tokens." },
         ],
       },
     ],
@@ -216,6 +239,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { slug: "architecture", title: "Architecture", description: "The monorepo layout, request path from browser to ClickHouse, RBAC middleware, collectors and where AI services sit." },
           { slug: "troubleshooting", title: "Troubleshooting", description: "Common failure modes — login, connections, migrations, SSO, MCP — and how to diagnose them." },
           { slug: "faq", title: "FAQ", description: "Answers to the questions operators ask most about CHouse UI." },
+          { slug: "glossary", title: "Glossary", description: "Every CHouse UI term — trust state, promise, blast radius, remediation credential, query shape — in one line each." },
         ],
       },
     ],
@@ -232,6 +256,8 @@ export const DOC_REDIRECTS: Record<string, string> = {
   "fleet-view": "fleet",
   "ai-fleet-doctor": "doctor",
   "workspace-overview": "home",
+  "data-pipelines-lineage": "data-pipelines",
+  "monitoring-performance-capacity": "monitoring-performance",
 };
 
 /** Flatten all pages in sidebar order. */
