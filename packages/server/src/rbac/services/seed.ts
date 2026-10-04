@@ -157,6 +157,29 @@ const PERMISSION_CATEGORIES: Record<string, string[]> = {
     PERMISSIONS.DATA_HEALTH_RUN,
     PERMISSIONS.DATA_HEALTH_VIEW_ALL,
   ],
+  'Data Observability': [
+    PERMISSIONS.OBSERVE_VIEW,
+    PERMISSIONS.OBSERVE_EDIT,
+    PERMISSIONS.CONTEXT_EDIT,
+    PERMISSIONS.SCHEMA_OVERRIDE,
+    PERMISSIONS.NOTEBOOKS_EDIT,
+  ],
+  'Performance & Capacity': [
+    PERMISSIONS.PERFORMANCE_VIEW,
+    PERMISSIONS.CAPACITY_VIEW,
+    PERMISSIONS.COST_VIEW,
+    PERMISSIONS.UPGRADES_VIEW,
+    PERMISSIONS.UPGRADES_RUN,
+  ],
+  'Remediation': [
+    PERMISSIONS.REMEDIATION_PROPOSE,
+    PERMISSIONS.REMEDIATION_APPROVE,
+    PERMISSIONS.REMEDIATION_APPROVE_HIGH,
+  ],
+  'Agents': [
+    PERMISSIONS.AGENTS_VIEW,
+    PERMISSIONS.AGENTS_MANAGE,
+  ],
 };
 
 // Human-readable permission names
@@ -245,6 +268,21 @@ const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
   [PERMISSIONS.DATA_HEALTH_DELETE]: 'Delete Data Health Promises',
   [PERMISSIONS.DATA_HEALTH_RUN]: 'Manually Run Data Health Promises',
   [PERMISSIONS.DATA_HEALTH_VIEW_ALL]: 'View and Act on All Data Health Promises',
+  [PERMISSIONS.OBSERVE_VIEW]: 'View Data Observability',
+  [PERMISSIONS.OBSERVE_EDIT]: 'Accept Monitoring Suggestions and Pin Criticality',
+  [PERMISSIONS.CONTEXT_EDIT]: 'Edit Table Context and Metrics',
+  [PERMISSIONS.SCHEMA_OVERRIDE]: 'Run Schema Changes That Break Dependents',
+  [PERMISSIONS.PERFORMANCE_VIEW]: 'View Query Performance',
+  [PERMISSIONS.CAPACITY_VIEW]: 'View Capacity',
+  [PERMISSIONS.COST_VIEW]: 'View Cost',
+  [PERMISSIONS.UPGRADES_VIEW]: 'View Upgrade Readiness',
+  [PERMISSIONS.UPGRADES_RUN]: 'Run Upgrade Replays and Codec Trials',
+  [PERMISSIONS.REMEDIATION_PROPOSE]: 'Propose Remediation Actions',
+  [PERMISSIONS.REMEDIATION_APPROVE]: 'Approve Remediation Actions',
+  [PERMISSIONS.REMEDIATION_APPROVE_HIGH]: 'Approve High-Risk Remediation Actions',
+  [PERMISSIONS.AGENTS_VIEW]: 'View Agent Activity',
+  [PERMISSIONS.AGENTS_MANAGE]: 'Manage Agent Policies',
+  [PERMISSIONS.NOTEBOOKS_EDIT]: 'Add Cells to Investigation Notebooks',
 };
 
 // Role display names and descriptions

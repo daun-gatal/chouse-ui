@@ -167,9 +167,53 @@ export const PERMISSIONS = {
   DATA_HEALTH_DELETE: 'data_health:delete',
   DATA_HEALTH_RUN: 'data_health:run',
   DATA_HEALTH_VIEW_ALL: 'data_health:view_all',
+
+  // Data Observability Platform (ADR 0016)
+  OBSERVE_VIEW: 'observe:view',
+  OBSERVE_EDIT: 'observe:edit',
+  CONTEXT_EDIT: 'context:edit',
+  PERFORMANCE_VIEW: 'performance:view',
+  CAPACITY_VIEW: 'capacity:view',
+  COST_VIEW: 'cost:view',
+  UPGRADES_VIEW: 'upgrades:view',
+  UPGRADES_RUN: 'upgrades:run',
+  REMEDIATION_PROPOSE: 'remediation:propose',
+  REMEDIATION_APPROVE: 'remediation:approve',
+  REMEDIATION_APPROVE_HIGH: 'remediation:approve_high',
+  SCHEMA_OVERRIDE: 'schema:override',
+  AGENTS_VIEW: 'agents:view',
+  AGENTS_MANAGE: 'agents:manage',
+  NOTEBOOKS_EDIT: 'notebooks:edit',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
+
+/** ADR 0016 read-only surfaces (Developer gets all of these). */
+export const OBSERVE_VIEW_PERMISSIONS: Permission[] = [
+  PERMISSIONS.OBSERVE_VIEW,
+  PERMISSIONS.PERFORMANCE_VIEW,
+  PERMISSIONS.CAPACITY_VIEW,
+  PERMISSIONS.COST_VIEW,
+  PERMISSIONS.UPGRADES_VIEW,
+  PERMISSIONS.AGENTS_VIEW,
+];
+
+/**
+ * Every ADR 0016 permission. Admin holds all of them, including
+ * `schema:override`, so every role that can run DDL today still can (§18).
+ */
+export const OBSERVE_PERMISSIONS_ALL: Permission[] = [
+  ...OBSERVE_VIEW_PERMISSIONS,
+  PERMISSIONS.OBSERVE_EDIT,
+  PERMISSIONS.CONTEXT_EDIT,
+  PERMISSIONS.UPGRADES_RUN,
+  PERMISSIONS.REMEDIATION_PROPOSE,
+  PERMISSIONS.REMEDIATION_APPROVE,
+  PERMISSIONS.REMEDIATION_APPROVE_HIGH,
+  PERMISSIONS.SCHEMA_OVERRIDE,
+  PERMISSIONS.AGENTS_MANAGE,
+  PERMISSIONS.NOTEBOOKS_EDIT,
+];
 
 // ============================================
 // Default Role Permissions
@@ -249,6 +293,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.DATA_HEALTH_DELETE,
     PERMISSIONS.DATA_HEALTH_RUN,
     PERMISSIONS.DATA_HEALTH_VIEW_ALL,
+    ...OBSERVE_PERMISSIONS_ALL,
   ],
 
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -275,6 +320,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.METRICS_VIEW,
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
+    ...OBSERVE_VIEW_PERMISSIONS,
+    PERMISSIONS.OBSERVE_EDIT,
+    PERMISSIONS.CONTEXT_EDIT,
+    PERMISSIONS.REMEDIATION_PROPOSE,
+    PERMISSIONS.NOTEBOOKS_EDIT,
   ],
 
   [SYSTEM_ROLES.ANALYST]: [
@@ -295,6 +345,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.METRICS_VIEW,
     PERMISSIONS.AI_OPTIMIZE,
     PERMISSIONS.AI_CHAT,
+    PERMISSIONS.OBSERVE_VIEW,
+    PERMISSIONS.PERFORMANCE_VIEW,
   ],
 
   [SYSTEM_ROLES.VIEWER]: [
@@ -305,6 +357,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.QUERY_HISTORY_VIEW,
     PERMISSIONS.SAVED_QUERIES_VIEW,
     PERMISSIONS.METRICS_VIEW,
+    PERMISSIONS.OBSERVE_VIEW,
+    PERMISSIONS.PERFORMANCE_VIEW,
   ],
 
   [SYSTEM_ROLES.GUEST]: [
@@ -507,6 +561,30 @@ export const AUDIT_ACTIONS = {
   DATA_HEALTH_INCIDENT_ACKNOWLEDGE: 'data_health.incident_acknowledge',
   DATA_HEALTH_INCIDENT_SNOOZE: 'data_health.incident_snooze',
   DATA_HEALTH_INCIDENT_NOTE: 'data_health.incident_note',
+
+  // Data Observability Platform (ADR 0016)
+  OBSERVE_SUGGESTION_ACCEPT: 'observe.suggestion_accept',
+  OBSERVE_SUGGESTION_DISMISS: 'observe.suggestion_dismiss',
+  OBSERVE_CRITICALITY_PIN: 'observe.criticality_pin',
+  OBSERVE_INCIDENT_ACKNOWLEDGE: 'observe.incident_acknowledge',
+  OBSERVE_COST_RATES_UPDATE: 'observe.cost_rates_update',
+  OBSERVE_CODEC_TRIAL: 'observe.codec_trial',
+  CONTEXT_UPDATE: 'context.update',
+  CONTEXT_METRIC_UPSERT: 'context.metric_upsert',
+  CONTEXT_METRIC_DELETE: 'context.metric_delete',
+  CONTEXT_DBT_IMPORT: 'context.dbt_import',
+  REMEDIATION_PROPOSE: 'remediation.propose',
+  REMEDIATION_APPROVE: 'remediation.approve',
+  REMEDIATION_REJECT: 'remediation.reject',
+  REMEDIATION_EXECUTE: 'remediation.execute',
+  REMEDIATION_ROLLBACK: 'remediation.rollback',
+  REMEDIATION_CREDENTIAL_UPDATE: 'remediation.credential_update',
+  SCHEMA_OVERRIDE: 'schema.override',
+  NOTEBOOK_CELL_ADD: 'notebook.cell_add',
+  UPGRADE_ASSESS: 'upgrade.assess',
+  UPGRADE_REPLAY: 'upgrade.replay',
+  AGENT_POLICY_UPDATE: 'agent.policy_update',
+  AGENT_ACCESS_PAUSE: 'agent.access_pause',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

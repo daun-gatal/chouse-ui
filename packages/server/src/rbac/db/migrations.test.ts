@@ -17,6 +17,7 @@ import { randomUUID } from "crypto";
 import { closeDatabase, getDatabaseType } from "./index";
 import { runMigrations, MIGRATIONS, APP_VERSION } from "./migrations";
 import * as h from "./migrationTestHarness";
+import { OBSERVE_TABLE_NAMES } from "./observeSchema";
 
 const DIALECTS: h.Dialect[] = ["sqlite", "postgres"];
 
@@ -70,7 +71,8 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
   "1.17.0": async () => expect(await h.columnExists("rbac_audit_logs", "browser")).toBe(true),
   "1.17.1": async () => expect(await h.columnExists("rbac_audit_logs", "timezone")).toBe(true),
   "1.18.0": async () => expect(await h.tableExists("fleet_snapshots")).toBe(true),
-  "1.19.0": async () => expect(await h.tableExists("fleet_poller_lease")).toBe(true),
+  // Created here, dropped by 1.55.0 (replaced by obs_leases) — absent in the final state.
+  "1.19.0": async () => expect(await h.tableExists("fleet_poller_lease")).toBe(false),
   "1.20.0": async () => expect(await h.tableExists("doctor_reports")).toBe(true),
   "1.21.0": async () => expect(await h.columnExists("doctor_reports", "trigger_source")).toBe(true),
   "1.22.0": async () => {
@@ -318,6 +320,25 @@ const VERSION_CHECKS: Record<string, () => Promise<void>> = {
       await h.rawRun(sql`DELETE FROM rbac_api_keys WHERE id = ${probeId}`);
     }
   },
+  "1.53.0": async () => {
+    // ADR 0016 evidence store, permissions and default grants (§18: Admin keeps every DDL ability).
+    for (const t of OBSERVE_TABLE_NAMES) expect(await h.tableExists(t)).toBe(true);
+    expect(await h.indexExists("obs_lineage_edges_source_idx")).toBe(true);
+    for (const p of ["observe:view", "observe:edit", "context:edit", "performance:view", "capacity:view", "cost:view", "upgrades:view", "upgrades:run", "remediation:propose", "remediation:approve", "remediation:approve_high", "schema:override", "agents:view", "agents:manage", "notebooks:edit"]) {
+      expect(await h.permissionExists(p)).toBe(true);
+    }
+    expect(await h.roleHasPermission("admin", "schema:override")).toBe(true);
+    expect(await h.roleHasPermission("developer", "remediation:propose")).toBe(true);
+    expect(await h.roleHasPermission("developer", "remediation:approve")).toBe(false);
+    expect(await h.roleHasPermission("analyst", "observe:view")).toBe(true);
+    expect(await h.roleHasPermission("viewer", "cost:view")).toBe(false);
+  },
+  "1.54.0": async () => {
+    // Roles that could see Data Health / Scheduled Queries see observe; doctor:run → remediation:propose.
+    expect(await h.roleHasPermission("admin", "observe:view")).toBe(true);
+    expect(await h.roleHasPermission("admin", "remediation:propose")).toBe(true);
+  },
+  "1.55.0": async () => expect(await h.tableExists("fleet_poller_lease")).toBe(false),
 };
 
 // ---------------------------------------------------------------------------
@@ -828,4 +849,74 @@ describe("migrations · concurrent runners [postgres]", () => {
       await VERSION_CHECKS[m.version]();
     }
   }, 60_000);
+
+  describe(`migrations · ADR 0016 data carry-over [${dialect}]`, () => {
+    let customViewer = "";
+    let customDoctor = "";
+    let plain = "";
+
+    beforeAll(async () => {
+      await h.freshDatabase(dialect, pg);
+      await runMigrations({ skipSeed: true, through: "1.53.0" });
+      // A held fleet poller lease, two Doctor reports and custom roles.
+      await h.rawRun(sql`UPDATE fleet_poller_lease SET holder = 'pod-a', acquired_at = 100, expires_at = 9999999999 WHERE id = 1`);
+      await h.rawRun(sql`INSERT INTO doctor_reports (id, created_at, created_by, model, status, summary, node_count, duration_ms, trigger_source)
+        VALUES ('r1', 1000, NULL, 'm', 'warning', 'ch-eu-4 merge pressure', 3, 10, 'auto'), ('r2', 2000, NULL, 'm', 'ok', '', 1, 5, NULL)`);
+      const perm = async (name: string): Promise<string> => String((await h.rawAll(sql`SELECT id FROM rbac_permissions WHERE name = ${name}`))[0].id);
+      const role = async (name: string, perms: string[]): Promise<string> => {
+        const id = randomUUID();
+        await h.rawRun(sql`INSERT INTO rbac_roles (id, name, display_name, is_system, is_default, priority, created_at, updated_at)
+          VALUES (${id}, ${name}, ${name}, ${b(false)}, ${b(false)}, 1, ${now()}, ${now()})`);
+        for (const p of perms) {
+          await h.rawRun(sql`INSERT INTO rbac_role_permissions (id, role_id, permission_id, created_at) VALUES (${randomUUID()}, ${id}, ${await perm(p)}, ${now()})`);
+        }
+        return id;
+      };
+      customViewer = await role("dh-viewer", ["data_health:view"]);
+      customDoctor = await role("doctor-runner", ["doctor:run"]);
+      plain = await role("plain", ["metrics:view"]);
+      await runMigrations({ skipSeed: true, through: "1.54.0" });
+    }, 60_000);
+
+    const has = async (rid: string, permission: string): Promise<boolean> => (await h.rawAll(sql`
+      SELECT 1 FROM rbac_role_permissions rp JOIN rbac_permissions p ON p.id = rp.permission_id WHERE rp.role_id = ${rid} AND p.name = ${permission}`)).length > 0;
+
+    it("maps permissions onto custom roles", async () => {
+      expect(await has(customViewer, "observe:view")).toBe(true);
+      expect(await has(customDoctor, "remediation:propose")).toBe(true);
+      expect(await has(plain, "observe:view")).toBe(false);
+      expect(await has(customDoctor, "observe:view")).toBe(false);
+    });
+
+    it("carries the fleet lease over to the collector lease", async () => {
+      const rows = await h.rawAll(sql`SELECT holder FROM obs_leases WHERE lease_key = 'observe:fleet'`);
+      expect(String(rows[0]?.holder)).toBe("pod-a");
+    });
+
+    it("converts every Doctor report into a notebook with its finding", async () => {
+      const notebooks = await h.rawAll(sql`SELECT id, title, attached_ref FROM notebooks WHERE attached_kind = 'doctor_report' ORDER BY attached_ref`);
+      expect(notebooks.map((n) => String(n.attached_ref))).toEqual(["r1", "r2"]);
+      expect(String(notebooks[0].title)).toBe("ch-eu-4 merge pressure");
+      expect(String(notebooks[1].title)).toBe("Doctor report");
+      const cells = await h.rawAll(sql`SELECT content FROM notebook_cells WHERE notebook_id = 'nb-doctor-r1'`);
+      expect(JSON.parse(String(cells[0].content)).trigger).toBe("auto");
+    });
+
+    it("is idempotent when re-run", async () => {
+      const migration = MIGRATIONS.find((m) => m.version === "1.54.0")!;
+      const { getDatabase } = await import("./index");
+      await migration.up(getDatabase());
+      expect(await h.rowCount("notebooks")).toBe(2);
+      expect(await h.rowCount("notebook_cells")).toBe(2);
+      const grants = await h.rawAll(sql`
+        SELECT COUNT(*) AS c FROM rbac_role_permissions rp JOIN rbac_permissions p ON p.id = rp.permission_id WHERE rp.role_id = ${customViewer} AND p.name = 'observe:view'`);
+      expect(Number(grants[0].c)).toBe(1);
+    });
+
+    it("then drops the old lease table", async () => {
+      await runMigrations({ skipSeed: true });
+      expect(await h.tableExists("fleet_poller_lease")).toBe(false);
+      expect(await h.tableExists("obs_leases")).toBe(true);
+    });
+  });
 });

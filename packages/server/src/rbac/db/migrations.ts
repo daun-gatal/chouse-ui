@@ -15,6 +15,7 @@ import { getDatabase, getDatabaseType, getPostgresClient, isSqlite, getSchema, t
 import { SYSTEM_ROLES } from '../schema/base';
 import { hashPassword } from '../services/password';
 import { logger } from '../../utils/logger';
+import { OBSERVE_MIGRATIONS } from './observeMigrations';
 
 // ============================================
 // Types
@@ -45,7 +46,7 @@ export interface MigrationResult {
 // Current App Version
 // ============================================
 
-export const APP_VERSION = '1.52.0';
+export const APP_VERSION = '1.55.0';
 
 // ============================================
 // Error Helpers
@@ -4725,6 +4726,7 @@ export const MIGRATIONS: Migration[] = [
     },
     down: async () => { /* forward-only */ },
   },
+  ...OBSERVE_MIGRATIONS,
 ];
 
 // ============================================

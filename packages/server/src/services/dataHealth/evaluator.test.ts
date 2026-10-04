@@ -78,3 +78,31 @@ describe("evaluateDataHealth", () => {
     expect(result.state).toBe("unhealthy");
   });
 });
+
+describe("distribution evaluation (ADR 0016)", () => {
+  const check = (statistic: "p50" | "null_ratio"): DataHealthCheckDefinition => ({
+    checkKey: "dist",
+    name: "Distribution",
+    type: "distribution",
+    severity: "critical",
+    enabled: true,
+    config: { column: "price_usd", statistic, topValue: null, tolerance: 3, minSamples: 3 },
+  });
+
+  it("learns until enough history exists", () => {
+    const result = evaluateDataHealth([check("p50")], { dist: 12.4 }, { dist: [12, 13] });
+    expect(result.checks[0].outcome).toBe("learning");
+  });
+
+  it("breaches when a value moves beyond the tolerance factor (prices switched to cents)", () => {
+    const result = evaluateDataHealth([check("p50")], { dist: 1240 }, { dist: [12, 12.4, 13, 12.2] });
+    expect(result.checks[0].outcome).toBe("breach");
+    expect(result.state).toBe("unhealthy");
+    expect(result.checks[0].message).toContain("× its usual value");
+  });
+
+  it("passes within tolerance and ignores tiny shifts of near-zero ratios", () => {
+    expect(evaluateDataHealth([check("p50")], { dist: 20 }, { dist: [12, 12.4, 13] }).checks[0].outcome).toBe("pass");
+    expect(evaluateDataHealth([check("null_ratio")], { dist: 0.004 }, { dist: [0.0008, 0.0009, 0.001] }).checks[0].outcome).toBe("pass");
+  });
+});

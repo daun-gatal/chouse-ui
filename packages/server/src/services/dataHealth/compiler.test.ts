@@ -177,3 +177,27 @@ describe("compileDataHealthQuery", () => {
     expect(compiled.metricCheckKeys).toEqual(multiChecks.map((check) => check.checkKey));
   });
 });
+
+describe("distribution checks (ADR 0016)", () => {
+  const distribution = (statistic: "p50" | "p95" | "null_ratio" | "distinct_ratio" | "top_share", topValue?: string): DataHealthCheckDefinition => ({
+    checkKey: `dist_${statistic}`,
+    name: "Distribution",
+    type: "distribution",
+    severity: "warning",
+    enabled: true,
+    config: { column: "price_usd", statistic, topValue: topValue ?? null, tolerance: 3, minSamples: 7 },
+  });
+
+  it("compiles each statistic inside the event-time window", () => {
+    const source = { sourceType: "table" as const, databaseName: "events", tableName: "page_views", eventTimeColumn: "ts" };
+    expect(compileDataHealthQuery(source, [distribution("p50")]).sql).toContain("quantileIf(0.5)(`price_usd`, `ts` >= {{slot_start}}");
+    expect(compileDataHealthQuery(source, [distribution("p95")]).sql).toContain("quantileIf(0.95)(`price_usd`");
+    expect(compileDataHealthQuery(source, [distribution("null_ratio")]).sql).toContain("`price_usd` IS NULL");
+    expect(compileDataHealthQuery(source, [distribution("distinct_ratio")]).sql).toContain("uniqIf(`price_usd`");
+    expect(compileDataHealthQuery(source, [distribution("top_share", "it's")]).sql).toContain("toString(`price_usd`) = 'it''s'");
+  });
+
+  it("requires an event-time column", () => {
+    expect(() => compileDataHealthQuery({ sourceType: "table", databaseName: "e", tableName: "p" }, [distribution("p50")])).toThrow("event-time");
+  });
+});

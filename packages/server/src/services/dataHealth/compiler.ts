@@ -233,6 +233,23 @@ function metricExpression(check: DataHealthCheckDefinition, source: DataHealthCo
       return ratio(`countIf((${window}) AND (${check.config.predicate}))`, `countIf(${window})`);
     case "custom_metric":
       return `toFloat64OrNull(toString(${check.config.expression}))`;
+    case "distribution": {
+      if (!window) throw new Error("distribution requires an event-time column");
+      const column = escapeIdentifier(check.config.column);
+      switch (check.config.statistic) {
+        case "p50":
+          return `toFloat64(quantileIf(0.5)(${column}, ${window}))`;
+        case "p95":
+          return `toFloat64(quantileIf(0.95)(${column}, ${window}))`;
+        case "null_ratio":
+          return ratio(`countIf((${window}) AND ${column} IS NULL)`, `countIf(${window})`);
+        case "distinct_ratio":
+          return ratio(`uniqIf(${column}, ${window})`, `countIf(${window})`);
+        case "top_share":
+          return ratio(`countIf((${window}) AND toString(${column}) = ${sqlString(check.config.topValue ?? "")})`, `countIf(${window})`);
+      }
+      return null;
+    }
     case "schema_contract":
       return null;
   }
