@@ -59,9 +59,19 @@ PostgreSQL (database.type=postgres) and scale replicaCount.
 {{- if .Values.ingress }}{{- if .Values.ingress.enabled }}
 
 Ingress reminders:
-  - AI chat streams over SSE; raise the proxy read timeout (nginx:
+  - AI chat and MCP (/mcp) stream over SSE; raise the proxy read timeout (nginx:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300") and disable
     response buffering for smooth streaming.
   - Login rate limiting keys on X-Forwarded-For — make sure your ingress
     overwrites it with the real client IP.
 {{- end }}{{- end }}
+
+MCP for AI agents is served at /mcp on the same Service and Ingress. It is
+off until an administrator turns it on in Agents › MCP, where the allowed
+origins and the tools agents get are chosen too.
+{{- if hasKey .Values "mcp" }}
+
+WARNING: `mcp.*` values are no longer used (chart 2.0.0). There is no
+dedicated MCP port, Service or Ingress any more, and the MCP_* settings are
+gone — turn MCP on in Agents › MCP and remove `mcp:` from your values.
+{{- end }}

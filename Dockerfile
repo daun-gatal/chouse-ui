@@ -117,15 +117,13 @@ ENV NODE_ENV=production \
     AI_PROVIDER=openai \
     AI_API_KEY="" \
     AI_MODEL_NAME="" \
-    AI_BASE_URL="" \
-    MCP_ENABLED=false \
-    MCP_PORT=8752
+    AI_BASE_URL=""
 
 # Volume for persistent RBAC data (SQLite database)
 VOLUME ["/app/data"]
 
-# Expose ports: web/API (5521) and the optional MCP endpoint (8752, ADR 0013)
-EXPOSE 5521 8752
+# Web, API and the MCP endpoint (/mcp, turned on in Agents › MCP) share one port
+EXPOSE 5521
 
 # Switch to non-root user
 USER ch-user

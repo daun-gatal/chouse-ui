@@ -21,12 +21,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       ports:
+        # Web, API and the MCP endpoint (/mcp) share this port.
         - port: 5521
           protocol: TCP
-        {{- if .Values.mcp.enabled }}
-        - port: 8752
-          protocol: TCP
-        {{- end }}
   {{- if .Values.networkPolicy.restrictEgress }}
   egress:
     # DNS

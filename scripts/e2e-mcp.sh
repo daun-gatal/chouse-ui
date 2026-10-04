@@ -1,18 +1,19 @@
 #!/bin/bash
 #
-# DinD Docker-Compose E2E for ADR 0013 (CHouse MCP server).
+# DinD Docker-Compose E2E for ADR 0013 / ADR 0017 (CHouse MCP server).
 #
 #   ./scripts/e2e-mcp.sh
 #
 # Builds the image from THIS working tree (docker-compose.local.yml, never the
-# published :latest), starts chouse-ui + ClickHouse in the shared DinD daemon
-# with MCP_ENABLED=true, then runs scripts/e2e-mcp-check.py from INSIDE the
+# published :latest), starts chouse-ui + ClickHouse in the shared DinD daemon,
+# then runs scripts/e2e-mcp-check.py (which turns MCP on through the
+# Agents › MCP API and exercises /mcp on the web port) from INSIDE the
 # compose network — published ports land on the DinD host, not on this pod,
 # so localhost checks would falsely fail (see ADR 0012 §4 notes).
 #
 # Target environment: DOCKER_HOST=tcp://opencode-dind:2375
 #
-# Preconditions: docker client pointed at DinD, ports 5521/8752/8124 free on
+# Preconditions: docker client pointed at DinD, ports 5521/8124 free on
 # the DinD host, no other chouse stack running (sequential runs only).
 #
 set -euo pipefail
@@ -20,8 +21,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PROJECT="chouse-mcp-e2e"
-# The override drops the ./.config.yaml bind mount (unresolvable under DinD)
-# and enables the MCP endpoint for the run.
+# The override drops the ./.config.yaml bind mount (unresolvable under DinD).
 COMPOSE="docker compose -f docker-compose.local.yml -f scripts/e2e-mcp.override.yml -p $PROJECT"
 NETWORK="${PROJECT}_default"
 SIDECAR_IMAGE="python:3.12-slim"
@@ -47,7 +47,7 @@ if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -Eq '^(chouse-ui-local|
   exit 1
 fi
 
-echo "Building image from working tree and starting stack (MCP enabled)..."
+echo "Building image from working tree and starting stack..."
 $COMPOSE up --build -d
 
 echo "Running MCP checks from inside the compose network..."

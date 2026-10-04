@@ -1,6 +1,6 @@
 # chouse-ui
 
-![Version: 1.4.0](https://img.shields.io/badge/Version-1.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.13.0](https://img.shields.io/badge/AppVersion-3.13.0-informational?style=flat-square)
+![Version: 2.0.0](https://img.shields.io/badge/Version-2.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.13.0](https://img.shields.io/badge/AppVersion-3.13.0-informational?style=flat-square)
 
 A modern web interface for ClickHouse with built-in RBAC, fleet monitoring, scheduled queries, data health checks, and an AI SRE.
 
@@ -129,9 +129,22 @@ approvals need `slack.signingSecret` and `slack.botToken`, or
 > still accepted but ignored — fleet collection is always on. They will be
 > removed in a future major release.
 
+## MCP for AI agents
+
+The MCP endpoint ([ADR 0017](../../docs/adr/0017-mcp-managed-in-the-ui.md))
+is served at `/mcp` on the web port, so agents reach it through the same
+Service, Ingress and TLS as the UI (`https://<host>/mcp`). There are no chart
+values for it: an administrator turns it on, sets its allowed origins and
+picks the tools agents get in **Agents › MCP**.
+
+> **Upgrading from 1.x:** `mcp.*` values, the dedicated port 8752, the
+> `<release>-mcp` Service and the MCP Ingress are gone. Leftover `mcp:` values
+> are ignored (the install notes warn while they are set). Turn MCP on in
+> Agents › MCP and point agents at `https://<host>/mcp`.
+
 ## Ingress notes
 
-- AI chat streams over **SSE**: raise the proxy read timeout (nginx:
+- AI chat and MCP (`/mcp`) stream over **SSE**: raise the proxy read timeout (nginx:
   `nginx.ingress.kubernetes.io/proxy-read-timeout: "300"`) and disable
   response buffering (`nginx.ingress.kubernetes.io/proxy-buffering: "off"`).
 - Login rate limiting keys on **`X-Forwarded-For`** — the ingress must
@@ -209,20 +222,6 @@ Kubernetes: `>=1.25.0-0`
 | ingress.hosts[0].paths[0].pathType | string | `"Prefix"` |  |
 | ingress.tls | list | `[]` | TLS configuration. |
 | initContainers | list | `[]` | Extra init containers for the web pods. |
-| mcp.allowDestructive | bool | `false` | Enable destructive tools (KILL, raw SQL, deletes). Requires `allowWrites`; the human approves via the client's permission prompt (ADR 0014, docs/mcp.md "Human approval per client"). |
-| mcp.allowWrites | bool | `false` | Allow the write-gated toolset (create/run/ack actions). This is a server-side policy — agents cannot opt in; read-only is the default. |
-| mcp.allowedOrigins | list | `[]` | Origins allowed on the MCP endpoint. Empty rejects any request that carries an Origin header (DNS-rebinding protection); headerless clients (CLI agents, curl) always pass. Browser-embedded MCP hosts must be listed here explicitly. |
-| mcp.enabled | bool | `false` | Serve the MCP (Model Context Protocol) endpoint on a dedicated port (8752) so AI agents can operate CHouse UI safely without the browser (ADR 0013). Authentication is PAT-only (`Authorization: Bearer ch_pat_…`, minted once in the UI); requests are verified live against RBAC on every call, exactly like the UI and CLI. Disabled by default: no Service, no port, unreachable. |
-| mcp.ingress.annotations | object | `{}` | Rendered verbatim, exactly like `ingress.annotations`. For SSE:   nginx.ingress.kubernetes.io/proxy-read-timeout: "300"   nginx.ingress.kubernetes.io/proxy-buffering: "off" |
-| mcp.ingress.className | string | `""` | Rendered verbatim, exactly like `ingress.className`. |
-| mcp.ingress.enabled | bool | `false` | Expose MCP at `https://<host>/mcp` through the ingress. Rendered as its own Ingress, mirroring the UI ingress: `className`, `annotations`, and `tls` are rendered verbatim — no inheritance, no merging. Requires `mcp.enabled` and at least one host. TLS-terminating controllers (e.g. Tailscale Funnel) need no `tls`. |
-| mcp.ingress.hosts | list | `[]` | Hosts carrying the `/mcp` path (same shape as `ingress.hosts` minus `paths` — the path is fixed at `/mcp`). |
-| mcp.ingress.tls | list | `[]` | Rendered verbatim, exactly like `ingress.tls`. |
-| mcp.service.annotations | object | `{}` | Extra annotations for the MCP Service. |
-| mcp.service.port | int | `8752` | Service port (targets the fixed container port 8752). |
-| mcp.service.type | string | `"ClusterIP"` | Service type for the dedicated MCP Service (`<release>-mcp`). `LoadBalancer`/`NodePort` expose MCP directly without an Ingress. |
-| mcp.timeoutSeconds | int | `60` | Per-request tool timeout in seconds (1..600). |
-| mcp.toolsets | list | `["core","explore","query","observe","ops"]` | Toolsets to register. Default: reads only. `writes`/`destructive` additionally require the flags above; `ai` spends LLM budget. |
 | nameOverride | string | `""` | Override the chart name. |
 | networkPolicy.egressTo | list | `[]` | Extra egress rules (full NetworkPolicyEgressRule objects) applied when `restrictEgress` is true. |
 | networkPolicy.enabled | bool | `false` | Create a NetworkPolicy for the pods. |
