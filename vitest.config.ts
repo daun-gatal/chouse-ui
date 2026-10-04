@@ -14,7 +14,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    // Server tests run under Bun (scripts/test-isolated-server.sh); UI e2e under Playwright.
-    exclude: [...configDefaults.exclude, 'packages/**', 'e2e/**'],
+    // Server tests run under Bun (scripts/test-isolated-server.sh).
+    exclude: [...configDefaults.exclude, 'packages/**'],
   },
 });
