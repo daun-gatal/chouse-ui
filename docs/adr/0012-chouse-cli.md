@@ -1,6 +1,6 @@
 # 0012 — CHouse CLI: Safe Browserless Operations with Go Binary Distribution
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0018](0018-cli-1-0.md) — auto table/JSON output, secure login, real profiles, connection names, `--debug`)
 - **Date:** 2026-09-12
 - **Builds on:** [0011](0011-personal-access-tokens.md) (PAT machine auth), [0010](0010-pod-local-state-and-multi-replica-correctness.md) (fail-closed, no silent substitution), [0008](0008-helm-chart-and-oci-distribution.md) (OCI distribution posture)
 
