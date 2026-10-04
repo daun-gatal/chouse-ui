@@ -1,10 +1,10 @@
 /**
- * Explore toolset: database/table discovery, schema, and bounded samples.
+ * Explore tools: database/table discovery, schema, and bounded samples.
  * Read-only; every call inherits the token's data-access policy filters.
  */
 
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
+import { PERMISSIONS } from "../../rbac/schema/base";
 import type { McpDeps } from "../types";
 import {
   runApiTool,
@@ -13,7 +13,7 @@ import {
   argString,
   argNumber,
   argOptionalString,
-  registerChouseTool,
+  registerChouseTool, type McpToolSink,
 } from "./helpers";
 
 // Schemas hoisted as plain zod v3 records (see helpers.ts note on TS2589).
@@ -35,12 +35,15 @@ const sampleTableSchema: Record<string, z.ZodTypeAny> = {
   connection_id: z.string().optional().describe("Connection id (defaults to the request/header connection)"),
 };
 
-export function registerExploreTools(mcp: McpServer, deps: McpDeps): void {
-  registerChouseTool(mcp, {
+export function registerExploreTools(sink: McpToolSink, deps: McpDeps): void {
+  registerChouseTool(sink, {
     name: "list_databases",
+    title: "List databases",
+    category: "explore",
+    access: "read",
+    permissions: [PERMISSIONS.DB_VIEW, PERMISSIONS.TABLE_VIEW],
     description:
       "List the databases and tables visible to this token (respects data-access policies). Returns the filtered database tree.",
-    annotations: { readOnlyHint: true },
     handler: async (_args, extra) => {
       const ctx = toolContext(extra);
       return runApiTool(ctx, deps.clientFor(ctx), "list_databases", undefined, () =>
@@ -49,11 +52,14 @@ export function registerExploreTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "list_tables",
+    title: "List tables",
+    category: "explore",
+    access: "read",
+    permissions: [PERMISSIONS.DB_VIEW, PERMISSIONS.TABLE_VIEW],
     description: "List the tables inside one database (respects data-access policies).",
     inputSchema: listTablesSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const database = argString(args, "database");
@@ -69,11 +75,14 @@ export function registerExploreTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "describe_table",
+    title: "Describe a table",
+    category: "explore",
+    access: "read",
+    permissions: [PERMISSIONS.TABLE_VIEW],
     description: "Describe a table: columns, types, engine, and other metadata.",
     inputSchema: describeTableSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const database = argString(args, "database");
@@ -88,11 +97,14 @@ export function registerExploreTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "sample_table",
+    title: "Sample rows",
+    category: "explore",
+    access: "read",
+    permissions: [PERMISSIONS.TABLE_SELECT],
     description: "Preview up to 20 rows of a table (bounded sample).",
     inputSchema: sampleTableSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const database = argString(args, "database");

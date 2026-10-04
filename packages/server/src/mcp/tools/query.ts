@@ -1,5 +1,5 @@
 /**
- * Query toolset: safe SELECT-only execution and explain plans (ADR 0013 §4).
+ * Query tools: safe SELECT-only execution and explain plans (ADR 0013 §4).
  *
  * The AST-based classifier (middleware/sqlParser) — the same one that guards
  * the API's SQL injection surface — decides what may run here: a single
@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
+import { PERMISSIONS } from "../../rbac/schema/base";
 import type { McpDeps } from "../types";
 import {
   runApiTool,
@@ -18,7 +18,7 @@ import {
   argString,
   argNumber,
   argOptionalString,
-  registerChouseTool,
+  registerChouseTool, type McpToolSink,
 } from "./helpers";
 import { auditMcpToolCall } from "../audit";
 import {
@@ -81,13 +81,16 @@ export function classifyReadSql(sql: string): SqlClassification {
   return { allowed: true };
 }
 
-export function registerQueryTools(mcp: McpServer, deps: McpDeps): void {
-  registerChouseTool(mcp, {
+export function registerQueryTools(sink: McpToolSink, deps: McpDeps): void {
+  registerChouseTool(sink, {
     name: "query",
+    title: "Run a read-only query",
+    category: "query",
+    access: "read",
+    permissions: [PERMISSIONS.QUERY_EXECUTE, PERMISSIONS.TABLE_SELECT],
     description:
       "Run a single read-only SELECT/WITH/SHOW/DESCRIBE/EXPLAIN query against ClickHouse. Writes and multi-statement input are rejected. Results are capped (100 rows default, max 500).",
     inputSchema: querySchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const sql = argString(args, "sql");
@@ -111,11 +114,14 @@ export function registerQueryTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "explain_query",
+    title: "Explain a query",
+    category: "query",
+    access: "read",
+    permissions: [PERMISSIONS.QUERY_EXECUTE, PERMISSIONS.TABLE_SELECT],
     description: "Return the EXPLAIN plan for a SELECT/WITH query without executing it.",
     inputSchema: explainQuerySchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const client = apiFor(ctx, deps.clientFor(ctx), argOptionalString(args, "connection_id"));
@@ -125,10 +131,13 @@ export function registerQueryTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "list_saved_queries",
+    title: "List saved queries",
+    category: "query",
+    access: "read",
+    permissions: [PERMISSIONS.SAVED_QUERIES_VIEW],
     description: "List saved queries visible to this token.",
-    annotations: { readOnlyHint: true },
     handler: async (_args, extra) => {
       const ctx = toolContext(extra);
       return runApiTool(ctx, deps.clientFor(ctx), "list_saved_queries", undefined, () =>
@@ -137,11 +146,14 @@ export function registerQueryTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "get_saved_query",
+    title: "Get a saved query",
+    category: "query",
+    access: "read",
+    permissions: [PERMISSIONS.SAVED_QUERIES_VIEW],
     description: "Get one saved query definition by id.",
     inputSchema: getSavedQuerySchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const id = argString(args, "id");
@@ -151,12 +163,15 @@ export function registerQueryTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "run_saved_query",
+    title: "Run a saved query",
+    category: "query",
+    access: "read",
+    permissions: [PERMISSIONS.SAVED_QUERIES_VIEW],
     description:
       "Execute a saved query through the safe SELECT-only path. Saved queries that write are refused — use the UI for those.",
     inputSchema: runSavedQuerySchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const id = argString(args, "id");

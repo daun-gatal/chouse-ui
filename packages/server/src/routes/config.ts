@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { isAIEnabled } from "../services/aiConfig";
-import { loadMcpConfig } from "../mcp/config";
+import { getMcpSettings } from "../mcp/settings";
 
 const config = new Hono();
 
@@ -36,12 +36,11 @@ config.get("/", async (c) => {
         version: process.env.VERSION || "dev",
       },
       // Feature flags — aiOptimizer is enabled whenever an active AI model is configured.
-      // mcpEnabled reflects the MCP server's startup env (ADR 0013): a broken
-      // MCP config aborts startup before this route can serve, so errors here
-      // degrade to false rather than failing the request.
+      // mcpEnabled is the Agents › MCP switch (ADR 0017); this route serves
+      // before RBAC finishes initializing, so a read error degrades to false.
       features: {
         aiOptimizer: await isAIEnabled().catch(() => false),
-        mcpEnabled: loadMcpConfig().config?.enabled ?? false,
+        mcpEnabled: await getMcpSettings().then((settings) => settings.enabled, () => false),
       },
     },
   });

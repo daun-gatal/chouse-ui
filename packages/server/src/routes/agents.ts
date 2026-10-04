@@ -5,6 +5,8 @@
  *   summary, sessions, tool calls, policies   agents:view
  *   (tool-call arguments of other users are shown only with query:history:view:all)
  *   policy upsert / delete, pause switch      agents:manage
+ *   MCP settings and tool catalog (read)      agents:view
+ *   MCP settings and tool switches (write)    agents:manage
  */
 
 import { Hono, type Context } from "hono";
@@ -15,6 +17,8 @@ import { rbacAuthMiddleware, requirePermission, getRbacUser } from "../rbac/midd
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
 import { createAuditLogWithContext } from "../rbac/services/rbac";
 import * as agents from "../services/agents/store";
+import { listToolDefinitions, MCP_PATH, toolCatalog } from "../mcp/server";
+import { getMcpSettings, mcpSettingsUpdateSchema, saveMcpSettings, type StoredMcpSettings } from "../mcp/settings";
 import { AppError, requireParam } from "../types";
 import { canSeeAllQueryText } from "./observe/access";
 
@@ -73,6 +77,44 @@ agentsRoute.post("/pause", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValida
   await agents.setAgentAccessPaused(paused, getRbacUser(c).sub);
   await createAuditLogWithContext(c, AUDIT_ACTIONS.AGENT_ACCESS_PAUSE, getRbacUser(c).sub, { details: { paused } });
   return ok(c, { paused });
+});
+
+// --- MCP (ADR 0017) ---------------------------------------------------------------
+
+function mcpView(settings: StoredMcpSettings): Record<string, unknown> {
+  const base = process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, "");
+  return {
+    settings: {
+      enabled: settings.enabled,
+      allowedOrigins: settings.allowedOrigins,
+      timeoutSeconds: settings.timeoutSeconds,
+      updatedBy: settings.updatedBy,
+      updatedAt: settings.updatedAt,
+    },
+    endpoint: { path: MCP_PATH, url: base ? `${base}${MCP_PATH}` : null },
+    tools: toolCatalog(listToolDefinitions(), settings),
+  };
+}
+
+agentsRoute.get("/mcp", requirePermission(PERMISSIONS.AGENTS_VIEW), async (c) => ok(c, mcpView(await getMcpSettings())));
+
+agentsRoute.put("/mcp", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValidator("json", mcpSettingsUpdateSchema.strict()), async (c) => {
+  const update = c.req.valid("json");
+  const known = new Set(listToolDefinitions().map((tool) => tool.name));
+  const unknown = Object.keys(update.toolOverrides ?? {}).filter((name) => !known.has(name));
+  if (unknown.length > 0) throw AppError.badRequest(`Unknown MCP tool(s): ${unknown.join(", ")}`);
+  const before = await getMcpSettings(0);
+  const settings = await saveMcpSettings(update, getRbacUser(c).sub);
+  await createAuditLogWithContext(c, AUDIT_ACTIONS.AGENT_MCP_UPDATE, getRbacUser(c).sub, {
+    resourceType: "mcp_settings",
+    details: {
+      ...(update.enabled !== undefined && update.enabled !== before.enabled ? { enabled: update.enabled } : {}),
+      ...(update.allowedOrigins ? { allowedOrigins: update.allowedOrigins } : {}),
+      ...(update.timeoutSeconds !== undefined ? { timeoutSeconds: update.timeoutSeconds } : {}),
+      ...(update.toolOverrides ? { tools: update.toolOverrides } : {}),
+    },
+  });
+  return ok(c, mcpView(settings));
 });
 
 export default agentsRoute;

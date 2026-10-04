@@ -1,12 +1,12 @@
 /**
- * Observe toolset: fleet health, live queries, scheduled jobs, data health,
+ * Observe tools: fleet health, live queries, scheduled jobs, data health,
  * alerting, and the audit trail. Read-only.
  */
 
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
+import { PERMISSIONS } from "../../rbac/schema/base";
 import type { McpDeps } from "../types";
-import { runApiTool, toolContext, argString, argNumber, argEnum, registerChouseTool } from "./helpers";
+import { runApiTool, toolContext, argString, argNumber, argEnum, registerChouseTool, type McpToolSink } from "./helpers";
 
 // Schemas hoisted as plain zod v3 records (see helpers.ts note on TS2589).
 const getJobSchema: Record<string, z.ZodTypeAny> = {
@@ -25,11 +25,14 @@ const auditListSchema: Record<string, z.ZodTypeAny> = {
   limit: z.number().int().min(1).max(100).default(20).describe("Entries to return"),
 };
 
-export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
-  registerChouseTool(mcp, {
+export function registerObserveTools(sink: McpToolSink, deps: McpDeps): void {
+  registerChouseTool(sink, {
     name: "metrics_overview",
+    title: "Server metrics",
+    category: "monitoring",
+    access: "read",
+    permissions: [PERMISSIONS.METRICS_VIEW],
     description: "Server metrics overview: cluster stats and current load.",
-    annotations: { readOnlyHint: true },
     handler: async (_args, extra) => {
       const ctx = toolContext(extra);
       return runApiTool(ctx, deps.clientFor(ctx), "metrics_overview", undefined, () =>
@@ -38,10 +41,13 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "live_queries",
+    title: "Running queries",
+    category: "monitoring",
+    access: "read",
+    permissions: [PERMISSIONS.LIVE_QUERIES_VIEW],
     description: "List currently running ClickHouse queries.",
-    annotations: { readOnlyHint: true },
     handler: async (_args, extra) => {
       const ctx = toolContext(extra);
       return runApiTool(ctx, deps.clientFor(ctx), "live_queries", undefined, () =>
@@ -50,10 +56,13 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "fleet_snapshots",
+    title: "Fleet health",
+    category: "monitoring",
+    access: "read",
+    permissions: [PERMISSIONS.FLEET_VIEW],
     description: "Latest fleet health snapshots across connections.",
-    annotations: { readOnlyHint: true },
     handler: async (_args, extra) => {
       const ctx = toolContext(extra);
       return runApiTool(ctx, deps.clientFor(ctx), "fleet_snapshots", undefined, () =>
@@ -62,10 +71,13 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "list_scheduled_jobs",
+    title: "List scheduled jobs",
+    category: "scheduling",
+    access: "read",
+    permissions: [PERMISSIONS.SCHEDULED_QUERIES_VIEW],
     description: "List scheduled queries.",
-    annotations: { readOnlyHint: true },
     handler: async (_args, extra) => {
       const ctx = toolContext(extra);
       return runApiTool(ctx, deps.clientFor(ctx), "list_scheduled_jobs", undefined, () =>
@@ -74,11 +86,14 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "get_scheduled_job",
+    title: "Get a scheduled job",
+    category: "scheduling",
+    access: "read",
+    permissions: [PERMISSIONS.SCHEDULED_QUERIES_VIEW],
     description: "Get one scheduled query by id.",
     inputSchema: getJobSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const id = argString(args, "id");
@@ -88,11 +103,14 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "list_scheduled_runs",
+    title: "Scheduled job runs",
+    category: "scheduling",
+    access: "read",
+    permissions: [PERMISSIONS.SCHEDULED_QUERIES_VIEW],
     description: "Run history for one scheduled query.",
     inputSchema: getJobSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const id = argString(args, "id");
@@ -102,10 +120,13 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "list_health_checks",
+    title: "List data health promises",
+    category: "data_health",
+    access: "read",
+    permissions: [PERMISSIONS.DATA_HEALTH_VIEW],
     description: "List data-health promises (checks).",
-    annotations: { readOnlyHint: true },
     handler: async (_args, extra) => {
       const ctx = toolContext(extra);
       return runApiTool(ctx, deps.clientFor(ctx), "list_health_checks", undefined, () =>
@@ -114,11 +135,14 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "get_health_check",
+    title: "Get a data health promise",
+    category: "data_health",
+    access: "read",
+    permissions: [PERMISSIONS.DATA_HEALTH_VIEW],
     description: "Get one data-health check by id, including its incidents.",
     inputSchema: getHealthSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const id = argString(args, "id");
@@ -128,11 +152,14 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "health_timeline",
+    title: "Data health timeline",
+    category: "data_health",
+    access: "read",
+    permissions: [PERMISSIONS.DATA_HEALTH_VIEW],
     description: "Evaluation timeline for one data-health check.",
     inputSchema: getHealthSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const id = argString(args, "id");
@@ -142,11 +169,14 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "list_alerts",
+    title: "Alert rules and channels",
+    category: "monitoring",
+    access: "read",
+    permissions: [PERMISSIONS.ALERTING_VIEW],
     description: "List alerting configuration and events: channels, rules, or events.",
     inputSchema: listAlertsSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const kind = argEnum(args, "kind", ["channels", "rules", "events"]);
@@ -161,11 +191,14 @@ export function registerObserveTools(mcp: McpServer, deps: McpDeps): void {
     },
   });
 
-  registerChouseTool(mcp, {
+  registerChouseTool(sink, {
     name: "audit_list",
+    title: "Audit log",
+    category: "monitoring",
+    access: "read",
+    permissions: [PERMISSIONS.AUDIT_VIEW],
     description: "List the caller's audit trail (global entries require audit:view).",
     inputSchema: auditListSchema,
-    annotations: { readOnlyHint: true },
     handler: async (args, extra) => {
       const ctx = toolContext(extra);
       const limit = Math.min(100, Math.max(1, argNumber(args, "limit", 20)));
