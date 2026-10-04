@@ -9,8 +9,9 @@ const START_LINKS: Array<{ slug: string; label: string }> = [
   { slug: "quick-start", label: "Run it in five minutes" },
   { slug: "deploy-helm", label: "Install on Kubernetes" },
   { slug: "rbac-roles", label: "Set up users and roles" },
-  { slug: "data-incidents", label: "Investigate an incident" },
-  { slug: "mcp", label: "Connect an AI agent" },
+  { slug: "guide-investigate-stale-table", label: "Investigate a stale table" },
+  { slug: "guide-connect-an-agent", label: "Connect an AI agent" },
+  { slug: "guide-least-privilege-role", label: "Give a team access" },
   { slug: "troubleshooting", label: "Fix a problem" },
 ];
 

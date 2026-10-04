@@ -214,6 +214,26 @@ export const DOC_SECTIONS: DocSection[] = [
     ],
   },
   {
+    id: "guides",
+    label: "Guides",
+    description: "Step-by-step walk-throughs of the jobs people do most — from a stale table to a fix, from a new team to its first agent.",
+    groups: [
+      {
+        id: "guides",
+        pages: [
+          { slug: "guide-investigate-stale-table", title: "Investigate a stale table", description: "From \"the dashboard shows yesterday\" to the root cause, the people affected and a fix." },
+          { slug: "guide-approve-a-fix", title: "Approve and roll back a fix", description: "Set up a remediation credential, then propose, approve, run, verify and roll back one fix." },
+          { slug: "guide-watch-a-pipeline", title: "Watch a Kafka pipeline", description: "Make sure a Kafka consumer's failures — including silent retries — get noticed." },
+          { slug: "guide-first-promise", title: "Set up your first promise", description: "A freshness promise with an alert, from choosing the table to validating the generated SQL." },
+          { slug: "guide-connect-an-agent", title: "Connect an AI agent", description: "Turn MCP on, give Claude Code a narrow token, and watch and limit what it does." },
+          { slug: "guide-cli-in-ci", title: "Use the CLI in CI", description: "A scoped token, JSON output and exit codes for reports and data checks in a pipeline." },
+          { slug: "guide-plan-an-upgrade", title: "Plan a ClickHouse upgrade", description: "Readiness against your workload, a canary replay, rollout gates and watching for regressions." },
+          { slug: "guide-least-privilege-role", title: "Give a team least-privilege access", description: "A data access policy and a custom role that let a team read one database and nothing else." },
+        ],
+      },
+    ],
+  },
+  {
     id: "automation",
     label: "Automation",
     description: "Drive CHouse UI from AI agents over MCP and from scripts and CI with the chouse CLI.",

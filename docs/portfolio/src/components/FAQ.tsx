@@ -13,13 +13,18 @@ interface FaqItem {
 const FAQS: FaqItem[] = [
   {
     question: "What is CHouse UI, exactly?",
-    answer: "An open-source web UI for managing ClickHouse — encrypted credential storage, RBAC, audit logging, SQL editor, and AI-assisted query tooling. Built so a team can share one workspace without sharing one password.",
+    answer: "An open-source, self-hosted console for running ClickHouse as a team: query and explore, watch the clusters and the data in them, trace problems to their root cause, and fix them with approval — with its own RBAC, audit log and encrypted credentials, and the same rules for AI agents and scripts.",
     docs: [{ label: "Introduction", href: "/docs/overview/" }],
   },
   {
     question: "How is it different from other ClickHouse UIs?",
-    answer: "A few tools now do AI, and a few do multi-cluster — the combination is the point. CHouse UI pairs a team access layer (app-level RBAC with 6 roles and ~40 permissions, row-level data-access rules, audit logging, and encrypted server-side credentials so the browser never sees a ClickHouse password) with an autonomous, read-only AI SRE: it runs root-cause scans, writes fixes with before→after EXPLAIN proof, and delivers RCA to Slack on an alert breach. Most UIs are a solo query workspace or a dashboard; this is a team's operations console.",
+    answer: "Most ClickHouse UIs are a solo query workspace or a dashboard. CHouse UI watches the data itself — every table and pipeline against its own baseline, lineage without instrumentation — turns a stale table into one incident with a computed root cause and blast radius, and runs fixes only after people approve them. Around that sits a team access layer: app-level RBAC with 100+ permissions, per-connection data access policies, SSO, an audit trail and server-side encrypted credentials — and AI agents get the same rules over MCP.",
     docs: [{ label: "Introduction", href: "/docs/overview/" }],
+  },
+  {
+    question: "Does it watch the data, or just the cluster?",
+    answer: "Both. From ClickHouse's own metadata it learns how often each table is written and how much, tracks every ingestion pipeline (views, Kafka, S3Queue and more), and builds lineage — without scanning your tables or installing anything. When something breaks it opens one incident with the root cause and everything downstream, and fixes run only after approval.",
+    docs: [{ label: "How data is watched", href: "/docs/data-observability/" }],
   },
   {
     question: "Why not just Grafana + a ClickHouse exporter?",
@@ -43,7 +48,7 @@ const FAQS: FaqItem[] = [
   },
   {
     question: "Does it support SSO / single sign-on?",
-    answer: "Yes. CHouse UI supports OIDC (discovery via issuer) and plain OAuth2 providers — Okta, Google, GitHub, Keycloak, and any compliant IdP. It uses the Authorization Code flow with PKCE; the client secret stays on the server. First login creates the user just-in-time with a configurable default role. If the IdP returns a verified email that matches an existing account, the two are linked. Optionally, you can map an IdP groups claim to app roles so role assignments stay in sync. SSO is off by default and has no effect unless auth.sso.enabled is true in your config.",
+    answer: "Yes. CHouse UI supports OIDC (discovery via issuer), plain OAuth2 and SAML 2.0 providers — Okta, Google, GitHub, Keycloak, Entra and any compliant IdP. It uses the Authorization Code flow with PKCE; the client secret stays on the server. First login creates the user just-in-time with a configurable default role. If the IdP returns a verified email that matches an existing account, the two are linked. Optionally, you can map an IdP groups claim to app roles so role assignments stay in sync. SSO is off by default and has no effect unless auth.sso.enabled is true in your config.",
     docs: [{ label: "SSO guide", href: "/docs/sso/" }],
   },
   {
@@ -68,7 +73,7 @@ const FAQS: FaqItem[] = [
   },
   {
     question: "What roles ship by default?",
-    answer: "Six: Super Admin (priority 100), Admin (80), Developer (60), Analyst (40), Viewer (20), Guest (10). You can create custom roles with any subset of ~40 permissions, plus row-level data access rules with wildcard / regex / deny.",
+    answer: "Six: Super Admin (priority 100), Admin (80), Developer (60), Analyst (40), Viewer (20), Guest (10). You can create custom roles from any of the 100+ permissions, and attach data access policies — database and table rules per connection, with wildcards, regex and deny.",
     docs: [{ label: "Users & roles", href: "/docs/rbac-roles/" }],
   },
   {
@@ -78,12 +83,12 @@ const FAQS: FaqItem[] = [
   },
   {
     question: "How does the AI Optimizer work?",
-    answer: "The optimizer and debugger run as DeepAgents/LangChain tool-using agents — they call shared ClickHouse tools (list databases, get DDL, run EXPLAIN, validate SQL) under RBAC, then return structured suggestions. Supports OpenAI, Anthropic, Google, and OpenAI-compatible providers.",
+    answer: "The optimizer and debugger run as DeepAgents/LangChain tool-using agents — they call shared ClickHouse tools (list databases, get DDL, run EXPLAIN, validate SQL) under RBAC, then return structured suggestions. Supports OpenAI, Anthropic, Google, Azure OpenAI, Bedrock, Ollama and ten more providers, plus any OpenAI-compatible server.",
     docs: [{ label: "AI Assist", href: "/docs/workspace-ai-assist/" }],
   },
   {
     question: "Can AI agents or scripts query my cluster?",
-    answer: "Yes — mint a personal access token in Preferences and the same cluster works beyond the browser. The chouse CLI covers scripts and CI (query, explore, monitor the fleet, manage scheduled work — destructive commands need --yes and offer --dry-run). The MCP server covers AI agents like Claude, Codex, and Cursor: read-only by default, every call re-checks live roles and token scopes, and revoking the token fails the very next call. A hosted lab at mcp.chouse-ui.com lets you try the MCP endpoint without deploying anything.",
+    answer: "Yes — mint a personal access token in Preferences and the same cluster works beyond the browser. The chouse CLI covers scripts and CI (query, explore, monitor the fleet, manage scheduled work — destructive commands need --yes and offer --dry-run). The MCP server at /mcp covers AI agents like Claude, Codex, and Cursor: an administrator turns it on and picks the tools in Agents › MCP (reads on, everything else off by default), every call re-checks live roles and token scopes, and agent queries pass budget checks first. A hosted lab at mcp.chouse-ui.com lets you try the MCP endpoint without deploying anything.",
     docs: [
       { label: "CLI", href: "/docs/cli/" },
       { label: "MCP server", href: "/docs/mcp/" },

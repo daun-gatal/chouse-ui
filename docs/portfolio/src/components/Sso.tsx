@@ -2,7 +2,7 @@ import { KeyRound, ShieldCheck, Settings2, ArrowUpRight } from "lucide-react";
 import { Section, Container, SectionHeader, CodeBlock, Tag, SecondaryAction } from "./Section";
 
 const SSO_REFERENCE_URL =
-  "https://github.com/daun-gatal/chouse-ui/blob/main/docs/sso.md";
+  "/docs/sso/";
 
 const OIDC_SNIPPET = `# config.yaml — minimal OIDC provider (Okta shown)
 auth:
@@ -53,7 +53,7 @@ export default function Sso() {
           title="Bring your own identity provider."
           description="Wire up OIDC, OAuth2, or SAML in a few lines of config — or manage providers live from the admin UI. Optionally disable password login to require SSO."
           action={
-            <SecondaryAction href={SSO_REFERENCE_URL} target="_blank" rel="noreferrer">
+            <SecondaryAction href={SSO_REFERENCE_URL}>
               Full reference
               <ArrowUpRight className="h-4 w-4" aria-hidden />
             </SecondaryAction>
@@ -88,7 +88,7 @@ export default function Sso() {
 
             {/* Mobile / small screens: the header action is hidden < md. */}
             <div className="md:hidden">
-              <SecondaryAction href={SSO_REFERENCE_URL} target="_blank" rel="noreferrer">
+              <SecondaryAction href={SSO_REFERENCE_URL}>
                 Full reference
                 <ArrowUpRight className="h-4 w-4" aria-hidden />
               </SecondaryAction>

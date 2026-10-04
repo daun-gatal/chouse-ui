@@ -23,6 +23,7 @@ Where it goes:
 | Configure | Server settings (YAML/env), secrets, connections |
 | Access & security | Users, roles, permissions, SSO, tokens, audit, security model |
 | Using CHouse UI | One group per app menu (Home, Explorer, Data, Monitoring, Fleet, Doctor, Agents…) |
+| Guides | Task walk-throughs that string several screens together (slugs start with `guide-`) |
 | Automation | MCP and the CLI |
 | Reference & help | Architecture, troubleshooting, FAQ |
 
@@ -85,6 +86,7 @@ clickhouse: 23.8
 | `route` | App route (must start with `/`) |
 | `permissions` | Permissions that open the screen. Holding any one of them is enough. Each must exist in the permission catalog; badges link to it |
 | `clickhouse` | Minimum ClickHouse version, when the feature needs one |
+| `screenshot` | A capture name from `public/docs/img/app/` (without `.jpg`), shown under the lead. Regenerate all captures with `./scripts/docs-screenshots.sh` (needs Docker) |
 
 Unknown keys fail the build.
 

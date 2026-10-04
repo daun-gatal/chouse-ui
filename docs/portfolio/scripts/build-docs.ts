@@ -115,6 +115,15 @@ function loadPermissions(): PermissionIndex {
   return JSON.parse(readFileSync(PERMISSIONS_PATH, "utf8")) as PermissionIndex;
 }
 
+/** Screenshots come from scripts/docs-screenshots.sh; a page may only reference one that was captured. */
+function checkScreenshots(pages: LoadedPage[]): void {
+  const errors = pages
+    .filter((page) => page.facts.screenshot)
+    .filter((page) => !existsSync(join(ROOT, "public", "docs", "img", "app", `${page.facts.screenshot}.jpg`)))
+    .map((page) => `${page.entry.page.slug}.md: public/docs/img/app/${page.facts.screenshot}.jpg does not exist — run scripts/docs-screenshots.sh`);
+  if (errors.length) throw new Error(`Missing screenshots:\n  - ${errors.join("\n  - ")}`);
+}
+
 /** A page may only claim permissions that exist. */
 function checkPermissions(pages: LoadedPage[], permissions: PermissionIndex): void {
   const errors = pages.flatMap((page) =>
@@ -208,6 +217,7 @@ function main(): void {
   const pages = allPages().map(loadPage);
   const permissions = loadPermissions();
   checkPermissions(pages, permissions);
+  checkScreenshots(pages);
   checkLinks(pages);
 
   const generated: Array<{ url: string; title: string }> = [];

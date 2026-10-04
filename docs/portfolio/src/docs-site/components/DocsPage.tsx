@@ -146,6 +146,22 @@ export function DocsPage({
           <h1 className="text-display-lg font-semibold tracking-tight text-paper text-balance">{page.title}</h1>
           <p className="max-w-2xl text-lg leading-relaxed text-paper-muted">{page.description}</p>
           <FactsBar facts={facts} permissions={permissions} />
+          {facts.screenshot && (
+            <figure className="mt-2">
+              <img
+                src={withBase(`/docs/img/app/${facts.screenshot}.jpg`)}
+                alt={`${facts.app ?? page.title} in CHouse UI`}
+                width={1440}
+                height={900}
+                loading="lazy"
+                decoding="async"
+                className="block h-auto w-full rounded-md border border-ink-500 bg-ink-100"
+              />
+              <figcaption className="mt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                {facts.app ?? page.title}
+              </figcaption>
+            </figure>
+          )}
         </div>
         <div className="mt-2">
           {blocks.map((block, i) => {

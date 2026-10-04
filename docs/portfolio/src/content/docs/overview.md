@@ -26,8 +26,9 @@ Search every page with **⌘K** (or **/**), or use the sidebar. The sections fol
 3. **[Configure](/docs/configure/)** — YAML and environment variable references, secrets, ClickHouse connections
 4. **[Access & security](/docs/access/)** — users and roles, data access rules, the permission catalog, SSO, tokens, sessions, audit, the security model
 5. **[Using CHouse UI](/docs/using/)** — one group per menu in the app: [Home](/docs/using/#home), [Explorer](/docs/using/#explorer), [Data](/docs/using/#data), [Monitoring](/docs/using/#monitoring), [Fleet](/docs/using/#fleet), [Doctor](/docs/using/#doctor), [Agents](/docs/using/#agents), [Admin](/docs/using/#admin) and [Preferences](/docs/using/#preferences)
-6. **[Automation](/docs/automation/)** — the MCP server and its tool catalog, and the CLI with its command reference
-7. **[Reference & help](/docs/reference/)** — architecture, troubleshooting, FAQ and a glossary
+6. **[Guides](/docs/guides/)** — step-by-step walk-throughs: investigate a stale table, approve a fix, connect an agent, use the CLI in CI, plan an upgrade, set up team access
+7. **[Automation](/docs/automation/)** — the MCP server and its tool catalog, and the CLI with its command reference
+8. **[Reference & help](/docs/reference/)** — architecture, troubleshooting, FAQ and a glossary
 
 Pages about a screen open with where it is in the app and the permissions that show it, so you can go from what you see to what you need.
 

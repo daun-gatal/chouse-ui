@@ -26,6 +26,14 @@ describe("parseFrontmatter", () => {
     ]);
   });
 
+  it("parses generated and screenshot, and rejects a screenshot path", () => {
+    expect(parseFrontmatter("---\ngenerated: the code\nscreenshot: data-overview\n---\n").facts).toEqual({
+      generated: "the code",
+      screenshot: "data-overview",
+    });
+    expect(() => parseFrontmatter("---\nscreenshot: ../x.jpg\n---\n")).toThrow(/screenshot must be a file name/);
+  });
+
   it("rejects unknown keys, bad permissions and relative routes", () => {
     expect(() => parseFrontmatter("---\ntitle: Nope\n---\n")).toThrow(/Unknown frontmatter key "title"/);
     expect(() => parseFrontmatter("---\npermissions: Observe View\n---\n")).toThrow(/Bad permission/);

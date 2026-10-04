@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Shield, Database, BarChart3, Palette, Lock, Users, FileText, Zap, Search,
-  Download, Settings, Eye, Plus, Minus, Activity, Star, Sparkles, Bot, MessageSquare,
-  Terminal, KeyRound,
-  Gauge, MemoryStick, Layers, Stethoscope, Network, SunMoon,
-  LayoutGrid, BellRing, TableProperties, Radar,
-  CalendarClock, Clock, GitBranch, RefreshCw, ListChecks, HeartPulse,
+  Shield, Database, BarChart3, Lock, Users, FileText, Zap, Search,
+  Download, Eye, Plus, Minus, Activity, Star, Sparkles, Bot, MessageSquare,
+  Terminal, KeyRound, Gauge, Layers, Stethoscope, Network, SunMoon,
+  LayoutGrid, BellRing, Radar, CalendarClock, GitBranch, HeartPulse,
+  Workflow, ShieldCheck, BookOpen, Siren, Wrench, NotebookPen, GitPullRequestArrow,
+  TrendingUp, HardDrive, ArrowUpCircle, ArrowRight,
   type LucideIcon,
 } from "lucide-react";
 import { Section, Container, SectionHeader } from "./Section";
@@ -21,156 +21,140 @@ interface FeatureItem {
 interface FeatureGroup {
   category: string;
   icon: LucideIcon;
+  /** Docs hub or page for the whole category. */
+  docs: string;
   items: FeatureItem[];
 }
 
 const GROUPS: FeatureGroup[] = [
   {
-    category: "Fleet & AI SRE",
+    category: "Data observability",
     icon: Radar,
+    docs: "/docs/data-observability/",
     items: [
-      { icon: LayoutGrid, title: "Fleet view", desc: "Every connection side by side — status, memory %, active queries, exceptions, and trend sparklines, with independent per-card polling" },
-      { icon: Stethoscope, title: "Chouse AI · Fleet Doctor", desc: "Autonomous read-only AI SRE — scans the fleet, pins the root cause, and writes a structured report with a heavy-query deep-dive and suggested rewrites" },
-      { icon: BellRing, title: "Threshold Alerts", desc: "Node memory %, per-query memory, and long-running queries → Slack Block Kit + email, with hysteresis to avoid flapping" },
-      { icon: Bot, title: "Autonomous RCA", desc: "On a breach, Chouse AI auto-runs a fleet scan and delivers the root-cause analysis to Slack and email" },
-      { icon: Database, title: "Snapshot poller", desc: "A backend worker caches per-cluster metrics to SQLite, so the fleet page reads one fast endpoint instead of every browser hitting every cluster live" },
-      { icon: FileText, title: "Errors page", desc: "A searchable, paginated viewer over system.errors and the crash log, so recurring server-side errors surface without ad-hoc SQL" },
+      { icon: HeartPulse, title: "Every table, from day one", desc: "Freshness and volume baselines learned from system.parts and query_log — trusted, degraded or stale per table, without scanning it" },
+      { icon: Workflow, title: "Every pipeline, one vocabulary", desc: "Views, Kafka, RabbitMQ, NATS, S3Queue, AzureQueue, replication, writers and jobs — healthy, lagging, stalled, retrying, failing or stopped" },
+      { icon: GitBranch, title: "Lineage without instrumentation", desc: "One graph from metadata, INSERT … SELECT in query_log, scheduled jobs, saved queries and agents — upstream or downstream" },
+      { icon: ShieldCheck, title: "Promises & coverage", desc: "Nine check types from freshness to distribution drift, suggested for the tables people actually read, with low-noise incidents" },
+      { icon: BookOpen, title: "Context for people and agents", desc: "Owners, grain, canonical metrics, dbt import, and plain-language watchers that become reviewed promises" },
+      { icon: CalendarClock, title: "Scheduled queries", desc: "Cron or event-driven SQL with deterministic windows and idempotent append, replace or upsert — across a cluster too" },
     ],
   },
   {
-    category: "AI & Automation",
-    icon: Sparkles,
+    category: "Root cause & fixes",
+    icon: Siren,
+    docs: "/docs/data-incidents/",
     items: [
-      { icon: Zap, title: "Optimize from logs", desc: "Optimize any logged query with Chouse AI — a rewrite with the same result, a before→after EXPLAIN estimate, and one click to open it in the Explorer" },
-      { icon: Bot, title: "Diagnose errors & parts", desc: "One-click Chouse AI on a system.errors row or a part-log entry → cause, impact, and ordered fixes (merge pressure, too many parts, partition key)" },
-      { icon: MessageSquare, title: "Chat copilot", desc: "Conversational data exploration and chart building against a connection" },
-      { icon: KeyRound, title: "Personal access tokens", desc: "Self-service machine credentials (ch_pat_…) scoped to your roles — revocation takes effect on the very next call, with every action attributed in the audit log" },
-      { icon: Terminal, title: "chouse CLI", desc: "Query, explore, monitor the fleet, and manage scheduled work from scripts and CI — safe by default, with --yes gates and --dry-run previews" },
-      { icon: Bot, title: "MCP server", desc: "A Model Context Protocol endpoint for Cursor, Claude, Codex, and OpenCode — read-only by default, destructive tools need human approval" },
+      { icon: Siren, title: "Root cause across layers", desc: "A deterministic chain from the data symptom down through transform, ingestion and external sources to the engine — evidence at every step" },
+      { icon: Network, title: "Blast radius", desc: "Every table, promise, job, saved query and agent downstream of the cause, before you start fixing" },
+      { icon: Wrench, title: "Fixes with approval", desc: "A closed catalog of actions, run with a separate credential only after approval — two approvers for high-impact changes, verified, reversible" },
+      { icon: NotebookPen, title: "Investigation notebooks", desc: "AI findings, query snapshots and notes in one shared notebook, exported as a postmortem" },
+      { icon: GitPullRequestArrow, title: "Schema preflight", desc: "DDL that would break a view, dictionary, job, promise or saved query is stopped with the impact and a safer plan" },
+      { icon: MessageSquare, title: "Approve anywhere", desc: "In the UI, from signed Slack buttons, or with chouse remediation approve" },
     ],
   },
   {
-    category: "DataOps & Data Health",
-    icon: CalendarClock,
-    items: [
-      { icon: CalendarClock, title: "Scheduled Queries", desc: "Schedule any read-only SELECT on a daily / weekly / monthly preset or a custom UTC cron — a DataOps page with Overview, Jobs, and Runs" },
-      { icon: Clock, title: "Deterministic windows", desc: "Templated {{slot_start}} / {{slot_end}} / {{prev_run_at}} bind to each run's exact time window, so backfills and replays are reproducible" },
-      { icon: RefreshCw, title: "Materialize write-back", desc: "Optional engine-generated, idempotent write into a destination table — append, replace-partition, or upsert — alongside bounded result snapshots" },
-      { icon: GitBranch, title: "Runtime Lineage", desc: "Graphs the tables a job actually reads and writes from system.query_log, chaining jobs together and revealing column-level flow on demand" },
-      { icon: ListChecks, title: "Replica-safe scheduler", desc: "In-process per-job-lease scheduler correct across replicas with no leader election, plus a crash-only reaper, bounded retry, and transactional outbox" },
-      { icon: HeartPulse, title: "Data Health Promises", desc: "Scheduled freshness, volume, per-column completeness, composite-key uniqueness, validity, schema, and custom-metric checks, with auto-selected event-time columns and deterministic UTC normalization" },
-      { icon: Eye, title: "Health evidence & incidents", desc: "Inspect the actual evaluated window and why a passing check had no violations; execution failures get dedicated incidents with recovery transitions and an immutable timeline" },
-      { icon: BellRing, title: "Failure alerting", desc: "Transition-based notifications to linked channels on job failure, promise breach, and once on recovery — no flapping" },
-    ],
-  },
-  {
-    category: "Security & Access Control",
-    icon: Shield,
-    items: [
-      { icon: Shield, title: "RBAC System", desc: "Six predefined roles, granular permissions per user" },
-      { icon: Lock, title: "Encrypted Credentials", desc: "AES-256-GCM with PBKDF2 key derivation" },
-      { icon: Users, title: "JWT Authentication", desc: "Short-lived access tokens, long-lived refresh tokens" },
-      { icon: FileText, title: "Audit Logging", desc: "Every user action and query history with user-agent/geo context" },
-      { icon: Users, title: "SSO / OIDC", desc: "Sign in with any OIDC or OAuth2 provider — JIT user provisioning, email-based account linking, and optional IdP group → role sync" },
-    ],
-  },
-  {
-    category: "Database Management",
-    icon: Database,
-    items: [
-      { icon: Database, title: "Multi-Connection", desc: "Manage multiple ClickHouse servers from one UI" },
-      { icon: Activity, title: "Live Queries", desc: "View and kill running queries in real-time" },
-      { icon: Search, title: "Database Explorer", desc: "Tree view with schema inspection and DDL" },
-      { icon: Settings, title: "Table Management", desc: "Create, alter, drop with MergeTree variants" },
-      { icon: Download, title: "File Upload", desc: "CSV, TSV, or JSON into existing tables" },
-    ],
-  },
-  {
-    category: "Monitoring & Observability",
+    category: "Monitoring & fleet",
     icon: Gauge,
+    docs: "/docs/monitoring-overview/",
     items: [
-      { icon: FileText, title: "Query Logs", desc: "Five rollups: every execution, by pattern, by table, by Redash query_id, and a duration/memory histogram" },
-      { icon: MemoryStick, title: "Memory Breakdown", desc: "Server RSS attributed to queries, caches, merges, primary keys — vs total RAM" },
-      { icon: BarChart3, title: "Top Resource Queries", desc: "Heaviest queries by memory and CPU, straight from system.query_log" },
-      { icon: Activity, title: "Live Queries", desc: "Running queries with CPU time + thread count, sortable, with kill support" },
-      { icon: Network, title: "Cluster Activity", desc: "Mutations, replication queue, per-replica lag, blocked-task indicators" },
-      { icon: Layers, title: "Parts & Merges", desc: "system.part_log timeline of merges, mutations, downloads, removals" },
-      { icon: TableProperties, title: "Schema Advisor", desc: "Nullable + oversized-integer lints ranked by on-disk bytes" },
-      { icon: Zap, title: "Latency Percentiles", desc: "p50 / p95 / p99 on the query histogram, no exporter required" },
+      { icon: LayoutGrid, title: "Fleet view", desc: "Every connection side by side — status, memory, lag, trends — sampled once by the server, not by every browser" },
+      { icon: TrendingUp, title: "Performance regressions", desc: "Each query shape against its own 14-day baseline, lined up with the upgrades, DDL and setting changes around it" },
+      { icon: HardDrive, title: "Capacity & cost", desc: "Disk forecasts per node, top growth, codec savings measured on samples, and cost by consumer" },
+      { icon: ArrowUpCircle, title: "Upgrade readiness", desc: "A target version checked against your workload, replayed on a canary, then tracked through rollout gates" },
+      { icon: Activity, title: "Ten monitoring tabs", desc: "Live queries, query logs, metrics, parts, schema advisor, cluster, errors — no exporter to install" },
+      { icon: BellRing, title: "Alerts", desc: "Memory, long queries and too-many-parts ETA to Slack, Google Chat, email or webhooks — with an AI root-cause report on breach" },
     ],
   },
   {
-    category: "Query & Analytics",
+    category: "Chouse AI",
+    icon: Sparkles,
+    docs: "/docs/doctor/",
+    items: [
+      { icon: Stethoscope, title: "Doctor", desc: "An AI health check of your fleet with read-only queries — scheduled, or triggered by an alert — that proposes fixes for approval" },
+      { icon: Zap, title: "Optimize in place", desc: "A rewrite of a logged query with the same result, a before→after EXPLAIN, and one click to open it" },
+      { icon: Bot, title: "Diagnose errors & parts", desc: "Cause, impact and ordered fixes on a system.errors row or a part-log entry" },
+      { icon: MessageSquare, title: "AI Assist & chat", desc: "Schema-aware optimizer, debugger and chat in the SQL editor" },
+      { icon: Eye, title: "Facts vs. interpretation", desc: "Incident explanations keep what was observed apart from what is inferred — the AI never picks the root cause" },
+      { icon: KeyRound, title: "Your model", desc: "OpenAI, Anthropic, Google, Azure, Bedrock, Ollama and ten more — or any OpenAI-compatible server you host" },
+    ],
+  },
+  {
+    category: "Agents & automation",
+    icon: Bot,
+    docs: "/docs/automation/",
+    items: [
+      { icon: Bot, title: "MCP at /mcp", desc: "On the UI's own address, turned on and tool-by-tool in Agents › MCP — reads on, everything else off until you say so" },
+      { icon: Gauge, title: "Agent governance", desc: "Every agent session recorded, budgets checked with EXPLAIN ESTIMATE before queries run, health notices in results, a pause switch" },
+      { icon: Terminal, title: "chouse CLI 1.0", desc: "Tables in a terminal, JSON when piped, profiles, exit codes, and --yes / --dry-run on anything that changes data" },
+      { icon: KeyRound, title: "Personal access tokens", desc: "Scoped, expiring, rotatable ch_pat_ tokens that carry their owner's live permissions" },
+    ],
+  },
+  {
+    category: "Security & access",
+    icon: Shield,
+    docs: "/docs/access/",
+    items: [
+      { icon: Users, title: "Users, roles & 100+ permissions", desc: "Six built-in roles and custom ones, grouped by the same categories in the UI and the docs" },
+      { icon: Shield, title: "Data access policies", desc: "Named database and table rules per connection, attached to roles, checked on every query" },
+      { icon: Lock, title: "Encrypted credentials", desc: "AES-256-GCM for connection and remediation passwords — the browser never sees a ClickHouse password" },
+      { icon: KeyRound, title: "SSO", desc: "OIDC, OAuth2 and SAML with role mapping, JIT provisioning, and SSO-only sign-in" },
+      { icon: FileText, title: "Audit log", desc: "Sign-ins, admin changes, queries, fixes and every MCP call, with over a hundred event types" },
+      { icon: Database, title: "ClickHouse users & roles", desc: "Manage native ClickHouse accounts and grants from the same UI" },
+    ],
+  },
+  {
+    category: "Query & explore",
     icon: BarChart3,
+    docs: "/docs/workspace-editor/",
     items: [
-      { icon: FileText, title: "SQL Editor", desc: "Monaco with syntax highlighting and auto-completion" },
-      { icon: Zap, title: "Execution Stats", desc: "Inline timing, rows read, bytes scanned" },
-      { icon: Eye, title: "Query History", desc: "View and filter logs with auto-refresh" },
-      { icon: FileText, title: "Auto-Save", desc: "Real-time sync like Google Docs, instant ⌘S" },
-      { icon: Download, title: "Data Export", desc: "CSV, JSON, TSV formats" },
-    ],
-  },
-  {
-    category: "User Experience",
-    icon: Palette,
-    items: [
-      { icon: SunMoon, title: "Light + Dark + Auto", desc: "Warm-stone light theme, editorial dark, and an Auto mode that switches by local time of day" },
-      { icon: Star, title: "Favorites & Recent", desc: "Pin databases and tables for instant access" },
-      { icon: Settings, title: "Responsive", desc: "Container-query layouts adapt per component, not just per viewport" },
-      { icon: Zap, title: "Keyboard Shortcuts", desc: "Power-user shortcuts + ⌘K command palette" },
+      { icon: FileText, title: "SQL editor", desc: "Monaco with schema-aware completion, execution stats and per-tab history" },
+      { icon: Layers, title: "Visual EXPLAIN", desc: "A query's plan before you run it, in a pop-out view" },
+      { icon: Search, title: "Database Explorer", desc: "Tree view with schema inspection, DDL and MergeTree table management" },
+      { icon: Star, title: "Saved queries & favorites", desc: "Saved, shared and favorite queries and tables, a step away" },
+      { icon: Download, title: "Upload & export", desc: "CSV, TSV and JSON in and out" },
+      { icon: SunMoon, title: "Command palette", desc: "⌘K to every page and table, keyboard shortcuts, and light, dark or auto themes" },
     ],
   },
 ];
 
-// Pillars — the "why teams pick it" view (merged from the former Highlights section).
+// Pillars — the "why teams pick it" view.
 const HIGHLIGHTS: Array<FeatureItem & { meta: string }> = [
   {
-    icon: Shield,
-    title: "Encrypted credentials",
-    desc: "AES-256-GCM connection passwords, Argon2id user passwords, JWT with refresh — secrets live server-side, so the browser never sees a ClickHouse password.",
-    meta: "Server-side only",
+    icon: Radar,
+    title: "Watches the data itself",
+    desc: "Every table and every pipeline against its own learned baseline, from ClickHouse metadata — no scans, no agents on your clusters.",
+    meta: "Day one",
+  },
+  {
+    icon: Siren,
+    title: "Root cause, not alerts",
+    desc: "A stale dashboard becomes one incident with a computed cause, the evidence and everything it affects.",
+    meta: "Cross-layer",
+  },
+  {
+    icon: Wrench,
+    title: "Fixes people approve",
+    desc: "Catalog actions, a separate credential, two approvers for high-impact changes, verification and rollback.",
+    meta: "Nothing unapproved",
   },
   {
     icon: Users,
-    title: "Role-based access",
-    desc: "Six predefined roles, ~40 permissions, and granular data-access rules per user, database, and table.",
+    title: "Built for teams",
+    desc: "Own users and roles, data access policies per connection, SSO and a full audit trail.",
     meta: "RBAC built-in",
   },
   {
-    icon: FileText,
-    title: "Audit logging",
-    desc: "Every action and query recorded with the real session context — user, user-agent, and geo.",
-    meta: "Full trail",
+    icon: Bot,
+    title: "Agents under the same rules",
+    desc: "MCP and tokens carry their owner's permissions, plus budgets, health notices and a pause switch.",
+    meta: "Governed",
   },
   {
-    icon: LayoutGrid,
-    title: "Multi-cluster fleet",
-    desc: "Every connected cluster in one pane — status, memory, exceptions, trends — each card polling independently.",
-    meta: "One pane",
-  },
-  {
-    icon: Stethoscope,
-    title: "Autonomous AI SRE",
-    desc: "Chouse AI runs read-only root-cause scans, writes fixes with before→after EXPLAIN proof, and delivers RCA to Slack on a breach.",
-    meta: "Read-only",
-  },
-  {
-    icon: Activity,
-    title: "Deep observability",
-    desc: "ClickHouse-native monitoring — query logs, memory breakdown, top-resource queries, replica lag, schema lints. No exporter to install.",
-    meta: "No exporter",
-  },
-  {
-    icon: CalendarClock,
-    title: "Scheduled queries & Data Health",
-    desc: "Cron-scheduled read-only SELECTs with deterministic time windows and idempotent materialize write-back, plus scheduled freshness, volume, and validity promises with low-noise incidents — DataOps without a separate orchestrator.",
-    meta: "Built-in DataOps",
-  },
-  {
-    icon: KeyRound,
-    title: "SSO / OIDC",
-    desc: "Sign in with any OIDC or OAuth2 provider — JIT user provisioning, email-based account linking, and optional IdP group → role sync.",
-    meta: "Any provider",
+    icon: Shield,
+    title: "Self-hosted, open source",
+    desc: "One container, one port, SQLite or PostgreSQL. Your credentials and prompts stay where you put them.",
+    meta: "Apache 2.0",
   },
 ];
 
@@ -186,7 +170,7 @@ export default function Features() {
           eyebrow="What's inside"
           eyebrowIndex={2}
           title="Everything you need to give ClickHouse to a team."
-          description="Eight domains, one consistent UI. Pick a category to browse its items."
+          description="Seven areas, one consistent UI. Pick one to browse it — every item is documented."
         />
 
         {/* Desktop: category rail + detail panel */}
@@ -256,9 +240,18 @@ export default function Features() {
               <h3 className="text-display-md font-semibold text-paper">
                 {activeGroup.category}
               </h3>
-              <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
-                {activeGroup.items.length} {activeGroup.items.length === 1 ? "feature" : "features"}
-              </p>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper-faint">
+                  {activeGroup.items.length} {activeGroup.items.length === 1 ? "feature" : "features"}
+                </p>
+                <a
+                  href={activeGroup.docs}
+                  className="group inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:text-accent"
+                >
+                  Read the docs
+                  <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                </a>
+              </div>
               <div className="mt-8 grid grid-cols-1 gap-x-8 gap-y-6 xl:grid-cols-2">
                 {activeGroup.items.map((item) => {
                   const ItemIcon = item.icon;
@@ -342,6 +335,13 @@ export default function Features() {
                           );
                         })}
                       </div>
+                      <a
+                        href={group.docs}
+                        className="mb-10 ml-16 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-muted transition-colors hover:text-accent md:ml-20"
+                      >
+                        Read the docs
+                        <ArrowRight className="h-3 w-3" aria-hidden />
+                      </a>
                     </motion.div>
                   )}
                 </AnimatePresence>

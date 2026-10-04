@@ -29,6 +29,8 @@ export interface PageFacts {
   clickhouse?: string;
   /** Set by scripts/gen-reference.ts on generated pages: what the page is generated from. */
   generated?: string;
+  /** A capture from scripts/docs-screenshots.sh: public/docs/img/app/<name>.jpg. */
+  screenshot?: string;
 }
 
 export type ContentBlock =
@@ -43,7 +45,7 @@ export interface SearchChunk {
   text: string;
 }
 
-const FACT_KEYS = new Set(["app", "route", "permissions", "clickhouse", "generated"]);
+const FACT_KEYS = new Set(["app", "route", "permissions", "clickhouse", "generated", "screenshot"]);
 const PERMISSION_RE = /^[a-z_]+(:[a-z_]+)+$/;
 const FENCE_RE = /^\s*(```|~~~)/;
 
@@ -72,6 +74,9 @@ export function parseFrontmatter(raw: string): { facts: PageFacts; body: string 
       facts.app = value;
     } else if (key === "generated") {
       facts.generated = value;
+    } else if (key === "screenshot") {
+      if (!/^[a-z0-9-]+$/.test(value)) throw new ContentError(`screenshot must be a file name without extension: ${value}`);
+      facts.screenshot = value;
     } else {
       facts.clickhouse = value;
     }
