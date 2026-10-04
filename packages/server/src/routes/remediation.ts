@@ -59,7 +59,7 @@ async function guardAction(c: Context, id: string): Promise<store.RemediationAct
 
 remediation.get("/catalog", requireAnyPermission(ANY_REMEDIATION), (c) =>
   ok(c, {
-    types: ACTION_TYPES.map((type) => ({ type, requiredGrants: REQUIRED_GRANTS[type] })),
+    types: ACTION_TYPES.map((type) => ({ type, requiredGrants: REQUIRED_GRANTS[type] ? [REQUIRED_GRANTS[type]] : [] })),
     window: process.env.REMEDIATION_MAINTENANCE_WINDOW || "02:00-04:00",
   }),
 );
