@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""In-network E2E for the chouse CLI (ADR 0012).
+"""In-network E2E for the chouse CLI (ADR 0012, CLI 1.0).
 
 Runs INSIDE the compose network where `chouse-ui:5521` and `clickhouse:8123`
 resolve. Phase 1 provisions via plain HTTP (login -> connection -> PAT);
@@ -172,7 +172,8 @@ def t_status():
     out = need(cli("status", "--output", "json", pat=False))
     data = json.loads(out)
     assert "health" in data and "rbac" in data, data.keys()
-    assert "login required" in out, out[-300:]
+    assert "log in" in out, out[-300:]
+    assert "serverVersion" in data and "compatible" in data, data.keys()
 
 
 def t_auth_cycle():
@@ -180,8 +181,8 @@ def t_auth_cycle():
     assert "masked" in out and STATE["pat"] not in out, out
     out = need(cli("auth", "whoami", "--output", "json"))
     assert "admin" in out, out[-300:]
-    # login stores, then stored creds work without env
-    need(cli("auth", "login", "--token", STATE["pat"]))
+    # login stores (token from stdin, never argv), then stored creds work without env
+    need(cli("auth", "login", "--token-stdin", pat=False, stdin_text=STATE["pat"] + "\n"))
     out = need(cli("auth", "whoami", "--output", "json", pat=False))
     assert "admin" in out, out[-300:]
     need(cli("auth", "logout", pat=False))
@@ -192,6 +193,11 @@ def t_connection():
     assert CONN_NAME in out, out[-500:]
     out = need(cli("connection", "can-i", "system", "numbers", "--output", "json"))
     assert out.strip(), "empty can-i output"
+    # -c takes the connection name as well as the id.
+    by_name = need(cli("table", "list", "system", "-c", CONN_NAME, "--output", "json"))
+    assert '"numbers"' in by_name, by_name[-300:]
+    p = cli("table", "list", "-c", "no-such-connection")
+    assert p.returncode == 2 and CONN_NAME in p.stderr, p.stderr[-300:]
 
 
 def t_query_reads():
@@ -211,8 +217,8 @@ def t_guarded_writes():
     assert "3" in out, out[-500:]
     # --dry-run previews without executing
     out = need(cli("query", "--raw", "--yes", "--dry-run",
-                   f"ALTER TABLE {DB}.t UPDATE id = 9 WHERE id = 1"))
-    assert "dry_run" in out, out[-500:]
+                   f"ALTER TABLE {DB}.t UPDATE id = 9 WHERE id = 1", "--output", "json"))
+    assert "dryRun" in out, out[-500:]
     out = need(cli("table", "schema", f"{DB}", "t", "--output", "json"))
     assert "MergeTree" in out, out[-500:]
     out = need(cli("table", "sample", f"{DB}", "t", "--output", "json"))
@@ -221,7 +227,7 @@ def t_guarded_writes():
 
 def t_saved():
     out = need(cli("saved", "create", "--name", f"e2e-six-seven-{TAG}",
-                   "--query", "SELECT 6*7 AS x", "--output", "json"))
+                   "SELECT 6*7 AS x", "--output", "json"))
     sid = json.loads(out)
     # unwrap {data:{id}} or {id}
     _id = (sid.get("data") or {}).get("id", sid.get("id"))
@@ -235,13 +241,17 @@ def t_saved():
 
 
 def t_metrics_logs_live():
-    # Warm up system.query_log (lazily materialized on fresh ClickHouse).
-    cli("query", "SELECT count() FROM system.query_log", "--output", "json")
+    # system.query_log only exists after ClickHouse's first log flush
+    # (~7.5s on a fresh server): wait for it before the views that read it.
+    for _ in range(30):
+        if cli("query", "SELECT count() FROM system.query_log", "--output", "json").returncode == 0:
+            break
+        time.sleep(1)
     need(cli("metrics", "overview", "--output", "json"))
     need(cli("metrics", "top-tables", "--output", "json"))
     need(cli("metrics", "errors", "--output", "json"))
     need(cli("metrics", "simulate", f"ALTER TABLE {DB}.t UPDATE id = 1 WHERE id = 2"))
-    need(cli("logs", "queries", "--output", "json"))
+    need(cli("logs", "--output", "json"))
     need(cli("live", "list", "--output", "json"))
     # Real kill through the attributed path: keep SELECT sleep(2) queries in
     # flight via the CLI itself (this ClickHouse caps sleep() at 3s, so one
@@ -310,7 +320,7 @@ def t_fleet_doctor():
 
 def t_ops_domains():
     need(cli("scheduled", "list", "--output", "json"))
-    need(cli("scheduled", "preview", "--output", "json"))
+    need(cli("scheduled", "preview", "--query", "SELECT 1", "--output", "json"))
     need(cli("health", "list", "--output", "json"))
     need(cli("health", "incidents", "--output", "json"))
     need(cli("alert", "channels", "--output", "json"))
@@ -324,7 +334,7 @@ def t_ops_domains():
 def t_upload_preview():
     with open("/tmp/rows.csv", "w", encoding="utf-8") as fh:
         fh.write("id,name\n1,ada\n2,grace\n")
-    need(cli("upload", "preview", "--file", "/tmp/rows.csv", "--output", "json"))
+    need(cli("upload", "preview", "/tmp/rows.csv", "--output", "json"))
 
 
 def t_exit_codes_and_fence():
@@ -332,8 +342,9 @@ def t_exit_codes_and_fence():
     assert p.returncode == 3, f"missing PAT must exit 3, got {p.returncode}"
     p = cli("auth", "whoami", env_extra={"CH_HOUSE_PAT": "ch_pat_bogus"})
     assert p.returncode == 3, f"bad PAT must exit 3, got {p.returncode}: {p.stderr[-300:]}"
+    # Creating connections stores secrets and stays in the UI: no command.
     p = cli("connection", "create")
-    assert p.returncode == 2 and "UI-only" in p.stderr, p.stderr[-300:]
+    assert p.returncode == 2, f"connection create must not exist, got {p.returncode}"
     p = cli("audit", "list", "--output", "bogus")
     assert p.returncode == 2, f"bad --output must exit 2, got {p.returncode}"
 
@@ -370,10 +381,10 @@ def t_login_persists_server():
     # server AND token both come from disk.
     import tempfile as _tf  # noqa: E402
     home = _tf.mkdtemp(prefix="chouse-e2e-login-")
-    p = cli_scrubbed("auth", "login", "--server", BASE,
-                     "--token", STATE["pat"], home=home)
+    p = cli_scrubbed("auth", "login", "--server", BASE, "--token-stdin",
+                     home=home, stdin_text=STATE["pat"] + "\n")
     need(p)
-    assert "stored PAT" in p.stderr, p.stderr[-300:]
+    assert "logged in" in p.stderr, p.stderr[-300:]
     out = need(cli_scrubbed("auth", "status", "--output", "json", home=home))
     data = json.loads(out)
     assert data["server"] == BASE, out[-300:]
@@ -388,7 +399,7 @@ def t_dry_run_standalone():
             "CREATE TABLE dryrun_t (id UInt32) ENGINE = MergeTree() ORDER BY id",
             "--output", "json")
     assert p.returncode == 0, f"dry-run without --yes must work, got {p.returncode}: {p.stderr[-300:]}"
-    assert "dry_run" in p.stdout, p.stdout[-500:]
+    assert "dryRun" in p.stdout, p.stdout[-500:]
 
 
 def t_dry_run_unsupported():
@@ -410,8 +421,8 @@ def t_login_output_json():
     # login honors -o: machine result on stdout, human note on stderr.
     import tempfile as _tf  # noqa: E402
     home = _tf.mkdtemp(prefix="chouse-e2e-login-json-")
-    p = cli_scrubbed("auth", "login", "--server", BASE, "--token",
-                     STATE["pat"], "-o", "json", home=home)
+    p = cli_scrubbed("auth", "login", "--server", BASE, "--token-stdin",
+                     "-o", "json", home=home, stdin_text=STATE["pat"] + "\n")
     assert p.returncode == 0, f"login exit={p.returncode}: {p.stderr[-300:]}"
     data = json.loads(p.stdout)
     assert data["server"] == BASE, p.stdout[-300:]
@@ -422,7 +433,31 @@ def t_ai_optimize_guarded():
     # LLM spend needs --yes even though nothing mutates: refusal costs nothing.
     p = cli("ai", "optimize", "SELECT 1")
     assert p.returncode == 2, f"optimize without --yes must refuse, got {p.returncode}"
-    assert "ai.optimize" in p.stderr, p.stderr[-300:]
+    assert "--yes" in p.stderr, p.stderr[-300:]
+
+
+def t_output_formats():
+    # Piped output defaults to JSON; -o picks table or csv explicitly.
+    out = need(cli("query", "SELECT 6*7 AS x"))
+    assert json.loads(out)["data"][0]["x"] == 42, out[-300:]
+    out = need(cli("query", "SELECT 6*7 AS x", "-o", "csv"))
+    assert out == "x\n42\n", repr(out)
+    out = need(cli("query", "SELECT 6*7 AS x", "-o", "table"))
+    assert out.split("\n")[0].strip() == "X" and "42" in out, repr(out)
+
+
+def t_token_flag_warns():
+    p = cli("auth", "login", "--token", STATE["pat"], pat=False)
+    need(p)
+    assert "shell history" in p.stderr, p.stderr[-300:]
+    need(cli("auth", "logout", pat=False))
+
+
+def t_debug_trace():
+    p = cli("table", "list", "--debug")
+    need(p)
+    assert "debug: GET /api/explorer/databases -> 200" in p.stderr, p.stderr[-300:]
+    assert STATE["pat"] not in p.stderr, "debug must never print the token"
 
 
 def t_cleanup_writes():
@@ -483,6 +518,9 @@ def main():
         ("cli-connection-spelling", t_connection_spelling),
         ("cli-login-output-json", t_login_output_json),
         ("cli-ai-optimize-guarded", t_ai_optimize_guarded),
+        ("cli-output-formats", t_output_formats),
+        ("cli-token-flag-warns", t_token_flag_warns),
+        ("cli-debug-trace", t_debug_trace),
         ("cli-cleanup-writes", t_cleanup_writes),
         ("cli-cleanup-identity", t_cleanup_identity),
     ]:

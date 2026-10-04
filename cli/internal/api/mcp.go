@@ -66,6 +66,10 @@ func (c *Client) MCPCall(ctx context.Context, method string, params any) (json.R
 	}
 	resp, err := c.do(req)
 	if err != nil {
+		// Ctrl-C and --timeout surface as themselves, not as a network fault.
+		if ctxErr := req.Context().Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, &Error{Code: "NETWORK_ERROR", Message: err.Error()}
 	}
 	defer resp.Body.Close()
@@ -76,9 +80,9 @@ func (c *Client) MCPCall(ctx context.Context, method string, params any) (json.R
 	if resp.StatusCode >= 400 {
 		var env envelope
 		if json.Unmarshal(raw, &env) == nil && !env.Success {
-			return nil, decodeError(resp.StatusCode, raw)
+			return nil, withRequestID(decodeError(resp.StatusCode, raw), resp)
 		}
-		return nil, plainError(resp.StatusCode, raw)
+		return nil, withRequestID(plainError(resp.StatusCode, raw), resp)
 	}
 	body := raw
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {

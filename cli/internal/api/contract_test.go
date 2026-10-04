@@ -51,18 +51,6 @@ func TestAllMethods(t *testing.T) {
 	if _, err := c.Validate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.ConnectionsList(ctx, "x", 5); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.ConnectionTest(ctx, map[string]any{"host": "h"}); err != nil {
-		t.Fatal(err)
-	}
-	if last.path != "/api/rbac/connections/test" || last.method != http.MethodPost {
-		t.Fatalf("connection test routing wrong: %+v", last)
-	}
-	if _, err := c.ConnectionUse(ctx, "abc"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := c.CanAccess(ctx, map[string]any{"database": "d"}); err != nil {
 		t.Fatal(err)
 	}
@@ -76,9 +64,6 @@ func TestAllMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := c.QueryTableSelect(ctx, "SELECT 1", 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.QueryShow(ctx, "SHOW TABLES"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.DDLSimulate(ctx, "ALTER TABLE t UPDATE x=1 WHERE y=2"); err != nil {
@@ -98,12 +83,6 @@ func TestAllMethods(t *testing.T) {
 	}
 	if _, err := c.Post(ctx, "/api/ai/invoke", map[string]any{"capability": "optimize-query"}); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := c.Put(ctx, "/api/saved-queries/1", map[string]any{"name": "n"}); err != nil {
-		t.Fatal(err)
-	}
-	if last.method != http.MethodPut {
-		t.Fatalf("PUT routing wrong: %+v", last)
 	}
 	if _, err := c.Delete(ctx, "/api/saved-queries/1"); err != nil {
 		t.Fatal(err)

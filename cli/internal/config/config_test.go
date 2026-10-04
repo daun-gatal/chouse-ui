@@ -187,13 +187,15 @@ func TestResolveOutputDefaultJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	// No flag/env/file value: output must default to json (table/csv removed).
+	// No flag/env/file value: output defaults to auto (table on a
+	// terminal, json when piped).
+	t.Setenv(EnvOutput, "")
 	got, err := Resolve(Flags{})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if got.Output != "json" {
-		t.Fatalf("expected json default output, got %q", got.Output)
+	if got.Output != "auto" {
+		t.Fatalf("expected auto default output, got %q", got.Output)
 	}
 
 	// Profile default wins over the built-in default, flag wins over all.
@@ -241,5 +243,48 @@ func TestResolveTLSSettings(t *testing.T) {
 	r, _ = Resolve(Flags{CACert: "/flag/ca.pem"})
 	if r.CACert != "/flag/ca.pem" {
 		t.Errorf("flag must win, got %q", r.CACert)
+	}
+}
+
+func TestProfileManagement(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if err := UseProfile("prod"); err == nil {
+		t.Fatal("switching to a profile that does not exist must fail")
+	}
+	if err := SetProfileValue("prod", "server", "https://prod.example/"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetProfileValue("prod", "token", "x"); err == nil {
+		t.Fatal("tokens must not be settable through config set")
+	}
+	if err := SaveCredentials("prod", "ch_pat_secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := UseProfile("prod"); err != nil {
+		t.Fatalf("UseProfile: %v", err)
+	}
+	profiles, err := ListProfiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 1 || !profiles[0].Current || profiles[0].Server != "https://prod.example" || !profiles[0].HasToken {
+		t.Fatalf("unexpected profiles: %+v", profiles)
+	}
+	cfg, _ := LoadFile()
+	if got, _ := ProfileValue(cfg.Profiles["prod"], "server"); got != "https://prod.example" {
+		t.Fatalf("server: %q", got)
+	}
+	if err := SetProfileValue("prod", "server", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteProfile("prod"); err != nil {
+		t.Fatal(err)
+	}
+	creds, _ := LoadCredentials()
+	if _, ok := creds.Tokens["prod"]; ok {
+		t.Fatal("deleting a profile must remove its token")
+	}
+	if cfg, _ := LoadFile(); cfg.CurrentProfile != "" {
+		t.Fatalf("deleting the current profile must reset it, got %q", cfg.CurrentProfile)
 	}
 }

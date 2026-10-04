@@ -1,220 +1,109 @@
-// Package cli implements the chouse command tree (cobra).
 package cli
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"time"
+	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/daun-gatal/chouse-ui/cli/internal/api"
-	"github.com/daun-gatal/chouse-ui/cli/internal/config"
 	"github.com/daun-gatal/chouse-ui/cli/internal/output"
-	"github.com/daun-gatal/chouse-ui/cli/internal/safety"
 )
 
-// Globals bound to persistent flags.
-var (
-	flagServer     string
-	flagToken      string
-	flagProfile    string
-	flagConnection string
-	flagOutput     string
-	flagQuiet      bool
-	flagTimeout    int
-	flagYes        bool
-	flagDryRun     bool
-	flagCACert     string
-	flagInsecure   bool
-)
-
-// NewRoot builds the full command tree.
+// NewRoot builds the command tree on the process streams (used by docs
+// generation and tests that only inspect the tree).
 func NewRoot(version, commit, date string) *cobra.Command {
+	app := &App{Streams: StdStreams(), version: version, commit: commit, date: date}
+	return app.newRoot()
+}
+
+func (a *App) newRoot() *cobra.Command {
+	if a.version == "" {
+		a.version = "dev"
+	}
 	root := &cobra.Command{
 		Use:   "chouse",
-		Short: "Safe browserless operations for CHouse UI",
-		Long: `chouse operates CHouse UI without a browser: query, explore, monitor the fleet,
-run the AI doctor, and manage scheduled work — authenticated with a personal
-access token (ch_pat_…). Safe-by-default: destructive commands need --yes and
-offer --dry-run previews.`,
-		Example: `  # First run: point at a server and store a token (server is remembered)
-  chouse auth login --server https://chouse.corp:5521 --token ch_pat_…
+		Short: "Operate CHouse UI from the terminal, scripts and CI",
+		Long: `chouse operates CHouse UI without a browser: query, explore, monitor
+the fleet, run the AI doctor, manage scheduled work and data health, and
+govern AI agents — authenticated with a personal access token (ch_pat_…).
 
-  # Everyday reads (never prompt, never mutate)
+Output is a table in a terminal and JSON when piped; pick one with -o.
+Commands that change things ask first (or need --yes in scripts), and
+--dry-run previews where the server can.`,
+		Example: `  # First run: store a token for a server (prompts for the token)
+  chouse auth login --server https://chouse.corp
+
+  # Everyday reads
   chouse status
-  chouse query "SELECT number FROM system.numbers LIMIT 5" -o json
+  chouse query "SELECT number FROM system.numbers LIMIT 5"
+  chouse table list -c prod
 
-  # Guarded writes: preview first, then approve explicitly
-  chouse query --raw --dry-run "ALTER TABLE t UPDATE x = 1 WHERE id = 2"
+  # Scripts: JSON on stdout, exit codes for control flow
+  chouse live list -o json | jq -r '.queries[].query_id'
+
+  # Changes: preview, then approve explicitly
+  chouse query --raw --dry-run "ALTER TABLE t DELETE WHERE id = 2"
   chouse live kill q_abc123 --yes`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Version:       a.version,
 	}
-	root.PersistentFlags().StringVar(&flagServer, "server", "", "CHouse UI server URL (env CHOUSE_SERVER)")
-	root.PersistentFlags().StringVar(&flagToken, "token", "", "PAT ch_pat_… (env CH_HOUSE_PAT)")
-	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "config profile (env CHOUSE_PROFILE)")
-	root.PersistentFlags().StringVarP(&flagConnection, "connection", "c", "", "ClickHouse connection ID (env CHOUSE_CONNECTION)")
-	root.PersistentFlags().StringVarP(&flagOutput, "output", "o", "", "json|yaml (default json) (env CHOUSE_OUTPUT)")
-	root.PersistentFlags().BoolVarP(&flagQuiet, "quiet", "q", false, "minimal output for scripts")
-	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 60, "request timeout in seconds")
-	root.PersistentFlags().BoolVar(&flagYes, "yes", false, "approve destructive actions (required in non-TTY)")
-	root.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "preview without executing where supported")
-	root.PersistentFlags().StringVar(&flagCACert, "ca-cert", "", "PEM CA bundle to trust for the server, e.g. an internal CA (env CHOUSE_CA_CERT)")
-	root.PersistentFlags().BoolVar(&flagInsecure, "insecure-skip-tls-verify", false, "do not verify the server certificate — debugging only (env CHOUSE_INSECURE_SKIP_TLS_VERIFY)")
+	root.SetVersionTemplate("chouse {{.Version}}\n")
 
-	root.AddCommand(
-		newStatusCmd(),
-		newAuthCmd(),
-		newConnectionCmd(),
-		newQueryCmd(),
-		newTableCmd(),
-		newSavedCmd(),
-		newMetricsCmd(),
-		newLogsCmd(),
-		newLiveCmd(),
-		newFleetCmd(),
-		newDoctorCmd(),
-		newScheduledCmd(),
-		newHealthCmd(),
-		newLineageCmd(),
-		newIncidentsCmd(),
-		newRemediationCmd(),
-		newAlertCmd(),
-		newAICmd(),
-		newUploadCmd(),
-		newAuditCmd(),
-		newAgentsCmd(),
-		newMCPCmd(),
-		newConfigCmd(),
-		newVersionCmd(version, commit, date),
+	f := root.PersistentFlags()
+	f.StringVar(&a.server, "server", "", "CHouse UI server URL (env CHOUSE_SERVER)")
+	f.StringVar(&a.token, "token", "", "personal access token ch_pat_… (env CH_HOUSE_PAT; prefer the env or auth login)")
+	f.StringVar(&a.profile, "profile", "", "config profile (env CHOUSE_PROFILE)")
+	f.StringVarP(&a.connection, "connection", "c", "", "ClickHouse connection name or id (env CHOUSE_CONNECTION)")
+	f.StringVarP(&a.output, "output", "o", "", "output format: "+strings.Join(output.Formats, "|")+" (default auto: table on a terminal, json when piped; env CHOUSE_OUTPUT)")
+	f.BoolVar(&a.noHeaders, "no-headers", false, "omit the header row in table and csv output")
+	f.BoolVar(&a.wide, "wide", false, "do not truncate long table cells")
+	f.BoolVarP(&a.quiet, "quiet", "q", false, "no notes on stderr (results and errors still print)")
+	f.IntVar(&a.timeout, "timeout", 60, "request timeout in seconds (1-600)")
+	f.BoolVar(&a.yes, "yes", false, "approve changes without a prompt (required without a terminal)")
+	f.BoolVar(&a.dryRun, "dry-run", false, "preview a change without making it, where supported")
+	f.StringVar(&a.caCert, "ca-cert", "", "PEM CA bundle to trust for the server, e.g. an internal CA (env CHOUSE_CA_CERT)")
+	f.BoolVar(&a.insecure, "insecure-skip-tls-verify", false, "do not verify the server certificate — debugging only (env CHOUSE_INSECURE_SKIP_TLS_VERIFY)")
+	f.BoolVar(&a.debug, "debug", false, "trace each request (method, path, status, time, request id) on stderr; never prints tokens")
+
+	_ = root.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		return output.Formats, cobra.ShellCompDirectiveNoFileComp
+	})
+
+	root.AddGroup(
+		&cobra.Group{ID: "start", Title: "Getting started:"},
+		&cobra.Group{ID: "data", Title: "Query and explore:"},
+		&cobra.Group{ID: "ops", Title: "Operate:"},
+		&cobra.Group{ID: "observe", Title: "Data observability:"},
+		&cobra.Group{ID: "agents", Title: "AI and agents:"},
 	)
+	add := func(group string, cmds ...*cobra.Command) {
+		for _, c := range cmds {
+			c.GroupID = group
+			root.AddCommand(c)
+		}
+	}
+	add("start", a.newStatusCmd(), a.newAuthCmd(), a.newConfigCmd(), a.newConnectionCmd(), a.newVersionCmd())
+	add("data", a.newQueryCmd(), a.newTableCmd(), a.newSavedCmd(), a.newUploadCmd())
+	add("ops", a.newMetricsCmd(), a.newLogsCmd(), a.newLiveCmd(), a.newFleetCmd(), a.newScheduledCmd(), a.newAlertCmd(), a.newAuditCmd())
+	add("observe", a.newHealthCmd(), a.newLineageCmd(), a.newIncidentsCmd(), a.newRemediationCmd())
+	add("agents", a.newAICmd(), a.newDoctorCmd(), a.newAgentsCmd(), a.newMCPCmd())
+	strictGroups(root)
 	return root
 }
 
-// ctxWithTimeout bounds every request.
-// timeoutSecs normalizes --timeout with the same clamp everywhere so the
-// context deadline and the HTTP client cap never disagree (an uncapped
-// --timeout above 60 used to be silently cut by the client).
-func timeoutSecs() int {
-	if flagTimeout <= 0 || flagTimeout > 600 {
-		return 60
-	}
-	return flagTimeout
-}
-
-func ctxWithTimeout() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), time.Duration(timeoutSecs())*time.Second)
-}
-
-// mustClient resolves config and builds an authenticated client. Every
-// caller needs a server (use mustConfig for serverless local commands),
-// so a missing server fails fast with setup guidance (exit 2) instead of
-// silently aiming at a phantom default.
-func mustClient(requireAuth bool) (*api.Client, config.Resolved) {
-	resolved := mustConfig()
-	if err := resolved.RequireServer(); err != nil {
-		fail(api.ExitUsage, err.Error())
-	}
-	if requireAuth {
-		if err := resolved.RequireToken(); err != nil {
-			fail(api.ExitAuth, err.Error())
+// strictGroups makes a command group fail on an unknown subcommand instead
+// of printing help and exiting 0, so a typo in a script is an error.
+func strictGroups(c *cobra.Command) {
+	for _, sub := range c.Commands() {
+		if sub.HasSubCommands() && sub.Run == nil && sub.RunE == nil {
+			sub.Args = cobra.ArbitraryArgs
+			sub.RunE = func(cmd *cobra.Command, args []string) error {
+				if len(args) > 0 {
+					return usagef("unknown command %q for %q (see %s --help)", args[0], cmd.CommandPath(), cmd.CommandPath())
+				}
+				return cmd.Help()
+			}
 		}
+		strictGroups(sub)
 	}
-	c := newAPIClient(resolved, resolved.Token)
-	if flagOutput != "" {
-		resolved.Output = flagOutput
-	}
-	return c, resolved
-}
-
-// newAPIClient builds a client for the resolved server with the request
-// timeout and TLS trust applied. Every command goes through it, so a
-// custom CA works everywhere, including auth login.
-func newAPIClient(resolved config.Resolved, token string) *api.Client {
-	c := api.New(resolved.Server, token, resolved.Connection)
-	c.UserAgent = "chouse-cli/1"
-	c.HTTP.Timeout = time.Duration(timeoutSecs()) * time.Second
-	if resolved.InsecureSkipTLSVerify && !flagQuiet {
-		fmt.Fprintln(os.Stderr, "warning: TLS certificate verification is disabled (--insecure-skip-tls-verify)")
-	}
-	if err := c.ConfigureTLS(api.TLSOptions{CACertFile: resolved.CACert, InsecureSkipVerify: resolved.InsecureSkipTLSVerify}); err != nil {
-		fail(api.ExitUsage, err.Error())
-	}
-	return c
-}
-
-// mustConfig resolves config for serverless local commands (auth status,
-// logout, version). It never requires a server or a token.
-func mustConfig() config.Resolved {
-	resolved, err := config.Resolve(config.Flags{
-		Server:     flagServer,
-		Token:      flagToken,
-		Connection: flagConnection,
-		Profile:    flagProfile,
-		Output:     flagOutput,
-		CACert:     flagCACert,
-		Insecure:   flagInsecure,
-	})
-	if err != nil {
-		fail(api.ExitUsage, err.Error())
-	}
-	if flagOutput != "" {
-		resolved.Output = flagOutput
-	}
-	return resolved
-}
-
-// render prints a decoded payload honoring --output. JSON is the only
-// default; --quiet suppresses stderr diagnostics so stdout pipes cleanly.
-func render(resolved config.Resolved, value any) {
-	format := resolved.Output
-	if format == "" {
-		format = output.JSON
-	}
-	if err := output.Print(os.Stdout, format, value); err != nil {
-		fail(api.ExitUsage, err.Error())
-	}
-}
-
-// fail prints to stderr and exits with the machine contract code.
-func fail(code int, msg string) {
-	fmt.Fprintln(os.Stderr, "error: "+msg)
-	os.Exit(code)
-}
-
-// failErr maps API errors to exit codes.
-func failErr(err error) {
-	if apiErr, ok := err.(*api.Error); ok {
-		fail(apiErr.ExitCode(), apiErr.Error())
-	}
-	fail(api.ExitServer, err.Error())
-}
-
-// rejectDryRun fails fast for mutations with no preview support. Without it,
-// --dry-run --yes would silently execute. Call before confirmDestructive.
-func rejectDryRun(what string) {
-	if flagDryRun {
-		fail(api.ExitUsage, fmt.Sprintf("--dry-run is not supported for %s (it always executes; omit --dry-run or use a preview command)", what))
-	}
-}
-
-// confirmDestructive enforces safe-by-default gating.
-func confirmDestructive(action, target string) {
-	if err := safety.RequireConfirm(safety.ConfirmOptions{Yes: flagYes, DryRun: flagDryRun, Action: action, Target: target}); err != nil {
-		fail(api.ExitUsage, err.Error())
-	}
-}
-
-// auditLine prints the mutation correlation line for every write.
-func auditLine(action, target, permission string) {
-	if !flagQuiet {
-		fmt.Fprintf(os.Stderr, "action=%s target=%s permission=%s\n", action, target, permission)
-	}
-}
-
-// uiOnly errors for v1-excluded admin surfaces with a UI hint.
-func uiOnly(what, where string) {
-	fail(api.ExitUsage, fmt.Sprintf("%s is UI-only in CLI v1 (use the browser: %s). Reason: %s", what, where, "break-glass admin stays behind UI review"))
 }

@@ -1,138 +1,184 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
-	"github.com/daun-gatal/chouse-ui/cli/internal/api"
 	"github.com/daun-gatal/chouse-ui/cli/internal/config"
+	"github.com/daun-gatal/chouse-ui/cli/internal/output"
 )
 
-func newAuthCmd() *cobra.Command {
+// readToken gets the token for auth login without putting it on the
+// command line: --token-stdin, else the environment, else a hidden prompt
+// on a terminal. --token still works but warns (shell history, ps).
+func (a *App) readToken(fromStdin bool) (string, error) {
+	if fromStdin {
+		line, err := bufio.NewReader(a.In).ReadString('\n')
+		if err != nil && strings.TrimSpace(line) == "" {
+			return "", usagef("--token-stdin: no token on stdin")
+		}
+		return strings.TrimSpace(line), nil
+	}
+	if a.token != "" {
+		a.notef("warning: --token puts the token in your shell history and process list; prefer the prompt, --token-stdin or %s", config.EnvToken)
+		return a.token, nil
+	}
+	if env := strings.TrimSpace(os.Getenv(config.EnvToken)); env != "" {
+		return env, nil
+	}
+	if !a.InTTY {
+		return "", usagef("no token: pipe it with --token-stdin or set %s (mint one in the UI: Preferences → Personal access tokens)", config.EnvToken)
+	}
+	fmt.Fprint(a.Err, "Personal access token (input hidden): ")
+	if f, ok := a.In.(*os.File); ok {
+		raw, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(a.Err)
+		if err != nil {
+			return "", usagef("read token: %v", err)
+		}
+		return strings.TrimSpace(string(raw)), nil
+	}
+	line, _ := bufio.NewReader(a.In).ReadString('\n')
+	return strings.TrimSpace(line), nil
+}
+
+func (a *App) newAuthCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
-		Short: "Authenticate with a personal access token",
+		Short: "Log in with a personal access token",
 		Long: `Manage the personal access token (PAT) this CLI uses. Tokens are
 stored 0600 in ~/.config/chouse/credentials.yaml and never printed (only a
 masked form). Log in once per profile; every other command then just works.`,
-		Example: `  chouse auth login --server https://chouse.corp:5521 --token ch_pat_…
+		Example: `  chouse auth login --server https://chouse.corp
+  echo "$TOKEN" | chouse auth login --server https://chouse.corp --token-stdin
   chouse auth status
-  chouse auth whoami -o json`,
+  chouse auth whoami`,
 	}
-	var tokenFlag, patAlias string
 
+	var tokenStdin bool
 	login := &cobra.Command{
 		Use:   "login",
-		Short: "Store a PAT locally (0600)",
+		Short: "Validate a token and store it for the profile",
 		Long: `Validate a personal access token against the server and store it
-for the profile, remembering --server (and --profile as current) so later
-commands need no flags. Prints a machine result honoring -o. Mint the token
-once in the UI: Preferences → Personal access tokens.`,
-		Example: `  chouse auth login --server https://chouse.corp:5521 --token ch_pat_…
-  chouse auth login --server https://chouse.corp:5521 --token ch_pat_… --profile prod -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			_, resolved := mustClient(false)
-			token := tokenFlag
-			if token == "" {
-				token = patAlias
+(0600) for the profile, remembering --server and --ca-cert so later commands
+need no flags. The token is read from a hidden prompt, --token-stdin or
+CH_HOUSE_PAT — never pass it as an argument. Mint it once in the UI:
+Preferences → Personal access tokens.`,
+		Example: `  chouse auth login --server https://chouse.corp
+  chouse auth login --server https://chouse.internal --ca-cert corp-ca.pem --profile prod
+  echo "$TOKEN" | chouse auth login --server https://chouse.corp --token-stdin`,
+		Args: cobra.NoArgs,
+		RunE: a.action(needNothing, func(s *Session, _ []string) error {
+			if err := s.Cfg.RequireServer(); err != nil {
+				return usagef("%v", err)
 			}
-			if token == "" {
-				token = os.Getenv(config.EnvToken)
+			token, err := a.readToken(tokenStdin)
+			if err != nil {
+				return err
 			}
-			if token == "" {
-				fail(api.ExitUsage, "pass --token ch_pat_… or set CH_HOUSE_PAT (mint once in the UI: Preferences → Personal access tokens)")
+			if !strings.HasPrefix(token, "ch_pat_") {
+				return usagef("that is not a personal access token (they start with ch_pat_)")
 			}
-			c := newAPIClient(resolved, token)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			if _, err := c.Validate(ctx); err != nil {
-				failErr(fmt.Errorf("token validation failed: %w", err))
+			c, err := a.newClient(s.Cfg, token)
+			if err != nil {
+				return err
 			}
-			if err := config.SaveCredentials(resolved.Profile, token); err != nil {
-				fail(api.ExitServer, err.Error())
+			if _, err := c.Validate(s.Ctx); err != nil {
+				return fmt.Errorf("token validation failed: %w", err)
 			}
-			// Remember explicitly-passed setup: the server and CA bundle for
-			// this profile, and the profile itself as current. Env-derived
-			// values stay session-scoped and are never written to disk, and
-			// --insecure-skip-tls-verify is never remembered.
-			if err := config.SaveProfile(resolved.Profile, config.ProfileUpdate{Server: flagServer, CACert: flagCACert}, flagProfile != ""); err != nil {
-				fail(api.ExitUsage, err.Error())
+			if err := config.SaveCredentials(s.Cfg.Profile, token); err != nil {
+				return err
 			}
-			if !flagQuiet {
-				fmt.Fprintf(os.Stderr, "stored PAT for profile %q (masked %s)\n", resolved.Profile, config.MaskToken(token))
+			// Remember explicitly passed setup only; env stays session-scoped
+			// and --insecure-skip-tls-verify is never stored.
+			if err := config.SaveProfile(s.Cfg.Profile, config.ProfileUpdate{Server: a.server, CACert: a.caCert}, a.profile != ""); err != nil {
+				return err
 			}
-			render(resolved, map[string]any{"profile": resolved.Profile, "server": resolved.Server})
-		},
+			s.notef("logged in: profile %q, token %s", s.Cfg.Profile, config.MaskToken(token))
+			return s.Print(map[string]any{"profile": s.Cfg.Profile, "server": s.Cfg.Server}, output.View{})
+		}),
 	}
-	login.Flags().StringVar(&tokenFlag, "token", "", "PAT value (or CH_HOUSE_PAT)")
-	login.Flags().StringVar(&patAlias, "pat", "", "deprecated alias for --token")
-	_ = login.Flags().MarkDeprecated("pat", "use --token instead")
+	login.Flags().BoolVar(&tokenStdin, "token-stdin", false, "read the token from stdin")
 
 	status := &cobra.Command{
 		Use:   "status",
-		Short: "Show effective profile without printing secrets",
-		Long: `Show the resolved profile, server, connection, and masked token —
-fully offline, safe to run any time to check what later commands will use.`,
+		Short: "Show the effective profile without printing secrets",
+		Long: `Show the resolved profile, server, connection, CA bundle and masked
+token — fully offline, safe to run any time to check what later commands use.`,
 		Example: `  chouse auth status
   chouse auth status -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			resolved := mustConfig()
-			server := resolved.Server
+		Args: cobra.NoArgs,
+		RunE: a.action(needNothing, func(s *Session, _ []string) error {
+			server := s.Cfg.Server
 			if server == "" {
 				server = "(not configured)"
 			}
-			render(resolved, map[string]any{
-				"profile":    resolved.Profile,
+			return s.Print(map[string]any{
+				"profile":    s.Cfg.Profile,
 				"server":     server,
-				"connection": resolved.Connection,
-				"token":      config.MaskToken(resolved.Token),
-				"output":     resolved.Output,
-				"caCert":     resolved.CACert,
-			})
-		},
+				"connection": s.Cfg.Connection,
+				"token":      config.MaskToken(s.Cfg.Token),
+				"output":     s.Cfg.Output,
+				"caCert":     s.Cfg.CACert,
+			}, output.View{})
+		}),
 	}
 
 	whoami := &cobra.Command{
 		Use:   "whoami",
-		Short: "Show live user, roles, and permissions",
-		Long: `Ask the server who the configured token belongs to, including
-roles and data-access rules. Needs a server and a token; fails closed
-otherwise.`,
+		Short: "Show the token's user, roles and permissions",
+		Long:  `Ask the server who the token belongs to: user, roles, permissions and data-access rules.`,
 		Example: `  chouse auth whoami
-  chouse auth whoami -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			c, resolved := mustClient(true)
-			ctx, cancel := ctxWithTimeout()
-			defer cancel()
-			me, err := c.Whoami(ctx)
+  chouse auth whoami -o json | jq .permissions`,
+		Args: cobra.NoArgs,
+		RunE: a.action(needAuth, func(s *Session, _ []string) error {
+			me, err := s.Client.Whoami(s.Ctx)
 			if err != nil {
-				failErr(err)
+				return err
 			}
-			render(resolved, me)
-		},
+			if s.out.Format == output.Table {
+				user, _ := me["user"].(map[string]any)
+				summary := map[string]any{"roles": me["roles"], "permissions": countOf(me["permissions"])}
+				for _, k := range []string{"username", "email", "id"} {
+					if user != nil {
+						summary[k] = user[k]
+					}
+				}
+				return s.Print(summary, output.View{})
+			}
+			return s.Print(me, output.View{})
+		}),
 	}
 
 	logout := &cobra.Command{
 		Use:   "logout",
-		Short: "Remove the locally stored PAT",
-		Long: `Delete the stored token for the profile from this machine only.
-The server-side token stays valid — revoke it in the UI to fully retire it.`,
+		Short: "Remove the stored token for the profile",
+		Long: `Delete the profile's stored token from this machine. The token
+stays valid on the server — revoke it in the UI to retire it.`,
 		Example: `  chouse auth logout
-  chouse auth logout --profile prod -o json`,
-		Run: func(_ *cobra.Command, _ []string) {
-			resolved := mustConfig()
-			if err := config.DeleteCredentials(resolved.Profile); err != nil {
-				fail(api.ExitServer, err.Error())
+  chouse auth logout --profile prod`,
+		Args: cobra.NoArgs,
+		RunE: a.action(needNothing, func(s *Session, _ []string) error {
+			if err := config.DeleteCredentials(s.Cfg.Profile); err != nil {
+				return err
 			}
-			if !flagQuiet {
-				fmt.Fprintf(os.Stderr, "removed PAT for profile %q\n", resolved.Profile)
-			}
-			render(resolved, map[string]any{"profile": resolved.Profile, "removed": true})
-		},
+			s.notef("removed the token for profile %q (revoke it in the UI to retire it)", s.Cfg.Profile)
+			return s.Print(map[string]any{"profile": s.Cfg.Profile, "removed": true}, output.View{})
+		}),
 	}
 
 	cmd.AddCommand(login, status, whoami, logout)
 	return cmd
+}
+
+func countOf(v any) string {
+	if list, ok := v.([]any); ok {
+		return fmt.Sprintf("%d (use -o json to list)", len(list))
+	}
+	return ""
 }

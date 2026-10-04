@@ -6,10 +6,12 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -130,4 +132,39 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 		}
 	}
 	return nil, lastErr
+}
+
+// EnableDebug traces every request to w: method, path, status, duration and
+// the server's request id. Headers and bodies are never printed, so tokens
+// cannot leak into logs.
+func (c *Client) EnableDebug(w io.Writer) {
+	base := c.HTTP.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	c.HTTP.Transport = &debugTransport{base: base, w: w}
+}
+
+type debugTransport struct {
+	base http.RoundTripper
+	w    io.Writer
+	mu   sync.Mutex
+}
+
+func (t *debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+	resp, err := t.base.RoundTrip(req)
+	elapsed := time.Since(start).Round(time.Millisecond)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	target := req.URL.Path
+	if req.URL.RawQuery != "" {
+		target += "?" + req.URL.RawQuery
+	}
+	if err != nil {
+		fmt.Fprintf(t.w, "debug: %s %s -> error after %s: %v\n", req.Method, target, elapsed, err)
+		return nil, err
+	}
+	fmt.Fprintf(t.w, "debug: %s %s -> %d in %s request-id=%s\n", req.Method, target, resp.StatusCode, elapsed, resp.Header.Get("X-Request-Id"))
+	return resp, nil
 }

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -265,7 +266,7 @@ func Resolve(f Flags) (Resolved, error) {
 	// that need one fail fast via RequireServer with setup guidance.
 	server := firstNonEmpty(f.Server, os.Getenv(EnvServer), fileProfile.Server)
 	connection := firstNonEmpty(f.Connection, os.Getenv(EnvConnection), fileProfile.Connection, "")
-	output := firstNonEmpty(f.Output, os.Getenv(EnvOutput), fileProfile.Output, "json")
+	output := firstNonEmpty(f.Output, os.Getenv(EnvOutput), fileProfile.Output, "auto")
 	caCert := firstNonEmpty(f.CACert, os.Getenv(EnvCACert), fileProfile.CACert)
 	insecure := f.Insecure || truthy(os.Getenv(EnvInsecure))
 
@@ -295,7 +296,7 @@ func truthy(value string) bool {
 // listens there). Mirrors RequireToken.
 func (r Resolved) RequireServer() error {
 	if strings.TrimSpace(r.Server) == "" {
-		return fmt.Errorf("no server configured (profile %q): pass --server, set %s, or run: chouse auth login --server https://host:5521 --token ch_pat_…", r.Profile, EnvServer)
+		return fmt.Errorf("no server configured (profile %q): pass --server, set %s, or run: chouse auth login --server https://chouse.example.com", r.Profile, EnvServer)
 	}
 	return nil
 }
@@ -303,7 +304,7 @@ func (r Resolved) RequireServer() error {
 // RequireToken fails with an actionable message when no PAT is configured.
 func (r Resolved) RequireToken() error {
 	if strings.TrimSpace(r.Token) == "" {
-		return fmt.Errorf("no PAT configured (profile %q): set %s, pass --token, or run: chouse auth login --token ch_pat_…", r.Profile, EnvToken)
+		return fmt.Errorf("no token configured (profile %q): run chouse auth login, or set %s", r.Profile, EnvToken)
 	}
 	return nil
 }
@@ -327,4 +328,140 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// ProfileKeys are the settings `chouse config set` accepts. Tokens are not
+// among them: they go through `chouse auth login` into credentials.yaml.
+var ProfileKeys = []string{"server", "connection", "output", "ca_cert"}
+
+func saveFile(cfg FileConfig) error {
+	dir, err := Dir(true)
+	if err != nil {
+		return err
+	}
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "config.yaml"), raw, 0o600)
+}
+
+// SetProfileValue sets one non-secret key on a profile (empty value clears).
+func SetProfileValue(profile, key, value string) error {
+	if strings.TrimSpace(profile) == "" {
+		return errors.New("profile must not be empty")
+	}
+	cfg, err := LoadFile()
+	if err != nil {
+		return err
+	}
+	p := cfg.Profiles[profile]
+	value = strings.TrimSpace(value)
+	switch key {
+	case "server":
+		p.Server = strings.TrimRight(value, "/")
+	case "connection":
+		p.Connection = value
+	case "output":
+		p.Output = strings.ToLower(value)
+	case "ca_cert":
+		if value != "" {
+			abs, err := filepath.Abs(value)
+			if err != nil {
+				return err
+			}
+			value = abs
+		}
+		p.CACert = value
+	default:
+		return fmt.Errorf("unknown key %q (one of: %s)", key, strings.Join(ProfileKeys, ", "))
+	}
+	cfg.Profiles[profile] = p
+	return saveFile(cfg)
+}
+
+// ProfileValue reads one key of a profile.
+func ProfileValue(p Profile, key string) (string, error) {
+	switch key {
+	case "server":
+		return p.Server, nil
+	case "connection":
+		return p.Connection, nil
+	case "output":
+		return p.Output, nil
+	case "ca_cert":
+		return p.CACert, nil
+	}
+	return "", fmt.Errorf("unknown key %q (one of: %s)", key, strings.Join(ProfileKeys, ", "))
+}
+
+// UseProfile makes profile the current one. It must exist (have settings or
+// a stored token), so a typo cannot silently switch to an empty profile.
+func UseProfile(profile string) error {
+	cfg, err := LoadFile()
+	if err != nil {
+		return err
+	}
+	creds, err := LoadCredentials()
+	if err != nil {
+		return err
+	}
+	_, hasSettings := cfg.Profiles[profile]
+	_, hasToken := creds.Tokens[profile]
+	if !hasSettings && !hasToken {
+		return fmt.Errorf("profile %q does not exist (create it with: chouse auth login --profile %s --server …)", profile, profile)
+	}
+	cfg.CurrentProfile = profile
+	return saveFile(cfg)
+}
+
+// ProfileInfo summarizes one profile without secrets.
+type ProfileInfo struct {
+	Name     string `json:"name" yaml:"name"`
+	Current  bool   `json:"current" yaml:"current"`
+	Server   string `json:"server" yaml:"server"`
+	HasToken bool   `json:"hasToken" yaml:"hasToken"`
+}
+
+// ListProfiles returns every profile from config.yaml and credentials.yaml.
+func ListProfiles() ([]ProfileInfo, error) {
+	cfg, err := LoadFile()
+	if err != nil {
+		return nil, err
+	}
+	creds, err := LoadCredentials()
+	if err != nil {
+		return nil, err
+	}
+	current := firstNonEmpty(cfg.CurrentProfile, "default")
+	names := map[string]bool{}
+	for name := range cfg.Profiles {
+		names[name] = true
+	}
+	for name := range creds.Tokens {
+		names[name] = true
+	}
+	out := make([]ProfileInfo, 0, len(names))
+	for name := range names {
+		_, hasToken := creds.Tokens[name]
+		out = append(out, ProfileInfo{Name: name, Current: name == current, Server: cfg.Profiles[name].Server, HasToken: hasToken})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// DeleteProfile removes a profile's settings and stored token.
+func DeleteProfile(profile string) error {
+	cfg, err := LoadFile()
+	if err != nil {
+		return err
+	}
+	delete(cfg.Profiles, profile)
+	if cfg.CurrentProfile == profile {
+		cfg.CurrentProfile = ""
+	}
+	if err := saveFile(cfg); err != nil {
+		return err
+	}
+	return DeleteCredentials(profile)
 }

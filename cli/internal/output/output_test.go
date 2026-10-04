@@ -7,66 +7,112 @@ import (
 	"testing"
 )
 
-func TestPrintJSONStable(t *testing.T) {
-	var buf bytes.Buffer
-	if err := Print(&buf, "json", map[string]any{"b": 2, "a": 1}); err != nil {
-		t.Fatal(err)
+func TestResolveAutoFollowsTheTerminal(t *testing.T) {
+	cases := []struct {
+		requested string
+		terminal  bool
+		want      string
+	}{
+		{"", true, Table},
+		{"", false, JSON},
+		{"auto", true, Table},
+		{"auto", false, JSON},
+		{"YAML", true, YAML},
+		{"csv", false, CSV},
+		{"table", false, Table},
 	}
-	if !strings.Contains(buf.String(), `"a": 1`) {
-		t.Fatalf("json output broken: %s", buf.String())
-	}
-}
-
-func TestPrintEmptyFormatDefaultsToJSON(t *testing.T) {
-	// No --output anywhere must land on JSON: the machine contract default.
-	var buf bytes.Buffer
-	if err := Print(&buf, "", map[string]any{"a": 1}); err != nil {
-		t.Fatal(err)
-	}
-	var decoded map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
-		t.Fatalf("empty format must render valid JSON: %v (%s)", err, buf.String())
-	}
-	if decoded["a"] != float64(1) {
-		t.Fatalf("default render reshaped the payload: %s", buf.String())
-	}
-}
-
-func TestPrintYAML(t *testing.T) {
-	var buf bytes.Buffer
-	if err := Print(&buf, "yaml", map[string]any{"b": 2, "a": 1}); err != nil {
-		t.Fatal(err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "a: 1") || !strings.Contains(out, "b: 2") {
-		t.Fatalf("yaml output broken: %s", out)
-	}
-	if strings.Contains(out, "{") {
-		t.Fatalf("yaml must not be JSON: %s", out)
-	}
-}
-
-func TestPrintUnknownFormat(t *testing.T) {
-	var buf bytes.Buffer
-	if err := Print(&buf, "xml", "x"); err == nil {
-		t.Fatal("expected error for unknown format")
-	}
-}
-
-func TestPrintTableAndCSVRemoved(t *testing.T) {
-	// table/csv were removed, not deprecated: every resolution path must
-	// fail fast instead of rendering a legacy format.
-	for _, format := range []string{"table", "csv"} {
-		var buf bytes.Buffer
-		err := Print(&buf, format, []map[string]any{{"name": "db1"}})
-		if err == nil {
-			t.Fatalf("format %q must be rejected", format)
+	for _, c := range cases {
+		got, err := Resolve(c.requested, c.terminal)
+		if err != nil || got != c.want {
+			t.Errorf("Resolve(%q, %v) = %q, %v; want %q", c.requested, c.terminal, got, err, c.want)
 		}
-		if !strings.Contains(err.Error(), "want json|yaml") {
-			t.Fatalf("format %q error must point at json|yaml: %v", format, err)
-		}
-		if buf.Len() != 0 {
-			t.Fatalf("format %q must write nothing: %s", format, buf.String())
-		}
+	}
+	if _, err := Resolve("xml", true); err == nil || !strings.Contains(err.Error(), "json") {
+		t.Errorf("unknown formats must fail with the accepted list, got %v", err)
+	}
+}
+
+func render(t *testing.T, value any, view View, opts Options) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := Print(&buf, value, view, opts); err != nil {
+		t.Fatalf("Print: %v", err)
+	}
+	return buf.String()
+}
+
+var sessions = map[string]any{
+	"sessions": []any{
+		map[string]any{"id": "s1", "source": "mcp", "queries": float64(3), "detail": map[string]any{"x": 1}},
+		map[string]any{"id": "s2", "source": "pat", "queries": float64(10)},
+	},
+}
+
+func TestJSONAndYAMLPrintTheWholeValue(t *testing.T) {
+	out := render(t, sessions, View{Columns: []Column{{Header: "id"}}}, Options{Format: JSON})
+	var back map[string]any
+	if err := json.Unmarshal([]byte(out), &back); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if len(back["sessions"].([]any)) != 2 {
+		t.Fatalf("JSON must not be projected: %s", out)
+	}
+	if y := render(t, sessions, View{}, Options{Format: YAML}); !strings.Contains(y, "source: mcp") {
+		t.Fatalf("YAML: %s", y)
+	}
+}
+
+func TestTableFindsTheOnlyListAndAutoColumns(t *testing.T) {
+	out := render(t, sessions, View{}, Options{Format: Table})
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("want header + 2 rows, got:\n%s", out)
+	}
+	if !strings.HasPrefix(lines[0], "ID") || !strings.Contains(lines[0], "SOURCE") || strings.Contains(lines[0], "DETAIL") {
+		t.Fatalf("auto columns must be scalar fields with id first: %q", lines[0])
+	}
+}
+
+func TestTableUsesExplicitColumnsAndPaths(t *testing.T) {
+	value := []any{map[string]any{"user": map[string]any{"email": "a@x"}, "ok": true}}
+	out := render(t, value, View{Columns: []Column{{Header: "email", Path: "user.email"}, {Header: "ok"}}}, Options{Format: Table, NoHeaders: true})
+	if strings.TrimSpace(out) != "a@x  true" {
+		t.Fatalf("got %q", out)
+	}
+}
+
+func TestTableShowsAnObjectAsFields(t *testing.T) {
+	out := render(t, map[string]any{"name": "prod", "port": float64(8123)}, View{}, Options{Format: Table})
+	if !strings.Contains(out, "FIELD") || !strings.Contains(out, "name   prod") || !strings.Contains(out, "8123") {
+		t.Fatalf("got:\n%s", out)
+	}
+}
+
+func TestTableTruncatesLongCellsUnlessWide(t *testing.T) {
+	long := strings.Repeat("x", 100)
+	value := []any{map[string]any{"sql": long}}
+	if out := render(t, value, View{}, Options{Format: Table}); strings.Contains(out, long) || !strings.Contains(out, "…") {
+		t.Fatalf("narrow table must truncate: %s", out)
+	}
+	if out := render(t, value, View{}, Options{Format: Table, Wide: true}); !strings.Contains(out, long) {
+		t.Fatalf("--wide must keep the cell")
+	}
+}
+
+func TestCSVQuotesAndKeepsFullCells(t *testing.T) {
+	value := []any{map[string]any{"name": "a,b", "n": float64(1.5)}}
+	out := render(t, value, View{Columns: []Column{{Header: "name"}, {Header: "n"}}}, Options{Format: CSV})
+	if out != "name,n\n\"a,b\",1.5\n" {
+		t.Fatalf("got %q", out)
+	}
+}
+
+func TestNormalizeHandlesTypedValues(t *testing.T) {
+	type row struct {
+		Name string `json:"name"`
+	}
+	out := render(t, []row{{Name: "q"}}, View{}, Options{Format: Table, NoHeaders: true})
+	if strings.TrimSpace(out) != "q" {
+		t.Fatalf("got %q", out)
 	}
 }
