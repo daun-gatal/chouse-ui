@@ -21,9 +21,17 @@ Ingress and TLS. It answers `404 MCP_DISABLED` until it is turned on.
 
 1. Sign in as someone with `agents:manage` (Admin and Super Admin by
    default) and open **Agents › MCP**.
-2. Switch **MCP server** on. The page shows the endpoint URL agents use —
-   `https://<your-chouse-host>/mcp` (the server's `PUBLIC_BASE_URL` when
-   set, otherwise the address you opened the UI on).
+2. Switch **MCP server** on. The page shows the endpoint URL agents use and
+   where it came from, in this order:
+   - the **Public address** set on the page — for when agents reach CHouse
+     UI on a different address than you (a port-forward, an internal IP,
+     another Ingress host); the endpoint is that address plus `/mcp`,
+   - the server's `PUBLIC_BASE_URL`,
+   - the address you opened the UI on — right for the usual setup where
+     people and agents use the same Ingress host, domain or IP.
+
+   It warns when the result is `localhost` or another loopback address,
+   which agents on other machines cannot reach.
 3. Optionally list **allowed origins** (only browser-based agent hosts send
    one) and change the **tool call timeout** (1–600 s, default 60).
 4. Review the **Tools** list (below) and turn on what your agents need.

@@ -7,7 +7,7 @@ Safe by default: the endpoint is **off** until an administrator turns it on, onl
 ## Turn it on
 
 1. Sign in with `agents:manage` (Admin and Super Admin by default) and open **Agents › MCP**.
-2. Switch **MCP server** on. The page shows the endpoint, e.g. `https://chouse.corp/mcp`.
+2. Switch **MCP server** on. The page shows the endpoint, e.g. `https://chouse.corp/mcp`: the address you opened the UI on, unless the server sets `PUBLIC_BASE_URL` or you fill in **Public address** (for agents that reach CHouse UI on another address — a port-forward, an internal IP, another Ingress host). It warns when the endpoint is `localhost`.
 3. Optionally add **allowed origins** (only browser-based agent hosts send one) and change the **tool call timeout** (default 60 s).
 4. Review the **Tools** list and turn on what your agents need.
 

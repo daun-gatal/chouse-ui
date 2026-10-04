@@ -7,9 +7,9 @@
 import { useMemo, useState, type ReactElement } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { Check, ChevronDown, ChevronRight, Copy, KeyRound, Plug, RotateCcw, Search, Wrench } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Copy, KeyRound, Plug, RotateCcw, Search, Wrench } from "lucide-react";
 
-import type { McpOverview, McpSettingsUpdate, McpTool } from "@/api/agents";
+import type { McpOverview, McpSettingsUpdate, McpTool, McpToolCategory } from "@/api/agents";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { RBAC_PERMISSIONS, useRbacStore } from "@/stores";
 import {
   MCP_ACCESS_LABELS,
+  MCP_ENDPOINT_SOURCE_LABELS,
   MCP_TOKEN_ENV,
   bulkToolOverrides,
   defaultToolOverrides,
@@ -35,7 +36,9 @@ import {
   mcpClientSnippets,
   mcpEndpointUrl,
   parseOrigins,
+  parsePublicUrl,
   type McpToolFilter,
+  type ResolvedMcpEndpoint,
 } from "./mcp";
 
 const ACCESS_TONE = { read: "ok", write: "warn", destructive: "bad" } as const;
@@ -64,20 +67,26 @@ function CopyButton({ text, label }: { text: string; label: string }): ReactElem
   );
 }
 
-function ServerPanel({ overview, url, canManage, save, saving }: { overview: McpOverview; url: string; canManage: boolean; save: (update: McpSettingsUpdate, done: string) => Promise<boolean>; saving: boolean }): ReactElement {
+function ServerPanel({ overview, endpoint, canManage, save, saving }: { overview: McpOverview; endpoint: ResolvedMcpEndpoint; canManage: boolean; save: (update: McpSettingsUpdate, done: string) => Promise<boolean>; saving: boolean }): ReactElement {
   const { settings } = overview;
   const [originsText, setOriginsText] = useState(settings.allowedOrigins.join("\n"));
   const [timeout, setTimeoutText] = useState(String(settings.timeoutSeconds));
+  const [publicText, setPublicText] = useState(settings.publicUrl ?? "");
   const [lastSettings, setLastSettings] = useState(settings);
   if (settings !== lastSettings) {
     setLastSettings(settings);
     setOriginsText(settings.allowedOrigins.join("\n"));
     setTimeoutText(String(settings.timeoutSeconds));
+    setPublicText(settings.publicUrl ?? "");
   }
   const parsed = parseOrigins(originsText);
+  const publicUrl = parsePublicUrl(publicText);
   const timeoutSeconds = Number(timeout);
   const timeoutValid = Number.isInteger(timeoutSeconds) && timeoutSeconds >= 1 && timeoutSeconds <= 600;
-  const dirty = parsed.origins.join("\n") !== settings.allowedOrigins.join("\n") || timeoutSeconds !== settings.timeoutSeconds;
+  const dirty =
+    parsed.origins.join("\n") !== settings.allowedOrigins.join("\n") ||
+    timeoutSeconds !== settings.timeoutSeconds ||
+    ("value" in publicUrl && publicUrl.value !== settings.publicUrl);
 
   return (
     <Panel
@@ -103,13 +112,33 @@ function ServerPanel({ overview, url, canManage, save, saving }: { overview: Mcp
           <div>
             <Label>Endpoint</Label>
             <div className="mt-1 flex items-center gap-1 rounded-xs border border-ink-500 bg-ink-200/40 px-2 py-1">
-              <Mono className="min-w-0 flex-1 truncate text-paper">{url}</Mono>
-              <CopyButton text={url} label="Copy the endpoint URL" />
+              <Mono className="min-w-0 flex-1 truncate text-paper">{endpoint.url}</Mono>
+              <CopyButton text={endpoint.url} label="Copy the endpoint URL" />
             </div>
             <p className="mt-1 text-[11px] text-paper-faint">
-              Served on the web port, so agents use the same address, Ingress and TLS as the UI. Streamable HTTP; personal access tokens only.
+              {MCP_ENDPOINT_SOURCE_LABELS[endpoint.source]}. Served on the web port, so agents use the same Ingress and TLS as the UI; personal access tokens only.
               {!settings.enabled && " Answers 404 until it is turned on."}
             </p>
+            {endpoint.local && (
+              <p role="status" className="mt-1 text-[11px] text-amber-500">
+                Only this machine can reach this address. If agents run elsewhere, set the public address they use below.
+              </p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="mcp-public-url">Public address</Label>
+            <Input
+              id="mcp-public-url"
+              value={publicText}
+              disabled={!canManage}
+              placeholder={endpoint.source === "page" ? endpoint.url.replace(/\/mcp$/, "") : "https://chouse.example.com"}
+              onChange={(e) => setPublicText(e.target.value)}
+              className="mt-1 rounded-xs font-mono text-[11px]"
+            />
+            <p className="mt-1 text-[11px] text-paper-faint">
+              Only needed when agents reach CHouse UI on a different address than this page — a port-forward, an internal IP or another Ingress host. Leave empty to follow PUBLIC_BASE_URL or this page.
+            </p>
+            {"error" in publicUrl && <p className="mt-1 text-[11px] text-amber-500">{publicUrl.error}</p>}
           </div>
           <div>
             <Label htmlFor="mcp-timeout">Tool call timeout, seconds</Label>
@@ -138,8 +167,8 @@ function ServerPanel({ overview, url, canManage, save, saving }: { overview: Mcp
         <div className="mt-3 flex justify-end">
           <Button
             className={DH_PRIMARY}
-            disabled={!dirty || !timeoutValid || parsed.invalid.length > 0 || saving}
-            onClick={() => void save({ allowedOrigins: parsed.origins, timeoutSeconds }, "MCP settings saved")}
+            disabled={!dirty || !timeoutValid || parsed.invalid.length > 0 || "error" in publicUrl || saving}
+            onClick={() => "value" in publicUrl && void save({ allowedOrigins: parsed.origins, timeoutSeconds, publicUrl: publicUrl.value }, "MCP settings saved")}
           >
             Save settings
           </Button>
@@ -232,8 +261,21 @@ function ToolRow({ tool, canManage, saving, onToggle }: { tool: McpTool; canMana
 function ToolsPanel({ tools, canManage, save, saving }: { tools: McpTool[]; canManage: boolean; save: (update: McpSettingsUpdate, done: string) => Promise<boolean>; saving: boolean }): ReactElement {
   const [filter, setFilter] = useState<McpToolFilter>({ search: "", access: "all", state: "all" });
   const [confirm, setConfirm] = useState<{ tools: McpTool[]; message: string } | null>(null);
+  const [open, setOpen] = useState<ReadonlySet<McpToolCategory>>(new Set());
   const groups = groupMcpTools(filterMcpTools(tools, filter));
   const enabledCount = tools.filter((t) => t.enabled).length;
+  // A search or filter opens every category it matches, so results are never hidden.
+  const filtering = filter.search.trim() !== "" || filter.access !== "all" || filter.state !== "all";
+  const isOpen = (category: McpToolCategory): boolean => filtering || open.has(category);
+  const allOpen = groups.every((g) => isOpen(g.category));
+  const toggle = (category: McpToolCategory): void => {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
 
   // Turning on anything that changes or deletes things is confirmed first.
   const setEnabled = (subset: McpTool[], enabled: boolean, done: string): void => {
@@ -249,11 +291,19 @@ function ToolsPanel({ tools, canManage, save, saving }: { tools: McpTool[]; canM
     <Panel
       title="Tools"
       meta={`${enabledCount} of ${tools.length} on · every call runs under the token's own permissions and data access`}
-      actions={canManage ? (
-        <Button variant="ghost" className="h-8 rounded-xs text-[11px]" disabled={saving} onClick={() => void save({ toolOverrides: defaultToolOverrides(tools) }, "Tools reset to their defaults")}>
-          <RotateCcw className="mr-1 h-3 w-3" /> Reset to defaults
-        </Button>
-      ) : undefined}
+      actions={
+        <>
+          <Button variant="ghost" className="h-8 rounded-xs text-[11px]" disabled={filtering} onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map((g) => g.category)))}>
+            {allOpen ? <ChevronsDownUp className="mr-1 h-3 w-3" /> : <ChevronsUpDown className="mr-1 h-3 w-3" />}
+            {allOpen ? "Collapse all" : "Expand all"}
+          </Button>
+          {canManage && (
+            <Button variant="ghost" className="h-8 rounded-xs text-[11px]" disabled={saving} onClick={() => void save({ toolOverrides: defaultToolOverrides(tools) }, "Tools reset to their defaults")}>
+              <RotateCcw className="mr-1 h-3 w-3" /> Reset to defaults
+            </Button>
+          )}
+        </>
+      }
     >
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-48 flex-1">
@@ -276,7 +326,19 @@ function ToolsPanel({ tools, canManage, save, saving }: { tools: McpTool[]; canM
           {groups.map((group) => (
             <section key={group.category} aria-label={group.label}>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-500 pb-1">
-                <h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint">{group.label} · {group.tools.filter((t) => t.enabled).length}/{group.tools.length} on</h3>
+                <h3>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-paper-faint hover:text-paper focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand disabled:cursor-default"
+                    aria-expanded={isOpen(group.category)}
+                    aria-controls={`mcp-tools-${group.category}`}
+                    disabled={filtering}
+                    onClick={() => toggle(group.category)}
+                  >
+                    {isOpen(group.category) ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
+                    {group.label} · {group.tools.filter((t) => t.enabled).length}/{group.tools.length} on
+                  </button>
+                </h3>
                 {canManage && (
                   <div className="flex gap-1">
                     <Button variant="ghost" className="h-6 rounded-xs px-2 text-[10px]" disabled={saving} onClick={() => setEnabled(group.tools, true, `${group.label}: all on`)}>All on</Button>
@@ -284,7 +346,7 @@ function ToolsPanel({ tools, canManage, save, saving }: { tools: McpTool[]; canM
                   </div>
                 )}
               </div>
-              <ul className="divide-y divide-ink-500/60">
+              <ul id={`mcp-tools-${group.category}`} hidden={!isOpen(group.category)} className="divide-y divide-ink-500/60">
                 {group.tools.map((tool) => (
                   <ToolRow key={tool.name} tool={tool} canManage={canManage} saving={saving} onToggle={(t, enabled) => setEnabled([t], enabled, `${t.name} turned ${enabled ? "on" : "off"}`)} />
                 ))}
@@ -341,7 +403,7 @@ export function McpPanel(): ReactElement {
 
   if (overview.isLoading) return <LoadingGrid count={2} />;
   if (overview.isError || !overview.data) return <ErrorState title="MCP settings could not be loaded." error={overview.error} />;
-  const url = mcpEndpointUrl(overview.data.endpoint, window.location.origin, getBasePath());
+  const endpoint = mcpEndpointUrl(overview.data.endpoint, window.location.origin, getBasePath());
 
   return (
     <div className="space-y-4">
@@ -351,8 +413,8 @@ export function McpPanel(): ReactElement {
           <span>The MCP endpoint is off. {canManage ? "Turn it on below; read-only tools are ready, and anything that changes or deletes things stays off until you turn it on." : "Ask an administrator with agents:manage to turn it on."}</span>
         </div>
       )}
-      <ServerPanel overview={overview.data} url={url} canManage={canManage} save={save} saving={update.isPending} />
-      <ConnectPanel url={url} />
+      <ServerPanel overview={overview.data} endpoint={endpoint} canManage={canManage} save={save} saving={update.isPending} />
+      <ConnectPanel url={endpoint.url} />
       <ToolsPanel tools={overview.data.tools} canManage={canManage} save={save} saving={update.isPending} />
     </div>
   );

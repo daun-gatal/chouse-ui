@@ -77,6 +77,18 @@ describe("MCP settings store", () => {
     expect((await getMcpSettings()).enabled).toBe(false);
   });
 
+  it("stores the public address without a trailing slash and clears it with null", async () => {
+    expect((await saveMcpSettings({ publicUrl: "https://chouse.corp/" }, USER)).publicUrl).toBe("https://chouse.corp");
+    expect((await saveMcpSettings({ timeoutSeconds: 30 }, USER)).publicUrl).toBe("https://chouse.corp");
+    expect((await saveMcpSettings({ publicUrl: null }, USER)).publicUrl).toBeNull();
+  });
+
+  it("rejects a public address that is not a bare http(s) address", async () => {
+    await expect(saveMcpSettings({ publicUrl: "ftp://chouse.corp" }, USER)).rejects.toThrow();
+    await expect(saveMcpSettings({ publicUrl: "https://chouse.corp/?x=1" }, USER)).rejects.toThrow();
+    await expect(saveMcpSettings({ publicUrl: "chouse.corp" }, USER)).rejects.toThrow();
+  });
+
   it("rejects an out-of-range timeout", async () => {
     await expect(saveMcpSettings({ timeoutSeconds: 0 }, USER)).rejects.toThrow();
   });
@@ -121,6 +133,25 @@ describe("GET/PUT /agents/mcp", () => {
     expect(body.data.tools.find((tool) => tool.name === "kill_query")?.enabled).toBe(true);
     const audit = await rawAll(sql`SELECT action FROM rbac_audit_logs WHERE action = 'agent.mcp_update'`);
     expect(audit.length).toBeGreaterThan(0);
+  });
+
+  it("resolves the endpoint from the setting, then PUBLIC_BASE_URL, then leaves it to the UI", async () => {
+    const endpoint = async (): Promise<{ url: string | null; source: string | null }> => {
+      const res = await app.request("/agents/mcp", { headers: { Authorization: `Bearer ${await token(["agents:view"])}` } });
+      return ((await res.json()) as { data: { endpoint: { url: string | null; source: string | null } } }).data.endpoint;
+    };
+    const previous = process.env.PUBLIC_BASE_URL;
+    try {
+      delete process.env.PUBLIC_BASE_URL;
+      expect(await endpoint()).toMatchObject({ url: null, source: null });
+      process.env.PUBLIC_BASE_URL = "https://env.example/";
+      expect(await endpoint()).toMatchObject({ url: "https://env.example/mcp", source: "env" });
+      expect((await put({ publicUrl: "https://agents.example/chouse" })).status).toBe(200);
+      expect(await endpoint()).toMatchObject({ url: "https://agents.example/chouse/mcp", source: "settings" });
+    } finally {
+      if (previous === undefined) delete process.env.PUBLIC_BASE_URL;
+      else process.env.PUBLIC_BASE_URL = previous;
+    }
   });
 
   it("refuses unknown tools and unknown fields", async () => {

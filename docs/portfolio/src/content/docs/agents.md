@@ -22,7 +22,7 @@ Budget policies apply to every agent, a role, or one token — the most specific
 
 ## MCP
 
-The **MCP** tab turns the MCP endpoint on (it is served at `/mcp` on the same address as the UI), sets its allowed origins and tool call timeout, and gives copy-ready setup for Claude Code, Codex, Cursor, VS Code, OpenCode and curl. It lists every tool with its description, access level (read, write, destructive), the permissions it needs and its parameters; switch tools on or off one at a time or per category. Reads are on by default; anything that changes or deletes things, or spends LLM budget, stays off until you turn it on. A token only ever sees the tools that are on and that its permissions allow. Viewing needs `agents:view`; changing needs `agents:manage`. Details: [MCP](/docs/mcp/).
+The **MCP** tab turns the MCP endpoint on (it is served at `/mcp` on the same address as the UI), sets its allowed origins, tool call timeout and — when agents use another address than you — its public address, and gives copy-ready setup for Claude Code, Codex, Cursor, VS Code, OpenCode and curl. It lists every tool with its description, access level (read, write, destructive), the permissions it needs and its parameters; switch tools on or off one at a time or per category, with each category collapsible. Reads are on by default; anything that changes or deletes things, or spends LLM budget, stays off until you turn it on. A token only ever sees the tools that are on and that its permissions allow. Viewing needs `agents:view`; changing needs `agents:manage`. Details: [MCP](/docs/mcp/).
 
 ## What agents get
 

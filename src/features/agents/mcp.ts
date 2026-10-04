@@ -37,14 +37,65 @@ export const MCP_ACCESS_LABELS: Record<McpToolAccess, string> = {
   destructive: "Destructive",
 };
 
+export type McpEndpointSource = "settings" | "env" | "page";
+
+export interface ResolvedMcpEndpoint {
+  url: string;
+  source: McpEndpointSource;
+  /** Only this machine can reach it (localhost, 127.0.0.0/8, ::1). */
+  local: boolean;
+}
+
+/** True for hosts no other machine can reach. */
+export function isLocalHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127\./.test(host) || host === "0.0.0.0";
+}
+
 /**
- * The endpoint agents connect to: the server's public URL when it knows it,
- * otherwise this page's origin plus the app's base path.
+ * The endpoint agents connect to: the public address set in Agents › MCP,
+ * else the server's PUBLIC_BASE_URL, else this page's origin plus the app's
+ * base path — right whenever people and agents use the same address (the
+ * usual Ingress setup).
  */
-export function mcpEndpointUrl(endpoint: { path: string; url: string | null }, origin: string, basePath: string): string {
-  if (endpoint.url) return endpoint.url;
+export function mcpEndpointUrl(
+  endpoint: { path: string; url: string | null; source?: "settings" | "env" | null },
+  origin: string,
+  basePath: string,
+): ResolvedMcpEndpoint {
   const base = basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
-  return `${origin}${base}${endpoint.path}`;
+  const url = endpoint.url ?? `${origin}${base}${endpoint.path}`;
+  const source: McpEndpointSource = endpoint.url ? (endpoint.source ?? "env") : "page";
+  let local = false;
+  try {
+    local = isLocalHost(new URL(url).hostname);
+  } catch {
+    local = false;
+  }
+  return { url, source, local };
+}
+
+export const MCP_ENDPOINT_SOURCE_LABELS: Record<McpEndpointSource, string> = {
+  settings: "Set below as the public address",
+  env: "From the server's PUBLIC_BASE_URL",
+  page: "From the address you opened this page on",
+};
+
+/**
+ * Parse the public address box: empty clears it; otherwise a bare http(s)
+ * address (an optional base path is kept), without a trailing slash.
+ */
+export function parsePublicUrl(text: string): { value: string | null } | { error: string } {
+  const trimmed = text.trim();
+  if (!trimmed) return { value: null };
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return { error: "Use an http:// or https:// address." };
+    if (url.search || url.hash) return { error: "Leave out the query and fragment." };
+    return { value: `${url.origin}${url.pathname}`.replace(/\/+$/, "") };
+  } catch {
+    return { error: "Enter a full address, e.g. https://chouse.example.com" };
+  }
 }
 
 type McpClientId = "claude-code" | "codex" | "cursor" | "vscode" | "opencode" | "curl";

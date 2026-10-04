@@ -36,6 +36,17 @@ const mcpSettingsSchema = z.object({
    * added in later releases arrive in their safe state.
    */
   toolOverrides: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/).max(64), z.boolean()),
+  /**
+   * The address agents reach CHouse UI on (e.g. https://chouse.corp), when it
+   * differs from the one administrators open the UI with — a port-forward,
+   * an internal IP, a second ingress host. The endpoint is this plus /mcp.
+   */
+  publicUrl: z.string().trim().max(500).transform((value) => value.replace(/\/+$/, "")).pipe(
+    z.string().url().refine((value) => {
+      const url = new URL(value);
+      return (url.protocol === "http:" || url.protocol === "https:") && !url.search && !url.hash;
+    }, "Must be an http(s) address without a query or fragment"),
+  ).nullable(),
 });
 
 export type McpSettings = z.infer<typeof mcpSettingsSchema>;
@@ -48,6 +59,7 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   allowedOrigins: [],
   timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
   toolOverrides: {},
+  publicUrl: null,
 };
 
 export interface StoredMcpSettings extends McpSettings {
@@ -90,6 +102,7 @@ export async function saveMcpSettings(update: McpSettingsUpdate, actorId: string
     allowedOrigins: update.allowedOrigins ?? current.allowedOrigins,
     timeoutSeconds: update.timeoutSeconds ?? current.timeoutSeconds,
     toolOverrides: update.toolOverrides ? { ...current.toolOverrides, ...update.toolOverrides } : current.toolOverrides,
+    publicUrl: update.publicUrl === undefined ? current.publicUrl : update.publicUrl,
   });
   const now = Date.now();
   const value = JSON.stringify(next);

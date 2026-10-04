@@ -277,7 +277,6 @@ export default function Agents(): ReactElement {
         nav={TABS.map((t) => <NavPill key={t.key} icon={t.icon} label={t.label} isActive={t.key === active} onboardingId={`agents-tab-${t.key}`} onClick={() => navigate(`/agents/${t.key}`)} noShrink />)}
         actions={
           <>
-            <Button variant="outline" className="h-9 rounded-xs" onClick={() => navigate("/agents/mcp")}><Plug className="mr-1.5 h-3.5 w-3.5" /> Connect an agent</Button>
             {canManage && summary.data && (summary.data.paused ? (
               <Button className={DH_PRIMARY} disabled={pause.isPending} onClick={() => void togglePause(false)}><Play className="h-3.5 w-3.5" /> Resume agents</Button>
             ) : (

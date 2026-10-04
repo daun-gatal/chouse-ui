@@ -7,8 +7,10 @@ import {
   filterMcpTools,
   groupMcpTools,
   mcpClientSnippets,
+  isLocalHost,
   mcpEndpointUrl,
   parseOrigins,
+  parsePublicUrl,
 } from "./mcp";
 
 function tool(overrides: Partial<McpTool>): McpTool {
@@ -35,13 +37,49 @@ const TOOLS: McpTool[] = [
 ];
 
 describe("mcpEndpointUrl", () => {
-  it("prefers the server's public URL", () => {
-    expect(mcpEndpointUrl({ path: "/mcp", url: "https://chouse.corp/mcp" }, "http://localhost:5173", "/")).toBe("https://chouse.corp/mcp");
+  it("prefers the address the server knows and says where it came from", () => {
+    expect(mcpEndpointUrl({ path: "/mcp", url: "https://chouse.corp/mcp", source: "settings" }, "http://localhost:5173", "/")).toEqual({
+      url: "https://chouse.corp/mcp",
+      source: "settings",
+      local: false,
+    });
+    expect(mcpEndpointUrl({ path: "/mcp", url: "https://env.corp/mcp", source: "env" }, "http://localhost:5173", "/").source).toBe("env");
   });
 
-  it("falls back to this origin and base path", () => {
-    expect(mcpEndpointUrl({ path: "/mcp", url: null }, "https://chouse.corp", "/")).toBe("https://chouse.corp/mcp");
-    expect(mcpEndpointUrl({ path: "/mcp", url: null }, "https://corp", "/chouse/")).toBe("https://corp/chouse/mcp");
+  it("falls back to this page's origin and base path (an Ingress host, an IP, any domain)", () => {
+    expect(mcpEndpointUrl({ path: "/mcp", url: null, source: null }, "https://chouse.corp", "/")).toEqual({ url: "https://chouse.corp/mcp", source: "page", local: false });
+    expect(mcpEndpointUrl({ path: "/mcp", url: null, source: null }, "https://corp", "/chouse/").url).toBe("https://corp/chouse/mcp");
+    expect(mcpEndpointUrl({ path: "/mcp", url: null, source: null }, "http://10.0.4.7:5521", "/").url).toBe("http://10.0.4.7:5521/mcp");
+  });
+
+  it("flags addresses only this machine can reach", () => {
+    expect(mcpEndpointUrl({ path: "/mcp", url: null, source: null }, "http://localhost:5173", "/").local).toBe(true);
+    expect(mcpEndpointUrl({ path: "/mcp", url: null, source: null }, "http://10.0.4.7:5521", "/").local).toBe(false);
+  });
+});
+
+describe("isLocalHost", () => {
+  it("knows loopback names and addresses", () => {
+    for (const host of ["localhost", "app.localhost", "127.0.0.1", "127.1.2.3", "[::1]", "0.0.0.0"]) expect(isLocalHost(host)).toBe(true);
+    for (const host of ["chouse.corp", "10.0.0.1", "192.168.1.5", "localhost.corp"]) expect(isLocalHost(host)).toBe(false);
+  });
+});
+
+describe("parsePublicUrl", () => {
+  it("accepts a bare address, keeps a base path and drops trailing slashes", () => {
+    expect(parsePublicUrl(" https://chouse.corp/ ")).toEqual({ value: "https://chouse.corp" });
+    expect(parsePublicUrl("https://corp.example/chouse/")).toEqual({ value: "https://corp.example/chouse" });
+    expect(parsePublicUrl("http://10.0.4.7:5521")).toEqual({ value: "http://10.0.4.7:5521" });
+  });
+
+  it("clears with an empty box", () => {
+    expect(parsePublicUrl("   ")).toEqual({ value: null });
+  });
+
+  it("explains what is wrong", () => {
+    expect(parsePublicUrl("chouse.corp")).toHaveProperty("error");
+    expect(parsePublicUrl("ftp://chouse.corp")).toHaveProperty("error");
+    expect(parsePublicUrl("https://chouse.corp/?a=1")).toHaveProperty("error");
   });
 });
 

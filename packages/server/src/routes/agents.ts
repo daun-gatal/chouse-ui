@@ -81,17 +81,29 @@ agentsRoute.post("/pause", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValida
 
 // --- MCP (ADR 0017) ---------------------------------------------------------------
 
+/**
+ * Where agents reach /mcp: the address set in Agents › MCP, else
+ * PUBLIC_BASE_URL, else unknown here (the UI falls back to its own origin,
+ * which is right whenever people and agents use the same address).
+ */
+function mcpEndpoint(settings: StoredMcpSettings): { path: string; url: string | null; source: "settings" | "env" | null } {
+  if (settings.publicUrl) return { path: MCP_PATH, url: `${settings.publicUrl}${MCP_PATH}`, source: "settings" };
+  const env = process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, "");
+  if (env) return { path: MCP_PATH, url: `${env}${MCP_PATH}`, source: "env" };
+  return { path: MCP_PATH, url: null, source: null };
+}
+
 function mcpView(settings: StoredMcpSettings): Record<string, unknown> {
-  const base = process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, "");
   return {
     settings: {
       enabled: settings.enabled,
       allowedOrigins: settings.allowedOrigins,
       timeoutSeconds: settings.timeoutSeconds,
+      publicUrl: settings.publicUrl,
       updatedBy: settings.updatedBy,
       updatedAt: settings.updatedAt,
     },
-    endpoint: { path: MCP_PATH, url: base ? `${base}${MCP_PATH}` : null },
+    endpoint: mcpEndpoint(settings),
     tools: toolCatalog(listToolDefinitions(), settings),
   };
 }
@@ -111,6 +123,7 @@ agentsRoute.put("/mcp", requirePermission(PERMISSIONS.AGENTS_MANAGE), zValidator
       ...(update.enabled !== undefined && update.enabled !== before.enabled ? { enabled: update.enabled } : {}),
       ...(update.allowedOrigins ? { allowedOrigins: update.allowedOrigins } : {}),
       ...(update.timeoutSeconds !== undefined ? { timeoutSeconds: update.timeoutSeconds } : {}),
+      ...(update.publicUrl !== undefined ? { publicUrl: update.publicUrl } : {}),
       ...(update.toolOverrides ? { tools: update.toolOverrides } : {}),
     },
   });

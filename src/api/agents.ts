@@ -125,14 +125,20 @@ export interface McpSettings {
   enabled: boolean;
   allowedOrigins: string[];
   timeoutSeconds: number;
+  /** Address agents use when it differs from the one the UI is opened on. */
+  publicUrl: string | null;
   updatedBy: string | null;
   updatedAt: number | null;
 }
 
 export interface McpOverview {
   settings: McpSettings;
-  /** `url` is set when the server knows its public address (PUBLIC_BASE_URL). */
-  endpoint: { path: string; url: string | null };
+  /**
+   * `url` is set when the server knows the address agents use: the public
+   * address set in Agents › MCP (`source: "settings"`) or PUBLIC_BASE_URL
+   * (`source: "env"`). Otherwise the UI uses its own origin.
+   */
+  endpoint: { path: string; url: string | null; source: "settings" | "env" | null };
   tools: McpTool[];
 }
 
@@ -140,6 +146,8 @@ export interface McpSettingsUpdate {
   enabled?: boolean;
   allowedOrigins?: string[];
   timeoutSeconds?: number;
+  /** `null` clears it, so the endpoint follows PUBLIC_BASE_URL or the page again. */
+  publicUrl?: string | null;
   /** Per-tool switches; tools left out keep their current state. */
   toolOverrides?: Record<string, boolean>;
 }

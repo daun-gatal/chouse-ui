@@ -38,8 +38,12 @@ it in production surfaced four problems:
    Tools keep calling the API in-process through the same app.
 2. **Settings live in the database, managed in Agents › MCP.** One JSON
    document in `obs_settings` (`mcp_settings`): `enabled` (default **off**),
-   `allowedOrigins`, `timeoutSeconds` (1–600, default 60) and
-   `toolOverrides` (tool → on/off). Each pod caches it for 5 seconds, so a
+   `allowedOrigins`, `timeoutSeconds` (1–600, default 60), `publicUrl` and
+   `toolOverrides` (tool → on/off). The endpoint shown to people resolves
+   `publicUrl`, then `PUBLIC_BASE_URL`, then the browser's own origin (and
+   flags loopback addresses), so it is right behind any Ingress host,
+   domain or IP without configuration and can still be pinned when agents
+   use a different address than administrators. Each pod caches it for 5 seconds, so a
    change reaches every replica without a restart; a corrupt document
    falls back to the defaults (endpoint off). `GET /api/agents/mcp` needs
    `agents:view`; `PUT /api/agents/mcp` needs `agents:manage` and is audited
