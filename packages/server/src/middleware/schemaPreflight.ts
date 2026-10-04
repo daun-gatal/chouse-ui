@@ -9,9 +9,23 @@
 import type { Context } from "hono";
 
 import { AUDIT_ACTIONS, PERMISSIONS } from "../rbac/schema/base";
+import { evaluateRules, getRulesForUser } from "../rbac/services/dataAccess";
 import { createAuditLogWithContext, userHasPermission } from "../rbac/services/rbac";
-import { analyzeDdl } from "../services/schemaPreflight/impact";
+import { analyzeDdl, type ImpactItem, type PreflightResult } from "../services/schemaPreflight/impact";
 import { parseDdl } from "../services/schemaPreflight/parse";
+
+/** Dependents in tables the caller cannot read are counted, not named (same as POST /observe/preflight). */
+async function visibleImpact(impact: PreflightResult, userId: string | undefined, isAdmin: boolean, connectionId: string): Promise<PreflightResult & { hiddenDependents: number }> {
+  if (isAdmin) return { ...impact, hiddenDependents: 0 };
+  const rules = userId ? await getRulesForUser(userId, connectionId) : [];
+  const visible = (item: ImpactItem): boolean => {
+    const dot = item.ref.indexOf(".");
+    if (dot <= 0) return true;
+    return userId ? evaluateRules(rules, item.ref.slice(0, dot), item.ref.slice(dot + 1)).allowed : false;
+  };
+  const items = impact.items.filter(visible);
+  return { ...impact, items, hiddenDependents: impact.items.length - items.length };
+}
 
 export async function enforceSchemaPreflight(c: Context, connectionId: string | undefined, statement: string, defaultDatabase: string | undefined): Promise<Response | null> {
   if (!connectionId || parseDdl(statement).kind === "unknown") return null;
@@ -30,7 +44,7 @@ export async function enforceSchemaPreflight(c: Context, connectionId: string | 
         message: canOverride
           ? "This change breaks dependents. Review the impact and confirm to run it anyway."
           : "This change breaks dependents and needs the schema:override permission.",
-        details: { impact, canOverride },
+        details: { impact: await visibleImpact(impact, userId, isAdmin, connectionId), canOverride },
       },
     }, 409);
   }

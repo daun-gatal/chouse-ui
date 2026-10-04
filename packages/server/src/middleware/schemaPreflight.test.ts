@@ -7,10 +7,21 @@ const mockAudit = mock();
 
 mock.module("../services/schemaPreflight/impact", () => ({ analyzeDdl: mockAnalyzeDdl }));
 mock.module("../rbac/services/rbac", () => ({ userHasPermission: mockUserHasPermission, createAuditLogWithContext: mockAudit }));
+mock.module("../rbac/services/dataAccess", () => ({
+  getRulesForUser: async () => [],
+  // The caller may read shop.* only.
+  evaluateRules: (_rules: unknown, database: string) => ({ allowed: database === "shop" }),
+}));
 
 import { enforceSchemaPreflight } from "./schemaPreflight";
 
-const BREAKING = { breaking: true, items: [{ severity: "breaks", label: "shop.orders_mv reads column c" }] };
+const BREAKING = {
+  breaking: true,
+  items: [
+    { severity: "breaks", ref: "shop.orders_mv", label: "shop.orders_mv reads column c" },
+    { severity: "breaks", ref: "finance.export_mv", label: "finance.export_mv reads column c" },
+  ],
+};
 
 function app(vars: { isAdmin?: boolean; permissions?: string[] }): Hono {
   const a = new Hono();
@@ -57,6 +68,9 @@ describe("enforceSchemaPreflight", () => {
     const body = await res.json();
     expect(body.error.code).toBe("SCHEMA_PREFLIGHT_BREAKS");
     expect(body.error.details.canOverride).toBe(false);
+    // Dependents in tables the caller cannot read are counted, not named.
+    expect(body.error.details.impact.items.map((i: { ref: string }) => i.ref)).toEqual(["shop.orders_mv"]);
+    expect(body.error.details.impact.hiddenDependents).toBe(1);
   });
 
   it("asks a permitted caller to confirm", async () => {
