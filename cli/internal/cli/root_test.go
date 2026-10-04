@@ -140,3 +140,10 @@ func TestVersionCompatibility(t *testing.T) {
 		}
 	}
 }
+
+func TestHelpPromisesSafeByDefault(t *testing.T) {
+	// The installer smoke test (cli.yml) greps the root help for this.
+	if !strings.Contains(NewRoot("test", "", "").Long, "Safe by default") {
+		t.Error(`root help must say "Safe by default"`)
+	}
+}

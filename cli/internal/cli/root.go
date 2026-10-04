@@ -27,7 +27,9 @@ the fleet, run the AI doctor, manage scheduled work and data health, and
 govern AI agents — authenticated with a personal access token (ch_pat_…).
 
 Output is a table in a terminal and JSON when piped; pick one with -o.
-Commands that change things ask first (or need --yes in scripts), and
+
+Safe by default: reads never prompt; commands that change things ask first
+(and need --yes without a terminal, failing closed before any request), and
 --dry-run previews where the server can.`,
 		Example: `  # First run: store a token for a server (prompts for the token)
   chouse auth login --server https://chouse.corp
