@@ -9,6 +9,7 @@
 // Logs go to stderr; stdout is reserved for the tar stream of /out.
 
 /* global process, Buffer, console, setTimeout, fetch, window -- Node script; `window` is inside a page init script */
+import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
@@ -16,7 +17,10 @@ const APP = process.env.APP_URL ?? "http://chouse-ui:5521";
 const CH = process.env.CH_URL ?? "http://clickhouse:8123";
 const CH_AUTH = "Basic " + Buffer.from("admin:password").toString("base64");
 const SEED_PASSWORD = "admin123!";
-const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? "Docs-Demo-2026!x";
+// The first-run password must be replaced before setup completes. Generate a
+// fresh one per run (the stack is thrown away afterwards); the fixed prefix
+// satisfies the upper/lower/digit/symbol policy.
+const DEMO_PASSWORD = `Aa1!${randomBytes(12).toString("hex")}`;
 const WAIT_SECONDS = Number(process.env.SHOTS_WAIT_SECONDS ?? 150);
 const OUT = "/out";
 
